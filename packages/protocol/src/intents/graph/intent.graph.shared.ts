@@ -105,6 +105,28 @@ export const isVague = (description: string, entropy: number, clarity: number): 
   return false;
 };
 
+/**
+ * Combine the felicity scores into the single number callers store.
+ *
+ * Authority is a preparatory condition: it asks whether the *speaker's profile*
+ * supports the speech act. When no profile was supplied the verifier has nothing
+ * to answer that from, so its guess is left out of the minimum rather than
+ * allowed to cap the result. The propose path attaches no profile on purpose —
+ * a signal derives only from the person's answers — so honouring that means not
+ * scoring them against a profile they were never asked for.
+ */
+export const combineFelicityScores = (
+  felicityScores: { authority: number; sincerity: number; clarity: number },
+  userProfile: string | undefined,
+): number => {
+  const profileBacked = Boolean(userProfile?.trim());
+  return Math.min(
+    ...(profileBacked ? [felicityScores.authority] : []),
+    felicityScores.sincerity,
+    felicityScores.clarity,
+  );
+};
+
 export const getSpecificityWarning = (verdict: { specificity_warning?: string | null }): string => {
   const warning = verdict.specificity_warning?.trim();
   return warning && warning.length > 0 ? warning : DEFAULT_SPECIFICITY_WARNING;

@@ -63,12 +63,15 @@ export class IntentGraphFactory {
       // - UPDATE:  prep → inference → reconciliation → executor → END (skips verification if no new intents)
       // - DELETE:  prep → reconciliation → executor → END (skips inference and verification)
       // - PROPOSE: prep → inference → verification → END (no reconciliation/execution, no DB writes)
+      // A caller that supplies a stage's output skips that stage: seed
+      // `inferredIntents` and prep routes straight to verification.
       .addEdge(START, "prep")
 
-      // After prep: read mode → query; else inference or reconciler
+      // After prep: read mode → query; else inference, verification, or reconciler
       .addConditionalEdges("prep", afterPrepRoute, {
         query: "query",
         inference: "inference",
+        verification: "verification",
         reconciler: "reconciler",
         __end__: END,
       })
@@ -115,13 +118,24 @@ export function afterPrepRoute(state: IntentState): string {
 
 
     /**
-     * Determines if inference should run based on operation mode.
+     * Determines if inference should run based on operation mode and seeded state.
      * Delete operations skip inference entirely and go straight to reconciliation.
+     * A caller that already supplies the candidate signals skips it too: inference
+     * extracts candidates from messy text, so there is nothing left for it to do
+     * when the candidates arrive with the invocation.
      */
 export function shouldRunInference(state: IntentState): string {
   if (state.operationMode === 'delete') {
     logger.verbose('Delete mode - skipping inference, routing to reconciliation');
     return 'reconciler';
+  }
+
+  if (state.inferredIntents.length > 0) {
+    logger.verbose('Intents supplied by the caller - skipping inference, routing to verification', {
+      operationMode: state.operationMode,
+      seededIntentCount: state.inferredIntents.length,
+    });
+    return 'verification';
   }
 
   logger.verbose('Running inference', {

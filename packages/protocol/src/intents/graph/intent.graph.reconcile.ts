@@ -9,7 +9,7 @@ import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../agents/agent.module.js";
-import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { buildExplicitUpdateActions, combineFelicityScores, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
 
     /**
@@ -99,12 +99,9 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
             };
           }
 
-          // Calculate Score
-          const score = Math.min(
-            verdict.felicity_scores.authority,
-            verdict.felicity_scores.sincerity,
-            verdict.felicity_scores.clarity
-          );
+          // Calculate Score. Authority participates only when a profile was
+          // supplied to judge it against.
+          const score = combineFelicityScores(verdict.felicity_scores, state.userProfile);
 
           // Return enriched intent
           return {

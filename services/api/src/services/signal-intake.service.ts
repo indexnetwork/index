@@ -506,7 +506,8 @@ export class SignalIntakeService {
 // -----------------------------------------------------------------------------
 
 /** Compiled once and reused: the intent graph always runs in verification-only
- * `propose` mode here, so no DB writes happen from this leg of the funnel. */
+ * `propose` mode here, with inference pre-seeded, so this leg of the funnel
+ * costs exactly one model call and writes nothing. */
 const productionIntents = new Intents({
   database: intentDatabaseAdapter,
   embedder: new EmbedderAdapter(),
@@ -516,13 +517,31 @@ const compiledIntentGraph = productionIntents.createGraph();
 
 /** Verify-only invocation of the intent graph. The profile-graph leg is skipped
  * and nothing is supplied in its place: an intent derives only from the person's
- * answers, so inference and verification see the synthesized signal alone. */
+ * answers, so verification sees the synthesized signal alone.
+ *
+ * Inference is skipped by supplying its output: synthesis has already written
+ * one clean, self-contained, first-person signal, so there is no messy text left
+ * to pull candidates out of, and the profile-blind call could not enrich them
+ * either. Seeding `inferredIntents` routes prep straight to verification. The
+ * one thing inference also does — extracting tombstones — is not reachable from
+ * this path: `runSynthesis` reads only description, score, and verification, and
+ * propose mode never reaches the reconciler that acts on a tombstone. */
 async function invokeIntentGraphProduction(input: {
   userId: string;
   inputContent: string;
 }): Promise<{ verifiedIntents?: Array<Record<string, unknown>> }> {
   const result = await compiledIntentGraph.invoke(
-    { ...input, userProfile: '', operationMode: 'propose' as const },
+    {
+      ...input,
+      userProfile: '',
+      operationMode: 'propose' as const,
+      inferredIntents: [{
+        type: 'goal' as const,
+        description: input.inputContent,
+        reasoning: 'Synthesized from the intake interview answers.',
+        confidence: 'high' as const,
+      }],
+    },
     { recursionLimit: 100 },
   );
   return result as { verifiedIntents?: Array<Record<string, unknown>> };

@@ -75,6 +75,21 @@ const optionSchema = z.object({
   description: z.string(),
 });
 
+/**
+ * Structurally identical to {@link optionSchema}, and deliberately a separate
+ * object.
+ *
+ * Reusing one zod instance for two fields of the same schema makes the JSON
+ * Schema converter emit the second as a `$ref` into `definitions`. Gemini
+ * rejects that document, so the call burned its retry and then answered from
+ * the fallback model instead — a 1.5s call became a 6.5s one, on a model nobody
+ * chose. Two instances keep both option shapes inlined.
+ */
+const bridgeOptionSchema = z.object({
+  label: z.string().min(1),
+  description: z.string(),
+});
+
 const answerFirstQuestionSchema = z.object({
   missingAxis: z
     .enum(["purpose", "desired_attributes", "exchange", "constraint"])
@@ -86,21 +101,20 @@ const answerFirstQuestionSchema = z.object({
     .min(2)
     .max(3)
     .describe("Two or three distinct choices derived only from the answered intake rounds."),
+  profileBridgeOption: bridgeOptionSchema
+    .nullable()
+    .describe(
+      "One natural profile intersection appended after the answer-grounded options, "
+      + "or null when no brief was supplied or the bridge would be forced. "
+      + "Null for every question is a correct answer.",
+    ),
   multiSelect: z.boolean(),
 });
 
-const followUpPlanSchema = z.object({
+/** Exported for the schema-shape guard in the sibling spec. */
+export const followUpPlanSchema = z.object({
   questions: z.array(answerFirstQuestionSchema),
   plannedFollowUpCount: z.number().int().min(0),
-});
-
-const profileBridgePlanSchema = z.object({
-  bridges: z.array(z.object({
-    questionIndex: z.number().int().min(0),
-    profileBridgeOption: optionSchema
-      .nullable()
-      .describe("One natural profile intersection, or null when the bridge would be forced."),
-  })),
 });
 
 const synthesisSchema = z.object({
@@ -135,14 +149,21 @@ export const FALLBACK_BRING_QUESTION: IntakePackQuestion = {
   multiSelect: false,
 };
 
-const PLAN_SYSTEM_PROMPT = `You plan and write answer-first follow-up intake questions for a networking product.
+const FOLLOW_UP_SYSTEM_PROMPT = `You plan and write answer-first follow-up intake questions for a networking product.
 
-You receive ONLY the answered intake rounds. Use them to choose the next missing
-axis, write a standalone prompt that names the newly stated person or domain, and
-create 2-3 meaningfully distinct answerGroundedOptions. Choose the most useful
-unanswered axis from: purpose, desired_attributes, exchange, or constraint. Never
-re-ask an axis the rounds already answer. Do not infer a professional background,
-industry, capability, or commercial goal that the rounds do not state.
+Each question has two parts, written in this order: the answer-grounded core, then
+one optional profile bridge. Keep them separate — the brief may shape the bridge and
+nothing else.
+
+CORE — answerGroundedOptions, from the answered rounds alone
+Use the answered intake rounds to choose the next missing axis, write a standalone
+prompt that names the newly stated person or domain, and create 2-3 meaningfully
+distinct answerGroundedOptions. Choose the most useful unanswered axis from:
+purpose, desired_attributes, exchange, or constraint. Never re-ask an axis the
+rounds already answer. Do not infer a professional background, industry,
+capability, or commercial goal that the rounds do not state. Write these options as
+if no profile brief had been supplied: nothing in the brief may add, remove,
+reword, or reclassify one of them.
 
 Every answerGroundedOption must be visibly anchored to the stated person or domain
 in its label or description and represent a concrete, distinct path. Generic labels
@@ -151,22 +172,23 @@ not say what the user would learn, share, collaborate on, or network about.
 - Scuba divers: "Learn diving techniques", "Find dive buddies", "Share dive stories".
 - Climate founders: "Compare climate sectors", "Find climate peers", "Discuss adaptation".
 
+BRIDGE — profileBridgeOption, at most one per question
+Only after the core options are written, compare the question, its missing axis, and
+those options with the profile brief, and return either one genuinely useful
+profileBridgeOption or null. A bridge is useful only when it creates a natural
+additional path that is not already represented; it is appended after the
+answer-grounded options and never rewrites, replaces, removes, or reclassifies one
+of them. Never return more than one bridge per question. When the profile theme is
+unrelated, when no brief was supplied, or when the intersection would feel forced,
+return null. Running club + investor may support one sponsorship bridge; scuba
+divers + pianist should return null. Returning null for every question is a normal,
+correct answer — never invent a bridge to avoid it.
+
 Each option needs a short label and a one-line description. Set multiSelect true
 only when several options can genuinely apply together. Never expose raw JSON,
 IDs, or internal vocabulary. plannedFollowUpCount is the TOTAL number of follow-up
 questions the interview should contain, including any returned now; when the input
 already fixes it, echo that value unchanged.`;
-
-const PROFILE_BRIDGE_SYSTEM_PROMPT = `You may append one optional profile bridge to each already-written signal-intake question.
-
-The question, missing axis, and answer-grounded options are immutable. For each
-questionIndex, compare them with the profile brief and return either one genuinely
-useful profileBridgeOption or null. A bridge is useful only when it creates a
-natural additional path that is not already represented. Never rewrite, replace,
-remove, or reclassify a core option. Never return more than one bridge per question.
-When the profile theme is unrelated or the intersection would feel forced, return
-null. Running club + investor may support one sponsorship bridge; scuba divers +
-pianist should return null.`;
 
 const SYNTHESIS_SYSTEM_PROMPT = `You write one clear signal for a networking product.
 
@@ -193,11 +215,18 @@ export function answerLabel(answer: IntakeAnswer): string {
   return [...answer.selectedOptions, answer.freeText?.trim() ?? ""].filter(Boolean).join(", ");
 }
 
+/**
+ * Clamp one generated question into a renderable one.
+ *
+ * The bridge is structurally optional: an absent, null, or unusable
+ * `profileBridgeOption` — and any bridge returned when no brief was supplied —
+ * simply leaves the question with its answer-grounded options.
+ */
 function normalizeFollowUpQuestion(
   question: z.infer<typeof answerFirstQuestionSchema>,
-  profileBridge: z.infer<typeof optionSchema> | null,
   brief: string,
 ): IntakePackQuestion {
+  const profileBridge = brief.trim() ? question.profileBridgeOption ?? null : null;
   const seen = new Set<string>();
   const normalizeOption = (option: { label: string; description: string }) => {
     const label = option.label.trim();
@@ -233,7 +262,6 @@ function normalizeFollowUpQuestion(
 /** Runs the two live stages of the fast intake funnel: follow-up planning and synthesis. */
 export class SignalIntakeOrchestrator {
   private readonly plannerModel: Runnable<BaseLanguageModelInput, z.infer<typeof followUpPlanSchema>>;
-  private readonly profileBridgeModel: Runnable<BaseLanguageModelInput, z.infer<typeof profileBridgePlanSchema>>;
   private readonly synthesisModel: Runnable<BaseLanguageModelInput, SynthesisResult>;
 
   /**
@@ -241,19 +269,21 @@ export class SignalIntakeOrchestrator {
    */
   constructor(models?: {
     planner?: Runnable<BaseLanguageModelInput, z.infer<typeof followUpPlanSchema>>;
-    profileBridge?: Runnable<BaseLanguageModelInput, z.infer<typeof profileBridgePlanSchema>>;
     synthesis?: Runnable<BaseLanguageModelInput, SynthesisResult>;
   }) {
     this.plannerModel = models?.planner
       ?? createStructuredModel("signalIntakePack", followUpPlanSchema) as unknown as Runnable<BaseLanguageModelInput, z.infer<typeof followUpPlanSchema>>;
-    this.profileBridgeModel = models?.profileBridge
-      ?? createStructuredModel("signalIntakePack", profileBridgePlanSchema, { name: "signal_intake_profile_bridges" }) as unknown as Runnable<BaseLanguageModelInput, z.infer<typeof profileBridgePlanSchema>>;
     this.synthesisModel = models?.synthesis
       ?? createStructuredModel("signalIntakePack", synthesisSchema) as unknown as Runnable<BaseLanguageModelInput, SynthesisResult>;
   }
 
   /**
    * Plan and write follow-up questions from the brief and answered rounds.
+   *
+   * One call writes both halves of each question: the answer-grounded core and
+   * the optional profile bridge. The bridge is a nullable field rather than a
+   * second call, so personalization staying silent — for every question — is an
+   * ordinary success, never a failure to swallow.
    *
    * @param input - Brief, answered rounds, per-call cap, and any locked plan
    * @returns Up to `maxFollowUps` renderable questions plus the total plan;
@@ -266,38 +296,19 @@ export class SignalIntakeOrchestrator {
     const lockedLine = input.plannedFollowUpCount !== undefined
       ? `\n\nThe interview plan is fixed at ${input.plannedFollowUpCount} follow-up question(s) in total; ${input.rounds.length - 1} already asked. Echo that count unchanged.`
       : "";
+    const briefSection = input.brief.trim()
+      ? `\n\nPROFILE BRIEF (profileBridgeOption only — it may not touch an answerGroundedOption):\n${input.brief.trim()}`
+      : "\n\nPROFILE BRIEF: none supplied. Return profileBridgeOption null for every question.";
     try {
       const raw = await this.plannerModel.invoke([
-        new SystemMessage(PLAN_SYSTEM_PROMPT),
+        new SystemMessage(FOLLOW_UP_SYSTEM_PROMPT),
         new HumanMessage(
-          `ANSWERED ROUNDS:\n${roundsText}\n\nWrite up to ${input.maxFollowUps} follow-up question(s).${lockedLine}`,
+          `ANSWERED ROUNDS:\n${roundsText}${briefSection}\n\nWrite up to ${input.maxFollowUps} follow-up question(s).${lockedLine}`,
         ),
       ]);
-      const coreQuestions = raw.questions.slice(0, input.maxFollowUps);
-      const bridgeByQuestion = new Map<number, z.infer<typeof optionSchema> | null>();
-      if (coreQuestions.length > 0 && input.brief.trim()) {
-        try {
-          const bridgePlan = await this.profileBridgeModel.invoke([
-            new SystemMessage(PROFILE_BRIDGE_SYSTEM_PROMPT),
-            new HumanMessage(
-              `ANSWERED ROUNDS:\n${roundsText}\n\nPROFILE BRIEF:\n${input.brief}\n\nIMMUTABLE CORE QUESTIONS:\n${JSON.stringify(coreQuestions, null, 2)}\n\nReturn one bridge decision for each questionIndex.`,
-            ),
-          ]);
-          for (const bridge of bridgePlan.bridges) {
-            if (
-              bridge.questionIndex < coreQuestions.length
-              && !bridgeByQuestion.has(bridge.questionIndex)
-            ) {
-              bridgeByQuestion.set(bridge.questionIndex, bridge.profileBridgeOption);
-            }
-          }
-        } catch {
-          // Profile personalization is optional. A bridge-model failure must not
-          // discard valid answer-grounded questions from the primary model.
-        }
-      }
-      const questions = coreQuestions.map((question, index) =>
-        normalizeFollowUpQuestion(question, bridgeByQuestion.get(index) ?? null, input.brief));
+      const questions = raw.questions
+        .slice(0, input.maxFollowUps)
+        .map((question) => normalizeFollowUpQuestion(question, input.brief));
       // Backstop: while budget remains, a successful empty plan must not
       // silently shrink the interview; serve the static fallback instead.
       if (questions.length === 0 && input.maxFollowUps > 0) {

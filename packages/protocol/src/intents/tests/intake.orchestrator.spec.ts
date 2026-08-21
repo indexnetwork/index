@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
-import { answerLabel, FALLBACK_BRING_QUESTION, FALLBACK_WHO_QUESTION, SignalIntakeOrchestrator } from "../intake/intake.orchestrator.js";
+import { toJsonSchema } from "@langchain/core/utils/json_schema";
+
+import { answerLabel, FALLBACK_BRING_QUESTION, FALLBACK_WHO_QUESTION, followUpPlanSchema, SignalIntakeOrchestrator } from "../intake/intake.orchestrator.js";
 
 interface Capture {
   prompt?: string;
@@ -19,13 +21,8 @@ function stub<T>(value: T, capture?: Capture) {
   } as never;
 }
 
-const NO_BRIDGES = { bridges: [] };
-
 function plannerModels<T>(plan: T, capture?: Capture) {
-  return {
-    planner: stub(plan, capture),
-    profileBridge: stub(NO_BRIDGES),
-  };
+  return { planner: stub(plan, capture) };
 }
 
 const question = {
@@ -36,6 +33,7 @@ const question = {
     { label: "Distribution", description: "You have an audience" },
     { label: "Engineering depth", description: "You can build it" },
   ],
+  profileBridgeOption: null,
   multiSelect: false,
 };
 
@@ -51,31 +49,24 @@ describe("answerLabel", () => {
 
 describe("SignalIntakeOrchestrator.generateFollowUps", () => {
   it("assembles answer-grounded options before one optional profile bridge", async () => {
-    const orchestrator = new SignalIntakeOrchestrator({
-      planner: stub({
-        questions: [{
-          missingAxis: "purpose",
-          title: "Purpose",
-          prompt: "What would make meeting scuba divers valuable to you?",
-          answerGroundedOptions: [
-            { label: "Find dive buddies", description: "Meet people to dive with" },
-            { label: "Learn from experts", description: "Meet experienced divers" },
-            { label: "Marine conservation", description: "Work on ocean stewardship" },
-          ],
-          multiSelect: false,
-        }],
-        plannedFollowUpCount: 1,
-      }),
-      profileBridge: stub({
-        bridges: [{
-          questionIndex: 0,
-          profileBridgeOption: {
-            label: "Underwater technology",
-            description: "Connect diving with your technology background",
-          },
-        }],
-      }),
-    });
+    const orchestrator = new SignalIntakeOrchestrator(plannerModels({
+      questions: [{
+        missingAxis: "purpose",
+        title: "Purpose",
+        prompt: "What would make meeting scuba divers valuable to you?",
+        answerGroundedOptions: [
+          { label: "Find dive buddies", description: "Meet people to dive with" },
+          { label: "Learn from experts", description: "Meet experienced divers" },
+          { label: "Marine conservation", description: "Work on ocean stewardship" },
+        ],
+        profileBridgeOption: {
+          label: "Underwater technology",
+          description: "Connect diving with your technology background",
+        },
+        multiSelect: false,
+      }],
+      plannedFollowUpCount: 1,
+    }));
 
     const result = await orchestrator.generateFollowUps({
       brief: "The user builds AI products.",
@@ -96,13 +87,9 @@ describe("SignalIntakeOrchestrator.generateFollowUps", () => {
     plannedFollowUpCount: 2,
   };
 
-  it("keeps the profile out of core generation and sends it only to bridge generation", async () => {
-    const plannerCapture: Capture = {};
-    const bridgeCapture: Capture = {};
-    const orchestrator = new SignalIntakeOrchestrator({
-      planner: stub(plan, plannerCapture),
-      profileBridge: stub({ bridges: [] }, bridgeCapture),
-    });
+  it("sends the brief in a bridge-only slot and keeps both prompts' constraints", async () => {
+    const capture: Capture = {};
+    const orchestrator = new SignalIntakeOrchestrator(plannerModels(plan, capture));
 
     const result = await orchestrator.generateFollowUps({
       brief: "Ada builds developer tools.",
@@ -112,43 +99,81 @@ describe("SignalIntakeOrchestrator.generateFollowUps", () => {
 
     expect(result.questions).toHaveLength(2);
     expect(result.plannedFollowUpCount).toBe(2);
-    expect(plannerCapture.prompt).toContain("A design partner");
-    expect(plannerCapture.prompt).not.toContain("Ada builds developer tools.");
-    expect(plannerCapture.messages?.[0]).toContain("receive ONLY the answered intake rounds");
-    expect(plannerCapture.messages?.[0]).toContain("Generic labels");
-    expect(plannerCapture.messages?.[0]).toContain("Learn diving techniques");
-    expect(bridgeCapture.prompt).toContain("Ada builds developer tools.");
-    expect(bridgeCapture.prompt).toContain("A design partner");
-    expect(bridgeCapture.prompt).toContain("IMMUTABLE CORE QUESTIONS");
-    expect(bridgeCapture.messages?.[0]).toContain("question, missing axis, and answer-grounded options are immutable");
+    expect(capture.prompt).toContain("A design partner");
+    // One call now carries the brief, so the wall is a labelled slot plus a
+    // prompt constraint rather than a second model that never saw the rounds.
+    expect(capture.prompt).toContain("PROFILE BRIEF (profileBridgeOption only");
+    expect(capture.prompt).toContain("Ada builds developer tools.");
+    const systemPrompt = capture.messages?.[0] ?? "";
+    expect(systemPrompt).toContain("from the answered rounds alone");
+    expect(systemPrompt).toContain("Write these options as\nif no profile brief had been supplied");
+    expect(systemPrompt).toContain("nothing in the brief may add, remove,");
+    expect(systemPrompt).toContain("Generic labels");
+    expect(systemPrompt).toContain("Learn diving techniques");
+    // The bridge prompt's own thinking survives the merge.
+    expect(systemPrompt).toContain("never rewrites, replaces, removes, or reclassifies one");
+    expect(systemPrompt).toContain("Never return more than one bridge per question");
+    expect(systemPrompt).toContain("scuba\ndivers + pianist should return null");
   });
 
-  it("deduplicates options without letting the profile bridge displace two answer-grounded choices", async () => {
-    const orchestrator = new SignalIntakeOrchestrator({
-      planner: stub({
+  it("keeps 2-3 answer-grounded core options on every question, whatever the bridge does", async () => {
+    // The two-call split enforced this structurally: the bridge model received
+    // the core questions as immutable input. In one call it is a prompt
+    // constraint, so the shape is asserted here instead.
+    const bridges = [
+      null,
+      { label: "Underwater technology", description: "A natural bridge" },
+      // A bridge that duplicates a core label is dropped, never substituted.
+      { label: " find dive buddies ", description: "The same choice again" },
+    ];
+    for (const profileBridgeOption of bridges) {
+      const orchestrator = new SignalIntakeOrchestrator(plannerModels({
         questions: [{
-          missingAxis: "desired_attributes",
-          title: "Divers",
-          prompt: "Which scuba divers would be most useful to meet?",
+          missingAxis: "purpose",
+          title: "Purpose",
+          prompt: "What would make meeting scuba divers valuable to you?",
           answerGroundedOptions: [
-            { label: "Dive buddies", description: "People to dive with" },
-            { label: " dive buddies ", description: "Duplicate after trimming" },
-            { label: "Experienced instructors", description: "People to learn from" },
+            { label: "Find dive buddies", description: "Meet people to dive with" },
+            { label: "Learn from experts", description: "Meet experienced divers" },
           ],
+          profileBridgeOption,
           multiSelect: false,
         }],
         plannedFollowUpCount: 1,
-      }),
-      profileBridge: stub({
-        bridges: [{
-          questionIndex: 0,
-          profileBridgeOption: {
-            label: "Underwater technologists",
-            description: "A natural bridge to the user's background",
-          },
-        }],
-      }),
-    });
+      }));
+
+      const result = await orchestrator.generateFollowUps({
+        brief: "The user builds AI products.",
+        rounds: [{ prompt: "Who?", answer: { selectedOptions: [], freeText: "scuba divers" } }],
+        maxFollowUps: 1,
+      });
+
+      const labels = result.questions[0]?.options.map((option) => option.label) ?? [];
+      expect(labels.slice(0, 2)).toEqual(["Find dive buddies", "Learn from experts"]);
+      expect(labels.length).toBeLessThanOrEqual(3);
+      expect(result.questions[0]).not.toEqual(FALLBACK_BRING_QUESTION);
+    }
+  });
+
+  it("deduplicates options without letting the profile bridge displace two answer-grounded choices", async () => {
+    const orchestrator = new SignalIntakeOrchestrator(plannerModels({
+      questions: [{
+        missingAxis: "desired_attributes",
+        title: "Divers",
+        prompt: "Which scuba divers would be most useful to meet?",
+        answerGroundedOptions: [
+          { label: "Dive buddies", description: "People to dive with" },
+          { label: " dive buddies ", description: "Duplicate after trimming" },
+          { label: "Experienced instructors", description: "People to learn from" },
+        ],
+        profileBridgeOption: {
+          label: "Underwater technologists",
+          description: "A natural bridge to the user's background",
+        },
+        multiSelect: false,
+      }],
+      plannedFollowUpCount: 1,
+    }));
 
     const result = await orchestrator.generateFollowUps({
       brief: "The user builds technology products.",
@@ -164,30 +189,23 @@ describe("SignalIntakeOrchestrator.generateFollowUps", () => {
   });
 
   it("falls back when deduplication leaves fewer than two answer-grounded choices", async () => {
-    const orchestrator = new SignalIntakeOrchestrator({
-      planner: stub({
-        questions: [{
-          missingAxis: "purpose",
-          title: "Purpose",
-          prompt: "What do you want from meeting scuba divers?",
-          answerGroundedOptions: [
-            { label: "Dive buddies", description: "People to dive with" },
-            { label: " dive buddies ", description: "The same choice" },
-          ],
-          multiSelect: false,
-        }],
-        plannedFollowUpCount: 1,
-      }),
-      profileBridge: stub({
-        bridges: [{
-          questionIndex: 0,
-          profileBridgeOption: {
-            label: "Underwater technology",
-            description: "A profile-derived bridge",
-          },
-        }],
-      }),
-    });
+    const orchestrator = new SignalIntakeOrchestrator(plannerModels({
+      questions: [{
+        missingAxis: "purpose",
+        title: "Purpose",
+        prompt: "What do you want from meeting scuba divers?",
+        answerGroundedOptions: [
+          { label: "Dive buddies", description: "People to dive with" },
+          { label: " dive buddies ", description: "The same choice" },
+        ],
+        profileBridgeOption: {
+          label: "Underwater technology",
+          description: "A profile-derived bridge",
+        },
+        multiSelect: false,
+      }],
+      plannedFollowUpCount: 1,
+    }));
 
     const result = await orchestrator.generateFollowUps({
       brief: "The user builds technology products.",
@@ -201,11 +219,40 @@ describe("SignalIntakeOrchestrator.generateFollowUps", () => {
     });
   });
 
-  it("keeps valid core questions when optional bridge generation fails", async () => {
+  it("treats a null bridge on every question as an ordinary success, not a failure", async () => {
+    let calls = 0;
     const orchestrator = new SignalIntakeOrchestrator({
-      planner: stub({ questions: [question], plannedFollowUpCount: 1 }),
-      profileBridge: { invoke: async () => { throw new Error("bridge model down"); } } as never,
+      planner: {
+        invoke: async () => {
+          calls += 1;
+          return {
+            questions: [question, { ...question, prompt: "Where should we look?" }],
+            plannedFollowUpCount: 2,
+          };
+        },
+      } as never,
     });
+
+    const result = await orchestrator.generateFollowUps({
+      brief: "Ada builds developer tools.",
+      rounds: [{ prompt: "Who?", answer: { selectedOptions: ["A design partner"] } }],
+      maxFollowUps: 2,
+    });
+
+    // Personalization is optional: silence is not an error and buys no retry.
+    expect(calls).toBe(1);
+    expect(result.questions).toHaveLength(2);
+    for (const served of result.questions) {
+      expect(served.options.map((option) => option.label)).toEqual(["Distribution", "Engineering depth"]);
+    }
+  });
+
+  it("omitting the bridge field entirely is as good as returning null", async () => {
+    const { profileBridgeOption: _omitted, ...withoutBridge } = question;
+    const orchestrator = new SignalIntakeOrchestrator(plannerModels({
+      questions: [withoutBridge],
+      plannedFollowUpCount: 1,
+    }));
 
     const result = await orchestrator.generateFollowUps({
       brief: "Ada builds developer tools.",
@@ -213,10 +260,29 @@ describe("SignalIntakeOrchestrator.generateFollowUps", () => {
       maxFollowUps: 1,
     });
 
-    expect(result.questions[0]?.options.map((option) => option.label)).toEqual([
-      "Distribution",
-      "Engineering depth",
-    ]);
+    expect(result.questions[0]?.options.map((option) => option.label))
+      .toEqual(["Distribution", "Engineering depth"]);
+  });
+
+  it("drops a bridge offered when no brief was supplied", async () => {
+    const capture: Capture = {};
+    const orchestrator = new SignalIntakeOrchestrator(plannerModels({
+      questions: [{
+        ...question,
+        profileBridgeOption: { label: "Invented bridge", description: "From a brief that does not exist" },
+      }],
+      plannedFollowUpCount: 1,
+    }, capture));
+
+    const result = await orchestrator.generateFollowUps({
+      brief: "   ",
+      rounds: [{ prompt: "Who?", answer: { selectedOptions: ["A design partner"] } }],
+      maxFollowUps: 1,
+    });
+
+    expect(capture.prompt).toContain("PROFILE BRIEF: none supplied");
+    expect(result.questions[0]?.options.map((option) => option.label))
+      .toEqual(["Distribution", "Engineering depth"]);
   });
 
   it("truncates model output to maxFollowUps", async () => {
@@ -384,5 +450,21 @@ describe("static fallbacks", () => {
       expect(q.prompt.length).toBeGreaterThan(0);
       expect(q.options.length).toBeGreaterThanOrEqual(2);
     }
+  });
+});
+
+describe("the follow-up plan schema as the provider receives it", () => {
+  it("inlines every option shape instead of emitting a $ref", () => {
+    // `withStructuredOutput` converts this schema with the same converter and
+    // sends it as `response_format.json_schema`. Reusing one zod instance for
+    // two fields makes the converter emit the second as a `$ref` into
+    // `definitions`, which Gemini rejects: the call burns its retry and answers
+    // from the fallback model instead. Merging the bridge into this schema is
+    // exactly the change that could reintroduce that, so it is asserted here.
+    const json = JSON.stringify(toJsonSchema(followUpPlanSchema));
+
+    expect(json).not.toContain("$ref");
+    expect(json).not.toContain("definitions");
+    expect(json).toContain("profileBridgeOption");
   });
 });
