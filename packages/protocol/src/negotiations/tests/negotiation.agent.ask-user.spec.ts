@@ -61,6 +61,37 @@ function validTurn(action: string) {
 }
 
 describe("IndexNegotiator — canAskUser (IND-401)", () => {
+  it("retries a counter that tries to consult its own client, then parks locally", async () => {
+    const disguisedConsultation = {
+      ...validTurn("counter"),
+      message: "Before proceeding, we need to consult Alice directly.",
+    };
+    const agent = new CapturingNegotiator([disguisedConsultation, askUserOutput]);
+
+    const turn = await agent.invoke({ ...baseInput, canAskUser: true });
+
+    expect(agent.calls).toBe(2);
+    expect(turn.action).toBe("ask_user");
+    expect(turn.message).toBeNull();
+  });
+
+  it("parks locally rather than sending a second disguised consultation", async () => {
+    const disguisedConsultation = {
+      ...validTurn("counter"),
+      message: "We need to consult Alice directly before proceeding.",
+    };
+    const agent = new CapturingNegotiator([disguisedConsultation, disguisedConsultation]);
+
+    const turn = await agent.invoke({ ...baseInput, canAskUser: true });
+
+    expect(agent.calls).toBe(2);
+    expect(turn).toMatchObject({
+      action: "ask_user",
+      message: null,
+      askUser: { reason: "unresolved_owner_constraint" },
+    });
+  });
+
   it("answers a supported fit question before seeking more qualification", async () => {
     const agent = new CapturingNegotiator([validTurn("counter")]);
     await agent.invoke(baseInput);

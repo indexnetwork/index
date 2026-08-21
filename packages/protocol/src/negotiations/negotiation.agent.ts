@@ -83,7 +83,7 @@ const V2_INITIATOR_RULES = `- You hold the INITIATING seat: your user's side sur
  */
 const ASK_USER_RULE = `
 - "ask_user" if you need {userName}'s OWN input before you can proceed. This PAUSES the negotiation until they answer (up to 24h), so use it only when proceeding without their input would risk over-disclosure or a wrong call. You get AT MOST ONE client consultation per negotiation. Use "question" (not "ask_user") when the clarification should come from the OTHER side.
-- If you need your client's input, the action MUST be "ask_user" with an askUser payload. Never choose "counter" or "question" and narrate that you need to ask your client: those actions continue the agent-to-agent exchange and cannot deliver a question to {userName}.
+- If you need your client's input, the action MUST be "ask_user" with an askUser payload. It is a LOCAL PAUSE: set message to null and send nothing to the counterparty. Never choose "counter" or "question" and narrate that you need to ask your client: those actions continue the agent-to-agent exchange and cannot deliver a question to {userName}.
 - On an "ask_user" turn, set askUser.reason to exactly one closed server category: "unresolved_owner_constraint" | "consequential_disclosure_permission" | "repeated_non_convergence" | "insufficient_commitment_authority". The reason records WHY the pause is warranted; it is not the wording {userName} sees.
 - Write the question yourself in askUser.question. You are {userName}'s own agent and the only one who has read this negotiation, so ask about the specific thing that is actually stuck here, in {userName}'s own terms, grounded in the exchange above. Never a generic template.
   - title: at most 12 characters — a noun for the decision domain, e.g. "Stage", "Timing", "Budget", "Scope".
@@ -389,6 +389,27 @@ function isValidTimeoutMs(n: number): boolean {
   return Number.isFinite(n) && n > 0 && n <= Number.MAX_SAFE_INTEGER;
 }
 
+/**
+ * A counter/question may not be used to announce that this agent needs its
+ * own client's input. That is an `ask_user` pause, not a shared turn: sending
+ * it to the other side advances the speaker and creates the exact ping-pong
+ * that the pause exists to avoid.
+ */
+function isDisguisedClientConsultation(turn: NegotiationTurn, userName: string): boolean {
+  if (turn.action === "ask_user" || !turn.message) return false;
+
+  const client = userName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const ownClient = `(?:${client}|(?:my|our|the)\\s+(?:client|user))`;
+  const consultVerb = "(?:consult|ask|check\\s+with|confirm\\s+with|speak\\s+to)";
+  const text = turn.message.toLowerCase();
+  return new RegExp(
+    `\\b(?:need|must|should|want|have)\\s+to\\s+${consultVerb}\\s+${ownClient}\\b`
+      + `|\\b${consultVerb}\\s+${ownClient}\\s+(?:directly|first)\\b`
+      + `|\\b(?:need|must|should)\\s+to\\s+(?:clarify|confirm|understand)\\s+${client}'?s\\b`,
+    "i",
+  ).test(text);
+}
+
 export function resolveTurnTimeoutMs(override?: number): number {
   if (typeof override === "number" && isValidTimeoutMs(override)) return override;
   return DEFAULT_TURN_TIMEOUT_MS;
@@ -686,7 +707,7 @@ ${preContactResume
         : "This is the opening turn. Propose the connection case.")
     : "Evaluate the latest arguments and respond."}${antiEchoInstruction}${concludeFloorInstruction}`;
 
-    const chatMessages = [
+    let chatMessages = [
       { role: "system", content: systemPrompt },
       { role: "user", content: userMessage },
     ];
@@ -694,10 +715,29 @@ ${preContactResume
     // Structured output is schema-constrained, but providers can still emit
     // out-of-vocabulary actions. Validate; retry once; then fall back to the
     // conservative seat-valid action instead of poisoning the turn history.
+    let rejectedClientConsultation = false;
     for (let attempt = 0; attempt < 2; attempt++) {
       const result = await this.callModel(model, chatMessages, input.executionId);
       const parsed = schema.safeParse(result);
-      if (parsed.success) return parsed.data as NegotiationTurn;
+      if (parsed.success) {
+        const turn = parsed.data as NegotiationTurn;
+        if (!canAskUser || !isDisguisedClientConsultation(turn, userName)) return turn;
+
+        rejectedClientConsultation = true;
+        agentLog.warn("Negotiator draft announced an own-client consultation in a shared turn", {
+          attempt: attempt + 1,
+          seat,
+          action: turn.action,
+        });
+        chatMessages = [
+          ...chatMessages,
+          {
+            role: "user",
+            content: `Your draft is invalid: it announced that you need ${userName}'s input in a shared ${turn.action} turn. Do NOT send a message to the counterparty. Use "ask_user" with a focused question for ${userName} instead.`,
+          },
+        ];
+        continue;
+      }
       agentLog.warn("Negotiator output failed seat-schema validation", {
         attempt: attempt + 1,
         seat,
@@ -705,6 +745,22 @@ ${preContactResume
         isFinalTurn,
         issues: parsed.error.issues.map((i) => i.message).slice(0, 3),
       });
+    }
+
+    // Never turn a failed re-draft of an own-client consultation into a
+    // counterparty turn. A minimal local park is safer than advancing the
+    // shared conversation with the very message we just refused.
+    if (rejectedClientConsultation && canAskUser) {
+      agentLog.warn("Negotiator client-consultation re-draft failed; parking locally", { seat, version });
+      return {
+        action: "ask_user",
+        assessment: {
+          reasoning: "Client input is required before continuing this negotiation.",
+          suggestedRoles: { ownUser: "peer", otherUser: "peer" },
+        },
+        message: null,
+        askUser: { reason: "unresolved_owner_constraint" },
+      };
     }
 
     const fallbackAction = fallbackActionFor(version, seat, isFinalTurn);
