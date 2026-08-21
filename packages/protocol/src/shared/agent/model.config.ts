@@ -48,7 +48,6 @@ function getBaseModelConfig(config?: ModelConfig) {
     opportunityEvaluator: { model: "google/gemini-2.5-flash" },
     opportunityPresenter: { model: "google/gemini-2.5-flash" },
     negotiator:           { model: "google/gemini-2.5-flash" },
-    negotiationScreener:  { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 1024 },
     negotiationReflector: { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 2048 },
     homeCategorizer:      { model: "google/gemini-2.5-flash" },
     suggestionGenerator:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },

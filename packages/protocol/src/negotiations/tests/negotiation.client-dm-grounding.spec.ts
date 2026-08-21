@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
 
-import { stubScreenerReachOut } from "./screen.stub.js";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage, type NegotiatorClientDmQuery } from "../negotiation.client-dm.js";
@@ -263,10 +262,8 @@ function runGraph(stubs: ReturnType<typeof mkStubs>, input: Record<string, unkno
 describe("negotiation graph — client-DM is system-agent-only", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
   let agentInputs: NegotiationAgentInput[] = [];
-  let restoreScreener: () => void;
 
   beforeAll(() => {
-    restoreScreener = stubScreenerReachOut();
     origInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function (input: NegotiationAgentInput) {
       agentInputs.push(input);
@@ -280,7 +277,6 @@ describe("negotiation graph — client-DM is system-agent-only", () => {
 
   afterAll(() => {
     IndexNegotiator.prototype.invoke = origInvoke;
-    restoreScreener();
   });
 
   beforeEach(() => {

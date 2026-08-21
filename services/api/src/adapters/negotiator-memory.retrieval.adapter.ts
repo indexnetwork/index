@@ -45,7 +45,7 @@ export interface NegotiatorMemoryQuery {
   userId: string;
   counterpartyUserId: string;
   queryText: string;
-  scope: 'screen' | 'turn';
+  scope: 'turn';
 }
 
 export type NegotiatorMemoryRetrieveFn = (query: NegotiatorMemoryQuery) => Promise<NegotiatorMemoryEntry[]>;
@@ -88,7 +88,7 @@ export class NegotiatorMemoryRetrievalAdapter {
 
   /**
    * Retrieves the requesting user's own negotiator memories for a
-   * negotiation-facing prompt (screen node, turn agent, polling pickup).
+   * negotiation-facing prompt (turn agent, polling pickup).
    * Never throws; resolves `[]` when the flag is off, the user has no
    * negotiator agent, or anything fails.
    */

@@ -1295,8 +1295,8 @@ List A2A agent-to-agent negotiation conversations for the authenticated user.
 Each conversation may carry a `negotiation` lifecycle object. Its optional
 `screenDecision` field (IND-610) is **owner-only**: it is projected solely when
 the authenticated viewer is the negotiation's initiator, and is `null` for every
-other viewer, so a counterparty never learns that an outreach gate ran or what
-it concluded. The ownership check is applied inside the projection itself
+other viewer, so a counterparty never learns that the initiator's agent decided
+against reaching out, or why. The ownership check is applied inside the projection itself
 (`services/api/src/adapters/negotiation-lifecycle.projection.ts`), independently
 of the separate listing rule that hides `screened_out` rows from non-initiators.
 
@@ -1306,7 +1306,7 @@ returned.
 ```json
 {
   "screenDecision": {
-    "source": "screen",
+    "source": "outcome",
     "decision": "pass",
     "reasoning": "...",
     "counterpartyPremiseFit": "... | null",
@@ -1316,14 +1316,14 @@ returned.
 }
 ```
 
-`source` records where the decision came from, because two different refusals
-collapse into the same `screened_out` outcome:
+`source` records where the decision came from:
 
-- `screen` — the outreach gate declined before any contact
-  (`tasks.metadata.screenDecision`); structured evidence fields are present.
-- `outcome` — the agent refused on its opening turn, so no screen record
-  blocked and only the negotiation-outcome `reasoning` exists; the evidence
-  fields are `null`.
+- `outcome` — the live route. The agent refused on its opening turn, so only
+  the negotiation-outcome `reasoning` exists; the evidence fields are `null`.
+- `screen` — **read-only history.** The pre-first-turn outreach gate that wrote
+  `tasks.metadata.screenDecision` has been removed, but negotiations that ran
+  before its removal still carry a record, with structured evidence fields
+  populated.
 
 Reasoning is only ever taken from a `screened_out` outcome. Ordinary declines
 and turn-cap stalls do not populate this field.

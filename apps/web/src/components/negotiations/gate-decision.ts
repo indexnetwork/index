@@ -12,10 +12,11 @@ export type GateDecision = NonNullable<ConversationNegotiationLifecycle['screenD
  * - **no turns** — the only branch where the transcript has nothing to show;
  *   a negotiation that produced turns tells its own story through the rail,
  *   and a "did not reach out" card there would flatly contradict it;
- * - **`screened_out`** — the outcome that means no contact was ever made. Both
- *   refusal paths (screen-node pass, opening-turn withdraw) collapse to it,
- *   and a shadow-mode `pass` that did *not* block is correctly excluded here
- *   even though its `screenDecision.decision` reads `pass`;
+ * - **`screened_out`** — the outcome that means no contact was ever made. The
+ *   live route is the opening-turn withdraw; the removed outreach gate is the
+ *   other, still present on historical rows. Gating on the OUTCOME rather than
+ *   on `screenDecision.decision` is what keeps a stored non-blocking `pass`
+ *   from ever rendering as a refusal;
  * - **reasoning present** — a card with nothing to say is worse than the
  *   existing generic resolved banner, so we fall back to that instead.
  *

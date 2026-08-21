@@ -18,7 +18,6 @@ export const CANONICAL_AGENT_MODEL_DEFAULTS = Object.freeze({
   opportunityEvaluator: "google/gemini-2.5-flash",
   opportunityPresenter: "google/gemini-2.5-flash",
   negotiator: "google/gemini-2.5-flash",
-  negotiationScreener: "google/gemini-2.5-flash",
   negotiationReflector: "google/gemini-2.5-flash",
   homeCategorizer: "google/gemini-2.5-flash",
   suggestionGenerator: "google/gemini-2.5-flash",

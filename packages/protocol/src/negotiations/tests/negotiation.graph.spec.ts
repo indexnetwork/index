@@ -1,7 +1,6 @@
 import { describe, it, expect, afterAll } from "bun:test";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 function mkStubs() {
   const messages: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }> = [];
@@ -37,9 +36,6 @@ function mkStubs() {
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("negotiation graph — task intent snapshots", () => {
   it("captures immutable, deduplicated source and candidate intent snapshots at task creation", async () => {
     const { database, dispatcher, createdTaskMetadata } = mkStubs();

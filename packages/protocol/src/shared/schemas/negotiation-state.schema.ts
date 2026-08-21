@@ -186,6 +186,8 @@ export const NegotiationOutcomeSchema = z.object({
    * `agent_error`: the run stopped on repeated agent failures, not on a decision.
    * `repetition`: the run stopped because an agent kept reproducing a message
    * already on the record — likewise not a decision.
+   * `screened_out`: nothing was ever sent. Written by the IND-564 opening-turn
+   * withdraw guard; also carried by rows the removed outreach gate stamped.
    */
   reason: z.enum(["turn_cap", "timeout", "screened_out", "agent_error", "repetition"]).optional(),
 });

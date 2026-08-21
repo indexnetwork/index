@@ -8,7 +8,6 @@ import { askableUnknowns, assessAskAdmissibility, assessConcludeAdmissibility, t
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
 import { requestContext } from "../../shared/observability/request-context.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The conclusion floor: an askable unknown outranks a verdict, and when the
@@ -262,9 +261,6 @@ let agentScript: NegotiationTurn[] = [];
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("what makes an unknown askable", () => {
   const authored = OPEN_CHECKLIST as ChecklistItem[];
 

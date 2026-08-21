@@ -18,7 +18,6 @@ import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, t
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
-import { blocksNegotiationBeforeFirstTurn, NegotiationScreener, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
@@ -56,13 +55,10 @@ export interface NegotiationGraphDeps {
   systemAgent: IndexNegotiator;
   /** Authors the post-stall gap question at finalize (park-on-stall). */
   stallGapAuthor?: NegotiationStallGapAuthor;
-  /** Outreach gate for fresh negotiations. */
-  screener: NegotiationScreener;
 }
 
 export const logger = protocolLogger("NegotiationGraph");
 export const initLog = protocolLogger("NegotiationGraph:Init");
-export const screenNodeLog = protocolLogger("NegotiationGraph:Screen");
 export const turnLog = protocolLogger("NegotiationGraph:Turn");
 export const finalizeLog = protocolLogger("NegotiationGraph:Finalize");
 export const negotiateCandidatesLog = protocolLogger("NegotiationGraph:negotiateCandidates");
@@ -342,8 +338,7 @@ try {
 }
 
 /**
- * IND-569: build the attributed prior dialogue passed to the screener and
- * turn prompts. Combines the immutable seeded attribution (earlier + legacy
+ * IND-569: build the attributed prior dialogue passed to turn prompts. Combines the immutable seeded attribution (earlier + legacy
  * unattributed blocks, resolved once in init) with this session's own turns
  * (task-id-matched). Null when there is no seeded attribution.
  */

@@ -2,7 +2,6 @@ import { describe, it, expect } from "bun:test";
 
 import { renderNegotiatorMemorySection, renderNegotiatorChatMemorySection, type NegotiatorMemoryEntry } from "../negotiation.memory.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import { NegotiationScreener, type NegotiationScreenerInput } from "../negotiation.screen.js";
 import type { UserNegotiationContext } from "../negotiation.state.js";
 
 /**
@@ -24,7 +23,6 @@ const memories: NegotiatorMemoryEntry[] = [
 describe("renderNegotiatorMemorySection", () => {
   it("returns the empty string for no entries", () => {
     expect(renderNegotiatorMemorySection([])).toBe("");
-    expect(renderNegotiatorMemorySection([], { memoryHintsInstruction: true })).toBe("");
   });
 
   it("renders disclosure rules as hard constraints, separate from advisory notes", () => {
@@ -55,12 +53,6 @@ describe("renderNegotiatorMemorySection", () => {
     expect(rulesOnly).not.toContain("Advisory notes");
   });
 
-  it("adds the memoryHints instruction only when asked (screen node)", () => {
-    expect(renderNegotiatorMemorySection(memories)).not.toContain("evidence.memoryHints");
-    const withHints = renderNegotiatorMemorySection(memories, { memoryHintsInstruction: true });
-    expect(withHints).toContain("evidence.memoryHints");
-    expect(withHints).toContain("never copy sensitive contents verbatim");
-  });
 });
 
 describe("renderNegotiatorChatMemorySection", () => {
@@ -150,55 +142,5 @@ describe("IndexNegotiator prompt assembly (P5.3 memory)", () => {
     const userMessage = agent.captured[0][1].content;
     expect(userMessage).not.toContain("PRIVATE NEGOTIATOR MEMORY");
     expect(userMessage).not.toContain("maximum budget");
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Prompt assembly — NegotiationScreener
-// ─────────────────────────────────────────────────────────────────────────────
-
-class CapturingScreener extends NegotiationScreener {
-  captured: Array<Array<{ role: string; content: string }>> = [];
-  protected override async callModel(
-    _model: unknown,
-    chatMessages: Array<{ role: string; content: string }>,
-  ): Promise<unknown> {
-    this.captured.push(chatMessages);
-    return {
-      decision: "reach_out",
-      reasoning: "stub",
-      evidence: { counterpartyPremiseFit: "fit", intentAlignment: "aligned" },
-    };
-  }
-}
-
-function screenerInput(extra?: Partial<NegotiationScreenerInput>): NegotiationScreenerInput {
-  return {
-    clientUser: ownUser,
-    counterpartyUser: otherUser,
-    seedAssessment: { reasoning: "seed", valencyRole: "peer" },
-    indexContext: { networkId: "net-1", prompt: "test network" },
-    ...extra,
-  };
-}
-
-describe("NegotiationScreener prompt assembly (P5.3 memory)", () => {
-  it("injects the memory section with the memoryHints instruction", async () => {
-    const screener = new CapturingScreener();
-    await screener.invoke(screenerInput({ memory: memories }));
-    const systemPrompt = screener.captured[0][0].content;
-    expect(systemPrompt).toContain("PRIVATE NEGOTIATOR MEMORY");
-    expect(systemPrompt).toContain("evidence.memoryHints");
-  });
-
-  it("keeps the prompt byte-identical when memory is absent or empty", async () => {
-    const withoutField = new CapturingScreener();
-    await withoutField.invoke(screenerInput());
-    const withEmpty = new CapturingScreener();
-    await withEmpty.invoke(screenerInput({ memory: [] }));
-
-    expect(withEmpty.captured[0][0].content).toBe(withoutField.captured[0][0].content);
-    expect(withoutField.captured[0][0].content).not.toContain("PRIVATE NEGOTIATOR MEMORY");
-    expect(withoutField.captured[0][0].content).not.toContain("{negotiatorMemory}");
   });
 });

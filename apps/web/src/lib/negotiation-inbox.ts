@@ -106,6 +106,8 @@ function describeResolved(status: NegotiationInboxStatus, reason: string | null)
   }
   if (status === 'couldnt_complete') return 'the negotiation could not complete';
   if (status === 'expired') return 'the opportunity expired';
+  // `screened_out` = no contact was ever made. Written live by an opening-turn
+  // withdraw, and carried by rows the removed outreach gate stamped.
   if (reason === 'screened_out') return 'agents did not find enough mutual value to continue';
   return 'agents did not recommend moving forward';
 }
@@ -146,9 +148,9 @@ export function resolveNegotiationCounterpart(
  * The one rule for "does this negotiation conversation exist for this viewer".
  *
  * Zero-turn rows are normally invisible (abandoned task shells). The one
- * exception is the viewer's OWN outreach gate decision: it has no messages by
- * definition, so this filter is what made the IND-610 gate card reachable only
- * by direct link.
+ * exception is the viewer's OWN "did not reach out" decision: it has no
+ * messages by definition, so this filter is what made the IND-610 gate card
+ * reachable only by direct link.
  *
  * The owner boundary is NOT re-derived here. `negotiation.screenDecision` is
  * projected by the API only when `initiatorUserId === viewerUserId`

@@ -9,7 +9,6 @@ import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatch
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
 import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, negotiationHasMadeContact, readProtocolVersion } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, NEGOTIATION_CONSULTATION_POLICY_MODE, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
-import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
@@ -20,7 +19,7 @@ import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { appendTurnFailure, turnFailureBoundReached, type NegotiationTurnFailure } from "./negotiation.turn-failure.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasGuaranteedAsk, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasGuaranteedAsk, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import { askableUnknowns, assessAskAdmissibility, assessConcludeAdmissibility, assessDeclineAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, dimensionKey, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type AskInadmissibility, type ChecklistItem } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
@@ -511,7 +510,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // guard dead code for a v2 initiator on turn 0 and (b) sent an outreach
     // whose surviving `reasoning` argued against the match to the
     // counterparty. An honest turn-0 refusal is now allowed to stand and
-    // flows into the existing quiet `screened_out` path — no message is
+    // flows into the quiet `screened_out` path — no message is
     // persisted, so the original guard's intent (never retract a message
     // that was never made) is preserved rather than weakened.
     //
@@ -590,7 +589,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       seat,
       isOpeningTurn: isFreshOpeningTurn,
       isFinalTurn,
-      screenedOut: blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount),
       action: candidate.action,
       ownSuggestedRole: candidate.assessment?.suggestedRoles?.ownUser,
       priorActions: history.map((prior) => prior.action),

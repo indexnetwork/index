@@ -9,7 +9,6 @@ import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatch
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
 import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, negotiationHasMadeContact, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
-import { blocksNegotiationBeforeFirstTurn, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
 import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
@@ -20,7 +19,7 @@ import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { isTimeoutFailure } from "./negotiation.turn-failure.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import { configuredQuestionBudgetPerPrincipal } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
@@ -86,35 +85,22 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
 
   const lastTurn = state.lastTurn;
   const hasOpportunity = lastTurn?.action === "accept";
-  // P2.2: the client's own outreach gate declined before any turn — the
-  // negotiation never happened from the counterparty's perspective.
   // IND-564: an opening-move `withdraw` blocked before any message was
-  // persisted is the same quiet screen-out outcome (no in-task outreach to
-  // retract), reached from the turn node rather than the screen node.
-  // Two DISTINCT routes reach the same quiet `screened_out` outcome, and
-  // they disagree about who authored the decision:
-  //  - the screen node blocked before any turn was drafted → the screen
-  //    decision is the reason;
-  //  - the acting agent refused on its opening turn (IND-611) → the
-  //    withdrawing TURN is the reason.
-  // They are collapsed into `screenedOut` for status/lifecycle purposes but
-  // must stay separate when attributing `outcome.reasoning` below.
+  // persisted ends the negotiation quietly — there is no in-task outreach to
+  // retract, so the counterparty never learns the match existed. This is the
+  // only route left to `screened_out`; the pre-first-turn outreach gate that
+  // was its other author is gone.
   //
-  // The invariant behind both routes, asserted where the label is actually
-  // stamped: `screened_out` is a claim that NOTHING was ever sent. It is the
-  // only outcome that tells the owner the counterparty was never involved and
-  // never notified, so it may not be applied to a negotiation whose own
-  // messages contradict it. The routing gate and the opening-withdraw guard
-  // each keep this true upstream; gating both routes here makes it
-  // unfalsifiable at the point of record, whatever path reached this node —
-  // including the reasoning attribution below, which must not surface a
-  // "did not reach out" rationale for a negotiation that did. A negotiation
-  // that has spoken falls through to the honest ends (a stall, an error, a
-  // turn cap).
+  // The invariant, asserted where the label is actually stamped:
+  // `screened_out` is a claim that NOTHING was ever sent. It is the only
+  // outcome that tells the owner the counterparty was never involved and never
+  // notified, so it may not be applied to a negotiation whose own messages
+  // contradict it. The opening-withdraw guard keeps this true upstream;
+  // gating on contact here makes it unfalsifiable at the point of record. A
+  // negotiation that has spoken falls through to the honest ends (a stall, an
+  // error, a turn cap).
   const contactMade = negotiationHasMadeContact(history);
-  const blockedByScreenNode = !contactMade && blocksNegotiationBeforeFirstTurn(state.screenDecision, state.turnCount);
-  const refusedAtOpeningTurn = !contactMade && state.firstTurnScreenedOut === true;
-  const screenedOut = blockedByScreenNode || refusedAtOpeningTurn;
+  const screenedOut = !contactMade && state.firstTurnScreenedOut === true;
   // The run ended because the acting agent kept failing, not because the two
   // sides ran out of things to say.
   //
@@ -156,19 +142,11 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
   const outcome: NegotiationOutcome = {
     hasOpportunity,
     agreedRoles,
-    // IND-611: attribute the reasoning to whoever actually made the
-    // decision. Before the turn-0 refusal path existed, `screenedOut`
-    // implied the screen node, so preferring `screenDecision.reasoning`
-    // was always right. It is now wrong for an opening-turn refusal taken
-    // while the screen said `reach_out`: that record argues FOR the match,
-    // and surfacing it as the reason the agent did NOT reach out is exactly
-    // the dishonesty this work removes (IND-610 renders this string in the
-    // owner-only gate-decision card). The screen-node branch is unchanged.
-    reasoning: blockedByScreenNode
-      ? (state.screenDecision?.reasoning ?? lastTurn?.assessment?.reasoning ?? "")
-      : refusedAtOpeningTurn
-        ? (lastTurn?.assessment?.reasoning ?? state.screenDecision?.reasoning ?? "")
-        : (lastTurn?.assessment.reasoning ?? ""),
+    // IND-611: a `screened_out` run is attributed to the turn that refused.
+    // The withdrawing turn IS the decision — there is no separate record to
+    // prefer over it now that the outreach gate is gone (IND-610 renders this
+    // string in the owner-only gate-decision card).
+    reasoning: lastTurn?.assessment?.reasoning ?? "",
     turnCount: state.turnCount,
     ...(screenedOut
       ? { reason: "screened_out" as const }

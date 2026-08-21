@@ -81,7 +81,6 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
       return { suggestions: [{ label: "Share more context", type: "prompt", followupText: null, prefill: "I am looking for " }] };
     }
     if (agent === "chatTitleGenerator") return { title: "Conversation" };
-    if (agent === "negotiationScreener") return { decision: "continue", evidence: { reasoning: "Deterministic source-test screening." } };
     if (agent === "negotiationReflector") return { memory: "Deterministic source-test reflection.", shouldContinue: true };
     if (agent === "negotiationSummarizer") return { summary: "Deterministic source-test summary." };
     if (agent === "negotiator") return { hasOpportunity: false, agreedRoles: [], reasoning: "Deterministic source-test negotiation.", turnCount: 0 };

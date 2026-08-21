@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 
@@ -115,10 +114,8 @@ let stubAction: string | ((input: NegotiationAgentInput) => string) = "counter";
 
 describe("negotiation graph — seat rules + protocol version (IND-397)", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
-  let restoreScreener: () => void;
 
   beforeAll(() => {
-    restoreScreener = stubScreenerReachOut();
     origInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function (input: NegotiationAgentInput) {
       agentInputs.push(input);
@@ -133,7 +130,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
 
   afterAll(() => {
     IndexNegotiator.prototype.invoke = origInvoke;
-    restoreScreener();
   });
 
   beforeEach(() => {

@@ -66,9 +66,8 @@ import type { NegotiationSeat } from "../shared/schemas/negotiation-state.schema
 
 /**
  * Assessment precedes advocacy, plus an explicit prior. Borrows the finite-
- * attention framing already proven in the outreach gate prompt
- * (`negotiation.screen.ts`) — {userName}'s name and attention are spent on
- * every connection made for them.
+ * attention framing proven in the (since removed) outreach gate prompt —
+ * {userName}'s name and attention are spent on every connection made for them.
  *
  * `{userName}` placeholders are left intact for the caller's existing global
  * replace.

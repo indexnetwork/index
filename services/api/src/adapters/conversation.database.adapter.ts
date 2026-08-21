@@ -3985,27 +3985,9 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Merges a screen-gate decision (P2.1 shadow mode) into the task's metadata
-   * JSONB under the `screenDecision` key, preserving other metadata keys.
-   * Sibling of {@link setTaskTurnContext}.
-   *
-   * @param taskId - Task to update
-   * @param screenDecision - ScreenDecisionRecord (decision, evidence, mode, timing)
-   */
-  async setTaskScreenDecision(taskId: string, screenDecision: Record<string, unknown>, continuationExecution?: ContinuationExecutionFence): Promise<void> {
-    await db.transaction(async (tx) => {
-      if (continuationExecution) await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
-      await tx.update(schema.tasks).set({
-        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('screenDecision', ${JSON.stringify(screenDecision)}::jsonb)`,
-        updatedAt: new Date(),
-      }).where(eq(schema.tasks.id, taskId));
-    });
-  }
-
-  /**
    * Merges an applied deadlock→bargaining shift record (IND-428) into the
    * task's metadata JSONB under the `deadlockShift` key, preserving other
-   * metadata keys. Sibling of {@link setTaskScreenDecision}. Internal
+   * metadata keys. Sibling of {@link setTaskTurnContext}. Internal
    * analytics only — no API surface projects this key.
    *
    * @param taskId - Task to update
@@ -4654,10 +4636,12 @@ export class ConversationDatabaseAdapter {
       ? sql`${schema.tasks.createdAt} >= ${opts.since.toISOString()}`
       : undefined;
 
-    // P2.2: screened_out negotiations are the owner's private outreach-gate
-    // decisions — zero turns, no counterparty involvement. They stay visible
+    // `screened_out` negotiations are the owner's own private refusal before
+    // any contact — zero turns, no counterparty involvement. They stay visible
     // to the owner (self view) but are excluded from the mutual (non-self
-    // viewer) list so the counterparty never learns a gate decision was made.
+    // viewer) list so the counterparty never learns the match existed. Covers
+    // both the live route (an opening-turn withdraw) and rows stamped by the
+    // removed outreach gate.
     const screenedOutFilter = opts?.mutualWithUserId && !opts.includeScreenedOut
       ? or(
           isNull(schema.artifacts.id),
