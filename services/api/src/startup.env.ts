@@ -96,7 +96,6 @@ const envSchema = z.object({
   UNAVATAR_BASE: optionalUrl,
 
   // 8. Discovery / protocol runtime
-  INTRODUCER_DISCOVERY_ENABLED: optionalBoolean,
 
   // Test harness (repo-root .env.test only)
   TEST_DATABASE_SAFE: optionalOne,

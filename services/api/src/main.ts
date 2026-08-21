@@ -52,7 +52,6 @@ import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
-import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
 import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue';
 import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
@@ -143,10 +142,6 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   negotiatorClientDmRetrieve(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
-  agentDispatcher: backgroundAgentDispatcher,
-});
-fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
@@ -242,7 +237,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
 
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
-fromIntroducerQueue.startWorker();
 fromEnrichmentQueue.startWorker();
 enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
@@ -745,7 +739,6 @@ const shutdown = async () => {
     enrichmentQueue.close(),
     intentQueue.close(),
     fromIntentQueue.close(),
-    fromIntroducerQueue.close(),
     fromEnrichmentQueue.close(),
     enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),

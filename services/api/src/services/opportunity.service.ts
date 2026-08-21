@@ -314,16 +314,9 @@ export class OpportunityService {
       this.cache as unknown as MaintenanceGraphCache,
       {
         addJob: async (
-          data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string },
+          data: { intentId: string; userId: string; indexIds?: string[] },
           options?: { priority?: number; jobId?: string },
         ) => {
-          if (data.contactUserId) {
-            const { fromIntroducerQueue } = await import('../queues/opportunity/from-introducer.queue');
-            return fromIntroducerQueue.addJob(
-              { userId: data.userId, contactUserId: data.contactUserId, networkIds: data.indexIds },
-              options,
-            );
-          }
           const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
           return fromIntentQueue.addJob(
             { intentId: data.intentId, userId: data.userId },

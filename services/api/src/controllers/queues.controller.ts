@@ -14,7 +14,6 @@ import { Hono } from 'hono';
 import { notificationQueue } from '../queues/notification.queue';
 import { intentQueue } from '../queues/intent.queue';
 import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
-import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue';
 import { fromEnrichmentQueue } from '../queues/opportunity/from-enrichment.queue';
 import { enrichmentRunQueue } from '../queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
@@ -38,7 +37,6 @@ createBullBoard({
     new BullMQAdapter(notificationQueue.queue),
     new BullMQAdapter(intentQueue.queue),
     new BullMQAdapter(fromIntentQueue.queue),
-    new BullMQAdapter(fromIntroducerQueue.queue),
     new BullMQAdapter(fromEnrichmentQueue.queue),
     new BullMQAdapter(enrichmentRunQueue.queue),
     new BullMQAdapter(negotiationRunExistingQueue.queue),

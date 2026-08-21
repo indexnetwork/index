@@ -269,9 +269,6 @@ export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors
 export { getPrimaryActionLabel } from "./opportunities/opportunity.module.js";
 export { computeRadarHealth } from "./opportunities/opportunity.module.js";
 export type { RadarHealthInput } from "./opportunities/opportunity.module.js";
-export { isIntroducerDiscoveryEnabled } from "./opportunities/opportunity.module.js";
-export { selectContactsForDiscovery, shouldRunIntroducerDiscovery, runIntroducerDiscovery, MAX_CONTACTS_PER_CYCLE, MAX_CANDIDATES_PER_CONTACT, INTRODUCER_DISCOVERY_SOURCE } from "./opportunities/opportunity.module.js";
-export type { IntroducerDiscoveryDatabase, IntroducerDiscoveryQueue, ContactWithIntents } from "./opportunities/opportunity.module.js";
 export { persistOpportunities } from "./opportunities/opportunity.module.js";
 export { presentOpportunity } from "./opportunities/opportunity.module.js";
 export type { UserInfo } from "./opportunities/opportunity.module.js";

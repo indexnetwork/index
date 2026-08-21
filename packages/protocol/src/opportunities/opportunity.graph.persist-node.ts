@@ -15,10 +15,16 @@ import { validateOpportunityActors } from './opportunity.utils.js';
 import { hasUnsupportedOpportunityClaim } from '../shared/utils/claim-safety.js';
 import { normalizeOpportunityActorIntent } from './opportunity.actor.js';
 import { persistOpportunities } from "./opportunity.persist.js";
-import { INTRODUCER_DISCOVERY_SOURCE } from "./opportunity.introducer.js";
 import { stampEligibleNewbornOpportunities } from "./opportunity.newborn-stamping.js";
 import { admitOpportunityPersistence, createEligibleOpportunityStatusUpdater } from "./opportunity.persistence-admission.js";
 import { belongsToOwnedIntent, DEDUP_WINDOW_MS, isActiveNegotiationTaskFresh, persistDedupLog, persistLog, persistPathLog, triggerForOwner, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
+
+/**
+ * `detection.source` stamped on an opportunity created on a contact's behalf.
+ * Automatic introducer DISCOVERY is gone; the introduction persistence path
+ * that stamps this is not, and rows already carry the value.
+ */
+const INTRODUCER_DISCOVERY_SOURCE = 'introducer_discovery' as const;
 
 /** A pairing that was not persisted because an opportunity already covers it. */
 type ExistingBetweenActor = {

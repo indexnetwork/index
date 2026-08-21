@@ -20,22 +20,6 @@ export {
 export type {
   OpportunityGraphThresholdOverrides,
 } from "./opportunity.graph.js";
-export {
-  isIntroducerDiscoveryEnabled,
-} from "./opportunity.introducer-feature.js";
-export {
-  INTRODUCER_DISCOVERY_SOURCE,
-  MAX_CANDIDATES_PER_CONTACT,
-  MAX_CONTACTS_PER_CYCLE,
-  runIntroducerDiscovery,
-  selectContactsForDiscovery,
-  shouldRunIntroducerDiscovery,
-} from "./opportunity.introducer.js";
-export type {
-  ContactWithIntents,
-  IntroducerDiscoveryDatabase,
-  IntroducerDiscoveryQueue,
-} from "./opportunity.introducer.js";
 export type {
   StampNewbornOpportunitiesFn,
   StampNewbornOpportunitiesInput,
