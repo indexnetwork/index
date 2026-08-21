@@ -3,7 +3,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it, mock } from "bun:test";
 
-import { SIGNAL_PERSONA, SIGNAL_PERSONA_ID, SIGNAL_TOOL_NAMES, filterSignalTools, narrowSignalTools } from "../signal.persona.js";
+import { createSignalPersona, SIGNAL_PERSONA_ID, SIGNAL_TOOL_NAMES, filterSignalTools, narrowSignalTools } from "../signal.persona.js";
 import { buildSignalSystemContent, getSignalIntakeStage, isSignalNewSignalFeedback, isSignalNewSignalKickoff, SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 import type { SystemDatabase, UserDatabase } from "../../shared/interfaces/database.interface.js";
@@ -199,22 +199,23 @@ function parsed(result: unknown) {
   };
 }
 
-describe("SIGNAL_PERSONA", () => {
+describe("createSignalPersona", () => {
   it("uses the canonical persisted persona id", () => {
     expect(SIGNAL_PERSONA_ID).toBe("signal");
-    expect(SIGNAL_PERSONA.id).toBe(SIGNAL_PERSONA_ID);
+    expect(createSignalPersona({ agentName: "Alice's Agent" }).id).toBe(SIGNAL_PERSONA_ID);
   });
 
   it("retains proposal recovery", () => {
-    expect(SIGNAL_PERSONA.loopBehaviors).toEqual({
+    expect(createSignalPersona().loopBehaviors).toEqual({
       hallucinationRecovery: true,
     });
   });
 
-  it("uses the Signal-specific prompt builder", () => {
+  it("uses the signals prompt builder bound to the agent identity", () => {
     const ctx = makeContext();
-    expect(SIGNAL_PERSONA.buildSystemContent(ctx, { iteration: 1 } as never)).toBe(
-      buildSignalSystemContent(ctx),
+    const persona = createSignalPersona({ agentName: "Alice's Agent" });
+    expect(persona.buildSystemContent(ctx, { iteration: 1 } as never)).toBe(
+      buildSignalSystemContent(ctx, { agentName: "Alice's Agent" }),
     );
   });
 });
@@ -248,8 +249,8 @@ describe("guided New Signal intake", () => {
     ]))).toBe("complete");
   });
 
-  it("instructs the live Signal Agent to interview in plain conversation", () => {
-    const prompt = buildSignalSystemContent(context, iteration());
+  it("instructs the live persona to interview in plain conversation", () => {
+    const prompt = buildSignalSystemContent(context, {}, iteration());
     expect(prompt).toContain("NEW SIGNAL INTAKE (ACTIVE)");
     expect(prompt).toContain("plain conversation");
     expect(prompt).not.toContain("ask_user_question");
@@ -264,7 +265,7 @@ describe("guided New Signal intake", () => {
     // The profile legitimately shapes WHICH questions get asked. It may not
     // put a background into the signal the user never stated: when an answer
     // leaves the signal vague, the agent asks rather than filling the gap.
-    const prompt = buildSignalSystemContent(context, iteration());
+    const prompt = buildSignalSystemContent(context, {}, iteration());
 
     expect(prompt).toContain("use it to decide WHICH questions to ask");
     expect(prompt).toContain("the signal itself is written from this conversation's answers");
@@ -275,8 +276,8 @@ describe("guided New Signal intake", () => {
     expect(prompt).not.toContain("combine the answers with the preloaded identity/profile context");
   });
 
-  it("asks the Signal Agent to return a replacement proposal when preview feedback arrives", () => {
-    const complete = buildSignalSystemContent(context, {
+  it("asks the persona to return a replacement proposal when preview feedback arrives", () => {
+    const complete = buildSignalSystemContent(context, {}, {
       ...iteration(),
       currentMessage: "new-signal-preview-feedback: Make the location Berlin-specific.",
       recentTools: [],
@@ -288,7 +289,7 @@ describe("guided New Signal intake", () => {
   });
 });
 
-describe("Signal Agent tool boundary", () => {
+describe("signals persona tool boundary", () => {
   it("pins the exact positive allowlist", () => {
     expect(SIGNAL_TOOL_NAMES).toEqual(EXPECTED_SIGNAL_TOOLS);
   });
@@ -539,10 +540,22 @@ describe("Signal Agent tool boundary", () => {
 });
 
 describe("buildSignalSystemContent", () => {
-  const prompt = buildSignalSystemContent(makeContext());
+  const prompt = buildSignalSystemContent(makeContext(), { agentName: "Alice's Agent" });
+
+  it("introduces itself as the user's own agent, never a product noun", () => {
+    // The app calls this the user's Personal Agent everywhere else; a persona
+    // named after its toolset tells the user they reached something else.
+    expect(prompt).toContain("You are Alice's Agent, the private signals and profile assistant for Alice.");
+    expect(prompt).not.toContain("Signal Agent");
+  });
+
+  it("falls back to a generic self-description when the agent row has no name", () => {
+    const nameless = buildSignalSystemContent(makeContext());
+    expect(nameless).toContain("You are Alice's personal agent, the private signals and profile assistant.");
+    expect(nameless).not.toContain("Signal Agent");
+  });
 
   it("identifies the restricted role and grounds writes", () => {
-    expect(prompt).toContain("You are Signal Agent");
     expect(prompt).toContain("Read before writing");
     expect(prompt).toContain("latest explicit request");
     expect(prompt).toContain("Matching happens separately in the background");
@@ -564,7 +577,7 @@ describe("buildSignalSystemContent", () => {
 
   it("intent scope advertises only refinement and suppresses new-signal intake", () => {
     const intentContext = makeContext({ scopeType: "intent", scopeId: INTENT_ID });
-    const scopedPrompt = buildSignalSystemContent(intentContext, {
+    const scopedPrompt = buildSignalSystemContent(intentContext, {}, {
       currentMessage: SIGNAL_NEW_SIGNAL_KICKOFF,
       recentTools: [],
       ctx: intentContext,

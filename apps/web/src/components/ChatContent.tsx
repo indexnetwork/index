@@ -726,7 +726,7 @@ export default function ChatContent({
         </p>
         <p className="mt-1 text-sm text-gray-600">
           {startsSignal
-            ? "Its messages are preserved. Continue in a separate Signal Agent chat."
+            ? "Its messages are preserved. Continue in a separate chat with your agent."
             : "This chat is unchanged. Start a new chat to continue safely."}
         </p>
         <Button
@@ -740,7 +740,7 @@ export default function ChatContent({
             navigate("/");
           }}
         >
-          {startsSignal ? "Start a Signal Agent chat" : "Start a new chat"}
+          {startsSignal ? "Start a chat with your agent" : "Start a new chat"}
         </Button>
       </div>
     );

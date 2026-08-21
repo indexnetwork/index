@@ -46,7 +46,7 @@ import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, SIGNAL_PERSONA, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createSignalPersona, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -157,7 +157,11 @@ const chatSessionReader = {
  * persona-neutral runtime and all injected deps. There is no default persona —
  * the retired orchestrator used to be it.
  */
-export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, SIGNAL_PERSONA);
+// The runtime has no default persona; this base factory just carries the deps.
+// Every chat surface derives a sibling factory bound to the client's own agent
+// identity (`ChatSessionService.get*GraphFactory`), so the nameless persona
+// here never drives a turn.
+export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, createSignalPersona());
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)

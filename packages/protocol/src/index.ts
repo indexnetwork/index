@@ -116,11 +116,11 @@ export { type ChatPersonaConfig } from "./agents/agent.module.js";
 export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./agents/agent.module.js";
 export {
   SIGNAL_PERSONA_ID,
-  SIGNAL_PERSONA,
+  createSignalPersona,
 } from "./agents/agent.module.js";
 export {
   ONBOARDING_PERSONA_ID,
-  ONBOARDING_PERSONA,
+  createOnboardingPersona,
 } from "./agents/agent.module.js";
 export { RadarGraphFactory } from "./opportunities/opportunity.module.js";
 export { HydeGraphFactory } from "./discovery/index.js";

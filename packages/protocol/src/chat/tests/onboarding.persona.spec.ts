@@ -3,7 +3,7 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it } from "bun:test";
 
-import { ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, ONBOARDING_TOOL_NAMES, filterOnboardingTools, narrowOnboardingTools } from "../onboarding.persona.js";
+import { createOnboardingPersona, ONBOARDING_PERSONA_ID, ONBOARDING_TOOL_NAMES, filterOnboardingTools, narrowOnboardingTools } from "../onboarding.persona.js";
 import { buildOnboardingSystemContent } from "../onboarding.prompt.js";
 import { SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
@@ -73,13 +73,29 @@ function makeContext(onboarding: Record<string, unknown> = {}): ResolvedToolCont
   } as unknown as ResolvedToolContext;
 }
 
-describe("ONBOARDING_PERSONA", () => {
+describe("createOnboardingPersona", () => {
   it("uses a first-class persisted persona with proposal recovery", () => {
+    const persona = createOnboardingPersona({ agentName: "Alice's Agent" });
     expect(ONBOARDING_PERSONA_ID).toBe("onboarding");
-    expect(ONBOARDING_PERSONA.id).toBe(ONBOARDING_PERSONA_ID);
-    expect(ONBOARDING_PERSONA.loopBehaviors).toEqual({
+    expect(persona.id).toBe(ONBOARDING_PERSONA_ID);
+    expect(persona.loopBehaviors).toEqual({
       hallucinationRecovery: true,
     });
+  });
+
+  it("introduces itself as the user's own agent, never a product noun", () => {
+    const ctx = makeContext();
+    const named = createOnboardingPersona({ agentName: "Alice's Agent" })
+      .buildSystemContent(ctx, { iteration: 1 } as never);
+    expect(named).toContain("You are Alice's Agent, the restricted setup assistant for Alice.");
+    expect(named).not.toContain("Onboarding Agent");
+
+    // ensureNegotiatorAgent runs at auth, so a nameless row is the unexpected
+    // case — it still must not reintroduce a product noun.
+    const nameless = createOnboardingPersona()
+      .buildSystemContent(ctx, { iteration: 1 } as never);
+    expect(nameless).toContain("You are Alice's personal agent, the restricted setup assistant.");
+    expect(nameless).not.toContain("Onboarding Agent");
   });
 
   it("pins the exact positive allowlist and excludes every forbidden family", () => {
@@ -120,7 +136,7 @@ describe("ONBOARDING_PERSONA", () => {
 
 describe("buildOnboardingSystemContent", () => {
   it("runs the approved profile flow during the profile phase", () => {
-    const prompt = buildOnboardingSystemContent(makeContext(), {
+    const prompt = buildOnboardingSystemContent(makeContext(), {}, {
       currentMessage: "onboarding-profile-kickoff",
       recentTools: [],
       ctx: makeContext(),
@@ -135,7 +151,7 @@ describe("buildOnboardingSystemContent", () => {
       profileConfirmedAt: "2026-07-01T00:00:00.000Z",
       currentStep: "first_signal",
     });
-    const prompt = buildOnboardingSystemContent(ctx, {
+    const prompt = buildOnboardingSystemContent(ctx, {}, {
       currentMessage: SIGNAL_NEW_SIGNAL_KICKOFF,
       recentTools: [],
       ctx,

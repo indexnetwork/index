@@ -9,6 +9,7 @@ import { ChatController } from '../chat.controller';
 import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../../guards/auth.guard';
 import { recordRequestAuthContext } from '../../lib/request-auth-context';
 import { RouteRegistry } from '../../lib/router/router.decorators';
+import { agentService } from '../../services/agent.service';
 import { chatSessionService } from '../../services/chat.service';
 import { fileService } from '../../services/file.service';
 import { userService } from '../../services/user.service';
@@ -140,6 +141,24 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     );
     expect(getSignalFactorySpy).toHaveBeenCalledTimes(1);
     expect(signalInputs).toHaveLength(1);
+  });
+
+  test('the signals persona is named from the user own personal agent row', async () => {
+    // Every persona introduces itself as the user's agent, so the restricted
+    // surfaces read the same `type='personal'` row the negotiator does.
+    const agentSpy = spyOn(agentService, 'getNegotiatorAgent')
+      .mockResolvedValue({ id: 'agent-1', name: "Signal User's Agent" } as never);
+
+    await stream(controller, { message: 'Draft a signal', persona: 'signal' }, 'web');
+    expect(getSignalFactorySpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: "Signal User's Agent" }),
+    );
+
+    // A missing row is not fatal here: the prompt falls back to a generic
+    // self-description rather than failing the turn or naming a product.
+    agentSpy.mockResolvedValue(null as never);
+    await stream(controller, { message: 'Draft another', persona: 'signal' }, 'web');
+    expect(getSignalFactorySpy).toHaveBeenLastCalledWith(null);
   });
 
   test('persisted Signal persona is inherited when the followup omits persona', async () => {

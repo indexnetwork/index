@@ -1,7 +1,7 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
-import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
+import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID, createOnboardingPersona, createSignalPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -65,6 +65,16 @@ function generateSnowflakeId(): string {
   const random = Math.floor(Math.random() * 4194304); // 2^22
   const snowflake = BigInt(timestamp) * BigInt(4194304) + BigInt(random);
   return snowflake.toString();
+}
+
+/**
+ * Narrows a personal agent row to the identity a persona introduces itself
+ * with. An absent or blank name yields `{}` so the prompt uses its generic
+ * fallback rather than a product noun.
+ */
+function personaIdentity(agent?: { name?: string | null } | null): { agentName?: string } {
+  const agentName = agent?.name?.trim();
+  return agentName ? { agentName } : {};
 }
 
 /**
@@ -746,18 +756,28 @@ export class ChatSessionService {
   }
 
   /**
-   * Derive the restricted Signal Agent graph factory while sharing the
+   * Derive the restricted signals graph factory while sharing the
    * persona-neutral runtime and all injected dependencies.
    *
-   * @returns A Signal-persona sibling factory
+   * Like the negotiator, this persona introduces itself as the client's own
+   * agent, so it is bound per session to their `type='personal'` agent row.
+   * A missing row leaves the name absent and the prompt falls back to a
+   * generic self-description — the chat surface still works.
+   *
+   * @param agent - Identity from the user's `type='personal'` agent row
+   * @returns A signals-persona sibling factory
    */
-  getSignalGraphFactory(): ChatGraphFactory {
-    return this.factory;
+  getSignalGraphFactory(agent?: { name?: string | null } | null): ChatGraphFactory {
+    return this.factory.withPersona(createSignalPersona(personaIdentity(agent)));
   }
 
-  /** Derive the restricted onboarding graph factory from the shared runtime. */
-  getOnboardingGraphFactory(): ChatGraphFactory {
-    return this.factory.withPersona(ONBOARDING_PERSONA);
+  /**
+   * Derive the restricted onboarding graph factory from the shared runtime.
+   *
+   * @param agent - Identity from the user's `type='personal'` agent row
+   */
+  getOnboardingGraphFactory(agent?: { name?: string | null } | null): ChatGraphFactory {
+    return this.factory.withPersona(createOnboardingPersona(personaIdentity(agent)));
   }
 
   // The negotiator-persona graph factory retired with phase 2 of the
