@@ -14,6 +14,8 @@ import { MCP_INSTRUCTIONS, sanitizeMcpResult, buildMcpOnboardingMessage, ONBOARD
 import { CANONICAL_GUIDANCE_SUMMARY, CANONICAL_GUIDANCE_TOPICS } from "../../shared/agent/canonical-guidance.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import { ToolRuntimeError } from "../../shared/agent/tool.runtime.js";
+import { createToolRegistry, type ToolRegistryDeps } from "../../shared/agent/tool.registry.js";
+import { isToolAllowedInScope } from "../../shared/agent/tool.scope.js";
 
 describe("MCP_INSTRUCTIONS", () => {
   test("fits within the 4500 character context budget", () => {
@@ -293,6 +295,51 @@ describe('getMcpToolMetadataCacheKey', () => {
     const base = getMcpToolMetadataCacheKey(baseDeps);
     const withContacts = { ...baseDeps, contactService: {} } as Parameters<typeof getMcpToolMetadataCacheKey>[0];
     expect(getMcpToolMetadataCacheKey(withContacts)).toBe(base);
+  });
+});
+
+/**
+ * Intent-scoped MCP sessions. Scoped API keys hydrate scopeType/scopeId into
+ * the resolved context, so an MCP session can be pinned to one signal — and a
+ * session pinned to one signal exists to refine it. `create_intent` must be
+ * absent from what such a session is offered, not merely refused once the
+ * model calls it.
+ */
+describe("intent-scoped MCP tool surface", () => {
+  // Registration only DEFINES tools; a permissive deep proxy satisfies the
+  // nested dep reads that happen while wiring.
+  function makeDeps(): ToolRegistryDeps {
+    const deep: unknown = new Proxy(function () {} as object, {
+      get: () => deep,
+      apply: () => deep,
+    });
+    return deep as ToolRegistryDeps;
+  }
+
+  const intentScope = { scopeType: "intent" as const, scopeId: "11111111-1111-4111-8111-111111111111" };
+
+  test("the MCP registry omits create_intent under an intent scope", () => {
+    const registry = createToolRegistry(makeDeps(), { surface: "mcp", scope: intentScope });
+    expect(registry.get("create_intent")).toBeUndefined();
+    expect(registry.get("update_intent")).toBeDefined();
+  });
+
+  test("an unscoped MCP registry still offers create_intent", () => {
+    const registry = createToolRegistry(makeDeps(), { surface: "mcp" });
+    expect(registry.get("create_intent")).toBeDefined();
+  });
+
+  test("tools/list applies the same rule to the cached static metadata", () => {
+    // The metadata cache is scope-free (shared across principals), so
+    // tools/list filters it through this predicate before the capability
+    // policy runs. Same rule, same exclusion as the registry above.
+    expect(isToolAllowedInScope("create_intent", intentScope)).toBe(false);
+    expect(isToolAllowedInScope("update_intent", intentScope)).toBe(true);
+    expect(isToolAllowedInScope("create_intent", {})).toBe(true);
+    expect(isToolAllowedInScope("create_intent", {
+      scopeType: "network",
+      scopeId: "22222222-2222-4222-8222-222222222222",
+    })).toBe(true);
   });
 });
 

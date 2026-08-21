@@ -138,8 +138,10 @@ export class ToolService {
 
     const toolDeps = this.buildToolDeps(database, userDb, systemDb, graphs);
 
-    // Build registry and look up tool
-    const registry = createToolRegistry(toolDeps);
+    // Build registry and look up tool. The resolved context carries the
+    // caller's focused scope, so tools that scope makes impossible are absent
+    // from the registry rather than refused after the model calls them.
+    const registry = createToolRegistry(toolDeps, { scope: context });
     const tool = registry.get(toolName);
     if (!tool) {
       const available = Array.from(registry.keys()).sort();

@@ -15,7 +15,7 @@ import { McpResolvedIdentitySchema } from '../shared/schemas/mcp-auth.schema.js'
 import { CANONICAL_GUIDANCE_SUMMARY } from '../shared/agent/canonical-guidance.js';
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';
-import { deriveAllowedNetworkIds, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
+import { deriveAllowedNetworkIds, isToolAllowedInScope, scopeFromNetworkId } from '../shared/agent/tool.scope.js';
 import { createToolRegistry } from '../shared/agent/tool.registry.js';
 import type { ToolRegistryDeps } from '../shared/agent/tool.registry.js';
 import { bindOwnerApprovalProvenance } from '../opportunities/opportunity.owner-provenance.js';
@@ -647,7 +647,12 @@ export function createMcpServer(
           // Do not use cached registration metadata handlers here: tool handlers
           // close over userDb/systemDb when the registry is created. The MCP
           // surface profile keeps the tools/call lookup identical to tools/list.
-          const requestRegistry = createToolRegistry(requestDeps, { surface: 'mcp' });
+          const requestRegistry = createToolRegistry(requestDeps, {
+            surface: 'mcp',
+            // Same scope exclusion tools/list applies, from the same rule: a
+            // tool this scope makes impossible is absent, not merely refused.
+            scope: context,
+          });
           const requestTool = requestRegistry.get(toolName);
 
           if (!requestTool) {
@@ -728,7 +733,12 @@ export function createMcpServer(
     const visibleNames = new Set(
       capabilityPolicy.visibleToolNames(
         resolved.subject,
-        toolMetadata.map((tool) => tool.name),
+        // The static metadata is scope-free (it is cached across principals),
+        // so the focused scope is applied here — an intent-scoped session must
+        // not advertise a tool it cannot call.
+        toolMetadata
+          .filter((tool) => isToolAllowedInScope(tool.name, resolved.context))
+          .map((tool) => tool.name),
       ),
     );
 

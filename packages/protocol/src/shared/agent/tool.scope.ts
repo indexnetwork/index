@@ -63,6 +63,41 @@ export function focusedNetworkLabel(scope: ToolScopeEnvelope & { indexName?: str
   return scope.indexName ?? focusedNetworkId(scope) ?? 'this network';
 }
 
+/**
+ * Tools an intent-scoped session must never advertise.
+ *
+ * A session pinned to one signal exists to refine that signal, so creating a
+ * DIFFERENT one there is not a capability the caller has. Both surfaces that
+ * build a toolset — the chat tool factory and the shared tool registry behind
+ * MCP/REST — apply this from here, so neither has to remember the rule. The
+ * runtime handlers still refuse independently; those refusals document the
+ * invariant and cover any caller that builds a toolset without a scope.
+ */
+const INTENT_SCOPED_TOOL_EXCLUSIONS: ReadonlySet<string> = new Set(['create_intent']);
+
+/**
+ * Returns whether a tool may be offered at all under the given focused scope.
+ *
+ * @param toolName - Registry name of the tool
+ * @param scope - The caller's focused scope envelope
+ */
+export function isToolAllowedInScope(toolName: string, scope: ToolScopeEnvelope): boolean {
+  return !(focusedIntentId(scope) && INTENT_SCOPED_TOOL_EXCLUSIONS.has(toolName));
+}
+
+/**
+ * Filters a toolset down to what the focused scope allows.
+ *
+ * @param tools - Tools carrying their registry names
+ * @param scope - The caller's focused scope envelope
+ */
+export function filterToolsForScope<T extends { name: string }>(
+  tools: readonly T[],
+  scope: ToolScopeEnvelope,
+): T[] {
+  return tools.filter((candidate) => isToolAllowedInScope(candidate.name, scope));
+}
+
 export function deriveAllowedNetworkIds(input: DeriveNetworkScopeInput): string[] {
   if (!hasNetworkScope(input)) {
     return uniqueNetworkIds(input.memberships.map((membership) => membership.networkId));
