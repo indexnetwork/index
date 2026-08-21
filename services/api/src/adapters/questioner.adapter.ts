@@ -37,7 +37,7 @@ import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { isValidNegotiationDetectionContract } from '../lib/question/negotiation-question.contract';
 import { consultationExpiryReadiness } from '../lib/negotiation/consultation-expiry';
-import { claimContinuationExecution, completeContinuationExecution, heartbeatContinuationExecution, parkContinuationExecution, releaseContinuationExecution } from './negotiation-continuation.atomic';
+import { RESUMABLE_OPPORTUNITY_STATUSES, claimContinuationExecution, completeContinuationExecution, heartbeatContinuationExecution, parkContinuationExecution, releaseContinuationExecution } from './negotiation-continuation.atomic';
 import type { ContinuationClaimResult, ContinuationExecutionFence, ContinuationReceipt } from './negotiation-continuation.atomic';
 
 
@@ -293,9 +293,6 @@ export function parseAdapterNegotiationProvenance(value: unknown): AdapterNegoti
 function settlementIdForTask(taskId: string): string {
   return `negotiation-question-settlement-v1-${taskId}`;
 }
-
-/** Mirrors `NEGOTIATION_START_STATUSES` semantics (conversation.database.adapter): the statuses run-existing accepts an attempt from. */
-const RESUMABLE_OPPORTUNITY_STATUSES = new Set<string>(['latent', 'draft', 'pending', 'negotiating', 'stalled']);
 
 function parseAskUserBinding(value: unknown): {
   version: 2;
@@ -791,7 +788,6 @@ export class QuestionerAdapter {
       const binding = parseAskUserBinding(
         (metadata?.turnContext as Record<string, unknown> | undefined)?.askUserBinding,
       );
-      const current = await this.resolveNegotiationAdmission(candidate, tx as unknown as DrizzleDB);
       if (
         task.state !== 'input_required'
         || metadata?.type !== 'negotiation'
@@ -810,10 +806,32 @@ export class QuestionerAdapter {
         || binding.counterpartyUserId !== input.counterpartyUserId
         || binding.counterpartyBinding.kind !== input.counterpartyBinding.kind
         || binding.counterpartyBinding.id !== input.counterpartyBinding.id
-        || current?.intentFingerprint !== input.intentFingerprint
+      ) return null;
+      // Answers are authoritative over staleness; drift is logged, not fatal.
+      // Expiry is a cleanup act: the coherence gate above — the exact task
+      // still input_required and the binding the caller names — is all it
+      // requires, so the timeout settlement lands even when the opportunity
+      // went terminal or the signal was edited since the park.
+      const current = await this.resolveNegotiationAdmission(candidate, tx as unknown as DrizzleDB);
+      if (
+        current === null
+        || current.intentFingerprint !== input.intentFingerprint
         || current.opportunityStatus !== input.opportunityStatus
         || current.opportunityUpdatedAt !== input.opportunityUpdatedAt
-      ) return null;
+      ) {
+        settleLogger.info('negotiation_expiry_settled_despite_drift', {
+          taskId: input.taskId,
+          opportunityId: input.opportunityId,
+          recipientUserId: input.userId,
+          ...(current
+            ? {
+                intentFingerprintMoved: current.intentFingerprint !== input.intentFingerprint,
+                opportunityStatus: { bound: input.opportunityStatus, current: current.opportunityStatus },
+                opportunityUpdatedAt: { bound: input.opportunityUpdatedAt, current: current.opportunityUpdatedAt },
+              }
+            : { admissionResolved: false }),
+        });
+      }
 
       for (const row of cohort) {
         const detection = row.detection as AdapterQuestionDetection;
