@@ -82,6 +82,14 @@ export async function routeParkedQuestionEnqueue(
   const addNeedsInputEvent = deps?.addNeedsInputEvent
     ?? ((data: IntentAgentNeedsInputEvent) => intentAgentQueue.addNeedsInputEvent(data));
   await addNeedsInputEvent(event);
+  logger.info('negotiation_client_question_routed', {
+    userId: event.userId,
+    intentId: event.intentId,
+    opportunityId: event.opportunityId,
+    taskId: event.taskId,
+    mode: input.mode,
+    purpose: input.purpose,
+  });
   return true;
 }
 

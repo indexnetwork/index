@@ -152,11 +152,25 @@ describe("IndexNegotiator — the negotiator authors its own consultation questi
     expect(prompt).not.toContain("direct message");
   });
 
+  it("encourages questions that turn a negotiation observation into a reusable signal boundary", async () => {
+    const prompt = await grantedPrompt();
+    expect(prompt).toContain("LEARN FOR THE SIGNAL, NOT JUST THIS COUNTERPARTY");
+    expect(prompt).toContain("prefer one focused \"ask_user\" question over guessing");
+    expect(prompt).toContain("only when the answer changes a concrete screening or negotiation decision");
+  });
+
   it("keeps the pause economics and the question/ask_user split intact", async () => {
     const prompt = await grantedPrompt();
     expect(prompt).toContain("PAUSES the negotiation until they answer (up to 24h)");
     expect(prompt).toContain("AT MOST ONE client consultation per negotiation");
     expect(prompt).toContain('Use "question" (not "ask_user") when the clarification should come from the OTHER side');
+  });
+
+  it("never uses the counterparty agent as a relay to its client", async () => {
+    const prompt = await grantedPrompt();
+    expect(prompt).toContain("COUNTERPARTY BOUNDARY");
+    expect(prompt).toContain("never a request for that agent to interrogate or relay from its human");
+    expect(prompt).toContain("Never ask, imply, or instruct it to ask what its client wants, prefers, can do, or would decide");
   });
 
   it("substitutes {userName} inside the authoring rule", async () => {

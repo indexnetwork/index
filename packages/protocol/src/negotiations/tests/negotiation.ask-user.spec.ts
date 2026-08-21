@@ -527,6 +527,23 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(result.outcome).toBeNull();
   });
 
+  it("normalizes a mixed counter plus own-client consultation payload into a real pause", async () => {
+    const stubs = mkStubs({ priorMessages: continuationMessages });
+    agentScript = [{
+      ...askUserTurn,
+      action: "counter",
+      message: "I need to ask Alice about her budget before continuing.",
+    }];
+
+    const result = await runGraph(stubs);
+
+    expect(stubs.createdMessages).toHaveLength(1);
+    expect(stubs.createdMessages[0].parts[0].data.action).toBe("ask_user");
+    expect(stubs.questionerEnqueues).toHaveLength(1);
+    expect(stubs.stateWrites).toContainEqual({ taskId: "task-new", state: "input_required" });
+    expect(result.outcome).toBeNull();
+  });
+
   it('keeps the exact task paused when question enqueue fails', async () => {
     const stubs = mkStubs({ priorMessages: continuationMessages });
     stubs.questionerEnqueue = async () => { throw new Error('redis unavailable'); };

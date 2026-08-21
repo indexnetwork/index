@@ -1935,40 +1935,85 @@ const SCENARIOS: ScenarioDefinition[] = [
 ];
 
 const MINIMAL_SCENARIO: ScenarioDefinition = {
-  networks: ['stack', 'launch'],
+  // Deliberately one shared market: every profile, premise, and signal below
+  // belongs to Launch. This makes a reset behave like a small but coherent
+  // startup network rather than several disconnected topic islands.
+  networks: ['launch'],
   people: [
     {
-      name: 'Ada Lindgren', role: 'Robotics Startup CTO', location: 'Zürich, Switzerland',
-      bio: 'CTO of a twelve-person drone-inspection startup that needs a contract embedded Rust engineer for one well-defined project.',
-      skills: ['engineering leadership', 'embedded Linux', 'robotics'], interests: ['drones', 'Rust', 'industrial inspection'],
+      name: 'Maya Chen', role: 'Technical Co-founder', location: 'New York, NY',
+      bio: 'Technical co-founder of a developer-tools startup building observability software for AI agents.',
+      skills: ['product engineering', 'AI infrastructure', 'developer tools'], interests: ['B2B SaaS', 'agent reliability', 'seed-stage startups'],
       premises: [
-        'I am CTO of a twelve-person drone-inspection startup based in Zürich.',
-        'We need a telemetry service on our flight controller rewritten from C++ to Rust over the next three months.',
-        'The flight controller runs embedded Linux on an ARM board.',
-        'The contract is on-site in Zürich at least three days a week; the rest can be remote.',
-        'We pay a Swiss market day rate and can sign within two weeks of meeting the right person.',
+        'I co-founded a two-person developer-tools company building observability software for production AI agents.',
+        'We have six design partners and are converting the first two to paid annual contracts.',
+        'Our product runs in customer cloud environments, so enterprise security and reliability are important to us.',
+        'We are preparing a $1.5m seed round to hire two engineers and turn design-partner usage into repeatable revenue.',
       ],
       intents: [
-        'Looking for a contract Rust engineer with embedded Linux experience to rewrite a drone flight-controller telemetry service over three months in Zürich.',
-        'Seeking other robotics CTOs in Switzerland to compare hiring approaches for embedded engineers.',
-        'Open to advising early-stage robotics founders on building a first engineering team.',
+        'Looking for a seed investor who understands developer tools and enterprise AI infrastructure.',
+        'Seeking a founding backend engineer with distributed systems experience to build reliable AI-agent observability.',
+        'Looking to compare early enterprise design-partner contracts with other technical founders.',
       ],
     },
     {
-      name: 'Ben Okoro', role: 'Embedded Rust Engineer', location: 'Zürich, Switzerland',
-      bio: 'Independent embedded engineer who has shipped Rust telemetry firmware on embedded Linux for two drone companies.',
-      skills: ['Rust', 'embedded Linux', 'telemetry'], interests: ['drones', 'systems programming', 'open hardware'],
+      name: 'Daniel Ruiz', role: 'Founding Engineer', location: 'Brooklyn, NY',
+      bio: 'Backend and infrastructure engineer who has built multi-tenant data platforms at two B2B SaaS startups.',
+      skills: ['distributed systems', 'TypeScript', 'Postgres', 'cloud infrastructure'], interests: ['developer tools', 'early-stage teams', 'data systems'],
       premises: [
-        'I have written Rust for embedded Linux targets for five years, including telemetry firmware for two drone companies.',
-        'I take contracts of two to four months and have one starting slot available next month.',
-        'I live in Zürich and prefer on-site work with some remote days.',
-        'I charge a day rate and do not do equity-only work.',
-        'I have ported C++ services to Rust on ARM boards before and can show the code.',
+        'I have spent seven years building event pipelines, API platforms, and observability systems for B2B software companies.',
+        'I left my last Series B company recently and am looking for a hands-on founding-engineer role rather than another large-company position.',
+        'I can work from New York or remotely and care most about technical ownership, a clear customer problem, and a meaningful equity stake.',
+        'I have worked with production LLM applications but want to join a company where the AI component solves an operational problem rather than being a feature demo.',
       ],
       intents: [
-        'Available for a three-month embedded Rust contract in Zürich; I have shipped telemetry firmware on embedded Linux for drone companies.',
-        'Seeking a drone or robotics team that needs a C++ service rewritten in Rust.',
-        'Looking for other embedded Rust engineers in Switzerland for an occasional meetup.',
+        'Looking for a founding-engineer role at a developer-tools or AI-infrastructure startup with real design partners.',
+        'Open to advising technical founders on event pipelines, multi-tenant architecture, and early reliability trade-offs.',
+      ],
+    },
+    {
+      name: 'Aisha Okafor', role: 'Seed Investor', location: 'New York, NY',
+      bio: 'Partner at an early-stage fund investing in developer tools, data infrastructure, and enterprise software.',
+      skills: ['seed investing', 'enterprise GTM', 'fundraising'], interests: ['developer tools', 'AI infrastructure', 'B2B SaaS'],
+      premises: [
+        'I invest $500k to $1.5m checks at pre-seed and seed in companies selling technical products to enterprises.',
+        'I have led investments in observability, data tooling, and security startups, and I spend time with founders before a formal process when the customer signal is credible.',
+        'I look for founders who can explain a narrow initial buyer, a painful workflow, and what has changed after design-partner usage.',
+        'I do not invest in consumer apps or companies whose only differentiation is access to a foundation model.',
+      ],
+      intents: [
+        'Looking to meet technical founders raising pre-seed or seed rounds for developer tools, data infrastructure, or enterprise AI software.',
+        'Seeking other investors and operators to share diligence on the AI-agent infrastructure market.',
+      ],
+    },
+    {
+      name: 'Sofia Martinez', role: 'SaaS Founder', location: 'Austin, TX',
+      bio: 'Founder of a workflow-automation company for independent healthcare practices.',
+      skills: ['customer discovery', 'healthcare operations', 'B2B product'], interests: ['vertical SaaS', 'enterprise sales', 'founder communities'],
+      premises: [
+        'I run a three-person company with fourteen paying healthcare-practice customers and a repeatable referral channel.',
+        'We are profitable on services but need to make the software product more self-serve before we can scale sales.',
+        'I am considering a small seed round but want an investor who will pressure-test the timing rather than push us to raise prematurely.',
+        'I can offer candid customer-access and healthcare-workflow knowledge to founders building operational software.',
+      ],
+      intents: [
+        'Seeking a seed investor experienced with vertical SaaS and healthcare operations software to discuss whether we are ready to raise.',
+        'Looking for founders who have moved from services-assisted onboarding to a scalable B2B SaaS product motion.',
+      ],
+    },
+    {
+      name: 'Ethan Brooks', role: 'Product-Led Growth Advisor', location: 'San Francisco, CA',
+      bio: 'Former product leader who now advises seed-stage B2B founders on activation, onboarding, and early go-to-market systems.',
+      skills: ['product strategy', 'activation', 'B2B growth'], interests: ['developer tools', 'vertical SaaS', 'founder coaching'],
+      premises: [
+        'I led product at two B2B SaaS companies from seed through Series B and now take two advisory engagements per quarter.',
+        'I help founders turn qualitative design-partner feedback into onboarding experiments and an initial customer-success motion.',
+        'I work for a cash retainer with an optional small advisory-equity component; I do not replace a full-time growth leader.',
+        'I am most useful once a company has active users and a specific activation or retention bottleneck to investigate.',
+      ],
+      intents: [
+        'Open to advising seed-stage B2B SaaS and developer-tools founders who need to improve design-partner activation and onboarding.',
+        'Looking to compare early enterprise GTM playbooks with founders and investors working in technical B2B markets.',
       ],
     },
   ],
@@ -2000,7 +2045,8 @@ function buildPersonas(scenarios: ScenarioDefinition[], emailPrefix: string): Sa
 export const SANDBOX_PERSONAS: SandboxPersona[] = buildPersonas(SCENARIOS, 'sandbox-person');
 
 /**
- * Two people with very specific, designed-to-match intents — the `--minimal`
- * seed mode, for fast end-to-end testing against a population of exactly two.
+ * Five people in one shared startup network. Every intent belongs to Launch,
+ * producing a connected founder / investor / technical-builder negotiation
+ * pool rather than isolated category fixtures.
  */
 export const SANDBOX_MINIMAL_PERSONAS: SandboxPersona[] = buildPersonas([MINIMAL_SCENARIO], 'sandbox-minimal');

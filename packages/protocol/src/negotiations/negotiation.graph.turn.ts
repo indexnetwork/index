@@ -184,6 +184,36 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       && (!preContactConsultShapeAvailable
         || await preContactConsultsUnderCap(deps, ownUser.id, ownIntentId!, state.taskId));
 
+    // Dev-facing lifecycle event: this makes every withheld consultation
+    // visible without logging private prompt or client-answer content.
+    turnLog.info('negotiation_turn_started', {
+      taskId: state.taskId,
+      opportunityId: state.opportunityId || undefined,
+      conversationId: state.conversationId,
+      turnIndex: state.turnCount,
+      seat,
+      version,
+      isFinalTurn,
+      isContinuation: state.isContinuation,
+      contactMade,
+      askUserAvailable,
+      askUserEligibility: {
+        versionV2: version === 'v2',
+        nonFinal: !isFinalTurn,
+        principalReachable: !principalUnreachable,
+        questionerWired: !!deps.questionerEnqueue,
+        expiryWired: !!deps.timeoutQueue?.enqueueAskUserExpiry,
+        opportunityBound: !!state.opportunityId,
+        intentBound: !!ownIntentId,
+        networkBound: !!state.indexContext.networkId,
+        budgetRemaining: questionsSpent < questionBudget,
+        askRoundsRemaining: countNegotiationAskRounds(state.messages) < negotiationAskRoundsCap({ checklist: true }),
+      },
+      questionsSpent,
+      questionBudget,
+      checklistDimensions: frozenChecklist.length,
+    });
+
     // ─── The conclusion floor (floor plan §2) ────────────────────────────
     // Scope, decided here because both halves of the floor read it.
     //
@@ -361,12 +391,14 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     const dispatchResult = await deps.dispatcher.dispatch(ownUser.id, scope, payload, { timeoutMs: state.timeoutMs });
 
     let turn: NegotiationTurn;
+    let turnSource: 'personal_agent' | 'system_agent';
 
     if (dispatchResult.handled) {
       // Personal agent responded. Under v2, coerce out-of-seat actions to
       // the conservative fallback — the polling/respond surfaces reject
       // these with a 400, but locally-dispatched turns land here directly.
       turn = dispatchResult.turn;
+      turnSource = 'personal_agent';
       if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable }).includes(turn.action)) {
         turnLog.warn('Personal agent returned out-of-seat action, coercing to conservative fallback', {
           action: turn.action, seat, isFinalTurn,
@@ -405,7 +437,21 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     } else {
       // No personal agent or timeout — run system agent
       turn = await draftFromSystemAgent();
+      turnSource = 'system_agent';
     }
+
+    turnLog.info('negotiation_turn_drafted', {
+      taskId: state.taskId,
+      opportunityId: state.opportunityId || undefined,
+      conversationId: state.conversationId,
+      turnIndex: state.turnCount,
+      seat,
+      source: turnSource,
+      action: turn.action,
+      hasAskUserPayload: !!turn.askUser,
+      askUserReason: turn.askUser?.reason,
+      askUserDimension: turn.askUser?.dimension,
+    });
 
     traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `${turn.action}` });
 
@@ -495,6 +541,23 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       const disciplined = applyChecklistDiscipline(turn);
       turn = disciplined.turn;
       nextChecklist = disciplined.checklist;
+    }
+
+    // A few model drafts have carried a valid own-client consultation payload
+    // while selecting `counter` and merely narrating that they need to ask the
+    // client. A counter cannot create the client-DM question or pause the task,
+    // so preserve the structured intent and send it through the normal
+    // admission gate. Invalid or unavailable asks are still deterministically
+    // coerced by that gate below.
+    if (turn.action !== 'ask_user' && turn.askUser?.reason) {
+      turnLog.warn('negotiation_mixed_ask_user_action_normalized', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        seat,
+        action: turn.action,
+        reason: turn.askUser.reason,
+      });
+      turn = { ...turn, action: 'ask_user' };
     }
 
     // Whether the ask on the table is the AGENT's own move, captured before the
@@ -1307,6 +1370,17 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       ...(state.continuationExecution ? { continuationExecution: state.continuationExecution } : {}),
     });
     turnPersisted = true;
+    turnLog.info('negotiation_turn_persisted', {
+      taskId: state.taskId,
+      opportunityId: state.opportunityId || undefined,
+      conversationId: state.conversationId,
+      messageId: message.id,
+      turnIndex: state.turnCount,
+      seat,
+      action: turn.action,
+      askUserReason: turn.askUser?.reason,
+      askUserDimension: turn.askUser?.dimension,
+    });
 
     // ─── ask_user pause (P3.2) ────────────────────────────────────────────
     // The negotiator consults its OWN client: persist the turn (done above),
@@ -1387,6 +1461,15 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         },
         ...(state.continuationExecution ? { continuationExecution: state.continuationExecution } : {}),
       });
+      turnLog.info('negotiation_ask_user_binding_captured', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId,
+        seat,
+        settlementId,
+        recipientIntentId: ownIntentId,
+        reason: consultationReason,
+        dimension: askedDimension?.name,
+      });
 
       // Arm the timer BEFORE flipping state: it is the durable recovery
       // trigger even when generation enqueues no job or persists no row.
@@ -1403,42 +1486,64 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         counterpartyUserId: askUserBinding.counterpartyUserId,
         counterpartyBinding: askUserBinding.counterpartyBinding,
       }, windowMs);
+      turnLog.info('negotiation_ask_user_expiry_armed', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId,
+        settlementId,
+        windowMs,
+      });
 
       // Persistence admission requires the exact task to be input_required.
       // Flip before enqueue; if the structured ask_user fields fail the
       // deterministic privacy gate, the timer alone closes the exact task.
       await deps.database.updateTaskState(state.taskId, 'input_required', undefined, state.continuationExecution);
+      turnLog.info('negotiation_ask_user_task_parked', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId,
+        settlementId,
+        recipientIntentId: ownIntentId,
+      });
       if (safeAskUser) {
         const userContext = (await deps.database.getUserContext(ownUser.id, null).catch(() => null))?.text ?? '';
-        await deps.questionerEnqueue!({
-          mode: 'negotiation_inflight',
-          purpose: 'inflight_consultation',
-          userId: ownUser.id,
-          sourceType: 'opportunity',
-          sourceId: state.opportunityId,
-          negotiation: {
+        try {
+          await deps.questionerEnqueue!({
+            mode: 'negotiation_inflight',
             purpose: 'inflight_consultation',
-            recipientUserId: ownUser.id,
-            recipientIntentId: ownIntentId!,
-            opportunityId: state.opportunityId,
+            userId: ownUser.id,
+            sourceType: 'opportunity',
+            sourceId: state.opportunityId,
+            negotiation: {
+              purpose: 'inflight_consultation',
+              recipientUserId: ownUser.id,
+              recipientIntentId: ownIntentId!,
+              opportunityId: state.opportunityId,
+              taskId: state.taskId,
+              networkId: state.indexContext.networkId,
+            },
+            context: {
+              negotiationId: state.taskId,
+              counterpartyHint: NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
+              indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
+              consultationPolicyReason: consultationReason!,
+              ...(askedDimension && { dimension: askedDimension }),
+              ...(userContext && { userContext }),
+            },
+          });
+          turnLog.info('negotiation_ask_user_question_enqueued', {
             taskId: state.taskId,
-            networkId: state.indexContext.networkId,
-          },
-          context: {
-            negotiationId: state.taskId,
-            counterpartyHint: NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
-            indexContext: NEGOTIATION_QUESTION_GENERIC_NETWORK,
-            consultationPolicyReason: consultationReason!,
-            ...(askedDimension && { dimension: askedDimension }),
-            ...(userContext && { userContext }),
-          },
-        }).catch((error) => {
+            opportunityId: state.opportunityId,
+            settlementId,
+            recipientIntentId: ownIntentId,
+            reason: consultationReason,
+            dimension: askedDimension?.name,
+          });
+        } catch (error) {
           turnLog.error('Failed to enqueue safe ask_user question; timeout recovery remains armed', {
             taskId: state.taskId,
             opportunityId: state.opportunityId,
             error,
           });
-        });
+        }
       } else {
         turnLog.warn('Skipping unsafe or incomplete ask_user question generation', {
           taskId: state.taskId,

@@ -92,10 +92,13 @@ async function generateEmbeddings(texts: string[]): Promise<Map<string, number[]
 
 async function main(): Promise<void> {
   if (!process.argv.includes('--confirm')) {
-    throw new Error(`This command writes curated fixtures to ${SANDBOX_DATABASE}. Re-run with --confirm (add --minimal for the two-person population).`);
+    throw new Error(`This command writes curated fixtures to ${SANDBOX_DATABASE}. Re-run with --confirm (add --minimal for the small five-person population).`);
   }
   const minimal = process.argv.includes('--minimal');
   const personas = minimal ? SANDBOX_MINIMAL_PERSONAS : SANDBOX_PERSONAS;
+  // Minimal mode is deliberately one complete market: create Launch and no
+  // other network, and keep every fixture signal inside it.
+  const fixtureNetworks = minimal ? NETWORKS.filter((network) => network.key === 'launch') : NETWORKS;
 
   const { default: db, closeDb } = await import('../lib/drizzle/drizzle');
   const schema = await import('../schemas/database.schema');
@@ -103,9 +106,11 @@ async function main(): Promise<void> {
   try {
     const personaFixtures = personas.map((persona, index) => {
       const context = profileText(persona);
-      const classified = new Set<NetworkKey>(['commons', ...persona.networkKeys]);
-      if (index % 7 === 0) classified.add('vault');
-      if (classified.size < 3) classified.add(NETWORKS[2 + (index % (NETWORKS.length - 2))]!.key);
+      const classified = minimal
+        ? new Set<NetworkKey>(persona.networkKeys)
+        : new Set<NetworkKey>(['commons', ...persona.networkKeys]);
+      if (!minimal && index % 7 === 0) classified.add('vault');
+      if (!minimal && classified.size < 3) classified.add(NETWORKS[2 + (index % (NETWORKS.length - 2))]!.key);
       return {
         persona,
         userId: persona.fixedIds?.userId ?? fixtureId('user', persona.email),
@@ -130,11 +135,13 @@ async function main(): Promise<void> {
       }
     }
 
+    let wipedFixtureUserIds: string[] = [];
     await db.transaction(async (tx) => {
       const fixtureUsers = await tx.select({ id: schema.users.id })
         .from(schema.users)
         .where(sql.join(FIXTURE_EMAIL_PATTERNS.map((pattern) => sql`${schema.users.email} LIKE ${pattern}`), sql` OR `));
       const fixtureUserIds = fixtureUsers.map((user) => user.id);
+      wipedFixtureUserIds = fixtureUserIds;
       if (fixtureUserIds.length > 0) {
         const fixtureActorPredicate = sql`EXISTS (
           SELECT 1
@@ -169,6 +176,35 @@ async function main(): Promise<void> {
           await tx.delete(schema.opportunities).where(inArray(schema.opportunities.id, fixtureOpportunityIds));
         }
 
+        // Conversations reference no user row, so they survive the user wipe —
+        // and fixture ids are deterministic, so the recreated personas would
+        // inherit their predecessors' negotiation dialogue and the pre-contact
+        // screener then passes on matches it believes already concluded. Every
+        // FK into conversations cascades (tasks, messages, participants,
+        // sessions, metadata), so deleting the conversation clears the ghost.
+        const ghostConversationSubquery = sql`
+          SELECT cp.conversation_id
+          FROM conversation_participants cp
+          LEFT JOIN users u ON u.id = cp.participant_id
+          LEFT JOIN agents a ON a.id = cp.participant_id
+          WHERE (u.id IS NULL AND a.id IS NULL)
+             OR u.id IN (${sql.join(fixtureUserIds.map((id) => sql`${id}`), sql`, `)})
+             OR a.owner_id IN (${sql.join(fixtureUserIds.map((id) => sql`${id}`), sql`, `)})
+        `;
+        // chat_session_summaries → messages is ON DELETE RESTRICT, which fires
+        // even inside the conversation cascade — summaries go first.
+        await tx.execute(sql`
+          DELETE FROM chat_session_summaries WHERE conversation_id IN (${ghostConversationSubquery})
+        `);
+        await tx.execute(sql`
+          DELETE FROM conversations WHERE id IN (${ghostConversationSubquery})
+        `);
+        await tx.execute(sql`
+          DELETE FROM intent_agent_acts
+          WHERE user_id IN (${sql.join(fixtureUserIds.map((id) => sql`${id}`), sql`, `)})
+             OR NOT EXISTS (SELECT 1 FROM users WHERE users.id = intent_agent_acts.user_id)
+        `);
+
         const fixtureIntents = await tx.select({ id: schema.intents.id })
           .from(schema.intents)
           .where(inArray(schema.intents.userId, fixtureUserIds));
@@ -194,7 +230,7 @@ async function main(): Promise<void> {
         }
       }
 
-      for (const network of NETWORKS) {
+      for (const network of fixtureNetworks) {
         await tx.insert(schema.networks).values({
           id: network.id,
           key: network.key,
@@ -293,7 +329,10 @@ async function main(): Promise<void> {
 
           const premiseNetworkKeys: NetworkKey[] = networkKeys.filter((key) => key !== 'commons' && key !== 'vault');
           if (premiseIndex === 0 && networkKeys.includes('vault')) premiseNetworkKeys.push('vault');
-          for (const key of new Set<NetworkKey>(['commons', ...premiseNetworkKeys])) {
+          const premiseNetworks = minimal
+            ? new Set<NetworkKey>(premiseNetworkKeys)
+            : new Set<NetworkKey>(['commons', ...premiseNetworkKeys]);
+          for (const key of premiseNetworks) {
             await tx.insert(schema.premiseNetworks).values({
               premiseId,
               networkId: networkByKey.get(key)!.id,
@@ -324,7 +363,10 @@ async function main(): Promise<void> {
 
           const relevantKeys: NetworkKey[] = networkKeys.filter((key) => key !== 'commons' && key !== 'vault');
           if (intentIndex === 0 && networkKeys.includes('vault')) relevantKeys.push('vault');
-          for (const key of new Set<NetworkKey>(['commons', ...relevantKeys])) {
+          const intentNetworks = minimal
+            ? new Set<NetworkKey>(relevantKeys)
+            : new Set<NetworkKey>(['commons', ...relevantKeys]);
+          for (const key of intentNetworks) {
             await tx.insert(schema.intentNetworks).values({
               intentId,
               networkId: networkByKey.get(key)!.id,
@@ -335,10 +377,60 @@ async function main(): Promise<void> {
       }
     });
 
+    // The discovery queue dedups by `rediscovery-<userId>-<intentId>-<6h bucket>`
+    // and keeps completed jobs for 24h. Fixture ids are deterministic, so a
+    // re-seed inside the same bucket re-enqueues under an id BullMQ already
+    // holds as completed — the add is silently dropped and the intent shows
+    // WARMING forever. Best-effort: an unreachable Redis must not fail the seed.
+    const currentFixtureUserIds = personaFixtures.map((fixture) => fixture.userId);
+    if (wipedFixtureUserIds.length > 0 || minimal) {
+      try {
+        const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
+        const wiped = new Set([...wipedFixtureUserIds, ...currentFixtureUserIds]);
+        let removed = 0;
+        for (const job of await fromIntentQueue.queue.getJobs(['completed', 'failed', 'delayed', 'waiting'])) {
+          const jobUserId = (job?.data as { userId?: string } | undefined)?.userId;
+          if (jobUserId && wiped.has(jobUserId)) {
+            await job.remove();
+            removed += 1;
+          }
+        }
+        // In the focused fixture every active signal is deliberately sent to
+        // discovery. That gives the local sandbox real agent-to-agent traffic
+        // immediately instead of requiring someone to manually re-submit each
+        // intent after a reset.
+        let queued = 0;
+        if (minimal) {
+          const launch = networkByKey.get('launch')!;
+          for (const fixture of personaFixtures) {
+            for (const [intentIndex] of fixture.persona.intents.entries()) {
+              const intentId = fixture.persona.fixedIds?.intentIds[intentIndex]
+                ?? fixtureId('intent', `${fixture.persona.email}:${intentIndex}`);
+              await fromIntentQueue.addJob({
+                userId: fixture.userId,
+                intentId,
+                networkIds: [launch.id],
+              }, {
+                jobId: `sandbox-launch-${fixture.userId}-${intentId}`,
+                removeOnComplete: true,
+                removeOnFail: true,
+              });
+              queued += 1;
+            }
+          }
+        }
+        await fromIntentQueue.queue.close();
+        if (removed > 0) console.log(`Removed ${removed} stale discovery job(s) for wiped fixture users.`);
+        if (queued > 0) console.log(`Queued ${queued} Launch intent(s) for discovery and negotiation.`);
+      } catch (error) {
+        console.warn(`Discovery queue sweep skipped: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
     const premiseCount = personaFixtures.reduce((sum, item) => sum + item.premiseTexts.length, 0);
     const intentCount = personaFixtures.reduce((sum, item) => sum + item.persona.intents.length, 0);
     console.log(
-      `Seeded ${personaFixtures.length} people${minimal ? ' (minimal mode)' : ''}, ${NETWORKS.length} networks, `
+      `Seeded ${personaFixtures.length} people${minimal ? ' (minimal mode)' : ''}, ${fixtureNetworks.length} networks, `
       + `${premiseCount} premises, and ${intentCount} intents into ${SANDBOX_DATABASE}.`,
     );
     console.log(`Every seed persona signs in with email/password; the shared password is "${SANDBOX_SEED_PASSWORD}".`);
@@ -350,7 +442,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
+main().then(() => {
+  // The best-effort queue sweep imports BullMQ, whose Redis connections keep
+  // the event loop alive after the work is done — exit explicitly.
+  process.exit(0);
+}).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

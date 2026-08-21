@@ -88,13 +88,21 @@ export class NegotiationRunExistingQueue {
         else return existing;
       }
     }
-    return this.queue.add('negotiate_existing', data, {
+    const job = await this.queue.add('negotiate_existing', data, {
       ...(deterministicJobId ? { jobId: deterministicJobId } : {}),
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: { age: 24 * 60 * 60 },
       removeOnFail: { age: 24 * 60 * 60 },
     });
+    this.logger.info('Negotiation run queued', {
+      jobId: job.id,
+      opportunityId: data.opportunityId,
+      userId: data.userId,
+      taskId: data.taskId,
+      settlementId: data.settlementId,
+    });
+    return job;
   }
 
   async processJob(name: string, data: RunExistingJobData): Promise<void> {
@@ -149,7 +157,7 @@ export class NegotiationRunExistingQueue {
     const options = execution ? { negotiationContinuation: execution } : {};
 
     if (this.deps?.invokeOpportunityGraph) {
-      await this.runClaimedContinuation(execution, continuationAdapter, async () => {
+      const receipt = await this.runClaimedContinuation(execution, continuationAdapter, async () => {
         const result = await this.deps!.invokeOpportunityGraph!({
           userId,
           operationMode: 'negotiate_existing',
@@ -158,7 +166,13 @@ export class NegotiationRunExistingQueue {
         });
         return result?.negotiationContinuationReceipt;
       });
-      this.logger.info('Negotiation complete', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence });
+      this.logger.info('Negotiation complete', {
+        opportunityId,
+        userId,
+        taskId: exact?.taskId,
+        fence: execution?.fence,
+        outcome: receipt?.outcome,
+      });
       return;
     }
 
@@ -179,7 +193,7 @@ export class NegotiationRunExistingQueue {
     );
 
     try {
-      await this.runClaimedContinuation(execution, continuationAdapter, async () => {
+      const receipt = await this.runClaimedContinuation(execution, continuationAdapter, async () => {
         const result = await opportunityOperations.negotiateExisting({
           userId: userId as Id<'users'>,
           opportunityId,
@@ -187,7 +201,13 @@ export class NegotiationRunExistingQueue {
         });
         return result.negotiationContinuationReceipt;
       });
-      this.logger.info('Negotiation complete', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence });
+      this.logger.info('Negotiation complete', {
+        opportunityId,
+        userId,
+        taskId: exact?.taskId,
+        fence: execution?.fence,
+        outcome: receipt?.outcome,
+      });
     } catch (err) {
       this.logger.error('Graph failed', { opportunityId, userId, taskId: exact?.taskId, fence: execution?.fence, error: err });
       throw err;
