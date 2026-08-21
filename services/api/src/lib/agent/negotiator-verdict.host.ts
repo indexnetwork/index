@@ -103,6 +103,13 @@ export interface NegotiatorVerdictInput {
   reason?: string;
 }
 
+/** Verdict named by opportunity id — the IntentAgent's lane (phase 2). */
+export interface NegotiatorVerdictByIdInput {
+  intentId: string;
+  opportunityId: string;
+  reason?: string;
+}
+
 const asTime = (value: Date | string): number => {
   const ms = value instanceof Date ? value.getTime() : Date.parse(value);
   return Number.isFinite(ms) ? ms : 0;
@@ -172,6 +179,70 @@ export async function readActionableCounterparties(
 }
 
 /**
+ * Execute one verdict on a counterparty already resolved from the actionable
+ * list. Shared by the position lane (persona/MCP tools) and the id lane (the
+ * IntentAgent's acts) so there is exactly one write path and one honest
+ * classification of its failures.
+ */
+async function executeVerdictOn(
+  userId: string,
+  intentId: string,
+  chosen: ActionableCounterparty,
+  target: 'rejected' | 'accepted',
+  relist: () => Extract<NegotiatorVerdictResult, { status: 'unknown_counterparty' }>,
+  deps?: NegotiatorVerdictHostDeps,
+  reason?: string,
+): Promise<NegotiatorVerdictResult> {
+    // The Radar's Skip/Start-Chat path, called exactly as the REST controller
+    // calls it. The intent scope is not decoration: it re-checks that the
+    // pairing really belongs to the signal this DM is pinned to, and it keeps
+    // the accept from cascading onto sibling opportunities — the same
+    // narrowing the intent-scoped Radar applies.
+    //
+    // `actionProvenance` is deliberately NOT passed. That field marks a verified
+    // first-party owner CLICK for outcome capture (IND-434); a verdict spoken to
+    // an agent is a real owner decision but a model-mediated one, and a
+    // misheard "not this one" must not become a mined preference label.
+    const update = deps?.updateStatus
+      ?? ((opportunityId: string, status: OpportunityStatus, uid: string, options: { scopeType: 'intent'; scopeId: string }) =>
+        opportunityService.updateOpportunityStatus(opportunityId, status, uid, options));
+  const result = await update(chosen.opportunityId, target, userId, {
+    scopeType: 'intent',
+    scopeId: intentId,
+  }) as { error?: string; status?: number } | null;
+
+  if (result && typeof result === 'object' && 'error' in result && result.error) {
+    // 409 is the self-accept guard: this client already committed, so it is
+    // the other side's move. 403/404 means the pairing left the actionable
+    // set between the list being rendered and this call — nothing was
+    // decided, and re-listing is more use to the client than an error.
+    if (result.status === 409) return { status: 'already_decided', counterparty: chosen.name };
+    if (result.status === 403 || result.status === 404) return relist();
+    logger.error('negotiator_verdict_rejected_by_service', {
+      userId,
+      intentId,
+      opportunityId: chosen.opportunityId,
+      target,
+      serviceStatus: result.status,
+      error: result.error,
+    });
+    return { status: 'error' };
+  }
+
+  logger.info('negotiator_verdict_executed', {
+    userId,
+    intentId,
+    opportunityId: chosen.opportunityId,
+    target,
+    // The client's own words, when they gave any. There is no column for a
+    // verdict reason on the owner path, and inventing one would be a new
+    // write this lane has no mandate for — so the log is the record.
+    ...(reason ? { reason } : {}),
+  });
+  return { status: 'executed', counterparty: chosen.name };
+}
+
+/**
  * Execute one verdict on the number the client's agent named.
  *
  * Never throws — a tool that throws costs the client their turn, and the
@@ -204,58 +275,63 @@ async function passVerdict(
       return relist();
     }
 
-    // The Radar's Skip/Start-Chat path, called exactly as the REST controller
-    // calls it. The intent scope is not decoration: it re-checks that the
-    // pairing really belongs to the signal this DM is pinned to, and it keeps
-    // the accept from cascading onto sibling opportunities — the same
-    // narrowing the intent-scoped Radar applies.
-    //
-    // `actionProvenance` is deliberately NOT passed. That field marks a verified
-    // first-party owner CLICK for outcome capture (IND-434); a verdict spoken to
-    // an agent is a real owner decision but a model-mediated one, and a
-    // misheard "not this one" must not become a mined preference label.
-    const update = deps?.updateStatus
-      ?? ((opportunityId: string, status: OpportunityStatus, uid: string, options: { scopeType: 'intent'; scopeId: string }) =>
-        opportunityService.updateOpportunityStatus(opportunityId, status, uid, options));
-    const result = await update(chosen.opportunityId, target, userId, {
-      scopeType: 'intent',
-      scopeId: input.intentId,
-    }) as { error?: string; status?: number } | null;
-
-    if (result && typeof result === 'object' && 'error' in result && result.error) {
-      // 409 is the self-accept guard: this client already committed, so it is
-      // the other side's move. 403/404 means the pairing left the actionable
-      // set between the list being rendered and this call — nothing was
-      // decided, and re-listing is more use to the client than an error.
-      if (result.status === 409) return { status: 'already_decided', counterparty: chosen.name };
-      if (result.status === 403 || result.status === 404) return relist();
-      logger.error('negotiator_verdict_rejected_by_service', {
-        userId,
-        intentId: input.intentId,
-        opportunityId: chosen.opportunityId,
-        target,
-        serviceStatus: result.status,
-        error: result.error,
-      });
-      return { status: 'error' };
-    }
-
-    logger.info('negotiator_verdict_executed', {
-      userId,
-      intentId: input.intentId,
-      opportunityId: chosen.opportunityId,
-      target,
-      // The client's own words, when they gave any. There is no column for a
-      // verdict reason on the owner path, and inventing one would be a new
-      // write this lane has no mandate for — so the log is the record.
-      ...(input.reason ? { reason: input.reason } : {}),
-    });
-    return { status: 'executed', counterparty: chosen.name };
+    return await executeVerdictOn(userId, input.intentId, chosen, target, relist, deps, input.reason);
   } catch (err) {
     logger.error('negotiator_verdict_failed', {
       userId,
       intentId: input.intentId,
       counterparty: input.counterparty,
+      target,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { status: 'error' };
+  }
+}
+
+/**
+ * Execute one verdict on an opportunity the caller already holds the id of —
+ * the IntentAgent's lane (phase 2). The agent's context numbered THIS list
+ * (the same reader) and its validator resolved the number to the id, so the
+ * id re-checks membership here rather than trusting the earlier read: an
+ * opportunity that left the actionable set between context assembly and this
+ * call gets a re-list, exactly as a stale position does on the tool lane.
+ *
+ * Never throws — the act's outcome is ledgered either way, and an honest
+ * failure beats a lost turn.
+ */
+export async function passVerdictOnOpportunity(
+  userId: string,
+  input: NegotiatorVerdictByIdInput,
+  target: 'rejected' | 'accepted',
+  deps?: NegotiatorVerdictHostDeps,
+): Promise<NegotiatorVerdictResult> {
+  try {
+    const actionable = await readActionableCounterparties(userId, input.intentId, deps);
+    if (actionable.length === 0) return { status: 'none_actionable' };
+
+    const relist = () => ({
+      status: 'unknown_counterparty' as const,
+      count: actionable.length,
+      actionable: actionable.map((candidate) => candidate.label),
+    });
+
+    const chosen = actionable.find((candidate) => candidate.opportunityId === input.opportunityId);
+    if (!chosen) {
+      logger.info('negotiator_verdict_opportunity_left_actionable_set', {
+        userId,
+        intentId: input.intentId,
+        opportunityId: input.opportunityId,
+        actionable: actionable.length,
+      });
+      return relist();
+    }
+
+    return await executeVerdictOn(userId, input.intentId, chosen, target, relist, deps, input.reason);
+  } catch (err) {
+    logger.error('negotiator_verdict_failed', {
+      userId,
+      intentId: input.intentId,
+      opportunityId: input.opportunityId,
       target,
       error: err instanceof Error ? err.message : String(err),
     });
