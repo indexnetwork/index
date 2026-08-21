@@ -117,10 +117,11 @@ const protocolDeps = {
   // memory tools. Injected only while memory writes are enabled — when the
   // flag is off the tools are simply not registered. Consumed exclusively by
   // createNegotiatorTools; the orchestrator registry never sees these tools.
-  // #1466: host bridge for the negotiator persona's `answer_pending_question`
-  // tool — the long-tail lane for a reply the deterministic answer-precedence
-  // gate declined. Registered only in intent-pinned negotiator sessions; the
-  // orchestrator registry never sees it.
+  // #1466, repointed by the intent-agent collapse: host bridge for the
+  // `answer_pending_question` tool (persona and MCP). Executes through the
+  // IntentAgent's single answer executor — dossier entry first, then the
+  // settle/claim/resume spine, ledgered. Registered only in intent-pinned
+  // negotiator sessions; the orchestrator registry never sees it.
   negotiatorAnswerTools: negotiatorAnswerToolsHost,
   // #1471: host bridge for the negotiator persona's `reject_opportunity` /
   // `accept_opportunity` tools — the owner's VERDICT lane, which had no lever

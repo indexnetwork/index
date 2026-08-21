@@ -26,6 +26,30 @@ import { log } from '../log';
 const logger = log.lib.from('intent-agent.host');
 
 /**
+ * Whether the signal's IntentAgent owns a DM turn: true while a negotiation
+ * is parked awaiting this client on this signal
+ * (docs/plans/2026-08-21-holistic-intent-agent.md, "Answer side"). A cheap
+ * honest read, not judgment — whether a message ANSWERS anything is the
+ * agent's call, made inside its serialized turn. Never throws: an unreadable
+ * parked set falls through to the persona, exactly as the retired
+ * answer-precedence gate failed open.
+ */
+export async function intentAgentOwnsTurn(userId: string, intentId: string): Promise<boolean> {
+  try {
+    const { parkedNegotiationReaderAdapter } = await import('../../adapters/parked-negotiation.reader.adapter');
+    const parked = await parkedNegotiationReaderAdapter.readParkedNegotiations(userId, intentId);
+    return parked.length > 0;
+  } catch (err) {
+    logger.error('intent_agent_turn_ownership_read_failed; falling through to the persona', {
+      userId,
+      intentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
  * Fixed honest copy for an answer heard on a park whose negotiation cannot
  * continue (terminal opportunity / archived signal). Server-owned, never
  * model text: it tells the truth about why nothing resumed and PROPOSES the

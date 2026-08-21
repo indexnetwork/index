@@ -1,19 +1,20 @@
 /**
- * The host behind `answer_pending_question` (#1466): position → negotiation
- * ref, then the same consumption path every other answer takes.
+ * The host behind `answer_pending_question` (#1466, repointed by the
+ * intent-agent collapse, docs/plans/2026-08-21-holistic-intent-agent.md):
+ * position → negotiation ref, then the IntentAgent's ONE answer executor —
+ * dossier entry first, spine second, ledger third.
  *
  * The tool is given numbers and never an id — this module owns the mapping,
- * for the same reason the answer router does not see one: a ref the model
+ * for the same reason the agent's own turn maps indices: a ref the model
  * could name is a ref it could get wrong, and a misroute resumes the wrong
  * negotiation with the wrong fact.
  *
- * What these specs now also pin is the state the host may NOT report. On
- * 2026-08-20 at 21:11 the model was shown an open question and called this
- * tool with `question: 1`; the host resolved openness from the newest agent
- * message, found an edit-confirmation there, and answered `no_open_question` —
- * whose copy tells the client "the negotiations moved on". The task was
- * `input_required` and stayed so. `no_open_question` is now reachable only
- * when nothing is parked, which is the only state that copy is true of.
+ * What these specs also pin is the state the host may NOT report. On
+ * 2026-08-20 at 21:11 the model was shown an open question and the host
+ * answered `no_open_question` — whose copy tells the client "the
+ * negotiations moved on" — while the task sat `input_required`. Openness is
+ * the parked set, so `no_open_question` is reachable only when nothing is
+ * parked, the only state that copy is true of.
  */
 import { describe, expect, it } from 'bun:test';
 
@@ -22,7 +23,9 @@ import type { QuestionBlock } from '@indexnetwork/protocol';
 
 import type { ParkedNegotiation } from '../../../adapters/parked-negotiation.reader.adapter';
 import { answerOpenQuestion } from '../negotiator-answer.host';
+import type { NegotiatorAnswerHostDeps } from '../negotiator-answer.host';
 import { readOpenQuestionsForIntent } from '../open-question-message';
+import type { IntentAgentEvent, IntentAgentExecutedAct, NegotiationAnswerOutcome } from '../../intent-agent/intent-agent.types';
 
 const USER_ID = 'user-1';
 const INTENT_ID = 'intent-1';
@@ -52,29 +55,36 @@ function park(opportunityId: string, dimension: string): ParkedNegotiation {
   };
 }
 
-interface Enqueued {
-  sessionId: string;
-  replyMessageId: string;
-  precedence?: { questionMessageId: string; routedAnswers: Array<{ ref: string; answerText: string }> };
+interface ExecutedCall {
+  event: IntentAgentEvent;
+  opportunityId: string;
+  answer: string;
 }
 
-function deps(overrides: Record<string, unknown> = {}) {
-  const enqueued: Enqueued[] = [];
-  return {
-    enqueued,
-    deps: {
-      findSession: async () => ({ id: 'session-1' }),
-      getSessionMessages: async () => [{ id: 'm2', role: 'assistant', content: BODY }],
-      readParkedNegotiations: async () => [park(TIMING_OPPORTUNITY, 'Timing: This week')],
-      enqueueAnswer: (async (input: Enqueued) => { enqueued.push(input); return true; }) as never,
-      ...overrides,
-    },
+function deps(overrides: Record<string, unknown> = {}, outcome: NegotiationAnswerOutcome = 'resumed_inflight') {
+  const executed: ExecutedCall[] = [];
+  const harness: NegotiatorAnswerHostDeps = {
+    findSession: async () => ({ id: 'session-1' }),
+    getSessionMessages: async () => [{ id: 'm2', role: 'assistant', content: BODY }],
+    readParkedNegotiations: async () => [park(TIMING_OPPORTUNITY, 'Timing: This week')],
+    executeAnswer: (async (event: IntentAgentEvent, input: { opportunityId: string; answer: string }) => {
+      executed.push({ event, opportunityId: input.opportunityId, answer: input.answer });
+      return {
+        tool: 'answer_negotiation',
+        opportunityId: input.opportunityId,
+        answer: input.answer,
+        dossierEntryId: 'dossier-1',
+        outcome,
+      } satisfies IntentAgentExecutedAct;
+    }) as never,
+    ...overrides,
   };
+  return { executed, deps: harness };
 }
 
 describe('answerOpenQuestion', () => {
   it("maps the position the model was shown onto that question's negotiation ref", async () => {
-    const { enqueued, deps: harness } = deps();
+    const { executed, deps: harness } = deps();
 
     const result = await answerOpenQuestion(USER_ID, {
       intentId: INTENT_ID,
@@ -83,20 +93,24 @@ describe('answerOpenQuestion', () => {
     }, harness);
 
     expect(result).toEqual({ status: 'routed', label: 'Budget' });
-    expect(enqueued).toHaveLength(1);
-    expect(enqueued[0].precedence).toMatchObject({
-      questionMessageId: 'm2',
-      routedAnswers: [{ ref: BUDGET_OPPORTUNITY, answerText: 'Up to twenty thousand.' }],
+    expect(executed).toHaveLength(1);
+    expect(executed[0]).toMatchObject({
+      opportunityId: BUDGET_OPPORTUNITY,
+      answer: 'Up to twenty thousand.',
     });
-    // Two tool calls for the same question in one turn coalesce on this id;
-    // everything below the enqueue is settlement-keyed and idempotent.
-    expect(enqueued[0].replyMessageId).toBe(`tool-answer.${BUDGET_OPPORTUNITY}`);
+    // The ledger names the tool as what woke the act.
+    expect(executed[0].event).toEqual({
+      kind: 'answer_tool',
+      userId: USER_ID,
+      intentId: INTENT_ID,
+      opportunityId: BUDGET_OPPORTUNITY,
+      source: 'persona_tool',
+    });
   });
 
   it('finds the question when a later agent message buried it — 21:11', async () => {
     // The incident. The park is live; the question-message is two messages up.
-    // This call used to return `no_open_question`.
-    const { enqueued, deps: harness } = deps({
+    const { executed, deps: harness } = deps({
       getSessionMessages: async () => [
         { id: 'm2', role: 'assistant', content: BODY },
         { id: 'm3', role: 'assistant', content: EDIT_CONFIRMATION },
@@ -107,43 +121,45 @@ describe('answerOpenQuestion', () => {
     const result = await answerOpenQuestion(USER_ID, { intentId: INTENT_ID, question: 1, answer: 'This month.' }, harness);
 
     expect(result).toEqual({ status: 'routed', label: 'Timing: This week' });
-    expect(enqueued[0].precedence).toMatchObject({
-      questionMessageId: 'm2',
-      routedAnswers: [{ ref: TIMING_OPPORTUNITY, answerText: 'This month.' }],
-    });
+    expect(executed[0]).toMatchObject({ opportunityId: TIMING_OPPORTUNITY, answer: 'This month.' });
   });
 
   it('routes against a derived block when the park has no delivered message', async () => {
-    const { enqueued, deps: harness } = deps({
+    const { executed, deps: harness } = deps({
       getSessionMessages: async () => [{ id: 'm1', role: 'assistant', content: EDIT_CONFIRMATION }],
     });
 
     const result = await answerOpenQuestion(USER_ID, { intentId: INTENT_ID, question: 1, answer: 'This month.' }, harness);
 
-    // Same negotiation ref, so the same settlement resumes it: consumption
-    // re-resolves the park and keys on the task's own settlement id, which the
-    // block's shape never enters.
+    // Same negotiation ref, so the same settlement resumes it: the executor
+    // re-resolves the park and keys on the task's own settlement id, which
+    // the block's shape never enters.
     expect(result).toEqual({ status: 'routed', label: 'Timing: This week' });
-    expect(enqueued[0].precedence?.routedAnswers).toEqual([
-      { ref: TIMING_OPPORTUNITY, answerText: 'This month.' },
-    ]);
-    expect(enqueued[0].replyMessageId).toBe(`tool-answer.${TIMING_OPPORTUNITY}`);
+    expect(executed[0]).toMatchObject({ opportunityId: TIMING_OPPORTUNITY });
+  });
+
+  it('answers even for a signal with no DM — the park, not the conversation, is the record', async () => {
+    // The retired queue path needed a session to consume the reply in; the
+    // executor does not. An MCP client can answer for a signal whose DM was
+    // never opened.
+    const { executed, deps: harness } = deps({ findSession: async () => null });
+
+    const result = await answerOpenQuestion(USER_ID, { intentId: INTENT_ID, question: 1, answer: 'This month.' }, harness);
+
+    expect(result).toEqual({ status: 'routed', label: 'Timing: This week' });
+    expect(executed).toHaveLength(1);
   });
 
   it('reports the open count rather than guessing when the position names nothing', async () => {
-    const { enqueued, deps: harness } = deps();
+    const { executed, deps: harness } = deps();
 
     const result = await answerOpenQuestion(USER_ID, { intentId: INTENT_ID, question: 5, answer: 'Yes.' }, harness);
 
     expect(result).toEqual({ status: 'unknown_question', open: 2 });
-    expect(enqueued).toHaveLength(0);
+    expect(executed).toHaveLength(0);
   });
 
   it('reports nothing open ONLY when nothing is parked', async () => {
-    // The one state in which telling the client the negotiations moved on is
-    // the truth: the parks resolved or expired. The question-message may still
-    // be sitting in the DM — it is a stale rendering, and answering it would
-    // resume nothing.
     const { deps: harness } = deps({ readParkedNegotiations: async () => [] });
 
     const result = await answerOpenQuestion(USER_ID, { intentId: INTENT_ID, question: 1, answer: 'Yes.' }, harness);
@@ -151,21 +167,25 @@ describe('answerOpenQuestion', () => {
     expect(result).toEqual({ status: 'no_open_question' });
   });
 
-  it('reports an honest failure, not a close-out, when the signal has no DM', async () => {
-    // Previously `no_open_question` — which would tell a client with a LIVE
-    // park that their negotiations had moved on. They have not; the reply
-    // simply has no conversation to be consumed in, which cannot happen from a
-    // tool call made inside that very DM.
-    const { deps: harness } = deps({ findSession: async () => null });
+  it('a park that resolved between the read and the resume reports as nothing open', async () => {
+    const { deps: harness } = deps({}, 'not_parked');
 
     const result = await answerOpenQuestion(USER_ID, { intentId: INTENT_ID, question: 1, answer: 'Yes.' }, harness);
 
-    expect(result).toEqual({ status: 'error' });
+    expect(result).toEqual({ status: 'no_open_question' });
   });
 
-  it('never throws — a failed enqueue is reported, not raised', async () => {
+  it('an answer heard on an unresumable park still routes — the truth-telling is the caller business', async () => {
+    const { deps: harness } = deps({}, 'recorded_unresumable');
+
+    const result = await answerOpenQuestion(USER_ID, { intentId: INTENT_ID, question: 1, answer: 'Yes.' }, harness);
+
+    expect(result).toEqual({ status: 'routed', label: 'Timing: This week' });
+  });
+
+  it('never throws — a failed executor is reported, not raised', async () => {
     const { deps: harness } = deps({
-      enqueueAnswer: (async () => { throw new Error('queue unavailable'); }) as never,
+      executeAnswer: (async () => { throw new Error('spine unavailable'); }) as never,
     });
 
     const result = await answerOpenQuestion(USER_ID, { intentId: INTENT_ID, question: 1, answer: 'Yes.' }, harness);
@@ -188,19 +208,14 @@ describe('answerOpenQuestion', () => {
 
 /**
  * The context the model is shown and the host that resolves its call are the
- * SAME resolution, not two implementations of one rule.
- *
- * On 2026-08-20 they disagreed: the orchestrator's context listed an open
- * question, the model called the tool with its number, and the host said
- * nothing was open. Both read the DM; only one of them was looking at the
- * right anchor. They now share `readOpenQuestionsForIntent` — the function
- * `chat.service.ts` calls to build `openQuestions` and the one the host calls
- * to resolve a position — so a divergence would have to be a divergence inside
- * one function.
+ * SAME resolution, not two implementations of one rule. They share
+ * `readOpenQuestionsForIntent` — the function `chat.service.ts` calls to
+ * build `openQuestions` and the one the host calls to resolve a position —
+ * so a divergence would have to be a divergence inside one function.
  */
 describe('context enumeration and host resolution', () => {
   it('agree on every position, buried question included', async () => {
-    const { enqueued, deps: harness } = deps({
+    const { executed, deps: harness } = deps({
       getSessionMessages: async () => [
         { id: 'm2', role: 'assistant', content: BODY },
         { id: 'm3', role: 'assistant', content: EDIT_CONFIRMATION },
@@ -225,8 +240,7 @@ describe('context enumeration and host resolution', () => {
       }, harness);
       expect(result).toEqual({ status: 'routed', label: question.label });
     }
-    expect(enqueued.map((job) => job.precedence?.routedAnswers[0]?.ref))
-      .toEqual([TIMING_OPPORTUNITY, BUDGET_OPPORTUNITY]);
+    expect(executed.map((call) => call.opportunityId)).toEqual([TIMING_OPPORTUNITY, BUDGET_OPPORTUNITY]);
   });
 
   it('close together: nothing in context, nothing routable', async () => {
