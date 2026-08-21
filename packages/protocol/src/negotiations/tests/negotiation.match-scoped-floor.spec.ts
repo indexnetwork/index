@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator } from "../negotiation.agent.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * A negotiation owns its own turn state; the conversation only supplies context.
@@ -106,6 +107,11 @@ function actionOf(parts: unknown[]): string | undefined {
     .find((p) => p.kind === "data");
   return part?.data?.action;
 }
+
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
 
 describe("negotiation floor is scoped to the match, not the conversation", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;

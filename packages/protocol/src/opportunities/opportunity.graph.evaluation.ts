@@ -15,7 +15,7 @@ import { requestContext } from '../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import type { OpportunityEvidence } from '../shared/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence } from './opportunity.evidence.js';
-import { DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT } from './discovery.env.js';
+import { DISCOVERY_EVALUATOR_MIN_SCORE } from './discovery.env.js';
 import { buildEvaluatorEvidenceKey, buildNetworkContexts, evaluationLog, networkMembershipPairKey, rankingLog, REJECTION_COOLDOWN_MS, REJECTION_COOLDOWN_SIMILARITY_PENALTY, safeOpportunityGraphError, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /** Pairwise verdict shape the evaluator returns, before actors are resolved. */
@@ -146,7 +146,7 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
       };
 
       const minScore = state.targetUserId
-        ? DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT
+        ? DISCOVERY_EVALUATOR_MIN_SCORE
         : deps.evaluatorMinScore;
       const evaluatorSignalConfig = getAbortSignalConfig();
 

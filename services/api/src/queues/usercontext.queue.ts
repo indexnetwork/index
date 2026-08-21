@@ -3,7 +3,6 @@ import { Job } from 'bullmq';
 import { UserContextGenerator, HydeGraphFactory, HydeGenerator, LensInferrer, Intents } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 
-import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 import { computePremiseHash, type ContextPremise } from '../lib/usercontext/premise-hash';
 import { QueueFactory } from '../lib/bullmq/bullmq';
@@ -291,13 +290,7 @@ export class UserContextQueue {
     // best-effort: a pack failure must not fail context regeneration, because
     // `/intents/intake/start` regenerates synchronously on a cache miss anyway.
     //
-    // Gated on the same flag as the funnel it feeds: each refresh is a real LLM
-    // call, and nothing reads the pack while the flag is off, so flag-off
-    // regeneration is byte-for-byte the pre-feature behavior and flipping the
-    // flag is what starts the spend.
-    if (isFastSignalIntakeEnabled()) {
-      await this.regenerateIntakePackBestEffort(userId, premiseHash, premiseTexts, networkTitles, globalContextText);
-    }
+    await this.regenerateIntakePackBestEffort(userId, premiseHash, premiseTexts, networkTitles, globalContextText);
 
     if (failures > 0) {
       const total = networkIds.length + 1; // + global row

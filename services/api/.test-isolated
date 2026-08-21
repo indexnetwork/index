@@ -60,7 +60,6 @@ src/lib/agent/tests/hermes-runtime-telemetry-sentry.isolated.ts
 src/controllers/tests/chat.negotiator.isolated.ts
 src/controllers/tests/negotiator-memory.controller.isolated.ts
 tests/negotiation.e2e.isolated.ts
-src/guards/tests/fast-intake.guard.isolated.ts
 tests/network-resend-invite.e2e.isolated.ts
 tests/limiter.e2e.isolated.ts
 src/services/tests/integration.service.telegram.isolated.ts

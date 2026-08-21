@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { assessDeadlock, renderBargainingShiftSection, DEFAULT_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
+import { assessDeadlock, renderStalemateShiftSection, DEFAULT_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 
@@ -95,27 +95,26 @@ describe("assessDeadlock — trailing-run semantics", () => {
 
 // ─── Prompt section render ───────────────────────────────────────────────────
 
-describe("renderBargainingShiftSection", () => {
+describe("renderStalemateShiftSection", () => {
   it("returns the empty string when inactive", () => {
-    expect(renderBargainingShiftSection({ active: false, userName: "Alice", canAskUser: true, consecutiveNonConvergent: 4 })).toBe("");
+    expect(renderStalemateShiftSection({ active: false, userName: "Alice", consecutiveNonConvergent: 4 })).toBe("");
   });
 
-  it("renders the stance shift with the run length and user name substituted", () => {
-    const s = renderBargainingShiftSection({ active: true, userName: "Alice", canAskUser: false, consecutiveNonConvergent: 4 });
-    expect(s).toContain("SHIFT FROM PERSUASION TO BARGAINING");
+  it("renders the stalemate shift with the run length and user name substituted", () => {
+    const s = renderStalemateShiftSection({ active: true, userName: "Alice", consecutiveNonConvergent: 4 });
+    expect(s).toContain("THE MERITS ARE EXHAUSTED");
     expect(s).toContain("The last 4 turns");
-    expect(s).toContain("Alice's interests");
+    expect(s).toContain("Alice's attention");
     expect(s).toContain("your available actions are unchanged");
     expect(s).not.toContain("{userName}");
     expect(s).not.toContain("{consecutive}");
-    expect(s).not.toContain("{askUserEscalation}");
     expect(s).not.toContain("ask_user");
   });
 
-  it("includes the ask_user escalation line only when the action is already legally held", () => {
-    const withEscalation = renderBargainingShiftSection({ active: true, userName: "Alice", canAskUser: true, consecutiveNonConvergent: 4 });
-    expect(withEscalation).toContain('"ask_user"');
-    expect(withEscalation).toContain("Alice's own input");
+  it("never buys agreement with a concession — a stalemate is an acceptable outcome", () => {
+    const s = renderStalemateShiftSection({ active: true, userName: "Alice", consecutiveNonConvergent: 4 });
+    expect(s).toContain("Do NOT buy agreement with a concession");
+    expect(s).toContain("An unresolved disagreement is an acceptable outcome");
   });
 });
 
@@ -158,33 +157,14 @@ function agentInput(extra?: Partial<NegotiationAgentInput>): NegotiationAgentInp
 }
 
 describe("IndexNegotiator — bargaining stance prompt (IND-428)", () => {
-  // IND-611 made the deadlock RESOLUTION stance-dependent: `skeptic` drafts a
-  // stalemate section instead of the bargaining one (see
-  // negotiation.stance.spec.ts). These cases pin the bargaining resolution,
-  // which is what `advocate` (the default) and `evaluator` produce — so the
-  // assumption that was previously implicit is now stated. The assertions
-  // themselves are unchanged.
-  const originalStance = process.env.NEGOTIATOR_STANCE;
-  beforeAll(() => { process.env.NEGOTIATOR_STANCE = "advocate"; });
-  afterAll(() => {
-    if (originalStance === undefined) delete process.env.NEGOTIATOR_STANCE;
-    else process.env.NEGOTIATOR_STANCE = originalStance;
-  });
-
-  it("injects the bargaining section when the graph passes the stance", async () => {
+  it("injects the stalemate section when the graph reports a deadlock", async () => {
     const agent = new CapturingNegotiator(counterOutput);
     await agent.invoke(agentInput({ bargaining: { consecutiveNonConvergent: 4 } }));
     const systemPrompt = agent.captured[0][0].content;
-    expect(systemPrompt).toContain("SHIFT FROM PERSUASION TO BARGAINING");
+    expect(systemPrompt).toContain("THE MERITS ARE EXHAUSTED");
     expect(systemPrompt).toContain("The last 4 turns");
-    // Without canAskUser the escalation line must not render.
+    // The shift never invents a locution.
     expect(systemPrompt).not.toContain('escalate with "ask_user"');
-  });
-
-  it("adds the ask_user escalation only when canAskUser is also granted", async () => {
-    const agent = new CapturingNegotiator(counterOutput);
-    await agent.invoke(agentInput({ bargaining: { consecutiveNonConvergent: 4 }, canAskUser: true }));
-    expect(agent.captured[0][0].content).toContain('escalate with "ask_user"');
   });
 
   it("keeps prompts byte-identical when bargaining is absent (disabled-path equivalence)", async () => {
@@ -195,7 +175,7 @@ describe("IndexNegotiator — bargaining stance prompt (IND-428)", () => {
 
     expect(withUndefined.captured[0][0].content).toBe(withoutField.captured[0][0].content);
     expect(withUndefined.captured[0][1].content).toBe(withoutField.captured[0][1].content);
-    expect(withoutField.captured[0][0].content).not.toContain("BARGAINING");
+    expect(withoutField.captured[0][0].content).not.toContain("THE MERITS ARE EXHAUSTED");
     expect(withoutField.captured[0][0].content).not.toContain("{bargainingShift}");
   });
 

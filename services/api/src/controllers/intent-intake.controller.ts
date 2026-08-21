@@ -1,9 +1,7 @@
 import { z } from 'zod';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { FastSignalIntakeEnabledGuard } from '../guards/fast-intake.guard';
 import { RateLimit } from '../guards/limiter.guard';
-import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
 import { IntakeNetworkMembershipError, IntakeRunNotFoundError, IntakeVerificationRejectedError, signalIntakeService, type SignalIntakeService } from '../services/signal-intake.service';
@@ -43,15 +41,7 @@ const ReviseSchema = z.object({
   networkId: z.string().uuid('networkId must be a UUID').optional(),
 }).strict();
 
-/**
- * Deterministic fast-intake funnel. Gated by FAST_SIGNAL_INTAKE.
- *
- * `FastSignalIntakeEnabledGuard` is the real gate: it runs before AuthGuard,
- * so a flag-off deployment 404s unauthenticated probes too. The in-handler
- * `isFastSignalIntakeEnabled()` checks
- * below are defense-in-depth for direct/unit-test invocations that bypass
- * the guard pipeline.
- */
+/** Deterministic fast-intake funnel — how /i/new creates a signal. */
 @Controller('/intents/intake')
 export class IntentIntakeController {
   private readonly service: Pick<
@@ -68,9 +58,8 @@ export class IntentIntakeController {
 
   /** Round 1: pack lookup, or synchronous generation on a cold miss. */
   @Post('/start')
-  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async start(_req: Request, user: AuthenticatedUser) {
-    if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     try {
       const { question } = await this.service.getOrCreatePack(user.id);
       return Response.json({ question });
@@ -81,9 +70,8 @@ export class IntentIntakeController {
 
   /** Follow-ups: planned batch or single question, with the locked total. */
   @Post('/question')
-  @UseGuards(RateLimit('write'), FastSignalIntakeEnabledGuard, AuthGuard)
+  @UseGuards(RateLimit('write'), AuthGuard)
   async question(req: Request, user: AuthenticatedUser) {
-    if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = QuestionSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
     try {
@@ -102,9 +90,8 @@ export class IntentIntakeController {
    * proposal row, so the ordinary write budget is far too loose for it.
    */
   @Post('/prepare')
-  @UseGuards(RateLimit('intake_synthesis'), FastSignalIntakeEnabledGuard, AuthGuard)
+  @UseGuards(RateLimit('intake_synthesis'), AuthGuard)
   async prepare(req: Request, user: AuthenticatedUser) {
-    if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = PrepareSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
     try {
@@ -117,9 +104,8 @@ export class IntentIntakeController {
 
   /** Resolve the speculative proposal, or redo it when the where-text changed it. */
   @Post('/proposal')
-  @UseGuards(RateLimit('intake_synthesis'), FastSignalIntakeEnabledGuard, AuthGuard)
+  @UseGuards(RateLimit('intake_synthesis'), AuthGuard)
   async proposal(req: Request, user: AuthenticatedUser) {
-    if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ProposalSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
     const { runId, whereText, networkId, rounds } = parsed.data;
@@ -145,9 +131,8 @@ export class IntentIntakeController {
    * replacement proposal row.
    */
   @Post('/revise')
-  @UseGuards(RateLimit('intake_synthesis'), FastSignalIntakeEnabledGuard, AuthGuard)
+  @UseGuards(RateLimit('intake_synthesis'), AuthGuard)
   async revise(req: Request, user: AuthenticatedUser) {
-    if (!isFastSignalIntakeEnabled()) return new Response(null, { status: 404 });
     const parsed = ReviseSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return this.invalid(parsed.error);
     const { runId, feedback, networkId, rounds } = parsed.data;

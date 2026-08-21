@@ -8,6 +8,7 @@ import { countNegotiationAskRounds, hasPriorAskUser } from "../negotiation.graph
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * Post-stall park with a bounded ask cap (conversational-questions plan).
@@ -128,6 +129,11 @@ const counterTurn: NegotiationTurn = {
   message: null,
 };
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("negotiation graph — post-stall park", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origAuthor: typeof NegotiationStallGapAuthor.prototype.author;
@@ -217,17 +223,17 @@ describe("negotiation graph — post-stall park", () => {
   });
 
   it("stalls terminally at the ask-rounds cap: no authoring, no park, telemetry only", async () => {
-    // The negotiation has already spent three rounds across both sides.
-    const stubs = mkStubs({
-      priorMessages: [
-        priorMsg("u-src", "propose", 0),
-        priorMsg("u-cand", "ask_user", 1),
-        priorMsg("u-cand", "counter", 2),
-        priorMsg("u-src", "ask_user", 3),
-        priorMsg("u-src", "ask_user", 4),
-      ],
-    });
-    // Floor: last message is u-src ask_user → source speaks again.
+    // The negotiation has already spent the whole negotiation-wide cap across
+    // both sides. Seeded from the constant: under the checklist protocol the
+    // cap is both principals' budgets plus one, not a fixed three.
+    const CAP = CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP;
+    const priorMessages = [priorMsg("u-src", "propose", 0)];
+    for (let i = 0; i < CAP; i++) {
+      // Alternate the asking seat so neither side's own budget binds first.
+      priorMessages.push(priorMsg(i % 2 === 0 ? "u-cand" : "u-src", "ask_user", priorMessages.length));
+      priorMessages.push(priorMsg(i % 2 === 0 ? "u-cand" : "u-src", "counter", priorMessages.length));
+    }
+    const stubs = mkStubs({ priorMessages });
     agentScript = [counterTurn, counterTurn];
     const events: Array<Record<string, unknown>> = [];
     await runGraph(stubs, events);
@@ -237,8 +243,8 @@ describe("negotiation graph — post-stall park", () => {
     expect(events.filter((e) => e.type === "negotiation_parked")).toHaveLength(0);
     const terminal = events.filter((e) => e.type === "negotiation_ask_cap_terminal");
     expect(terminal).toHaveLength(1);
-    expect(terminal[0].askRounds).toBe(3);
-    expect(terminal[0].askRoundsCap).toBe(DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP);
+    expect(terminal[0].askRounds).toBe(CAP);
+    expect(terminal[0].askRoundsCap).toBe(CAP);
     // The stall itself is unchanged — the legacy enqueue still fires.
     expect(stubs.questionerEnqueues).toHaveLength(1);
   });

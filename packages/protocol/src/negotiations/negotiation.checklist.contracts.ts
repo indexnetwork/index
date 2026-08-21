@@ -38,7 +38,6 @@
 
 import { z } from "zod";
 
-import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
 import { AnswerhoodSchema, CHECKLIST_KINDS, CHECKLIST_RESULTS, CHECKLIST_SETTLERS, ChecklistDraftGenerationSchema, ChecklistDraftItemGenerationSchema, ChecklistDraftItemSchema, ChecklistDraftSchema, DEFAULT_CHECKLIST_SETTLER, MAX_CHECKLIST_DIMENSIONS, MIN_CHECKLIST_DIMENSIONS, type Answerhood, type ChecklistDraft, type ChecklistDraftItem, type ChecklistKind, type ChecklistResult, type ChecklistSettler } from "../shared/schemas/negotiation-checklist.schema.js";
 
 export {
@@ -135,7 +134,7 @@ export type NegotiationChecklist = z.infer<typeof NegotiationChecklistSchema>;
  * which is what lets those callsites stop branching on the stance at all.
  */
 export function configuredQuestionBudgetPerPrincipal(): number {
-  return stanceUsesChecklist(configuredNegotiatorStance()) ? QUESTION_BUDGET_PER_PRINCIPAL : 1;
+  return QUESTION_BUDGET_PER_PRINCIPAL;
 }
 
 // ─── Identity and repair ─────────────────────────────────────────────────────

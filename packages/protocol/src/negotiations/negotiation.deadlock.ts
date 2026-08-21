@@ -19,7 +19,6 @@
  * - **Fail-open**: any detection error means "no deadlock" — advisory
  *   infrastructure never blocks a negotiation.
  */
-import { stanceResolvesDeadlockByStalemate, type NegotiatorStance } from "./negotiation.stance.contracts.js";
 
 export type { DeadlockShiftRecord } from "./negotiation.deadlock.contracts.js";
 
@@ -97,25 +96,11 @@ export function assessDeadlock(
 
 // ─── Prompt section (system agent drafting stance) ──────────────────────────
 
-const BARGAINING_SHIFT_SECTION = `
-
-DEADLOCK — SHIFT FROM PERSUASION TO BARGAINING. The last {consecutive} turns were counters/questions without convergence: the merits have been argued and restating them will not move the other side. For this turn, change stance:
-- Do NOT re-argue fit or repeat points already made.
-- Offer a concrete concession or scope reduction instead: a smaller first step (a single intro call, a scoped trial, a narrower version of the collaboration), dropping a contested requirement, or a trade on a dimension not yet contested.
-- Make the remaining objection priceable: name the specific smaller commitment that would resolve it.{askUserEscalation}
-- If no reduced scope would genuinely serve {userName}'s interests, conclude decisively with a terminal action from your allowed set rather than another repetitive counter.
-This shift changes your stance only — your available actions are unchanged.`;
-
-const BARGAINING_ASK_USER_ESCALATION = `
-- If a concession would require {userName}'s own input or permission (budget, availability, private details), escalate with "ask_user" instead of guessing.`;
-
 /**
- * Skeptic-stance deadlock resolution (IND-611). Under `NEGOTIATOR_STANCE=skeptic`
- * a stalemate resolves as a stalemate rather than by bargaining: the designed
- * outcome of persistent disagreement stops being "a smaller match" and becomes
- * "possibly no match". Same trigger, same threshold, same actions — only the
- * drafting stance differs. `advocate`/`evaluator` keep the bargaining section
- * byte-identical.
+ * Deadlock resolution (IND-611): a stalemate resolves as a stalemate rather
+ * than by bargaining. The designed outcome of persistent disagreement is
+ * "possibly no match", not "a smaller match". Same trigger, same threshold,
+ * same actions — only the drafting stance differs.
  */
 const STALEMATE_SHIFT_SECTION = `
 
@@ -128,31 +113,19 @@ This shift changes your stance only — your available actions are unchanged.`;
 
 /**
  * Renders the deadlock-stance prompt section. Returns the empty string when
- * the shift is not active, so the rendered system prompt is byte-identical to
- * the legacy build on every non-shifted turn (mirrors
- * `renderNegotiatorMemorySection`). The `ask_user` escalation line renders
- * only when the caller already legally holds the action (`canAskUser`) — the
- * shift never invents a locution.
+ * the shift is not active, so the rendered system prompt carries nothing extra
+ * on a non-shifted turn (mirrors `renderNegotiatorMemorySection`).
  *
- * IND-611: `stance` selects which resolution the shift drafts toward —
- * bargaining (`advocate`/`evaluator`, the default and today's behavior) or
- * stalemate (`skeptic`). Omitted → bargaining, byte-identical to before.
+ * A detected deadlock drafts toward stalemate, not bargaining: the designed
+ * outcome of persistent disagreement is "possibly no match".
  */
-export function renderBargainingShiftSection(input: {
+export function renderStalemateShiftSection(input: {
   active: boolean;
   userName: string;
-  canAskUser: boolean;
   consecutiveNonConvergent: number;
-  stance?: NegotiatorStance;
 }): string {
   if (!input.active) return "";
-  if (input.stance && stanceResolvesDeadlockByStalemate(input.stance)) {
-    return STALEMATE_SHIFT_SECTION
-      .replace("{consecutive}", String(input.consecutiveNonConvergent))
-      .replace(/{userName}/g, input.userName);
-  }
-  return BARGAINING_SHIFT_SECTION
+  return STALEMATE_SHIFT_SECTION
     .replace("{consecutive}", String(input.consecutiveNonConvergent))
-    .replace("{askUserEscalation}", input.canAskUser ? BARGAINING_ASK_USER_ESCALATION : "")
     .replace(/{userName}/g, input.userName);
 }

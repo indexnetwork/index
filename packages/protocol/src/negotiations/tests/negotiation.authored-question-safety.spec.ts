@@ -7,6 +7,7 @@ import type { NegotiationGraphState, NegotiationTurn } from "../negotiation.stat
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
 import type { StructuredQuestion } from "../../shared/schemas/structured-question.schema.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The authored `ask_user` question is the first negotiator output rendered to a
@@ -54,6 +55,11 @@ function withOption(option: Partial<StructuredQuestion["options"][number]>): Str
 }
 
 // ─── The validator ───────────────────────────────────────────────────────────
+
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
 
 describe("isSafeAuthoredNegotiationQuestion", () => {
   it("accepts a question that says nothing it should not", () => {

@@ -23,10 +23,11 @@ import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const envLog = protocolLogger('Discovery:env');
 
-export const DISCOVERY_MIN_SIMILARITY_DEFAULT = 0.30;
-export const DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT = 50;
+/** Semantic retrieval cutoff, 0..1. */
+export const DISCOVERY_MIN_SIMILARITY = 0.20;
 
-const DECIMAL_VALUE = /^[+]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+/** Floor an evaluator score must clear for the opportunity to be accepted. */
+export const DISCOVERY_EVALUATOR_MIN_SCORE = 40;
 
 function validateThreshold(name: string, value: number, max: number): number {
   if (!Number.isFinite(value) || value < 0 || value > max) {
@@ -35,39 +36,12 @@ function validateThreshold(name: string, value: number, max: number): number {
   return value;
 }
 
-function readThreshold(raw: string | undefined, name: string, fallback: number, max: number): number {
-  if (raw === undefined || raw.trim() === '') return fallback;
-  const normalized = raw.trim();
-  if (!DECIMAL_VALUE.test(normalized)) {
-    throw new Error(`${name} must be a finite decimal between 0 and ${max} (inclusive)`);
-  }
-  return validateThreshold(name, Number(normalized), max);
-}
-
 export function validateDiscoveryMinSimilarity(value: number): number {
   return validateThreshold('DISCOVERY_MIN_SIMILARITY', value, 1);
 }
 
 export function validateDiscoveryEvaluatorMinScore(value: number): number {
   return validateThreshold('DISCOVERY_EVALUATOR_MIN_SCORE', value, 100);
-}
-
-export function discoveryMinSimilarity(): number {
-  return readThreshold(
-    process.env.DISCOVERY_MIN_SIMILARITY,
-    'DISCOVERY_MIN_SIMILARITY',
-    DISCOVERY_MIN_SIMILARITY_DEFAULT,
-    1,
-  );
-}
-
-export function discoveryEvaluatorMinScore(): number {
-  return readThreshold(
-    process.env.DISCOVERY_EVALUATOR_MIN_SCORE,
-    'DISCOVERY_EVALUATOR_MIN_SCORE',
-    DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
-    100,
-  );
 }
 
 /** Data types allowed to participate in opportunity matching. */

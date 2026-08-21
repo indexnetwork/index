@@ -8,6 +8,7 @@ import { askableUnknowns, assessAskAdmissibility, assessConcludeAdmissibility, t
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
 import { requestContext } from "../../shared/observability/request-context.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The conclusion floor: an askable unknown outranks a verdict, and when the
@@ -259,6 +260,11 @@ let agentScript: NegotiationTurn[] = [];
 
 // ─── The contract, as a condition table ──────────────────────────────────────
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("what makes an unknown askable", () => {
   const authored = OPEN_CHECKLIST as ChecklistItem[];
 
@@ -381,7 +387,7 @@ describe("the conclusion floor at the turn seam", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE", "NEGOTIATOR_STANCE"]) {
+    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE"]) {
       originals[key] = process.env[key];
     }
   });
@@ -400,7 +406,6 @@ describe("the conclusion floor at the turn seam", () => {
     process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATOR_STANCE = "skeptic";
   });
 
   afterEach(() => {
@@ -658,19 +663,6 @@ describe("the conclusion floor at the turn seam", () => {
     expect(persistedTurns(stubs)[0].askUser).toBeUndefined();
   });
 
-  it("leaves `advocate` untouched — no checklist, no floor", async () => {
-    process.env.NEGOTIATOR_STANCE = "advocate";
-    const stubs = mkStubs();
-    agentScript = [
-      said("outreach", OPENING),
-      turn("accept", "good enough"),
-    ];
-    await runGraph(stubs);
-
-    expect(persistedActions(stubs)).toEqual(["outreach", "accept"]);
-    expect(parkedCount(stubs)).toBe(0);
-  });
-
   // ─── The authority half: whose fact the open dimension is ────────────────
   // Observed live, sandbox, task 3c151027: turn 2, initiator seat. Both open
   // dimensions were about what the COUNTERPARTY works on, the agent drafted
@@ -827,15 +819,6 @@ const agentBaseInput: NegotiationAgentInput = {
 };
 
 describe("the prompt closes the hatch the floor exists to close", () => {
-  const stanceKey = "NEGOTIATOR_STANCE";
-  let originalStance: string | undefined;
-
-  beforeAll(() => { originalStance = process.env[stanceKey]; });
-  afterAll(() => {
-    if (originalStance === undefined) delete process.env[stanceKey];
-    else process.env[stanceKey] = originalStance;
-  });
-
   async function promptFor(overrides: Partial<NegotiationAgentInput> = {}) {
     const agent = new CapturingNegotiator([counterOutput]);
     await agent.invoke({ ...agentBaseInput, ...overrides });
@@ -843,7 +826,6 @@ describe("the prompt closes the hatch the floor exists to close", () => {
   }
 
   it("makes 'the first conversation will settle it' conditional on the budget being spent", async () => {
-    process.env[stanceKey] = "skeptic";
     const { system } = await promptFor();
     // The leak the reference behaviour does not have: production's hatch was
     // unconditional, so any unknown could be waved through as something two
@@ -853,13 +835,11 @@ describe("the prompt closes the hatch the floor exists to close", () => {
   });
 
   it("denies a basis to the reason the match was suggested, as it already denies one to a profile", async () => {
-    process.env[stanceKey] = "skeptic";
     const { system } = await promptFor();
     expect(system).toContain("The reason this match was suggested to you is not a commitment either");
   });
 
   it("names the open dimensions back on a floor re-issue, and leaves exactly two moves", async () => {
-    process.env[stanceKey] = "skeptic";
     const { user } = await promptFor({
       concludeFloor: { askableDimensions: ["Studio operations", "Stage fit"] },
     });
@@ -878,14 +858,8 @@ describe("the prompt closes the hatch the floor exists to close", () => {
   });
 
   it("says nothing about concluding on an ordinary turn", async () => {
-    process.env[stanceKey] = "skeptic";
     const { user } = await promptFor();
     expect(user).not.toContain("STILL OPEN AND STILL ASKABLE");
   });
 
-  it("renders nothing under `advocate` — the stance that does not run a checklist", async () => {
-    process.env[stanceKey] = "advocate";
-    const { system } = await promptFor();
-    expect(system).not.toContain("A HATCH THAT ONLY OPENS ONCE ASKING IS OVER");
-  });
 });

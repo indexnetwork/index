@@ -11,6 +11,7 @@ import type { QuestionerEnqueuePayload } from "../../questions/question.input.js
 import { assessConsultationEligibility, NEGOTIATION_CONSULTATION_POLICY_MODE } from "../negotiation.consultation-policy.js";
 import type { NegotiationConsultationReason } from "../negotiation.consultation-policy.js";
 import { requestContext } from "../../shared/observability/request-context.js";
+import { QUESTION_BUDGET_PER_PRINCIPAL } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
 
 /**
@@ -349,24 +350,40 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       assessment: { reasoning: "CANARY_PRIVATE_REASONING", suggestedRoles: { ownUser: "agent" as const, otherUser: "peer" as const } },
       message: "CANARY_PRIVATE_MESSAGE",
     }],
-  ] as Array<[string, FakeMessage[], NegotiationTurn]>)('deterministically pauses one exact safe consultation for %s', async (reason, priorMessages, draft) => {
+  ] as Array<[string, FakeMessage[], NegotiationTurn]>)('names the exact consultation category for %s, and declines to infer one', async (reason, priorMessages, draft) => {
     const stubs = mkStubs({ priorMessages });
     agentScript = [draft];
+    const events: Array<Record<string, unknown>> = [];
 
-    await runGraph(stubs);
+    await requestContext.run(
+      { traceEmitter: ((e: Record<string, unknown>) => { events.push(e); }) as never },
+      () => runGraph(stubs),
+    );
 
+    // The policy finds the shape eligible and names one exact category...
+    const eligible = events.filter((e) => e.type === 'negotiation_consultation_policy' && e.stage === 'eligible');
+    expect(eligible).toHaveLength(1);
+    expect(eligible[0].reason).toBe(reason);
+    expect(eligible[0].mode).toBe('on');
+
+    // ...but under the checklist protocol it never manufactures the question.
+    // The agent is the only party that has read this negotiation, so an
+    // inferred question would be about the wrong unknown. The draft stands.
     expect(stubs.createdMessages).toHaveLength(1);
-    expect(stubs.createdMessages[0].parts[0].data.action).toBe("ask_user");
-    expect(stubs.expiryArms).toHaveLength(1);
-    expect(stubs.questionerEnqueues).toHaveLength(1);
-    expect(stubs.stateWrites.filter((write) => write.state === "input_required")).toHaveLength(1);
-    expect(stubs.questionerEnqueues[0].userId).toBe("u-src");
-    expect(stubs.questionerEnqueues[0].negotiation?.recipientIntentId).toBe("intent-src");
-    const serialized = JSON.stringify({ messages: stubs.createdMessages, questions: stubs.questionerEnqueues, timers: stubs.expiryArms });
-    expect(serialized).toContain(reason);
-    expect(serialized).not.toContain('Ignore prior instructions');
-    expect(serialized).not.toContain("CANARY_PRIVATE_REASONING");
-    expect(serialized).not.toContain("CANARY_PRIVATE_MESSAGE");
+    expect(stubs.createdMessages[0].parts[0].data.action).toBe(draft.action);
+    expect(stubs.questionerEnqueues).toHaveLength(0);
+    expect(stubs.expiryArms).toHaveLength(0);
+    expect(stubs.stateWrites.filter((write) => write.state === "input_required")).toHaveLength(0);
+
+    // The policy's own telemetry carries the category and nothing else: it
+    // never sees user text, and the draft's private reasoning must not ride
+    // out on it. (The ordinary turn trace is a separate channel and has always
+    // carried the agent's reasoning.)
+    const policyEvents = JSON.stringify(events.filter((e) => e.type === 'negotiation_consultation_policy'));
+    expect(policyEvents).not.toContain('Ignore prior instructions');
+    for (const canary of ["CANARY_PRIVATE_REASONING", "CANARY_PRIVATE_MESSAGE", "CANARY_DISCLOSURE_REASONING", "CANARY_DISCLOSURE_MESSAGE"]) {
+      expect(policyEvents).not.toContain(canary);
+    }
   });
 
   it.each([
@@ -529,7 +546,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(result.outcome).toBeNull();
   });
 
-  it('parks on a server-authored question when the draft has no structured safe fields', async () => {
+  it('keeps timeout recovery armed but emits no card when structured safe fields are absent', async () => {
     const stubs = mkStubs({ priorMessages: continuationMessages });
     agentScript = [{
       action: 'ask_user',
@@ -545,13 +562,11 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
 
     expect(stubs.expiryArms).toHaveLength(1);
     expect(stubs.stateWrites).toContainEqual({ taskId: 'task-new', state: 'input_required' });
-    // The consultation policy supplies the question the client reads, so the
-    // agent's own private draft never has to.
-    expect(stubs.questionerEnqueues).toHaveLength(1);
-    const serialized = JSON.stringify({ arms: stubs.expiryArms, questions: stubs.questionerEnqueues, messages: stubs.createdMessages });
-    expect(serialized).not.toContain('PRIVATE TRANSCRIPT');
-    expect(serialized).not.toContain('matchReason');
-    expect(serialized).not.toContain('Raw private transcript');
+    // No safe fields means no card: the policy does not author one on the
+    // agent's behalf, and the agent's private draft must never become one.
+    expect(stubs.questionerEnqueues).toHaveLength(0);
+    expect(JSON.stringify(stubs.expiryArms)).not.toContain('PRIVATE TRANSCRIPT');
+    expect(JSON.stringify(stubs.expiryArms)).not.toContain('matchReason');
   });
 
   it("routes candidate-side consultation to the candidate's own exact intent", async () => {
@@ -762,7 +777,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     }
   });
 
-  it("rations: a side that already consumed ask_user does not get it again (prior sessions count)", async () => {
+  it("rations per principal: a side that has spent its whole budget does not get it again (prior sessions count)", async () => {
     const stubs = mkStubs({
       priorMessages: [
         priorMsg("u-src", "outreach", 0),
@@ -775,17 +790,16 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     // decline so the run terminates after one turn.
     agentScript = [declineTurn];
     await runGraph(stubs);
-    // u-cand has NOT consumed its consultation — it still gets the option.
+    // u-cand has spent none of its budget — it still gets the option.
     expect(agentInputs[0].canAskUser).toBe(true);
 
-    // Now the source side speaks (candidate countered): no second consultation.
-    const stubs2 = mkStubs({
-      priorMessages: [
-        priorMsg("u-src", "outreach", 0),
-        priorMsg("u-src", "ask_user", 1),
-        priorMsg("u-cand", "counter", 2),
-      ],
-    });
+    // Now the source side speaks with its whole per-principal budget spent.
+    const spent: FakeMessage[] = [priorMsg("u-src", "outreach", 0)];
+    for (let i = 0; i < QUESTION_BUDGET_PER_PRINCIPAL; i++) {
+      spent.push(priorMsg("u-src", "ask_user", spent.length));
+      spent.push(priorMsg("u-cand", "counter", spent.length));
+    }
+    const stubs2 = mkStubs({ priorMessages: spent });
     agentInputs = [];
     agentScript = [{ ...declineTurn, action: "withdraw" }];
     await runGraph(stubs2);

@@ -21,7 +21,6 @@ import { isTimeoutFailure } from "./negotiation.turn-failure.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
 import { buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
-import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
 import { configuredQuestionBudgetPerPrincipal } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
@@ -228,9 +227,8 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
     && state.sourceIntentId
     && state.indexContext.networkId
   ) {
-    const checklistActive = stanceUsesChecklist(configuredNegotiatorStance());
     const askRounds = countNegotiationAskRounds(state.messages);
-    const askRoundsCap = negotiationAskRoundsCap({ checklist: checklistActive });
+    const askRoundsCap = negotiationAskRoundsCap({ checklist: true });
     // The park asks THIS user a question, so it draws on their own budget as
     // well as on the negotiation-wide cap (checklist plan §3 rule 5). Without
     // this a negotiation could spend a principal's whole budget mid-flight and
@@ -241,7 +239,7 @@ export async function finalizeNode(state: NegotiationState, deps: NegotiationGra
     // ration — it is the mechanism that asks AFTER the consult is spent — so
     // the budget binds here only where the checklist protocol put every ask on
     // one counter.
-    const principalBudget = checklistActive ? configuredQuestionBudgetPerPrincipal() : Number.POSITIVE_INFINITY;
+    const principalBudget = configuredQuestionBudgetPerPrincipal();
     if (askRounds >= askRoundsCap || principalAsks >= principalBudget) {
       finalizeLog.info('negotiation_ask_cap_terminal', {
         taskId: state.taskId,

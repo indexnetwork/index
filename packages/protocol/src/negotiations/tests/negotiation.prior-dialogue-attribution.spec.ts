@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import { buildSeededAttribution, combineAttributedDialogue, renderAttributedPriorDialogue, attributedDialogueIsEmpty, type AttributedPriorDialogue, type TaskAttribution } from "../negotiation.attribution.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState, type NegotiationTurn } from "../negotiation.state.js";
 import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * IND-569 — label prior-dialogue context per opportunity in negotiator prompts.
@@ -37,6 +38,11 @@ function dataMessage(id: string, senderId: string, t: NegotiationTurn, taskId: s
     taskId,
   };
 }
+
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
 
 describe("IND-569 buildSeededAttribution", () => {
   it("groups prior turns by opportunity, isolates unattributed, keeps same-opportunity turns current", async () => {

@@ -240,7 +240,7 @@ export {
 export { POOL_RERUN_DEBOUNCE_MS } from "./opportunities/opportunity.module.js";
 
 // Discovery env accessors (IND-XXX)
-export { discoveryEvaluatorMinScore } from "./opportunities/opportunity.module.js";
+export { DISCOVERY_EVALUATOR_MIN_SCORE } from "./opportunities/opportunity.module.js";
 export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from "./opportunities/opportunity.module.js";
 export type { PoolAdjustment, PoolAdjustmentSignal } from "./opportunities/opportunity.module.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./opportunities/opportunity.module.js";

@@ -7,6 +7,7 @@ import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { assessDeclineAdmissibility, type ChecklistDraftItem, type ChecklistItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The copy loop, and the two rules that let it happen.
@@ -208,6 +209,11 @@ function hasIdenticalMessagePair(stubs: ReturnType<typeof mkStubs>): boolean {
 let agentInputs: NegotiationAgentInput[] = [];
 let agentScript: NegotiationTurn[] = [];
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("the copy loop at the turn seam", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
@@ -223,7 +229,7 @@ describe("the copy loop at the turn seam", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE", "NEGOTIATOR_STANCE"]) {
+    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE"]) {
       originals[key] = process.env[key];
     }
   });
@@ -241,7 +247,6 @@ describe("the copy loop at the turn seam", () => {
     process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATOR_STANCE = "skeptic";
   });
 
   afterEach(() => {
@@ -396,7 +401,7 @@ describe("the verdict law at the turn seam", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE", "NEGOTIATOR_STANCE"]) {
+    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE"]) {
       originals[key] = process.env[key];
     }
   });
@@ -413,7 +418,6 @@ describe("the verdict law at the turn seam", () => {
     process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATOR_STANCE = "skeptic";
   });
 
   afterEach(() => {
@@ -474,18 +478,6 @@ describe("the verdict law at the turn seam", () => {
     expect(stubs.opportunityStatuses.at(-1)).toBe("rejected");
   }, 10_000);
 
-  it("leaves `advocate` untouched — no checklist, no law", async () => {
-    process.env.NEGOTIATOR_STANCE = "advocate";
-    const stubs = mkStubs();
-    agentScript = [
-      said("outreach", OPENING),
-      said("decline", "not a fit"),
-    ];
-    await runGraph(stubs);
-
-    expect(persistedActions(stubs)).toEqual(["outreach", "decline"]);
-    expect(stubs.opportunityStatuses.at(-1)).toBe("rejected");
-  });
 });
 
 /**
@@ -533,15 +525,6 @@ const agentBaseInput: NegotiationAgentInput = {
 };
 
 describe("the prompt gives the corner its missing move", () => {
-  const stanceKey = "NEGOTIATOR_STANCE";
-  let originalStance: string | undefined;
-
-  beforeAll(() => { originalStance = process.env[stanceKey]; });
-  afterAll(() => {
-    if (originalStance === undefined) delete process.env[stanceKey];
-    else process.env[stanceKey] = originalStance;
-  });
-
   async function promptFor(overrides: Partial<NegotiationAgentInput> = {}) {
     const agent = new CapturingNegotiator([counterOutput]);
     await agent.invoke({ ...agentBaseInput, ...overrides });
@@ -549,7 +532,6 @@ describe("the prompt gives the corner its missing move", () => {
   }
 
   it("tells an unreachable principal's agent to state the limit of the record instead of echoing", async () => {
-    process.env[stanceKey] = "skeptic";
     const { system } = await promptFor({
       ownUser: { ...agentBaseInput.ownUser, principalUnreachable: true },
     });
@@ -563,14 +545,12 @@ describe("the prompt gives the corner its missing move", () => {
   });
 
   it("never renders the rule for a reachable principal", async () => {
-    process.env[stanceKey] = "skeptic";
     const { system } = await promptFor({ canAskUser: false });
     expect(system).not.toContain("YOU CANNOT CONSULT");
     expect(system).not.toContain("WHEN THE COUNTERPARTY ASKS YOU SOMETHING ONLY");
   });
 
   it("quotes the repeated text back on a re-issue, and offers moves rather than a verdict", async () => {
-    process.env[stanceKey] = "skeptic";
     const { user } = await promptFor({ antiEcho: { repeatedMessage: THE_QUESTION } });
     expect(user).toContain("REPEATED A MESSAGE ALREADY IN THIS NEGOTIATION, WORD FOR WORD");
     expect(user).toContain(THE_QUESTION);
@@ -581,7 +561,6 @@ describe("the prompt gives the corner its missing move", () => {
   });
 
   it("says nothing about echoing on an ordinary turn", async () => {
-    process.env[stanceKey] = "skeptic";
     const { user } = await promptFor();
     expect(user).not.toContain("WORD FOR WORD");
   });

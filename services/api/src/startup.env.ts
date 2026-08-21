@@ -43,14 +43,6 @@ const optionalInt = z.union([z.literal(''), z.string().regex(/^\d+$/)]).optional
 const optionalPositiveInt = z.union([z.literal(''), z.string().regex(/^[1-9]\d*$/)]).optional();
 const optionalBoolean = z.union([z.literal(''), z.enum(['true', 'false'])]).optional();
 const optionalOne = z.union([z.literal(''), z.literal('1')]).optional();
-const decimalValue = /^[+]?(?:\d+(?:\.\d*)?|\.\d+)$/;
-const optionalDecimalInRange = (max: number) => z.string().refine((raw) => {
-  const normalized = raw.trim();
-  if (normalized === '') return true;
-  if (!decimalValue.test(normalized)) return false;
-  const value = Number(normalized);
-  return Number.isFinite(value) && value >= 0 && value <= max;
-}, `expected a finite decimal between 0 and ${max} (inclusive)`).optional();
 
 const envSchema = z.object({
   // 1. Core
@@ -108,14 +100,9 @@ const envSchema = z.object({
   INTRODUCER_DISCOVERY_ENABLED: optionalBoolean,
   DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
   DISCOVERY_ALLOWED_TYPES: z.string().optional(),
-  DISCOVERY_MIN_SIMILARITY: optionalDecimalInRange(1),
-  DISCOVERY_EVALUATOR_MIN_SCORE: optionalDecimalInRange(100),
   // Parsed with warn-and-fallback in the protocol accessor (discoveryProfileSource());
   // a typo must never disable discovery, so startup validation stays permissive.
   DISCOVERY_PROFILE_SOURCE: z.string().optional(),
-  FAST_SIGNAL_INTAKE: optionalBoolean,
-  SIGNAL_INTAKE_MAX_QUESTIONS: z.string().optional(),
-  NEGOTIATOR_STANCE: z.union([z.literal(''), z.enum(['advocate', 'evaluator', 'skeptic'])]).optional(),
 
   // Test harness (repo-root .env.test only)
   TEST_DATABASE_SAFE: optionalOne,

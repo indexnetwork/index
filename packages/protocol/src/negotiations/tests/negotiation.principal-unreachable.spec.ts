@@ -7,6 +7,7 @@ import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { assessAskAdmissibility, renderChecklistSection, type ChecklistDraftItem, type ChecklistItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * An unreachable principal is never consulted.
@@ -189,6 +190,11 @@ function persistedActions(stubs: ReturnType<typeof mkStubs>) {
 let agentInputs: NegotiationAgentInput[] = [];
 let agentScript: NegotiationTurn[] = [];
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("an unreachable principal is never consulted", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
@@ -204,7 +210,7 @@ describe("an unreachable principal is never consulted", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE", "NEGOTIATOR_STANCE"]) {
+    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE"]) {
       originals[key] = process.env[key];
     }
   });
@@ -222,7 +228,6 @@ describe("an unreachable principal is never consulted", () => {
     process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
     process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATOR_STANCE = "skeptic";
   });
 
   afterEach(() => {
@@ -401,15 +406,6 @@ const counterOutput = {
 };
 
 describe("IndexNegotiator — the honest rule replaces the ask-user block", () => {
-  const stanceKey = "NEGOTIATOR_STANCE";
-  let originalStance: string | undefined;
-
-  beforeAll(() => { originalStance = process.env[stanceKey]; });
-  afterAll(() => {
-    if (originalStance === undefined) delete process.env[stanceKey];
-    else process.env[stanceKey] = originalStance;
-  });
-
   async function unreachablePrompt(overrides: Partial<NegotiationAgentInput> = {}): Promise<string> {
     const agent = new CapturingNegotiator([counterOutput]);
     await agent.invoke({
@@ -444,7 +440,6 @@ describe("IndexNegotiator — the honest rule replaces the ask-user block", () =
   });
 
   it("never leaks why, in any wording a counterparty's user could read", async () => {
-    process.env[stanceKey] = "skeptic";
     const prompt = (await unreachablePrompt({ checklist: [] })).toLowerCase();
     for (const leak of ["synthetic", "seed persona", "test account", "fake", "not a real user", "simulated"]) {
       expect(prompt).not.toContain(leak);
@@ -452,7 +447,6 @@ describe("IndexNegotiator — the honest rule replaces the ask-user block", () =
   });
 
   it("carries the verdict law under the checklist protocol, so an unknown never ends the negotiation", async () => {
-    process.env[stanceKey] = "skeptic";
     const prompt = await unreachablePrompt();
     expect(prompt).toContain("carried as an open unknown");
     expect(prompt).toContain("An unknown is not a conflict");

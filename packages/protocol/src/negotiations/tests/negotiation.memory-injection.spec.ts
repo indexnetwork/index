@@ -4,6 +4,7 @@ import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryQuery } from "../negotiation.memory.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * IND-407 (P5.3) — graph-level memory injection wiring.
@@ -70,6 +71,11 @@ const invokeInput = (extra?: Record<string, unknown>) => ({
   maxTurns: 2,
   ...extra,
 });
+
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
 
 describe("negotiation graph — memory injection (IND-407)", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;

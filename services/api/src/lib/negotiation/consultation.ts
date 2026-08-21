@@ -207,8 +207,6 @@ export function assessExternalConsultationEligibility(
   const supportedTrigger = lastAction === 'counter' || lastAction === 'question';
   // The acting principal's question budget for this negotiation (checklist
   // plan §3 rule 5), counted off the same message record the graph reads.
-  // Under `advocate` the budget is 1, which is exactly the one-consultation
-  // ration this used to test for.
   const consultationsSpent = input.messages.filter((message) =>
     message.senderId === `agent:${input.userId}` && message.turn.action === 'ask_user').length;
   const consultationBudgetSpent = consultationsSpent >= configuredQuestionBudgetPerPrincipal();

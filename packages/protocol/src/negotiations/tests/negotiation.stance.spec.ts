@@ -1,34 +1,22 @@
-import { describe, it, expect, afterEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import { NEGOTIATOR_STANCES, DEFAULT_NEGOTIATOR_STANCE, configuredNegotiatorStance, stanceAppliesValueBar, stanceQueryMatchIsNecessaryNotSufficient, stanceResolvesDeadlockByStalemate, stanceVerifiesResponderFit, stanceJobFraming, stanceActionRules, stanceQuerySatisfiedRule, type NegotiatorStance } from "../negotiation.stance.contracts.js";
-import { renderBargainingShiftSection } from "../negotiation.deadlock.js";
+import { JOB_FRAMING, negotiatorActionRules, querySatisfiedRule } from "../negotiation.stance.contracts.js";
+import { renderStalemateShiftSection } from "../negotiation.deadlock.js";
 import { PROMPT_MATRIX } from "./fixtures/negotiator-prompt-matrix.js";
-import GOLDEN from "./fixtures/negotiator-advocate-prompts.golden.json" with { type: "json" };
 
 /**
- * NEGOTIATOR_STANCE (IND-611).
+ * The negotiator's drafting stance (IND-611).
  *
- * The hard invariant this file exists to defend: **`advocate` is byte-identical
- * to the pre-stance build**. `negotiator-advocate-prompts.golden.json` was
- * captured by `scripts/capture-negotiator-prompts.ts` run against the source at
- * `6175f8d13` — i.e. the prompt as it already shipped, including the IND-570
- * unconditional withdraw rule. The golden is a real external pin, not a
- * self-comparison: if any stance fragment leaks into the default rendering, the
- * matrix comparison below fails.
+ * There is one stance now — the former `skeptic` — so this file no longer pins
+ * differences between stances. What it pins is the law that stance renders:
+ * the checklist protocol, the basis discipline, the ask rule, the verdict rule,
+ * the responding seat's scoring duty, and the stalemate deadlock resolution.
  *
- * Only the two `canAskUser` entries have been recaptured since: `ASK_USER_RULE`
- * was rewritten to have the negotiator author its own consultation question.
- * That rewrite is deliberately invisible without the grant — every other entry
- * in the golden is still the `6175f8d13` capture, byte for byte, which is what
- * makes the ungranted prompt's byte-identity a checked claim rather than an
- * assertion.
- *
- * The rest pins the additive, gated fragments per stance, and that the seat
- * invariants pinned by `negotiation.initiator-withdraw-rule.spec.ts` and
- * `negotiation.seat-rules.spec.ts` continue to hold under EVERY stance —
- * fragments render into all seats and both protocol versions, so they must
- * never introduce a quoted `"withdraw"` into a seat that has no withdraw, and
- * must never name `ask_user` where the grant is absent.
+ * The load-bearing invariants are unchanged. Fragments render into every seat
+ * and both protocol versions, so they must never introduce a quoted
+ * `"withdraw"` into a seat that has no withdraw, and must never name `ask_user`
+ * where the grant is absent. The seat-blind/responder-only split is checked by
+ * subtraction in `responderPortion`, so it stays honest if the wording moves.
  *
  * Uses the same provider-free `callModel` seam as the other prompt specs.
  */
@@ -55,182 +43,48 @@ function validTurn(action: string) {
   };
 }
 
-const golden = GOLDEN as unknown as Record<string, string>;
-
-/** Render the whole prompt matrix under one stance value. */
-async function renderMatrix(stance: string | undefined): Promise<Record<string, string>> {
-  const original = process.env.NEGOTIATOR_STANCE;
-  if (stance === undefined) delete process.env.NEGOTIATOR_STANCE;
-  else process.env.NEGOTIATOR_STANCE = stance;
-  try {
-    const out: Record<string, string> = {};
-    for (const entry of PROMPT_MATRIX) {
-      const agent = new CapturingNegotiator(validTurn(entry.action));
-      await agent.invoke(entry.input as NegotiationAgentInput);
-      out[entry.id] = agent.prompt;
-    }
-    return out;
-  } finally {
-    if (original === undefined) delete process.env.NEGOTIATOR_STANCE;
-    else process.env.NEGOTIATOR_STANCE = original;
+/** Render the whole prompt matrix. */
+async function renderMatrix(): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const entry of PROMPT_MATRIX) {
+    const agent = new CapturingNegotiator(validTurn(entry.action));
+    await agent.invoke(entry.input as NegotiationAgentInput);
+    out[entry.id] = agent.prompt;
   }
+  return out;
 }
 
-/** Render one ad-hoc input under a stance — for shapes outside the fixed matrix. */
-async function renderPrompt(
-  input: NegotiationAgentInput,
-  stance: string,
-  action: string,
-): Promise<string> {
-  const original = process.env.NEGOTIATOR_STANCE;
-  process.env.NEGOTIATOR_STANCE = stance;
-  try {
-    const agent = new CapturingNegotiator(validTurn(action));
-    await agent.invoke(input);
-    return agent.prompt;
-  } finally {
-    if (original === undefined) delete process.env.NEGOTIATOR_STANCE;
-    else process.env.NEGOTIATOR_STANCE = original;
-  }
+/** Render one ad-hoc input — for shapes outside the fixed matrix. */
+async function renderPrompt(input: NegotiationAgentInput, action: string): Promise<string> {
+  const agent = new CapturingNegotiator(validTurn(action));
+  await agent.invoke(input);
+  return agent.prompt;
 }
 
-const ORIGINAL_STANCE = process.env.NEGOTIATOR_STANCE;
-afterEach(() => {
-  if (ORIGINAL_STANCE === undefined) delete process.env.NEGOTIATOR_STANCE;
-  else process.env.NEGOTIATOR_STANCE = ORIGINAL_STANCE;
-});
-
-describe("configuredNegotiatorStance", () => {
-  it("defaults to advocate when unset", () => {
-    delete process.env.NEGOTIATOR_STANCE;
-    expect(configuredNegotiatorStance()).toBe("advocate");
-    expect(DEFAULT_NEGOTIATOR_STANCE).toBe("advocate");
-  });
-
-  it("resolves every declared stance verbatim", () => {
-    for (const stance of NEGOTIATOR_STANCES) {
-      process.env.NEGOTIATOR_STANCE = stance;
-      expect(configuredNegotiatorStance()).toBe(stance);
-    }
-  });
-
-  it("falls back to advocate on unrecognized, empty, or wrong-cased values", () => {
-    for (const raw of ["", "SKEPTIC", "Evaluator", "cynic", "off", "true", " skeptic "]) {
-      process.env.NEGOTIATOR_STANCE = raw;
-      expect(configuredNegotiatorStance()).toBe("advocate");
-    }
-  });
-
-  it("exposes the documented capability matrix", () => {
-    const matrix: Record<NegotiatorStance, [boolean, boolean, boolean, boolean]> = {
-      // [value bar, necessary-not-sufficient query, responder verification, stalemate deadlock]
-      advocate: [false, false, false, false],
-      evaluator: [true, true, true, false],
-      skeptic: [true, true, true, true],
-    };
-    for (const stance of NEGOTIATOR_STANCES) {
-      expect([
-        stanceAppliesValueBar(stance),
-        stanceQueryMatchIsNecessaryNotSufficient(stance),
-        stanceVerifiesResponderFit(stance),
-        stanceResolvesDeadlockByStalemate(stance),
-      ]).toEqual(matrix[stance]);
-    }
-  });
-});
-
-describe("NEGOTIATOR_STANCE=advocate — byte-identical prompt invariant", () => {
-  it("the golden fixture covers the whole prompt matrix", () => {
-    expect(Object.keys(golden).sort()).toEqual(PROMPT_MATRIX.map((e) => e.id).sort());
-  });
-
-  it("renders byte-identically to the pre-stance build with the var unset", async () => {
-    const rendered = await renderMatrix(undefined);
-    for (const entry of PROMPT_MATRIX) {
-      expect(rendered[entry.id]).toBe(golden[entry.id]);
-    }
-  });
-
-  it("renders byte-identically with NEGOTIATOR_STANCE=advocate set explicitly", async () => {
-    const rendered = await renderMatrix("advocate");
-    for (const entry of PROMPT_MATRIX) {
-      expect(rendered[entry.id]).toBe(golden[entry.id]);
-    }
-  });
-
-  it("renders byte-identically for an unrecognized value (fail-safe default)", async () => {
-    const rendered = await renderMatrix("nonsense-stance");
-    for (const entry of PROMPT_MATRIX) {
-      expect(rendered[entry.id]).toBe(golden[entry.id]);
-    }
-  });
-
-  it("contributes no fragments at all under advocate", () => {
-    expect(stanceActionRules("advocate", "initiator")).toBe("");
-    expect(stanceActionRules("advocate", "counterparty")).toBe("");
-    expect(stanceJobFraming("advocate")).toBe(
-      "Argue their case honestly — acknowledge weaknesses, but advocate for genuine fit.",
-    );
-    expect(stanceQuerySatisfiedRule("advocate", "Bob", "Alice")).toBe(
-      "- If Bob DOES satisfy the query: PROPOSE or ACCEPT the connection and evaluate fit normally using intents and profile data.",
-    );
-  });
-});
-
-describe("evaluator / skeptic — additive, gated fragments", () => {
-  it("evaluator changes every prompt in the matrix relative to advocate", async () => {
-    const rendered = await renderMatrix("evaluator");
-    for (const entry of PROMPT_MATRIX) {
-      expect(rendered[entry.id]).not.toBe(golden[entry.id]);
-    }
-  });
-
-  it("skeptic changes every prompt in the matrix relative to advocate", async () => {
-    const rendered = await renderMatrix("skeptic");
-    for (const entry of PROMPT_MATRIX) {
-      expect(rendered[entry.id]).not.toBe(golden[entry.id]);
-    }
-  });
-
-  it("evaluator asks for assessment before advocacy and adds the opportunity-cost bar", async () => {
-    const rendered = await renderMatrix("evaluator");
-    const prompt = rendered["v2-initiator"];
+describe("job framing and the opportunity-cost bar", () => {
+  it("asks for assessment before advocacy and carries the not-worth-making prior", async () => {
+    const prompt = (await renderMatrix())["v2-initiator"];
     expect(prompt).toContain("Assess before you advocate");
     expect(prompt).toContain("Advocate only for a match that survives that judgment");
-    expect(prompt).toContain("OPPORTUNITY COST");
-    expect(prompt).toContain("Alice's attention is finite");
-    // The negative-only bar is no longer the last word on declining.
-    expect(prompt).toContain('The bar is "worth that spend", not "does no harm"');
-    // evaluator does NOT carry the skeptic prior.
-    expect(prompt).not.toContain("most candidate matches are NOT worth making");
-  });
-
-  it("skeptic carries the evaluator framing PLUS the not-worth-making prior", async () => {
-    const rendered = await renderMatrix("skeptic");
-    const prompt = rendered["v2-initiator"];
-    expect(prompt).toContain("Assess before you advocate");
     expect(prompt).toContain("most candidate matches are NOT worth making");
     expect(prompt).toContain("OPPORTUNITY COST");
+    expect(prompt).toContain("Alice's attention is finite");
+    // The negative-only bar is not the last word on declining.
+    expect(prompt).toContain('The bar is "worth that spend", not "does no harm"');
   });
 
-  it("evaluator prefers consulting the client over resolving intent uncertainty by assumption", async () => {
-    const rendered = await renderMatrix("evaluator");
+  it("leaves the {userName} placeholder for the caller's global replace", () => {
+    expect(JOB_FRAMING).toContain("{userName}");
+  });
+
+  it("prefers consulting the client over resolving intent uncertainty by assumption", async () => {
+    const rendered = await renderMatrix();
     for (const entry of PROMPT_MATRIX) {
       const prompt = rendered[entry.id];
       expect(prompt).toContain("CONSULT, DON'T ASSUME");
       expect(prompt).toContain("prefer consulting Alice over resolving that uncertainty by assumption");
-      // Guessing, conceding, and vibes-acceptance are all named as the failure mode.
       expect(prompt).toContain("deciding for them what only they can decide");
-      // evaluator does NOT carry the skeptic gate.
-      expect(prompt).not.toContain("a gate, not a preference");
-    }
-  });
-
-  it("skeptic sharpens the consult rule into a gate: unverified alignment is a reason NOT to proceed", async () => {
-    const rendered = await renderMatrix("skeptic");
-    for (const entry of PROMPT_MATRIX) {
-      const prompt = rendered[entry.id];
-      expect(prompt).toContain("CONSULT, DON'T ASSUME");
+      // Sharpened into a gate: an unverified assumption is a reason not to proceed.
       expect(prompt).toContain("a gate, not a preference");
       expect(prompt).toContain(
         "an UNVERIFIED assumption that the two sides' intents actually align is a reason NOT to proceed",
@@ -240,9 +94,8 @@ describe("evaluator / skeptic — additive, gated fragments", () => {
   });
 
   it("the consult rule stays conditional — no wording that fights the ask-rounds cap", () => {
-    for (const stance of ["evaluator", "skeptic"] as const)
     for (const seat of ["initiator", "counterparty"] as const) {
-      const rules = stanceActionRules(stance, seat);
+      const rules = negotiatorActionRules(seat);
       // Conditional on client-resolvable uncertainty, never an unconditional urge:
       // when the cap is reached the action is simply not offered, and the prompt
       // must not push against that.
@@ -253,28 +106,28 @@ describe("evaluator / skeptic — additive, gated fragments", () => {
     }
   });
 
-  it("query satisfaction becomes necessary-not-sufficient under evaluator and skeptic", async () => {
-    for (const stance of ["evaluator", "skeptic"]) {
-      const rendered = await renderMatrix(stance);
-      for (const id of ["v2-initiator-discovery-query", "v1-discovery-query"]) {
-        const prompt = rendered[id];
-        expect(prompt).toContain("PRECONDITION for continuing to evaluate, NOT a reason to connect");
-        expect(prompt).not.toContain("PROPOSE or ACCEPT the connection");
-        // The mismatch half of the query rule is untouched.
-        expect(prompt).toContain("does NOT satisfy the query: REJECT the match");
-      }
+  it("query satisfaction is necessary-not-sufficient", async () => {
+    const rendered = await renderMatrix();
+    for (const id of ["v2-initiator-discovery-query", "v1-discovery-query"]) {
+      const prompt = rendered[id];
+      expect(prompt).toContain("PRECONDITION for continuing to evaluate, NOT a reason to connect");
+      expect(prompt).not.toContain("PROPOSE or ACCEPT the connection");
+      // The mismatch half of the query rule is untouched.
+      expect(prompt).toContain("does NOT satisfy the query: REJECT the match");
     }
+    expect(querySatisfiedRule("Bob", "Alice")).toContain(
+      "satisfying the query is a PRECONDITION for continuing to evaluate",
+    );
   });
 
-  it("stance fragments never appear on a prompt that has no discovery query", async () => {
-    const rendered = await renderMatrix("skeptic");
+  it("the query rule never appears on a prompt that has no discovery query", async () => {
+    const rendered = await renderMatrix();
     expect(rendered["v2-initiator"]).not.toContain("PRECONDITION for continuing to evaluate");
   });
 });
 
 /**
- * The checklist protocol — the core of the assessing stances
- * (docs/plans/2026-08-19-checklist-negotiations.md).
+ * The checklist protocol (docs/plans/2026-08-19-checklist-negotiations.md).
  *
  * What it replaced and why the replacement is not a loss:
  *
@@ -301,23 +154,21 @@ const UNKNOWN_MARKER = "UNKNOWN IS A REAL SCORE, NOT A GAP TO PAPER OVER";
 const ASK_MARKER = "IS THE ORDINARY WAY TO RESOLVE AN UNKNOWN";
 const ANSWERHOOD_MARKER = "ONE DIMENSION PER QUESTION, WITH ITS ANSWERHOOD DECLARED FIRST";
 const VERDICT_MARKER = "THE VERDICT IS A FUNCTION OF THE CHECKLIST";
-const SKEPTIC_ASK_MARKER = "your prior makes ending the negotiation the cheap answer";
+const CHEAP_ANSWER_MARKER = "your prior makes ending the negotiation the cheap answer";
 
 describe("checklist protocol — the pre-registered screen", () => {
-  it("renders the whole protocol on EVERY prompt in the matrix under evaluator and skeptic", async () => {
-    for (const stance of ["evaluator", "skeptic"]) {
-      const rendered = await renderMatrix(stance);
-      for (const entry of PROMPT_MATRIX) {
-        const prompt = rendered[entry.id];
-        for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, UNKNOWN_MARKER, ASK_MARKER, ANSWERHOOD_MARKER, VERDICT_MARKER]) {
-          expect(prompt).toContain(marker);
-        }
+  it("renders the whole protocol on EVERY prompt in the matrix", async () => {
+    const rendered = await renderMatrix();
+    for (const entry of PROMPT_MATRIX) {
+      const prompt = rendered[entry.id];
+      for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, UNKNOWN_MARKER, ASK_MARKER, ANSWERHOOD_MARKER, VERDICT_MARKER]) {
+        expect(prompt).toContain(marker);
       }
     }
   });
 
   it("pre-registers 3–5 dimensions with mutual want, and freezes them", async () => {
-    const prompt = (await renderMatrix("skeptic"))["v2-initiator"];
+    const prompt = (await renderMatrix())["v2-initiator"];
     expect(prompt).toContain("explicit checklist of 3 to 5 dimensions");
     expect(prompt).toContain("On the FIRST turn you write it, from the two intents alone");
     expect(prompt).toContain("one dimension for MUTUAL WANT");
@@ -335,7 +186,7 @@ describe("checklist protocol — the pre-registered screen", () => {
   });
 
   it("binds scoring to the commitment record and carries the provenance rule into the basis", async () => {
-    const prompt = (await renderMatrix("skeptic"))["v2-counterparty"];
+    const prompt = (await renderMatrix())["v2-counterparty"];
     expect(prompt).toContain("scored ok or conflict from the commitment record alone");
     expect(prompt).toContain("their own intents, the premises they hold, and the answers they have given");
     // A profile is background, never a basis. The plan's commitment store is
@@ -361,9 +212,8 @@ describe("checklist protocol — the pre-registered screen", () => {
   });
 
   it("does not ban memory or prior dialogue — it re-scopes what they establish", () => {
-    for (const stance of ["evaluator", "skeptic"] as const)
     for (const seat of ["initiator", "counterparty"] as const) {
-      const rules = stanceActionRules(stance, seat);
+      const rules = negotiatorActionRules(seat);
       // Memory keeps its job: the rule changes what may SCORE a dimension, not
       // what gets injected (`renderNegotiatorMemorySection` is untouched), so
       // no wording may tell the negotiator to drop it.
@@ -377,7 +227,7 @@ describe("checklist protocol — the pre-registered screen", () => {
   });
 
   it("states the five-part ask rule and demands the answerhood map before the question", async () => {
-    const prompt = (await renderMatrix("evaluator"))["v2-initiator"];
+    const prompt = (await renderMatrix())["v2-initiator"];
     expect(prompt).toContain("ASKING Alice IS THE ORDINARY WAY TO RESOLVE AN UNKNOWN, not a last resort");
     expect(prompt).toContain("(1) the dimension is unknown");
     expect(prompt).toContain("(2) some plausible answer would change the verdict");
@@ -394,66 +244,46 @@ describe("checklist protocol — the pre-registered screen", () => {
   });
 
   it("makes the verdict a function of the checklist — unknowns never end a negotiation", async () => {
-    for (const stance of ["evaluator", "skeptic"]) {
-      const prompt = (await renderMatrix(stance))["v2-initiator"];
-      expect(prompt).toContain("conclude in favour of the match when every dimension is ok");
-      // The stopping rule: a spent budget with no conflict is a match.
-      expect(prompt).toContain("which is where a spent question budget leaves you");
-      // Elimination by aspects, with the commitment named.
-      expect(prompt).toContain("End the negotiation against the match when a dimension is in conflict");
-      expect(prompt).toContain("An unknown is not a reason to end anything");
-      // Matching means worth a first conversation, and nothing about terms.
-      expect(prompt).toContain('A MATCH MEANS "WORTH A FIRST CONVERSATION", NOTHING MORE');
-      expect(prompt).toContain("Deal terms, valuation, equity and logistics stay outside this dialogue");
-    }
+    const prompt = (await renderMatrix())["v2-initiator"];
+    expect(prompt).toContain("conclude in favour of the match when every dimension is ok");
+    // The stopping rule: a spent budget with no conflict is a match.
+    expect(prompt).toContain("which is where a spent question budget leaves you");
+    // Elimination by aspects, with the commitment named.
+    expect(prompt).toContain("End the negotiation against the match when a dimension is in conflict");
+    expect(prompt).toContain("An unknown is not a reason to end anything");
+    // Matching means worth a first conversation, and nothing about terms.
+    expect(prompt).toContain('A MATCH MEANS "WORTH A FIRST CONVERSATION", NOTHING MORE');
+    expect(prompt).toContain("Deal terms, valuation, equity and logistics stay outside this dialogue");
   });
 
-  it("skeptic sharpens the ask rule against its own prior — evaluator does not carry it", async () => {
-    const evaluator = await renderMatrix("evaluator");
-    const skeptic = await renderMatrix("skeptic");
+  it("sharpens the ask rule against the stance's own prior", async () => {
+    const rendered = await renderMatrix();
     for (const entry of PROMPT_MATRIX) {
-      expect(evaluator[entry.id]).not.toContain(SKEPTIC_ASK_MARKER);
-      expect(skeptic[entry.id]).toContain(SKEPTIC_ASK_MARKER);
+      expect(rendered[entry.id]).toContain(CHEAP_ANSWER_MARKER);
     }
-    // The sharpening exists because the skeptic's cheap answer is to walk: an
-    // unknown treated as grounds to end decides for the client just as much.
-    expect(skeptic["v2-initiator"]).toContain("decides for Alice just as much as a match closed on a guess");
-  });
-
-  it("never renders under advocate — on either seat", async () => {
-    for (const stance of [undefined, "advocate", "nonsense-stance"]) {
-      const rendered = await renderMatrix(stance);
-      for (const entry of PROMPT_MATRIX) {
-        for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, ASK_MARKER, VERDICT_MARKER, SKEPTIC_ASK_MARKER]) {
-          expect(rendered[entry.id]).not.toContain(marker);
-        }
-      }
-    }
-    for (const seat of ["initiator", "counterparty"] as const) {
-      expect(stanceActionRules("advocate", seat)).toBe("");
-    }
+    // The sharpening exists because the cheap answer is to walk: an unknown
+    // treated as grounds to end decides for the client just as much.
+    expect(rendered["v2-initiator"]).toContain("decides for Alice just as much as a match closed on a guess");
   });
 
   it("lives in the seat-blind prefix, not in the responder-only tail", () => {
-    for (const stance of ["evaluator", "skeptic"] as const) {
-      // Both seats hold every part of the protocol...
-      for (const seat of ["initiator", "counterparty"] as const) {
-        const rules = stanceActionRules(stance, seat);
-        for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, ASK_MARKER, VERDICT_MARKER]) {
-          expect(rules).toContain(marker);
-        }
-      }
-      // ...so none of it is in the responder-only portion, and the strict
-      // prefix invariant (asserted inside `responderPortion`) still holds.
-      const portion = responderPortion(stance);
+    // Both seats hold every part of the protocol...
+    for (const seat of ["initiator", "counterparty"] as const) {
+      const rules = negotiatorActionRules(seat);
       for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, ASK_MARKER, VERDICT_MARKER]) {
-        expect(portion).not.toContain(marker);
+        expect(rules).toContain(marker);
       }
+    }
+    // ...so none of it is in the responder-only portion, and the strict
+    // prefix invariant (asserted inside `responderPortion`) still holds.
+    const portion = responderPortion();
+    for (const marker of [CHECKLIST_MARKER, BASIS_MARKER, PROVENANCE_MARKER, ASK_MARKER, VERDICT_MARKER]) {
+      expect(portion).not.toContain(marker);
     }
   });
 
   it("reads in the order it is used: checklist, basis, ask, verdict, then the responder rules", () => {
-    const rules = stanceActionRules("skeptic", "counterparty");
+    const rules = negotiatorActionRules("counterparty");
     const at = (marker: string) => rules.indexOf(marker);
     expect(at(CHECKLIST_MARKER)).toBeGreaterThan(at("CONSULT, DON'T ASSUME"));
     expect(at(BASIS_MARKER)).toBeGreaterThan(at(CHECKLIST_MARKER));
@@ -464,9 +294,9 @@ describe("checklist protocol — the pre-registered screen", () => {
   });
 
   it("names no action and no mechanism", () => {
-    for (const stance of ["evaluator", "skeptic"] as const)
     for (const seat of ["initiator", "counterparty"] as const) {
-      const protocol = stanceActionRules(stance, seat).slice(stanceActionRules(stance, seat).indexOf(CHECKLIST_MARKER));
+      const rules = negotiatorActionRules(seat);
+      const protocol = rules.slice(rules.indexOf(CHECKLIST_MARKER));
       expect(protocol).not.toContain("ask_user");
       for (const token of ['"withdraw"', '"accept"', '"counter"', '"decline"', '"question"', '"outreach"']) {
         expect(protocol).not.toContain(token);
@@ -494,16 +324,16 @@ describe("checklist protocol — the pre-registered screen", () => {
  */
 const OPENING_MARKER = "THE OPENING IS ADVOCACY, NOT A COMMITMENT";
 const SPEND_MARKER = "WHAT AGREEING SPENDS";
-const SKEPTIC_RESPONDER_MARKER = "closing while a pivotal dimension is still unknown is the exception rather than the default";
+const RESPONDER_PATIENCE_MARKER = "closing while a pivotal dimension is still unknown is the exception rather than the default";
 
 /**
- * The responder-only tail of a stance's action rules: what the responding seat
- * gets and the initiating seat does not. Derived by subtraction rather than by
+ * The responder-only tail of the action rules: what the responding seat gets
+ * and the initiating seat does not. Derived by subtraction rather than by
  * re-quoting the fragment, so it stays honest if the wording moves.
  */
-function responderPortion(stance: NegotiatorStance): string {
-  const initiator = stanceActionRules(stance, "initiator");
-  const counterparty = stanceActionRules(stance, "counterparty");
+function responderPortion(): string {
+  const initiator = negotiatorActionRules("initiator");
+  const counterparty = negotiatorActionRules("counterparty");
   expect(counterparty.startsWith(initiator)).toBe(true);
   return counterparty.slice(initiator.length);
 }
@@ -520,100 +350,68 @@ describe("responder scoring — the opening is a claim, not a commitment", () =>
     expect(INITIATOR_IDS).toContain("v2-initiator");
   });
 
-  it("renders on responder turns under evaluator and skeptic", async () => {
-    for (const stance of ["evaluator", "skeptic"]) {
-      const rendered = await renderMatrix(stance);
-      for (const id of RESPONDER_IDS) {
-        const prompt = rendered[id];
-        expect(prompt).toContain(OPENING_MARKER);
-        expect(prompt).toContain("is that agent's CLAIM about them");
-        // The opening cannot be a basis, least of all for mutual want.
-        expect(prompt).toContain("it cannot be the basis for any dimension, least of all mutual want");
-        expect(prompt).toContain("Score that one from Alice's OWN intent");
-        expect(prompt).toContain("Restating the opening's fit claim back as your basis is agreement, not scoring");
-        expect(prompt).toContain(SPEND_MARKER);
-        // The opportunity-cost currency restated in the terms this seat spends
-        // it, and pointed at the checklist as what the answer comes from.
-        expect(prompt).toContain("agreeing puts a connection in front of Alice for approval");
-        expect(prompt).toContain('"Would Alice be open to connecting?" is a bar almost anything clears');
-        expect(prompt).toContain("it is not the bar — the checklist is");
-        // The two-sided handshake: agree when nothing conflicts AND nothing
-        // pivotal is open. The live failure this pins is a responder that
-        // accepted on its first turn every time — closing the negotiation
-        // before the initiator ever reached a turn on which it could ask.
-        expect(prompt).toContain("your checklist holds no conflict AND nothing pivotal is still unknown, close it");
-        expect(prompt).toContain("is the same guess the initiator would be making, taken from the other chair");
-      }
+  it("renders on responder turns", async () => {
+    const rendered = await renderMatrix();
+    for (const id of RESPONDER_IDS) {
+      const prompt = rendered[id];
+      expect(prompt).toContain(OPENING_MARKER);
+      expect(prompt).toContain("is that agent's CLAIM about them");
+      // The opening cannot be a basis, least of all for mutual want.
+      expect(prompt).toContain("it cannot be the basis for any dimension, least of all mutual want");
+      expect(prompt).toContain("Score that one from Alice's OWN intent");
+      expect(prompt).toContain("Restating the opening's fit claim back as your basis is agreement, not scoring");
+      expect(prompt).toContain(SPEND_MARKER);
+      // The opportunity-cost currency restated in the terms this seat spends
+      // it, and pointed at the checklist as what the answer comes from.
+      expect(prompt).toContain("agreeing puts a connection in front of Alice for approval");
+      expect(prompt).toContain('"Would Alice be open to connecting?" is a bar almost anything clears');
+      expect(prompt).toContain("it is not the bar — the checklist is");
+      // The two-sided handshake: agree when nothing conflicts AND nothing
+      // pivotal is open. The live failure this pins is a responder that
+      // accepted on its first turn every time — closing the negotiation
+      // before the initiator ever reached a turn on which it could ask.
+      expect(prompt).toContain("your checklist holds no conflict AND nothing pivotal is still unknown, close it");
+      expect(prompt).toContain("is the same guess the initiator would be making, taken from the other chair");
+      // And the patience sharpening rides with them.
+      expect(prompt).toContain(RESPONDER_PATIENCE_MARKER);
+      expect(prompt).toContain("spend one question or one exchange before you close");
+      expect(prompt).toContain("costs the counterparty nothing and Alice very little");
     }
   });
 
-  it("never renders under advocate — on any seat", async () => {
-    for (const stance of [undefined, "advocate", "nonsense-stance"]) {
-      const rendered = await renderMatrix(stance);
-      for (const entry of PROMPT_MATRIX) {
-        expect(rendered[entry.id]).not.toContain(OPENING_MARKER);
-        expect(rendered[entry.id]).not.toContain(SPEND_MARKER);
-        expect(rendered[entry.id]).not.toContain(SKEPTIC_RESPONDER_MARKER);
-      }
-    }
-  });
-
-  it("never leaks onto an initiator turn under any stance", async () => {
-    for (const stance of NEGOTIATOR_STANCES) {
-      const rendered = await renderMatrix(stance);
-      for (const id of INITIATOR_IDS) {
-        expect(rendered[id]).not.toContain(OPENING_MARKER);
-        expect(rendered[id]).not.toContain(SPEND_MARKER);
-        expect(rendered[id]).not.toContain(SKEPTIC_RESPONDER_MARKER);
-      }
+  it("never leaks onto an initiator turn", async () => {
+    const rendered = await renderMatrix();
+    for (const id of INITIATOR_IDS) {
+      expect(rendered[id]).not.toContain(OPENING_MARKER);
+      expect(rendered[id]).not.toContain(SPEND_MARKER);
+      expect(rendered[id]).not.toContain(RESPONDER_PATIENCE_MARKER);
     }
   });
 
   it("leaves the seat-blind fragments identical on both seats", () => {
-    for (const stance of ["evaluator", "skeptic"] as const) {
-      const initiator = stanceActionRules(stance, "initiator");
-      const counterparty = stanceActionRules(stance, "counterparty");
-      // The responder rules are strictly appended: the initiator's rendering is
-      // a prefix of the responder's, so the value bar, the consult propensity
-      // and the whole checklist protocol cannot fork by seat.
-      expect(counterparty.startsWith(initiator)).toBe(true);
-      expect(counterparty.length).toBeGreaterThan(initiator.length);
-      expect(initiator).not.toContain(OPENING_MARKER);
-      expect(initiator).not.toContain(SPEND_MARKER);
-    }
-  });
-
-  it("skeptic sharpens the responder rule additively over evaluator", async () => {
-    const evaluator = await renderMatrix("evaluator");
-    const skeptic = await renderMatrix("skeptic");
-    for (const id of RESPONDER_IDS) {
-      // Everything the evaluator says about the opening survives verbatim.
-      expect(evaluator[id]).toContain(OPENING_MARKER);
-      expect(skeptic[id]).toContain(OPENING_MARKER);
-      expect(evaluator[id]).not.toContain(SKEPTIC_RESPONDER_MARKER);
-      expect(skeptic[id]).toContain(SKEPTIC_RESPONDER_MARKER);
-      expect(skeptic[id]).toContain("spend one question or one exchange before you close");
-      expect(skeptic[id]).toContain("costs the counterparty nothing and Alice very little");
-    }
-    // Additive at the fragment level too: the whole evaluator responder body
-    // survives verbatim inside the skeptic's, which only appends to it.
-    expect(stanceActionRules("skeptic", "counterparty")).toContain(responderPortion("evaluator"));
+    const initiator = negotiatorActionRules("initiator");
+    const counterparty = negotiatorActionRules("counterparty");
+    // The responder rules are strictly appended: the initiator's rendering is
+    // a prefix of the responder's, so the value bar, the consult propensity
+    // and the whole checklist protocol cannot fork by seat.
+    expect(counterparty.startsWith(initiator)).toBe(true);
+    expect(counterparty.length).toBeGreaterThan(initiator.length);
+    expect(initiator).not.toContain(OPENING_MARKER);
+    expect(initiator).not.toContain(SPEND_MARKER);
   });
 
   it("does not urge unconditional probing — the steer is conditional on what is unscored", () => {
-    for (const stance of ["evaluator", "skeptic"] as const) {
-      const portion = responderPortion(stance);
-      // No blanket instruction in either direction: a match whose dimensions
-      // score from the client's own intent may still be closed on first contact.
-      expect(portion).not.toMatch(/never accept/i);
-      expect(portion).not.toMatch(/\balways\b/i);
-      expect(portion).not.toMatch(/\bnever\b/i);
-      // Both fragments are conditioned on a dimension actually being unscored.
-      expect(portion).toContain("Where a pivotal dimension is still unknown");
-    }
-    // The skeptic's sharpening keeps the escape hatch explicit: a checklist
-    // that already scores may be closed on first contact.
-    expect(stanceActionRules("skeptic", "counterparty")).toContain(
+    const portion = responderPortion();
+    // No blanket instruction in either direction: a match whose dimensions
+    // score from the client's own intent may still be closed on first contact.
+    expect(portion).not.toMatch(/never accept/i);
+    expect(portion).not.toMatch(/\balways\b/i);
+    expect(portion).not.toMatch(/\bnever\b/i);
+    // Conditioned on a dimension actually being unscored.
+    expect(portion).toContain("Where a pivotal dimension is still unknown");
+    // And the escape hatch stays explicit: a checklist that already scores may
+    // be closed on first contact.
+    expect(portion).toContain(
       "Where {userName}'s own intent and the counterparty's own evidence already score every dimension, closing straight away is still the right call",
     );
   });
@@ -628,113 +426,88 @@ describe("responder scoring — the opening is a claim, not a commitment", () =>
       ["continuation", { ...responderBase, isContinuation: true }, "accept"],
     ];
     for (const [, input, action] of shapes) {
-      const prompt = await renderPrompt(input, "skeptic", action);
+      const prompt = await renderPrompt(input, action);
       expect(prompt).toContain(OPENING_MARKER);
       expect(prompt).toContain(SPEND_MARKER);
-      expect(prompt).toContain(SKEPTIC_RESPONDER_MARKER);
+      expect(prompt).toContain(RESPONDER_PATIENCE_MARKER);
     }
   });
 
   it("names no action and no mechanism the responding seat may not hold", async () => {
-    for (const stance of ["evaluator", "skeptic"] as const) {
-      const rules = stanceActionRules(stance, "counterparty");
-      // Same discipline as every other fragment here: the seat's own rules and
-      // the graph's grants decide which token carries "one more exchange".
-      expect(rules).not.toContain("ask_user");
-      expect(rules).not.toContain('"withdraw"');
-      expect(rules).not.toContain('"question"');
-      expect(rules).not.toContain('"accept"');
-      expect(rules).not.toContain('"counter"');
-      expect(rules).not.toContain('"decline"');
-      expect(rules).not.toContain('"outreach"');
+    const rules = negotiatorActionRules("counterparty");
+    // Same discipline as every other fragment here: the seat's own rules and
+    // the graph's grants decide which token carries "one more exchange".
+    expect(rules).not.toContain("ask_user");
+    for (const token of ['"withdraw"', '"question"', '"accept"', '"counter"', '"decline"', '"outreach"']) {
+      expect(rules).not.toContain(token);
     }
     // And the rendered responder prompts still carry no withdraw vocabulary.
-    for (const stance of NEGOTIATOR_STANCES) {
-      const rendered = await renderMatrix(stance);
-      for (const id of RESPONDER_IDS) {
-        expect(rendered[id]).not.toContain('"withdraw"');
-        expect(rendered[id]).not.toContain("ask_user");
-      }
+    const rendered = await renderMatrix();
+    for (const id of RESPONDER_IDS) {
+      expect(rendered[id]).not.toContain('"withdraw"');
+      expect(rendered[id]).not.toContain("ask_user");
     }
   });
 });
 
-describe("deadlock resolution per stance", () => {
-  const input = { active: true, userName: "Alice", canAskUser: false, consecutiveNonConvergent: 4 };
+describe("deadlock resolution", () => {
+  const input = { active: true, userName: "Alice", consecutiveNonConvergent: 4 };
 
-  it("advocate and evaluator keep the bargaining shift byte-identical to the stanceless render", () => {
-    const legacy = renderBargainingShiftSection(input);
-    expect(renderBargainingShiftSection({ ...input, stance: "advocate" })).toBe(legacy);
-    expect(renderBargainingShiftSection({ ...input, stance: "evaluator" })).toBe(legacy);
-    expect(legacy).toContain("SHIFT FROM PERSUASION TO BARGAINING");
-  });
-
-  it("skeptic resolves a deadlock as a stalemate rather than by concession", () => {
-    const section = renderBargainingShiftSection({ ...input, stance: "skeptic" });
+  it("resolves a deadlock as a stalemate rather than by concession", () => {
+    const section = renderStalemateShiftSection(input);
     expect(section).toContain("THE MERITS ARE EXHAUSTED");
     expect(section).not.toContain("SHIFT FROM PERSUASION TO BARGAINING");
     expect(section).toContain("Do NOT buy agreement with a concession or a reduced scope");
     expect(section).toContain("An unresolved disagreement is an acceptable outcome");
-    // Stance-only: the action vocabulary is untouched, same as the bargaining shift.
+    // Stance-only: the action vocabulary is untouched.
     expect(section).toContain("your available actions are unchanged");
   });
 
-  it("an inactive shift renders empty under every stance", () => {
-    for (const stance of NEGOTIATOR_STANCES) {
-      expect(renderBargainingShiftSection({ ...input, active: false, stance })).toBe("");
-    }
+  it("renders empty when inactive", () => {
+    expect(renderStalemateShiftSection({ ...input, active: false })).toBe("");
   });
 
-  it("the skeptic stalemate section never names ask_user, even when the grant is held", () => {
-    const section = renderBargainingShiftSection({ ...input, canAskUser: true, stance: "skeptic" });
-    expect(section).not.toContain("ask_user");
+  it("never names ask_user", () => {
+    expect(renderStalemateShiftSection(input)).not.toContain("ask_user");
   });
 });
 
-describe("seat and version invariants hold under EVERY stance", () => {
-  it("no stance leaks a quoted withdraw into v1 or the v2 counterparty seat", async () => {
-    for (const stance of NEGOTIATOR_STANCES) {
-      const rendered = await renderMatrix(stance);
-      for (const id of ["v1", "v1-discovery-query", "v2-counterparty", "v2-counterparty-discovery-query"]) {
-        expect(rendered[id]).not.toContain('"withdraw"');
-        expect(rendered[id]).not.toContain("WITHDRAW ON DISQUALIFYING INFORMATION");
-      }
+describe("seat and version invariants", () => {
+  it("no quoted withdraw leaks into v1 or the v2 counterparty seat", async () => {
+    const rendered = await renderMatrix();
+    for (const id of ["v1", "v1-discovery-query", "v2-counterparty", "v2-counterparty-discovery-query"]) {
+      expect(rendered[id]).not.toContain('"withdraw"');
+      expect(rendered[id]).not.toContain("WITHDRAW ON DISQUALIFYING INFORMATION");
     }
   });
 
-  it("no stance names ask_user when the grant is absent, and the grant still renders it", async () => {
-    for (const stance of NEGOTIATOR_STANCES) {
-      const rendered = await renderMatrix(stance);
-      expect(rendered["v2-initiator"]).not.toContain("ask_user");
-      expect(rendered["v1"]).not.toContain("ask_user");
-      expect(rendered["v2-counterparty"]).not.toContain("ask_user");
-      expect(rendered["v2-initiator-ask-user"]).toContain('"ask_user"');
-    }
+  it("ask_user is never named when the grant is absent, and the grant still renders it", async () => {
+    const rendered = await renderMatrix();
+    expect(rendered["v2-initiator"]).not.toContain("ask_user");
+    expect(rendered["v1"]).not.toContain("ask_user");
+    expect(rendered["v2-counterparty"]).not.toContain("ask_user");
+    expect(rendered["v2-initiator-ask-user"]).toContain('"ask_user"');
   });
 
-  it("the IND-570 withdraw rule survives unchanged on the v2 initiator under every stance", async () => {
-    for (const stance of NEGOTIATOR_STANCES) {
-      const rendered = await renderMatrix(stance);
-      for (const id of ["v2-initiator", "v2-initiator-final", "v2-initiator-ask-user", "v2-initiator-opening"]) {
-        const prompt = rendered[id];
-        expect(prompt).toContain("WITHDRAW ON DISQUALIFYING INFORMATION");
-        expect(prompt).toContain('choose "withdraw" rather than countering or questioning again');
-        expect(prompt).toContain("the counterparty's answer to one of your questions");
-        expect(prompt).toContain("Alice's own answers or private consultation provided between sessions");
-      }
-      // The rule line itself is identical with and without the canAskUser grant.
-      const marker = "WITHDRAW ON DISQUALIFYING INFORMATION";
-      const ruleOf = (p: string) => p.slice(p.indexOf(marker)).split("\n")[0];
-      expect(ruleOf(rendered["v2-initiator"])).toBe(ruleOf(rendered["v2-initiator-ask-user"]));
+  it("the IND-570 withdraw rule survives unchanged on the v2 initiator", async () => {
+    const rendered = await renderMatrix();
+    for (const id of ["v2-initiator", "v2-initiator-final", "v2-initiator-ask-user", "v2-initiator-opening"]) {
+      const prompt = rendered[id];
+      expect(prompt).toContain("WITHDRAW ON DISQUALIFYING INFORMATION");
+      expect(prompt).toContain('choose "withdraw" rather than countering or questioning again');
+      expect(prompt).toContain("the counterparty's answer to one of your questions");
+      expect(prompt).toContain("Alice's own answers or private consultation provided between sessions");
     }
+    // The rule line itself is identical with and without the canAskUser grant.
+    const marker = "WITHDRAW ON DISQUALIFYING INFORMATION";
+    const ruleOf = (p: string) => p.slice(p.indexOf(marker)).split("\n")[0];
+    expect(ruleOf(rendered["v2-initiator"])).toBe(ruleOf(rendered["v2-initiator-ask-user"]));
   });
 
-  it("the final-turn instruction is untouched by every stance", async () => {
-    for (const stance of NEGOTIATOR_STANCES) {
-      const rendered = await renderMatrix(stance);
-      expect(rendered["v2-initiator-final"]).toContain(
-        "IMPORTANT: This is your FINAL turn. You MUST choose either 'withdraw' or 'counter'.",
-      );
-    }
+  it("the final-turn instruction is untouched", async () => {
+    const rendered = await renderMatrix();
+    expect(rendered["v2-initiator-final"]).toContain(
+      "IMPORTANT: This is your FINAL turn. You MUST choose either 'withdraw' or 'counter'.",
+    );
   });
 });
