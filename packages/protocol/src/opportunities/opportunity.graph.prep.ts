@@ -42,7 +42,7 @@ export async function prepNode(state: OpportunityState, deps: OpportunityGraphDe
             error: 'You need to join at least one network to find opportunities.',
           };
         }
-        const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
+        const discoveryUserId = state.userId;
         const [intents, profile] = await Promise.all([
           deps.database.getActiveIntents(discoveryUserId),
           deps.database.getProfile(discoveryUserId),

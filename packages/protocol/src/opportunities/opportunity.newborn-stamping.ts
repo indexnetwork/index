@@ -20,7 +20,6 @@ export interface NewbornStampingEligibility {
   ownerUserId: string;
   operationMode?: string;
   hasIntroductionContext: boolean;
-  onBehalfOfUserId?: string;
   targetUserId?: string;
   discoverySource?: string;
   resolvedTriggerIntentId?: string;
@@ -81,7 +80,6 @@ export async function stampEligibleNewbornOpportunities(
     stamper
     && eligibility.operationMode === 'create'
     && !eligibility.hasIntroductionContext
-    && !eligibility.onBehalfOfUserId
     && !eligibility.targetUserId
     && eligibility.discoverySource === 'intent'
     && stampIntentId

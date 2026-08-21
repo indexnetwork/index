@@ -64,7 +64,7 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
     const sortedCandidates = [...state.candidates].sort((a, b) => b.similarity - a.similarity);
     const dedupedCandidates = dedupeCandidatesByUser(sortedCandidates, state);
 
-    const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
+    const discoveryUserId = state.userId;
     let eligibleCandidates: CandidateMatch[];
     try {
       eligibleCandidates = await filterToActiveMemberships(dedupedCandidates, discoveryUserId, deps);
@@ -377,8 +377,6 @@ async function evaluateCandidateBatch(
   });
 
   // Create a map of evaluated candidates by userId for quick lookup.
-  // Use discoveryUserId (which accounts for onBehalfOfUserId in introducer flow)
-  // rather than state.userId (which is the introducer, not present in pairwise actors).
   const evaluatedByUserId = new Map<string, { score: number; reasoning: string }>();
   for (const opp of evaluatedOpportunities) {
     const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);

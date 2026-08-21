@@ -65,6 +65,7 @@ export interface UserSocial {
 
 /** Detection metadata recorded when an opportunity is created. */
 export interface OpportunityDetection {
+  /** `introducer_discovery` is read-only history: no path stamps it any more, but existing rows carry it. */
   source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
   createdBy?: Id<'users'> | string;
   createdByName?: string;

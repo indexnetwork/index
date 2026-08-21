@@ -1,11 +1,10 @@
 /**
  * Discovery pipeline, stage 6: persistence.
  *
- * Three persistence paths share the node — chat introductions, introducer
- * discovery (`onBehalfOfUserId`), and plain discovery. Each one decides whether
- * an existing opportunity between the same people should be reactivated,
- * upgraded, or suppressed before any row is written; only what survives that
- * gate reaches `persistOpportunities`.
+ * Two persistence paths share the node — chat introductions and plain
+ * discovery. Each one decides whether an existing opportunity between the same
+ * people should be reactivated, upgraded, or suppressed before any row is
+ * written; only what survives that gate reaches `persistOpportunities`.
  */
 
 import type { CreateOpportunityData, Id, Opportunity, OpportunityActor, OpportunityStatus } from '../shared/interfaces/database.interface.js';
@@ -18,13 +17,6 @@ import { persistOpportunities } from "./opportunity.persist.js";
 import { stampEligibleNewbornOpportunities } from "./opportunity.newborn-stamping.js";
 import { admitOpportunityPersistence, createEligibleOpportunityStatusUpdater } from "./opportunity.persistence-admission.js";
 import { belongsToOwnedIntent, DEDUP_WINDOW_MS, isActiveNegotiationTaskFresh, persistDedupLog, persistLog, persistPathLog, triggerForOwner, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
-
-/**
- * `detection.source` stamped on an opportunity created on a contact's behalf.
- * Automatic introducer DISCOVERY is gone; the introduction persistence path
- * that stamps this is not, and rows already carry the value.
- */
-const INTRODUCER_DISCOVERY_SOURCE = 'introducer_discovery' as const;
 
 /** A pairing that was not persisted because an opportunity already covers it. */
 type ExistingBetweenActor = {
@@ -147,9 +139,6 @@ export async function persistNode(state: OpportunityState, deps: OpportunityGrap
       };
 
       const itemsToPersist: CreateOpportunityData[] = [];
-      const introducerUserForOnBehalf = state.onBehalfOfUserId
-        ? await deps.database.getUser(state.userId)
-        : null;
 
       for (const evaluated of evaluatedToPersist) {
         persistPathLog.verbose('Selecting persistence path', {
@@ -161,9 +150,7 @@ export async function persistNode(state: OpportunityState, deps: OpportunityGrap
 
         const data = state.introductionContext
           ? buildIntroductionOpportunity(ctx, evaluated)
-          : state.onBehalfOfUserId
-            ? await buildIntroducerDiscoveryOpportunity(ctx, evaluated, introducerUserForOnBehalf?.name ?? undefined)
-            : await buildDiscoveryOpportunity(ctx, evaluated);
+          : await buildDiscoveryOpportunity(ctx, evaluated);
         if (!data) continue;
 
         if (hasUnsupportedOpportunityClaim(data.interpretation.reasoning)) {
@@ -193,7 +180,6 @@ export async function persistNode(state: OpportunityState, deps: OpportunityGrap
           ownerUserId: state.userId,
           operationMode: state.operationMode,
           hasIntroductionContext: Boolean(state.introductionContext),
-          onBehalfOfUserId: state.onBehalfOfUserId,
           targetUserId: state.targetUserId,
           discoverySource: state.discoverySource,
           resolvedTriggerIntentId: state.resolvedTriggerIntentId,
@@ -372,158 +358,6 @@ function buildIntroductionOpportunity(
           detail: `Introduction by ${state.introductionContext!.createdByName ?? 'a member'} via chat`,
         },
       ],
-    },
-    context: {
-      networkId: state.networkId ?? indexIdForActors,
-      ...(state.options.conversationId ? { conversationId: state.options.conversationId } : {}),
-    },
-    confidence: String(evaluated.score / 100),
-    status: initialStatus,
-  };
-}
-
-/**
- * Introducer discovery path: introducer is state.userId, target is onBehalfOfUserId.
- */
-async function buildIntroducerDiscoveryOpportunity(
-  ctx: PersistPathContext,
-  evaluated: EvaluatedOpportunity,
-  introducerName: string | undefined,
-): Promise<CreateOpportunityData | null> {
-  const { state, deps, ledger, updateStatusIfStillEligible, initialStatus, now } = ctx;
-  const indexIdForActors = state.networkId ?? evaluated.actors[0]?.networkId;
-  if (indexIdForActors === undefined) {
-    persistLog.warn('Introducer discovery path missing networkId; skipping opportunity', {
-      userId: state.userId,
-      actorsCount: evaluated.actors.length,
-    });
-    return null;
-  }
-  const actors = withIntroducerActor(
-    toOpportunityActors(evaluated, indexIdForActors),
-    state.userId,
-    indexIdForActors,
-  );
-
-  const candidateUserId = evaluated.actors.find((a) => a.userId !== state.onBehalfOfUserId)?.userId;
-  const overlapping = candidateUserId
-    ? await deps.database.findOpportunitiesByActors(
-        [state.onBehalfOfUserId as Id<'users'>, candidateUserId as Id<'users'>],
-        { excludeStatuses: DEDUP_SKIP_STATUSES },
-      )
-    : [];
-  if (overlapping.length > 0) {
-    const existing = overlapping[0];
-    const isRecent = new Date(existing.createdAt).getTime() > Date.now() - DEDUP_WINDOW_MS;
-    const sameIntroducer = existing.actors?.some(
-      (actor) => actor.role === 'introducer' && actor.userId === state.userId,
-    );
-    const suppressionNetworkId = (state.networkId ?? indexIdForActors ?? '') as Id<'networks'>;
-
-    if (existing.status === 'expired' || existing.status === 'stalled') {
-      // Reactivate expired or stalled opportunities (only if same introducer for expired).
-      // A different introducer creating for an expired pair falls through to new creation —
-      // the prior expiry belongs to the original introducer, not this one.
-      // Stalled opportunities are reactivated regardless of age: a stalled negotiation
-      // is still in-flight for this pair, so we resume it rather than create a parallel one.
-      if (existing.status === 'stalled' || sameIntroducer) {
-        // Introduction path always targets 'draft' (chat-only surface) rather than using
-        // initialStatus, because introductions are always chat-initiated, not background-discovered.
-        const reactivated = await updateStatusIfStillEligible(
-          existing.id, 'draft', existing.actors, existing.status,
-        );
-        if (reactivated) {
-          persistLog.verbose('Reactivated opportunity (introduction path)', {
-            opportunityId: existing.id,
-            candidateUserId,
-            previousStatus: existing.status,
-          });
-          ledger.reactivated.push(reactivated);
-        }
-        return null;
-      }
-    } else if (existing.status === 'negotiating') {
-      // Orphan heal (introduction path): same logic as discovery path
-      const priorTask = await deps.database.getNegotiationTaskForOpportunity(existing.id);
-      if (priorTask && isActiveNegotiationTaskFresh(priorTask)) {
-        ledger.existingBetweenActors.push({
-          candidateUserId: candidateUserId as Id<'users'>,
-          networkId: suppressionNetworkId,
-          existingOpportunityId: existing.id as Id<'opportunities'>,
-          existingStatus: existing.status,
-        });
-        persistLog.verbose('Skipping negotiating opportunity with active task (introduction path)', {
-          opportunityId: existing.id,
-          candidateUserId,
-          taskState: priorTask.state,
-        });
-        return null;
-      }
-      const reactivated = await updateStatusIfStillEligible(
-        existing.id, 'draft', existing.actors, existing.status,
-      );
-      if (reactivated) {
-        persistLog.info('Resuming orphaned negotiating opportunity (introduction path)', {
-          opportunityId: existing.id,
-          candidateUserId,
-          priorTaskState: priorTask?.state,
-        });
-        ledger.reactivated.push(reactivated);
-      }
-      return null;
-    } else if (existing.status === 'latent') {
-      // Upgrade latent to draft for introduction path
-      const upgraded = await updateStatusIfStillEligible(
-        existing.id, 'draft', existing.actors, existing.status,
-      );
-      if (upgraded) {
-        persistLog.verbose('Upgraded latent opportunity to draft (introduction path)', {
-          opportunityId: existing.id,
-          candidateUserId,
-        });
-        ledger.reactivated.push(upgraded);
-      }
-      return null;
-    } else if (isRecent && candidateUserId) {
-      // Time-gated skip: only skip if opportunity was created within DEDUP_WINDOW_MS
-      ledger.existingBetweenActors.push({
-        candidateUserId: candidateUserId as Id<'users'>,
-        networkId: suppressionNetworkId,
-        existingOpportunityId: existing.id as Id<'opportunities'>,
-        existingStatus: existing.status,
-      });
-      persistLog.verbose('Skipping recent duplicate (introduction path)', {
-        candidateUserId,
-        existingStatus: existing.status,
-        existingOpportunityId: existing.id,
-      });
-      return null;
-    }
-    // Else: existing opportunity is old enough, allow new opportunity creation
-    persistLog.verbose('Allowing new opportunity; existing is outside dedup window (introduction path)', {
-      candidateUserId,
-      existingStatus: existing.status,
-      existingOpportunityId: existing.id,
-    });
-  }
-
-  return {
-    detection: {
-      source: INTRODUCER_DISCOVERY_SOURCE,
-      createdBy: state.userId,
-      createdByName: introducerName,
-      timestamp: now,
-    },
-    actors,
-    interpretation: {
-      category: 'collaboration',
-      reasoning: evaluated.reasoning,
-      confidence: evaluated.score / 100,
-      signals: [{
-        type: 'curator_judgment',
-        weight: 1,
-        detail: `Introducer discovery for ${introducerName ?? 'a member'} via background maintenance`,
-      }],
     },
     context: {
       networkId: state.networkId ?? indexIdForActors,

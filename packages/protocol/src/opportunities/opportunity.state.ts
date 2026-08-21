@@ -190,12 +190,6 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /** Optional: discover on behalf of this user (introducer flow). When set, prep/eval use this user's profile/intents; userId becomes the introducer. */
-  onBehalfOfUserId: Annotation<Id<'users'> | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
   options: Annotation<OpportunityGraphOptions>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),

@@ -58,7 +58,7 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
 
   try {
     // Use the same discoveryUserId pattern as evaluationNode
-    const discoveryUserId = (state.onBehalfOfUserId ?? state.userId) as string;
+    const discoveryUserId = state.userId as string;
 
     const sourceAccount = await deps.database.getUser(discoveryUserId).catch(() => null);
     const sourceIntentInputs = (state.indexedIntents ?? []).map((intent) => ({
@@ -262,8 +262,7 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
         timeoutMs,
         // v2 initiator stamp: every fresh-discovery origin resolves to the
         // discovery user — querying user (chat/tool), intent owner
-        // (from-intent), enriched user (from-enrichment/discovery-run), or
-        // represented user (from-introducer, via onBehalfOfUserId).
+        // (from-intent), or enriched user (from-enrichment/discovery-run).
         initiatorUserId: discoveryUserId,
         onCandidateResolved },
     );

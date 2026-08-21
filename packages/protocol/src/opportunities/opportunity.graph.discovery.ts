@@ -29,7 +29,7 @@ const PER_INDEX_LIMIT = 80;
 export async function discoveryNode(state: OpportunityState, deps: OpportunityGraphDeps) {
   return timed("OpportunityGraph.discovery", async () => {
     const startTime = Date.now();
-    const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
+    const discoveryUserId = state.userId;
 
     /** Filter candidates to targetUserId when set (direct-connection mode). */
     const filterByTarget = (candidates: CandidateMatch[]): CandidateMatch[] => {

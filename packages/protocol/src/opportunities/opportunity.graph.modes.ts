@@ -172,6 +172,7 @@ const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
   manual: 'Manual',
   cron: 'Scheduled',
   member_added: 'Member added',
+  // Read-only history: nothing stamps this source any more, but old rows carry it.
   introducer_discovery: 'Suggested by contact',
 };
 
@@ -612,7 +613,6 @@ function introductionState(request: IntroductionRequest): OpportunityState {
     indexScope: undefined,
     triggerIntentId: undefined,
     targetUserId: undefined,
-    onBehalfOfUserId: undefined,
     options: { ...(request.options ?? {}) },
     operationMode: 'create_introduction',
     introductionEntities: request.introductionEntities,
