@@ -1,12 +1,22 @@
 import { and, eq, isNull, or, sql } from 'drizzle-orm/sql';
 
-import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
+import { log } from '../lib/log';
 import { intentNetworks, intents, networkMembers, networks, opportunities, premiseNetworks, premises, questions } from '../schemas/database.schema';
 import { artifacts, messages, tasks } from '../schemas/conversation.schema';
 
+const logger = log.lib.from('negotiation-continuation');
+
+/** Structural mirror of the protocol's `NegotiationCounterpartyBinding` (adapters may not import the protocol package). */
+type NegotiationCounterpartyBinding =
+  | { kind: 'intent'; id: string }
+  | { kind: 'premise'; id: string };
+
 export const CONTINUATION_EXECUTION_LEASE_MS = 45_000;
+
+/** Mirrors `NEGOTIATION_START_STATUSES` semantics (conversation.database.adapter): the statuses run-existing accepts an attempt from. */
+export const RESUMABLE_OPPORTUNITY_STATUSES = new Set<string>(['latent', 'draft', 'pending', 'negotiating', 'stalled']);
 
 export interface ContinuationConsultation {
   recipientUserId: string;
@@ -285,10 +295,37 @@ async function validateMaterialBinding(
     !settlement
     || settlement.continuationStatus !== 'requested'
     || !settlementMatches(settlement, input)
-    || computeIntentFingerprint(rows[0].payload, rows[0].summary) !== input.intentFingerprint
-    || rows[0].opportunityStatus !== (terminalOpportunityStatus ?? input.opportunityStatus)
-    || (!terminalOpportunityStatus && rows[0].opportunityUpdatedAt.toISOString() !== input.opportunityUpdatedAt)
   ) return null;
+  if (terminalOpportunityStatus) {
+    return rows[0].opportunityStatus === terminalOpportunityStatus
+      ? { prior: rows[0].prior, settlement }
+      : null;
+  }
+  // Answers are authoritative over staleness; drift is logged, not fatal.
+  // The joins and settlement match above are coherence; the world having
+  // moved since the park never refuses the resume — only a non-resumable
+  // current status still returns null, because no turn can run on a
+  // terminal opportunity.
+  if (!RESUMABLE_OPPORTUNITY_STATUSES.has(rows[0].opportunityStatus)) return null;
+  const currentFingerprint = computeIntentFingerprint(rows[0].payload, rows[0].summary);
+  const currentUpdatedAt = rows[0].opportunityUpdatedAt.toISOString();
+  if (
+    currentFingerprint !== input.intentFingerprint
+    || rows[0].opportunityStatus !== input.opportunityStatus
+    || currentUpdatedAt !== input.opportunityUpdatedAt
+  ) {
+    // Heartbeat and effect assertions re-run this validation while the graph
+    // executes, and the turn itself may legitimately touch the opportunity —
+    // with drift log-only, a heartbeat can no longer kill its own execution.
+    logger.info('negotiation_continuation_claimed_despite_drift', {
+      taskId: input.taskId,
+      settlementId: input.settlementId,
+      opportunityId: input.opportunityId,
+      intentFingerprintMoved: currentFingerprint !== input.intentFingerprint,
+      opportunityStatus: { bound: input.opportunityStatus, current: rows[0].opportunityStatus },
+      opportunityUpdatedAt: { bound: input.opportunityUpdatedAt, current: currentUpdatedAt },
+    });
+  }
   return { prior: rows[0].prior, settlement };
 }
 
