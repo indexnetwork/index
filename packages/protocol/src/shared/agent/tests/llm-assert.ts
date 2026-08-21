@@ -29,7 +29,7 @@ export async function assertLLM(output: unknown, criteria: string): Promise<void
     model: modelId,
     apiKey: process.env.OPENROUTER_API_KEY!,
     configuration: {
-      baseURL: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+      baseURL: "https://openrouter.ai/api/v1",
     },
     temperature: 0,
     maxTokens: 512,

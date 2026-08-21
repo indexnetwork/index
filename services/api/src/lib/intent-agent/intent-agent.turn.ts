@@ -344,16 +344,15 @@ export class IntentAgentTurn {
   private buildModel(): ChatOpenAI {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey?.trim()) throw new Error('IntentAgentTurn: OPENROUTER_API_KEY is required');
-    const timeoutEnv = Number.parseInt(process.env.OPENROUTER_REQUEST_TIMEOUT_MS ?? '', 10);
     return new ChatOpenAI({
       model: this.modelName,
       configuration: {
-        baseURL: process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
+        baseURL: 'https://openrouter.ai/api/v1',
         apiKey,
       },
       temperature: 0.2,
       maxTokens: 4096,
-      timeout: Number.isFinite(timeoutEnv) && timeoutEnv > 0 ? timeoutEnv : 60_000,
+      timeout: 60_000,
       maxRetries: 1,
     });
   }

@@ -82,5 +82,5 @@ curl -s https://backboard.railway.com/graphql/v2 -H "Authorization: Bearer $T" \
 
 ## See also
 
-- [Feature flags](./feature-flags.md) — the Railway variable surface and its flip order.
+- [Feature flags](./feature-flags.md) — there are none; what to do instead.
 - The `use-railway` skill covers broad Railway operations and `railway setup agent`.
