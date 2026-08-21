@@ -960,6 +960,13 @@
       "when": 1786886087817,
       "tag": "0137_add_intent_discovery_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1786886087818,
+      "tag": "0138_add_intent_agent_dossier_and_ledger",
+      "breakpoints": true
     }
   ]
 }

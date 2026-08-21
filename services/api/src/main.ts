@@ -74,6 +74,7 @@ import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval
 import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
 import { parkedQuestionEnqueue } from './queues/parked-question.enqueue';
 import { questionMessageQueue } from './queues/question-message.queue';
+import { intentAgentQueue } from './queues/intent-agent.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
@@ -290,6 +291,7 @@ negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
 questionMessageQueue.startWorker();
+intentAgentQueue.startWorker();
 premiseQueue.startWorker();
 userContextQueue.startWorker();
 premiseQueue.startCrons();
@@ -754,6 +756,7 @@ const shutdown = async () => {
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
     questionMessageQueue.close(),
+    intentAgentQueue.close(),
     premiseQueue.close(),
     userContextQueue.close(),
     frameDriftQueue.close(),

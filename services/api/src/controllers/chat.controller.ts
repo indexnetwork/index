@@ -12,9 +12,9 @@ import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { enqueueQuestionAnswerReply, questionMessageQueue } from "../queues/question-message.queue";
-import { QUESTION_ANSWER_ACKNOWLEDGEMENT, evaluateQuestionAnswerPrecedence } from "../lib/question/answer-precedence";
-import type { AnswerPrecedence } from "../lib/question/answer-precedence";
+import { intentAgentQueue } from "../queues/intent-agent.queue";
+import { intentAgentOwnsTurn } from "../lib/intent-agent/intent-agent.host";
+import type { IntentAgentTurnResult } from "../lib/intent-agent/intent-agent.types";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
@@ -25,13 +25,24 @@ type ChatScope = { scopeType: 'network' | 'intent'; scopeId: string };
 const logger = log.controller.from("chat");
 
 /**
- * The orchestrator's event stream when it does not run: the answer-precedence
- * gate accepted this reply as an answer to the scope's open question, so the
- * turn is already decided. An empty stream rather than a branch around the
- * loop keeps one path through persistence, title, suggestions and `done` —
- * the turn differs only in where its text came from.
+ * The orchestrator's event stream when it does not run: the signal's
+ * IntentAgent owned this turn, so the response came from its serialized turn
+ * instead of the persona graph. An empty stream rather than a branch around
+ * the loop keeps one path through persistence, title, suggestions and `done`
+ * — the turn differs only in where its text came from.
  */
 async function* emptyEventStream(): AsyncGenerator<never, void, unknown> {}
+
+/**
+ * Server-owned copy for an intent-agent turn that failed or timed out. The
+ * client's message is already persisted and its event is durable on the
+ * agent's inbox, retrying in the background — nothing is lost, so the copy
+ * says exactly that instead of asking them to resend.
+ */
+export const INTENT_AGENT_TURN_FAILURE_REPLY =
+  'I hit a snag acting on that just now, but your message is saved and I will pick it up shortly — '
+  + 'no need to send it again.';
+
 
 function normalizeChatScope(input: {
   scopeType?: 'network' | 'intent' | null;
@@ -556,44 +567,73 @@ export class ChatController {
           let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown} | undefined;
           let decisionQuestions: import("@indexnetwork/protocol").Question[] | undefined;
 
-          // ─── Answer precedence (#1466) ───────────────────────────────────
-          // While this signal's DM has an OPEN question, the reply is offered
-          // to the answer evaluator BEFORE the orchestrator runs — before any
-          // tool, and so before the signal edit rule can rewrite the intent
-          // from it. An accepted answer never reaches the orchestrator; it is
-          // acknowledged in server-owned copy and consumed on the serialized
-          // question-message queue. Anything else (no open question, the
-          // evaluator declines, the evaluator is unavailable) falls through to
-          // the ordinary flow below, unchanged.
-          //
-          // The order is the fix. Both consumers already existed and both were
-          // behaving correctly on 2026-08-20 when "This month?" — an answer to
-          // a parked negotiation's timing question — was consumed by the edit
-          // rule instead, because the orchestrator simply ran first.
-          const answerPrecedence: AnswerPrecedence =
+          // ─── The IntentAgent's turn (holistic intent-agent collapse) ─────
+          // While a negotiation is parked awaiting this client on this
+          // signal, the turn belongs to the signal's IntentAgent: the message
+          // is persisted, its event runs on the agent's serialized inbox, and
+          // whatever the agent said back is emitted as the response. The
+          // persona graph does not run — so no tool, and in particular not
+          // the signal edit rule, can consume an answer before the agent
+          // judges it (the 2026-08-20 incident's fix, kept by construction:
+          // the agent turn sits exactly where the precedence gate sat).
+          // While nothing is parked, the persona streams byte-identically to
+          // before.
+          let agentTurn: IntentAgentTurnResult | null = null;
+          let agentUserMessageId: string | null = null;
+          let agentAssistantMessageId: string | undefined;
+          const agentOwnsTurn =
             sessionPersona === NEGOTIATOR_PERSONA_ID && effectiveScope?.scopeType === 'intent'
-              ? await evaluateQuestionAnswerPrecedence({
-                  userId: user.id,
-                  intentId: effectiveScope.scopeId,
-                  sessionId,
-                  replyText: messageContent,
-                })
-              : { status: 'no_open_question' };
+            && await intentAgentOwnsTurn(user.id, effectiveScope.scopeId);
 
-          if (answerPrecedence.status === 'answered') {
-            // The answer IS the turn. The response is server-owned copy, not
-            // model text — the same rule the close-out and clarification
-            // messages follow — and it is emitted as one token event so the
-            // rest of this handler (persistence, title, suggestions, done)
-            // runs byte-identically to an ordinary turn.
-            fullResponse = QUESTION_ANSWER_ACKNOWLEDGEMENT;
-            controller.enqueue(
-              encoder.encode(formatSSEEvent(createTokenEvent(sessionId, fullResponse))),
-            );
+          if (agentOwnsTurn && effectiveScope) {
+            // The conversation is the agent's memory, so the client's message
+            // is persisted BEFORE the turn — the reverse of the persona path,
+            // which persists after streaming to avoid duplicating the current
+            // message in its loaded context.
+            agentUserMessageId = await chatSessionService.addMessage({
+              sessionId,
+              role: 'user',
+              content: messageContent,
+            });
+            try {
+              agentTurn = await intentAgentQueue.runUserMessageTurn({
+                kind: 'user_message',
+                userId: user.id,
+                intentId: effectiveScope.scopeId,
+                sessionId,
+                messageId: agentUserMessageId,
+                text: messageContent,
+              });
+              fullResponse = agentTurn.messages.join('\n\n');
+              for (const act of agentTurn.acts) {
+                if (act.tool === 'message_user') agentAssistantMessageId = act.messageId;
+              }
+            } catch (agentErr) {
+              // The event is durable on the inbox and retries in the
+              // background; the client hears honest fixed copy rather than
+              // losing the turn — or having it silently re-decided by the
+              // persona.
+              logger.error('Intent-agent turn failed; replying with fixed copy', { sessionId, error: agentErr });
+              fullResponse = INTENT_AGENT_TURN_FAILURE_REPLY;
+              try {
+                agentAssistantMessageId = await chatSessionService.addMessage({
+                  sessionId,
+                  role: 'assistant',
+                  content: fullResponse,
+                });
+              } catch (persistErr) {
+                logger.error('Failed to persist intent-agent failure copy', { sessionId, error: persistErr });
+              }
+            }
+            if (fullResponse) {
+              controller.enqueue(
+                encoder.encode(formatSSEEvent(createTokenEvent(sessionId, fullResponse))),
+              );
+            }
           }
 
           // Use context-aware streaming to load previous messages
-          const orchestratorEvents = answerPrecedence.status === 'answered'
+          const orchestratorEvents = agentOwnsTurn
             ? emptyEventStream()
             : factory.streamChatEventsWithContext(
               {
@@ -652,56 +692,19 @@ export class ChatController {
             }
           }
 
-          // Consumption, enqueued once the reply has a persisted id (it keys
-          // the job's redelivery dedup). The serialized question-message queue
-          // owns everything after that — resuming each parked negotiation the
-          // answer unparks, and the clarifying follow-up if any ref no longer
-          // routes.
-          //
-          // Two statuses reach it, for different reasons:
-          // - `answered`: the gate's own routing is carried through, so the
-          //   job consumes the decision the client was just acknowledged for
-          //   rather than re-deciding it.
-          // - `unavailable`: the evaluator could not decide, so the job is
-          //   enqueued the way it always was — no routing attached — and the
-          //   queue's retry policy covers the outage. This turn also went to
-          //   the orchestrator, which can route the same reply through its
-          //   tool; both land in the same settlement-keyed, idempotent
-          //   consumption, so the duplicate is harmless and the recovery is
-          //   worth more than the tidiness.
-          //
-          // A reply the gate DECLINED has nothing to consume: that judgment is
-          // the same one the job would make, and it already ran.
-          const detectQuestionAnswerReply = async (replyMessageId: string) => {
-            if (answerPrecedence.status !== 'answered' && answerPrecedence.status !== 'unavailable') return;
-            if (sessionPersona !== NEGOTIATOR_PERSONA_ID || effectiveScope?.scopeType !== 'intent') return;
-            await enqueueQuestionAnswerReply({
-              userId: user.id,
-              intentId: effectiveScope.scopeId,
-              sessionId,
-              replyText: messageContent,
-              replyMessageId,
-              ...(answerPrecedence.status === 'answered'
-                ? {
-                  precedence: {
-                    questionMessageId: answerPrecedence.questionMessageId,
-                    questionMessageBody: answerPrecedence.questionMessageBody,
-                    routedAnswers: answerPrecedence.routedAnswers,
-                  },
-                }
-                : {}),
-            });
-          };
-
-          // Steer-interrupted: persist partial turn and bail (no done event emitted)
+          // Steer-interrupted: persist partial turn and bail (no done event
+          // emitted). Unreachable for an agent-owned turn — its stream is
+          // empty — but guarded anyway so a racing interrupt cannot persist
+          // the client's message twice.
           if (streamInterruptedBySteer) {
             try {
-              const interruptedUserMessageId = await chatSessionService.addMessage({ sessionId, role: 'user', content: messageContent });
-              await detectQuestionAnswerReply(interruptedUserMessageId);
+              if (!agentUserMessageId) {
+                await chatSessionService.addMessage({ sessionId, role: 'user', content: messageContent });
+              }
               // Use authoritative fullResponse when available; fall back to accumulated
               // partial tokens when the stream was cut before response_complete fired.
               const interruptedContent = (fullResponse || partialResponse).trim();
-              if (interruptedContent) {
+              if (interruptedContent && !agentOwnsTurn) {
                 await chatSessionService.addMessage({
                   sessionId,
                   role: 'assistant',
@@ -726,15 +729,19 @@ export class ChatController {
             }
           }
 
-          // Persist user message and assistant response
-          const userMessageId = await chatSessionService.addMessage({
-            sessionId,
-            role: "user",
-            content: messageContent,
-          });
-          await detectQuestionAnswerReply(userMessageId);
-          let assistantMessageId: string | undefined;
-          if (fullResponse) {
+          // Persist user message and assistant response. An agent-owned turn
+          // persisted both already — the message before the turn ran, the
+          // response inside the turn's own delivery — so this section is the
+          // persona path's alone.
+          if (!agentUserMessageId) {
+            await chatSessionService.addMessage({
+              sessionId,
+              role: "user",
+              content: messageContent,
+            });
+          }
+          let assistantMessageId: string | undefined = agentAssistantMessageId;
+          if (fullResponse && !agentOwnsTurn) {
             assistantMessageId = await chatSessionService.addMessage({
               sessionId,
               role: "assistant",
@@ -936,16 +943,14 @@ export class ChatController {
       return Response.json({ error: result.error }, { status: result.status });
     }
 
-    // Loading-state contract with the steps UI (#1431): true iff this
-    // scope's singleton regeneration job is queued or running, so the DM can
-    // show a pending indicator instead of a half-stale question-message.
-    const questionRegenerationPending = await questionMessageQueue.isRegenerationPending(user.id, intentId);
-
     return Response.json({
       session: result.session,
       created: result.created,
       agent: { id: agent.id, name: agent.name, description: agent.description },
-      questionRegenerationPending,
+      // Constant since the intent-agent collapse: the agent's asks are plain
+      // messages with no regeneration pending state. Served so existing web
+      // clients keep parsing the bootstrap shape.
+      questionRegenerationPending: false,
     });
   }
 

@@ -1336,6 +1336,63 @@ export const opportunityOutcomeEvents = pgTable(
 export type OpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferSelect;
 export type NewOpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferInsert;
 
+/** Where a dossier entry came from (docs/plans/2026-08-21-holistic-intent-agent.md). */
+export const intentDossierSourceEnum = pgEnum('intent_dossier_source', ['user_message', 'answer', 'agent_note']);
+
+/**
+ * The intent dossier — the disclosure boundary of the IntentAgent
+ * (docs/plans/2026-08-21-holistic-intent-agent.md). Negotiation-facing
+ * material may come only from entries here; the raw DM transcript never
+ * feeds a negotiation turn. Entries are retired, never deleted, so the
+ * boundary's history stays auditable.
+ */
+export const intentDossier = pgTable(
+  'intent_dossier',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    source: intentDossierSourceEnum('source').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    retiredAt: timestamp('retired_at', { withTimezone: true }),
+  },
+  (t) => ({
+    scopeIdx: index('idx_intent_dossier_scope').on(t.userId, t.intentId, t.retiredAt),
+  }),
+);
+
+export type IntentDossierEntry = typeof intentDossier.$inferSelect;
+export type NewIntentDossierEntry = typeof intentDossier.$inferInsert;
+
+/**
+ * The IntentAgent's act ledger — append-only accountability substrate
+ * (docs/plans/2026-08-21-holistic-intent-agent.md). Written by the agent
+ * loop, read only by the agent's own context assembly; never a logic input
+ * anywhere else. Provenance ids only, no cascading source FKs beyond the
+ * owning user: the record of what the agent decided must survive routine
+ * intent cleanup.
+ */
+export const intentAgentActs = pgTable(
+  'intent_agent_acts',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    intentId: text('intent_id').notNull(),
+    /** What woke the agent: the triggering event, verbatim. */
+    event: jsonb('event').$type<Record<string, unknown>>().notNull(),
+    /** The tool the agent called and its payload. */
+    act: jsonb('act').$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    scopeIdx: index('idx_intent_agent_acts_scope').on(t.userId, t.intentId, t.createdAt),
+  }),
+);
+
+export type IntentAgentAct = typeof intentAgentActs.$inferSelect;
+export type NewIntentAgentAct = typeof intentAgentActs.$inferInsert;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations
 // ═══════════════════════════════════════════════════════════════════════════════
