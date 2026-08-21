@@ -20,6 +20,37 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 23.6.1 - 2026-08-20
+
+### Fixed
+
+- **An answer beats staleness — drift is logged, never fatal.** Observed live:
+  a client answered her own parked question ("Timing: This week") through the
+  new MCP answer lane, routing succeeded, consumption ran — and the settle
+  returned `lost`, because the signal had been edited twice since the park and
+  the revalidation fence required the world to look exactly as it did at park
+  time. The park became a zombie: still `input_required`, still rendered as
+  "waiting on YOUR answer" by every surface, structurally unanswerable. The
+  design law is explicit: signal edits cascade nothing, and a stale negotiation
+  is solved by ANSWERING its question — the user's answer is the freshest
+  commitment there is, and the resumed turn rebuilds its context from current
+  data anyway.
+
+  The settle's one fence is now two. Coherence stays hard: an answer that does
+  not belong to its park (settlement mismatch, wrong recipient, task no longer
+  parked, a dismiss/timeout settlement won the race) is still refused. Drift
+  stops losing: within a live opportunity and an active signal, the answer
+  settles and resumes regardless of what moved since the park.
+
+- **The unresumable tail is an explicit proposal, not a silent drop.** When
+  current reality genuinely cannot continue — terminal opportunity or archived
+  signal — the answer is still recorded as heard: settlement result and resume
+  outcome `recorded_unresumable` (additive), the block-consumption result
+  counts it in its own `recorded` array so a `skipped` count can never again
+  hide it, and the implementation retires the park and tells the client the
+  truth, proposing re-discovery under the updated signal — an offer, never an
+  automatic act.
+
 ## 23.6.0 - 2026-08-20
 
 ### Added
