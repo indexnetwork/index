@@ -24,6 +24,44 @@ pin a supported release, use `latest`.
 
 ### Removed
 
+- **BREAKING: every environment feature gate is gone, and what each environment
+  was running became the code's behaviour.** No accessor in this package reads
+  `process.env` for a behaviour decision any more; configuration narrows to
+  credentials, endpoints, and the model/log values the host supplies.
+
+  Off the barrel: `configuredAskUserEnabled`, `askUserAnswerWindowMs`,
+  `discoveryEvaluatorMinScore`, `negotiationConsultationPolicyMode`,
+  `negotiationEvidenceQuestionsMode`, `poolQuestionsRanking`,
+  `poolQuestionsMiningMode`, `poolQuestionsMode`, `poolQuestionsPushMode`,
+  `poolQuestionsStampNewborn`, `poolQuestionsVisitTrigger`,
+  `POOL_VISIT_MINING_DEBOUNCE_MS`, `isIntroducerDiscoveryEnabled`,
+  `runIntroducerDiscovery`, `selectContactsForDiscovery`,
+  `shouldRunIntroducerDiscovery`, `IntroducerDiscoveryDatabase`,
+  `IntroducerDiscoveryQueue`, `INTRODUCER_DISCOVERY_SOURCE`,
+  `ContactWithIntents`, `MAX_CONTACTS_PER_CYCLE`, `MAX_CANDIDATES_PER_CONTACT`.
+  The five `poolQuestions*` accessors had no callers at all — they read
+  variables retired with the card question generators.
+
+  Behaviour now fixed in code: negotiations stamp protocol `v2`; `ask_user` and
+  the deterministic consultation policy are on; deadlock-shift is on; the
+  negotiator drafts in the `skeptic` stance (`advocate` and `evaluator`, and the
+  `stance*` predicates that distinguished them, are gone); negotiators receive
+  only each participant's exact opportunity-bound signal; HyDE generates under
+  `frame-v1`; candidate evaluation runs in parallel; retrieval floor is `0.20`
+  and the evaluator score floor is `40`; the two question miners are pinned to
+  `shadow`.
+
+- **BREAKING: profile matching is removed — discovery is intent-to-intent only.**
+  Premise-to-premise, context-to-context and context-to-intent strategies are
+  gone, along with the `profileCorpus` hint on the embedder interface. Premises
+  remain as an entity; they are no longer a matching corpus.
+
+- **BREAKING: introducer discovery is removed** — the queue, the maintenance-graph
+  node, and the on-behalf-of persistence path (`onBehalfOfUserId` is off the
+  opportunity graph state; nothing assigned it once the queue was gone). The
+  `introducer_discovery` opportunity source value is kept as read-only history:
+  nothing stamps it, and rows created before this release still carry it.
+
 - **BREAKING: the negotiation outreach screen gate is gone.** `NegotiationScreener`
   is off the barrel, and the graph is now `init → turn* → finalize` — every
   negotiation that reaches `init` proceeds to its first turn. The gate was one
