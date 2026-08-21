@@ -1,9 +1,5 @@
 /**
- * TopBar navigation — Personal Agent pending-question badge.
- *
- * The badge was ported from the retired Sidebar: it renders on the Agent nav
- * item when the Personal Agent inbox has open questions, caps at 99+, and
- * disappears at zero.
+ * TopBar navigation.
  */
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
@@ -43,14 +39,6 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 
 vi.mock('@/contexts/APIContext', () => ({
   useOpportunities: () => ({ getOpportunities: vi.fn().mockResolvedValue([]) }),
-}));
-
-vi.mock('@/contexts/AIChatContext', () => ({
-  useAIChat: () => ({ clearChat: vi.fn() }),
-}));
-
-vi.mock('@/contexts/IndexFilterContext', () => ({
-  useNetworkFilter: () => ({ setSelectedNetworkIds: vi.fn() }),
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
@@ -94,17 +82,20 @@ function renderTopBar(initialPath = '/') {
   );
 }
 
-describe('TopBar Personal Agent badge', () => {
+describe('TopBar navigation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.conversations = [];
     mocks.negotiations = [];
   });
 
-  test('renders primary nav including Signals and Agent', () => {
+  test('renders supported primary navigation without Agent', () => {
     renderTopBar();
     expect(screen.getByRole('button', { name: 'Signals' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Agent$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Negotiations/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Networks' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Agent$/ })).not.toBeInTheDocument();
   });
 
   test('chat badge counts visible unread H2H threads rather than unread messages', () => {
@@ -140,43 +131,4 @@ describe('TopBar Personal Agent badge', () => {
     expect(screen.queryByTestId('chat-unread-badge')).toBeNull();
   });
 
-  test('Negotiations badge counts rows that require the user to act', () => {
-    const question = conversationSummary('negotiation-question', 0, ['agent', 'agent']);
-    question.lastMessage = {
-      parts: [{ kind: 'data', data: { action: 'ask_user' } }],
-      senderId: 'agent:user-1',
-      createdAt: new Date().toISOString(),
-    };
-    question.negotiation = {
-      taskId: 'task-1',
-      state: 'input_required',
-      statusTimestamp: new Date().toISOString(),
-      opportunityId: 'opportunity-1',
-      opportunityStatus: 'negotiating',
-      acceptedByViewer: false,
-      turnCount: 2,
-      maxTurns: 6,
-      signalCount: 2,
-      outcome: null,
-      updatedAt: new Date().toISOString(),
-    };
-    mocks.negotiations = [question];
-
-    renderTopBar();
-
-    expect(screen.getByTestId('negotiations-your-move-badge')).toHaveTextContent('1');
-  });
-
-  test('Agent click clears chat state and navigates to /agent', () => {
-    renderTopBar();
-    screen.getByRole('button', { name: /^Agent$/ }).click();
-    expect(mocks.navigate).toHaveBeenCalledWith('/agent');
-  });
-
-  // The question inbox and its badge are retired: questions are conversation
-  // in the signal's DM, and the Agent entry always routes home.
-  test('renders no question badge anywhere', () => {
-    renderTopBar();
-    expect(screen.queryByTestId('negotiator-question-badge')).toBeNull();
-  });
 });

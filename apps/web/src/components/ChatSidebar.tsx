@@ -7,7 +7,6 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
-import { countNegotiationsRequiringAction } from '@/lib/negotiation-inbox';
 import { groupNegotiationOutline } from '@/lib/negotiation-outline';
 
 interface RecentChat {
@@ -56,7 +55,6 @@ export default function ChatSidebar() {
   // empty state (skeleton vs "No messages yet") on a genuinely cold cache.
   const [refreshing, setRefreshing] = useState(true);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
-  const [mode, setMode] = useState<'h2h' | 'a2a'>('h2h');
   const chatMenuRef = useRef<HTMLDivElement>(null);
 
   const [expandedCounterpartIds, setExpandedCounterpartIds] = useState<Set<string>>(new Set());
@@ -70,20 +68,15 @@ export default function ChatSidebar() {
     return () => { cancelled = true; };
   }, [user?.id, refreshConversations, refreshNegotiations]);
 
-  // One classification source for inbox, tab, TopBar pill, and this toggle
-  // badge — no inline re-derivation here (R1).
-  const yourMoveCount = useMemo(
-    () => countNegotiationsRequiringAction(negotiations, user?.id),
-    [negotiations, user?.id],
-  );
+  const showingNegotiations = new URLSearchParams(search).get('tab') === 'negotiations';
+
   const negotiationOutline = useMemo(
     () => groupNegotiationOutline(negotiations, user?.id),
     [negotiations, user?.id],
   );
   const negotiationCount = negotiationOutline.reduce((count, group) => count + group.opportunities.length, 0);
 
-  const recentChats: RecentChat[] = mode === 'h2h'
-    ? conversations.filter(isVisibleH2HConversation).map((conv) => {
+  const recentChats: RecentChat[] = conversations.filter(isVisibleH2HConversation).map((conv) => {
       const peer = (conv.participants ?? []).find((p) => p.participantId !== user?.id && p.participantType === 'user');
       const lastText = (conv.lastMessage?.parts as { text?: string }[] | undefined)?.find(p => p.text)?.text ?? '';
       return {
@@ -98,8 +91,7 @@ export default function ChatSidebar() {
         showUnreadCount: conv.unreadCount > 0,
         sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
-    }).sort((a, b) => b.sortTimestamp - a.sortTimestamp)
-    : [];
+    }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -141,30 +133,7 @@ export default function ChatSidebar() {
         <h2 className="text-lg font-bold text-black font-ibm-plex-mono">Conversations</h2>
       </div>
       <div className="flex-1 overflow-y-auto px-4 pt-4 lg:pt-4">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex flex-1 items-center gap-1 bg-gray-100 rounded-md p-0.5">
-            <button
-              onClick={() => setMode('h2h')}
-              className={`flex-1 text-xs font-semibold py-1.5 rounded transition-colors font-ibm-plex-mono ${mode === 'h2h' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Messages
-            </button>
-            <button
-              onClick={() => setMode('a2a')}
-              className={`flex-1 text-xs font-semibold py-1.5 rounded transition-colors font-ibm-plex-mono ${mode === 'a2a' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Negotiations
-              {yourMoveCount > 0 && (
-                <span
-                  data-testid="chat-negotiations-your-move-badge"
-                  aria-label={`${yourMoveCount} negotiation${yourMoveCount === 1 ? '' : 's'} need your input`}
-                  className="ml-1 inline-flex h-4 min-w-4 flex-none items-center justify-center rounded-full bg-[#041729] px-1 align-middle text-[10px] font-bold leading-none text-white"
-                >
-                  {yourMoveCount > 99 ? '99+' : yourMoveCount}
-                </span>
-              )}
-            </button>
-          </div>
+        <div className="flex items-center justify-end mb-3">
           <span
             data-testid="chat-connection-dot"
             role="status"
@@ -173,7 +142,7 @@ export default function ChatSidebar() {
             className={`h-1.5 w-1.5 flex-none rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-gray-400'}`}
           />
         </div>
-        {mode === 'a2a' ? (
+        {showingNegotiations ? (
           negotiationCount === 0 && refreshing ? (
             renderSkeleton()
           ) : negotiationCount === 0 ? (
@@ -336,16 +305,6 @@ export default function ChatSidebar() {
                 )}
               </div>
             ))}
-          </div>
-        )}
-        {mode === 'a2a' && (
-          <div className="mt-3 border-t border-gray-100 pt-3">
-            <button
-              onClick={() => navigate('/negotiations')}
-              className="text-[11px] font-ibm-plex-mono text-[#35799C] transition-colors hover:text-[#041729]"
-            >
-              View all in Negotiations inbox &rarr;
-            </button>
           </div>
         )}
       </div>

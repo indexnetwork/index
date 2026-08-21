@@ -4,8 +4,6 @@ import { ChevronDown, Settings, LogOut, Menu, X } from 'lucide-react';
 
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useOpportunities } from '@/contexts/APIContext';
-import { useAIChat } from '@/contexts/AIChatContext';
-import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import UserAvatar from '@/components/UserAvatar';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
@@ -16,17 +14,15 @@ const logger = log.ui.from('TopBar');
 
 /**
  * Top navigation bar. Replaces the retired left sidebar: logo on the left
- * (links to Discover), primary nav (Signals / Chat / Negotiations / Networks /
- * Agent) and the profile menu on the right. Signals is the Discover home, also reachable via
+ * (links to Discover), primary nav (Signals / Chat / Negotiations / Networks) and the profile
+ * menu on the right. Signals is the Discover home, also reachable via
  * the logo.
  */
 export default function TopBar() {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const { user, signOut } = useAuthContext();
   const opportunitiesService = useOpportunities();
-  const { clearChat } = useAIChat();
-  const { setSelectedNetworkIds } = useNetworkFilter();
   const { conversations, negotiations } = useConversation();
   const unreadConversationCount = conversations.filter(
     (conversation) => isVisibleH2HConversation(conversation) && conversation.unreadCount > 0,
@@ -41,10 +37,9 @@ export default function TopBar() {
   // Active-route detection ported from the sidebar so deep routes highlight.
   // Signals covers Discover (/) plus the signal detail and creation routes.
   const isSignalsView = pathname === '/' || pathname?.startsWith('/i/');
-  const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
-  const isNegotiationsView = pathname === '/negotiations';
+  const isNegotiationsView = pathname === '/chat' && new URLSearchParams(search).get('tab') === 'negotiations';
+  const isMessagesView = !isNegotiationsView && (pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/')));
   const isNetworksView = pathname?.startsWith('/networks');
-  const isAgentView = pathname?.startsWith('/agent') || pathname?.startsWith('/d/');
   const isSettingsView = pathname?.startsWith('/settings');
 
   useEffect(() => {
@@ -98,12 +93,6 @@ export default function TopBar() {
     }
   };
 
-  const handleAgentClick = () => {
-    clearChat({ abortStream: false });
-    setSelectedNetworkIds([]);
-    navigate('/agent');
-  };
-
   const navItemClass = (active: boolean) =>
     `px-3 py-1.5 rounded-md text-sm transition-colors ${
       active ? 'bg-gray-100 text-black font-bold' : 'text-black font-medium hover:bg-gray-50'
@@ -129,7 +118,7 @@ export default function TopBar() {
           </span>
         )}
       </button>
-      <button onClick={() => navigate('/negotiations')} className={navItemClass(isNegotiationsView)}>
+      <button onClick={() => navigate('/chat?tab=negotiations')} className={navItemClass(isNegotiationsView)}>
         Negotiations
         {yourMoveCount > 0 && (
           <span
@@ -142,9 +131,6 @@ export default function TopBar() {
       </button>
       <button onClick={() => navigate('/networks')} className={navItemClass(!!isNetworksView)}>
         Networks
-      </button>
-      <button onClick={handleAgentClick} className={navItemClass(!!isAgentView)}>
-        Agent
       </button>
     </>
   );

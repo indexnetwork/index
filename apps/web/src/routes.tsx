@@ -83,7 +83,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "/negotiations",
-        lazy: lazyRoute("/negotiations", () => import("@/app/negotiations/page")),
+        element: <Navigate to="/chat?tab=negotiations" replace />,
       },
       {
         path: "/d/:id",

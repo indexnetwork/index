@@ -173,17 +173,16 @@ function LocationProbe() {
   return null;
 }
 
-function renderSidebar() {
+function renderSidebar(initialEntry = '/chat') {
   return render(
-    <MemoryRouter initialEntries={['/chat']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <LocationProbe />
       <ChatSidebar />
     </MemoryRouter>,
   );
 }
 
-async function openNegotiationsTab() {
-  fireEvent.click(screen.getByRole('button', { name: /^Negotiations/ }));
+async function waitForNegotiations() {
   // Wait for the first refresh to settle so empty-state assertions are stable.
   await waitFor(() => expect(screen.queryByTestId('chat-sidebar-skeleton')).not.toBeInTheDocument());
 }
@@ -231,22 +230,13 @@ describe('ChatSidebar conversation preview wiring (IND-504)', () => {
   });
 });
 
-describe('ChatSidebar negotiations tab (IND-523)', () => {
-  it('shows the your-move badge on the toggle only when action is needed', () => {
+describe('ChatSidebar negotiations view', () => {
+  it('does not render an in-sidebar Messages/Negotiations toggle', () => {
     mocks.conversations = [];
     mocks.negotiations = [answerNegotiation];
-    const { unmount } = renderSidebar();
-
-    const badge = screen.getByTestId('chat-negotiations-your-move-badge');
-    expect(badge).toHaveTextContent('1');
-    // Self-scoped pill: fixed 16px height, no segment padding/flex inheritance.
-    expect(badge.className).toContain('h-4');
-    expect(badge.className).toContain('flex-none');
-    unmount();
-
-    mocks.negotiations = [];
     renderSidebar();
-    expect(screen.queryByTestId('chat-negotiations-your-move-badge')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Messages$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Negotiations/ })).not.toBeInTheDocument();
   });
 
   it('groups opportunities by counterparty and exposes truthful lifecycle labels', async () => {
@@ -257,8 +247,8 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
       negotiation('live', 'Aisha Khan', { turnCount: 3 }),
       answerNegotiation,
     ];
-    renderSidebar();
-    await openNegotiationsTab();
+    renderSidebar('/chat?tab=negotiations');
+    await waitForNegotiations();
 
     const mira = screen.getByRole('button', { name: /Mira Chen/ });
     expect(mira).toHaveAttribute('aria-expanded', 'false');
@@ -271,23 +261,23 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
     expect(screen.getByText('No match')).toBeInTheDocument();
   });
 
-  it('shows mode-aware empty copy and the persistent inbox footer link', async () => {
+  it('shows mode-aware empty negotiation copy', async () => {
     mocks.conversations = [];
     mocks.negotiations = [];
-    renderSidebar();
-    await openNegotiationsTab();
+    renderSidebar('/chat?tab=negotiations');
+    await waitForNegotiations();
 
     expect(screen.getByText('No negotiations yet')).toBeInTheDocument();
     expect(screen.getByText('Your agents’ connection work will appear here.')).toBeInTheDocument();
-    expect(screen.getByText(/View all in Negotiations inbox/)).toBeInTheDocument();
+    expect(screen.queryByText(/View all in Negotiations inbox/)).not.toBeInTheDocument();
     expect(screen.queryByText('No messages yet')).not.toBeInTheDocument();
   });
 
   it('preserves the negotiation hide action on an opportunity row', async () => {
     mocks.conversations = [];
     mocks.negotiations = [negotiation('live', 'Aisha Khan')];
-    renderSidebar();
-    await openNegotiationsTab();
+    renderSidebar('/chat?tab=negotiations');
+    await waitForNegotiations();
 
     fireEvent.click(screen.getByRole('button', { name: /Aisha Khan/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Negotiation options' }));
@@ -297,26 +287,22 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
   it('routes an opportunity to its exact task session', async () => {
     mocks.conversations = [];
     mocks.negotiations = [negotiation('live', 'Aisha Khan', { turnCount: 3 })];
-    renderSidebar();
-    await openNegotiationsTab();
+    renderSidebar('/chat?tab=negotiations');
+    await waitForNegotiations();
 
     fireEvent.click(screen.getByRole('button', { name: /Aisha Khan/ }));
     fireEvent.click(screen.getByText("Aisha Khan's opportunity"));
     await waitFor(() => expect(currentPath.value).toBe('/chat/live?taskId=live-task'));
   });
 
-  it('never advertises a badge count over an empty list', async () => {
+  it('shows fallback negotiation rows in the top-bar negotiations destination', async () => {
     mocks.conversations = [];
     mocks.negotiations = [ungroupableNegotiation, screenedOutNegotiation];
-    renderSidebar();
+    renderSidebar('/chat?tab=negotiations');
+    await waitForNegotiations();
 
-    // The badge counts the pending negotiation…
-    expect(screen.getByTestId('chat-negotiations-your-move-badge')).toHaveTextContent('1');
-
-    // …and the list must be able to show it. Before the fallback bucket, both
-    // conversations projected zero opportunities and the rail rendered
-    // "No negotiations yet" underneath a badge reading 1.
-    await openNegotiationsTab();
+    // The list must surface projected fallback opportunities rather than
+    // reporting an empty inbox.
     expect(screen.queryByText('No negotiations yet')).not.toBeInTheDocument();
     expect(screen.getByTestId('negotiation-outline')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Dana Okafor/ })).toBeInTheDocument();
@@ -326,8 +312,8 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
   it('opens a fallback row on its lifecycle task and labels its lifecycle status', async () => {
     mocks.conversations = [];
     mocks.negotiations = [ungroupableNegotiation];
-    renderSidebar();
-    await openNegotiationsTab();
+    renderSidebar('/chat?tab=negotiations');
+    await waitForNegotiations();
 
     fireEvent.click(screen.getByRole('button', { name: /Dana Okafor/ }));
     // No opportunity title survives the projection, so the row is generic —
@@ -340,8 +326,8 @@ describe('ChatSidebar negotiations tab (IND-523)', () => {
   it('opens a fallback row with no addressable task on the latest session', async () => {
     mocks.conversations = [];
     mocks.negotiations = [{ ...ungroupableNegotiation, negotiation: null }];
-    renderSidebar();
-    await openNegotiationsTab();
+    renderSidebar('/chat?tab=negotiations');
+    await waitForNegotiations();
 
     fireEvent.click(screen.getByRole('button', { name: /Dana Okafor/ }));
     expect(screen.getByText('Not started')).toBeInTheDocument();
