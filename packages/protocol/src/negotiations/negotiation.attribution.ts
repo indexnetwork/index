@@ -58,9 +58,9 @@ export interface SeededAttribution {
 }
 
 /**
- * Attributed prior dialogue passed to the negotiator agent and the outreach
- * screener (IND-569). `current` combines same-opportunity seeded turns with
- * the turns exchanged in this session.
+ * Attributed prior dialogue passed to the negotiator agent (IND-569).
+ * `current` combines same-opportunity seeded turns with the turns exchanged in
+ * this session.
  */
 export interface AttributedPriorDialogue {
   /** Prior concluded negotiations on OTHER opportunities, grouped + labeled. */
@@ -177,8 +177,8 @@ function earlierHeader(group: EarlierNegotiationGroup): string {
 
 /**
  * Render the attributed prior dialogue into labeled prompt blocks. `formatTurn`
- * lets each surface (negotiator agent / screener) keep its own per-turn line
- * format while sharing the block structure. Only non-empty blocks are emitted;
+ * lets each calling surface keep its own per-turn line format while sharing
+ * the block structure. Only non-empty blocks are emitted;
  * earlier and unattributed blocks are re-indexed from 1 within their block so
  * turn numbers never imply a single flat exchange across opportunities.
  */

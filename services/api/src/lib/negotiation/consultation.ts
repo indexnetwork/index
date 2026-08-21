@@ -240,7 +240,6 @@ export function assessExternalConsultationEligibility(
     seat,
     isOpeningTurn,
     isFinalTurn,
-    screenedOut: false,
     action: lastAction,
     // The final persisted turn is authored by the counterparty. From that
     // turn's perspective, `otherUser` is the currently claiming owner.

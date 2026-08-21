@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator } from "../negotiation.agent.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * IND-396 — initiator seat stamping (v2 client-advocate protocol).
@@ -91,9 +90,6 @@ async function runGraph(
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("negotiation graph — initiatorUserId stamping (IND-396)", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
 

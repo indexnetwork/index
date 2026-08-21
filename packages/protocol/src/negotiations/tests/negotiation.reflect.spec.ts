@@ -4,7 +4,6 @@ import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { IndexNegotiator } from "../negotiation.agent.js";
 import { NegotiationReflector, MAX_DISTILLED_MEMORIES } from "../negotiation.reflect.js";
 import type { NegotiationReflectJobData, ReflectionResult } from "../negotiation.reflect.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * IND-406 — reflection jobs (memory write path).
@@ -68,9 +67,6 @@ const reflectionInput = {
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("NegotiationReflector", () => {
   it("parses valid distillation output", async () => {
     const reflector = new StubReflector(validResult);

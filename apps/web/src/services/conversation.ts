@@ -43,9 +43,10 @@ export interface ConversationNegotiationLifecycle {
    * negotiations that are otherwise visible in a mutual conversation.
    *
    * `source` distinguishes the two refusals that collapse into the same
-   * `screened_out` outcome: `screen` (the outreach gate passed before any
-   * contact, so `evidence.*` is present) and `outcome` (the agent refused on
-   * its opening turn, so only reasoning exists).
+   * `screened_out` outcome: `outcome` (the agent refused on its opening turn,
+   * so only reasoning exists) and `screen` — READ-ONLY HISTORY, the outreach
+   * gate that wrote `evidence.*` is gone, but rows from before its removal
+   * still project one.
    */
   screenDecision?: {
     source: 'screen' | 'outcome';

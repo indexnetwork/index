@@ -311,7 +311,7 @@ opportunity's exact actor-intent binding. `NEGOTIATION_INCLUDE_OTHER_INTENTS`
 defaults to `true`, preserving the exact-first bounded fallback of up to five
 active intents per participant. With the strict value `false`, only an owned
 exact bound intent is admitted; an actor without an exact binding receives no
-unrelated fallback. This pruning happens before the outreach screen,
+unrelated fallback. This pruning happens before the negotiation graph runs,
 negotiator, dispatcher/polling context, persisted `turnContext`, and intent
 snapshot derivation. Personal negotiator chat keeps its explicit authenticated
 `read_intents` capability unchanged.

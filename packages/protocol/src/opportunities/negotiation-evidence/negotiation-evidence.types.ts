@@ -10,8 +10,8 @@
  *   - structured bilateral actions / coarse outcomes, and
  *   - explicitly shared message content.
  *
- * Everything else — screen/evaluator reasoning, agent chain-of-thought,
- * `memoryHints`, private negotiator memories/reflections, disclosure subjects,
+ * Everything else — evaluator reasoning, agent chain-of-thought,
+ * private negotiator memories/reflections, disclosure subjects,
  * untagged shared answers, and old synthesized digests — is excluded by
  * construction (never mapped into an {@link AllowlistedEvidence}).
  */

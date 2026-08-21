@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { z } from "zod";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { createNegotiationTools } from "../negotiation.tools.js";
@@ -106,13 +105,10 @@ function patchAgent(actions: string[]) {
   return { inputs, restore: () => { IndexNegotiator.prototype.invoke = orig; } };
 }
 
-let restoreScreener: () => void;
 
 beforeAll(() => {
-  restoreScreener = stubScreenerReachOut();
 });
 afterAll(() => {
-  restoreScreener();
 });
 
 /**

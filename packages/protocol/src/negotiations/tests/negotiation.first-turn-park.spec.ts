@@ -9,7 +9,6 @@ import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import type { ChecklistDraftItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * A task's FIRST turn can park.
@@ -259,9 +258,6 @@ let agentScript: NegotiationTurn[] = [];
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("a first-turn ask parks", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;

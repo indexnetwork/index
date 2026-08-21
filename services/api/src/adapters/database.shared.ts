@@ -668,19 +668,18 @@ export interface ResolvedParticipant {
 /**
  * IND-610: owner-only projection of the outreach-gate decision.
  *
- * `source` keeps the provenance honest — the same `screened_out` outcome is
- * reachable from two places, and the card that renders this must not claim
- * screen-node evidence it does not have:
- * - `screen`  — `tasks.metadata.screenDecision`, written by the outreach gate
- *   before any contact; carries structured `evidence.*`.
- * - `outcome` — the negotiation-outcome artifact's `reasoning`, used when the
- *   agent refused on the opening turn instead (no screen-node evidence).
+ * `source` keeps the provenance honest — the card that renders this must not
+ * claim screen-node evidence it does not have:
+ * - `screen`  — `tasks.metadata.screenDecision`. READ-ONLY HISTORY: the
+ *   outreach gate that wrote it is gone, but existing task rows carry it.
+ * - `outcome` — the negotiation-outcome artifact's `reasoning`, written when
+ *   the agent refuses on its opening turn (IND-564). The only live source.
  */
 export interface ProjectedScreenDecision {
   source: 'screen' | 'outcome';
   decision: 'reach_out' | 'pass';
   reasoning: string;
-  /** Screen-node evidence; null when the decision came from the outcome. */
+  /** Screen-node evidence on historical rows; null when the decision came from the outcome. */
   counterpartyPremiseFit: string | null;
   intentAlignment: string | null;
   screenedAt: string | null;
@@ -700,12 +699,12 @@ export interface NegotiationLifecycleSummary {
   outcome: { hasOpportunity: boolean; reason: string | null } | null;
   updatedAt: Date;
   /**
-   * IND-610: the owner-facing outreach-gate decision, named-field projected
-   * from `tasks.metadata.screenDecision` (or, when the refusal happened at the
-   * opening turn instead of the screen node, from the negotiation-outcome
-   * artifact's `reasoning`). Populated only when the caller has independently
-   * verified the viewer is the negotiation's initiator — never the raw
-   * metadata blob.
+   * IND-610: the owner-facing "did not reach out" decision, named-field
+   * projected from the negotiation-outcome artifact's `reasoning` (an
+   * opening-turn refusal) or, on historical rows, from
+   * `tasks.metadata.screenDecision`. Populated only when the caller has
+   * independently verified the viewer is the negotiation's initiator — never
+   * the raw metadata blob.
    */
   screenDecision?: ProjectedScreenDecision | null;
 }

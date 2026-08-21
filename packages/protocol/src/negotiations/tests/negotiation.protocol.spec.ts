@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "bun:test";
-import { InitiatorTurnSchema, CounterpartyTurnSchema, FinalInitiatorTurnSchema, FinalCounterpartyTurnSchema, allowedActionsFor, turnSchemaFor, isTerminalAction, isRejectLikeAction, fallbackActionFor, rejectActionFor, readProtocolVersion, NEW_NEGOTIATION_PROTOCOL_VERSION, resolveSeat, seatViolationMessage } from "../negotiation.protocol.js";
+import { InitiatorTurnSchema, CounterpartyTurnSchema, FinalInitiatorTurnSchema, FinalCounterpartyTurnSchema, allowedActionsFor, turnSchemaFor, isTerminalAction, isRejectLikeAction, fallbackActionFor, rejectActionFor, readProtocolVersion, NEW_NEGOTIATION_PROTOCOL_VERSION, negotiationHasMadeContact, resolveSeat, seatViolationMessage } from "../negotiation.protocol.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
 
 /**
@@ -144,5 +144,30 @@ describe("metadata readers", () => {
     expect(msg).toContain("initiator");
     expect(msg).toContain("v2");
     expect(msg).toContain("outreach, counter, question, withdraw");
+  });
+});
+
+describe("negotiationHasMadeContact", () => {
+  // The predicate that decides whether the outreach gate still has a question
+  // to answer, and whether `screened_out` — a claim that nothing was ever
+  // sent — may be recorded.
+  it("is false before anything is persisted", () => {
+    expect(negotiationHasMadeContact([])).toBe(false);
+  });
+
+  it("is true once any turn addressed to the counterparty exists", () => {
+    expect(negotiationHasMadeContact([{ action: "outreach" }])).toBe(true);
+    expect(negotiationHasMadeContact([{ action: "propose" }, { action: "counter" }])).toBe(true);
+    // Even a decline is contact: the counterparty spoke, so both sides did.
+    expect(negotiationHasMadeContact([{ action: "outreach" }, { action: "decline" }])).toBe(true);
+  });
+
+  it("does not count an ask_user park — that question went to the client, not the counterparty", () => {
+    expect(negotiationHasMadeContact([{ action: "ask_user" }])).toBe(false);
+    expect(negotiationHasMadeContact([{ action: "ask_user" }, { action: "ask_user" }])).toBe(false);
+  });
+
+  it("counts contact made either side of a park", () => {
+    expect(negotiationHasMadeContact([{ action: "ask_user" }, { action: "outreach" }])).toBe(true);
   });
 });

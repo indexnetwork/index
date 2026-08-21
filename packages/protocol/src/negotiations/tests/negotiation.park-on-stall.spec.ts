@@ -8,7 +8,6 @@ import { countNegotiationAskRounds, hasPriorAskUser } from "../negotiation.graph
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * Post-stall park with a bounded ask cap (conversational-questions plan).
@@ -131,9 +130,6 @@ const counterTurn: NegotiationTurn = {
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("negotiation graph — post-stall park", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origAuthor: typeof NegotiationStallGapAuthor.prototype.author;

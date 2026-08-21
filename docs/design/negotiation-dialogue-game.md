@@ -18,7 +18,7 @@ McBurney & Parsons define a dialogue game by five rule classes (the canonical fo
 
 | Rule class | Formal role | Where it lives in code |
 |---|---|---|
-| **Commencement rules** | When a dialogue may begin, and with what opening move | `initNode` in `negotiation.graph.ts`: lock gate, seat stamping, forced opening action; screen gate (`negotiation.screen.ts`) |
+| **Commencement rules** | When a dialogue may begin, and with what opening move | `initNode` in `negotiation.graph.ts`: lock gate, seat stamping, forced opening action |
 | **Locutions** | The legal utterance vocabulary | Turn actions in `negotiation.protocol.ts` seat schemas + `NEGOTIATION_ACTIONS` in `shared/schemas/negotiation-state.schema.ts` |
 | **Combination rules** | Which locution may follow which, for whom | `allowedActionsFor(version, seat, isFinalTurn, opts)` + `turnSchemaFor` in `negotiation.protocol.ts` |
 | **Commitment rules** | How utterances update the public commitment stores | Persisted turns: A2A messages with `DataPart` payloads (`turnsFromMessages`), outcome artifact at finalize |
@@ -34,7 +34,7 @@ A negotiation dialogue can only begin when:
 2. **The floor is free** — the init node's lock gate refuses to start while an active, fresh task holds the conversation (`isActiveAndFresh`), so at most one game runs per pair/opportunity at a time.
 3. **Seats are fixed** — under v2 the initiator seat is stamped rigidly per match (`metadata.initiatorUserId`, inherited by continuations, never re-derived from turn parity). Seat assignment is a commencement-time fact, not a per-turn negotiation.
 4. **The opening move is forced** — turn 0 of a fresh game must be the opening locution: v1 `propose`, v2 initiator `outreach`. The graph coerces any other action (`turnNode`'s turn-0 check). This is the game's sole legal commencement locution.
-5. **Screen gate (v2, `NEGOTIATION_SCREEN_MODE`)** — before the first turn, the reaching client's own gate decides `reach_out | pass`. In enforce mode a `pass` means the game never commences (outcome `screened_out`, zero turns). This is a lightweight analogue of McBurney & Parsons' *commencement dialogue*: a pre-game decision about whether to interact at all — though here it is unilateral (the client's own counsel), not a mutual-consent subdialogue.
+5. **Opening refusal (v2)** — the game may fail to commence, but only from inside it: the initiator's own first turn may be a `withdraw`, which is never persisted and ends the negotiation as `screened_out` with zero turns and no contact (IND-564). A separate pre-turn outreach gate used to make this decision before any turn was drafted — a lightweight analogue of McBurney & Parsons' *commencement dialogue*, unilateral rather than a mutual-consent subdialogue. It was removed: a negotiation blocked before its first turn can never park, and parked negotiations are what generate the client's questions. Historical `screened_out` rows carry its decisions.
 
 ## Locutions
 
@@ -84,7 +84,7 @@ The commitment store is the **persisted turn history**: each turn is an A2A mess
 - **Binding within the game** — the finalize node computes the outcome from the store (last action, `agreedRoles` derived from the last two turns' `suggestedRoles`), and writes it as an immutable `negotiation-outcome` artifact.
 - **Not binding on principals** — a negotiation `accept` commits the *agents'* joint recommendation (opportunity → `pending`), never the humans: human approval remains the terminal gate ([agent-negotiation-boundaries.md](./agent-negotiation-boundaries.md) §B4). In dialogue-game terms, the commitment stores scope to the game; exiting commitments require a separate human move outside the game.
 
-Internal analytical annotations on the task row (e.g. `metadata.screenDecision`, parked `turnContext`) are *not* part of the commitment store: API surfaces project specific fields and never return task metadata verbatim.
+Internal analytical annotations on the task row (e.g. parked `turnContext`, `metadata.deadlockShift`) are *not* part of the commitment store: API surfaces project specific fields and never return task metadata verbatim.
 
 ## Termination rules
 
@@ -92,7 +92,7 @@ The game ends in exactly one of these ways:
 
 1. **Terminal locution** — `isTerminalAction`: `accept` (opportunity → `pending`), or `reject`/`withdraw`/`decline` (→ `rejected`). Version-independent mapping.
 2. **Turn cap** — `evaluateNode` routes to finalize when `turnCount >= maxTurns` (scenario-resolved at init; ambient default 6). Outcome `reason: "turn_cap"`, opportunity → `stalled`. This is the game's guarantee against infinite dialogue — with the documented caveat that both-sides-external runs are uncapped (`maxTurns = 0`, open item on IND-395).
-3. **Screened out** — the game never commenced (enforce-mode `pass`); outcome `reason: "screened_out"`.
+3. **Screened out** — the game never commenced: the initiator refused on its own opening turn and nothing was sent; outcome `reason: "screened_out"`.
 4. **Suspension is not termination** — `ask_user` (`input_required`) and `waiting_for_agent` park the game without an outcome; timers guarantee eventual resumption (system-negotiator fallback / conservative-default answer), after which one of rules 1–2 fires. Negotiations always terminate.
 
 ## Dialogue typology and the known gap
@@ -108,7 +108,7 @@ That gap is closed by the second half of backlog item 6 (IND-428), under a hard 
 - **Detection** (`negotiation.deadlock.ts`, `assessDeadlock`): the maximal *trailing* run of `counter`/`question` turns in the persisted history — the commitment store makes this decidable without any LLM. Openings, terminal actions, `ask_user` (fresh principal input incoming), and unreadable actions reset the run. Deadlock at run ≥ `NEGOTIATION_DEADLOCK_THRESHOLD` (integer ≥ 2, default 4).
 - **Gate**: `NEGOTIATION_DEADLOCK_SHIFT_ENABLED === "true"` (strict, default off), applied only under protocol v2 — checked alongside the version plumbing so v1 semantics stay untouched. Detection errors fail open to "no deadlock".
 - **Shift**: the turn node passes a `bargaining` stance to the *system agent's* prompt only (concessions/scope reductions; `ask_user` escalation only when the action is already legally held on the turn; conclude decisively otherwise). Locutions, combination rules (`allowedActionsFor`), commitment rules, and termination rules are untouched — a shifted agent still speaks only its seat's vocabulary, and externally dispatched turns never receive the stance.
-- **Record**: the first applied shift per session is persisted to internal task metadata (`metadata.deadlockShift`, never projected by API surfaces — same posture as `screenDecision`) and emitted as a `negotiation_deadlock_shift` trace event.
+- **Record**: the first applied shift per session is persisted to internal task metadata (`metadata.deadlockShift`, never projected by API surfaces) and emitted as a `negotiation_deadlock_shift` trace event.
 
 ## Readings
 

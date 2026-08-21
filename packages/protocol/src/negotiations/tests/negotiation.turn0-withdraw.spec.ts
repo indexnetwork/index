@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
+import { describe, it, expect, beforeEach, afterAll } from "bun:test";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
-import { NegotiationScreener, type ScreenDecision } from "../negotiation.screen.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 
 /**
@@ -44,7 +43,6 @@ function mkStubs(priorMessages: FakeMessage[] = []) {
   const createdMessages: Array<{ senderId: string; parts: Array<{ kind: string; data: NegotiationTurn }> }> = [];
   const statusUpdates: Array<{ opportunityId: string; status: string }> = [];
   const artifacts: Array<Record<string, unknown>> = [];
-  const screenWrites: Array<{ taskId: string; record: Record<string, unknown> }> = [];
   const database = {
     getOrCreateDM: async () => ({ id: "conv-1" }),
     createTask: async (conversationId: string) => ({ id: "task-new", conversationId, state: "submitted" }),
@@ -55,9 +53,6 @@ function mkStubs(priorMessages: FakeMessage[] = []) {
     updateTaskState: async () => ({ id: "task-new", conversationId: "conv-1", state: "working" }),
     createArtifact: async (a: Record<string, unknown>) => { artifacts.push(a); return { id: "art-1" }; },
     setTaskTurnContext: async () => {},
-    setTaskScreenDecision: async (taskId: string, record: Record<string, unknown>) => {
-      screenWrites.push({ taskId, record });
-    },
     updateOpportunityStatus: async (opportunityId: string, status: string) => {
       statusUpdates.push({ opportunityId, status });
       return { id: opportunityId, status };
@@ -77,7 +72,7 @@ function mkStubs(priorMessages: FakeMessage[] = []) {
     hasExternalAgent: async () => false,
   } as unknown as AgentDispatcher;
 
-  return { database, dispatcher, createdMessages, statusUpdates, artifacts, screenWrites };
+  return { database, dispatcher, createdMessages, statusUpdates, artifacts };
 }
 
 const sourceUser = {
@@ -122,9 +117,6 @@ describe("negotiation graph — turn-0 refusal is not force-rewritten (IND-611)"
     };
   });
 
-  afterEach(() => {
-  });
-
   afterAll(() => {
     IndexNegotiator.prototype.invoke = origInvoke;
   });
@@ -166,78 +158,6 @@ describe("negotiation graph — turn-0 refusal is not force-rewritten (IND-611)"
 
     expect(result.lastTurn?.action).toBe("withdraw");
     expect(result.lastTurn?.action).not.toBe("outreach");
-  }, 30_000);
-
-  it("outcome.reasoning is the WITHDRAWING TURN's reasoning, not a reach_out screen's pro-match text", async () => {
-    // Cross-PR regression guard (IND-611 x IND-610).
-    //
-    // `outcome.reasoning` used to prefer `screenDecision.reasoning` whenever
-    // `screenedOut` was set, which was safe only while the screen node was the
-    // ONLY route to that outcome. The turn-0 refusal path adds a second route,
-    // and on it the screen record can say `reach_out` with reasoning arguing
-    // FOR the match. IND-610's negotiation-lifecycle projection surfaces
-    // `outcome.reasoning` whenever the screen record is not a `pass`, so the
-    // owner's gate-decision card would have read "your agent did not reach out"
-    // above text explaining why the match WAS worth making — the exact
-    // dishonesty this work exists to remove.
-    const origScreenerInvoke = NegotiationScreener.prototype.invoke;
-    const reachOut: ScreenDecision = {
-      decision: "reach_out",
-      reasoning: "strong overlap on evaluation tooling; this is worth Alice's time",
-      outreachAngle: "shared evaluation focus",
-      evidence: { counterpartyPremiseFit: "fits", intentAlignment: "aligned" },
-    };
-    NegotiationScreener.prototype.invoke = async () => reachOut;
-
-    try {
-      const stubs = mkStubs();
-      agentScript = [{
-        action: "withdraw",
-        assessment: { reasoning: "on closer reading Bob is not actually available this quarter", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
-        message: null,
-      }];
-
-      const result = await runGraph(stubs);
-
-      // The gate genuinely ran and said reach_out — this is the real seam.
-      expect(stubs.screenWrites.length).toBe(1);
-      expect(stubs.screenWrites[0].record.decision).toBe("reach_out");
-
-      expect(result.outcome?.reason).toBe("screened_out");
-      expect(result.outcome?.reasoning).toBe("on closer reading Bob is not actually available this quarter");
-      expect(result.outcome?.reasoning).not.toContain("worth Alice's time");
-      expect(result.outcome?.reasoning).not.toBe(reachOut.reasoning);
-      // Still the quiet path: nothing reached the counterparty.
-      expect(stubs.createdMessages.length).toBe(0);
-    } finally {
-      NegotiationScreener.prototype.invoke = origScreenerInvoke;
-    }
-  }, 30_000);
-
-  it("a genuine screen-node block still reports the SCREEN's reasoning (unchanged)", async () => {
-    // The other half of the contract: when the gate itself passed on the match,
-    // no turn was ever drafted, so the screen decision remains authoritative.
-    const origScreenerInvoke = NegotiationScreener.prototype.invoke;
-    NegotiationScreener.prototype.invoke = async (): Promise<ScreenDecision> => ({
-      decision: "pass",
-      reasoning: "generic overlap only; not worth the outreach",
-      outreachAngle: null,
-      evidence: { counterpartyPremiseFit: "thin", intentAlignment: "vague" },
-    });
-
-    try {
-      const stubs = mkStubs();
-      agentScript = []; // no turn should ever be drafted
-
-      const result = await runGraph(stubs);
-
-      expect(result.outcome?.reason).toBe("screened_out");
-      expect(result.outcome?.reasoning).toBe("generic overlap only; not worth the outreach");
-      expect(result.outcome?.turnCount).toBe(0);
-      expect(stubs.createdMessages.length).toBe(0);
-    } finally {
-      NegotiationScreener.prototype.invoke = origScreenerInvoke;
-    }
   }, 30_000);
 
   it("a malformed turn-0 opening (counter) is STILL coerced to outreach", async () => {

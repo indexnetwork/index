@@ -7,7 +7,6 @@ import { buildAttributedDialogue } from "../negotiation.graph.shared.js";
 import type { AttributedPriorDialogue, SeededAttribution } from "../negotiation.attribution.js";
 import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The initiator seat re-opened on every one of its turns.
@@ -194,9 +193,6 @@ function actionsOf(result: { messages?: Array<{ parts: unknown[] }> }): string[]
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("initiator continuation — this session's turns reach the next prompt", () => {
   let priorVersion: string | undefined;
 

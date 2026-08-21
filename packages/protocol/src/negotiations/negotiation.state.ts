@@ -1,7 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import { z } from "zod";
 import type { NegotiationContinuationExecution, NegotiationContinuationReceipt, NegotiationPrivateConsultation, NegotiationUserAnswer, OpportunityStatus } from "../shared/interfaces/database.interface.js";
-import type { ScreenDecisionRecord } from "./negotiation.screen.contracts.js";
 import type { DeadlockShiftRecord } from "./negotiation.deadlock.contracts.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
@@ -80,6 +79,9 @@ export const NegotiationOutcomeSchema = z.object({
    * `repetition` is the honest name for a run the copy-loop guard ended: an
    * agent reproduced a message already on the record and did it again when
    * re-issued, so nothing was decided and no verdict may be implied.
+   * `screened_out` means no contact was ever made. The pre-first-turn outreach
+   * gate that used to write it is gone; the IND-564 opening-`withdraw` guard
+   * still does, and historical rows stamped by the gate still render.
    */
   reason: z.enum(["turn_cap", "timeout", "screened_out", "agent_error", "repetition"]).optional(),
 });
@@ -231,16 +233,6 @@ export const NegotiationGraphState = Annotation.Root({
   }),
 
   /**
-   * Screen-gate decision for this fresh run (P2.1 shadow mode). Written by the
-   * screen node; null when the gate is off, on continuations, or before the
-   * node runs. Mirrors `tasks.metadata.screenDecision`.
-   */
-  screenDecision: Annotation<ScreenDecisionRecord | null>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => null,
-  }),
-
-  /**
    * First applied deadlock→bargaining shift in this session (IND-428).
    * Written by the turn node when the system agent first drafts in the
    * bargaining stance; used to record the shift exactly once per session.
@@ -254,9 +246,8 @@ export const NegotiationGraphState = Annotation.Root({
 
   /**
    * Per-side negotiator-memory cache (P5.3 read path). Populated lazily the
-   * first time each side's memory is retrieved (screen node for the client,
-   * turn node for the speaker) so a multi-turn session pays for retrieval at
-   * most once per side. `undefined` per side = not yet retrieved; `[]` =
+   * first time the speaking side's memory is retrieved (turn node) so a
+   * multi-turn session pays for retrieval at most once per side. `undefined` per side = not yet retrieved; `[]` =
    * retrieved and empty (flag off / no rows / retrieval failed).
    */
   memoryBySide: Annotation<Partial<Record<"source" | "candidate", NegotiatorMemoryEntry[]>>>({
@@ -273,8 +264,8 @@ export const NegotiationGraphState = Annotation.Root({
   /**
    * Immutable attributed prior dialogue derived once in the init node from the
    * seeded prior messages (IND-569). Groups earlier-opportunity turns and
-   * legacy unattributed turns so the screen node and every turn prompt can
-   * label prior context per opportunity. Null on fresh runs / when there is no
+   * legacy unattributed turns so every turn prompt can label prior context
+   * per opportunity. Null on fresh runs / when there is no
    * seeded prior dialogue. Typed as `unknown` to avoid a module cycle
    * (attribution module imports NegotiationTurn from this module's shim);
    * callers cast to `SeededAttribution` via the negotiation.attribution module.
@@ -303,6 +294,9 @@ export const NegotiationGraphState = Annotation.Root({
    * was blocked (IND-564). Signals finalize to record the quiet screen-out
    * outcome (`reason: "screened_out"`, opportunity `rejected`) without ever
    * persisting the withdraw message into the shared `dm_pair` conversation.
+   * The sole remaining writer of `screened_out` now that the outreach gate is
+   * gone: the refusal is the acting agent's own opening turn, not a decision
+   * taken before it drafted one.
    */
   firstTurnScreenedOut: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,

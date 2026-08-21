@@ -4,7 +4,6 @@ import { NegotiationGraphState, type NegotiationTurn } from "../negotiation.stat
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { NegotiationStallGapAuthor, type NegotiationStallGap, type StallGapAuthorInput } from "../negotiation.stall-gap.js";
 import { MAX_CONSECUTIVE_TURN_FAILURES } from "../negotiation.turn-failure.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * Failed turns: not a decision, not a turn, never silent.
@@ -104,9 +103,6 @@ let authorResult: NegotiationStallGap | null = null;
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("negotiation graph — failed turns", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
   let origAuthor: typeof NegotiationStallGapAuthor.prototype.author;

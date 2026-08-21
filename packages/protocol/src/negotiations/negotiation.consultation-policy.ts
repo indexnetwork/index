@@ -11,7 +11,6 @@ export interface ConsultationEligibilityInput {
   seat: NegotiationSeat;
   isOpeningTurn: boolean;
   isFinalTurn: boolean;
-  screenedOut: boolean;
   action: NegotiationAction;
   ownSuggestedRole: "agent" | "patient" | "peer" | undefined;
   priorActions: readonly NegotiationAction[];
@@ -46,7 +45,6 @@ export function assessConsultationEligibility(input: ConsultationEligibilityInpu
   if (
     input.protocolVersion !== "v2"
     || input.isFinalTurn
-    || input.screenedOut
     || input.consultationBudgetSpent
     || !input.hasExactResumeCoordinate
     || !input.lifecycleValid

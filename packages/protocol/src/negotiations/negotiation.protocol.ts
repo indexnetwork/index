@@ -198,6 +198,36 @@ export function isRejectLikeAction(action: string | undefined | null): boolean {
 }
 
 /**
+ * Whether a negotiation has already made contact — whether anything of this
+ * negotiation's own has been put in front of the counterparty.
+ *
+ * Contact is a PERSISTED TURN, nothing weaker: task metadata about a
+ * negotiation is not something the counterparty ever saw.
+ *
+ * `ask_user` is the one persisted turn that is not contact. It parks the
+ * negotiation to ask the client's OWN principal a question before deciding to
+ * reach out; nothing was ever addressed to the counterparty. This is the same
+ * reading `isPreContactConsultResume` already applies to an all-`ask_user`
+ * history, and keeping the two in step is what lets a pre-contact consult
+ * resume still resolve as the opening decision it is.
+ *
+ * Scope matters as much as the predicate: callers pass THIS negotiation's turns
+ * (`readNegotiationMessages`), never the pair's whole DM. A new match reusing
+ * an established `dm_pair` conversation has made no contact of its own.
+ *
+ * Two live rules depend on it, and both are claims about whether a message
+ * exists: the IND-564 opening-`withdraw` guard (never retract an outreach that
+ * was never made) and the `screened_out` label in finalize (an outcome that
+ * asserts nothing was ever sent may not be stamped on a negotiation whose own
+ * messages contradict it).
+ */
+export function negotiationHasMadeContact(
+  turns: readonly { action: string }[],
+): boolean {
+  return turns.some((turn) => turn.action !== "ask_user");
+}
+
+/**
  * Conservative action when an agent produced schema-invalid output (after the
  * retry) or an internal error needs a seat-valid terminal placeholder.
  *

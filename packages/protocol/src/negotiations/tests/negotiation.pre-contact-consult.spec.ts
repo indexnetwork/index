@@ -9,7 +9,6 @@ import { negotiationQuestionSettlementId } from "../negotiation.question-safety.
 import { assessConsultationEligibility, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, PRE_CONTACT_CONSULT_MARKER } from "../negotiation.consultation-policy.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * Pre-contact consultation — the initiator's turn-0 THIRD verdict.
@@ -297,9 +296,6 @@ function resumeFixtures(consultation: {
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("pre-contact consultation — the initiator's turn-0 third verdict", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
@@ -336,7 +332,6 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       seat: "initiator" as const,
       isOpeningTurn: true,
       isFinalTurn: false,
-      screenedOut: false,
       ownSuggestedRole: "peer" as const,
       priorActions: [] as const,
       consultationBudgetSpent: false,
@@ -364,7 +359,6 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       for (const partial of [
         { protocolVersion: "v1" as const },
         { isFinalTurn: true },
-        { screenedOut: true },
         { consultationBudgetSpent: true },
         { hasExactResumeCoordinate: false },
         { lifecycleValid: false },

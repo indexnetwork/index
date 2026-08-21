@@ -7,7 +7,6 @@ import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL, type ChecklistDraftItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The checklist protocol at the graph seam
@@ -189,9 +188,6 @@ let agentScript: NegotiationTurn[] = [];
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("checklist protocol at the turn seam", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;

@@ -7,7 +7,6 @@ import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { assessDeclineAdmissibility, type ChecklistDraftItem, type ChecklistItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
-import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The copy loop, and the two rules that let it happen.
@@ -211,9 +210,6 @@ let agentScript: NegotiationTurn[] = [];
 
 // The outreach screen runs before first contact on every negotiation; stub it
 // so these cases exercise the turns they are about rather than a live model.
-const restoreScreenStub = stubScreenerReachOut();
-afterAll(() => { restoreScreenStub(); });
-
 describe("the copy loop at the turn seam", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;

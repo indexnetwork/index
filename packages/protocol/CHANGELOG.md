@@ -20,6 +20,54 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 24.0.0 - 2026-08-21
+
+### Removed
+
+- **BREAKING: the negotiation outreach screen gate is gone.** `NegotiationScreener`
+  is off the barrel, and the graph is now `init → turn* → finalize` — every
+  negotiation that reaches `init` proceeds to its first turn. The gate was one
+  structured LLM call before the first turn that could return `pass` and end the
+  negotiation as `screened_out` with the counterparty never contacted.
+
+  It was removed because questions come from parked negotiations: a negotiation
+  screened out never runs a turn, so it never stalls, never parks, and can never
+  produce a user-facing question. The gate silently removed matches from the one
+  pipeline that generates them.
+
+  Also gone: `negotiation.graph.screen.ts` and `negotiation.screen.contracts.ts`
+  in full (`NEGOTIATION_SCREEN_MODES`, `NegotiationScreenMode`, `SCREEN_MODE`,
+  `ScreenDecisionSchema`, `ScreenDecision`, `ScreenDecisionRecord`,
+  `blocksNegotiationBeforeFirstTurn`), the `screener` dep on
+  `NegotiationGraphDeps`, the `screenDecision` graph-state field, the
+  `routeAfterScreen` edge, the optional `setTaskScreenDecision` port method on
+  `NegotiationGraphDatabase`, the `negotiationScreener` model-config entry, and
+  the `screenedOut` field of `ConsultationEligibilityInput` (always false with
+  no gate to set it). `NegotiatorMemoryScope` narrows to `"turn"`, and
+  `renderNegotiatorMemorySection` loses its options argument — the
+  `memoryHintsInstruction` it carried existed only for the screen prompt.
+
+### Changed
+
+- **`negotiationHasMadeContact` moved to `negotiation.protocol.ts`.** Not a
+  screening helper: finalize and the turn node both call it for live turn logic
+  (the IND-564 opening-`withdraw` guard, and the `screened_out` label). It lived
+  in the screen module by accident of history. Package-internal, so no consumer
+  import changes.
+
+- **`screened_out` now has exactly one live writer** — the IND-564 opening-turn
+  `withdraw` guard, where the acting agent refuses before anything is sent.
+  `outcome.reasoning` for such a run is unconditionally the withdrawing turn's
+  reasoning; there is no screen record left to prefer over it.
+
+### Read-only history (deliberately kept)
+
+- The `screened_out` outcome reason, `tasks.metadata.screenDecision`, and the
+  owner-only `screenDecision` API projection. Nothing writes the metadata key
+  any more, but negotiations that ran before this release still carry one and
+  must still render for their initiator. Each survivor is marked as such at its
+  definition.
+
 ## 23.6.4 - 2026-08-21
 
 ### Added

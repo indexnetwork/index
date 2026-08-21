@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
-import { stubScreenerReachOut } from "./screen.stub.js";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
@@ -97,7 +96,6 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     seat: "initiator" as const,
     isOpeningTurn: false,
     isFinalTurn: false,
-    screenedOut: false,
     ownSuggestedRole: "peer" as const,
     priorActions: [] as const,
     consultationBudgetSpent: false,
@@ -122,7 +120,6 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     { isOpeningTurn: true },
     { isOpeningTurn: true, seat: "counterparty" as const, action: "ask_user" as const },
     { isFinalTurn: true },
-    { screenedOut: true },
     { action: "accept" as const },
     { action: "decline" as const },
     { action: "reject" as const },
@@ -298,7 +295,6 @@ const declineTurn: NegotiationTurn = {
 
 describe("negotiation graph — ask_user pause (IND-401)", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
-  let restoreScreener: () => void;
 
   // Post-stall parking authors a gap at finalize, which is its own model call
   // and its own ask_user message. This spec is about the mid-flight
@@ -309,7 +305,6 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
 
   beforeAll(() => {
-    restoreScreener = stubScreenerReachOut();
     origAgentInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function (input: NegotiationAgentInput) {
       agentInputs.push(input);
@@ -326,7 +321,6 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   afterAll(() => {
     IndexNegotiator.prototype.invoke = origAgentInvoke;
     NegotiationStallGapAuthor.prototype.author = origStallGapAuthor;
-    restoreScreener();
   });
 
   beforeEach(() => {

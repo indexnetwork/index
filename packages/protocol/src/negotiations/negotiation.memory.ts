@@ -41,7 +41,7 @@ export interface NegotiatorMemoryEntry {
 }
 
 /** Where a retrieval is happening — lets the read service tune top-k/scope. */
-export type NegotiatorMemoryScope = "screen" | "turn";
+export type NegotiatorMemoryScope = "turn";
 
 /** Query the graph hands to the injected retrieval function. */
 export interface NegotiatorMemoryQuery {
@@ -76,17 +76,9 @@ function confidenceSuffix(entry: NegotiatorMemoryEntry): string {
     : "";
 }
 
-export interface RenderNegotiatorMemoryOptions {
-  /**
-   * When true (screen node), instructs the model to reflect memory influence
-   * into `evidence.memoryHints` — without copying sensitive text verbatim.
-   */
-  memoryHintsInstruction?: boolean;
-}
-
 /**
- * Renders the private negotiator-memory section for counterparty-facing
- * prompts (the negotiation turn agent and the screen gate).
+ * Renders the private negotiator-memory section for the counterparty-facing
+ * negotiation turn agent.
  *
  * Disclosure rules are HARD constraints — never soft hints; everything else
  * is advisory, weighted by confidence. The section leads with the leak
@@ -96,7 +88,6 @@ export interface RenderNegotiatorMemoryOptions {
  */
 export function renderNegotiatorMemorySection(
   entries: NegotiatorMemoryEntry[],
-  opts?: RenderNegotiatorMemoryOptions,
 ): string {
   if (entries.length === 0) return "";
 
@@ -121,10 +112,6 @@ export function renderNegotiatorMemorySection(
     for (const entry of advisory) {
       lines.push(`- [${KIND_LABELS[entry.kind]}] ${entry.content}${confidenceSuffix(entry)}`);
     }
-  }
-
-  if (opts?.memoryHintsInstruction) {
-    lines.push("Set evidence.memoryHints to a short note on how these memories informed your decision — describe the influence, never copy sensitive contents verbatim.");
   }
 
   return lines.join("\n");
