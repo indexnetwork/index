@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
@@ -198,7 +198,6 @@ afterAll(() => { restoreScreenStub(); });
 describe("an unreachable principal is never consulted", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const originals: Record<string, string | undefined> = {};
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -210,9 +209,6 @@ describe("an unreachable principal is never consulted", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_SCREEN_MODE"]) {
-      originals[key] = process.env[key];
-    }
   });
 
   afterAll(() => {
@@ -223,14 +219,8 @@ describe("an unreachable principal is never consulted", () => {
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    // The dev configuration this ships into.
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originals)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
 
   it("refuses the acting seat's ask even when the dimension is unknown, pivotal and the principal's own", async () => {
     // BOTH principals unreachable, where this used to name only the acting

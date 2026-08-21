@@ -315,15 +315,13 @@ export class NegotiationReflectQueue {
 export const negotiationReflectQueue = new NegotiationReflectQueue();
 
 /**
- * Returns the reflect enqueue callback when memory writes are enabled
- * (`NEGOTIATOR_MEMORY_WRITE_ENABLED=true`), or `undefined` otherwise.
+ * The reflect enqueue callback.
  *
  * Use at every negotiation-graph composition site (main.ts background graph,
  * negotiation/tool services, MCP composition root) — mirrors
  * `parkedQuestionEnqueue` so no path silently drops reflection.
  */
-export function reflectEnqueueIfEnabled(): ReflectEnqueueFn | undefined {
-  if (!isNegotiatorMemoryWriteEnabled()) return undefined;
+export function reflectEnqueue(): ReflectEnqueueFn {
   return async (job) => {
     await negotiationReflectQueue.addReflectJob(job);
   };

@@ -994,8 +994,8 @@ export class OpportunityService {
    * is awaiting its owner's decision and an `accepted` one already connected,
    * so neither is a dead end to recover from.
    *
-   * A re-run that the screen then vetoes (dev runs `NEGOTIATION_SCREEN_MODE`
-   * `enforce`) is a correct outcome, not a failure of this call.
+   * A re-run the outreach screen then vetoes is a correct outcome, not a
+   * failure of this call.
    *
    * @param opportunityId - Resolved opportunity ID
    * @param userId - The calling user, who must be an actor

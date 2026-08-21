@@ -254,7 +254,7 @@ export interface NegotiationAgentInput {
    */
   canAskUser?: boolean;
   /**
-   * Deadlock→bargaining drafting stance (IND-428, flag-gated by the caller).
+   * Deadlock→stalemate drafting stance (IND-428), set by the caller.
    * Present = the graph detected a stalemate (N consecutive counter/question
    * turns) and this turn should be drafted in the bargaining stance —
    * concessions/scope reductions instead of re-arguing merits. v2 only;

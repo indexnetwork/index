@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
@@ -375,7 +375,6 @@ describe("what makes an unknown askable", () => {
 describe("the conclusion floor at the turn seam", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const originals: Record<string, string | undefined> = {};
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -387,9 +386,6 @@ describe("the conclusion floor at the turn seam", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_SCREEN_MODE"]) {
-      originals[key] = process.env[key];
-    }
   });
 
   afterAll(() => {
@@ -401,14 +397,8 @@ describe("the conclusion floor at the turn seam", () => {
     agentInputs = [];
     agentScript = [];
     traceEvents = [];
-    // The dev configuration this ships into.
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originals)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
 
   // THE DECISIVE SPEC. Everything else here is a boundary on this one.
   it("refuses a premature accept, re-issues the turn, and lets the re-issued ask park", async () => {

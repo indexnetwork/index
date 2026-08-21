@@ -161,10 +161,9 @@ const getRawConfidence = (opp: typeof RadarGraphState.State['opportunities'][num
 };
 
 /**
- * Sort confidence, optionally pool-adjusted (IND-419): when
- * POOL_QUESTIONS_RANKING=on, answered discriminators multiply confidence by
- * their stored factors (floor 0.3) so the user's answers re-rank the radar.
- * Adjustments are written on every pool_discovery answer; ranking reads them.
+ * Sort confidence, pool-adjusted (IND-419): answered discriminators multiply
+ * confidence by their stored factors (floor 0.3) so the user's answers re-rank
+ * the radar. Adjustments are written on every pool_discovery answer.
  */
 const getPoolRankingProvenance = (
   state: typeof RadarGraphState.State,

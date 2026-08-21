@@ -4,7 +4,7 @@ import { ChatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/da
 import { NegotiationGraphFactory } from '@indexnetwork/protocol';
 import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/protocol';
 import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
-import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { reflectEnqueue } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.retrieval.adapter';
 
@@ -44,11 +44,11 @@ export class NegotiationService {
       undefined,
       // Park payloads route to the question-message regeneration job.
       parkedQuestionEnqueue(),
-      // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
-      reflectEnqueueIfEnabled(),
-      // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+      // Finished negotiations enqueue memory distillation (P5.2).
+      reflectEnqueue(),
+      // P5.3 memory read path.
       negotiatorMemoryRetrieve(),
-      // A2H client-DM read path (gated on NEGOTIATOR_CLIENT_DM_INJECT).
+      // A2H client-DM read path.
       negotiatorClientDmRetrieve(),
     ).createGraph();
 

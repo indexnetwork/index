@@ -68,7 +68,7 @@ import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { RedisTimeoutUpgradeLease, TimeoutUpgradeReconciler } from './lib/negotiation/timeout-upgrade-reconciliation';
 import { getRedisClient } from './adapters/cache.adapter';
-import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
+import { negotiationReflectQueue, reflectEnqueue } from './queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
 import { parkedQuestionEnqueue } from './queues/parked-question.enqueue';
@@ -131,14 +131,12 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   // Park payloads (post-stall parks, mid-flight consults) route to the
   // question-message regeneration job for the parked side's signal DM.
   parkedQuestionEnqueue(),
-  // Finished negotiations enqueue memory distillation for both sides (P5.2,
-  // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
-  reflectEnqueueIfEnabled(),
-  // Screen/turn prompts read the speaker's own negotiator memories (P5.3,
-  // gated on NEGOTIATOR_MEMORY_INJECT).
+  // Finished negotiations enqueue memory distillation for both sides (P5.2).
+  reflectEnqueue(),
+  // Screen/turn prompts read the speaker's own negotiator memories (P5.3).
   negotiatorMemoryRetrieve(),
-  // The acting user's own negotiator DM for this signal (A2H read path,
-  // gated on NEGOTIATOR_CLIENT_DM_INJECT). System-agent grounding only.
+  // The acting user's own negotiator DM for this signal (A2H read path).
+  // System-agent grounding only.
   negotiatorClientDmRetrieve(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({

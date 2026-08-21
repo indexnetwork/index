@@ -64,7 +64,7 @@ export const FinalInitiatorTurnSchema = turnSchema(["withdraw", "counter"]);
 /** Counterparty seat, final allowed turn: must decide. */
 export const FinalCounterpartyTurnSchema = turnSchema(["accept", "decline"]);
 
-// ─── v2 ask_user variants (P3.2, flag-gated) ────────────────────────────────
+// ─── v2 ask_user variants (P3.2) ───────────────────────────────────────────
 // Non-final turns only: the final-cap turn must decide, never pause. Selected
 // via the `opts.askUser` parameter on allowedActionsFor/turnSchemaFor — the
 // base schemas above stay byte-identical for every existing caller.

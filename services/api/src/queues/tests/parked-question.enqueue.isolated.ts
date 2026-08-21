@@ -73,14 +73,6 @@ const postStallPayload = {
 } as const;
 
 describe('parkedQuestionEnqueue', () => {
-  it('is always defined — the QUESTIONER_ENABLED master switch is retired', () => {
-    delete process.env.QUESTIONER_ENABLED;
-    expect(typeof parkedQuestionEnqueue()).toBe('function');
-    process.env.QUESTIONER_ENABLED = 'false';
-    expect(typeof parkedQuestionEnqueue()).toBe('function');
-    delete process.env.QUESTIONER_ENABLED;
-  });
-
   it('wakes the parked side agent for both park families, task id included', async () => {
     events.length = 0;
     await enqueueParkedQuestion(inflightPayload as never);

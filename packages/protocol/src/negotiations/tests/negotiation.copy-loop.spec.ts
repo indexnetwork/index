@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
@@ -217,7 +217,6 @@ afterAll(() => { restoreScreenStub(); });
 describe("the copy loop at the turn seam", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const originals: Record<string, string | undefined> = {};
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -229,9 +228,6 @@ describe("the copy loop at the turn seam", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_SCREEN_MODE"]) {
-      originals[key] = process.env[key];
-    }
   });
 
   afterAll(() => {
@@ -242,14 +238,8 @@ describe("the copy loop at the turn seam", () => {
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    // The dev configuration this ships into.
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originals)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
 
   it("discards a duplicate draft and re-issues the turn once, telling it what it repeated", async () => {
     const stubs = mkStubs();
@@ -385,7 +375,6 @@ describe("a decline needs a conflict — the verdict law, mechanically", () => {
 describe("the verdict law at the turn seam", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const originals: Record<string, string | undefined> = {};
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -397,9 +386,6 @@ describe("the verdict law at the turn seam", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_SCREEN_MODE"]) {
-      originals[key] = process.env[key];
-    }
   });
 
   afterAll(() => {
@@ -412,11 +398,6 @@ describe("the verdict law at the turn seam", () => {
     agentScript = [];
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originals)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
 
   it("refuses a mid-flight decline that has no conflict behind it, and keeps the dialogue open", async () => {
     const stubs = mkStubs();

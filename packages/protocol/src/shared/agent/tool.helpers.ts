@@ -162,7 +162,7 @@ interface ToolContextBindings {
   /**
    * Optional async question enqueue callback. When provided, question generation
    * is dispatched asynchronously to the QuestionerQueue instead of running inline.
-   * Injected by the composition root when QUESTIONER_ENABLED=true.
+   * Injected by the composition root.
    */
   questionerEnqueue?: QuestionerEnqueueFn;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
@@ -517,7 +517,7 @@ interface ToolDepsBindings {
   /**
    * Optional async question enqueue callback. When provided, question generation
    * is dispatched asynchronously to the QuestionerQueue. Injected by the
-   * composition root when QUESTIONER_ENABLED=true.
+   * composition root.
    */
   questionerEnqueue?: QuestionerEnqueueFn;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */

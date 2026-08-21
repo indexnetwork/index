@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
@@ -195,7 +195,6 @@ afterAll(() => { restoreScreenStub(); });
 describe("checklist protocol at the turn seam", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const originals: Record<string, string | undefined> = {};
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -209,9 +208,6 @@ describe("checklist protocol at the turn seam", () => {
     // message; held to "no gap" so it cannot be mistaken for one of these.
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_SCREEN_MODE"]) {
-      originals[key] = process.env[key];
-    }
   });
 
   afterAll(() => {
@@ -222,14 +218,8 @@ describe("checklist protocol at the turn seam", () => {
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    // The dev configuration this ships into.
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originals)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
 
   it("authors the checklist on the opening turn and persists it with the turn", async () => {
     const stubs = mkStubs();

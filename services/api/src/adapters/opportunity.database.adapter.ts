@@ -1297,9 +1297,9 @@ export class OpportunityDatabaseAdapter {
           .set({
             metadata: { ...(locked.metadata ?? {}), poolAdjustments: [...existingAdjustments, write.adjustment] },
             interpretation: { ...locked.interpretation, signals: [...existingSignals, write.signal] },
-            // Ranking metadata is presentation state, not a lifecycle event.
-            // Preserve updatedAt so POOL_QUESTIONS_RANKING=off remains
-            // byte-identical to the pre-adjustment newest-first ordering.
+            // Ranking metadata is presentation state, not a lifecycle event,
+            // so updatedAt is deliberately left alone — writing it would
+            // reorder a newest-first list on a change the user never made.
           })
           .where(eq(opportunities.id, locked.id));
         appliedIds.push(locked.id);

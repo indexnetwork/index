@@ -16,7 +16,7 @@ import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceA
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
-import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { reflectEnqueue } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
@@ -247,9 +247,9 @@ export class ToolService {
       undefined,
       // Park payloads route to the question-message regeneration job.
       parkedQuestionEnqueue(),
-      // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
-      reflectEnqueueIfEnabled(),
-      // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+      // Finished negotiations enqueue memory distillation (P5.2).
+      reflectEnqueue(),
+      // P5.3 memory read path.
       negotiatorMemoryRetrieve(),
     ).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(

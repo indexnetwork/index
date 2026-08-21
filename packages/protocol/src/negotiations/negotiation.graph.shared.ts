@@ -236,8 +236,8 @@ export async function resolvePrincipalUnreachable(
 
 /**
  * P5.3 memory retrieval — never throws, never blocks a negotiation. The
- * injected fn already resolves [] when NEGOTIATOR_MEMORY_INJECT is off;
- * this wrapper adds the graph-side failure guard.
+ * injected fn resolves [] on its own failures; this wrapper adds the
+ * graph-side guard.
  */
 export async function retrieveMemory(
   deps: NegotiationGraphDeps,

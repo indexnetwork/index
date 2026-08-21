@@ -35,7 +35,7 @@ import { contactService } from '../services/contact.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
-import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
+import { reflectEnqueue } from '../queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.retrieval.adapter';
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
@@ -196,11 +196,11 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.agentDispatcher!,
     protocolDeps.negotiationTimeoutQueue,
     protocolDeps.questionerEnqueue,
-    // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
-    reflectEnqueueIfEnabled(),
-    // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
+    // Finished negotiations enqueue memory distillation (P5.2).
+    reflectEnqueue(),
+    // P5.3 memory read path.
     negotiatorMemoryRetrieve(),
-    // A2H client-DM read path (gated on NEGOTIATOR_CLIENT_DM_INJECT).
+    // A2H client-DM read path.
     negotiatorClientDmRetrieve(),
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(

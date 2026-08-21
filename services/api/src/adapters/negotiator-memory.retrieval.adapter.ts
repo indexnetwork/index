@@ -8,7 +8,6 @@
  * and adapters may import adapters; services may not import services).
  *
  * Contract:
- * - `NEGOTIATOR_MEMORY_INJECT !== 'true'` → `[]` (prompts stay byte-identical).
  * - Any failure → `[]` with a log line; memory must never break a negotiation.
  * - Only ever reads the requesting user's OWN agent's memories — the
  *   underlying adapter is (agentId, userId)-scoped, and the agent id is

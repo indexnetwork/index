@@ -56,8 +56,8 @@ export interface NegotiatorMemoryQuery {
 
 /**
  * Injected retrieval seam (services/api implements it over the
- * `negotiator_memories` store). MUST resolve to `[]` on any failure or when
- * `NEGOTIATOR_MEMORY_INJECT` is off — memory must never break a negotiation.
+ * `negotiator_memories` store). MUST resolve to `[]` on any failure — memory
+ * must never break a negotiation.
  */
 export type NegotiatorMemoryRetrieveFn = (
   query: NegotiatorMemoryQuery,

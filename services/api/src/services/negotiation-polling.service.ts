@@ -136,8 +136,7 @@ export interface PickupResult {
    * The CLAIMING user's own negotiator memories (P5.3 read path) — private
    * context for their agent's turn. Strictly seat-scoped: retrieval is keyed
    * on the claiming user's id, so this never contains the counterparty's
-   * memory. Absent when `NEGOTIATOR_MEMORY_INJECT` is off or nothing was
-   * retrieved.
+   * memory. Absent when nothing was retrieved.
    */
   negotiatorMemory?: NegotiatorMemoryEntry[];
   /** Recipient-private consultation; present only for that recipient's agent. */

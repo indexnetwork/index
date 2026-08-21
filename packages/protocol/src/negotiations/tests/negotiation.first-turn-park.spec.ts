@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState, SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
@@ -265,7 +265,6 @@ afterAll(() => { restoreScreenStub(); });
 describe("a first-turn ask parks", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const originals: Record<string, string | undefined> = {};
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -277,9 +276,6 @@ describe("a first-turn ask parks", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_SCREEN_MODE"]) {
-      originals[key] = process.env[key];
-    }
   });
 
   afterAll(() => {
@@ -290,14 +286,8 @@ describe("a first-turn ask parks", () => {
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    // The dev configuration this ships into.
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originals)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
 
   // THE DECISIVE SPEC — the live shape, turn 0 of a resumed session.
   it("binds against a working task when the agent asks on its very first turn", async () => {

@@ -1,7 +1,7 @@
 process.env.OPENROUTER_API_KEY = 'test-key';
 process.env.NODE_ENV = 'test';
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 
 import type { ChatGraphFactory } from '@indexnetwork/protocol';
 
@@ -80,17 +80,12 @@ async function stream(
 
 describe('Signal Agent web chat routing (IND-449)', () => {
   let controller: ChatController;
-  let previousNegotiatorFlag: string | undefined;
   let createSessionSpy: ReturnType<typeof spyOn>;
   let getSessionSpy: ReturnType<typeof spyOn>;
   let addMessageSpy: ReturnType<typeof spyOn>;
   let getSignalFactorySpy: ReturnType<typeof spyOn>;
   let getOnboardingFactorySpy: ReturnType<typeof spyOn>;
   let loadFilesSpy: ReturnType<typeof spyOn>;
-
-  beforeAll(() => {
-    previousNegotiatorFlag = process.env.NEGOTIATOR_CHAT_ENABLED;
-  });
 
   beforeEach(() => {
     signalInputs.length = 0;
@@ -112,16 +107,9 @@ describe('Signal Agent web chat routing (IND-449)', () => {
 
   afterEach(() => {
     mock.restore();
-    if (previousNegotiatorFlag === undefined) delete process.env.NEGOTIATOR_CHAT_ENABLED;
-    else process.env.NEGOTIATOR_CHAT_ENABLED = previousNegotiatorFlag;
   });
 
-  afterAll(() => {
-    if (previousNegotiatorFlag === undefined) delete process.env.NEGOTIATOR_CHAT_ENABLED;
-    else process.env.NEGOTIATOR_CHAT_ENABLED = previousNegotiatorFlag;
-  });
-
-  test('flag-on web creation explicitly persists Signal and uses its factory', async () => {
+  test('web creation explicitly persists Signal and uses its factory', async () => {
 
     const response = await stream(
       controller,
@@ -177,7 +165,6 @@ describe('Signal Agent web chat routing (IND-449)', () => {
   });
 
   test('request/stored persona mismatch fails closed before graph or writes', async () => {
-    process.env.NEGOTIATOR_CHAT_ENABLED = 'true';
     getSessionSpy.mockResolvedValue(session('signal-session', 'signal'));
 
     const response = await stream(
@@ -348,7 +335,7 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     expect(guards).not.toContain(AuthGuard);
   });
 
-  test('compatibility stream denies a flag-on session before every side effect', async () => {
+  test('compatibility stream denies a negotiator-persona session before every side effect', async () => {
     const resolveScopeSpy = spyOn(chatSessionService, 'resolveSessionForScope');
     const updateScopeSpy = spyOn(chatSessionService, 'updateSessionScope');
 
@@ -402,7 +389,7 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     expect(getSignalFactorySpy).not.toHaveBeenCalled();
   });
 
-  test('compatibility resolver denies a flag-on session before scope resolution', async () => {
+  test('compatibility resolver denies a negotiator-persona session before scope resolution', async () => {
     const resolveSpy = spyOn(chatSessionService, 'resolveSessionForScope');
     const req = new Request('http://localhost/chat/session/resolve', {
       method: 'POST',

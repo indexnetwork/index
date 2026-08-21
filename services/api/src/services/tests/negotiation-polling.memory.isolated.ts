@@ -2,8 +2,7 @@
  * IND-407 — pickup payload memory injection (DB-backed).
  *
  * Pins the seat-scoping AC: `negotiatorMemory` on a pickup result contains
- * ONLY the claiming user's own memories — never the counterparty's — and the
- * field is absent entirely when `NEGOTIATOR_MEMORY_INJECT` is off.
+ * ONLY the claiming user's own memories — never the counterparty's.
  *
  * Real Postgres via .env.test; BullMQ queues mocked (no Redis); the retrieval
  * adapter's embedding seam is stubbed to fail so the advisory leg is

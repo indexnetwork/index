@@ -24,14 +24,13 @@ import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph
     /**
      * Screen node (P2.1) — the outreach gate. Runs between init and the first
      * turn on FRESH negotiations only (routing skips it on continuations and
-     * when NEGOTIATION_SCREEN_MODE=off). The reaching client's negotiator
-     * decides whether the match is worth its client's name; in shadow mode the
-     * decision is recorded (task metadata + trace event + log line) but never
-     * blocks — the negotiation always proceeds to the first turn. In enforce
-     * mode (P2.2) a `pass` routes straight to finalize: zero turns, zero
-     * counterparty involvement, outcome `reason: "screened_out"`, opportunity
-     * quietly `rejected` (init had already flipped it to `negotiating`).
-     * A failed screen still fails OPEN in every mode.
+     * on any negotiation that has already made contact). The reaching client's
+     * negotiator decides whether the match is worth its client's name, and the
+     * decision is recorded (task metadata + trace event + log line). A `pass`
+     * routes straight to finalize (P2.2): zero turns, zero counterparty
+     * involvement, outcome `reason: "screened_out"`, opportunity quietly
+     * `rejected` (init had already flipped it to `negotiating`).
+     * A failed screen fails OPEN.
      */
 export async function screenNode(state: NegotiationState, deps: NegotiationGraphDeps) {
   const traceEmitter = requestContext.getStore()?.traceEmitter;

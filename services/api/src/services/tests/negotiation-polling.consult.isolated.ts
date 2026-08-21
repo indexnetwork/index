@@ -1,5 +1,4 @@
 process.env.DATABASE_URL ??= 'postgresql://unused:unused@localhost:5432/unused';
-process.env.QUESTIONER_ENABLED = 'true';
 
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { consultationExpiryReadiness } from '../../lib/negotiation/consultation-expiry';
