@@ -965,10 +965,54 @@ export class ConversationDatabaseAdapter {
       const key = `${row.conversationId}:${opportunityId}`;
       if (!latestTaskByOpportunity.has(key)) latestTaskByOpportunity.set(key, row);
     }
+    // Older negotiations may predate durable match provenance. Recover only
+    // the viewer's own signal from the opportunity record so their sidebar
+    // still names the actual signal, never the counterpart's private one.
+    const fallbackOpportunityIds = [...new Set([...latestTaskByOpportunity.values()].flatMap((row) => {
+      const metadata = typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+      const opportunityId = typeof metadata.opportunityId === 'string' ? metadata.opportunityId : null;
+      return opportunityId ? [opportunityId] : [];
+    }))];
+    const fallbackOpportunityRows = fallbackOpportunityIds.length > 0
+      ? await db.select({ id: opportunities.id, detection: opportunities.detection, actors: opportunities.actors })
+        .from(opportunities).where(inArray(opportunities.id, fallbackOpportunityIds))
+      : [];
+    const fallbackIntentIds = new Set<string>();
+    for (const opportunity of fallbackOpportunityRows) {
+      if (opportunity.detection.triggeredBy) fallbackIntentIds.add(opportunity.detection.triggeredBy);
+      for (const actor of opportunity.actors) {
+        if (actor.userId === viewerUserId && actor.intent) fallbackIntentIds.add(actor.intent);
+      }
+    }
+    const fallbackIntentRows = fallbackIntentIds.size > 0
+      ? await db.select({ id: schema.intents.id, payload: schema.intents.payload, summary: schema.intents.summary })
+        .from(schema.intents).where(and(inArray(schema.intents.id, [...fallbackIntentIds]), eq(schema.intents.userId, viewerUserId)))
+      : [];
+    const fallbackTitles = new Map(fallbackIntentRows.map((intent) => [intent.id, intent.summary?.trim() || intent.payload]));
+    const fallbackViaByOpportunity = new Map<string, { intentId: string; title: string }>();
+    for (const opportunity of fallbackOpportunityRows) {
+      const intentId = opportunity.actors.find((actor) => actor.userId === viewerUserId && actor.intent)?.intent
+        ?? opportunity.detection.triggeredBy;
+      const title = intentId ? fallbackTitles.get(intentId) : undefined;
+      if (intentId && title) fallbackViaByOpportunity.set(opportunity.id, { intentId, title });
+    }
     for (const conversation of convs) {
       const visibleByOpportunity = new Map(
         (viaByConv.get(conversation.id) ?? []).map((entry) => [entry.opportunityId, entry]),
       );
+      for (const row of latestTaskByOpportunity.values()) {
+        if (row.conversationId !== conversation.id) continue;
+        const metadata = typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata)
+          ? row.metadata as Record<string, unknown>
+          : {};
+        const opportunityId = typeof metadata.opportunityId === 'string' ? metadata.opportunityId : null;
+        const fallback = opportunityId ? fallbackViaByOpportunity.get(opportunityId) : undefined;
+        if (opportunityId && fallback && !visibleByOpportunity.has(opportunityId)) {
+          visibleByOpportunity.set(opportunityId, { opportunityId, ...fallback });
+        }
+      }
       const projected = [...visibleByOpportunity.values()].flatMap((via) => {
         const row = latestTaskByOpportunity.get(`${conversation.id}:${via.opportunityId}`);
         if (!row) return [];
