@@ -12,7 +12,6 @@ export {
   SCREEN_MODE,
   ScreenDecisionSchema,
   blocksNegotiationBeforeFirstTurn,
-  negotiationHasMadeContact,
 } from "./negotiation.screen.contracts.js";
 export type {
   NegotiationScreenMode,

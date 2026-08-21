@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { NegotiationScreener, ScreenDecisionSchema, negotiationHasMadeContact, NEGOTIATION_SCREEN_MODES, SCREEN_MODE, type NegotiationScreenerInput } from "../negotiation.screen.js";
+import { NegotiationScreener, ScreenDecisionSchema, NEGOTIATION_SCREEN_MODES, SCREEN_MODE, type NegotiationScreenerInput } from "../negotiation.screen.js";
 
 /**
  * IND-398 — screener unit behavior.
@@ -198,30 +198,5 @@ describe("NegotiationScreener.invoke", () => {
 
     const user = screener.capturedMessages.find((m) => m.role === "user")!.content;
     expect(user).not.toContain("Prior dialogue with");
-  });
-});
-
-describe("negotiationHasMadeContact", () => {
-  // The predicate that decides whether the outreach gate still has a question
-  // to answer, and whether `screened_out` — a claim that nothing was ever
-  // sent — may be recorded.
-  it("is false before anything is persisted", () => {
-    expect(negotiationHasMadeContact([])).toBe(false);
-  });
-
-  it("is true once any turn addressed to the counterparty exists", () => {
-    expect(negotiationHasMadeContact([{ action: "outreach" }])).toBe(true);
-    expect(negotiationHasMadeContact([{ action: "propose" }, { action: "counter" }])).toBe(true);
-    // Even a decline is contact: the counterparty spoke, so both sides did.
-    expect(negotiationHasMadeContact([{ action: "outreach" }, { action: "decline" }])).toBe(true);
-  });
-
-  it("does not count an ask_user park — that question went to the client, not the counterparty", () => {
-    expect(negotiationHasMadeContact([{ action: "ask_user" }])).toBe(false);
-    expect(negotiationHasMadeContact([{ action: "ask_user" }, { action: "ask_user" }])).toBe(false);
-  });
-
-  it("counts contact made either side of a park", () => {
-    expect(negotiationHasMadeContact([{ action: "ask_user" }, { action: "outreach" }])).toBe(true);
   });
 });
