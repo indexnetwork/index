@@ -137,7 +137,6 @@ afterAll(() => { restoreScreenStub(); });
 describe("negotiation graph — post-stall park", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -165,11 +164,9 @@ describe("negotiation graph — post-stall park", () => {
     ];
     authorInputs = [];
     authorResult = safeGap;
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
   });
 
   afterEach(() => {
-    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
   });
 
   it("parks a turn-capped negotiation with its authored gap as an ask_user message", async () => {

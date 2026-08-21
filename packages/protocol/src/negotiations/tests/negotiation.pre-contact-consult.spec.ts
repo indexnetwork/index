@@ -303,10 +303,6 @@ afterAll(() => { restoreScreenStub(); });
 describe("pre-contact consultation — the initiator's turn-0 third verdict", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-  const origPolicyMode = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-  const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -330,21 +326,6 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    // The dev configuration this verdict ships into.
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-  });
-
-  afterEach(() => {
-    const restore = (key: string, value: string | undefined) => {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    };
-    restore("NEGOTIATION_ASK_USER_ENABLED", origFlag);
-    restore("NEGOTIATION_SCREEN_MODE", origScreenMode);
-    restore("NEGOTIATION_CONSULTATION_POLICY_MODE", origPolicyMode);
-    restore("NEGOTIATION_PROTOCOL_VERSION", origVersion);
   });
 
   // ─── Admission policy (pure) ───────────────────────────────────────────────

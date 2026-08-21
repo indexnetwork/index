@@ -201,13 +201,9 @@ describe("initiator continuation — this session's turns reach the next prompt"
   let priorVersion: string | undefined;
 
   beforeEach(() => {
-    priorVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
   });
 
   afterEach(() => {
-    if (priorVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION;
-    else process.env.NEGOTIATION_PROTOCOL_VERSION = priorVersion;
   });
 
   it("the initiator replies to a question on its second turn instead of re-opening", async () => {

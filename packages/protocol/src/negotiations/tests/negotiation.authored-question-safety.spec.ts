@@ -293,9 +293,6 @@ function persistedTurns(stubs: ReturnType<typeof mkStubs>): NegotiationTurn[] {
 describe("negotiation graph — the authored question is gated before it is persisted", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
   let authored: StructuredQuestion | undefined;
-  const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-  const origPolicyMode = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
 
   beforeAll(() => {
     origInvoke = IndexNegotiator.prototype.invoke;
@@ -313,18 +310,9 @@ describe("negotiation graph — the authored question is gated before it is pers
 
   beforeEach(() => {
     authored = undefined;
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "off";
   });
 
   afterEach(() => {
-    if (origFlag === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED;
-    else process.env.NEGOTIATION_ASK_USER_ENABLED = origFlag;
-    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
-    else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
-    if (origPolicyMode === undefined) delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-    else process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = origPolicyMode;
   });
 
   it("keeps a safe authored question on the persisted turn", async () => {

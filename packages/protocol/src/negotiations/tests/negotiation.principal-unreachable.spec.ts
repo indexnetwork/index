@@ -210,7 +210,7 @@ describe("an unreachable principal is never consulted", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE"]) {
+    for (const key of ["NEGOTIATION_SCREEN_MODE"]) {
       originals[key] = process.env[key];
     }
   });
@@ -224,10 +224,6 @@ describe("an unreachable principal is never consulted", () => {
     agentInputs = [];
     agentScript = [];
     // The dev configuration this ships into.
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
   });
 
   afterEach(() => {

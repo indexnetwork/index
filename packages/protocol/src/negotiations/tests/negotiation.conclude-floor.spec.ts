@@ -387,7 +387,7 @@ describe("the conclusion floor at the turn seam", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE"]) {
+    for (const key of ["NEGOTIATION_SCREEN_MODE"]) {
       originals[key] = process.env[key];
     }
   });
@@ -402,10 +402,6 @@ describe("the conclusion floor at the turn seam", () => {
     agentScript = [];
     traceEvents = [];
     // The dev configuration this ships into.
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
   });
 
   afterEach(() => {

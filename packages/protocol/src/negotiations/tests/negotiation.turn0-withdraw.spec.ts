@@ -112,13 +112,9 @@ async function runGraph(stubs: ReturnType<typeof mkStubs>, input: Record<string,
 }
 
 describe("negotiation graph — turn-0 refusal is not force-rewritten (IND-611)", () => {
-  const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
-  const origScreen = process.env.NEGOTIATION_SCREEN_MODE;
 
   beforeEach(() => {
     agentScript = [];
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    process.env.NEGOTIATION_SCREEN_MODE = "off"; // isolate the turn node from the screen gate
     IndexNegotiator.prototype.invoke = async function (_input: NegotiationAgentInput) {
       const turn = agentScript.shift();
       if (!turn) throw new Error("agent script exhausted");
@@ -127,8 +123,6 @@ describe("negotiation graph — turn-0 refusal is not force-rewritten (IND-611)"
   });
 
   afterEach(() => {
-    if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;
-    if (origScreen === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreen;
   });
 
   afterAll(() => {
@@ -186,7 +180,6 @@ describe("negotiation graph — turn-0 refusal is not force-rewritten (IND-611)"
     // owner's gate-decision card would have read "your agent did not reach out"
     // above text explaining why the match WAS worth making — the exact
     // dishonesty this work exists to remove.
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     const origScreenerInvoke = NegotiationScreener.prototype.invoke;
     const reachOut: ScreenDecision = {
       decision: "reach_out",
@@ -224,7 +217,6 @@ describe("negotiation graph — turn-0 refusal is not force-rewritten (IND-611)"
   it("a genuine screen-node block still reports the SCREEN's reasoning (unchanged)", async () => {
     // The other half of the contract: when the gate itself passed on the match,
     // no turn was ever drafted, so the screen decision remains authoritative.
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     const origScreenerInvoke = NegotiationScreener.prototype.invoke;
     NegotiationScreener.prototype.invoke = async (): Promise<ScreenDecision> => ({
       decision: "pass",

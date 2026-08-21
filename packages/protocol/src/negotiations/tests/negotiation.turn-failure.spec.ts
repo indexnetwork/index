@@ -110,8 +110,6 @@ afterAll(() => { restoreScreenStub(); });
 describe("negotiation graph — failed turns", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
   let origAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-  const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
 
   beforeAll(() => {
     origInvoke = IndexNegotiator.prototype.invoke;
@@ -131,13 +129,9 @@ describe("negotiation graph — failed turns", () => {
   beforeEach(() => {
     authorCalls = [];
     authorResult = null;
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
   });
 
   afterEach(() => {
-    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
-    if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;
   });
 
   it("ends error-stalled when the responder fails every turn, with the outreach still the only message", async () => {
