@@ -63,8 +63,11 @@ describe('root .env.example ↔ startup.env.ts schema', () => {
   const schemaSource = readFileSync(schemaPath, 'utf8');
 
   it('sanity: parsers found a plausible number of vars', () => {
-    expect(example.size).toBeGreaterThan(50);
-    expect(schema.size).toBeGreaterThan(50);
+    // Guards against a parser that silently finds nothing. The floor is well
+    // below the current count (credentials, endpoints, two ops knobs and the
+    // test opt-ins) rather than close to it — this is not a budget.
+    expect(example.size).toBeGreaterThan(25);
+    expect(schema.size).toBeGreaterThan(25);
   });
 
   it('every schema var is documented in .env.example', () => {

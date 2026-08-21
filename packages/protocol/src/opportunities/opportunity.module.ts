@@ -76,17 +76,10 @@ export {
 export {
   DISCOVERY_EVALUATOR_MIN_SCORE,
   DISCOVERY_MIN_SIMILARITY,
-  discoveryAllowedTypes,
-  discoveryIntentMatchingEnabled,
-  discoveryProfileMatchingEnabled,
-  discoveryProfileSource,
-  resetDiscoveryEnvWarningsForTests,
   validateDiscoveryEvaluatorMinScore,
   validateDiscoveryMinSimilarity,
 } from "./discovery.env.js";
 export type {
-  DiscoveryMatchType,
-  DiscoveryProfileSource,
 } from "./discovery.env.js";
 export {
   buildPoolAdjustment,

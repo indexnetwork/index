@@ -216,24 +216,12 @@ export const REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 export const REJECTION_COOLDOWN_SIMILARITY_PENALTY = 0.5;
 
 /** Default cap for source premises used by premise-to-premise discovery. Prevents BACKEND-5-style fan-out. */
-const DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT = 40;
 
 /** NUL separator: it cannot occur inside an id, so the composite key is unambiguous. */
 const PAIR_KEY_SEPARATOR = String.fromCharCode(0);
 
 export function networkMembershipPairKey(userId: string, networkId: string): string {
   return userId + PAIR_KEY_SEPARATOR + networkId;
-}
-
-/** Per-source cap for candidate premise matches. */
-export const PREMISE_MATCH_LIMIT_PER_SOURCE = 20;
-
-/** Resolve the source premise discovery cap from env, preserving 0 as an explicit disable switch. */
-export function getSourcePremiseDiscoveryLimit(): number {
-  const raw = process.env.DISCOVERY_SOURCE_PREMISE_LIMIT;
-  if (raw === undefined || raw.trim() === '') return DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_SOURCE_PREMISE_DISCOVERY_LIMIT;
 }
 
 export function buildEvaluatorEvidenceKey(candidate: CandidateMatch): string {

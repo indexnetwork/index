@@ -96,13 +96,7 @@ const envSchema = z.object({
   UNAVATAR_BASE: optionalUrl,
 
   // 8. Discovery / protocol runtime
-  DISCOVERY_CONTEXT_TO_INTENT: z.union([z.literal(''), z.literal('0'), z.literal('1')]).optional(),
   INTRODUCER_DISCOVERY_ENABLED: optionalBoolean,
-  DISCOVERY_SOURCE_PREMISE_LIMIT: optionalInt,
-  DISCOVERY_ALLOWED_TYPES: z.string().optional(),
-  // Parsed with warn-and-fallback in the protocol accessor (discoveryProfileSource());
-  // a typo must never disable discovery, so startup validation stays permissive.
-  DISCOVERY_PROFILE_SOURCE: z.string().optional(),
 
   // Test harness (repo-root .env.test only)
   TEST_DATABASE_SAFE: optionalOne,
