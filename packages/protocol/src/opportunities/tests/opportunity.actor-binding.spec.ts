@@ -23,11 +23,13 @@ describe("resolveOpportunityActorBinding", () => {
     expect(resolveOpportunityActorBinding({ premise: "p-1" })).toEqual({ kind: "premise", id: "p-1" });
   });
 
-  it("prefers the intent when an actor somehow carries both", () => {
-    // Intent is the stronger claim: it is what the person stated they want,
-    // where a premise is what the system inferred about them.
-    expect(resolveOpportunityActorBinding({ intent: "i-1", premise: "p-1" }))
-      .toEqual({ kind: "intent", id: "i-1" });
+  it("prefers the premise when an actor carries both keys", () => {
+    // A premise-matched actor's `intent` key names the intent it matched
+    // against (the recipient's), never its own material. The enricher emits
+    // both keys for premise matches, so intent-first resolution bound the
+    // counterparty to the recipient's own signal.
+    expect(resolveOpportunityActorBinding({ intent: "i-recipient", premise: "p-own" }))
+      .toEqual({ kind: "premise", id: "p-own" });
   });
 
   it("returns undefined for an actor bound by neither", () => {
@@ -52,5 +54,31 @@ describe("opportunityActorMatchesBinding", () => {
   it("refuses an actor that lost its binding, or a park that carries none", () => {
     expect(opportunityActorMatchesBinding({}, { kind: "intent", id: "i-1" })).toBe(false);
     expect(opportunityActorMatchesBinding({ intent: "i-1" }, undefined)).toBe(false);
+  });
+
+  it("matches a dual-key premise-matched actor against its own premise", () => {
+    // The incident shape: a premise-matched counterparty carries both keys —
+    // `premise` is its own fact, `intent` the recipient's intent it matched
+    // against. A correctly stamped premise-kind park must pass this gate.
+    expect(opportunityActorMatchesBinding(
+      { intent: "i-recipient", premise: "p-own" },
+      { kind: "premise", id: "p-own" },
+    )).toBe(true);
+  });
+
+  it("no longer matches a dual-key actor against its matched-against intent", () => {
+    // Deliberate mirror of the premise-first flip: an intent-kind binding
+    // naming the recipient's intent is the MIS-stamp this fix eliminates, and
+    // the gate stops agreeing with it. Nothing that works today breaks —
+    // such parks already fail the claim's counterparty-liveness check first.
+    expect(opportunityActorMatchesBinding(
+      { intent: "i-recipient", premise: "p-own" },
+      { kind: "intent", id: "i-recipient" },
+    )).toBe(false);
+  });
+
+  it("keeps an intent-only actor matching its own intent binding", () => {
+    expect(opportunityActorMatchesBinding({ intent: "i-own" }, { kind: "intent", id: "i-own" })).toBe(true);
+    expect(opportunityActorMatchesBinding({ intent: "i-own" }, { kind: "premise", id: "i-own" })).toBe(false);
   });
 });
