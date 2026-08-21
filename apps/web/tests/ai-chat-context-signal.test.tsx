@@ -394,7 +394,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
   });
 
   test.each([
-    ['WEB_SIGNAL_AGENT_DISABLED', 'Signal Agent is not available right now.'],
+    ['WEB_SIGNAL_AGENT_DISABLED', 'Your agent is not available right now.'],
     ['CHAT_PERSONA_MISMATCH', 'This request does not match the chat that was opened.'],
     ['CHAT_PERSONA_UNSUPPORTED', 'This chat cannot be continued safely.'],
   ])('maps %s to product-safe state without trusting server detail', async (code, safeMessage) => {

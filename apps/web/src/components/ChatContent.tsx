@@ -1080,7 +1080,7 @@ export default function ChatContent({
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#041729] text-lg leading-none text-white">+</span>
               <span>
                 <span className="block text-sm font-medium text-[#041729]">Who are you trying to meet?</span>
-                <span className="block text-xs text-gray-500">Let your Signal Agent guide you through a new signal.</span>
+                <span className="block text-xs text-gray-500">A few questions to make what you’re looking for legible.</span>
               </span>
             </button>
           <div className="mt-8">

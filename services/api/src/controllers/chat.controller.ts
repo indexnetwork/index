@@ -452,7 +452,7 @@ export class ChatController {
         if (sessionPersona === SIGNAL_PERSONA_ID) {
           return Response.json(
             {
-              error: 'Start a separate Signal Agent chat for that focus.',
+              error: 'Start a separate chat with your agent for that focus.',
               code: 'CHAT_SCOPE_REQUIRES_NEW_SESSION',
               action: { type: 'start_signal_session', href: '/' },
             },

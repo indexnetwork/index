@@ -149,7 +149,7 @@ export class ChatSessionService {
         ok: false,
         status: 409,
         code: 'WEB_SIGNAL_SESSION_REQUIRED',
-        error: 'This earlier chat is read-only. Start a new Signal Agent chat to continue.',
+        error: 'This earlier chat is read-only. Start a new chat with your agent to continue.',
         action: { type: 'start_signal_session', href: '/' },
       };
     }
@@ -235,7 +235,7 @@ export class ChatSessionService {
           ok: false,
           status: 403,
           code: 'WEB_SIGNAL_PERSONA_FORBIDDEN',
-          error: 'Signal Agent chats can only be started in the web app.',
+          error: 'Chats with your agent can only be started in the web app.',
         };
       }
       return { ok: true, persona: SIGNAL_PERSONA_ID };
@@ -250,7 +250,7 @@ export class ChatSessionService {
         ok: false,
         status: 409,
         code: 'WEB_SIGNAL_PERSONA_REQUIRED',
-        error: 'Start a new Signal Agent chat to continue.',
+        error: 'Start a new chat with your agent to continue.',
         action: { type: 'start_signal_session', href: '/' },
       };
     }
