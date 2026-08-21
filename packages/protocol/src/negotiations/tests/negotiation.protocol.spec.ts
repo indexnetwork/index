@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "bun:test";
-import { InitiatorTurnSchema, CounterpartyTurnSchema, FinalInitiatorTurnSchema, FinalCounterpartyTurnSchema, allowedActionsFor, turnSchemaFor, isTerminalAction, isRejectLikeAction, fallbackActionFor, rejectActionFor, readProtocolVersion, configuredProtocolVersion, resolveSeat, seatViolationMessage } from "../negotiation.protocol.js";
+import { InitiatorTurnSchema, CounterpartyTurnSchema, FinalInitiatorTurnSchema, FinalCounterpartyTurnSchema, allowedActionsFor, turnSchemaFor, isTerminalAction, isRejectLikeAction, fallbackActionFor, rejectActionFor, readProtocolVersion, NEW_NEGOTIATION_PROTOCOL_VERSION, resolveSeat, seatViolationMessage } from "../negotiation.protocol.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
 
 /**
@@ -115,12 +115,6 @@ describe("action semantics", () => {
 });
 
 describe("metadata readers", () => {
-  const origEnv = process.env.NEGOTIATION_PROTOCOL_VERSION;
-  afterEach(() => {
-    if (origEnv === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION;
-    else process.env.NEGOTIATION_PROTOCOL_VERSION = origEnv;
-  });
-
   it("readProtocolVersion: v1/v2 pass through; absent or junk → null", () => {
     expect(readProtocolVersion({ protocolVersion: "v2" })).toBe("v2");
     expect(readProtocolVersion({ protocolVersion: "v1" })).toBe("v1");
@@ -129,13 +123,9 @@ describe("metadata readers", () => {
     expect(readProtocolVersion(null)).toBeNull();
   });
 
-  it("configuredProtocolVersion: env switch, defaults v1", () => {
-    delete process.env.NEGOTIATION_PROTOCOL_VERSION;
-    expect(configuredProtocolVersion()).toBe("v1");
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    expect(configuredProtocolVersion()).toBe("v2");
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "nonsense";
-    expect(configuredProtocolVersion()).toBe("v1");
+  it("stamps new negotiations v2; rows stamped v1 keep resolving as v1", () => {
+    expect(NEW_NEGOTIATION_PROTOCOL_VERSION).toBe("v2");
+    expect(readProtocolVersion({ protocolVersion: "v1" })).toBe("v1");
   });
 
   it("resolveSeat keys on initiatorUserId, falling back to sourceUserId (never parity)", () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState, SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
@@ -9,6 +9,7 @@ import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import type { ChecklistDraftItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * A task's FIRST turn can park.
@@ -256,10 +257,14 @@ const states = (stubs: ReturnType<typeof mkStubs>) => stubs.stateWrites.map((wri
 let agentInputs: NegotiationAgentInput[] = [];
 let agentScript: NegotiationTurn[] = [];
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("a first-turn ask parks", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const originals: Record<string, string | undefined> = {};
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -271,9 +276,6 @@ describe("a first-turn ask parks", () => {
     };
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE", "NEGOTIATOR_STANCE"]) {
-      originals[key] = process.env[key];
-    }
   });
 
   afterAll(() => {
@@ -284,19 +286,8 @@ describe("a first-turn ask parks", () => {
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    // The dev configuration this ships into.
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATOR_STANCE = "skeptic";
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originals)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
 
   // THE DECISIVE SPEC — the live shape, turn 0 of a resumed session.
   it("binds against a working task when the agent asks on its very first turn", async () => {

@@ -16,20 +16,20 @@ const judgeOutputSchema = z.object({
 /**
  * Assert that `output` satisfies the given `criteria` according to an LLM judge.
  * Throws an error (with reasoning embedded) if the assertion fails.
- * Uses the SMARTEST_VERIFIER_MODEL env var (default: google/gemini-2.5-flash).
+ * Uses google/gemini-2.5-flash.
  *
  * @param output - The value produced by the system under test.
  * @param criteria - Natural language description of what the output must satisfy.
  * @throws {Error} If the LLM judge determines the output does not meet the criteria.
  */
 export async function assertLLM(output: unknown, criteria: string): Promise<void> {
-  const modelId = process.env.SMARTEST_VERIFIER_MODEL ?? "google/gemini-2.5-flash";
+  const modelId = "google/gemini-2.5-flash";
 
   const model = new ChatOpenAI({
     model: modelId,
     apiKey: process.env.OPENROUTER_API_KEY!,
     configuration: {
-      baseURL: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+      baseURL: "https://openrouter.ai/api/v1",
     },
     temperature: 0,
     maxTokens: 512,

@@ -6,9 +6,8 @@
  * be inspectable and editable. Disclosure rules especially are standing
  * consent and must be user-visible.
  *
- * Deliberately NOT gated on `NEGOTIATOR_MEMORY_WRITE_ENABLED`: inspection and
- * deletion are the user's standing rights over already-accumulated rows, and
- * the flag only controls whether new rows may be written. The strict
+ * Inspection and deletion are the user's standing rights over rows that have
+ * already accumulated, independent of whatever wrote them. The strict
  * self-only authorization lives in the controller (403 for ANY non-self
  * caller, mutuals included); this service additionally keys every adapter
  * call on the owner's userId, so a forged id can never touch another user's

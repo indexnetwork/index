@@ -14,6 +14,8 @@ import type { Id } from '../../shared/interfaces/database.interface.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../shared/interfaces/database.interface.js';
 import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
 import type { SourceProfileData } from '../opportunity.state.js';
+import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_SIMILARITY } from '../discovery.env.js';
+import { REJECTION_COOLDOWN_MS } from '../opportunity.graph.shared.js';
 import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../opportunity.evaluator.js';
 import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
 import type { UserIdentity } from '../../shared/schemas/identity.schema.js';
@@ -27,65 +29,33 @@ type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
-const originalNegotiationIncludeOtherIntents = process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS;
-
-afterEach(() => {
-  if (originalNegotiationIncludeOtherIntents === undefined) {
-    delete process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS;
-  } else {
-    process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = originalNegotiationIncludeOtherIntents;
-  }
-});
-
 describe('buildPrioritizedNegotiationIntents', () => {
-  test('defaults to exact-first bounded fallback behavior', () => {
+  test('carries only the exact opportunity-bound intent — never an unrelated fallback', () => {
     const intents = buildPrioritizedNegotiationIntents(
       [
         { id: 'other-1', summary: 'Other 1', payload: 'one' },
-        { id: 'other-1', summary: 'Duplicate', payload: 'duplicate' },
         { id: 'other-2', summary: 'Other 2', payload: 'two' },
-        { id: 'other-3', summary: 'Other 3', payload: 'three' },
-        { id: 'other-4', summary: 'Other 4', payload: 'four' },
-        { id: 'other-5', summary: 'Other 5', payload: 'five' },
-      ],
-      'exact-intent',
-      { id: 'exact-intent', summary: 'Exact', payload: 'exact payload' },
-    );
-
-    expect(intents.map((intent) => intent.id)).toEqual([
-      'exact-intent',
-      'other-1',
-      'other-2',
-      'other-3',
-      'other-4',
-    ]);
-  });
-
-  test('restricts context to the exact active or owned fallback intent', () => {
-    expect(buildPrioritizedNegotiationIntents(
-      [
-        { id: 'other-1', summary: 'Other 1', payload: 'one' },
         { id: 'exact-intent', summary: 'Exact active', payload: 'exact active payload' },
       ],
       'exact-intent',
       null,
-      false,
-    ).map((intent) => intent.id)).toEqual(['exact-intent']);
+    );
+    expect(intents.map((intent) => intent.id)).toEqual(['exact-intent']);
+  });
 
+  test('falls back to the owned exact intent when it is not among the active ones', () => {
     expect(buildPrioritizedNegotiationIntents(
       [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
       'exact-intent',
       { id: 'exact-intent', summary: 'Exact fallback', payload: 'exact fallback payload' },
-      false,
     ).map((intent) => intent.id)).toEqual(['exact-intent']);
   });
 
-  test('provides no unrelated fallback when a restrictive context has no exact binding', () => {
+  test('provides nothing at all when there is no exact binding', () => {
     expect(buildPrioritizedNegotiationIntents(
       [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
       undefined,
       null,
-      false,
     )).toEqual([]);
   });
 });
@@ -544,134 +514,31 @@ describe('Opportunity Graph', () => {
       }));
     });
 
-    test('the retrieval override reaches legacy premise, context-to-intent, and context-to-context searches', async () => {
-      const previousAllowedTypes = process.env.DISCOVERY_ALLOWED_TYPES;
-      const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
-      const previousContextToIntent = process.env.DISCOVERY_CONTEXT_TO_INTENT;
-      const sourceUserId = 'a0000000-0000-4000-8000-000000000001' as Id<'users'>;
+    test('the built-in thresholds apply unless constructor overrides are provided', async () => {
+      const fromDefaults = createMockGraph({ thresholdOverrides: null });
+      const defaultsSearch = spyOn(fromDefaults.mockEmbedder, 'searchWithHydeEmbeddings');
+      await fromDefaults.compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      });
+      expect(defaultsSearch.mock.calls[0]?.[1]?.minScore).toBe(DISCOVERY_MIN_SIMILARITY);
+      expect(fromDefaults.evaluatorCalls[0]?.minScore).toBe(DISCOVERY_EVALUATOR_MIN_SCORE);
 
-      try {
-        process.env.DISCOVERY_ALLOWED_TYPES = 'intent,profile';
-        process.env.DISCOVERY_PROFILE_SOURCE = 'premise';
-        const premiseGraph = createMockGraph({
-          thresholdOverrides: { retrievalMinSimilarity: 0.42, evaluatorMinScore: 70 },
-        });
-        premiseGraph.mockDb.searchPremisesBySimilarityBatch = undefined;
-        premiseGraph.mockDb.getPremisesForUserInNetworks = async (userId) => [{
-          id: 'premise-1',
-          userId,
-          assertion: { text: 'Builds protocols', tier: 'assertive' as const },
-          provenance: { source: 'enrichment' as const, confidence: 1, timestamp: new Date().toISOString() },
-          analysis: null,
-          validity: { volatile: false },
-          embedding: dummyEmbedding,
-          status: 'ACTIVE' as const,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          retractedAt: null,
-        }];
-        const premiseSearch = mock(async () => []);
-        premiseGraph.mockDb.searchPremisesBySimilarity = premiseSearch;
-        spyOn(premiseGraph.mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
-
-        await premiseGraph.compiledGraph.invoke({
-          userId: sourceUserId,
-          searchQuery: 'co-founder',
-          options: {},
-        });
-
-        expect(premiseSearch.mock.calls[0]?.[0]?.minScore).toBe(0.42);
-
-        process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-        process.env.DISCOVERY_CONTEXT_TO_INTENT = '1';
-        const contextGraph = createMockGraph({
-          thresholdOverrides: { retrievalMinSimilarity: 0.42, evaluatorMinScore: 70 },
-        });
-        contextGraph.mockDb.getUserContexts = async () => [{
-          id: 'ctx-1',
-          networkId: 'idx-1',
-          text: 'Building DeFi infrastructure',
-          embedding: dummyEmbedding,
-          premiseHash: 'hash-1',
-          generatedAt: new Date(),
-        }];
-        contextGraph.mockDb.getHydeDocumentsForSource = async () => [];
-        const contextIntentSearch = mock(async () => []);
-        const contextSimilaritySearch = mock(async () => []);
-        contextGraph.mockDb.searchIntentsByContextEmbedding = contextIntentSearch;
-        contextGraph.mockDb.searchUserContextsBySimilarity = contextSimilaritySearch;
-        spyOn(contextGraph.mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
-
-        await contextGraph.compiledGraph.invoke({
-          userId: sourceUserId,
-          options: {},
-        });
-
-        expect(contextIntentSearch.mock.calls[0]?.[0]?.minScore).toBe(0.42);
-        expect(contextSimilaritySearch.mock.calls[0]?.[0]?.minScore).toBe(0.42);
-      } finally {
-        if (previousAllowedTypes === undefined) delete process.env.DISCOVERY_ALLOWED_TYPES;
-        else process.env.DISCOVERY_ALLOWED_TYPES = previousAllowedTypes;
-        if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
-        else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
-        if (previousContextToIntent === undefined) delete process.env.DISCOVERY_CONTEXT_TO_INTENT;
-        else process.env.DISCOVERY_CONTEXT_TO_INTENT = previousContextToIntent;
-      }
+      const fromConstructor = createMockGraph({
+        thresholdOverrides: { retrievalMinSimilarity: 0.52, evaluatorMinScore: 72 },
+      });
+      const constructorSearch = spyOn(fromConstructor.mockEmbedder, 'searchWithHydeEmbeddings');
+      await fromConstructor.compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      });
+      expect(constructorSearch.mock.calls[0]?.[1]?.minScore).toBe(0.52);
+      expect(fromConstructor.evaluatorCalls[0]?.minScore).toBe(72);
     });
 
-    test('environment thresholds apply unless constructor overrides are provided', async () => {
-      const previousRetrieval = process.env.DISCOVERY_MIN_SIMILARITY;
-      const previousEvaluator = process.env.DISCOVERY_EVALUATOR_MIN_SCORE;
-
-      try {
-        process.env.DISCOVERY_MIN_SIMILARITY = '0.41';
-        process.env.DISCOVERY_EVALUATOR_MIN_SCORE = '61';
-
-        const fromEnvironment = createMockGraph({ thresholdOverrides: null });
-        const environmentSearch = spyOn(fromEnvironment.mockEmbedder, 'searchWithHydeEmbeddings');
-        await fromEnvironment.compiledGraph.invoke({
-          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-          searchQuery: 'co-founder',
-          options: {},
-        });
-        expect(environmentSearch.mock.calls[0]?.[1]?.minScore).toBe(0.41);
-        expect(fromEnvironment.evaluatorCalls[0]?.minScore).toBe(61);
-
-        const fromConstructor = createMockGraph({
-          thresholdOverrides: { retrievalMinSimilarity: 0.52, evaluatorMinScore: 72 },
-        });
-        const constructorSearch = spyOn(fromConstructor.mockEmbedder, 'searchWithHydeEmbeddings');
-        await fromConstructor.compiledGraph.invoke({
-          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-          searchQuery: 'co-founder',
-          options: {},
-        });
-        expect(constructorSearch.mock.calls[0]?.[1]?.minScore).toBe(0.52);
-        expect(fromConstructor.evaluatorCalls[0]?.minScore).toBe(72);
-      } finally {
-        if (previousRetrieval === undefined) delete process.env.DISCOVERY_MIN_SIMILARITY;
-        else process.env.DISCOVERY_MIN_SIMILARITY = previousRetrieval;
-        if (previousEvaluator === undefined) delete process.env.DISCOVERY_EVALUATOR_MIN_SCORE;
-        else process.env.DISCOVERY_EVALUATOR_MIN_SCORE = previousEvaluator;
-      }
-    });
-
-    test('invalid constructor overrides fail when the graph is created', () => {
-      const invalidOverrides: OpportunityGraphThresholdOverrides[] = [
-        { retrievalMinSimilarity: Number.NaN },
-        { retrievalMinSimilarity: -0.01 },
-        { retrievalMinSimilarity: 1.01 },
-        { evaluatorMinScore: Number.NaN },
-        { evaluatorMinScore: -1 },
-        { evaluatorMinScore: 101 },
-      ];
-
-      for (const thresholdOverrides of invalidOverrides) {
-        expect(() => createMockGraph({ thresholdOverrides })).toThrow();
-      }
-    });
-
-    test('direct-target evaluation keeps score 50 despite an evaluator override', async () => {
+    test('direct-target evaluation keeps the built-in floor despite an evaluator override', async () => {
       const { compiledGraph, evaluatorCalls } = createMockGraph({
         thresholdOverrides: { evaluatorMinScore: 80 },
         evaluatorResult: [{ ...defaultMockEvaluatorResult[0], score: 70 }],
@@ -684,7 +551,7 @@ describe('Opportunity Graph', () => {
         options: {},
       });
 
-      expect(evaluatorCalls[0]?.minScore).toBe(50);
+      expect(evaluatorCalls[0]?.minScore).toBe(DISCOVERY_EVALUATOR_MIN_SCORE);
     });
   });
 
@@ -715,387 +582,6 @@ describe('Opportunity Graph', () => {
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
     });
 
-    test('premise discovery uses scoped capped source premises and one batched DB search', async () => {
-      const previousSourcePremiseLimit = process.env.DISCOVERY_SOURCE_PREMISE_LIMIT;
-      process.env.DISCOVERY_SOURCE_PREMISE_LIMIT = '40';
-
-      try {
-        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-          thresholdOverrides: { retrievalMinSimilarity: 0.42, evaluatorMinScore: 70 },
-        });
-        spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
-        const legacySearchSpy = spyOn(mockDb, 'searchPremisesBySimilarity');
-
-        const scopedCalls: Array<{ userId: string; networkIds: string[]; status?: string; limit?: number }> = [];
-        mockDb.getPremisesForUserInNetworks = async (userId, networkIds, status, limit) => {
-          scopedCalls.push({ userId, networkIds, status, limit });
-          return [
-            { id: 'premise-1', userId, assertion: { text: 'Builds protocols', tier: 'assertive' as const }, provenance: { source: 'enrichment' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null },
-            { id: 'premise-2', userId, assertion: { text: 'Knows founders', tier: 'assertive' as const }, provenance: { source: 'enrichment' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null },
-          ];
-        };
-
-        const batchCalls: Array<Parameters<NonNullable<OpportunityGraphDatabase['searchPremisesBySimilarityBatch']>>[0]> = [];
-        mockDb.searchPremisesBySimilarityBatch = async (params) => {
-          batchCalls.push(params);
-          return [{
-            sourcePremiseId: 'premise-1',
-            premiseId: 'candidate-premise-1',
-            userId: 'b0000000-0000-4000-8000-000000000002',
-            networkId: 'idx-1',
-            assertionText: 'Can help protocols find founders',
-            similarity: 0.88,
-          }];
-        };
-
-        const result = (await compiledGraph.invoke({
-          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-          searchQuery: 'co-founder',
-          options: {},
-        } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-        expect(scopedCalls).toHaveLength(1);
-        expect(scopedCalls[0]).toMatchObject({
-          userId: 'a0000000-0000-4000-8000-000000000001',
-          networkIds: ['idx-1'],
-          status: 'ACTIVE',
-          limit: 40,
-        });
-        expect(batchCalls).toHaveLength(1);
-        expect(batchCalls[0].sources.map(s => s.premiseId)).toEqual(['premise-1', 'premise-2']);
-        expect(batchCalls[0].limitPerSource).toBe(20);
-        expect(batchCalls[0].minScore).toBe(0.42);
-        expect(legacySearchSpy).not.toHaveBeenCalled();
-        expect(result.candidates.some(c => c.discoverySource === 'premise-similarity')).toBe(true);
-      } finally {
-        if (previousSourcePremiseLimit === undefined) {
-          delete process.env.DISCOVERY_SOURCE_PREMISE_LIMIT;
-        } else {
-          process.env.DISCOVERY_SOURCE_PREMISE_LIMIT = previousSourcePremiseLimit;
-        }
-      }
-    });
-
-    test('when user_context mode receives a premise result, it ignores the unsupported profile type', async () => {
-      const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
-      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-      try {
-        const { compiledGraph, mockEmbedder } = createMockGraph();
-        spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-          {
-            type: 'premise' as const,
-            id: 'b0000000-0000-4000-8000-000000000002',
-            userId: 'b0000000-0000-4000-8000-000000000002',
-            score: 0.9,
-            matchedVia: 'mirror' as const,
-            networkId: 'idx-1',
-          },
-        ]);
-
-        const result = (await compiledGraph.invoke({
-          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-          searchQuery: 'co-founder',
-          options: {},
-        } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-        expect(result.candidates.length).toBe(0);
-      } finally {
-        if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
-        else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
-      }
-    });
-  });
-
-  describe('discovery env gating', () => {
-    const previousAllowedTypes = process.env.DISCOVERY_ALLOWED_TYPES;
-    const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
-    const previousContextToIntent = process.env.DISCOVERY_CONTEXT_TO_INTENT;
-
-    afterEach(() => {
-      if (previousAllowedTypes === undefined) delete process.env.DISCOVERY_ALLOWED_TYPES;
-      else process.env.DISCOVERY_ALLOWED_TYPES = previousAllowedTypes;
-      if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
-      else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
-      if (previousContextToIntent === undefined) delete process.env.DISCOVERY_CONTEXT_TO_INTENT;
-      else process.env.DISCOVERY_CONTEXT_TO_INTENT = previousContextToIntent;
-    });
-
-    const gatingAlice = 'a0000000-0000-4000-8000-000000000001';
-    const gatingBob = 'b0000000-0000-4000-8000-000000000002';
-
-    function wirePremiseAndContextSources(mockDb: OpportunityGraphDatabase) {
-      mockDb.getPremisesForUserInNetworks = async (userId) => [
-        { id: 'premise-1', userId, assertion: { text: 'Builds protocols', tier: 'assertive' as const }, provenance: { source: 'enrichment' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null },
-      ];
-      mockDb.getUserContexts = async () => [
-        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
-      ];
-    }
-
-    it('DISCOVERY_ALLOWED_TYPES=intent: premise and context strategies issue no searches', async () => {
-      process.env.DISCOVERY_ALLOWED_TYPES = 'intent';
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      wirePremiseAndContextSources(mockDb);
-      const premiseBatchSpy = spyOn(mockDb, 'searchPremisesBySimilarityBatch');
-      const premiseLegacySpy = spyOn(mockDb, 'searchPremisesBySimilarity');
-      const contextSearchSpy = spyOn(mockDb, 'searchIntentsByContextEmbedding');
-      const getUserContextsSpy = spyOn(mockDb, 'getUserContexts');
-      // Embedder returns only profile-corpus candidates; with intent-only matching
-      // they must all be filtered out post-search.
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'premise' as const, id: 'premise-bob', userId: gatingBob, score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-        { type: 'user_context' as const, id: 'ctx-bob', userId: gatingBob, score: 0.88, matchedVia: 'mirror' as const, networkId: 'idx-1', text: 'Bob context' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(premiseBatchSpy).not.toHaveBeenCalled();
-      expect(premiseLegacySpy).not.toHaveBeenCalled();
-      expect(contextSearchSpy).not.toHaveBeenCalled();
-      expect(getUserContextsSpy).not.toHaveBeenCalled();
-      expect(result.candidates).toEqual([]);
-    });
-
-    it('DISCOVERY_PROFILE_SOURCE=user_context: premise strategy off, premise HyDE results dropped', async () => {
-      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      wirePremiseAndContextSources(mockDb);
-      const premiseBatchSpy = spyOn(mockDb, 'searchPremisesBySimilarityBatch');
-      const premiseLegacySpy = spyOn(mockDb, 'searchPremisesBySimilarity');
-      const gatingCarol = 'c0000000-0000-4000-8000-000000000003';
-      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: gatingBob, score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-        { type: 'premise' as const, id: 'premise-bob', userId: gatingBob, score: 0.88, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-        // Distinct user so the candidate survives the evaluation node's userId dedup.
-        { type: 'user_context' as const, id: 'ctx-carol', userId: gatingCarol, score: 0.87, matchedVia: 'mirror' as const, networkId: 'idx-1', text: 'Carol builds DeFi infra' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(premiseBatchSpy).not.toHaveBeenCalled();
-      expect(premiseLegacySpy).not.toHaveBeenCalled();
-      // Corpus gating must be composed from env and passed to the embedder.
-      expect(searchSpy.mock.calls[0]?.[1]?.corpusGating).toEqual({
-        intents: true,
-        profile: true,
-        profileCorpus: 'user_context',
-      });
-      // Defense-in-depth: premise results dropped post-search; user_context flows.
-      expect(result.candidates.some((c) => c.candidatePremiseId)).toBe(false);
-      expect(result.candidates.some((c) => c.candidateIntentId === 'intent-bob')).toBe(true);
-      expect(result.candidates.some((c) => c.candidateContextId === 'ctx-carol')).toBe(true);
-    });
-
-    it('premise mode never loads or searches user context while intent and premise strategies run', async () => {
-      process.env.DISCOVERY_ALLOWED_TYPES = 'intent,profile';
-      process.env.DISCOVERY_PROFILE_SOURCE = 'premise';
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      wirePremiseAndContextSources(mockDb);
-      const getUserContextsSpy = spyOn(mockDb, 'getUserContexts');
-      const premiseBatchSpy = spyOn(mockDb, 'searchPremisesBySimilarityBatch').mockResolvedValue([
-        { sourcePremiseId: 'premise-1', premiseId: 'candidate-premise-1', userId: gatingBob, networkId: 'idx-1', assertionText: 'Can help protocols find founders', similarity: 0.88 },
-      ]);
-      const contextSearchSpy = spyOn(mockDb, 'searchIntentsByContextEmbedding').mockResolvedValue([]);
-      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: gatingBob, score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(getUserContextsSpy).not.toHaveBeenCalled();
-      expect(premiseBatchSpy).toHaveBeenCalled();
-      expect(contextSearchSpy).not.toHaveBeenCalled();
-      expect(searchSpy).toHaveBeenCalled();
-      expect(searchSpy.mock.calls[0]?.[1]?.corpusGating).toEqual({
-        intents: true,
-        profile: true,
-        profileCorpus: 'premise',
-      });
-      expect(result.candidates.length).toBeGreaterThanOrEqual(1);
-      expect(result.candidates.some((candidate) => candidate.evidence.some((evidence) => evidence.kind === 'context_to_intent'))).toBe(false);
-    });
-
-    it('hydrates empty query-premise payloads from HyDE results before evaluator input', async () => {
-      process.env.DISCOVERY_ALLOWED_TYPES = 'profile';
-      process.env.DISCOVERY_PROFILE_SOURCE = 'premise';
-      let evaluatorInput: EvaluatorInput | undefined;
-      const evaluator: OpportunityEvaluatorLike = {
-        invokeEntityBundle: async (input) => {
-          evaluatorInput = input;
-          return [{
-            reasoning: 'The candidate provides relevant help.',
-            score: 90,
-            actors: [
-              { userId: gatingAlice, role: 'patient', intentId: null },
-              { userId: gatingBob, role: 'agent', intentId: null },
-            ],
-          }];
-        },
-      };
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({ evaluator });
-      const premiseSearchSpy = spyOn(mockDb, 'searchPremisesBySimilarityBatch');
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'premise' as const, id: 'candidate-premise-1', userId: gatingBob, score: 0.88, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-      mockDb.getPremise = async (premiseId) => premiseId === 'candidate-premise-1'
-        ? { id: premiseId, userId: gatingBob, assertion: { text: 'Operates a structural biology lab', tier: 'assertive' as const, summary: 'Structural biology lab' }, provenance: { source: 'explicit' as const, confidence: 1, timestamp: new Date().toISOString() }, analysis: null, validity: { volatile: false }, embedding: dummyEmbedding, status: 'ACTIVE' as const, createdAt: new Date(), updatedAt: new Date(), retractedAt: null }
-        : null;
-
-      const result = await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        searchQuery: 'find structural biology collaborators',
-        options: {},
-      } as OpportunityGraphInvokeInput) as OpportunityGraphInvokeResult;
-
-      const candidate = evaluatorInput?.entities.find((entity) => entity.userId === gatingBob);
-      expect(premiseSearchSpy).not.toHaveBeenCalled();
-      expect(result.candidates[0]?.evidence[0]?.kind).toBe('query_premise');
-      expect(candidate?.evidence?.[0]?.assertionText).toBe('Operates a structural biology lab');
-      expect(candidate?.evidence?.[0]?.payload).toBe('Operates a structural biology lab');
-    });
-
-    it('lightweight mode: context→context finds candidates via searchUserContextsBySimilarity', async () => {
-      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-      const { compiledGraph, mockDb } = createMockGraph();
-      // One idx-1-scoped source context with an embedding.
-      mockDb.getUserContexts = async () => [
-        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
-      ];
-      const searchUserContextsSpy = mock(async () => [
-        { contextId: 'ctx-b', userId: gatingBob, networkId: 'idx-1', text: 'A researcher working on decentralized coordination', similarity: 0.9 },
-      ]);
-      mockDb.searchUserContextsBySimilarity = searchUserContextsSpy;
-
-      // Context source (no searchQuery → discoverySource 'context').
-      const result = (await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(searchUserContextsSpy).toHaveBeenCalled();
-      const call = searchUserContextsSpy.mock.calls[0]?.[0];
-      expect(call?.networkIds).toEqual(['idx-1']);
-      expect(call?.excludeUserId).toBe(gatingAlice);
-
-      const candidate = result.candidates.find((c) => c.candidateContextId === 'ctx-b');
-      expect(candidate).toBeDefined();
-      expect(candidate?.candidateUserId).toBe(gatingBob);
-      expect(candidate?.discoverySource).toBe('context-similarity');
-      expect(candidate?.lens).toBe('context_match');
-      expect(candidate?.candidatePayload).toContain('researcher');
-      expect(candidate?.evidence[0]?.kind).toBe('context_similarity');
-    });
-
-    it('lightweight mode: context→context no-ops when adapter omits searchUserContextsBySimilarity', async () => {
-      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-      const { compiledGraph, mockDb } = createMockGraph();
-      mockDb.getUserContexts = async () => [
-        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
-      ];
-      // Fixture deliberately omits searchUserContextsBySimilarity (optional method).
-      expect(mockDb.searchUserContextsBySimilarity).toBeUndefined();
-
-      const result = (await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.candidates).toEqual([]);
-      expect(result.error).toBeUndefined();
-    });
-
-    it('lightweight mode: context→context runs when legacy context→intent switch is disabled', async () => {
-      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-      process.env.DISCOVERY_CONTEXT_TO_INTENT = '0';
-      const { compiledGraph, mockDb } = createMockGraph();
-      mockDb.getUserContexts = async () => [
-        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
-      ];
-      const searchUserContextsSpy = mock(async () => [
-        { contextId: 'ctx-b', userId: gatingBob, networkId: 'idx-1', text: 'A researcher working on decentralized coordination', similarity: 0.9 },
-      ]);
-      mockDb.searchUserContextsBySimilarity = searchUserContextsSpy;
-      const contextIntentSearchSpy = spyOn(mockDb, 'searchIntentsByContextEmbedding');
-
-      const result = (await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(searchUserContextsSpy).toHaveBeenCalled();
-      const call = searchUserContextsSpy.mock.calls[0]?.[0];
-      expect(call?.networkIds).toEqual(['idx-1']);
-      expect(call?.excludeUserId).toBe(gatingAlice);
-      expect(contextIntentSearchSpy).not.toHaveBeenCalled();
-
-      const candidate = result.candidates.find((c) => c.candidateContextId === 'ctx-b');
-      expect(candidate).toBeDefined();
-      expect(candidate?.candidateUserId).toBe(gatingBob);
-      expect(candidate?.discoverySource).toBe('context-similarity');
-      expect(candidate?.lens).toBe('context_match');
-      expect(candidate?.candidatePayload).toContain('researcher');
-      expect(candidate?.evidence[0]?.kind).toBe('context_similarity');
-    });
-
-    it('DISCOVERY_CONTEXT_TO_INTENT=1 with user_context and intent,profile invokes context-to-intent search and evidence', async () => {
-      process.env.DISCOVERY_ALLOWED_TYPES = 'intent,profile';
-      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-      process.env.DISCOVERY_CONTEXT_TO_INTENT = '1';
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      mockDb.getUserContexts = async () => [
-        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
-      ];
-      mockDb.getHydeDocumentsForSource = mock(async () => []) as typeof mockDb.getHydeDocumentsForSource;
-      const contextIntentSearchSpy = mock(async () => [
-        { intentId: 'intent-bob', userId: gatingBob, networkId: 'idx-1', similarity: 0.86, payload: 'Looking for protocol collaborators', summary: null },
-      ]);
-      mockDb.searchIntentsByContextEmbedding = contextIntentSearchSpy as typeof mockDb.searchIntentsByContextEmbedding;
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
-
-      const result = (await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        searchQuery: 'protocol collaborator',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(contextIntentSearchSpy).toHaveBeenCalled();
-      expect(contextIntentSearchSpy.mock.calls[0]?.[0]).toMatchObject({
-        networkIds: ['idx-1'],
-        excludeUserId: gatingAlice,
-      });
-      const candidate = result.candidates.find((item) => item.candidateIntentId === 'intent-bob');
-      expect(candidate).toBeDefined();
-      expect(candidate?.discoverySource).toBe('context-to-intent');
-      expect(candidate?.evidence.some((item) => item.kind === 'context_to_intent')).toBe(true);
-    });
-
-    it('premise mode (default): context→context does not run', async () => {
-      const { compiledGraph, mockDb } = createMockGraph();
-      mockDb.getUserContexts = async () => [
-        { id: 'ctx-1', networkId: 'idx-1', text: 'Building DeFi infrastructure', embedding: dummyEmbedding, premiseHash: 'hash-1', generatedAt: new Date() },
-      ];
-      const searchUserContextsSpy = mock(async () => []);
-      mockDb.searchUserContextsBySimilarity = searchUserContextsSpy;
-
-      await compiledGraph.invoke({
-        userId: gatingAlice as Id<'users'>,
-        options: {},
-      } as OpportunityGraphInvokeInput);
-
-      expect(searchUserContextsSpy).not.toHaveBeenCalled();
-    });
   });
 
   describe('Evaluation node: userId dedup', () => {
@@ -1171,45 +657,7 @@ describe('Opportunity Graph', () => {
   });
 
   describe('Evaluation node: rejection cooldown', () => {
-    test('uses one bundled evaluator call for false or absent parallel configuration', async () => {
-      const previousParallelEvaluation = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-      try {
-        for (const configured of [undefined, 'false'] as const) {
-          if (configured === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-          else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = configured;
-          const evaluatorInputs: EvaluatorInput[] = [];
-          const evaluator: OpportunityEvaluatorLike = {
-            invokeEntityBundle: async (input) => {
-              evaluatorInputs.push(input);
-              return [];
-            },
-          };
-          const { compiledGraph, mockEmbedder } = createMockGraph({ evaluator });
-          spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-            { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-            { type: 'intent' as const, id: 'intent-carol', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.8, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-          ]);
-
-          await compiledGraph.invoke({
-            userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-            searchQuery: 'co-founder',
-            options: { minScore: 70 },
-          } as OpportunityGraphInvokeInput);
-
-          expect(evaluatorInputs, `configured=${String(configured)}`).toHaveLength(1);
-          expect(evaluatorInputs[0]!.entities.slice(1)).toHaveLength(2);
-        }
-      } finally {
-        if (previousParallelEvaluation === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-        else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEvaluation;
-      }
-    });
-
-    test('applies the configured rejection cooldown and ranks penalized candidates behind unpenalized candidates', async () => {
-      const previousCooldown = process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
-      const previousParallelEvaluation = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-      process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS = '1';
-      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'false';
+    test('applies the rejection cooldown and ranks penalized candidates behind unpenalized candidates', async () => {
       const evaluatorInputs: EvaluatorInput[] = [];
       const evaluator: OpportunityEvaluatorLike = {
         invokeEntityBundle: async (input) => {
@@ -1242,36 +690,26 @@ describe('Opportunity Graph', () => {
             'b0000000-0000-4000-8000-000000000002',
             'c0000000-0000-4000-8000-000000000003',
           ],
-          cooldownMs: 24 * 60 * 60 * 1000,
+          cooldownMs: REJECTION_COOLDOWN_MS,
         }]);
-        expect(evaluatorInputs).toHaveLength(1);
-        expect(evaluatorInputs[0].entities.slice(1).map(({ userId }) => userId)).toEqual([
+        // One evaluator call per candidate, fired in rank order: the penalized
+        // candidate ranks behind the unpenalized one.
+        expect(evaluatorInputs).toHaveLength(2);
+        expect(evaluatorInputs.map((input) => input.entities[1].userId)).toEqual([
           'c0000000-0000-4000-8000-000000000003',
           'b0000000-0000-4000-8000-000000000002',
         ]);
-        expect(evaluatorInputs[0].entities.slice(1).map(({ ragScore }) => ragScore)).toEqual([80, 45]);
+        expect(evaluatorInputs.map((input) => input.entities[1].ragScore)).toEqual([80, 45]);
       } finally {
-        if (previousCooldown === undefined) delete process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS;
-        else process.env.DISCOVERY_REJECTION_COOLDOWN_DAYS = previousCooldown;
-        if (previousParallelEvaluation === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-        else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEvaluation;
+        // nothing to restore — the cooldown is a constant now
       }
     });
   });
 
   describe('Evaluation node: batching and continuation', () => {
-    // Batch boundaries are asserted on the bundled path, where one evaluator call
-    // is one batch. The parallel path fans a batch out into one call per candidate;
-    // the last test in this block covers continuation there.
-    let previousParallelEvaluation: string | undefined;
-    beforeEach(() => {
-      previousParallelEvaluation = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'false';
-    });
-    afterEach(() => {
-      if (previousParallelEvaluation === undefined) delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-      else process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEvaluation;
-    });
+    // Evaluation fans a batch out into one call per candidate, so the batch
+    // boundary shows up as a call COUNT (25 per batch) rather than as one call
+    // carrying 25 entities.
 
     test('when search is query-driven and remaining candidates have no query-sourced entries, remainingCandidates is empty', async () => {
       // 5 query candidates come through HyDE search → tagged 'query'
@@ -1323,7 +761,7 @@ describe('Opportunity Graph', () => {
       ],
     });
 
-    /** Records the candidate ids handed to each evaluator batch. */
+    /** Records the candidate ids handed to each evaluator call. */
     const batchRecordingEvaluator = (
       seenBatches: string[][],
       verdictsFor: (candidateIds: string[]) => EvaluatedOpportunityWithActors[],
@@ -1354,8 +792,9 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(seenBatches.map((batch) => batch.length)).toEqual([25, 5]);
-      expect(seenBatches[1]).toContain(passerId);
+      // One call per candidate: 25 in the first batch, 5 in the second.
+      expect(seenBatches).toHaveLength(30);
+      expect(seenBatches.flat()).toContain(passerId);
       expect(result.evaluatedOpportunities).toHaveLength(1);
       expect(result.remainingCandidates).toEqual([]);
     });
@@ -1378,7 +817,8 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(seenBatches).toHaveLength(1);
+      // The first batch passes, so the second never runs: 25 calls, not 30.
+      expect(seenBatches).toHaveLength(25);
       expect(result.evaluatedOpportunities).toHaveLength(1);
       // The 5 query-sourced candidates behind the batch stay available for pagination.
       expect(result.remainingCandidates.length).toBe(5);
@@ -1400,7 +840,8 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(seenBatches.map((batch) => batch.length)).toEqual([25, 25, 25]);
+      expect(seenBatches).toHaveLength(75);
+      expect(seenBatches.every((call) => call.length === 1)).toBe(true);
       expect(result.evaluatedOpportunities).toEqual([]);
       expect(result.remainingCandidates.length).toBe(5);
       expect(result.trace).toContainEqual(expect.objectContaining({
@@ -1411,33 +852,6 @@ describe('Opportunity Graph', () => {
           batchesRun: 3,
         }),
       }));
-    });
-
-    test('continues into the tail on the parallel evaluation path too', async () => {
-      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'true';
-      const candidates = rankedCandidates(30);
-      const passerId = candidates[27].userId;
-      const seenBatches: string[][] = [];
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: batchRecordingEvaluator(seenBatches, (ids) =>
-          ids.includes(passerId) ? [passingVerdict(passerId)] : [],
-        ),
-        thresholdOverrides: { evaluatorMinScore: 50 },
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'painters',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      // One call per candidate here, so assert on coverage rather than batch shape.
-      const evaluated = new Set(seenBatches.flat());
-      expect(evaluated.size).toBe(30);
-      expect(evaluated.has(passerId)).toBe(true);
-      expect(result.evaluatedOpportunities).toHaveLength(1);
-      expect(result.remainingCandidates).toEqual([]);
     });
   });
 
@@ -1739,303 +1153,6 @@ describe('Opportunity Graph', () => {
       }));
     });
 
-    test('merges strategy evidence before persisting surfaced opportunities', async () => {
-      const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
-      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-      try {
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-        getUserIndexIds: () => Promise.resolve(['net-1'] as Id<'networks'>[]),
-        getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
-      });
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'net-1' },
-      ]);
-      mockDb.getUserContexts = mock(async () => [
-        {
-          id: 'ctx-1',
-          networkId: 'net-1',
-          text: 'Alice is looking for protocol collaborators',
-          embedding: dummyEmbedding,
-          premiseHash: 'hash-1',
-          generatedAt: new Date('2026-06-09T00:00:00.000Z'),
-        },
-      ]) as typeof mockDb.getUserContexts;
-      mockDb.getHydeDocumentsForSource = mock(async () => []) as typeof mockDb.getHydeDocumentsForSource;
-      mockDb.searchIntentsByContextEmbedding = mock(async () => [
-        { intentId: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', networkId: 'net-1', similarity: 0.86, payload: 'Looking for protocol collaborators', summary: null },
-      ]) as typeof mockDb.searchIntentsByContextEmbedding;
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'protocol collaborator',
-        options: {},
-      } as OpportunityGraphInvokeInput);
-
-      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
-        metadata: expect.objectContaining({
-          evidence: expect.arrayContaining([
-            expect.objectContaining({
-              candidateIntentId: 'intent-bob',
-              networkId: 'net-1',
-              matchedStrategies: expect.arrayContaining(['query', 'context-to-intent']),
-            }),
-          ]),
-        }),
-      }));
-      } finally {
-        if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
-        else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
-      }
-    });
-
-    test('context discovery searches only the newest current frame generation', async () => {
-      const previousFlag = process.env.HYDE_FRAME_CONSTRAINTS_ENABLED;
-      const previousProfileSource = process.env.DISCOVERY_PROFILE_SOURCE;
-      process.env.HYDE_FRAME_CONSTRAINTS_ENABLED = 'true';
-      process.env.DISCOVERY_PROFILE_SOURCE = 'user_context';
-      const contextText = 'Alice is looking for protocol collaborators';
-      const sourceTextHash = computeHydeSourceTextHash(contextText);
-      const persistedDocument = (
-        id: string,
-        strategy: string,
-        context: Record<string, unknown> | null,
-      ): HydeDocument => ({
-        id,
-        sourceType: 'context',
-        sourceId: 'ctx-1',
-        sourceText: null,
-        strategy,
-        targetCorpus: 'intents',
-        hydeText: id,
-        hydeEmbedding: [1, 2],
-        context,
-        createdAt: new Date('2026-01-01T00:00:00.000Z'),
-        expiresAt: null,
-      });
-      const frameContext = (generatedAt: string, hash = sourceTextHash) => ({
-        hydeGenerationVersion: 'frame-v1',
-        lensLabel: 'protocol collaborator',
-        validationStatus: 'valid',
-        frameFingerprint: 'fingerprint',
-        sourceTextHash: hash,
-        generatedAt,
-      });
-
-      try {
-        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-          getUserIndexIds: () => Promise.resolve(['net-1'] as Id<'networks'>[]),
-          getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
-          evaluatorResult: [],
-        });
-        mockDb.getUserContexts = mock(async () => [{
-          id: 'ctx-1',
-          networkId: 'net-1',
-          text: contextText,
-          embedding: dummyEmbedding,
-          premiseHash: 'hash-1',
-          generatedAt: new Date('2026-06-09T00:00:00.000Z'),
-        }]) as typeof mockDb.getUserContexts;
-        mockDb.getHydeDocumentsForSource = mock(async () => [
-          persistedDocument('legacy', 'legacy-hash', null),
-          persistedDocument('stale-source', 'frame-v1:stale', frameContext('2026-01-03T00:00:00.000Z', computeHydeSourceTextHash('stale context'))),
-          persistedDocument('old-generation', 'frame-v1:old', frameContext('2026-01-01T00:00:00.000Z')),
-          persistedDocument('new-generation', 'frame-v1:new', frameContext('2026-01-02T00:00:00.000Z')),
-        ]) as typeof mockDb.getHydeDocumentsForSource;
-        const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
-
-        await compiledGraph.invoke({
-          userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-          searchQuery: 'protocol collaborator',
-          options: {},
-        } as OpportunityGraphInvokeInput);
-
-        const contextSearch = searchSpy.mock.calls
-          .map((call) => call[0] as Array<{ lens: string }>)
-          .find((embeddings) => embeddings.some((embedding) => embedding.lens.startsWith('frame-v1:')));
-        expect(contextSearch?.map((embedding) => embedding.lens)).toEqual(['frame-v1:new']);
-      } finally {
-        if (previousFlag === undefined) delete process.env.HYDE_FRAME_CONSTRAINTS_ENABLED;
-        else process.env.HYDE_FRAME_CONSTRAINTS_ENABLED = previousFlag;
-        if (previousProfileSource === undefined) delete process.env.DISCOVERY_PROFILE_SOURCE;
-        else process.env.DISCOVERY_PROFILE_SOURCE = previousProfileSource;
-      }
-    });
-  });
-
-  describe('Evaluation: pairwise actor normalization', () => {
-    const previousParallelEval = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-
-    beforeAll(() => {
-      process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = 'false';
-    });
-
-    afterAll(() => {
-      if (previousParallelEval === undefined) {
-        delete process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL;
-      } else {
-        process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL = previousParallelEval;
-      }
-    });
-
-    test('when evaluator returns 3 actors, splits into pairwise opportunities (viewer + each non-viewer)', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          {
-            reasoning: 'Three-way collaboration potential.',
-            score: 85,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-              { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const, intentId: null },
-              { userId: 'e0000000-0000-4000-8000-000000000005', role: 'peer' as const, intentId: null },
-            ],
-          },
-        ],
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-        { type: 'intent' as const, id: 'intent-third', userId: 'e0000000-0000-4000-8000-000000000005', score: 0.85, matchedVia: 'reciprocal' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.opportunities.length).toBe(2);
-      for (const opp of result.opportunities) {
-        expect(opp.actors.length).toBe(2);
-        expect(opp.actors.some((a: OpportunityActor) => a.userId === 'a0000000-0000-4000-8000-000000000001')).toBe(true);
-      }
-      const candidateUserIds = result.opportunities.map(
-        (opp: { actors: OpportunityActor[] }) => opp.actors.find((a: OpportunityActor) => a.userId !== 'a0000000-0000-4000-8000-000000000001')?.userId
-      );
-      expect(candidateUserIds).toContain('b0000000-0000-4000-8000-000000000002');
-      expect(candidateUserIds).toContain('e0000000-0000-4000-8000-000000000005');
-    });
-
-    test('when splitting multi-actor result, reasoning mentioning only one candidate does not leak to the other (IND-127)', async () => {
-      // Simulate: evaluator bundles Alice and Bob into one opportunity with Alice's reasoning
-      const profilesByUserId: Record<string, UserIdentity> = {
-        'c0000000-0000-4000-8000-000000000003': {
-          userId: 'c0000000-0000-4000-8000-000000000003',
-          identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs', location: '' },
-          context: 'Blockchain and DeFi founder.',
-        },
-        'f0000000-0000-4000-8000-000000000006': {
-          userId: 'f0000000-0000-4000-8000-000000000006',
-          identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups', location: '' },
-          context: 'AI and machine-learning investor.',
-        },
-      };
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          {
-            reasoning: 'Alice Park is the Founder & CIO of Acme Labs with deep expertise in blockchain and DeFi, which complements the source user\'s interest in crypto.',
-            score: 82,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-              { userId: 'c0000000-0000-4000-8000-000000000003', role: 'agent' as const, intentId: null },
-              { userId: 'f0000000-0000-4000-8000-000000000006', role: 'agent' as const, intentId: null },
-            ],
-          },
-        ],
-      });
-      spyOn(mockDb, 'getProfile').mockImplementation((userId: string) =>
-        Promise.resolve(profilesByUserId[userId] ?? null)
-      );
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-alice', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-        { type: 'intent' as const, id: 'intent-charlie', userId: 'f0000000-0000-4000-8000-000000000006', score: 0.85, matchedVia: 'reciprocal' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'investors in crypto',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.opportunities.length).toBe(2);
-
-      const charlieOpp = result.opportunities.find(
-        (opp: { actors: OpportunityActor[] }) => opp.actors.some((a: OpportunityActor) => a.userId === 'f0000000-0000-4000-8000-000000000006')
-      );
-      const aliceOpp = result.opportunities.find(
-        (opp: { actors: OpportunityActor[] }) => opp.actors.some((a: OpportunityActor) => a.userId === 'c0000000-0000-4000-8000-000000000003')
-      );
-
-      expect(charlieOpp).toBeDefined();
-      expect(aliceOpp).toBeDefined();
-
-      // Alice's opportunity should keep the original reasoning (it mentions Alice)
-      expect(aliceOpp!.interpretation.reasoning).toContain('Alice');
-
-      // Charlie's opportunity must NOT contain Alice's description
-      expect(charlieOpp!.interpretation.reasoning).not.toContain('Alice');
-      // It should contain Charlie's own profile info instead
-      expect(charlieOpp!.interpretation.reasoning).toContain('Charlie');
-    });
-
-    test('when bundled reasoning mentions both candidates, neither split reuses the shared text', async () => {
-      const profilesByUserId: Record<string, UserIdentity> = {
-        'c0000000-0000-4000-8000-000000000003': {
-          userId: 'c0000000-0000-4000-8000-000000000003',
-          identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs', location: '' },
-          context: 'Blockchain founder.',
-        },
-        'f0000000-0000-4000-8000-000000000006': {
-          userId: 'f0000000-0000-4000-8000-000000000006',
-          identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups', location: '' },
-          context: 'AI investor.',
-        },
-      };
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          {
-            reasoning: 'Alice Park and Charlie Voss both bring complementary expertise in blockchain and AI investing.',
-            score: 80,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-              { userId: 'c0000000-0000-4000-8000-000000000003', role: 'agent' as const, intentId: null },
-              { userId: 'f0000000-0000-4000-8000-000000000006', role: 'agent' as const, intentId: null },
-            ],
-          },
-        ],
-      });
-      spyOn(mockDb, 'getProfile').mockImplementation((userId: string) =>
-        Promise.resolve(profilesByUserId[userId] ?? null)
-      );
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-alice', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-        { type: 'intent' as const, id: 'intent-charlie', userId: 'f0000000-0000-4000-8000-000000000006', score: 0.85, matchedVia: 'reciprocal' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'blockchain and AI',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.opportunities.length).toBe(2);
-
-      const aliceOpp = result.opportunities.find(
-        (opp: { actors: OpportunityActor[] }) => opp.actors.some((a: OpportunityActor) => a.userId === 'c0000000-0000-4000-8000-000000000003')
-      );
-      const charlieOpp = result.opportunities.find(
-        (opp: { actors: OpportunityActor[] }) => opp.actors.some((a: OpportunityActor) => a.userId === 'f0000000-0000-4000-8000-000000000006')
-      );
-
-      expect(aliceOpp).toBeDefined();
-      expect(charlieOpp).toBeDefined();
-
-      // Neither split should reuse the shared reasoning that mentions both names
-      expect(aliceOpp!.interpretation.reasoning).toContain('Alice');
-      expect(aliceOpp!.interpretation.reasoning).not.toContain('Charlie');
-      expect(charlieOpp!.interpretation.reasoning).toContain('Charlie');
-      expect(charlieOpp!.interpretation.reasoning).not.toContain('Alice');
-    });
   });
 
   describe('Ranking node', () => {
@@ -2806,197 +1923,6 @@ describe('Opportunity Graph', () => {
     });
   });
 
-  describe('onBehalfOfUserId (introducer discovery) path', () => {
-    const onBehalfUserId = 'd0000000-0000-4000-8000-000000000004' as Id<'users'>;
-
-    test('prep node fetches target user profile and intents when onBehalfOfUserId is set', async () => {
-      const getProfileCalls: string[] = [];
-      const getActiveIntentsCalls: string[] = [];
-
-      const { compiledGraph } = createMockGraphWithFnOverrides({
-        getProfileFn: async (userId: string) => {
-          getProfileCalls.push(userId);
-          if (userId === onBehalfUserId) {
-            return {
-              identity: { name: 'Target User', bio: 'Target bio', location: '' },
-              context: 'Target context',
-            };
-          }
-          return null;
-        },
-        getActiveIntentsFn: async (userId: string) => {
-          getActiveIntentsCalls.push(userId);
-          if (userId === onBehalfUserId) {
-            return [{
-              id: 'intent-target' as Id<'intents'>,
-              payload: 'Target intent payload',
-              summary: 'Target summary',
-              createdAt: new Date(),
-            }];
-          }
-          return [];
-        },
-      });
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        onBehalfOfUserId: onBehalfUserId,
-        searchQuery: 'find collaborators',
-        options: { limit: 1 },
-      });
-
-      expect(getProfileCalls).toContain(onBehalfUserId);
-      expect(getActiveIntentsCalls).toContain(onBehalfUserId);
-    });
-
-    test('evaluation node uses target user as source entity when onBehalfOfUserId is set', async () => {
-      let capturedInput: Parameters<NonNullable<OpportunityEvaluatorLike['invokeEntityBundle']>>[0] | null = null;
-      const capturingEvaluator: OpportunityEvaluatorLike = {
-        invokeEntityBundle: async (input) => {
-          capturedInput = input;
-          return defaultMockEvaluatorResult;
-        },
-      };
-
-      const mockDb: OpportunityGraphDatabase = {
-        ...createOpportunityGraphDatabaseFixture(),
-        getProfile: async (userId: string) => {
-          if (userId === onBehalfUserId) {
-            return {
-              identity: { name: 'Target User', bio: 'Target bio', location: '' },
-              context: 'Target context',
-            };
-          }
-          return { identity: { name: 'Source User', bio: '', location: '' }, context: '' };
-        },
-        createOpportunity: (data) =>
-          Promise.resolve({
-            id: 'opp-1',
-            detection: data.detection,
-            actors: data.actors,
-            interpretation: data.interpretation,
-            context: data.context,
-            confidence: data.confidence,
-            status: data.status ?? 'pending',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            expiresAt: null,
-          }),
-        opportunityExistsBetweenActors: () => Promise.resolve(false),
-        findOpportunitiesByActors: () => Promise.resolve([]),
-        getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
-        getNetworkMemberships: async () => [{ networkId: 'idx-1', networkTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }],
-        getActiveNetworkMembershipPairs: async (pairs) => pairs,
-        getActiveIntents: async (userId: string) => {
-          if (userId === onBehalfUserId) {
-            return [{
-              id: 'intent-target' as Id<'intents'>,
-              payload: 'Target intent payload',
-              summary: 'Target summary',
-              createdAt: new Date(),
-            }];
-          }
-          return [];
-        },
-        getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
-        getNetworkMemberCount: () => Promise.resolve(2),
-        getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-        getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com', socials: [] }),
-        isNetworkMember: () => Promise.resolve(true),
-        isIndexOwner: () => Promise.resolve(false),
-        getOpportunity: () => Promise.resolve(null),
-        getOpportunitiesForUser: () => Promise.resolve([]),
-        updateOpportunityStatus: () => Promise.resolve(null),
-        updateOpportunityActorApproval: () => Promise.resolve(null),
-        getIntent: () => Promise.resolve(null),
-            getIntentIndexScores: async () => [],
-        getNetworkMemberContext: async () => null,
-        getNegotiationTaskForOpportunity: async () => null,
-        stampOpportunityActorAction: async () => null,
-        getPremisesForUser: async () => [],
-        searchPremisesBySimilarity: async () => [],
-      };
-
-      const mockEmbedder: Embedder = {
-        generate: () => Promise.resolve(dummyEmbedding),
-        search: () => Promise.resolve([]),
-        searchWithHydeEmbeddings: () =>
-          Promise.resolve([
-            {
-              type: 'intent' as const,
-              id: 'intent-bob' as Id<'intents'>,
-              userId: 'b0000000-0000-4000-8000-000000000002',
-              score: 0.9,
-              matchedVia: 'mirror' as const,
-              networkId: 'idx-1',
-            },
-          ]),
-      } as unknown as Embedder;
-
-      const mockHyde = {
-        invoke: () =>
-          Promise.resolve({
-            hydeEmbeddings: {
-              mirror: dummyEmbedding,
-              reciprocal: dummyEmbedding,
-            },
-          }),
-      };
-
-      const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHyde, capturingEvaluator, async () => undefined);
-      const compiledGraph = factory.createGraph();
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        onBehalfOfUserId: onBehalfUserId,
-        searchQuery: 'find collaborators',
-        options: {},
-      });
-
-      expect(capturedInput).not.toBeNull();
-      expect(capturedInput!.discovererId).toBe(onBehalfUserId);
-      const sourceEntity = capturedInput!.entities?.find((e) => e.userId === onBehalfUserId);
-      expect(sourceEntity).toBeDefined();
-      expect(sourceEntity?.profile?.name).toBe('Target User');
-    });
-
-    test('persist node assigns userId as introducer actor when onBehalfOfUserId is set', async () => {
-      const { compiledGraph } = createMockGraphWithFnOverrides({
-        getProfileFn: async (userId: string) => ({
-          identity: { name: userId === onBehalfUserId ? 'Target User' : 'Bob', bio: '', location: '' },
-          context: '',
-        }),
-        evaluatorResult: [{
-          reasoning: 'Great match for target user.',
-          score: 85,
-          actors: [
-            { userId: onBehalfUserId, role: 'patient' as const, intentId: null },
-            { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const, intentId: null },
-          ],
-        }],
-      });
-
-      const result = await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        onBehalfOfUserId: onBehalfUserId,
-        searchQuery: 'find collaborators',
-        options: { limit: 1 },
-      });
-
-      expect(result.opportunities.length).toBeGreaterThan(0);
-      const opp = result.opportunities[0];
-      const introducerActor = opp.actors.find((a: OpportunityActor) => a.role === 'introducer');
-      const targetActor = opp.actors.find((a: OpportunityActor) => a.userId === onBehalfUserId);
-
-      expect(introducerActor).toBeDefined();
-      expect(introducerActor!.userId).toBe('a0000000-0000-4000-8000-000000000001');
-      expect(targetActor).toBeDefined();
-      expect(targetActor!.role).not.toBe('introducer');
-      expect(opp.detection?.source).toBe('introducer_discovery');
-      expect(opp.actors.length).toBe(3); // target + candidate + introducer
-    });
-  });
-
   describe('targetUserId filtering', () => {
     test('when targetUserId is set, only candidates matching that user are returned', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
@@ -3497,8 +2423,7 @@ describe('Opportunity Graph', () => {
       expect(negotiationInvocations).toHaveLength(0);
     });
 
-    test('fresh negotiation preserves exact-first fallback when true and isolates both sides when false', async () => {
-      process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = 'false';
+    test('fresh negotiation isolates both sides to their exact opportunity-bound intent', async () => {
       const negotiationInvocations: unknown[] = [];
       const exactIntentLookups: string[] = [];
 
@@ -3664,26 +2589,6 @@ describe('Opportunity Graph', () => {
       };
       expect(invocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-1']);
       expect(invocation.candidateUser.intents.map((intent) => intent.id)).toEqual(['intent-bob']);
-
-      process.env.NEGOTIATION_INCLUDE_OTHER_INTENTS = 'true';
-      negotiationInvocations.length = 0;
-      exactIntentLookups.length = 0;
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        operationMode: 'create' as const,
-        options: { initialStatus: 'latent' as const },
-      });
-
-      const compatibleInvocation = negotiationInvocations[0] as {
-        sourceUser: { intents: Array<{ id: string }> };
-        candidateUser: { intents: Array<{ id: string }> };
-      };
-      expect(compatibleInvocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-1']);
-      expect(compatibleInvocation.candidateUser.intents.map((intent) => intent.id)).toEqual([
-        'intent-bob',
-        'intent-1',
-      ]);
     });
   });
 
@@ -3849,19 +2754,16 @@ describe('Opportunity Graph', () => {
       });
 
       // Negotiation should have been invoked with each opportunity actor's exact
-      // intent first, even though it required fallback loading outside the active list.
+      // intent and nothing else, even though it required fallback loading
+      // outside the active list.
       expect(negotiationInvocations.length).toBeGreaterThan(0);
       const invocation = negotiationInvocations[0] as {
         sourceUser: { intents: Array<{ id: string }> };
         candidateUser: { intents: Array<{ id: string }> };
       };
-      expect(invocation.sourceUser.intents).toHaveLength(5);
-      expect(invocation.candidateUser.intents).toHaveLength(5);
-      expect(invocation.sourceUser.intents[0]?.id).toBe('intent-patient');
-      expect(invocation.candidateUser.intents[0]?.id).toBe('intent-agent');
+      expect(invocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-patient']);
+      expect(invocation.candidateUser.intents.map((intent) => intent.id)).toEqual(['intent-agent']);
       expect(exactIntentLookups).toEqual(['intent-patient', 'intent-agent']);
-      expect(new Set(invocation.sourceUser.intents.map((intent) => intent.id)).size).toBe(5);
-      expect(new Set(invocation.candidateUser.intents.map((intent) => intent.id)).size).toBe(5);
 
       // Notifications should be sent to non-introducer actors only
       expect(notifiedUserIds).toContain('patient-user');

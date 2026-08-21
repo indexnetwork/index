@@ -6,8 +6,8 @@ import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/sche
 import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../shared/interfaces/database.interface.js";
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage } from "./negotiation.client-dm.js";
-import { renderBargainingShiftSection } from "./negotiation.deadlock.js";
-import { configuredNegotiatorStance, stanceActionRules, stanceJobFraming, stancePreContactConsultRule, stanceQuerySatisfiedRule, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
+import { renderStalemateShiftSection } from "./negotiation.deadlock.js";
+import { JOB_FRAMING, negotiatorActionRules, PRE_CONTACT_CONSULT_RULE, querySatisfiedRule } from "./negotiation.stance.contracts.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL, renderChecklistSection, type Answerhood, type ChecklistItem } from "./negotiation.checklist.contracts.js";
 import { isPreContactConsultResume } from "./negotiation.consultation-policy.js";
 import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type AttributedPriorDialogue } from "./negotiation.attribution.js";
@@ -254,7 +254,7 @@ export interface NegotiationAgentInput {
    */
   canAskUser?: boolean;
   /**
-   * Deadlock→bargaining drafting stance (IND-428, flag-gated by the caller).
+   * Deadlock→stalemate drafting stance (IND-428), set by the caller.
    * Present = the graph detected a stalemate (N consecutive counter/question
    * turns) and this turn should be drafted in the bargaining stance —
    * concessions/scope reductions instead of re-arguing merits. v2 only;
@@ -348,8 +348,7 @@ export interface IndexNegotiatorConfig {
    * as a failed turn, so one slow upstream call cannot consume the whole
    * negotiate-phase budget.
    *
-   * Defaults to `NEGOTIATOR_TURN_TIMEOUT_MS` env var when set, otherwise
-   * `DEFAULT_TURN_TIMEOUT_MS`.
+   * Defaults to `DEFAULT_TURN_TIMEOUT_MS`.
    */
   turnTimeoutMs?: number;
 }
@@ -388,11 +387,6 @@ function isValidTimeoutMs(n: number): boolean {
 
 export function resolveTurnTimeoutMs(override?: number): number {
   if (typeof override === "number" && isValidTimeoutMs(override)) return override;
-  const envValue = process.env.NEGOTIATOR_TURN_TIMEOUT_MS;
-  if (envValue) {
-    const parsed = Number(envValue);
-    if (isValidTimeoutMs(parsed)) return parsed;
-  }
   return DEFAULT_TURN_TIMEOUT_MS;
 }
 
@@ -452,27 +446,15 @@ export class IndexNegotiator {
     // answered, and the seat now reaches out or lets the match pass.
     const preContactResume = version === "v2" && seat === "initiator"
       && isPreContactConsultResume(input.history);
-    // Negotiator stance (IND-611). Resolved from the environment once per turn
-    // via the domain contract, exactly like `configuredScreenMode()`. Under the
-    // `advocate` default every stance fragment below is the legacy string, so
-    // the rendered prompt is byte-identical to the pre-IND-611 build.
-    //
-    // `stanceActionRules` also takes the resolved `seat`: the responder
+    // `negotiatorActionRules` takes the resolved `seat`: the responder
     // verification rules are a duty of the seat that did NOT open, so they
     // render only there. The resolved seat, not `input.seat`, so the v1
     // `isDiscoverer` fallback decides it there too — under v1 the discoverer
     // is likewise the side that opens.
-    const stance = configuredNegotiatorStance();
-    // The checklist protocol (checklist plan §2–§6) belongs to the assessing
-    // stances. Resolved once and used for BOTH the rules and the schema, so a
-    // turn is never offered a checklist field its prompt does not explain —
-    // and `advocate` keeps the byte-identical prompt AND the byte-identical
-    // generation schema it had before.
-    const checklistActive = stanceUsesChecklist(stance);
     const schema = turnSchemaFor(version, seat, isFinalTurn, {
       system: SystemNegotiationTurnSchema,
       final: FinalNegotiationTurnSchema,
-    }, { askUser: canAskUser, checklist: checklistActive });
+    }, { askUser: canAskUser, checklist: true });
     const model = createStructuredModel("negotiator", schema, { name: "index_negotiator" });
 
     const userName = input.ownUser.profile.name ?? "your user";
@@ -480,15 +462,14 @@ export class IndexNegotiator {
     const networkContext = input.indexContext.prompt || "General discovery";
     const actionRules = (version === "v2"
       ? (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES)
-      : V1_ACTION_RULES) + stanceActionRules(stance, seat)
+      : V1_ACTION_RULES) + negotiatorActionRules(seat)
       + (canAskUser
         ? ASK_USER_RULE
-          + (checklistActive ? ASK_USER_CHECKLIST_RULE : "")
-          + (preContactConsult ? PRE_CONTACT_ASK_USER_RULE + stancePreContactConsultRule(stance) : "")
+          + ASK_USER_CHECKLIST_RULE
+          + (preContactConsult ? PRE_CONTACT_ASK_USER_RULE + PRE_CONTACT_CONSULT_RULE : "")
           + (clientDm.length > 0 ? ASK_USER_DM_GROUNDING_RULE : "")
         : principalUnreachable && version === "v2"
-          ? PRINCIPAL_UNREACHABLE_RULE
-            + (checklistActive ? PRINCIPAL_UNREACHABLE_CHECKLIST_RULE : "")
+          ? PRINCIPAL_UNREACHABLE_RULE + PRINCIPAL_UNREACHABLE_CHECKLIST_RULE
           : "");
     const finalTurnInstruction = input.isFinalTurn
       ? (version === "v2"
@@ -508,26 +489,24 @@ export class IndexNegotiator {
 QUERY PRIORITY RULE: This search query is the PRIMARY criterion for this negotiation. Before evaluating intents or profile overlap, first answer: does ${otherName} satisfy the search query "${input.discoveryQuery}"?
 - If the query is a role or identity term (e.g. "samurai", "investors", "designers"): check whether ${otherName} IS that thing based on their profile. Subject-matter adjacency does not count (drawing samurai ≠ being a samurai, raising funding ≠ being an investor).
 - If ${otherName} does NOT satisfy the query: REJECT the match. Background intents cannot rescue a query mismatch.
-${stanceQuerySatisfiedRule(stance, otherName, userName)}`
+${querySatisfiedRule(otherName, userName)}`
       : '';
 
     const systemPrompt = SYSTEM_PROMPT
       .replace("{actionRules}", actionRules)
       // Stance framing is substituted BEFORE the global {userName} replace so
       // its own {userName} placeholders resolve in the same pass.
-      .replace("{stanceFraming}", stanceJobFraming(stance))
+      .replace("{stanceFraming}", JOB_FRAMING)
       .replace(/{userName}/g, userName)
       .replace("{discoveryContext}", discoveryContext)
       .replace("{discoveryQueryContext}", discoveryQueryContext)
       .replace("{role}", role)
       .replace("{networkContext}", networkContext)
       .replace("{finalTurnInstruction}", finalTurnInstruction)
-      .replace("{bargainingShift}", renderBargainingShiftSection({
+      .replace("{bargainingShift}", renderStalemateShiftSection({
         active: bargainingActive,
         userName,
-        canAskUser,
         consecutiveNonConvergent: input.bargaining?.consecutiveNonConvergent ?? 0,
-        stance,
       }))
       .replace("{negotiatorMemory}", renderNegotiatorMemorySection(input.memory ?? []));
 
@@ -613,14 +592,12 @@ ${stanceQuerySatisfiedRule(stance, otherName, userName)}`
     // the one that has none yet: "no checklist exists, author it now" is the
     // instruction that turn needs, and a turn that silently omitted the section
     // would leave the rules describing an artifact the prompt never showed.
-    const checklistContext = checklistActive
-      ? renderChecklistSection({
-          checklist: input.checklist ?? [],
-          questionsSpent: input.questionsSpent ?? 0,
-          ...(input.askedTopics ? { askedTopics: input.askedTopics } : {}),
-          ...(principalUnreachable ? { principalUnreachable: true } : {}),
-        })
-      : '';
+    const checklistContext = renderChecklistSection({
+      checklist: input.checklist ?? [],
+      questionsSpent: input.questionsSpent ?? 0,
+      ...(input.askedTopics ? { askedTopics: input.askedTopics } : {}),
+      ...(principalUnreachable ? { principalUnreachable: true } : {}),
+    });
 
     const privateConsultationContext = input.privateConsultation
       ? `\n\n--- ${userName}'s private consultation (not shared with the counterparty) ---\n${input.privateConsultation.selectedOptions.join(', ')}${input.privateConsultation.freeText ? ` — ${input.privateConsultation.freeText}` : ''}\nUse this only to represent ${userName}'s preferences; do not disclose it unless they explicitly authorized that in their answer.\n`

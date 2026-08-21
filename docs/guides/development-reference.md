@@ -225,7 +225,6 @@ bun run worktree:setup <name>               # Install node_modules & symlink .en
 bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 bun run worktree:build [name]               # Build at root, or in worktree <name> if given
 bun run worktree:new <type>/<description>    # Create/reuse a worktree, collision-safe, then setup
-bun run check:flags <FLAG_NAME>              # Report a feature flag's registration and every local env surface
 bun run test:scripts                         # Run focused deterministic script tests
 bun run pr:snapshot -- <number|URL|branch>   # Emit factual PR/review/worktree JSON
 ```
@@ -264,7 +263,7 @@ index/
 - `docs/design/` — Architecture and deep-dive docs. Describes how the system is built: layering, data flow, agent graphs, key subsystems. Update when architecture changes. See `docs/design/opportunity-status-lifecycle.md` for the opportunity status lifecycle (state machine, flows, transition table).
 - `docs/domain/` — Domain concept docs. Explains the business model: what intents, indexes, opportunities, identity and context, contacts are and how they relate. Update when domain model changes.
 - `docs/specs/` — API and CLI specs. Describes external interfaces: endpoints, CLI commands, input/output contracts. Update when public interfaces change.
-- `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes. Beyond this reference and `getting-started.md`: [`feature-flags.md`](./feature-flags.md) (the four env surfaces and ship-dark→flip order), [`routing-and-surfaces.md`](./routing-and-surfaces.md) (deep links, universal links, web persona cutovers), [`ci-troubleshooting.md`](./ci-troubleshooting.md) (toolchain failures that look like test failures), [`railway-auth.md`](./railway-auth.md) (headless Railway tokens), and [`squash-release-reconciliation.md`](./squash-release-reconciliation.md).
+- `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes. Beyond this reference and `getting-started.md`: [`feature-flags.md`](./feature-flags.md) (there are none, and what to do instead), [`routing-and-surfaces.md`](./routing-and-surfaces.md) (deep links, universal links, web persona cutovers), [`ci-troubleshooting.md`](./ci-troubleshooting.md) (toolchain failures that look like test failures), [`railway-auth.md`](./railway-auth.md) (headless Railway tokens), and [`squash-release-reconciliation.md`](./squash-release-reconciliation.md).
 - `docs/research/` — Research reports and historical analysis that inform design but are not normative runtime documentation. Link to current design/spec docs when applying their conclusions.
 
 ### Protocol Key Directories

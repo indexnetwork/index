@@ -73,9 +73,12 @@ const MAX_DM_MESSAGES = 20;
  */
 const MAX_MESSAGE_CHARS = 1200;
 
-/** Whether the A2H read path is live (default off; flip per environment). */
+/**
+ * @returns true — the negotiator always reads a bounded excerpt of its own
+ * client's DM for this signal. On for the first time with this change.
+ */
 export function isNegotiatorClientDmInjectEnabled(): boolean {
-  return process.env.NEGOTIATOR_CLIENT_DM_INJECT === 'true';
+  return true;
 }
 
 /** Text of a message's parts, mirroring the chat-session reader's extraction. */

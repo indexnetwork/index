@@ -304,25 +304,10 @@ describe("ask admissibility — the five-part rule, in the part a machine can ch
 });
 
 describe("question budget resolution", () => {
-  const original = process.env.NEGOTIATOR_STANCE;
-  afterEach(() => {
-    if (original === undefined) delete process.env.NEGOTIATOR_STANCE;
-    else process.env.NEGOTIATOR_STANCE = original;
+  it("is the per-principal checklist budget", () => {
+    expect(configuredQuestionBudgetPerPrincipal()).toBe(QUESTION_BUDGET_PER_PRINCIPAL);
   });
 
-  it("is the checklist budget under the assessing stances", () => {
-    for (const stance of ["evaluator", "skeptic"]) {
-      process.env.NEGOTIATOR_STANCE = stance;
-      expect(configuredQuestionBudgetPerPrincipal()).toBe(QUESTION_BUDGET_PER_PRINCIPAL);
-    }
-  });
-
-  it("is the legacy one-consultation ration under advocate", () => {
-    for (const stance of ["advocate", "nonsense"]) {
-      process.env.NEGOTIATOR_STANCE = stance;
-      expect(configuredQuestionBudgetPerPrincipal()).toBe(1);
-    }
-  });
 });
 
 describe("prompt rendering", () => {

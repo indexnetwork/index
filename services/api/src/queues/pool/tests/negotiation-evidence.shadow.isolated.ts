@@ -121,19 +121,10 @@ function makeDeps(overrides: Partial<NegotiationEvidenceShadowDeps> = {}): {
 }
 
 afterEach(() => {
-  delete process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE;
 });
 
 describe('maybeRunNegotiationEvidenceShadow — gating', () => {
-  it('is a no-op when the flag is off', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'off';
-    const { deps } = makeDeps();
-    await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
-    expect(deps.database.getIntent).not.toHaveBeenCalled();
-  });
-
   it('is a no-op for introducer-flow and intent-less triggers even when enabled', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const { deps } = makeDeps();
     await maybeRunNegotiationEvidenceShadow({ ...TRIGGER, isIntroducerFlow: true }, deps);
     await maybeRunNegotiationEvidenceShadow({ ...TRIGGER, intentId: undefined }, deps);
@@ -239,7 +230,6 @@ describe('negotiation evidence task isolation and validation', () => {
   });
 
   it('never projects opportunity userAnswers, including synthetic expiry disclosure text', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const secret = 'SECRET_DISCLOSURE_SUBJECT';
     const opportunityWithAnswers = {
       ...OPPORTUNITY,
@@ -356,7 +346,6 @@ describe('negotiation evidence task isolation and validation', () => {
 
 describe('negotiation evidence final revalidation and telemetry', () => {
   it('revalidates owner, lifecycle, archive state, and fingerprint before invoking shadow mining', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const invalidFinalIntents = [
       { ...INTENT, userId: 'other-owner' },
       { ...INTENT, status: 'PAUSED' },
@@ -378,7 +367,6 @@ describe('negotiation evidence final revalidation and telemetry', () => {
   });
 
   it('logs only bounded errorClass/errorCode labels for failures', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     class ProviderFailure extends Error {
       code = `provider code ${'x'.repeat(100)}`;
     }
@@ -448,7 +436,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('mines an opportunity whose context.networkId is absent (the IND-433 NO-GO scenario)', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const { deps, capturedScopes, capturedSegments, infos } = makeDeps({
       selectPool: mock(async () => [{ ...OPPORTUNITY, context: {} }]),
     });
@@ -471,7 +458,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('skips fail-closed opportunities and logs only aggregate skip counts', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const tasksByOpportunityId: Record<string, ReturnType<typeof task>[]> = {
       'opp-disagree': [
         task('d1', { opportunityId: 'opp-disagree' }),
@@ -505,7 +491,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('mines only the largest derived-network group and still excludes sibling tasks from other networks', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const tasksByOpportunityId: Record<string, ReturnType<typeof task>[]> = {
       // Bound to net-1; the empty-network sibling stays excluded from segments
       // by the unrelaxed validateTask pass-network equality.
@@ -539,7 +524,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('counts terminal-status opportunities in the pass with aggregate telemetry only', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const { deps, capturedSegments, infos } = makeDeps({
       selectPool: mock(async () => [
         { ...OPPORTUNITY, id: 'opp-1', status: 'rejected', context: {} },
@@ -553,7 +537,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('keeps the k>=5 distinct-opportunity floor and scope matching untouched', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const run = async (poolSize: number) => {
       const mine = mock(async () => []);
       const opportunities = Array.from({ length: poolSize }, (_, i) => ({
@@ -670,7 +653,6 @@ describe('IND-465 slice 2 — answeredBy-verified owner answers', () => {
   });
 
   it('projects verified owner answers end-to-end through the shadow pass', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const { deps, capturedSegments } = makeDeps();
     deps.database.getAnsweredNegotiationQuestionsForOpportunity = mock(async () => [
       { answeredBy: 'owner-1', selectedOptions: ['Weekly sync works'] },

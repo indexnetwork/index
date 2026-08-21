@@ -7,11 +7,10 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../shared/interfaces/database.interface.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, configuredProtocolVersion, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion } from "./negotiation.protocol.js";
-import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, negotiationConsultationPolicyMode, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
+import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, readProtocolVersion } from "./negotiation.protocol.js";
+import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, NEGOTIATION_CONSULTATION_POLICY_MODE, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { blocksNegotiationBeforeFirstTurn, negotiationHasMadeContact, type ScreenDecision, type ScreenDecisionRecord } from "./negotiation.screen.js";
-import { configuredScreenMode } from "./negotiation.screen.contracts.js";
-import { assessDeadlock, configuredDeadlockShiftEnabled, configuredDeadlockThreshold, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
+import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../shared/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import type { NegotiationAntiEcho, NegotiationConcludeFloor } from "./negotiation.agent.js";
@@ -22,7 +21,6 @@ import { appendTurnFailure, turnFailureBoundReached, type NegotiationTurnFailure
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
 import { askedChecklistTopics, buildAttributedDialogue, countNegotiationAskRounds, countPrincipalAskUserTurns, finalizeLog, hasGuaranteedAsk, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveClientDm, retrieveMemory, screenNodeLog, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
-import { configuredNegotiatorStance, stanceUsesChecklist } from "./negotiation.stance.contracts.js";
 import { askableUnknowns, assessAskAdmissibility, assessConcludeAdmissibility, assessDeclineAdmissibility, authorChecklist, checklistFromTurns, checklistVerdictState, configuredQuestionBudgetPerPrincipal, dimensionKey, isChecklistAuthored, reconcileChecklist, ChecklistDraftSchema, type AskInadmissibility, type ChecklistItem } from "./negotiation.checklist.contracts.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
@@ -122,7 +120,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // combined — post-stall parks, which also persist `ask_user` messages,
     // included — so a negotiation near its cap cannot spend a further round
     // here even when the acting principal still has budget left.
-    const policyMode = negotiationConsultationPolicyMode();
     // The opening turn, before anything is sent. `outreachOpened` is per-run
     // and history is this negotiation's own record, so this is true exactly
     // once per negotiation — and stays true across a pre-contact park, whose
@@ -153,15 +150,13 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // grant below depends on it — the per-principal question budget replaces
     // the one-consultation ration only where the protocol that spends it is
     // live.
-    const stance = configuredNegotiatorStance();
-    const checklistActive = stanceUsesChecklist(stance);
     // The frozen dimensions, re-derived from this negotiation's own turns
     // rather than carried in the channel: `state.messages` is scoped to this
     // negotiation and spans its sessions, so a continuation, a retry and a
     // fresh process all read the same checklist.
-    const frozenChecklist: ChecklistItem[] = checklistActive ? checklistFromTurns(history) : [];
+    const frozenChecklist: ChecklistItem[] = checklistFromTurns(history);
     const questionsSpent = countPrincipalAskUserTurns(state.messages, ownUser.id);
-    const askedTopics = checklistActive ? askedChecklistTopics(state.messages, ownUser.id) : [];
+    const askedTopics = askedChecklistTopics(state.messages, ownUser.id);
     const askedDimensions = askedTopics.map((topic) => topic.dimension);
     // One question budget per principal per negotiation, the turn-0
     // pre-contact consult included. Under `advocate` the budget is 1, which is
@@ -178,7 +173,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       version === 'v2'
       && !isFinalTurn
       && !principalUnreachable
-      && configuredAskUserEnabled()
       && !!deps.questionerEnqueue
       && !!deps.timeoutQueue?.enqueueAskUserExpiry
       && !!state.opportunityId
@@ -186,7 +180,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       && !!state.indexContext.networkId
       && (!isFreshOpeningTurn || preContactConsultShapeAvailable)
       && questionsSpent < questionBudget
-      && countNegotiationAskRounds(state.messages) < negotiationAskRoundsCap({ checklist: checklistActive });
+      && countNegotiationAskRounds(state.messages) < negotiationAskRoundsCap({ checklist: true });
     const askUserAvailable = askUserWiringAvailable
       && (!preContactConsultShapeAvailable
         || await preContactConsultsUnderCap(deps, ownUser.id, ownIntentId!, state.taskId));
@@ -204,11 +198,11 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // consult — the pre-contact verdict — that the agent chooses and the
     // per-signal cap bounds. The floor exists for the turns AFTER contact,
     // where the observed dodging happened.
-    const floorApplies = checklistActive && !isFreshOpeningTurn && !isPreContactResume;
+    const floorApplies = !isFreshOpeningTurn && !isPreContactResume;
     // Whether this seat's one guaranteed ask is already spent, read off the
     // negotiation's own record so a park, its resume and a fresh process all
     // agree. Per principal: the counterparty's guarantee is their own.
-    const guaranteedAskSpent = checklistActive && hasGuaranteedAsk(state.messages, ownUser.id);
+    const guaranteedAskSpent = hasGuaranteedAsk(state.messages, ownUser.id);
 
     // ─── Deadlock detection → persuasion→bargaining stance (IND-428) ──────
     // Deterministic trailing-run inspection of the persisted history — no
@@ -219,9 +213,9 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // system agent's drafting stance only — allowedActions, the dispatch
     // payload, and all termination rules are untouched.
     let deadlock: DeadlockAssessment | null = null;
-    if (version === 'v2' && configuredDeadlockShiftEnabled()) {
+    if (version === 'v2') {
       try {
-        deadlock = assessDeadlock(history, configuredDeadlockThreshold());
+        deadlock = assessDeadlock(history);
       } catch (err) {
         turnLog.warn('Deadlock detection failed; proceeding without mode shift', {
           taskId: state.taskId,
@@ -253,13 +247,9 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       seat,
       protocolVersion: version,
       allowedActions: [...allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable })],
-      ...(checklistActive
-        ? {
-            checklist: frozenChecklist,
-            questionBudget: { spent: questionsSpent, total: questionBudget },
-            ...(askedDimensions.length > 0 && { askedDimensions }),
-          }
-        : {}),
+      checklist: frozenChecklist,
+      questionBudget: { spent: questionsSpent, total: questionBudget },
+      ...(askedDimensions.length > 0 && { askedDimensions }),
       ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
       ...(ownMemory.length > 0 && { negotiatorMemory: ownMemory }),
       ...(state.privateConsultation?.recipientUserId === ownUser.id
@@ -326,16 +316,14 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // forwarded to `NegotiationTurnPayload`, so an external agent holding the
       // personal-agent seat cannot receive the client's private thread.
       //
-      // What stays gated is the FEATURE, not the turn. `configuredAskUserEnabled()`
-      // is the A2H kill switch: flipped off, no A2H read is issued at all and
-      // the prompt is the pre-A2H one. v2-only for the same reason — a v1
-      // negotiation has no A2H vocabulary, so its prompt stays byte-identical.
+      // v2-only: a v1 negotiation has no A2H vocabulary, so its prompt stays
+      // byte-identical.
       // Dropped from the gate are the per-turn conditions that used to ride
       // along inside `askUserAvailable`: final turn, budget spent, ask-rounds
       // cap, pre-contact bound. Those decide whether the agent may ASK, not
       // whether it may know what its client already said.
       if (clientDmForPrompt === null) {
-        clientDmForPrompt = version === 'v2' && configuredAskUserEnabled() && ownIntentId
+        clientDmForPrompt = version === 'v2' && ownIntentId
           ? await retrieveClientDm(deps, ownUser.id, ownIntentId)
           : [];
       }
@@ -355,13 +343,9 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         ...(agentPriorDialogue && { priorDialogue: agentPriorDialogue }),
         ...(state.userAnswers.length > 0 && { userAnswers: state.userAnswers }),
         ...(askUserAvailable && { canAskUser: true }),
-        ...(checklistActive
-          ? {
-              checklist: frozenChecklist,
-              questionsSpent,
-              ...(askedTopics.length > 0 && { askedTopics }),
-            }
-          : {}),
+        checklist: frozenChecklist,
+        questionsSpent,
+        ...(askedTopics.length > 0 && { askedTopics }),
         ...(bargainingMode && { bargaining: { consecutiveNonConvergent: deadlock!.consecutiveNonConvergent } }),
         ...(ownMemory.length > 0 && { memory: ownMemory }),
         ...(clientDm.length > 0 && { clientDm }),
@@ -470,7 +454,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
             return { ...draftTurn, askUser };
           })()
         : draftTurn;
-      if (!checklistActive) return { turn: draftTurnUnmarked, checklist: frozenChecklist };
       let next = draftTurnUnmarked;
       const parsedDraft = ChecklistDraftSchema.safeParse(draftTurnUnmarked.checklist ?? []);
       const draft = parsedDraft.success ? parsedDraft.data : [];
@@ -602,7 +585,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // will actually be persisted. Every input other than the draft's own
     // action/role is fixed for the turn, so the two calls differ in exactly
     // what the policy is entitled to see.
-    const consultationEligibilityFor = (candidate: NegotiationTurn) => policyMode === 'off' ? { eligible: false } : assessConsultationEligibility({
+    const consultationEligibilityFor = (candidate: NegotiationTurn) => assessConsultationEligibility({
       protocolVersion: version,
       seat,
       isOpeningTurn: isFreshOpeningTurn,
@@ -613,8 +596,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       priorActions: history.map((prior) => prior.action),
       consultationBudgetSpent: questionsSpent >= questionBudget,
       hasExactResumeCoordinate: Boolean(
-        configuredAskUserEnabled()
-        && deps.questionerEnqueue
+        deps.questionerEnqueue
         && deps.timeoutQueue?.enqueueAskUserExpiry
         && state.taskId
         && state.opportunityId
@@ -625,12 +607,12 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     });
     const policyEligibility = consultationEligibilityFor(turn);
     const emitConsultationTelemetry = (stage: 'eligible' | 'asked', reason: NegotiationConsultationReason) => {
-      turnLog.info('negotiation_consultation_policy', { stage, mode: policyMode, reason });
-      emitWide({ type: 'negotiation_consultation_policy', stage, mode: policyMode, reason });
+      turnLog.info('negotiation_consultation_policy', { stage, mode: NEGOTIATION_CONSULTATION_POLICY_MODE, reason });
+      emitWide({ type: 'negotiation_consultation_policy', stage, mode: NEGOTIATION_CONSULTATION_POLICY_MODE, reason });
     };
     if (policyEligibility.eligible && policyEligibility.reason) {
       emitConsultationTelemetry('eligible', policyEligibility.reason);
-      if (policyMode === 'on') {
+      {
         // Two shapes reach here and the policy owes them different things.
         //
         // A draft that asked for something ELSE is REPLACED: the policy
@@ -662,8 +644,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         // and "Nature of Venture" as unknown — both the client's own to settle
         // — while the delivered question asked only whether they were
         // interested in connecting.
-        const policyMayInfer = !checklistActive;
-        if (!draftedOwnConsultation && !policyMayInfer) {
+        if (!draftedOwnConsultation) {
           turnLog.info('negotiation_consultation_inference_declined', {
             taskId: state.taskId,
             opportunityId: state.opportunityId || undefined,
@@ -672,19 +653,11 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
             action: turn.action,
           });
         }
+        // Under the checklist protocol the policy never rewrites a draft into
+        // an ask_user of its own: the agent is the only party that has read
+        // this negotiation, so an inferred question would be about the wrong
+        // unknown. It admits the agent's own ask, or it declines and says so.
         consultationPolicyReason = draftedOwnConsultation ? turn.askUser!.reason : policyEligibility.reason;
-        if (!draftedOwnConsultation && policyMayInfer) {
-          turn = {
-            ...turn,
-            action: 'ask_user',
-            message: null,
-            assessment: {
-              reasoning: 'Client consultation required.',
-              suggestedRoles: turn.assessment.suggestedRoles,
-            },
-            askUser: { reason: consultationPolicyReason },
-          };
-        }
         emitConsultationTelemetry('asked', consultationPolicyReason);
       }
     }
@@ -742,7 +715,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // away by a verdict about a draft that no longer exists. Re-running it
       // gives the policy the action it is actually judging. Scoped to the
       // re-issue so the ordinary path stays byte-identical.
-      if (opts.reissue && policyMode === 'on' && !consultationPolicyReason) {
+      if (opts.reissue && !consultationPolicyReason) {
         const eligibility = consultationEligibilityFor(candidate);
         if (eligibility.eligible && eligibility.reason) {
           emitConsultationTelemetry('eligible', eligibility.reason);
@@ -751,10 +724,10 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         }
       }
 
-      // Safety net: off/shadow retain legacy behavior. In on, a spontaneous
-      // ask_user is admissible only when the deterministic policy just
-      // authorized it, so no unbounded pause can enter shared history.
-      if (!askUserAvailable || (policyMode === 'on' && !consultationPolicyReason)) {
+      // Safety net: a spontaneous ask_user is admissible only when the
+      // deterministic policy just authorized it, so no unbounded pause can
+      // enter shared history.
+      if (!askUserAvailable || !consultationPolicyReason) {
         turnLog.warn('ask_user emitted while unavailable, coercing to conservative fallback', {
           seat, isFinalTurn, taskId: state.taskId, ...(opts.reissue && { reissue: true }),
         });
@@ -782,11 +755,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // Fails OPEN on an unauthored checklist: with no frozen dimensions there
       // is nothing to be pivotal about, and refusing every ask there would take
       // the turn-0 pre-contact verdict away whenever authoring did not land.
-      if (
-        checklistActive
-        && opts.agentDrafted
-        && isChecklistAuthored(checklist)
-      ) {
+      if (opts.agentDrafted && isChecklistAuthored(checklist)) {
         const admissibility = assessAskAdmissibility({
           checklist,
           dimension: candidate.askUser?.dimension,
@@ -851,8 +820,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       opts?: { reissue?: boolean },
     ): NegotiationTurn => {
       if (
-        !checklistActive
-        || (candidate.action !== 'decline' && candidate.action !== 'reject')
+        (candidate.action !== 'decline' && candidate.action !== 'reject')
         || !isChecklistAuthored(checklist)
       ) return candidate;
       const declineAdmissibility = assessDeclineAdmissibility({ checklist });
@@ -1424,7 +1392,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
 
       // Arm the timer BEFORE flipping state: it is the durable recovery
       // trigger even when generation enqueues no job or persists no row.
-      const windowMs = askUserAnswerWindowMs();
+      const windowMs = ASK_USER_WINDOW_MS;
       await deps.timeoutQueue!.enqueueAskUserExpiry!(state.taskId, {
         settlementId,
         opportunityId: state.opportunityId,

@@ -13,7 +13,7 @@
  * self-acknowledgment (acknowledgedUptakeQuestionIds), and server-generated
  * advisory/challenge values are not substitutes for owner authorization.
  */
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { createOpportunityTools } from "../opportunity.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { OpportunityOwnerApprovalAuthority, OpportunityOwnerApprovalBinding, OpportunityOwnerApprovalVerdict } from "../opportunity.owner-approval.js";
@@ -26,16 +26,6 @@ const AGENT_ID = "agent-1";
 const OPP_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OPP_B_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const QUESTION_ID = "uptake-question-1";
-
-const ORIGINAL_QUESTIONER_ENABLED = process.env.QUESTIONER_ENABLED;
-const ORIGINAL_UPTAKE_ENABLED = process.env.QUESTIONER_UPTAKE_ENABLED;
-
-afterEach(() => {
-  if (ORIGINAL_QUESTIONER_ENABLED === undefined) delete process.env.QUESTIONER_ENABLED;
-  else process.env.QUESTIONER_ENABLED = ORIGINAL_QUESTIONER_ENABLED;
-  if (ORIGINAL_UPTAKE_ENABLED === undefined) delete process.env.QUESTIONER_UPTAKE_ENABLED;
-  else process.env.QUESTIONER_UPTAKE_ENABLED = ORIGINAL_UPTAKE_ENABLED;
-});
 
 function makeAgentContext(userId = CALLER_ID, agentId = AGENT_ID): ResolvedToolContext {
   return {
@@ -379,8 +369,6 @@ describe("update_opportunity — owner approval gate (IND-593)", () => {
   });
 
   test("agent self-acknowledgment, server advisories, and negotiation approvals are not owner authorization", async () => {
-    process.env.QUESTIONER_ENABLED = "true";
-    process.env.QUESTIONER_UPTAKE_ENABLED = "true";
     const authority = new FakeOwnerApprovalAuthority();
     const invoke = mock(async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }));
     const deps = {

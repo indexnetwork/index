@@ -35,12 +35,7 @@ import { negotiatorMemoryWriteService, isNegotiatorMemoryWriteEnabled, type Nego
 export const QUEUE_NAME = 'negotiation-reflect';
 
 /** Idle window after the last negotiator-DM turn before chat_reflect fires. */
-const DEFAULT_CHAT_REFLECT_DELAY_MS = 15 * 60 * 1000;
-
-function chatReflectDelayMs(): number {
-  const raw = Number(process.env.NEGOTIATOR_CHAT_REFLECT_DELAY_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_CHAT_REFLECT_DELAY_MS;
-}
+const CHAT_REFLECT_DELAY_MS = 15 * 60 * 1000;
 
 export type ReflectJobData = NegotiationReflectJobData;
 
@@ -122,7 +117,7 @@ export class NegotiationReflectQueue {
     if (!isNegotiatorMemoryWriteEnabled()) return;
     const jobId = `chat-reflect-${data.sessionId}`;
     await this.queue.remove(jobId).catch(() => { /* not present or already active — fine */ });
-    await this.queue.add('chat_reflect', data, { jobId, delay: chatReflectDelayMs() });
+    await this.queue.add('chat_reflect', data, { jobId, delay: CHAT_REFLECT_DELAY_MS });
   }
 
   /** Run a job handler (worker path and tests with injected deps). */
@@ -320,15 +315,13 @@ export class NegotiationReflectQueue {
 export const negotiationReflectQueue = new NegotiationReflectQueue();
 
 /**
- * Returns the reflect enqueue callback when memory writes are enabled
- * (`NEGOTIATOR_MEMORY_WRITE_ENABLED=true`), or `undefined` otherwise.
+ * The reflect enqueue callback.
  *
  * Use at every negotiation-graph composition site (main.ts background graph,
  * negotiation/tool services, MCP composition root) — mirrors
  * `parkedQuestionEnqueue` so no path silently drops reflection.
  */
-export function reflectEnqueueIfEnabled(): ReflectEnqueueFn | undefined {
-  if (!isNegotiatorMemoryWriteEnabled()) return undefined;
+export function reflectEnqueue(): ReflectEnqueueFn {
   return async (job) => {
     await negotiationReflectQueue.addReflectJob(job);
   };

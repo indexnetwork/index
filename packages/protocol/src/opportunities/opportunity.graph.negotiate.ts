@@ -10,11 +10,12 @@
  */
 
 import type { ActiveIntent, OpportunityActor } from '../shared/interfaces/database.interface.js';
+import { NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from '../negotiations/negotiation.module.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import { AMBIENT_PARK_WINDOW_MS, negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from '../negotiations/negotiation.module.js';
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from './negotiation-summary.builder.js';
 import { resolveOpportunityActorIntent } from './opportunity.actor.js';
-import { buildPrioritizedNegotiationIntents, negotiationIncludesOtherIntents } from "./opportunity.existing-negotiation.js";
+import { buildPrioritizedNegotiationIntents } from "./opportunity.existing-negotiation.js";
 import { logger, negotiateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /** Distinguishes "the budget timer won the race" from a real negotiation result. */
@@ -57,8 +58,7 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
 
   try {
     // Use the same discoveryUserId pattern as evaluationNode
-    const discoveryUserId = (state.onBehalfOfUserId ?? state.userId) as string;
-    const includeOtherIntents = negotiationIncludesOtherIntents();
+    const discoveryUserId = state.userId as string;
 
     const sourceAccount = await deps.database.getUser(discoveryUserId).catch(() => null);
     const sourceIntentInputs = (state.indexedIntents ?? []).map((intent) => ({
@@ -80,7 +80,6 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
         sourceIntentInputs,
         state.triggerIntentId,
         ownedSourceFallback,
-        includeOtherIntents,
       ),
       profile: {
         name: state.sourceProfile?.identity?.name ?? sourceAccount?.name,
@@ -152,9 +151,7 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
         const [profile, user, activeIntents, intent, sourceIntent] = await Promise.all([
           deps.database.getProfile(userId).catch(() => null),
           deps.database.getUser(userId).catch(() => null),
-          includeOtherIntents
-            ? deps.database.getActiveIntents(userId).catch(() => [])
-            : Promise.resolve([] as ActiveIntent[]),
+          Promise.resolve([] as ActiveIntent[]),
           candidateIntentId
             ? deps.database.getIntent(candidateIntentId).catch(() => null)
             : null,
@@ -169,7 +166,6 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
           activeIntents,
           candidateIntentId,
           ownedFallbackIntent,
-          includeOtherIntents,
         );
 
         return {
@@ -182,7 +178,6 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
               sourceIntentInputs,
               sourceIntentId,
               ownedSourceIntent,
-              includeOtherIntents,
             ),
           },
           opportunityId: opp.id as string,
@@ -207,8 +202,8 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
 
     const isChatPath = !!state.options?.conversationId;
     const maxTurns = isChatPath
-      ? Number(process.env.NEGOTIATION_MAX_TURNS_CHAT) || 4
-      : Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6;
+      ? NEGOTIATION_MAX_TURNS_CHAT
+      : NEGOTIATION_MAX_TURNS_AMBIENT;
 
     // Fetch per-candidate index context (group by networkId to avoid duplicate lookups)
     const uniqueIndexIds = [...new Set(candidates.map(c => c.networkId).filter((id): id is string => !!id))];
@@ -267,8 +262,7 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
         timeoutMs,
         // v2 initiator stamp: every fresh-discovery origin resolves to the
         // discovery user — querying user (chat/tool), intent owner
-        // (from-intent), enriched user (from-enrichment/discovery-run), or
-        // represented user (from-introducer, via onBehalfOfUserId).
+        // (from-intent), or enriched user (from-enrichment/discovery-run).
         initiatorUserId: discoveryUserId,
         onCandidateResolved },
     );

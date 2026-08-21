@@ -803,8 +803,8 @@ export class ChatController {
 
           // Negotiator DM turns debounce-schedule a chat reflection (P5.2):
           // the job fires once the session has been idle for the delay window,
-          // distilling stated preferences into negotiator memories. No-op when
-          // NEGOTIATOR_MEMORY_WRITE_ENABLED is off; never blocks the stream.
+          // distilling stated preferences into negotiator memories. Never
+          // blocks the stream.
           if (sessionPersona === NEGOTIATOR_PERSONA_ID && fullResponse) {
             negotiationReflectQueue.scheduleChatReflect({ sessionId, userId: user.id })
               .catch((err) => logger.error("Failed to schedule negotiator chat reflection", { sessionId, error: err }));
@@ -948,8 +948,6 @@ export class ChatController {
    * Get-or-create the caller's negotiator session pinned to one of their
    * intents (P4.2/IND-403). Idempotent: repeat calls for the same intent
    * return the same session, keyed by the chat_session_scopes unique index.
-   * Gated by NEGOTIATOR_CHAT_ENABLED (404 when off, as if the route does not
-   * exist).
    *
    * `intentId` is required. The unscoped DM variant this route also served is
    * gone, so a request without one has no session to resolve and is a 400

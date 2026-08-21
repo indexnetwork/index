@@ -20,22 +20,6 @@ export {
 export type {
   OpportunityGraphThresholdOverrides,
 } from "./opportunity.graph.js";
-export {
-  isIntroducerDiscoveryEnabled,
-} from "./opportunity.introducer-feature.js";
-export {
-  INTRODUCER_DISCOVERY_SOURCE,
-  MAX_CANDIDATES_PER_CONTACT,
-  MAX_CONTACTS_PER_CYCLE,
-  runIntroducerDiscovery,
-  selectContactsForDiscovery,
-  shouldRunIntroducerDiscovery,
-} from "./opportunity.introducer.js";
-export type {
-  ContactWithIntents,
-  IntroducerDiscoveryDatabase,
-  IntroducerDiscoveryQueue,
-} from "./opportunity.introducer.js";
 export type {
   StampNewbornOpportunitiesFn,
   StampNewbornOpportunitiesInput,
@@ -74,21 +58,12 @@ export {
   createOpportunityVerdictTools,
 } from "./opportunity.verdict.tools.js";
 export {
-  DISCOVERY_EVALUATOR_MIN_SCORE_DEFAULT,
-  DISCOVERY_MIN_SIMILARITY_DEFAULT,
-  discoveryAllowedTypes,
-  discoveryEvaluatorMinScore,
-  discoveryIntentMatchingEnabled,
-  discoveryMinSimilarity,
-  discoveryProfileMatchingEnabled,
-  discoveryProfileSource,
-  resetDiscoveryEnvWarningsForTests,
+  DISCOVERY_EVALUATOR_MIN_SCORE,
+  DISCOVERY_MIN_SIMILARITY,
   validateDiscoveryEvaluatorMinScore,
   validateDiscoveryMinSimilarity,
 } from "./discovery.env.js";
 export type {
-  DiscoveryMatchType,
-  DiscoveryProfileSource,
 } from "./discovery.env.js";
 export {
   buildPoolAdjustment,
@@ -113,13 +88,6 @@ export {
   POOL_QUESTION_MAX_PENDING_PER_INTENT,
   POOL_QUESTION_MIN_VOI,
   POOL_RERUN_DEBOUNCE_MS,
-  POOL_VISIT_MINING_DEBOUNCE_MS,
-  poolQuestionsMiningMode,
-  poolQuestionsMode,
-  poolQuestionsPushMode,
-  poolQuestionsRanking,
-  poolQuestionsStampNewborn,
-  poolQuestionsVisitTrigger,
 } from "./discriminator/discriminator.env.js";
 export {
   PoolDiscriminatorMiner,
@@ -180,7 +148,7 @@ export {
 } from "./opportunity.utils.js";
 export {
   NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES,
-  negotiationEvidenceQuestionsMode,
+  NEGOTIATION_EVIDENCE_QUESTIONS_MODE,
 } from "./negotiation-evidence/negotiation-evidence.env.js";
 export {
   NegotiationEvidenceMiner,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
-import { NegotiationScreener, ScreenDecisionSchema, configuredScreenMode, negotiationHasMadeContact, NEGOTIATION_SCREEN_MODES, type NegotiationScreenerInput } from "../negotiation.screen.js";
+import { NegotiationScreener, ScreenDecisionSchema, negotiationHasMadeContact, NEGOTIATION_SCREEN_MODES, SCREEN_MODE, type NegotiationScreenerInput } from "../negotiation.screen.js";
 
 /**
  * IND-398 — screener unit behavior.
@@ -14,34 +14,13 @@ import { NegotiationScreener, ScreenDecisionSchema, configuredScreenMode, negoti
  *   counterparty context paragraph and both intent sets are included.
  */
 
-const origEnv = process.env.NEGOTIATION_SCREEN_MODE;
-
-afterAll(() => {
-  if (origEnv === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
-  else process.env.NEGOTIATION_SCREEN_MODE = origEnv;
-});
-
-describe("configuredScreenMode", () => {
-  beforeEach(() => {
-    delete process.env.NEGOTIATION_SCREEN_MODE;
+describe("screen mode", () => {
+  it("stamps every new decision as enforce", () => {
+    expect(SCREEN_MODE).toBe("enforce");
   });
 
-  it("defaults to off when unset", () => {
-    expect(configuredScreenMode()).toBe("off");
-  });
-
-  it("parses every documented mode", () => {
-    for (const mode of NEGOTIATION_SCREEN_MODES) {
-      process.env.NEGOTIATION_SCREEN_MODE = mode;
-      expect(configuredScreenMode()).toBe(mode);
-    }
-  });
-
-  it("coerces unrecognized values to off", () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "loud";
-    expect(configuredScreenMode()).toBe("off");
-    process.env.NEGOTIATION_SCREEN_MODE = "";
-    expect(configuredScreenMode()).toBe("off");
+  it("keeps the older modes readable: rows stamped before the cutover still resolve", () => {
+    expect([...NEGOTIATION_SCREEN_MODES]).toEqual(["off", "shadow", "enforce"]);
   });
 });
 

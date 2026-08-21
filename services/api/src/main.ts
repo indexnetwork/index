@@ -52,7 +52,6 @@ import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
-import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
 import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue';
 import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
@@ -69,7 +68,7 @@ import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { RedisTimeoutUpgradeLease, TimeoutUpgradeReconciler } from './lib/negotiation/timeout-upgrade-reconciliation';
 import { getRedisClient } from './adapters/cache.adapter';
-import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
+import { negotiationReflectQueue, reflectEnqueue } from './queues/negotiations/reflect.queue';
 import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
 import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
 import { parkedQuestionEnqueue } from './queues/parked-question.enqueue';
@@ -98,7 +97,7 @@ import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 import { publishNotificationStreamEvent } from './lib/notification-stream-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
-// emoji, LOG_FILTER/LOG_LEVEL, Sentry, embedding redaction + payload truncation).
+// emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
 // Protocol loggers are late-bound, so this upgrades loggers created at import time too.
 setLoggerFactory(
   (context, source) => log.withContext(context as Parameters<typeof log.withContext>[0], source),
@@ -132,21 +131,15 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   // Park payloads (post-stall parks, mid-flight consults) route to the
   // question-message regeneration job for the parked side's signal DM.
   parkedQuestionEnqueue(),
-  // Finished negotiations enqueue memory distillation for both sides (P5.2,
-  // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
-  reflectEnqueueIfEnabled(),
-  // Screen/turn prompts read the speaker's own negotiator memories (P5.3,
-  // gated on NEGOTIATOR_MEMORY_INJECT).
+  // Finished negotiations enqueue memory distillation for both sides (P5.2).
+  reflectEnqueue(),
+  // Screen/turn prompts read the speaker's own negotiator memories (P5.3).
   negotiatorMemoryRetrieve(),
-  // The acting user's own negotiator DM for this signal (A2H read path,
-  // gated on NEGOTIATOR_CLIENT_DM_INJECT). System-agent grounding only.
+  // The acting user's own negotiator DM for this signal (A2H read path).
+  // System-agent grounding only.
   negotiatorClientDmRetrieve(),
 ).createGraph();
 fromIntentQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
-  agentDispatcher: backgroundAgentDispatcher,
-});
-fromIntroducerQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
@@ -242,7 +235,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
 
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
-fromIntroducerQueue.startWorker();
 fromEnrichmentQueue.startWorker();
 enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
@@ -468,10 +460,9 @@ const server = Bun.serve({
       async () => {
     try {
     // Sentry smoke-test endpoint. Intentionally throws so the top-level request
-    // boundary captures and reports the error. Disabled in production unless
-    // explicitly enabled for a short operational smoke test.
+    // boundary captures and reports the error. Never reachable in production.
     if (url.pathname === '/throw-error') {
-      if (IS_PRODUCTION && process.env.ENABLE_SENTRY_TEST_ENDPOINT !== 'true') {
+      if (IS_PRODUCTION) {
         return new Response('Not Found', { status: 404, headers: corsHeaders });
       }
       throw new Error('Sentry test error from /throw-error');
@@ -746,7 +737,6 @@ const shutdown = async () => {
     enrichmentQueue.close(),
     intentQueue.close(),
     fromIntentQueue.close(),
-    fromIntroducerQueue.close(),
     fromEnrichmentQueue.close(),
     enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),

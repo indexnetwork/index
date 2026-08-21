@@ -314,16 +314,9 @@ export class OpportunityService {
       this.cache as unknown as MaintenanceGraphCache,
       {
         addJob: async (
-          data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string },
+          data: { intentId: string; userId: string; indexIds?: string[] },
           options?: { priority?: number; jobId?: string },
         ) => {
-          if (data.contactUserId) {
-            const { fromIntroducerQueue } = await import('../queues/opportunity/from-introducer.queue');
-            return fromIntroducerQueue.addJob(
-              { userId: data.userId, contactUserId: data.contactUserId, networkIds: data.indexIds },
-              options,
-            );
-          }
           const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
           return fromIntentQueue.addJob(
             { intentId: data.intentId, userId: data.userId },
@@ -1001,8 +994,8 @@ export class OpportunityService {
    * is awaiting its owner's decision and an `accepted` one already connected,
    * so neither is a dead end to recover from.
    *
-   * A re-run that the screen then vetoes (dev runs `NEGOTIATION_SCREEN_MODE`
-   * `enforce`) is a correct outcome, not a failure of this call.
+   * A re-run the outreach screen then vetoes is a correct outcome, not a
+   * failure of this call.
    *
    * @param opportunityId - Resolved opportunity ID
    * @param userId - The calling user, who must be an actor

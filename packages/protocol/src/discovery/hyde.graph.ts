@@ -16,7 +16,7 @@ import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from "../shared/observability/request-context.js";
 import { computeHydeSourceTextHash } from './hyde.documents.js';
-import { getHydeGenerationMode, HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from './hyde.env.js';
+import { HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from './hyde.env.js';
 import { sanitizeHydeSourceFrame, type HydeSourceFrame } from './hyde.frame.js';
 import type { HydeGenerateInput, HydeGeneratorOutput } from './hyde.generator.js';
 import { HydeGraphState, type HydeDocumentState } from './hyde.state.js';
@@ -105,14 +105,12 @@ function cacheKey(
   frameFingerprint?: string,
 ): string {
   const entityKey = entityCacheKey(sourceId, sourceText);
-  if (mode === 'legacy') return `hyde:${sourceType}:${entityKey}:${lensHash(lens, corpus)}`;
   return `hyde:${HYDE_FRAME_GENERATION_VERSION}:${sourceType}:${entityKey}:${requireFrameFingerprint(frameFingerprint)}:${lensHash(lens, corpus)}`;
 }
 
-/** Preserve legacy identity and use a stable frame-v1 identity per lens/corpus. */
-function dbStrategy(mode: HydeGenerationMode, label: string, corpus?: string): string {
-  const hash = lensHash(label, corpus);
-  return mode === 'legacy' ? hash : `${HYDE_FRAME_GENERATION_VERSION}:${hash}`;
+/** Stable frame-v1 identity per lens/corpus. */
+function dbStrategy(label: string, corpus?: string): string {
+  return `${HYDE_FRAME_GENERATION_VERSION}:${lensHash(label, corpus)}`;
 }
 
 function isValidGenerationMarker(value: unknown): value is string {
@@ -215,12 +213,10 @@ export class HydeGraphFactory {
     generator: HydeGeneratorLike,
     options: HydeGraphOptions = {},
   ) {
-    const mode = options.mode ?? getHydeGenerationMode();
+    const mode = options.mode ?? HYDE_FRAME_GENERATION_VERSION;
     this.deps = {
       database, embedder, cache, inferrer, generator, options, mode,
-      ...(mode === HYDE_FRAME_GENERATION_VERSION
-        ? { validator: options.validator ?? new HydeValidator() }
-        : {}),
+      validator: options.validator ?? new HydeValidator(),
     };
   }
 
@@ -274,7 +270,7 @@ export async function inferLensesNode(state: HydeState, deps: HydeGraphDeps) {
         sourceText,
         profileContext,
         maxLenses,
-        ...(deps.mode === HYDE_FRAME_GENERATION_VERSION ? { frameConstrained: true } : {}),
+        frameConstrained: true,
       });
       const durationMs = Date.now() - inferrerStart;
       agentTimingsAccum.push({ name: 'lens.inferrer', durationMs });
@@ -338,11 +334,11 @@ export async function checkCacheNode(state: HydeState, deps: HydeGraphDeps) {
       const fromCache = await deps.cache.get<HydeDocumentState>(key);
       const cacheAccepted = fromCache?.hydeText
         && fromCache.hydeEmbedding?.length
-        && (deps.mode === 'legacy' || isFrameCacheDocument(fromCache, lens.label, frameFingerprint!, sourceTextHash!));
+        && isFrameCacheDocument(fromCache, lens.label, frameFingerprint!, sourceTextHash!);
       if (cacheAccepted && fromCache) {
         cached[lens.label] = {
           ...fromCache,
-          ...(deps.mode === HYDE_FRAME_GENERATION_VERSION ? { origin: 'cache' as const } : {}),
+          origin: 'cache' as const,
         };
         continue;
       }
@@ -351,12 +347,10 @@ export async function checkCacheNode(state: HydeState, deps: HydeGraphDeps) {
         const fromDb = await deps.database.getHydeDocument(
           sourceType,
           sourceId,
-          dbStrategy(deps.mode, lens.label, lens.corpus),
+          dbStrategy(lens.label, lens.corpus),
         );
-        const frameDbContext = deps.mode === HYDE_FRAME_GENERATION_VERSION && fromDb
-          ? fromDb.context
-          : null;
-        if (fromDb && (deps.mode === 'legacy' || isFrameDbContext(frameDbContext, lens.label, frameFingerprint!, sourceTextHash!))) {
+        const frameDbContext = fromDb ? fromDb.context : null;
+        if (fromDb && isFrameDbContext(frameDbContext, lens.label, frameFingerprint!, sourceTextHash!)) {
           cached[lens.label] = {
             lens: lens.label,
             targetCorpus: fromDb.targetCorpus as HydeDocumentState['targetCorpus'],
@@ -602,7 +596,7 @@ export async function cacheResultsNode(state: HydeState, deps: HydeGraphDeps) {
         await deps.database.saveHydeDocument({
           sourceType,
           sourceId,
-          strategy: dbStrategy(deps.mode, label, doc.targetCorpus),
+          strategy: dbStrategy(label, doc.targetCorpus),
           targetCorpus: doc.targetCorpus,
           hydeText: doc.hydeText,
           hydeEmbedding: doc.hydeEmbedding,

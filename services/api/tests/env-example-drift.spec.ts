@@ -4,9 +4,8 @@
  *
  * Every schema var must be documented in the example (so nobody discovers a
  * knob only by reading source), and every documented var must be validated
- * (so typos and stale docs fail fast). Web-only VITE_ vars and dynamic
- * per-tool MCP overrides are exempt from schema membership; platform-injected
- * vars are exempt from documentation.
+ * (so typos and stale docs fail fast). Web-only VITE_ vars are exempt from
+ * schema membership; platform-injected vars are exempt from documentation.
  *
  * Parses both files textually on purpose: importing `startup.env.ts` would
  * run its validation side effects, and text parsing keeps this test working
@@ -36,8 +35,6 @@ const PLATFORM_PROVIDED_OR_COMPAT = new Set([
 /** Example vars not validated by the API schema. */
 const NON_API_PATTERNS: RegExp[] = [
   /^VITE_[A-Z0-9_]+$/, // apps/web build-time vars — not read by the API
-  /^MCP_TOOL_TIMEOUT_[A-Z0-9_]+_MS$/, // dynamic per-tool overrides
-  /^MCP_TOOL_MAX_OUTPUT_[A-Z0-9_]+_BYTES$/, // dynamic per-tool overrides
 ];
 
 function exampleVars(): Set<string> {
@@ -66,8 +63,11 @@ describe('root .env.example ↔ startup.env.ts schema', () => {
   const schemaSource = readFileSync(schemaPath, 'utf8');
 
   it('sanity: parsers found a plausible number of vars', () => {
-    expect(example.size).toBeGreaterThan(50);
-    expect(schema.size).toBeGreaterThan(50);
+    // Guards against a parser that silently finds nothing. The floor is well
+    // below the current count (credentials, endpoints, two ops knobs and the
+    // test opt-ins) rather than close to it — this is not a budget.
+    expect(example.size).toBeGreaterThan(25);
+    expect(schema.size).toBeGreaterThan(25);
   });
 
   it('every schema var is documented in .env.example', () => {
@@ -90,12 +90,6 @@ describe('root .env.example ↔ startup.env.ts schema', () => {
       unvalidated,
       `Vars documented in the root .env.example but missing from the envSchema in src/startup.env.ts — add them to the schema (or to NON_API_PATTERNS if not read by the API): ${unvalidated.join(', ')}`,
     ).toEqual([]);
-  });
-
-  it('strictly validates NEGOTIATION_INCLUDE_OTHER_INTENTS as true or false', () => {
-    expect(schemaSource).toContain(
-      "NEGOTIATION_INCLUDE_OTHER_INTENTS: z.enum(['true', 'false']).optional()",
-    );
   });
 
   it('keeps OPPORTUNITY_OWNER_APPROVAL_SECRET optional', () => {

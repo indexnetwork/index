@@ -20,20 +20,15 @@ export interface Identifier {
   value: string;
 }
 
-const DEFAULT_IP_HEADERS = [
+const IP_HEADERS = [
   'x-envoy-external-address',
   'x-forwarded-for',
   'x-original-forwarded-for',
   'x-real-ip',
 ];
 
-/** Read LIMITER_IP_HEADERS per-call so test overrides take effect without re-import. */
 function getIpHeaders(): string[] {
-  return (
-    process.env.LIMITER_IP_HEADERS
-      ?.split(',').map(s => s.trim()).filter(Boolean)
-    ?? DEFAULT_IP_HEADERS
-  );
+  return IP_HEADERS;
 }
 
 const isRailway = () => !!process.env.RAILWAY_ENVIRONMENT;

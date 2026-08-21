@@ -1,5 +1,5 @@
 import { frameDriftDatabaseAdapter, type CrossNetworkYieldCandidate, type CrossNetworkYieldSnapshotWrite, type FrameCentroidCandidate, type FrameCentroidSnapshotWrite, type FrameDriftReadSet, type FrameDriftSnapshotStore, type FrameDriftSnapshotWrites } from '../adapters/frame-drift.database.adapter';
-import { resolveFrameDriftMonitoringConfig } from '../lib/frame-drift.config';
+import { FRAME_DRIFT_MONITORING, type FrameDriftMonitoringConfig } from '../lib/frame-drift.config';
 import { OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
 import { log } from '../lib/log';
 
@@ -192,6 +192,12 @@ export class FrameDriftMonitoringService {
   constructor(
     private readonly store: FrameDriftSnapshotStore = frameDriftDatabaseAdapter,
     private readonly clock: () => Date = () => new Date(),
+    /**
+     * Cohort bounds. Production always uses {@link FRAME_DRIFT_MONITORING};
+     * injectable so integration tests can exercise truncation and the
+     * k-anonymity floor against a small fixture.
+     */
+    private readonly config: FrameDriftMonitoringConfig = FRAME_DRIFT_MONITORING,
   ) {}
 
   /**
@@ -201,7 +207,7 @@ export class FrameDriftMonitoringService {
   async captureDailyBucket(bucketStart: Date, bucketEnd: Date): Promise<FrameDriftMonitoringResult> {
     const startedAt = this.clock();
     validateClosedUtcDailyBucket(bucketStart, bucketEnd, startedAt);
-    const config = resolveFrameDriftMonitoringConfig();
+    const config = this.config;
     const previousBucketStart = new Date(bucketStart.getTime() - UTC_DAY_MS);
 
     this.logger.info('Frame-drift observation started', {

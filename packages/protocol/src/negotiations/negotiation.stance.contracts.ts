@@ -1,28 +1,26 @@
 /**
- * negotiations/domain — negotiator stance contracts (IND-611).
+ * negotiations/domain — negotiator drafting stance (IND-611).
  *
- * The acting negotiator prompt is structurally biased toward producing matches
- * rather than finding valuable ones: it frames the job as advocacy, treats a
- * discovery-query match as a mandate to connect, and carries no
- * opportunity-cost term — the only decline bar is the purely negative "does not
- * serve {userName}'s needs", so absence of harm reads as grounds to accept.
+ * The acting negotiator prompt used to be structurally biased toward producing
+ * matches rather than finding valuable ones: it framed the job as advocacy,
+ * treated a discovery-query match as a mandate to connect, and carried no
+ * opportunity-cost term — the only decline bar was the purely negative "does
+ * not serve {userName}'s needs", so absence of harm read as grounds to accept.
  *
- * `NEGOTIATOR_STANCE` makes that stance configurable instead of hard-coded:
+ * The stance that replaced it — formerly `skeptic`, now the only one — assesses
+ * before it advocates, applies an opportunity-cost value bar, treats query
+ * satisfaction as necessary-but-not-sufficient, prefers consulting the client
+ * over assuming, runs the checklist protocol, gives the responding seat its own
+ * scoring duty, and resolves a deadlock as stalemate rather than bargaining.
  *
- * | stance      | framing                              | value bar        | query rule              | consult propensity      | checklist protocol       | responder check          | deadlock  |
- * |-------------|--------------------------------------|------------------|-------------------------|-------------------------|--------------------------|--------------------------|-----------|
- * | `advocate`  | argue the case (today)               | none             | mandate (today)         | none (today)            | none (today)             | none (today)             | bargain   |
- * | `evaluator` | assess first, advocate if it survives | opportunity-cost | necessary-not-sufficient| prefer over assumption  | checklist + basis + ask rule | score, do not agree  | bargain   |
- * | `skeptic`   | + "most matches are not worth making" | opportunity-cost | necessary-not-sufficient| + unverified = don't proceed | (same — no sharpening) | + spend a question first | stalemate |
- *
- * **The checklist protocol is the core of the assessing stances**
- * (docs/plans/2026-08-19-checklist-negotiations.md). Under `evaluator` and
- * `skeptic` a negotiation runs on an explicit, pre-registered checklist: 3–5
- * dimensions written on turn 1 from the two intents alone, frozen after,
- * re-scored each turn from the commitment store, with the verdict a function
- * of the scores rather than of free-form judgment. The shape, the freeze and
- * the ask-admissibility rule live in `negotiation.checklist.contracts.ts`;
- * this module owns the prompt law that makes an agent obey them.
+ * **The checklist protocol is the core of it**
+ * (docs/plans/2026-08-19-checklist-negotiations.md): a negotiation runs on an
+ * explicit, pre-registered checklist of 3–5 dimensions written on turn 1 from
+ * the two intents alone, frozen after, re-scored each turn from the commitment
+ * store, with the verdict a function of the scores rather than of free-form
+ * judgment. The shape, the freeze and the ask-admissibility rule live in
+ * `negotiation.checklist.contracts.ts`; this module owns the prompt law that
+ * makes an agent obey them.
  *
  * Two shipped fragments were folded INTO that law rather than kept beside it:
  * the evidence-provenance rule (#1448) is now the `basis` discipline — an
@@ -35,33 +33,24 @@
  * score a dimension.
  *
  * Design constraints (hard):
- * - **`advocate` is byte-identical.** Every fragment below is additive and
- *   gated; under `advocate` each renderer returns the exact legacy string, so
- *   the rendered prompt is byte-for-byte the pre-IND-611 build. Existing prompt
- *   specs are the guard.
- * - **Prompt-only.** The stance changes drafting stance and nothing else:
- *   no seat vocabulary change (`allowedActionsFor`), no schema change, no graph
- *   routing change. In particular the continuation-screen bypass at
- *   `negotiation.graph.ts` (`!state.continuationExecution`) is identical under
- *   all three stances — deliberately deferred so evals isolate wording as the
- *   single variable.
+ * - **Prompt-only.** The stance decides drafting and nothing else: no seat
+ *   vocabulary change (`allowedActionsFor`), no schema change, no graph routing
+ *   change.
  * - **Domain layer.** Placed here (not in `application/`) so both the
- *   application-layer agent and the domain-layer deadlock renderer can read the
- *   stance without a domain → application cycle.
- * - **Fail-safe default.** Unset or unrecognized falls back to `advocate`
- *   (today's behavior), same operational pattern as `configuredScreenMode()`.
+ *   application-layer agent and the domain-layer deadlock renderer can read it
+ *   without a domain → application cycle.
  *
  * Fragments deliberately never contain the literal `ask_user` or a quoted
  * `"withdraw"`: they render into every seat and protocol version, and the seat
  * specs pin that those tokens appear only where the seat legally holds them.
  *
  * One family of fragments is the exception to that seat-blindness by
- * construction rather than by accident: the responder scoring rules
- * (`stanceVerifiesResponderFit`) address a duty only the RESPONDING seat has —
- * scoring dimensions against an opening someone else authored — so
- * `stanceActionRules` takes the seat and renders them only there. They still
- * name no action and no mechanism, so the seat's own rules and the graph's
- * grants stay the sole authority on what this turn may actually do.
+ * construction rather than by accident: the responder scoring rules address a
+ * duty only the RESPONDING seat has — scoring dimensions against an opening
+ * someone else authored — so `negotiatorActionRules` takes the seat and renders
+ * them only there. They still name no action and no mechanism, so the seat's
+ * own rules and the graph's grants stay the sole authority on what this turn
+ * may actually do.
  *
  * The seat parameter is a scoping tool, not a licence to fork: a duty both
  * seats hold stays in the shared prefix even when the failure that motivated it
@@ -73,108 +62,18 @@
 
 import type { NegotiationSeat } from "../shared/schemas/negotiation-state.schema.js";
 
-export const NEGOTIATOR_STANCES = ["advocate", "evaluator", "skeptic"] as const;
-
-export type NegotiatorStance = (typeof NEGOTIATOR_STANCES)[number];
-
-export const DEFAULT_NEGOTIATOR_STANCE: NegotiatorStance = "advocate";
-
-/**
- * Resolve the negotiator stance from `NEGOTIATOR_STANCE`.
- *
- * Defaults to `advocate` when unset or unrecognized — the stance shift is an
- * explicit opt-in flip (same operational pattern as `NEGOTIATION_SCREEN_MODE` /
- * `NEGOTIATION_PROTOCOL_VERSION`): the code ships dark, the environment turns
- * it on.
- */
-export function configuredNegotiatorStance(): NegotiatorStance {
-  const raw = process.env.NEGOTIATOR_STANCE;
-  if (raw === "advocate" || raw === "evaluator" || raw === "skeptic") return raw;
-  return DEFAULT_NEGOTIATOR_STANCE;
-}
-
-/** Whether this stance applies the opportunity-cost value bar. */
-export function stanceAppliesValueBar(stance: NegotiatorStance): boolean {
-  return stance !== "advocate";
-}
-
-/**
- * Whether this stance treats a discovery-query match as a precondition for
- * continuing to evaluate rather than as a mandate to connect.
- */
-export function stanceQueryMatchIsNecessaryNotSufficient(stance: NegotiatorStance): boolean {
-  return stance !== "advocate";
-}
-
-/**
- * Whether this stance gives the RESPONDING seat its own scoring duty: the
- * opening is the other agent's claim about this client, so it cannot be the
- * basis for a checklist dimension — least of all the mutual-want one it most
- * wants to settle.
- */
-export function stanceVerifiesResponderFit(stance: NegotiatorStance): boolean {
-  return stance !== "advocate";
-}
-
-/**
- * Whether this stance runs the checklist protocol: a pre-registered
- * conjunctive screen, scored from the commitment store, with asking as the
- * normal way to resolve an unknown.
- *
- * `advocate` does not, and that is what keeps its prompt byte-identical — the
- * caller reads this to decide whether the turn schema even carries a checklist
- * field, so a negotiator under `advocate` is never handed a field its rules
- * never mention.
- */
-export function stanceUsesChecklist(stance: NegotiatorStance): boolean {
-  return stance !== "advocate";
-}
-
-/** Whether a detected deadlock resolves by stalemate rather than bargaining. */
-export function stanceResolvesDeadlockByStalemate(stance: NegotiatorStance): boolean {
-  return stance === "skeptic";
-}
-
 // ─── Prompt fragments ────────────────────────────────────────────────────────
 
 /**
- * The `advocate` job framing — byte-identical to the pre-IND-611 sentence that
- * followed "Your job: Evaluate whether this connection genuinely serves
- * {userName}'s interests given their role." in the system prompt.
- */
-const ADVOCATE_FRAMING = `Argue their case honestly — acknowledge weaknesses, but advocate for genuine fit.`;
-
-/**
- * `evaluator`: assessment precedes advocacy. Advocacy is still available — it is
- * conditioned on the match surviving an honest judgment first.
- */
-const EVALUATOR_FRAMING = `Assess before you advocate: first form an honest judgment about whether this connection is actually worth making for {userName}. Advocate only for a match that survives that judgment, and say so plainly when one does not.`;
-
-/**
- * `skeptic`: the evaluator framing plus an explicit prior. Borrows the finite-
+ * Assessment precedes advocacy, plus an explicit prior. Borrows the finite-
  * attention framing already proven in the outreach gate prompt
  * (`negotiation.screen.ts`) — {userName}'s name and attention are spent on
  * every connection made for them.
- */
-const SKEPTIC_FRAMING = `${EVALUATOR_FRAMING} Start from the prior that most candidate matches are NOT worth making: {userName}'s attention is finite and a mediocre connection costs them more than no connection. The burden is on the match to earn their time, not on you to find a way to say yes.`;
-
-/**
- * The job-framing sentence for a stance. Under `advocate` this is the exact
- * legacy sentence, so the rendered prompt is byte-identical.
  *
  * `{userName}` placeholders are left intact for the caller's existing global
  * replace.
  */
-export function stanceJobFraming(stance: NegotiatorStance): string {
-  switch (stance) {
-    case "evaluator":
-      return EVALUATOR_FRAMING;
-    case "skeptic":
-      return SKEPTIC_FRAMING;
-    default:
-      return ADVOCATE_FRAMING;
-  }
-}
+export const JOB_FRAMING = `Assess before you advocate: first form an honest judgment about whether this connection is actually worth making for {userName}. Advocate only for a match that survives that judgment, and say so plainly when one does not. Start from the prior that most candidate matches are NOT worth making: {userName}'s attention is finite and a mediocre connection costs them more than no connection. The burden is on the match to earn their time, not on you to find a way to say yes.`;
 
 /**
  * The opportunity-cost value bar, appended as an extra action rule.
@@ -379,22 +278,15 @@ const SKEPTIC_RESPONDER_SHARPENING = ` For you, closing while a pivotal dimensio
  * rules land last, after the basis discipline they are a special case of, so
  * "the opening cannot be a basis" arrives already knowing what a basis is.
  */
-export function stanceActionRules(stance: NegotiatorStance, seat: NegotiationSeat): string {
-  if (!stanceAppliesValueBar(stance)) return "";
-  const consultRule = stance === "skeptic"
-    ? CONSULT_PROPENSITY_RULE + SKEPTIC_CONSULT_SHARPENING
-    : CONSULT_PROPENSITY_RULE;
-  const askRule = stance === "skeptic"
-    ? ASK_ADMISSIBILITY_RULE + SKEPTIC_ASK_SHARPENING
-    : ASK_ADMISSIBILITY_RULE;
-  const responderRule = seat === "counterparty" && stanceVerifiesResponderFit(stance)
-    ? RESPONDER_CHECKLIST_RULE + (stance === "skeptic" ? SKEPTIC_RESPONDER_SHARPENING : "")
+export function negotiatorActionRules(seat: NegotiationSeat): string {
+  const responderRule = seat === "counterparty"
+    ? RESPONDER_CHECKLIST_RULE + SKEPTIC_RESPONDER_SHARPENING
     : "";
   return VALUE_BAR_RULE
-    + consultRule
+    + CONSULT_PROPENSITY_RULE + SKEPTIC_CONSULT_SHARPENING
     + CHECKLIST_PROTOCOL_RULE
     + CHECKLIST_BASIS_RULE
-    + askRule
+    + ASK_ADMISSIBILITY_RULE + SKEPTIC_ASK_SHARPENING
     + CHECKLIST_VERDICT_RULE
     + responderRule;
 }
@@ -445,38 +337,18 @@ const SKEPTIC_PRE_CONTACT_LEAN = ` When it is genuinely close, lean toward askin
  */
 const CHECKLIST_PRE_CONTACT_RULE = ` Weigh the two moves by what they cost and what they can undo. Reaching out spends the counterparty's attention and {userName}'s name on a match you have not finished scoring, and it cannot be taken back; asking {userName} first is invisible to the counterparty, costs one sentence, and is the only moment in this negotiation where a question buys a better OPENING rather than a correction. So where a dimension is open and theirs to settle, asking now is not the timid option — it is the one that spends less. A checklist dimension that is unknown and {userName}'s own to settle — their level, their availability, their budget, what they are actually willing to commit to — is as good a reason to pause here as a question about the signal's wording. The test is not whether the question mentions this candidate: it is whether the ANSWER would still hold for the next candidate on this signal. Where it would, ask it now; where the answer would only be about this one person, it is yours to judge, not theirs.`;
 
-/**
- * Stance contribution to the pre-contact consultation rule. Empty under
- * `advocate` and `evaluator` — the base seat-level rule already states when
- * the verdict applies, and only the skeptic's not-worth-making prior changes
- * which way a close call should fall.
- */
-export function stancePreContactConsultRule(stance: NegotiatorStance): string {
-  if (!stanceUsesChecklist(stance)) return "";
-  return stance === "skeptic"
-    ? CHECKLIST_PRE_CONTACT_RULE + SKEPTIC_PRE_CONTACT_LEAN
-    : CHECKLIST_PRE_CONTACT_RULE;
-}
+/** The checklist pre-contact rule plus the not-worth-making lean. */
+export const PRE_CONTACT_CONSULT_RULE = CHECKLIST_PRE_CONTACT_RULE + SKEPTIC_PRE_CONTACT_LEAN;
 
 /**
- * The discovery-query satisfaction rule.
- *
- * `advocate` keeps today's mandate wording verbatim ("PROPOSE or ACCEPT the
- * connection…"), which converts a filter into an instruction to connect.
- * `evaluator`/`skeptic` make query satisfaction necessary-but-not-sufficient: a
- * precondition for continuing to evaluate, never itself a reason to connect.
+ * The discovery-query satisfaction rule. Query satisfaction is
+ * necessary-but-not-sufficient: a precondition for continuing to evaluate,
+ * never itself a reason to connect.
  *
  * Names are interpolated eagerly here: this fragment is spliced into the system
  * prompt *after* the caller's global `{userName}` substitution has already run,
  * so a placeholder would survive into the rendered prompt.
  */
-export function stanceQuerySatisfiedRule(
-  stance: NegotiatorStance,
-  otherName: string,
-  userName: string,
-): string {
-  if (!stanceQueryMatchIsNecessaryNotSufficient(stance)) {
-    return `- If ${otherName} DOES satisfy the query: PROPOSE or ACCEPT the connection and evaluate fit normally using intents and profile data.`;
-  }
+export function querySatisfiedRule(otherName: string, userName: string): string {
   return `- If ${otherName} DOES satisfy the query: satisfying the query is a PRECONDITION for continuing to evaluate, NOT a reason to connect. Keep evaluating fit on intents and profile data, and decline when the connection would not be worth ${userName}'s attention.`;
 }

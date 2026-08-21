@@ -5,6 +5,7 @@ import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * IND-564 — never emit `withdraw` as an opening move.
@@ -114,14 +115,15 @@ async function runGraph(stubs: ReturnType<typeof mkStubs>, input: Record<string,
   } as Partial<typeof NegotiationGraphState.State>);
 }
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("negotiation graph — opening-move withdraw guard (IND-564)", () => {
-  const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
-  const origScreen = process.env.NEGOTIATION_SCREEN_MODE;
 
   beforeEach(() => {
     agentScript = [];
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    process.env.NEGOTIATION_SCREEN_MODE = "off"; // isolate the withdraw guard from the screen gate
     IndexNegotiator.prototype.invoke = async function (_input: NegotiationAgentInput) {
       const turn = agentScript.shift();
       if (!turn) throw new Error("agent script exhausted");
@@ -130,8 +132,6 @@ describe("negotiation graph — opening-move withdraw guard (IND-564)", () => {
   });
 
   afterEach(() => {
-    if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;
-    if (origScreen === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreen;
   });
 
   afterAll(() => {

@@ -9,6 +9,7 @@ import { negotiationQuestionSettlementId } from "../negotiation.question-safety.
 import { assessConsultationEligibility, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, PRE_CONTACT_CONSULT_MARKER } from "../negotiation.consultation-policy.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * Pre-contact consultation — the initiator's turn-0 THIRD verdict.
@@ -294,13 +295,14 @@ function resumeFixtures(consultation: {
   return { exactTask, successorTask, continuationExecution };
 }
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("pre-contact consultation — the initiator's turn-0 third verdict", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-  const origPolicyMode = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-  const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -324,21 +326,6 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    // The dev configuration this verdict ships into.
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-  });
-
-  afterEach(() => {
-    const restore = (key: string, value: string | undefined) => {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    };
-    restore("NEGOTIATION_ASK_USER_ENABLED", origFlag);
-    restore("NEGOTIATION_SCREEN_MODE", origScreenMode);
-    restore("NEGOTIATION_CONSULTATION_POLICY_MODE", origPolicyMode);
-    restore("NEGOTIATION_PROTOCOL_VERSION", origVersion);
   });
 
   // ─── Admission policy (pure) ───────────────────────────────────────────────
@@ -509,10 +496,13 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       recipientUserId: "u-src",
       freeText: "adjacent depth counts — reach out",
     });
-    // It is still the opening: the seat has not spent its outreach yet, and
-    // the resumed turn is not offered a second consultation.
+    // It is still the opening: the seat has not spent its outreach yet. The
+    // grant survives the resume because the principal's budget is a budget,
+    // not a one-shot ration — one consult spent of QUESTION_BUDGET_PER_PRINCIPAL
+    // leaves the rest.
     expect(agentInputs[0].isContinuation).toBe(true);
-    expect(agentInputs[0].canAskUser).toBeUndefined();
+    expect(agentInputs[0].canAskUser).toBe(true);
+    expect(agentInputs[0].questionsSpent).toBe(1);
     expect(agentInputs[0].history.map((t) => t.action)).toEqual(["ask_user"]);
   }, 30_000);
 
@@ -678,16 +668,10 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       ...over,
     });
 
-    async function render(input: NegotiationAgentInput, stance?: string): Promise<string> {
-      const prior = process.env.NEGOTIATOR_STANCE;
-      if (stance === undefined) delete process.env.NEGOTIATOR_STANCE; else process.env.NEGOTIATOR_STANCE = stance;
-      try {
-        const agent = new Capturing();
-        await agent.invoke(input);
-        return agent.prompt;
-      } finally {
-        if (prior === undefined) delete process.env.NEGOTIATOR_STANCE; else process.env.NEGOTIATOR_STANCE = prior;
-      }
+    async function render(input: NegotiationAgentInput): Promise<string> {
+      const agent = new Capturing();
+      await agent.invoke(input);
+      return agent.prompt;
     }
 
     it("renders the third verdict on a granted opening initiator turn", async () => {
@@ -708,50 +692,32 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       expect(await render(input)).not.toContain("BEFORE ANY CONTACT");
     });
 
-    it("is base seat-level: identical under every stance, which may only lean", async () => {
+    it("keeps the base seat-level rule verbatim and only leans on top of it", async () => {
       const marker = 'BEFORE ANY CONTACT, "ask_user" is a THIRD verdict';
-      const rules: Record<string, string> = {};
-      for (const stance of [undefined, "advocate", "evaluator", "skeptic"]) {
-        const prompt = await render(promptInput({ canAskUser: true }), stance);
-        // Every stance gets the verdict — the graph grants the same vocabulary
-        // to all three, so the rule that explains it must not be stance-gated.
-        expect(prompt).toContain(marker);
-        rules[stance ?? "unset"] = prompt.slice(prompt.indexOf(marker));
-      }
-      // `advocate` carries the base rule verbatim — the byte-identity invariant.
-      expect(rules.advocate).toBe(rules.unset);
-      expect(rules.advocate.startsWith(marker)).toBe(true);
+      const prompt = await render(promptInput({ canAskUser: true }));
+      expect(prompt).toContain(marker);
+      const rule = prompt.slice(prompt.indexOf(marker));
 
-      // The assessing stances APPEND to that same base rule; they never
-      // replace or reword it. Both now do: under the checklist protocol a
-      // dimension that is unknown and the client's own to settle is a
-      // pre-contact question too (plan §3), which the base rule — written for
-      // #1445, before the checklist existed — scopes to the signal's wording.
+      // The base rule survives verbatim — every bullet of it, including the
+      // one that bounds the verdict. The stance text is INSERTED after it
+      // rather than replacing any of it.
+      expect(rule).toContain("Nothing has been sent and nothing is sent while you wait");
+      expect(rule).toContain("Do NOT use it when the evidence in front of you already decides");
+      // Under the checklist protocol a dimension that is unknown and the
+      // client's own to settle is a pre-contact question too (plan §3), which
+      // the base rule — written for #1445, before the checklist existed —
+      // scopes to the signal's wording.
       //
       // The asymmetry this fixes: with the responding seat no longer closing
       // over an open dimension, it parks and asks its own principal on turn 1,
       // so the initiating side never reaches a later turn on which it could
       // ask its client anything. Turn 0 is its only chance.
-      for (const stance of ["evaluator", "skeptic"] as const) {
-        // The base rule survives verbatim — every bullet of it, including the
-        // one that bounds the verdict. The stance text is INSERTED after it
-        // rather than replacing any of it, which is why this checks
-        // containment: the rest of the prompt follows the insert, so the
-        // advocate rendering is not a prefix of the others.
-        expect(rules[stance]).toContain("Nothing has been sent and nothing is sent while you wait");
-        expect(rules[stance]).toContain("Do NOT use it when the evidence in front of you already decides");
-        expect(rules[stance].length).toBeGreaterThan(rules.advocate.length);
-        expect(rules[stance]).toContain("whether the ANSWER would still hold for the next candidate");
-      }
-      // And the base rule's safety test survives in both: a question whose
-      // answer is only about this one candidate stays the agent's to judge.
-      expect(rules.evaluator).toContain("it is yours to judge, not theirs");
-
-      // Only skeptic leans on top of that.
-      expect(rules.skeptic).not.toBe(rules.evaluator);
-      expect(rules.skeptic).toContain("lean toward asking rather than passing");
-      expect(rules.advocate).not.toContain("lean toward asking rather than passing");
-      expect(rules.evaluator).not.toContain("lean toward asking rather than passing");
+      expect(rule).toContain("whether the ANSWER would still hold for the next candidate");
+      // And the base rule's safety test survives: a question whose answer is
+      // only about this one candidate stays the agent's to judge.
+      expect(rule).toContain("it is yours to judge, not theirs");
+      // The lean sits on top.
+      expect(rule).toContain("lean toward asking rather than passing");
     });
   });
 

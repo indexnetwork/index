@@ -4,6 +4,7 @@ import { NegotiationGraphState, type NegotiationTurn } from "../negotiation.stat
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { NegotiationStallGapAuthor, type NegotiationStallGap, type StallGapAuthorInput } from "../negotiation.stall-gap.js";
 import { MAX_CONSECUTIVE_TURN_FAILURES } from "../negotiation.turn-failure.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * Failed turns: not a decision, not a turn, never silent.
@@ -101,11 +102,14 @@ let onInvoke: (input: NegotiationAgentInput) => Promise<NegotiationTurn> = async
 let authorCalls: StallGapAuthorInput[] = [];
 let authorResult: NegotiationStallGap | null = null;
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("negotiation graph — failed turns", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
   let origAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-  const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
 
   beforeAll(() => {
     origInvoke = IndexNegotiator.prototype.invoke;
@@ -125,13 +129,9 @@ describe("negotiation graph — failed turns", () => {
   beforeEach(() => {
     authorCalls = [];
     authorResult = null;
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
   });
 
   afterEach(() => {
-    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
-    if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;
   });
 
   it("ends error-stalled when the responder fails every turn, with the outreach still the only message", async () => {

@@ -1,5 +1,5 @@
 import { getStorage } from './index';
-import { intEnv, isLimiterDisabled, resolveClassConfig } from './config';
+import { resolveClassConfig } from './config';
 import { resolveIdentifier, sha256Truncated } from './identifier';
 import type { LimiterStorage } from './storage';
 import { log } from '../log';
@@ -36,13 +36,17 @@ const isPrivateOrLoopbackIp = (ip: string): boolean => {
 };
 
 /** Ordinary per-tool ceiling per principal per minute. */
-function toolLimit(_toolName: string): number {
-  return intEnv('MCP_LIMIT_TOOL_PER_MIN', 120);
-}
+export const MCP_TOOL_LIMIT_PER_MIN = 120;
 
 /** Aggregate ceiling per principal per minute, across all tools. */
+export const MCP_PRINCIPAL_LIMIT_PER_MIN = 300;
+
+function toolLimit(_toolName: string): number {
+  return MCP_TOOL_LIMIT_PER_MIN;
+}
+
 function principalLimit(): number {
-  return intEnv('MCP_LIMIT_PRINCIPAL_PER_MIN', 300);
+  return MCP_PRINCIPAL_LIMIT_PER_MIN;
 }
 
 export interface McpThrottleInput {
@@ -83,7 +87,6 @@ export async function checkMcpHttpRateLimit(
   req: Request,
   storage?: LimiterStorage,
 ): Promise<McpHttpThrottleDecision> {
-  if (isLimiterDisabled()) return { allowed: true };
 
   try {
     const id = await resolveIdentifier(req);
@@ -132,7 +135,6 @@ export async function checkMcpRateLimit(
   input: McpThrottleInput,
   storage?: LimiterStorage,
 ): Promise<McpThrottleDecision> {
-  if (isLimiterDisabled()) return { allowed: true };
 
   // Fail OPEN on storage errors (Redis/bootstrap hiccups) so a limiter incident
   // never takes down /mcp tool dispatch — same posture as the RateLimit guard

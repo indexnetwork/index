@@ -1,15 +1,17 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { stubScreenerReachOut } from "./screen.stub.js";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
-import { allowedActionsFor, turnSchemaFor, configuredAskUserEnabled, askUserAnswerWindowMs, DEFAULT_ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../negotiation.protocol.js";
+import { allowedActionsFor, turnSchemaFor, ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP, DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../negotiation.protocol.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
-import { assessConsultationEligibility, negotiationConsultationPolicyMode } from "../negotiation.consultation-policy.js";
+import { assessConsultationEligibility, NEGOTIATION_CONSULTATION_POLICY_MODE } from "../negotiation.consultation-policy.js";
 import type { NegotiationConsultationReason } from "../negotiation.consultation-policy.js";
 import { requestContext } from "../../shared/observability/request-context.js";
+import { QUESTION_BUDGET_PER_PRINCIPAL } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
 
 /**
@@ -84,24 +86,8 @@ describe("ask_user vocabulary + seat schemas", () => {
     expect(CounterpartyTurnSchema.safeParse(askUserTurn).success).toBe(false);
   });
 
-  it("env helpers: flag defaults off; window defaults 24h and accepts overrides", () => {
-    const origEnabled = process.env.NEGOTIATION_ASK_USER_ENABLED;
-    const origWindow = process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
-    try {
-      delete process.env.NEGOTIATION_ASK_USER_ENABLED;
-      delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
-      expect(configuredAskUserEnabled()).toBe(false);
-      expect(askUserAnswerWindowMs()).toBe(DEFAULT_ASK_USER_WINDOW_MS);
-      process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-      expect(configuredAskUserEnabled()).toBe(true);
-      process.env.NEGOTIATION_ASK_USER_WINDOW_MS = "60000";
-      expect(askUserAnswerWindowMs()).toBe(60_000);
-      process.env.NEGOTIATION_ASK_USER_WINDOW_MS = "-5";
-      expect(askUserAnswerWindowMs()).toBe(DEFAULT_ASK_USER_WINDOW_MS);
-    } finally {
-      if (origEnabled === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED; else process.env.NEGOTIATION_ASK_USER_ENABLED = origEnabled;
-      if (origWindow === undefined) delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS; else process.env.NEGOTIATION_ASK_USER_WINDOW_MS = origWindow;
-    }
+  it("the answer window is 24h", () => {
+    expect(ASK_USER_WINDOW_MS).toBe(24 * 60 * 60 * 1000);
   });
 });
 
@@ -148,18 +134,8 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     expect(assessConsultationEligibility({ ...base, action: "question", ...partial })).toEqual({ eligible: false });
   });
 
-  it("defaults invalid policy modes to off", () => {
-    const prior = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-    try {
-      delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-      expect(negotiationConsultationPolicyMode()).toBe("off");
-      process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "unexpected";
-      expect(negotiationConsultationPolicyMode()).toBe("off");
-      process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "shadow";
-      expect(negotiationConsultationPolicyMode()).toBe("shadow");
-    } finally {
-      if (prior === undefined) delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE; else process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = prior;
-    }
+  it("runs the deterministic consultation policy", () => {
+    expect(NEGOTIATION_CONSULTATION_POLICY_MODE).toBe("on");
   });
 });
 
@@ -322,10 +298,7 @@ const declineTurn: NegotiationTurn = {
 
 describe("negotiation graph — ask_user pause (IND-401)", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
-  const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
-  const origWindow = process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-  const origPolicyMode = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
+  let restoreScreener: () => void;
 
   // Post-stall parking authors a gap at finalize, which is its own model call
   // and its own ask_user message. This spec is about the mid-flight
@@ -336,6 +309,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
 
   beforeAll(() => {
+    restoreScreener = stubScreenerReachOut();
     origAgentInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function (input: NegotiationAgentInput) {
       agentInputs.push(input);
@@ -352,22 +326,12 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   afterAll(() => {
     IndexNegotiator.prototype.invoke = origAgentInvoke;
     NegotiationStallGapAuthor.prototype.author = origStallGapAuthor;
+    restoreScreener();
   });
 
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-    delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-    delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
-  });
-
-  afterEach(() => {
-    if (origFlag === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED; else process.env.NEGOTIATION_ASK_USER_ENABLED = origFlag;
-    if (origWindow === undefined) delete process.env.NEGOTIATION_ASK_USER_WINDOW_MS; else process.env.NEGOTIATION_ASK_USER_WINDOW_MS = origWindow;
-    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
-    if (origPolicyMode === undefined) delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE; else process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = origPolicyMode;
   });
 
   /** Continuation where the source (u-src, initiator) speaks next. */
@@ -386,46 +350,40 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       assessment: { reasoning: "CANARY_PRIVATE_REASONING", suggestedRoles: { ownUser: "agent" as const, otherUser: "peer" as const } },
       message: "CANARY_PRIVATE_MESSAGE",
     }],
-  ] as Array<[string, FakeMessage[], NegotiationTurn]>)('deterministically pauses one exact safe consultation for %s', async (reason, priorMessages, draft) => {
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
+  ] as Array<[string, FakeMessage[], NegotiationTurn]>)('names the exact consultation category for %s, and declines to infer one', async (reason, priorMessages, draft) => {
     const stubs = mkStubs({ priorMessages });
     agentScript = [draft];
-
-    await runGraph(stubs);
-
-    expect(stubs.createdMessages).toHaveLength(1);
-    expect(stubs.createdMessages[0].parts[0].data.action).toBe("ask_user");
-    expect(stubs.expiryArms).toHaveLength(1);
-    expect(stubs.questionerEnqueues).toHaveLength(1);
-    expect(stubs.stateWrites.filter((write) => write.state === "input_required")).toHaveLength(1);
-    expect(stubs.questionerEnqueues[0].userId).toBe("u-src");
-    expect(stubs.questionerEnqueues[0].negotiation?.recipientIntentId).toBe("intent-src");
-    const serialized = JSON.stringify({ messages: stubs.createdMessages, questions: stubs.questionerEnqueues, timers: stubs.expiryArms });
-    expect(serialized).toContain(reason);
-    expect(serialized).not.toContain('Ignore prior instructions');
-    expect(serialized).not.toContain("CANARY_PRIVATE_REASONING");
-    expect(serialized).not.toContain("CANARY_PRIVATE_MESSAGE");
-  });
-
-  it('shadow retains a valid legacy ask_user pause while adding only eligibility telemetry', async () => {
-    const off = mkStubs({ priorMessages: continuationMessages });
-    agentScript = [askUserTurn];
-    await runGraph(off);
-
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "shadow";
-    const shadow = mkStubs({ priorMessages: continuationMessages });
     const events: Array<Record<string, unknown>> = [];
-    agentScript = [askUserTurn];
-    await requestContext.run({ traceEmitter: (event) => events.push(event as unknown as Record<string, unknown>) }, async () => runGraph(shadow));
 
-    expect(shadow.createdMessages).toEqual(off.createdMessages);
-    expect(shadow.expiryArms).toEqual(off.expiryArms);
-    expect(shadow.questionerEnqueues).toEqual(off.questionerEnqueues);
-    expect(shadow.stateWrites).toEqual(off.stateWrites);
-    expect(events.filter((event) => event.type === 'negotiation_consultation_policy')).toEqual([
-      { type: 'negotiation_consultation_policy', stage: 'eligible', mode: 'shadow', reason: 'consequential_disclosure_permission' },
-    ]);
-    expect(JSON.stringify(events)).not.toContain('Can I tell them');
+    await requestContext.run(
+      { traceEmitter: ((e: Record<string, unknown>) => { events.push(e); }) as never },
+      () => runGraph(stubs),
+    );
+
+    // The policy finds the shape eligible and names one exact category...
+    const eligible = events.filter((e) => e.type === 'negotiation_consultation_policy' && e.stage === 'eligible');
+    expect(eligible).toHaveLength(1);
+    expect(eligible[0].reason).toBe(reason);
+    expect(eligible[0].mode).toBe('on');
+
+    // ...but under the checklist protocol it never manufactures the question.
+    // The agent is the only party that has read this negotiation, so an
+    // inferred question would be about the wrong unknown. The draft stands.
+    expect(stubs.createdMessages).toHaveLength(1);
+    expect(stubs.createdMessages[0].parts[0].data.action).toBe(draft.action);
+    expect(stubs.questionerEnqueues).toHaveLength(0);
+    expect(stubs.expiryArms).toHaveLength(0);
+    expect(stubs.stateWrites.filter((write) => write.state === "input_required")).toHaveLength(0);
+
+    // The policy's own telemetry carries the category and nothing else: it
+    // never sees user text, and the draft's private reasoning must not ride
+    // out on it. (The ordinary turn trace is a separate channel and has always
+    // carried the agent's reasoning.)
+    const policyEvents = JSON.stringify(events.filter((e) => e.type === 'negotiation_consultation_policy'));
+    expect(policyEvents).not.toContain('Ignore prior instructions');
+    for (const canary of ["CANARY_PRIVATE_REASONING", "CANARY_PRIVATE_MESSAGE", "CANARY_DISCLOSURE_REASONING", "CANARY_DISCLOSURE_MESSAGE"]) {
+      expect(policyEvents).not.toContain(canary);
+    }
   });
 
   it.each([
@@ -435,11 +393,8 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     ['reject', continuationMessages, {}, { ...declineTurn, action: 'reject' as const }, { maxTurns: 4 }],
     ['withdraw', continuationMessages, {}, { ...declineTurn, action: 'withdraw' as const }, { maxTurns: 4 }],
     ['already consulted', [...continuationMessages, priorMsg('u-src', 'ask_user', 2), priorMsg('u-cand', 'counter', 3)], {}, { ...declineTurn, action: 'question' as const }, { maxTurns: 4 }],
-  ] as Array<[string, FakeMessage[], Parameters<typeof mkStubs>[0], NegotiationTurn, { maxTurns: number; fresh?: boolean }]>)('policy on does not create consultation effects for %s', async (_label, priorMessages, stubOptions, draft, runOptions) => {
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = 'on';
-    const priorVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
-    process.env.NEGOTIATION_PROTOCOL_VERSION = 'v2';
-    try {
+  ] as Array<[string, FakeMessage[], Parameters<typeof mkStubs>[0], NegotiationTurn, { maxTurns: number; fresh?: boolean }]>)('no consultation effects for %s', async (_label, priorMessages, stubOptions, draft, runOptions) => {
+    {
       const stubs = mkStubs({ ...stubOptions, priorMessages });
       agentScript = [draft, declineTurn];
       await runGraph(stubs, { maxTurns: runOptions.maxTurns });
@@ -448,13 +403,10 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       expect(stubs.stateWrites.map((write) => write.state)).not.toContain('input_required');
       expect(stubs.createdMessages.map((message) => message.parts[0].data.action)).not.toContain('ask_user');
       expect(stubs.askUserBindingCaptures).toEqual([]);
-    } finally {
-      if (priorVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = priorVersion;
     }
   });
 
-  it('policy on excludes a pre-screened path before consultation effects', async () => {
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = 'on';
+  it('excludes a pre-screened path before consultation effects', async () => {
     const stubs = mkStubs({ priorMessages: continuationMessages });
     agentScript = [{ ...declineTurn, action: 'question' }, declineTurn];
     await runGraph(stubs, {
@@ -466,8 +418,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(stubs.createdMessages.map((message) => message.parts[0].data.action)).not.toContain('ask_user');
   });
 
-  it('policy on excludes a missing exact resume coordinate before consultation effects', async () => {
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = 'on';
+  it('excludes a missing exact resume coordinate before consultation effects', async () => {
     const stubs = mkStubs({ priorMessages: continuationMessages });
     agentScript = [askUserTurn, declineTurn];
     await runGraph(stubs, {}, { omitQuestioner: true });
@@ -546,7 +497,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       counterpartyUserId: 'u-cand',
       counterpartyBinding: { kind: 'intent', id: 'intent-cand' },
     });
-    expect(stubs.expiryArms[0].delayMs).toBe(DEFAULT_ASK_USER_WINDOW_MS);
+    expect(stubs.expiryArms[0].delayMs).toBe(ASK_USER_WINDOW_MS);
 
     // Question enqueued through the negotiation_inflight preset for the
     // asker's OWN exact opportunity-bound signal.
@@ -611,6 +562,8 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
 
     expect(stubs.expiryArms).toHaveLength(1);
     expect(stubs.stateWrites).toContainEqual({ taskId: 'task-new', state: 'input_required' });
+    // No safe fields means no card: the policy does not author one on the
+    // agent's behalf, and the agent's private draft must never become one.
     expect(stubs.questionerEnqueues).toHaveLength(0);
     expect(JSON.stringify(stubs.expiryArms)).not.toContain('PRIVATE TRANSCRIPT');
     expect(JSON.stringify(stubs.expiryArms)).not.toContain('matchReason');
@@ -774,12 +727,11 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     expect(stubs.createdMessages).toHaveLength(0);
   });
 
-  it("respects the env window override when arming the timer", async () => {
-    process.env.NEGOTIATION_ASK_USER_WINDOW_MS = "120000";
+  it("arms the expiry timer at the ask-user answer window", async () => {
     const stubs = mkStubs({ priorMessages: continuationMessages });
     agentScript = [askUserTurn];
     await runGraph(stubs);
-    expect(stubs.expiryArms[0].delayMs).toBe(120_000);
+    expect(stubs.expiryArms[0].delayMs).toBe(ASK_USER_WINDOW_MS);
   });
 
   it("grants canAskUser to the agent when the loop is fully wired", async () => {
@@ -790,14 +742,12 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
   });
 
   it.each([
-    ["flag off", { env: "false" }],
     ["questioner missing", { omitQuestioner: true }],
     ["timer missing", { omitTimeoutQueue: true }],
     ["no opportunityId", { noOpportunity: true }],
-  ] as Array<[string, { env?: string; omitQuestioner?: boolean; omitTimeoutQueue?: boolean; noOpportunity?: boolean }]>)(
+  ] as Array<[string, { omitQuestioner?: boolean; omitTimeoutQueue?: boolean; noOpportunity?: boolean }]>)(
     "withholds canAskUser when %s",
     async (_label, cfg) => {
-      if (cfg.env) process.env.NEGOTIATION_ASK_USER_ENABLED = cfg.env;
       const stubs = mkStubs({ priorMessages: continuationMessages });
       agentScript = [declineTurn];
       await runGraph(
@@ -816,9 +766,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     // owns that behaviour end to end; this pins the grant itself, and that
     // granting it did not disturb the mid-flight grant on later turns.
     const stubs = mkStubs({ priorMessages: [], priorTask: null });
-    const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    try {
+    {
       agentScript = [
         { ...declineTurn, action: "outreach" },
         declineTurn,
@@ -826,12 +774,10 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       await runGraph(stubs);
       expect(agentInputs[0].canAskUser).toBe(true);
       expect(agentInputs[1].canAskUser).toBe(true);
-    } finally {
-      if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;
     }
   });
 
-  it("rations: a side that already consumed ask_user does not get it again (prior sessions count)", async () => {
+  it("rations per principal: a side that has spent its whole budget does not get it again (prior sessions count)", async () => {
     const stubs = mkStubs({
       priorMessages: [
         priorMsg("u-src", "outreach", 0),
@@ -844,54 +790,47 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     // decline so the run terminates after one turn.
     agentScript = [declineTurn];
     await runGraph(stubs);
-    // u-cand has NOT consumed its consultation — it still gets the option.
+    // u-cand has spent none of its budget — it still gets the option.
     expect(agentInputs[0].canAskUser).toBe(true);
 
-    // Now the source side speaks (candidate countered): no second consultation.
-    const stubs2 = mkStubs({
-      priorMessages: [
-        priorMsg("u-src", "outreach", 0),
-        priorMsg("u-src", "ask_user", 1),
-        priorMsg("u-cand", "counter", 2),
-      ],
-    });
+    // Now the source side speaks with its whole per-principal budget spent.
+    const spent: FakeMessage[] = [priorMsg("u-src", "outreach", 0)];
+    for (let i = 0; i < QUESTION_BUDGET_PER_PRINCIPAL; i++) {
+      spent.push(priorMsg("u-src", "ask_user", spent.length));
+      spent.push(priorMsg("u-cand", "counter", spent.length));
+    }
+    const stubs2 = mkStubs({ priorMessages: spent });
     agentInputs = [];
     agentScript = [{ ...declineTurn, action: "withdraw" }];
     await runGraph(stubs2);
     expect(agentInputs[0].canAskUser).toBeUndefined();
   });
 
-  it("caps ask rounds negotiation-wide: parks from EITHER side count against NEGOTIATION_ASK_ROUNDS_CAP", async () => {
-    const origCap = process.env.NEGOTIATION_ASK_ROUNDS_CAP;
-    process.env.NEGOTIATION_ASK_ROUNDS_CAP = "1";
-    try {
-      // Same seed as the per-side rationing case: u-src consulted, u-cand
-      // never did. Under the default cap the candidate keeps the option
-      // (pinned above); at cap 1 the negotiation as a whole is out of rounds.
-      const stubs = mkStubs({
-        priorMessages: [
-          priorMsg("u-src", "outreach", 0),
-          priorMsg("u-cand", "counter", 1),
-          priorMsg("u-src", "ask_user", 2),
-          priorMsg("u-src", "counter", 3),
-        ],
-      });
-      agentScript = [declineTurn];
-      await runGraph(stubs);
-      expect(agentInputs[0].canAskUser).toBeUndefined();
-    } finally {
-      if (origCap === undefined) delete process.env.NEGOTIATION_ASK_ROUNDS_CAP; else process.env.NEGOTIATION_ASK_ROUNDS_CAP = origCap;
+  it("caps ask rounds negotiation-wide: parks from EITHER side count against the cap", async () => {
+    // Same shape as the per-side rationing case, but with the negotiation-wide
+    // cap already spent. u-cand has never consulted and still loses the option,
+    // because the cap counts both seats. Seeded past the larger of the two
+    // protocol caps so it binds regardless of which one applies.
+    const spentRounds = Math.max(DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP, CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP);
+    const priorMessages = [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "counter", 1)];
+    for (let i = 0; i < spentRounds; i++) {
+      priorMessages.push(priorMsg("u-src", "ask_user", priorMessages.length));
+      priorMessages.push(priorMsg("u-src", "counter", priorMessages.length));
     }
+    const stubs = mkStubs({ priorMessages });
+    agentScript = [declineTurn];
+    await runGraph(stubs);
+    expect(agentInputs[0].canAskUser).toBeUndefined();
   });
 
   it("coerces an unavailable ask_user to the conservative fallback before persisting", async () => {
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "false";
+    // Unavailable now means unwired, not flagged off.
     const stubs = mkStubs({ priorMessages: continuationMessages });
     // Script: agent emits ask_user anyway (schema would prevent this for the
     // system agent; this pins the safety net for dispatched turns), then the
     // counterparty declines to terminate.
     agentScript = [askUserTurn, declineTurn];
-    await runGraph(stubs);
+    await runGraph(stubs, {}, { omitQuestioner: true });
     expect(stubs.createdMessages[0].parts[0].data.action).toBe("counter");
     expect(stubs.questionerEnqueues).toHaveLength(0);
     expect(stubs.expiryArms).toHaveLength(0);
@@ -919,7 +858,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
       priorTask: {
         ...V2_PRIOR_TASK,
         state: "input_required",
-        updatedAt: new Date(Date.now() - DEFAULT_ASK_USER_WINDOW_MS - ASK_USER_LOCK_SLACK_MS - 60_000),
+        updatedAt: new Date(Date.now() - ASK_USER_WINDOW_MS - ASK_USER_LOCK_SLACK_MS - 60_000),
       },
     });
     agentScript = [declineTurn];

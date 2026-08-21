@@ -1,36 +1,25 @@
 /**
  * Maintenance Graph: evaluate radar health and trigger rediscovery when unhealthy.
- * Also runs introducer discovery when connector-flow slots are underfilled.
  *
  * Write path — separate from the read-only RadarGraph.
- * Flow: loadCurrentRadar → scoreRadarHealth → [shouldRediscover] → rediscover → introducerDiscovery → logMaintenance → END
- *                                          └─ [skip rediscovery] ─────────────→ introducerDiscovery → logMaintenance → END
+ * Flow: loadCurrentRadar → scoreRadarHealth → [shouldRediscover] → rediscover → logMaintenance → END
+ *                                          └─ [skip rediscovery] ─────────────────────────→ logMaintenance → END
  */
 import { StateGraph, START, END } from '@langchain/langgraph';
 
 import { MaintenanceGraphState } from './maintenance.state.js';
 import { computeRadarHealth } from '../opportunities/radar/radar.health.js';
 import { canUserSeeOpportunity, classifyOpportunity, isActionableForViewer, RADAR_SOFT_TARGETS } from '../opportunities/opportunity.utils.js';
-import { shouldRunIntroducerDiscovery, runIntroducerDiscovery, type IntroducerDiscoveryDatabase, type IntroducerDiscoveryQueue } from '../opportunities/opportunity.introducer.js';
-import { isIntroducerDiscoveryEnabled } from '../opportunities/opportunity.introducer-feature.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('MaintenanceGraph');
 
 const FRESHNESS_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
 
-/** Database methods needed by the maintenance graph (includes introducer discovery). */
+/** Database methods needed by the maintenance graph. */
 export interface MaintenanceGraphDatabase {
   getOpportunitiesForUser(userId: string, options?: { limit?: number }): Promise<Array<{ id: string; actors: Array<{ userId: string; role: string }>; status: string; [key: string]: unknown }>>;
   getActiveIntents(userId: string): Promise<Array<{ id: string; payload: string }>>;
-  /** Get the user's personal network ID (for introducer discovery). */
-  getPersonalIndexId(userId: string): Promise<string | null>;
-  /** Get contacts with intent freshness data from a personal network (for introducer discovery). */
-  getContactsWithIntentFreshness(
-    personalIndexId: string,
-    ownerId: string,
-    limit: number,
-  ): Promise<Array<{ userId: string; latestIntentAt: string | null; intentCount: number }>>;
 }
 
 /** Cache methods needed by the maintenance graph. */
@@ -83,7 +72,6 @@ export class MaintenanceGraphFactory {
       .addNode('loadCurrentRadar', (state: MaintenanceState) => loadCurrentRadarNode(state, deps))
       .addNode('scoreRadarHealth', scoreRadarHealthNode)
       .addNode('rediscover', (state: MaintenanceState) => rediscoverNode(state, deps))
-      .addNode('introducerDiscovery', (state: MaintenanceState) => introducerDiscoveryNode(state, deps))
       .addNode('logMaintenance', logMaintenanceNode)
       .addEdge(START, 'loadCurrentRadar')
       .addConditionalEdges('loadCurrentRadar', (state) => (state.error ? 'end' : 'scoreRadarHealth'), {
@@ -92,10 +80,9 @@ export class MaintenanceGraphFactory {
       })
       .addConditionalEdges('scoreRadarHealth', shouldRediscover, {
         rediscover: 'rediscover',
-        introducerDiscovery: 'introducerDiscovery',
+        logMaintenance: 'logMaintenance',
       })
-      .addEdge('rediscover', 'introducerDiscovery')
-      .addEdge('introducerDiscovery', 'logMaintenance')
+      .addEdge('rediscover', 'logMaintenance')
       .addEdge('logMaintenance', END);
 
     return graph.compile();
@@ -179,11 +166,11 @@ export async function scoreRadarHealthNode(state: MaintenanceState) {
 }
 
 export function shouldRediscover(state: MaintenanceState): string {
-  if (state.error) return 'introducerDiscovery';
+  if (state.error) return 'logMaintenance';
   if (state.healthResult?.shouldMaintain && state.activeIntents.length > 0) {
     return 'rediscover';
   }
-  return 'introducerDiscovery';
+  return 'logMaintenance';
 }
 
 export async function rediscoverNode(state: MaintenanceState, deps: MaintenanceGraphDeps) {
@@ -227,54 +214,12 @@ export async function rediscoverNode(state: MaintenanceState, deps: MaintenanceG
   }
 }
 
-export async function introducerDiscoveryNode(state: MaintenanceState, deps: MaintenanceGraphDeps) {
-  if (!isIntroducerDiscoveryEnabled()) {
-    logger.info('Introducer discovery skipped — disabled by configuration', {
-      userId: state.userId,
-    });
-    return {};
-  }
-
-  try {
-    const connectorFlowTarget = RADAR_SOFT_TARGETS.connectorFlow;
-    if (!shouldRunIntroducerDiscovery(state.connectorFlowCount, connectorFlowTarget)) {
-      logger.verbose('Introducer discovery skipped — connector-flow target met', {
-        userId: state.userId,
-        connectorFlowCount: state.connectorFlowCount,
-        connectorFlowTarget,
-      });
-      return {};
-    }
-
-    // Cast database/queue to introducer discovery interfaces (they are compatible)
-    const result = await runIntroducerDiscovery(
-      deps.database as IntroducerDiscoveryDatabase,
-      deps.queue as IntroducerDiscoveryQueue,
-      state.userId,
-    );
-
-    logger.info('Introducer discovery complete', {
-      userId: state.userId,
-      contactsEvaluated: result.contactsEvaluated,
-      jobsEnqueued: result.jobsEnqueued,
-      skippedReason: result.skippedReason,
-    });
-
-    return { introducerDiscoveryJobsEnqueued: result.jobsEnqueued };
-  } catch (e) {
-    logger.error('MaintenanceGraph introducerDiscovery failed', { error: e });
-    // Non-fatal: do not set error, just log and continue
-    return {};
-  }
-}
-
 export async function logMaintenanceNode(state: MaintenanceState) {
   logger.info('Maintenance complete', {
     userId: state.userId,
     score: state.healthResult?.score,
     shouldMaintain: state.healthResult?.shouldMaintain,
     rediscoveryJobs: state.rediscoveryJobsEnqueued,
-    introducerDiscoveryJobs: state.introducerDiscoveryJobsEnqueued,
     activeIntents: state.activeIntents.length,
     connectorFlowCount: state.connectorFlowCount,
   });

@@ -11,7 +11,7 @@ import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeo
 import { allowedHermesActionsFor, buildHermesNegotiationTurn, consultationPromptFor, HERMES_OWNER_DIRECTIVE, isNegotiationTurnCapReached, type HermesNegotiationAction, type HermesNegotiationResponse, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment, type NegotiationAction, type NegotiationConsultationReason, type NegotiationSeat, type NegotiationProtocolVersion, type NegotiatorMemoryEntry } from '@indexnetwork/protocol';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
-import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, askUserAnswerWindowMs, configuredAskUserEnabled, isRejectLikeAction, isTerminalAction, negotiationConsultationPolicyMode, negotiationQuestionSettlementId, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, ASK_USER_WINDOW_MS, isRejectLikeAction, isTerminalAction, NEGOTIATION_CONSULTATION_POLICY_MODE, negotiationQuestionSettlementId, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
 import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
 import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
 import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload, type ExternalConsultationPersistedTurn } from '../lib/negotiation/consultation';
@@ -136,8 +136,7 @@ export interface PickupResult {
    * The CLAIMING user's own negotiator memories (P5.3 read path) — private
    * context for their agent's turn. Strictly seat-scoped: retrieval is keyed
    * on the claiming user's id, so this never contains the counterparty's
-   * memory. Absent when `NEGOTIATOR_MEMORY_INJECT` is off or nothing was
-   * retrieved.
+   * memory. Absent when nothing was retrieved.
    */
   negotiatorMemory?: NegotiatorMemoryEntry[];
   /** Recipient-private consultation; present only for that recipient's agent. */
@@ -448,7 +447,6 @@ export class NegotiationPollingService {
     const messages = await negotiationMessagesFor(conversationDatabaseAdapter, task);
     const persistedTurns = this.persistedTurns(messages);
     const questionerEnqueue = parkedQuestionEnqueue();
-    const policyMode = negotiationConsultationPolicyMode();
     // The recipient here is the claiming owner themselves. A principal nobody
     // can reach has no consultation to admit: the park would wait out the full
     // expiry and the authored question would never be read.
@@ -463,29 +461,23 @@ export class NegotiationPollingService {
       messages: persistedTurns,
       userId,
       agentId,
-      policyMode,
+      policyMode: NEGOTIATION_CONSULTATION_POLICY_MODE,
       ...(recipientPrincipalUnreachable ? { recipientPrincipalUnreachable: true } : {}),
       wiring: {
-        askUserEnabled: configuredAskUserEnabled(),
+        askUserEnabled: true,
         questionerEnabled: Boolean(questionerEnqueue),
         expiryEnabled: typeof negotiationTimeoutQueue.enqueueAskUserExpiry === 'function',
       },
     });
-    if (policyMode === 'shadow') {
-      logger.info('negotiation_consultation_policy', {
-        stage: 'assessed', mode: policyMode, eligible: eligibility.policy.eligible,
-        ...(eligibility.policy.reason ? { reason: eligibility.policy.reason } : {}),
-      });
-    }
     if (!eligibility.structuralEligible || !eligibility.eligible || !eligibility.coordinates) {
       if (task.state === 'claimed' && task.claimedByAgentId !== agentId) {
         throw new ConflictError(`Negotiation ${negotiationId} is claimed by a different agent`);
       }
       throw new SeatViolationError('Owner consultation is not available for this negotiation turn');
     }
-    if (eligibility.policy.eligible && eligibility.policy.reason && policyMode !== 'off') {
+    if (eligibility.policy.eligible && eligibility.policy.reason) {
       logger.info('negotiation_consultation_policy', {
-        stage: 'eligible', mode: policyMode, reason: eligibility.policy.reason,
+        stage: 'eligible', mode: NEGOTIATION_CONSULTATION_POLICY_MODE, reason: eligibility.policy.reason,
       });
     }
 
@@ -540,7 +532,7 @@ export class NegotiationPollingService {
       negotiationId,
       consultationAttemptId,
       expiryPayload,
-      askUserAnswerWindowMs(),
+      ASK_USER_WINDOW_MS,
     );
 
     let paused;
@@ -1138,10 +1130,10 @@ export class NegotiationPollingService {
       messages: this.persistedTurns(messages),
       userId,
       agentId: task.claimedByAgentId ?? '',
-      policyMode: negotiationConsultationPolicyMode(),
+      policyMode: NEGOTIATION_CONSULTATION_POLICY_MODE,
       ...(pickupPrincipalUnreachable ? { recipientPrincipalUnreachable: true } : {}),
       wiring: {
-        askUserEnabled: configuredAskUserEnabled(),
+        askUserEnabled: true,
         questionerEnabled: Boolean(questionerEnqueue),
         expiryEnabled: typeof negotiationTimeoutQueue.enqueueAskUserExpiry === 'function',
       },

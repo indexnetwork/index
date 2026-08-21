@@ -17,7 +17,7 @@ import { computeAnswersHash, signalIntakeRunAdapter, SIGNAL_INTAKE_RUN_TTL_MS } 
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { getSignalIntakeConfig, type SignalIntakeQuestionMode } from '../lib/fast-intake-feature';
+import { getSignalIntakeConfig } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 
 const logger = log.service.from('signal-intake');
@@ -73,7 +73,7 @@ export interface SignalIntakeServiceDeps {
   /** The intents module: intake pack, follow-up planning, and synthesis. */
   intents: Pick<Intents, 'generateIntakePack' | 'generateIntakeFollowUps' | 'synthesizeIntake'>;
   /** Intake knobs; production reads the env accessors, tests inject fixed values. */
-  intakeConfig?: () => { maxQuestions: number; mode: SignalIntakeQuestionMode };
+  intakeConfig?: () => { maxQuestions: number };
   getPremises: (userId: string) => Promise<Array<{ text: string }>>;
   getNetworkTitles: (userId: string) => Promise<string[]>;
   getGlobalContext: (userId: string) => Promise<string | null>;
@@ -182,7 +182,7 @@ export class SignalIntakeService {
     input: { rounds: IntakeRound[]; plannedTotal?: number },
   ): Promise<{ questions: IntakePackQuestion[]; total: number }> {
     const started = Date.now();
-    const { maxQuestions, mode } = this.deps.intakeConfig?.() ?? getSignalIntakeConfig();
+    const { maxQuestions } = this.deps.intakeConfig?.() ?? getSignalIntakeConfig();
     const { brief, question: round1 } = await this.getOrCreatePack(userId);
     const remaining = Math.max(0, maxQuestions - input.rounds.length);
     if (remaining === 0) {
@@ -196,7 +196,7 @@ export class SignalIntakeService {
     const lockedTotal = input.plannedTotal !== undefined
       ? Math.min(Math.max(Math.trunc(input.plannedTotal), 1), maxQuestions)
       : undefined;
-    const budget = mode === 'plural' || lockedTotal === undefined ? remaining : 1;
+    const budget = lockedTotal === undefined ? remaining : 1;
     const plan = await this.deps.intents.generateIntakeFollowUps({
       brief,
       rounds: input.rounds,
@@ -206,10 +206,9 @@ export class SignalIntakeService {
         : {}),
     });
 
-    const questions = mode === 'plural' ? plan.questions : plan.questions.slice(0, 1);
-    const total = lockedTotal ?? (mode === 'plural'
-      ? input.rounds.length + plan.questions.length
-      : input.rounds.length + Math.min(Math.max(plan.plannedFollowUpCount, questions.length), remaining));
+    const questions = plan.questions.slice(0, 1);
+    const total = lockedTotal
+      ?? input.rounds.length + Math.min(Math.max(plan.plannedFollowUpCount, questions.length), remaining);
 
     logger.info('signal_intake_stage', {
       stage: 'question', durationMs: Date.now() - started,

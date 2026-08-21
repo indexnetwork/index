@@ -42,7 +42,6 @@ function makeDeps(task: ReturnType<typeof makeTask> | null = makeTask()) {
 }
 
 beforeEach(() => {
-  delete process.env.NEGOTIATION_WATCHDOG_ENABLED;
 });
 
 describe('NegotiationWatchdogQueue', () => {
@@ -155,22 +154,7 @@ describe('NegotiationWatchdogQueue', () => {
     expect(deps.enqueueRunExisting).not.toHaveBeenCalled();
   });
 
-  it('flag off registers neither the repeatable schedule nor worker', async () => {
-    const upsertJobScheduler = mock(async () => undefined);
-    const createWorker = mock(() => ({ close: mock(async () => undefined) }));
-    const queue = new NegotiationWatchdogQueue({
-      queue: { upsertJobScheduler, close: mock(async () => undefined) } as never,
-      createWorker: createWorker as never,
-    });
-
-    await queue.start();
-
-    expect(upsertJobScheduler).not.toHaveBeenCalled();
-    expect(createWorker).not.toHaveBeenCalled();
-  });
-
   it('flag on registers the five-minute scheduler and worker', async () => {
-    process.env.NEGOTIATION_WATCHDOG_ENABLED = 'true';
     const upsertJobScheduler = mock(async () => undefined);
     const createWorker = mock(() => ({ close: mock(async () => undefined) }));
     const queue = new NegotiationWatchdogQueue({

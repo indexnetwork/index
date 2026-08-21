@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
 
+import { stubScreenerReachOut } from "./screen.stub.js";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage, type NegotiatorClientDmQuery } from "../negotiation.client-dm.js";
@@ -262,11 +263,10 @@ function runGraph(stubs: ReturnType<typeof mkStubs>, input: Record<string, unkno
 describe("negotiation graph — client-DM is system-agent-only", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
   let agentInputs: NegotiationAgentInput[] = [];
-  const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-  const origPolicyMode = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
+  let restoreScreener: () => void;
 
   beforeAll(() => {
+    restoreScreener = stubScreenerReachOut();
     origInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function (input: NegotiationAgentInput) {
       agentInputs.push(input);
@@ -278,22 +278,13 @@ describe("negotiation graph — client-DM is system-agent-only", () => {
     };
   });
 
-  afterAll(() => { IndexNegotiator.prototype.invoke = origInvoke; });
+  afterAll(() => {
+    IndexNegotiator.prototype.invoke = origInvoke;
+    restoreScreener();
+  });
 
   beforeEach(() => {
     agentInputs = [];
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "off";
-  });
-
-  afterEach(() => {
-    if (origFlag === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED;
-    else process.env.NEGOTIATION_ASK_USER_ENABLED = origFlag;
-    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
-    else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
-    if (origPolicyMode === undefined) delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-    else process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = origPolicyMode;
   });
 
   it("hands the excerpt to the system agent and NOTHING to the dispatch payload", async () => {
@@ -323,18 +314,6 @@ describe("negotiation graph — client-DM is system-agent-only", () => {
       // the counterparty's, which is the other entry in this map.
       expect(query.intentId).toBe(OWN_INTENT[query.userId]);
     }
-  });
-
-  it("does not retrieve at all when the A2H kill switch is off", async () => {
-    // The flag is the feature switch, not a per-turn grant: with it off the
-    // negotiation must run exactly as before, with no DM query issued.
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "false";
-    const stubs = mkStubs();
-    await runGraph(stubs);
-
-    expect(stubs.dmQueries).toEqual([]);
-    expect(agentInputs.length).toBeGreaterThan(0);
-    for (const input of agentInputs) expect(input.clientDm).toBeUndefined();
   });
 
   it("runs the negotiation unchanged when the dep is absent entirely", async () => {

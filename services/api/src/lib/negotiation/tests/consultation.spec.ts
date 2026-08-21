@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { QUESTION_BUDGET_PER_PRINCIPAL } from '@indexnetwork/protocol';
 
 import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload, consultationActorSetMatchesBinding, consultationExpiryReadiness, type ExternalConsultationEligibilityInput } from '../consultation';
 
@@ -186,11 +187,13 @@ describe('external owner consultation eligibility', () => {
     ['disabled ask-user', (input: ExternalConsultationEligibilityInput) => { input.wiring.askUserEnabled = false; }],
     ['disabled Questioner', (input: ExternalConsultationEligibilityInput) => { input.wiring.questionerEnabled = false; }],
     ['disabled expiry', (input: ExternalConsultationEligibilityInput) => { input.wiring.expiryEnabled = false; }],
-    ['prior same-seat consultation', (input: ExternalConsultationEligibilityInput) => {
-      input.messages.unshift({
-        senderId: `agent:${userId}`,
-        turn: { action: 'ask_user', assessment: { suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } } },
-      });
+    ['a spent per-principal question budget', (input: ExternalConsultationEligibilityInput) => {
+      for (let i = 0; i < QUESTION_BUDGET_PER_PRINCIPAL; i++) {
+        input.messages.unshift({
+          senderId: `agent:${userId}`,
+          turn: { action: 'ask_user', assessment: { suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } } },
+        });
+      }
     }],
     ['last turn from same seat', (input: ExternalConsultationEligibilityInput) => { input.messages[1].senderId = `agent:${userId}`; }],
     ['wrong participant sender', (input: ExternalConsultationEligibilityInput) => { input.messages[1].senderId = 'agent:user-unrelated'; }],

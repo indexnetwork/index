@@ -12,7 +12,6 @@ import { Intents } from '../intents/intent.module.js';
 import { withCallLogging } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from '../shared/observability/request-context.js';
-import { discoveryProfileMatchingEnabled, discoveryProfileSource } from './discovery.env.js';
 import { prepLog, scopeLog, resolveLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /**
@@ -43,7 +42,7 @@ export async function prepNode(state: OpportunityState, deps: OpportunityGraphDe
             error: 'You need to join at least one network to find opportunities.',
           };
         }
-        const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
+        const discoveryUserId = state.userId;
         const [intents, profile] = await Promise.all([
           deps.database.getActiveIntents(discoveryUserId),
           deps.database.getProfile(discoveryUserId),
@@ -60,40 +59,13 @@ export async function prepNode(state: OpportunityState, deps: OpportunityGraphDe
               context: profile.context ?? undefined,
             }
           : null;
-        // Source premises are loaded after scope is resolved so premise discovery
-        // only uses premises assigned to the target network(s), and only up to
-        // DISCOVERY_SOURCE_PREMISE_LIMIT. Loading all premises here caused
-        // BACKEND-5: thousands of parallel vector searches for premise-rich users.
-        const sourcePremises: Array<{ premiseId: Id<'premises'>; embedding: number[] }> = [];
-        const profileEnabled = discoveryProfileMatchingEnabled();
-        // Context-backed discovery is exclusively the user_context profile-source
-        // strategy. Premise mode must not load contexts or emit context-to-intent
-        // evidence merely because intent matching is also enabled.
-        const userContextProfileEnabled = profileEnabled && discoveryProfileSource() === 'user_context';
-        const contextToIntentEnabled = userContextProfileEnabled && process.env.DISCOVERY_CONTEXT_TO_INTENT !== '0';
-        const contextToContextEnabled = userContextProfileEnabled;
-        const rawContexts = (contextToIntentEnabled || contextToContextEnabled) && typeof deps.database.getUserContexts === 'function'
-          ? await deps.database.getUserContexts(discoveryUserId)
-          : [];
-        const sourceContexts = rawContexts
-          // The global row (networkId: null) is excluded here — it is not in
-          // userNetworkIds — so context-to-intent discovery stays network-scoped.
-          .filter((c: { id: string; networkId: string | null; embedding: number[] | null }) => c.embedding && c.embedding.length > 0 && c.networkId !== null && userNetworkIds.includes(c.networkId as Id<'networks'>))
-          .map((c: { id: string; networkId: string | null; text: string; embedding: number[] | null }) => ({
-            contextId: c.id,
-            networkId: c.networkId as Id<'networks'>,
-            text: c.text,
-            embedding: c.embedding!,
-          }));
         return {
           userNetworks: userNetworkIds,
           indexedIntents,
           sourceProfile,
-          sourcePremises,
-          sourceContexts,
           trace: [{
             node: "prep",
-            detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), premise discovery deferred, ${sourceContexts.length} context(s), ${profile ? 'profile loaded' : 'no profile'}`,
+            detail: `${userNetworkIds.length} network(s), ${intents.length} intent(s), ${profile ? 'profile loaded' : 'no profile'}`,
           }],
         };
       },

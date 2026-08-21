@@ -35,8 +35,6 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("Negotiation E2E", () => {
     // and a trace collector, so the screenDecision metadata + negotiation_screen
     // trace event can be asserted below. Random UUID: the opportunity row does
     // not exist, so status flips update 0 rows (already .catch-guarded).
-    const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
     const opportunityId = randomUUID();
     const traceEvents: Array<Record<string, unknown>> = [];
 
@@ -59,8 +57,6 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("Negotiation E2E", () => {
       maxTurns: 4,
       }),
     ).finally(() => {
-      if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
-      else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
     });
 
     // Verify outcome exists
@@ -81,7 +77,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("Negotiation E2E", () => {
     expect(metadata.initiatorUserId).toBe(sourceId);
     expect(metadata.sourceUserId).toBe(sourceId);
     // IND-397: fresh tasks are version-stamped (v1 unless env opts into v2).
-    expect(metadata.protocolVersion).toBe(process.env.NEGOTIATION_PROTOCOL_VERSION === "v2" ? "v2" : "v1");
+    expect(metadata.protocolVersion).toBe("v2");
 
     // IND-398: shadow screen ran before the first turn — decision persisted on
     // task metadata and surfaced as a negotiation_screen trace event, and the
@@ -111,9 +107,7 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("Negotiation E2E", () => {
 
     // Force a deterministic `pass` — the real screen LLM verdict is not stable
     // enough to gate an e2e on; enforcement mechanics are what's under test.
-    const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
     const origInvoke = NegotiationScreener.prototype.invoke;
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     NegotiationScreener.prototype.invoke = async () => ({
       decision: "pass",
       reasoning: "e2e forced pass: generic overlap",
@@ -164,14 +158,10 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("Negotiation E2E", () => {
       expect(outcomeEvents[0].outcome).toBe("screened_out");
     } finally {
       NegotiationScreener.prototype.invoke = origInvoke;
-      if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
-      else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
     }
   }, 60_000);
 
   it("runs a full v2 negotiation: seat-scoped actions, counterparty-only accept (IND-397)", async () => {
-    const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     try {
       const factory = new NegotiationGraphFactory(
         conversationDatabaseAdapter as unknown as NegotiationGraphDatabase,
@@ -236,8 +226,6 @@ describe.skipIf(!RUN_PAID_INTEGRATION)("Negotiation E2E", () => {
         expect(lastTurn.senderId).toBe(`agent:${counterpartyId}`);
       }
     } finally {
-      if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION;
-      else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;
     }
   }, 180_000);
 });

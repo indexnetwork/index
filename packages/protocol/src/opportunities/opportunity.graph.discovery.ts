@@ -11,9 +11,8 @@ import type { CandidateMatch } from './opportunity.state.js';
 import { getModelName } from '../shared/agent/model.config.js';
 import { timed } from '../shared/observability/performance.js';
 import { withCandidateEvidence } from './opportunity.evidence.js';
-import { discoveryIntentMatchingEnabled, discoveryProfileMatchingEnabled, discoveryProfileSource } from './discovery.env.js';
 import { buildDiscovererContext, discoveryLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
-import { auxiliaryStrategyTraces, collectHydeResults, computeLensStats, mergeStrategyCandidates, runAuxiliaryStrategies, runQueryHydeDiscovery, toLensEmbeddings, type DiscoveryStrategyContext } from "./opportunity.graph.discovery-strategies.js";
+import { collectHydeResults, computeLensStats, mergeStrategyCandidates, runQueryHydeDiscovery, toLensEmbeddings, type DiscoveryStrategyContext } from "./opportunity.graph.discovery-strategies.js";
 
 /** Trace entries accumulate in the order the frontend renders them. */
 type TraceEntry = { node: string; detail?: string; data?: Record<string, unknown> };
@@ -30,7 +29,7 @@ const PER_INDEX_LIMIT = 80;
 export async function discoveryNode(state: OpportunityState, deps: OpportunityGraphDeps) {
   return timed("OpportunityGraph.discovery", async () => {
     const startTime = Date.now();
-    const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
+    const discoveryUserId = state.userId;
 
     /** Filter candidates to targetUserId when set (direct-connection mode). */
     const filterByTarget = (candidates: CandidateMatch[]): CandidateMatch[] => {
@@ -60,21 +59,12 @@ export async function discoveryNode(state: OpportunityState, deps: OpportunityGr
         return await discoverDirectConnection(state, deps, discoveryUserId, startTime);
       }
 
-      // Discovery match-type gating (DISCOVERY_ALLOWED_TYPES / DISCOVERY_PROFILE_SOURCE).
       const ctx: DiscoveryStrategyContext = {
         state,
         deps,
         discoveryUserId,
         limitPerStrategy: LIMIT_PER_STRATEGY,
         perIndexLimit: PER_INDEX_LIMIT,
-        corpusGating: {
-          intents: discoveryIntentMatchingEnabled(),
-          profile: discoveryProfileMatchingEnabled(),
-          profileCorpus: discoveryProfileSource(),
-        },
-        intentResultsEnabled: discoveryIntentMatchingEnabled(),
-        premiseResultsEnabled: discoveryProfileMatchingEnabled() && discoveryProfileSource() === 'premise',
-        contextResultsEnabled: discoveryProfileMatchingEnabled() && discoveryProfileSource() === 'user_context',
       };
 
       if (state.discoverySource === 'context') {
@@ -261,23 +251,10 @@ async function discoverFromContext(
       },
     });
 
-    const [premiseCands, contextCands, contextSimCands] = await runAuxiliaryStrategies(ctx);
-    const withPremisesAndContext = mergeStrategyCandidates(queryCandidates, premiseCands, contextCands, contextSimCands);
-    traceEntries.push(...auxiliaryStrategyTraces(premiseCands, contextCands, contextSimCands));
-    return { candidates: filterByTarget(withPremisesAndContext), trace: traceEntries };
+    return { candidates: filterByTarget(mergeStrategyCandidates(queryCandidates)), trace: traceEntries };
   }
 
-  // No search query — premise-to-premise + context-to-intent discovery
-  const [premiseCands, contextCands, contextSimCands] = await runAuxiliaryStrategies(ctx);
-  if (premiseCands.length > 0 || contextCands.length > 0 || contextSimCands.length > 0) {
-    const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
-    const traceEntries: TraceEntry[] = auxiliaryStrategyTraces(premiseCands, contextCands, contextSimCands);
-    traceEntries.push({
-      node: "discovery",
-      detail: `${[premiseCands.length > 0 && 'premise-to-premise', contextCands.length > 0 && 'context-to-intent', contextSimCands.length > 0 && 'context-to-context'].filter(Boolean).length} strategies → ${premiseCands.length + contextCands.length + contextSimCands.length} raw, ${merged.length} after dedup`,
-    });
-    return { candidates: filterByTarget(merged), trace: traceEntries };
-  }
+  // No search query, and no profile corpus to fall back on.
   return { candidates: [] };
 }
 
@@ -298,14 +275,6 @@ async function discoverFromIntent(
   const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
   if (!searchText) {
     discoveryLog.warn('No search text available for intent path');
-    const [premiseCands, contextCands, contextSimCands] = await runAuxiliaryStrategies(ctx);
-    const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
-    if (merged.length > 0) {
-      return {
-        candidates: filterByTarget(merged),
-        trace: [{ node: "discovery", detail: `No search text; premise → ${premiseCands.length}, context → ${contextCands.length}, context-sim → ${contextSimCands.length}, merged → ${merged.length} candidate(s)` }],
-      };
-    }
     return { candidates: [] };
   }
 
@@ -323,15 +292,6 @@ async function discoverFromIntent(
   const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
   const lenses = hydeResult.lenses ?? [];
   if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
-    const [premiseCands, contextCands, contextSimCands] = await runAuxiliaryStrategies(ctx);
-    const merged = mergeStrategyCandidates(premiseCands, contextCands, contextSimCands);
-    if (merged.length > 0) {
-      return {
-        hydeEmbeddings: {} as Record<string, number[]>,
-        candidates: filterByTarget(merged),
-        trace: [{ node: "discovery", detail: `No HyDE embeddings; premise → ${premiseCands.length}, context → ${contextCands.length}, context-sim → ${contextSimCands.length}, merged → ${merged.length} candidate(s)` }],
-      };
-    }
     return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
   }
 
@@ -345,19 +305,13 @@ async function discoverFromIntent(
         limitPerStrategy: ctx.limitPerStrategy,
         limit: ctx.perIndexLimit,
         minScore: deps.retrievalMinSimilarity,
-        corpusGating: ctx.corpusGating,
       });
-      allCandidates.push(...collectHydeResults(results, targetIndex.networkId, ctx));
+      allCandidates.push(...collectHydeResults(results, targetIndex.networkId));
     })
   );
   const byUserAndIndex = new Map<string, CandidateMatch>();
   for (const c of allCandidates) {
-    const entityKey = c.candidateIntentId
-      ? `intent:${c.candidateIntentId}`
-      : c.candidatePremiseId
-        ? `premise:${c.candidatePremiseId}`
-        : `context:${c.candidateContextId}`;
-    const key = `${c.candidateUserId}:${c.networkId}:${entityKey}`;
+    const key = `${c.candidateUserId}:${c.networkId}:intent:${c.candidateIntentId}`;
     if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
       byUserAndIndex.set(key, c);
     }
@@ -426,14 +380,7 @@ async function discoverFromIntent(
     });
   }
 
-  const [premiseCands, contextCands, contextSimCands] = await runAuxiliaryStrategies(ctx);
-  const allStrategies = mergeStrategyCandidates(candidates, premiseCands, contextCands, contextSimCands);
-  if (premiseCands.length > 0 || contextCands.length > 0 || contextSimCands.length > 0) {
-    traceEntries.push({
-      node: "discovery",
-      detail: `+ Premise → ${premiseCands.length}, Context → ${contextCands.length}, Context-sim → ${contextSimCands.length}, merged to ${allStrategies.length} candidate(s)`,
-    });
-  }
+  const allStrategies = mergeStrategyCandidates(candidates);
   return {
     hydeEmbeddings: hydeEmbeddings as Record<string, number[]>,
     candidates: filterByTarget(allStrategies),

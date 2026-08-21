@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { createOpportunityTools } from "../opportunity.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { Opportunity } from "../../shared/interfaces/database.interface.js";
@@ -47,18 +47,6 @@ function captureTool(deps: ToolDeps) {
   createOpportunityTools(defineTool as any, withAttestation);
   return captured!;
 }
-
-const ORIGINAL_QUESTIONER_ENABLED = process.env.QUESTIONER_ENABLED;
-const ORIGINAL_UPTAKE_ENABLED = process.env.QUESTIONER_UPTAKE_ENABLED;
-
-function restoreUptakeFlags(): void {
-  if (ORIGINAL_QUESTIONER_ENABLED === undefined) delete process.env.QUESTIONER_ENABLED;
-  else process.env.QUESTIONER_ENABLED = ORIGINAL_QUESTIONER_ENABLED;
-  if (ORIGINAL_UPTAKE_ENABLED === undefined) delete process.env.QUESTIONER_UPTAKE_ENABLED;
-  else process.env.QUESTIONER_UPTAKE_ENABLED = ORIGINAL_UPTAKE_ENABLED;
-}
-
-afterEach(restoreUptakeFlags);
 
 describe("update_opportunity — state machine", () => {
   test("blocks transition from rejected to accepted", async () => {
@@ -255,12 +243,10 @@ describe("update_opportunity — retired pre-accept uptake check", () => {
     } as unknown as Opportunity;
   }
 
-  test("acceptance never consults pending questions or returns an advisory, even with the legacy flags set", async () => {
+  test("acceptance never consults pending questions or returns an advisory", async () => {
     // The pre-accept uptake interlock is retired (conversational-questions
-    // plan, "Retirements"). The legacy env flags are dead: acceptance must
-    // proceed directly, leaving leftover pending uptake rows untouched.
-    process.env.QUESTIONER_ENABLED = "true";
-    process.env.QUESTIONER_UPTAKE_ENABLED = "true";
+    // plan, "Retirements"): acceptance proceeds directly, leaving leftover
+    // pending uptake rows untouched.
     const invoke = mock(async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }));
     const findPendingQuestions = mock(async () => [{ id: "question-uptake-1" }]);
     const deps = {

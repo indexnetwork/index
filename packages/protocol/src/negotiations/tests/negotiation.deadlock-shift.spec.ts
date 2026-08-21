@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { z } from "zod";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { createNegotiationTools } from "../negotiation.tools.js";
+import { DEFAULT_DEADLOCK_THRESHOLD } from "../negotiation.deadlock.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 
 type Fixture<T> = T extends (...args: any[]) => unknown ? (...args: any[]) => any : T extends object ? { [K in keyof T]?: Fixture<T[K]> } : T;
@@ -80,7 +82,7 @@ async function runGraph(
     indexContext: { networkId: "net-1", prompt: "" },
     seedAssessment: { reasoning: "complementary", valencyRole: "peer" },
     opportunityId: "opp-1",
-    maxTurns: 5,
+    maxTurns: SCRIPT.length,
     ...input,
   } as Partial<typeof NegotiationGraphState.State>);
   if (!traceEvents) return invoke();
@@ -104,36 +106,27 @@ function patchAgent(actions: string[]) {
   return { inputs, restore: () => { IndexNegotiator.prototype.invoke = orig; } };
 }
 
-const ENV_KEYS = [
-  "NEGOTIATION_DEADLOCK_SHIFT_ENABLED",
-  "NEGOTIATION_DEADLOCK_THRESHOLD",
-  "NEGOTIATION_PROTOCOL_VERSION",
-  "NEGOTIATION_SCREEN_MODE",
-  "NEGOTIATION_ASK_USER_ENABLED",
-] as const;
-const origEnv: Record<string, string | undefined> = {};
+let restoreScreener: () => void;
 
 beforeAll(() => {
-  for (const k of ENV_KEYS) origEnv[k] = process.env[k];
+  restoreScreener = stubScreenerReachOut();
 });
 afterAll(() => {
-  for (const k of ENV_KEYS) {
-    if (origEnv[k] === undefined) delete process.env[k]; else process.env[k] = origEnv[k];
-  }
-});
-beforeEach(() => {
-  for (const k of ENV_KEYS) delete process.env[k];
-  process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
+  restoreScreener();
 });
 
-// With threshold 2 and maxTurns 5: turn 0 outreach (run 0), turn 1 (run 0),
-// turn 2 (run 1), turn 3 (run 2 → deadlocked), turn 4 (run 3 → deadlocked).
-const SCRIPT = ["outreach", "counter", "counter", "counter", "counter"];
+/**
+ * Turn i drafts against a history of i messages, so the trailing
+ * non-convergent run at turn i is i-1 (the opening outreach resets it).
+ * Deadlock therefore first bites at turn T+1, and one extra counter gives a
+ * second deadlocked turn — enough to pin "record persisted exactly once".
+ */
+const T = DEFAULT_DEADLOCK_THRESHOLD;
+const FIRST_SHIFTED_TURN = T + 1;
+const SCRIPT = ["outreach", ...Array<string>(T + 2).fill("counter")];
 
 describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
-  it("flag ON: bargaining stance from the threshold turn, record persisted once, trace event once", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-    process.env.NEGOTIATION_DEADLOCK_THRESHOLD = "2";
+  it("bargaining stance from the threshold turn, record persisted once, trace event once", async () => {
     const stubs = mkStubs();
     const { inputs, restore } = patchAgent(SCRIPT);
     const events: Array<Record<string, unknown>> = [];
@@ -143,21 +136,19 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
       restore();
     }
 
-    expect(inputs).toHaveLength(5);
-    expect(inputs[0].bargaining).toBeUndefined();
-    expect(inputs[1].bargaining).toBeUndefined();
-    expect(inputs[2].bargaining).toBeUndefined();
-    expect(inputs[3].bargaining).toEqual({ consecutiveNonConvergent: 2 });
-    expect(inputs[4].bargaining).toEqual({ consecutiveNonConvergent: 3 });
+    expect(inputs).toHaveLength(SCRIPT.length);
+    for (let i = 0; i < FIRST_SHIFTED_TURN; i++) expect(inputs[i].bargaining).toBeUndefined();
+    expect(inputs[FIRST_SHIFTED_TURN].bargaining).toEqual({ consecutiveNonConvergent: T });
+    expect(inputs[FIRST_SHIFTED_TURN + 1].bargaining).toEqual({ consecutiveNonConvergent: T + 1 });
 
     // Record persisted exactly once (first shifted turn), with the full shape.
     expect(stubs.deadlockWrites).toHaveLength(1);
     expect(stubs.deadlockWrites[0].taskId).toBe("task-1");
     expect(stubs.deadlockWrites[0].record).toMatchObject({
       reason: "consecutive_non_convergent",
-      consecutiveNonConvergent: 2,
-      threshold: 2,
-      shiftedAtTurn: 3,
+      consecutiveNonConvergent: T,
+      threshold: T,
+      shiftedAtTurn: FIRST_SHIFTED_TURN,
     });
     expect(typeof stubs.deadlockWrites[0].record.detectedAt).toBe("string");
     expect(["initiator", "counterparty"]).toContain(stubs.deadlockWrites[0].record.seat as string);
@@ -166,9 +157,9 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
     expect(shiftEvents).toHaveLength(1);
     expect(shiftEvents[0]).toMatchObject({
       opportunityId: "opp-1",
-      turnIndex: 3,
-      consecutiveNonConvergent: 2,
-      threshold: 2,
+      turnIndex: FIRST_SHIFTED_TURN,
+      consecutiveNonConvergent: T,
+      threshold: T,
     });
 
     // The stance never leaks into the persisted turn payloads.
@@ -179,63 +170,30 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
   });
 
   it("question turns count toward the run", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-    process.env.NEGOTIATION_DEADLOCK_THRESHOLD = "2";
     const stubs = mkStubs();
-    const { inputs, restore } = patchAgent(["outreach", "question", "counter", "counter", "counter"]);
+    const { inputs, restore } = patchAgent(["outreach", "question", ...Array<string>(T + 1).fill("counter")]);
     try {
       await runGraph(stubs);
     } finally {
       restore();
     }
-    expect(inputs[3].bargaining).toEqual({ consecutiveNonConvergent: 2 });
+    expect(inputs[FIRST_SHIFTED_TURN].bargaining).toEqual({ consecutiveNonConvergent: T });
   });
 
-  it("flag OFF (default): identical drafting inputs minus the bargaining field — no record, no event", async () => {
-    process.env.NEGOTIATION_DEADLOCK_THRESHOLD = "2"; // threshold alone must not activate anything
-
-    const offStubs = mkStubs();
-    const off = patchAgent(SCRIPT);
-    const offEvents: Array<Record<string, unknown>> = [];
-    try {
-      await runGraph(offStubs, {}, offEvents);
-    } finally {
-      off.restore();
-    }
-
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-    const onStubs = mkStubs();
-    const on = patchAgent(SCRIPT);
-    try {
-      await runGraph(onStubs);
-    } finally {
-      on.restore();
-    }
-
-    // Flag off: no bargaining field anywhere, no persistence, no trace event.
-    for (const input of off.inputs) expect("bargaining" in input).toBe(false);
-    expect(offStubs.deadlockWrites).toHaveLength(0);
-    expect(offEvents.filter((e) => e.type === "negotiation_deadlock_shift")).toHaveLength(0);
-
-    // Disabled-path equivalence: every flag-off drafting input is deep-equal
-    // to the flag-on input once the bargaining field is removed — the legacy
-    // path is exactly preserved.
-    expect(on.inputs).toHaveLength(off.inputs.length);
-    const scrub = (i: NegotiationAgentInput) => {
-      const { bargaining: _bargaining, ...rest } = i;
-      return JSON.parse(JSON.stringify(rest));
-    };
-    for (let i = 0; i < off.inputs.length; i++) {
-      expect(scrub(off.inputs[i])).toEqual(scrub(on.inputs[i]));
-    }
-  });
-
-  it("v1 + flag ON: never shifts (gated alongside the protocol version)", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v1";
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-    process.env.NEGOTIATION_DEADLOCK_THRESHOLD = "2";
+  it("v1: never shifts (gated on the protocol version)", async () => {
+    // New negotiations are v2. A v1 negotiation now only arises by continuing
+    // a task stamped v1 before the cutover, so that is how this seeds one.
     const stubs = mkStubs();
-    const { inputs, restore } = patchAgent(["propose", "counter", "counter", "counter", "counter"]);
+    (stubs.database as unknown as { getNegotiationTaskForOpportunity: () => Promise<unknown> })
+      .getNegotiationTaskForOpportunity = async () => ({
+        id: "task-v1",
+        conversationId: "conv-1",
+        state: "completed",
+        metadata: { type: "negotiation", sourceUserId: "u-src", initiatorUserId: "u-src", protocolVersion: "v1" },
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      });
+    const { inputs, restore } = patchAgent(["propose", ...Array<string>(T + 2).fill("counter")]);
     try {
       await runGraph(stubs);
     } finally {
@@ -246,12 +204,10 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
   });
 
   it("externally dispatched turns never receive the stance and never persist a record", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-    process.env.NEGOTIATION_DEADLOCK_THRESHOLD = "2";
     const stubs = mkStubs();
     const payloads: Array<Record<string, unknown>> = [];
     let call = 0;
-    const script = ["outreach", "counter", "counter", "counter", "withdraw"];
+    const script = ["outreach", ...Array<string>(T + 1).fill("counter"), "withdraw"];
     (stubs as { dispatcher: unknown }).dispatcher = {
       hasExternalAgent: async () => false,
       dispatch: async (_userId: string, _scope: unknown, payload: Record<string, unknown>) => {
@@ -283,8 +239,6 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
   });
 
   it("fail-open: a throwing setTaskDeadlockShift never breaks the negotiation", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-    process.env.NEGOTIATION_DEADLOCK_THRESHOLD = "2";
     const stubs = mkStubs({ setTaskDeadlockShiftThrows: true });
     const { inputs, restore } = patchAgent(SCRIPT);
     let result: { outcome?: { reason?: string } | null };
@@ -293,14 +247,12 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
     } finally {
       restore();
     }
-    expect(inputs).toHaveLength(5);
-    expect(inputs[3].bargaining).toEqual({ consecutiveNonConvergent: 2 });
+    expect(inputs).toHaveLength(SCRIPT.length);
+    expect(inputs[FIRST_SHIFTED_TURN].bargaining).toEqual({ consecutiveNonConvergent: T });
     expect(result.outcome?.reason).toBe("turn_cap");
   });
 
   it("fail-open: an absent setTaskDeadlockShift hook still shifts and completes", async () => {
-    process.env.NEGOTIATION_DEADLOCK_SHIFT_ENABLED = "true";
-    process.env.NEGOTIATION_DEADLOCK_THRESHOLD = "2";
     const stubs = mkStubs({ omitSetTaskDeadlockShift: true });
     const { inputs, restore } = patchAgent(SCRIPT);
     try {
@@ -308,7 +260,7 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
     } finally {
       restore();
     }
-    expect(inputs[3].bargaining).toEqual({ consecutiveNonConvergent: 2 });
+    expect(inputs[FIRST_SHIFTED_TURN].bargaining).toEqual({ consecutiveNonConvergent: T });
   });
 });
 

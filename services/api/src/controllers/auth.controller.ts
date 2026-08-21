@@ -77,8 +77,9 @@ export class AuthController {
         ...userFields,
         notificationPreferences,
       },
-      // Feature flags the web app reads off the session bootstrap (no separate
-      // config channel). These gate the negotiator entry and agent surfaces.
+      // Both surfaces now ship on unconditionally. The fields stay so the web
+      // app keeps working, and can be removed once the web side stops reading
+      // them (apps/web AuthContext, i/[intentId]/page.tsx).
       features: {
         negotiatorChat: isNegotiatorChatEnabled(),
         fastSignalIntake: isFastSignalIntakeEnabled(),

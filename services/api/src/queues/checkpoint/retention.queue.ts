@@ -25,46 +25,14 @@ export interface CheckpointRetentionRunResult extends CheckpointPruneResult {
   batches: number;
 }
 
-const DEFAULT_RETENTION_DAYS = 7;
-const DEFAULT_BATCH_SIZE = 100;
-const MAX_BATCH_SIZE = 1000;
+/** Retention window for PostgresSaver checkpoint threads, in whole days. */
+const RETENTION_DAYS = 7;
+/** Threads deleted per batch. */
+export const BATCH_SIZE = 100;
 /** Cap batches per run so a huge backlog drains over a few runs instead of one long transaction storm. */
 const MAX_BATCHES_PER_RUN = 10;
 /** Hourly, offset from the top of the hour to avoid stacking with other crons. */
 const CRON_EXPRESSION = '43 * * * *';
-
-const DISABLED_VALUES = new Set(['0', 'off', 'none', 'never', 'disabled', 'false']);
-
-/**
- * Resolve the retention window from CHECKPOINT_RETENTION_DAYS.
- *
- * @returns Whole days (>= 1), or null when retention is disabled
- *   (`0`, `off`, `none`, `never`, `disabled`, `false`, or a non-positive number).
- *   Unset or unparseable values fall back to the 7-day default.
- */
-export function resolveRetentionDays(
-  raw: string | undefined = process.env.CHECKPOINT_RETENTION_DAYS,
-): number | null {
-  const trimmed = raw?.trim().toLowerCase();
-  if (!trimmed) return DEFAULT_RETENTION_DAYS;
-  if (DISABLED_VALUES.has(trimmed)) return null;
-  const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed)) return DEFAULT_RETENTION_DAYS;
-  if (parsed <= 0) return null;
-  return Math.max(1, Math.floor(parsed));
-}
-
-/**
- * Resolve the per-batch thread limit from CHECKPOINT_PRUNE_BATCH_SIZE.
- * Unset or invalid values fall back to 100; the value is clamped to [1, 1000].
- */
-export function resolveBatchSize(
-  raw: string | undefined = process.env.CHECKPOINT_PRUNE_BATCH_SIZE,
-): number {
-  const parsed = Number(raw?.trim());
-  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_BATCH_SIZE;
-  return Math.min(MAX_BATCH_SIZE, Math.floor(parsed));
-}
 
 export class CheckpointRetentionCron {
   private readonly logger = log.queue.from('CheckpointRetention');
@@ -78,7 +46,6 @@ export class CheckpointRetentionCron {
   /**
    * Run one retention sweep: delete stale checkpoint threads in batches until
    * a batch comes back short (backlog drained) or MAX_BATCHES_PER_RUN is hit.
-   * No-op (all zeros) when retention is disabled via env.
    */
   async prune(): Promise<CheckpointRetentionRunResult> {
     const totals: CheckpointRetentionRunResult = {
@@ -88,29 +55,20 @@ export class CheckpointRetentionCron {
       writes: 0,
       batches: 0,
     };
-    const retentionDays = resolveRetentionDays();
-    if (retentionDays === null) return totals;
-    const batchSize = resolveBatchSize();
-
     for (let i = 0; i < MAX_BATCHES_PER_RUN; i++) {
-      const batch = await this.deps.pruneStaleCheckpointThreads({ retentionDays, batchSize });
+      const batch = await this.deps.pruneStaleCheckpointThreads({ retentionDays: RETENTION_DAYS, batchSize: BATCH_SIZE });
       totals.batches += 1;
       totals.threads += batch.threads;
       totals.checkpoints += batch.checkpoints;
       totals.blobs += batch.blobs;
       totals.writes += batch.writes;
-      if (batch.threads < batchSize) break;
+      if (batch.threads < BATCH_SIZE) break;
     }
     return totals;
   }
 
   start(): void {
     if (this.task) return;
-    const retentionDays = resolveRetentionDays();
-    if (retentionDays === null) {
-      this.logger.info('Checkpoint retention disabled (CHECKPOINT_RETENTION_DAYS)');
-      return;
-    }
     this.task = cron.schedule(CRON_EXPRESSION, () => {
       this.prune()
         .then((totals) => {
@@ -123,7 +81,7 @@ export class CheckpointRetentionCron {
         })
         .catch((err) => this.logger.error('Checkpoint retention cron failed', { error: err }));
     });
-    this.logger.info('Checkpoint retention cron scheduled (hourly)', { retentionDays });
+    this.logger.info('Checkpoint retention cron scheduled (hourly)', { retentionDays: RETENTION_DAYS });
   }
 
   stop(): void {

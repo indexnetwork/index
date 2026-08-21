@@ -64,7 +64,7 @@ export const FinalInitiatorTurnSchema = turnSchema(["withdraw", "counter"]);
 /** Counterparty seat, final allowed turn: must decide. */
 export const FinalCounterpartyTurnSchema = turnSchema(["accept", "decline"]);
 
-// ─── v2 ask_user variants (P3.2, flag-gated) ────────────────────────────────
+// ─── v2 ask_user variants (P3.2) ───────────────────────────────────────────
 // Non-final turns only: the final-cap turn must decide, never pause. Selected
 // via the `opts.askUser` parameter on allowedActionsFor/turnSchemaFor — the
 // base schemas above stay byte-identical for every existing caller.
@@ -230,7 +230,7 @@ export function rejectActionFor(
 /**
  * Read the protocol version off task metadata. Returns null when the task
  * predates version stamping (treat as v1 at the call site when the task is a
- * genuine prior; fresh tasks stamp from {@link configuredProtocolVersion}).
+ * genuine prior; fresh tasks stamp {@link NEW_NEGOTIATION_PROTOCOL_VERSION}).
  */
 export function readProtocolVersion(
   metadata: { protocolVersion?: unknown } | null | undefined,
@@ -240,25 +240,11 @@ export function readProtocolVersion(
 }
 
 /**
- * Protocol version for negotiations without a prior task for the same
- * opportunity, from the `NEGOTIATION_PROTOCOL_VERSION` env switch. Defaults
- * to `v1` when unset — v2 is opt-in per environment, and rolling back is the
- * same single switch (only in-flight negotiations stay pinned to their
- * stamped version).
+ * Protocol version stamped on negotiations without a prior task for the same
+ * opportunity. Every new negotiation is v2; {@link readProtocolVersion} still
+ * resolves rows stamped v1 before the cutover.
  */
-export function configuredProtocolVersion(): NegotiationProtocolVersion {
-  return process.env.NEGOTIATION_PROTOCOL_VERSION === "v2" ? "v2" : "v1";
-}
-
-/**
- * Whether the `ask_user` client-consult pause (P3.2) is enabled, from the
- * `NEGOTIATION_ASK_USER_ENABLED` env switch. Defaults to off — the deployment
- * is byte-for-byte unchanged until the flag is flipped, and rolling back is
- * the same single switch.
- */
-export function configuredAskUserEnabled(): boolean {
-  return process.env.NEGOTIATION_ASK_USER_ENABLED === "true";
-}
+export const NEW_NEGOTIATION_PROTOCOL_VERSION: NegotiationProtocolVersion = "v2";
 
 /**
  * Default per-negotiation ask cap: total client-consultation rounds (mid-flight
@@ -283,43 +269,29 @@ export const DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP = 3;
 export const CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP = 2 * QUESTION_BUDGET_PER_PRINCIPAL + 1;
 
 /**
- * Per-negotiation ask cap, overridable via `NEGOTIATION_ASK_ROUNDS_CAP`.
- * Invalid or non-positive values fall back to the protocol-appropriate default
- * — zero is not an off switch here; the cap exists so two agents cannot
- * ping-pong their humans indefinitely. It tunes the bound, it does not gate the
- * behaviour.
- *
- * An explicit override wins under either protocol: it is an operator statement
- * about this deployment, and silently raising it for one stance would make the
- * knob mean two things.
+ * Per-negotiation ask cap. The cap exists so two agents cannot ping-pong their
+ * humans indefinitely; which bound applies depends only on the protocol.
  */
 export function negotiationAskRoundsCap(opts?: { checklist?: boolean }): number {
-  const raw = process.env.NEGOTIATION_ASK_ROUNDS_CAP;
-  if (raw) {
-    const parsed = Number(raw);
-    if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  }
   return opts?.checklist === true
     ? CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP
     : DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP;
 }
 
-/** Default answer window for a paused `ask_user` negotiation: 24 hours. */
-export const DEFAULT_ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * Turn caps. One definition each: these were previously re-derived at three
+ * separate call sites with their own `|| 6` fallback, which could silently
+ * drift apart.
+ */
+export const NEGOTIATION_MAX_TURNS_CHAT = 4;
+export const NEGOTIATION_MAX_TURNS_AMBIENT = 6;
 
 /**
- * Answer window for a paused `ask_user` negotiation, in ms. Overridable via
- * `NEGOTIATION_ASK_USER_WINDOW_MS` (dev/e2e use shorter windows to exercise
- * the expiry path); invalid or non-positive values fall back to 24 h.
+ * Answer window for a paused `ask_user` negotiation: 24 hours. The single
+ * definition — the API's attempt adapter used to parse the same variable
+ * independently, with its own copy of this default.
  */
-export function askUserAnswerWindowMs(): number {
-  const raw = process.env.NEGOTIATION_ASK_USER_WINDOW_MS;
-  if (raw) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return DEFAULT_ASK_USER_WINDOW_MS;
-}
+export const ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Slack added on top of the answer window when deciding whether a paused

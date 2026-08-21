@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
 
 import { adjustedConfidence, buildPoolAdjustment, latestPoolDemotionDetail, mergePoolAdjustment, planPoolAdjustments, poolAdjustmentMultiplier, readActivePoolAdjustments, readPoolAdjustments } from "../discriminator/discriminator.adjustments.js";
 import type { PoolAdjustment } from "../discriminator/discriminator.adjustments.js";
@@ -143,12 +143,6 @@ describe("merge/remove/read", () => {
 });
 
 describe("multiplier + adjustedConfidence", () => {
-  const flag = process.env.POOL_QUESTIONS_RANKING;
-  afterEach(() => {
-    if (flag === undefined) delete process.env.POOL_QUESTIONS_RANKING;
-    else process.env.POOL_QUESTIONS_RANKING = flag;
-  });
-
   it("multiplies factors and floors at 0.3", () => {
     let m: Record<string, unknown> = {};
     for (let i = 0; i < 4; i++) m = mergePoolAdjustment(m, adjustment({ questionId: `q-${i}`, factor: 0.6 }));

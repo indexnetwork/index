@@ -10,11 +10,10 @@ import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js
 
 /**
  * IND-396 — the negotiate node stamps `initiatorUserId` for every fresh
- * discovery origin. All origins resolve to `onBehalfOfUserId ?? userId`:
- *   - chat/tool/MCP fan-out → querying user (userId)
- *   - from-intent          → intent owner (userId)
- *   - from-enrichment / discovery-run → surfaced user (userId)
- *   - from-introducer      → represented user (onBehalfOfUserId)
+ * discovery origin. All origins resolve to `userId`:
+ *   - chat/tool/MCP fan-out → querying user
+ *   - from-intent          → intent owner
+ *   - from-enrichment / discovery-run → surfaced user
  * The stamp rides `negotiateCandidates` opts into the negotiation graph input.
  */
 
@@ -157,18 +156,4 @@ describe('opportunity graph: negotiate node initiator stamp (IND-396)', () => {
     expect((negotiationInputs[0].sourceUser as { id: string }).id).toBe('u-source');
   });
 
-  test('introducer flow: initiatorUserId = represented user (onBehalfOfUserId), not the introducer', async () => {
-    const { factory, negotiationInputs } = makeFactory();
-    const graph = factory.createGraph();
-
-    await graph.invoke({
-      userId: 'u-introducer' as Id<'users'>,
-      onBehalfOfUserId: 'u-source' as Id<'users'>,
-      searchQuery: 'find me a co-founder',
-      options: {},
-    });
-
-    expect(negotiationInputs.length).toBeGreaterThanOrEqual(1);
-    expect(negotiationInputs[0].initiatorUserId).toBe('u-source');
-  });
 });

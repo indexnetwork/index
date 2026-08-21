@@ -26,7 +26,7 @@ import type { OpportunityGraphDatabase } from '../shared/interfaces/database.int
 import type { Embedder } from '../shared/interfaces/embedder.interface.js';
 import type { NegotiationGraphLike } from '../negotiations/negotiation.module.js';
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
-import { discoveryEvaluatorMinScore, discoveryMinSimilarity, validateDiscoveryEvaluatorMinScore, validateDiscoveryMinSimilarity } from './discovery.env.js';
+import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_SIMILARITY, validateDiscoveryEvaluatorMinScore, validateDiscoveryMinSimilarity } from './discovery.env.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 import type { StampNewbornOpportunitiesFn } from "./opportunity.newborn-stamping.js";
 import { routingLog, withNodeTrace, type OpportunityGraphDeps, type OpportunityGraphThresholdOverrides, type OpportunityHydeGenerator, type OpportunityEvaluatorLike, type OpportunityState } from "./opportunity.graph.shared.js";
@@ -110,10 +110,10 @@ export class OpportunityGraphFactory {
       queueNegotiateExisting,
       stampNewbornOpportunities,
       retrievalMinSimilarity: thresholdOverrides?.retrievalMinSimilarity === undefined
-        ? discoveryMinSimilarity()
+        ? DISCOVERY_MIN_SIMILARITY
         : validateDiscoveryMinSimilarity(thresholdOverrides.retrievalMinSimilarity),
       evaluatorMinScore: thresholdOverrides?.evaluatorMinScore === undefined
-        ? discoveryEvaluatorMinScore()
+        ? DISCOVERY_EVALUATOR_MIN_SCORE
         : validateDiscoveryEvaluatorMinScore(thresholdOverrides.evaluatorMinScore),
     };
   }

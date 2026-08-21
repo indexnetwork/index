@@ -2356,26 +2356,17 @@ describe('MCP Server Factory', () => {
     const identity = { userId: 'test-user-id', agentId: 'agent-a', networkScopeId: NETWORK_1 };
     const agentDatabase = agentDbWith({ agentId: 'agent-a', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] });
 
-    const prevEnabled = process.env.QUESTIONER_ENABLED;
-    const prevUptake = process.env.QUESTIONER_UPTAKE_ENABLED;
-    process.env.QUESTIONER_ENABLED = 'true';
-    process.env.QUESTIONER_UPTAKE_ENABLED = 'true';
-    try {
-      const approved = await callTool({
-        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
-        toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof' },
-      });
-      expect(approved.code).not.toBe('MCP_CAPABILITY_DENIED');
-      const approvedPayload = JSON.parse(approved.text) as { success: boolean; advisory?: unknown };
-      expect(approvedPayload.success).toBe(true);
-      expect(approvedPayload.advisory).toBeUndefined();
-      expect(findPendingQuestions).not.toHaveBeenCalled();
-      expect(opportunityMutations).toBe(1);
-    } finally {
-      if (prevEnabled === undefined) delete process.env.QUESTIONER_ENABLED; else process.env.QUESTIONER_ENABLED = prevEnabled;
-      if (prevUptake === undefined) delete process.env.QUESTIONER_UPTAKE_ENABLED; else process.env.QUESTIONER_UPTAKE_ENABLED = prevUptake;
-    }
+    const approved = await callTool({
+      identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
+      toolName: 'update_opportunity',
+      arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof' },
+    });
+    expect(approved.code).not.toBe('MCP_CAPABILITY_DENIED');
+    const approvedPayload = JSON.parse(approved.text) as { success: boolean; advisory?: unknown };
+    expect(approvedPayload.success).toBe(true);
+    expect(approvedPayload.advisory).toBeUndefined();
+    expect(findPendingQuestions).not.toHaveBeenCalled();
+    expect(opportunityMutations).toBe(1);
   });
 
   // ── IND-594: designated-delivery-only classification. The tools/call forgery

@@ -180,8 +180,6 @@ let screenerResult: ScreenDecision = {
 describe("negotiation graph — screen on continuations (IND-563)", () => {
   let origScreenerInvoke: typeof NegotiationScreener.prototype.invoke;
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
-  const origEnv = process.env.NEGOTIATION_SCREEN_MODE;
-  const origVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
 
   beforeAll(() => {
     origScreenerInvoke = NegotiationScreener.prototype.invoke;
@@ -213,17 +211,12 @@ describe("negotiation graph — screen on continuations (IND-563)", () => {
       outreachAngle: "shared ML focus",
       evidence: { counterpartyPremiseFit: "fits", intentAlignment: "aligned" },
     };
-    delete process.env.NEGOTIATION_SCREEN_MODE;
-    delete process.env.NEGOTIATION_PROTOCOL_VERSION;
   });
 
   afterEach(() => {
-    if (origEnv === undefined) delete process.env.NEGOTIATION_SCREEN_MODE; else process.env.NEGOTIATION_SCREEN_MODE = origEnv;
-    if (origVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION; else process.env.NEGOTIATION_PROTOCOL_VERSION = origVersion;
   });
 
   it("a NEW match in an established DM forwards the pair's dialogue to the screener as context", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
     const stubs = mkStubs({
       priorMessages: [priorMsg("u-src", "outreach", 0), priorMsg("u-cand", "decline", 1)],
       negotiationMessages: [],
@@ -244,7 +237,6 @@ describe("negotiation graph — screen on continuations (IND-563)", () => {
   }, 30_000);
 
   it("enforce: a NEW match that rehashes a settled decline is screened out — no NEW message in the shared thread", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     screenerResult = {
       decision: "pass",
       reasoning: "the new signal rehashes a settled decline",
@@ -270,7 +262,6 @@ describe("negotiation graph — screen on continuations (IND-563)", () => {
     // produced a continuation with one prior turn. Re-screening it ended the
     // negotiation as `screened_out` — beneath the very outreach that falsifies
     // the claim, and before the responder had ever spoken.
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     screenerResult = {
       decision: "pass",
       reasoning: "a defensible PRE-contact judgment, applied after contact",
@@ -291,7 +282,6 @@ describe("negotiation graph — screen on continuations (IND-563)", () => {
     // `ask_user` is persisted, but it is a question to the client's OWN
     // principal: nothing was ever addressed to the counterparty, so the
     // opening decision is still open and the gate may still make it.
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     screenerResult = {
       decision: "pass",
       reasoning: "the client's answer settled it against reaching out",
@@ -307,8 +297,6 @@ describe("negotiation graph — screen on continuations (IND-563)", () => {
   }, 30_000);
 
   it("exact ask_user resume (continuationExecution) is never re-screened, even in enforce mode", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     screenerResult = {
       decision: "pass",
       reasoning: "would wrongly kill a mid-flight negotiation if this ran",

@@ -28,7 +28,6 @@ import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
 import { adjustedConfidence, latestPoolDemotionDetail, readActivePoolAdjustments } from '../discriminator/discriminator.adjustments.js';
 import type { PoolAdjustmentProvenance } from '../discriminator/discriminator.adjustments.js';
-import { poolQuestionsRanking } from '../discriminator/discriminator.env.js';
 
 const logger = protocolLogger('RadarGraph');
 const checkPresenterCacheLog = protocolLogger('RadarGraph:checkPresenterCache');
@@ -162,16 +161,14 @@ const getRawConfidence = (opp: typeof RadarGraphState.State['opportunities'][num
 };
 
 /**
- * Sort confidence, optionally pool-adjusted (IND-419): when
- * POOL_QUESTIONS_RANKING=on, answered discriminators multiply confidence by
- * their stored factors (floor 0.3) so the user's answers re-rank the radar.
- * Flag off → identical to raw confidence (adjustments are write-only).
+ * Sort confidence, pool-adjusted (IND-419): answered discriminators multiply
+ * confidence by their stored factors (floor 0.3) so the user's answers re-rank
+ * the radar. Adjustments are written on every pool_discovery answer.
  */
 const getPoolRankingProvenance = (
   state: typeof RadarGraphState.State,
 ): PoolAdjustmentProvenance | null => {
   if (
-    poolQuestionsRanking() !== 'on' ||
     !state.userId ||
     state.scopeType !== 'intent' ||
     !state.scopeId

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import type { BaseMessage } from '@langchain/core/messages';
 
-import { getHydeGenerationMode, HYDE_FRAME_GENERATION_VERSION } from '../hyde.env.js';
+import { HYDE_FRAME_GENERATION_VERSION } from '../hyde.env.js';
 import { HydeSourceFrameSchema, sanitizeHydeSourceFrame, type HydeSourceFrame } from '../hyde.frame.js';
 import { FrameResponseSchema, LensInferrer, type LensStructuredModel } from '../lens.inferrer.js';
 
@@ -25,15 +25,6 @@ const inferredLens = {
   corpus: 'profiles' as const,
   reasoning: 'profile specialization',
 };
-
-describe('HyDE frame environment', () => {
-  it('enables frame-v1 only for the strict literal true', () => {
-    expect(getHydeGenerationMode('true')).toBe(HYDE_FRAME_GENERATION_VERSION);
-    for (const value of [undefined, '', 'false', 'TRUE', ' true', 'true ']) {
-      expect(getHydeGenerationMode(value)).toBe('legacy');
-    }
-  });
-});
 
 describe('HyDE source frame evidence boundary', () => {
   it('drops every element without case-insensitive exact source evidence', () => {

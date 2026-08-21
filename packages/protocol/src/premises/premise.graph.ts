@@ -25,13 +25,9 @@ const dedupeLog = protocolLogger("PremiseGraph:dedupe");
  * Minimum cosine similarity (0-1) at which a freshly-decomposed premise is treated
  * as a near-duplicate of an existing ACTIVE premise for the same user and skipped
  * on create. Tuned high so genuine paraphrases collapse while distinct facts (e.g.
- * "I work at Google" vs "I worked at Google") still persist. Override with
- * PREMISE_DEDUP_SIMILARITY.
+ * "I work at Google" vs "I worked at Google") still persist.
  */
-const DEDUP_SIMILARITY_THRESHOLD = (() => {
-  const raw = Number(process.env.PREMISE_DEDUP_SIMILARITY);
-  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : 0.93;
-})();
+const DEDUP_SIMILARITY_THRESHOLD = 0.93;
 
 /**
  * Derive a premise provenance confidence (0-1) from the analyzer's felicity scores.

@@ -20,7 +20,6 @@ src/queues/tests/enrichment.queue.jobs.isolated.ts
 src/queues/tests/expiration.queue.isolated.ts
 src/queues/tests/from-enrichment.queue.isolated.ts
 src/queues/tests/from-intent.queue.isolated.ts
-src/queues/tests/from-introducer.queue.isolated.ts
 src/queues/tests/hyde.queue.isolated.ts
 src/queues/tests/intent.queue.isolated.ts
 src/queues/tests/notification.queue.isolated.ts
@@ -60,7 +59,6 @@ src/lib/agent/tests/hermes-runtime-telemetry-sentry.isolated.ts
 src/controllers/tests/chat.negotiator.isolated.ts
 src/controllers/tests/negotiator-memory.controller.isolated.ts
 tests/negotiation.e2e.isolated.ts
-src/guards/tests/fast-intake.guard.isolated.ts
 tests/network-resend-invite.e2e.isolated.ts
 tests/limiter.e2e.isolated.ts
 src/services/tests/integration.service.telegram.isolated.ts
@@ -92,7 +90,6 @@ src/lib/tests/protocol-url.isolated.ts
 src/lib/bullmq/bullmq.redis-contract.isolated.ts
 src/lib/parallel/parallel.isolated.ts
 src/lib/opportunity/tests/outcome-feedback.recorder.isolated.ts
-src/lib/limiter/tests/config.isolated.ts
 src/lib/email/tests/email-handlers.integration.isolated.ts
 src/lib/telegram/tests/bot-api.isolated.ts
 src/lib/limiter/tests/bypass.isolated.ts

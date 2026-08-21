@@ -6,16 +6,6 @@ import { UserContextQueue, computePremiseHash } from '../usercontext.queue';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { signalIntakePackAdapter } from '../../adapters/signal-intake-pack.database.adapter';
 
-// The pack refresh is gated on FAST_SIGNAL_INTAKE (it costs a real LLM call per
-// stale user), so every test that exercises it has to turn the flag on. This
-// file mutates process.env and therefore runs isolated.
-const originalFlag = process.env.FAST_SIGNAL_INTAKE;
-beforeAll(() => { process.env.FAST_SIGNAL_INTAKE = 'true'; });
-afterAll(() => {
-  if (originalFlag === undefined) delete process.env.FAST_SIGNAL_INTAKE;
-  else process.env.FAST_SIGNAL_INTAKE = originalFlag;
-});
-
 function baseDeps(overrides: Record<string, unknown> = {}) {
   return {
     getUserNetworkIds: async () => [],
@@ -77,28 +67,6 @@ describe('UserContextQueue intake pack regeneration', () => {
     await expect(queue.processJob('regenerate_contexts', { userId: 'user-1' })).resolves.toBeUndefined();
   });
 
-  // The whole feature ships dark, so the background refresh must not spend LLM
-  // budget on every premise change until the flag is flipped. With the flag off
-  // this job has to be byte-for-byte its pre-feature self.
-  it('does not touch the pack at all while the flag is off', async () => {
-    const previous = process.env.FAST_SIGNAL_INTAKE;
-    process.env.FAST_SIGNAL_INTAKE = 'false';
-    try {
-      const getExistingIntakePack = mock(async () => null);
-      const regenerateIntakePack = mock(async () => undefined);
-      const queue = new UserContextQueue(baseDeps({
-        getExistingIntakePack,
-        regenerateIntakePack,
-      }) as never);
-
-      await queue.processJob('regenerate_contexts', { userId: 'user-1' });
-
-      expect(getExistingIntakePack).not.toHaveBeenCalled();
-      expect(regenerateIntakePack).not.toHaveBeenCalled();
-    } finally {
-      process.env.FAST_SIGNAL_INTAKE = previous as string;
-    }
-  });
 });
 
 describe('UserContextQueue per-network getNetwork failure isolation', () => {

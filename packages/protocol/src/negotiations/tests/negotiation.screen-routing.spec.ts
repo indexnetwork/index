@@ -10,7 +10,7 @@ import type { NegotiationTurn } from "../negotiation.state.js";
  * IND-398 — screen node routing + shadow semantics (graph level).
  *
  * Pins:
- * - off (default): screen node skipped entirely — no screener call, no
+ * - the gate always runs before first contact — no
  *   metadata write,
  * - shadow: fresh runs screen exactly once, decision persisted to
  *   metadata.screenDecision, negotiation always proceeds (even on `pass`),
@@ -129,7 +129,6 @@ let screenerError: Error | null = null;
 describe("negotiation graph — screen node routing (IND-398)", () => {
   let origScreenerInvoke: typeof NegotiationScreener.prototype.invoke;
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
-  const origEnv = process.env.NEGOTIATION_SCREEN_MODE;
 
   beforeAll(() => {
     origScreenerInvoke = NegotiationScreener.prototype.invoke;
@@ -162,25 +161,9 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
       outreachAngle: "shared ML focus",
       evidence: { counterpartyPremiseFit: "fits", intentAlignment: "aligned" },
     };
-    delete process.env.NEGOTIATION_SCREEN_MODE;
   });
 
-  afterEach(() => {
-    if (origEnv === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
-    else process.env.NEGOTIATION_SCREEN_MODE = origEnv;
-  });
-
-  it("off (default): screen node is skipped — no screener call, no metadata write", async () => {
-    const stubs = mkStubs();
-    const result = await runGraph(stubs);
-
-    expect(screenerInputs.length).toBe(0);
-    expect(stubs.screenWrites.length).toBe(0);
-    expect(result.outcome).not.toBeNull();
-  });
-
-  it("shadow: fresh run screens once, persists the decision, and proceeds to turns", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
+  it("fresh run screens once, persists the decision, and proceeds to turns", async () => {
     const stubs = mkStubs({ userContextText: "Bob builds ML systems." });
 
     const result = await runGraph(stubs);
@@ -189,7 +172,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(stubs.screenWrites.length).toBe(1);
     expect(stubs.screenWrites[0].taskId).toBe("task-new");
     expect(stubs.screenWrites[0].record.decision).toBe("reach_out");
-    expect(stubs.screenWrites[0].record.mode).toBe("shadow");
+    expect(stubs.screenWrites[0].record.mode).toBe("enforce");
     expect(stubs.screenWrites[0].record.failedOpen).toBeUndefined();
     expect(typeof stubs.screenWrites[0].record.screenedAt).toBe("string");
     // Negotiation ran normally after the screen
@@ -197,24 +180,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome).not.toBeNull();
   });
 
-  it("shadow: a `pass` decision NEVER blocks — negotiation still proceeds", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
-    screenerResult = {
-      decision: "pass",
-      reasoning: "vague overlap",
-      evidence: { counterpartyPremiseFit: "weak", intentAlignment: "none" },
-    };
-    const stubs = mkStubs();
-
-    const result = await runGraph(stubs);
-
-    expect(stubs.screenWrites[0].record.decision).toBe("pass");
-    expect(stubs.createdMessages.length).toBeGreaterThanOrEqual(1);
-    expect(result.outcome).not.toBeNull();
-  });
-
-  it("shadow: a fresh match in an established DM screens with the pair's history as context (IND-563)", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
+  it("a fresh match in an established DM screens with the pair's history as context (IND-563)", async () => {
     const stubs = mkStubs({
       // The pair has talked before — on a DIFFERENT, concluded match.
       priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
@@ -246,8 +212,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(attributed!.current.length).toBe(0);
   });
 
-  it("shadow: screen failure fails OPEN — proceeds with failedOpen reach_out recorded", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
+  it("screen failure fails OPEN — proceeds with failedOpen reach_out recorded", async () => {
     screenerError = new Error("provider timeout");
     const stubs = mkStubs();
 
@@ -261,8 +226,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome).not.toBeNull();
   });
 
-  it("enforce (P2.2): a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+  it("a `pass` blocks before the first turn — screened_out, zero messages, opportunity rejected", async () => {
     screenerResult = {
       decision: "pass",
       reasoning: "not worth the client's name",
@@ -292,8 +256,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     ]);
   });
 
-  it("enforce (P2.2): screened_out emits a distinct negotiation_outcome trace event and never enqueues questioner/reflect", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+  it("screened_out emits a distinct negotiation_outcome trace event and never enqueues questioner/reflect", async () => {
     screenerResult = {
       decision: "pass",
       reasoning: "generic overlap",
@@ -332,8 +295,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(reflectCalls.length).toBe(0);
   });
 
-  it("enforce (P2.2): `reach_out` proceeds to turns normally", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+  it("`reach_out` proceeds to turns normally", async () => {
     const stubs = mkStubs();
 
     const result = await runGraph(stubs);
@@ -344,8 +306,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome?.reason).not.toBe("screened_out");
   });
 
-  it("enforce (P2.2): a failed screen still fails OPEN — negotiation proceeds", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+  it("a failed screen still fails OPEN — negotiation proceeds", async () => {
     screenerError = new Error("provider exploded");
     const stubs = mkStubs();
 
@@ -357,8 +318,7 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(result.outcome?.reason).not.toBe("screened_out");
   });
 
-  it("enforce (P2.2): a NEW match in an established DM can still be screened out — zero new messages, rejected (IND-563)", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
+  it("a NEW match in an established DM can still be screened out — zero new messages, rejected (IND-563)", async () => {
     screenerResult = {
       decision: "pass",
       reasoning: "stale premise; not worth reaching out again",
@@ -390,13 +350,12 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     ]);
   });
 
-  it("enforce: a negotiation that has already spoken is NOT re-screened — the gate never runs", async () => {
+  it("a negotiation that has already spoken is NOT re-screened — the gate never runs", async () => {
     // The incident shape: an error-stalled negotiation whose outreach is
     // already on the counterparty's thread, recovered through
     // `negotiation-run-existing`. The gate decides whether to make FIRST
     // contact; here contact exists, so re-asking it could only end a live
     // negotiation the counterparty was never given the chance to answer.
-    process.env.NEGOTIATION_SCREEN_MODE = "enforce";
     screenerResult = {
       decision: "pass",
       reasoning: "would wrongly kill a negotiation the counterparty can still answer",
@@ -418,7 +377,6 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
   });
 
   it("emits a negotiation_screen trace event when an opportunityId is present", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
     const stubs = mkStubs();
     const events: Array<Record<string, unknown>> = [];
 
@@ -431,13 +389,12 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
     expect(screenEvents.length).toBe(1);
     expect(screenEvents[0].opportunityId).toBe("opp-1");
     expect(screenEvents[0].decision).toBe("reach_out");
-    expect(screenEvents[0].mode).toBe("shadow");
+    expect(screenEvents[0].mode).toBe("enforce");
     expect(screenEvents[0].failedOpen).toBe(false);
     expect(typeof screenEvents[0].durationMs).toBe("number");
   });
 
   it("screener inputs: client = source (initiator), counterparty context fetched, discoveryQuery forwarded", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
     const stubs = mkStubs({ userContextText: "Bob builds ML systems." });
 
     await runGraph(stubs, { discoveryQuery: "ML engineers" });
@@ -451,7 +408,6 @@ describe("negotiation graph — screen node routing (IND-398)", () => {
   });
 
   it("tolerates a database without setTaskScreenDecision (optional method) — still proceeds", async () => {
-    process.env.NEGOTIATION_SCREEN_MODE = "shadow";
     const stubs = mkStubs({ omitSetTaskScreenDecision: true });
 
     const result = await runGraph(stubs);

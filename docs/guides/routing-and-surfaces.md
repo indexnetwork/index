@@ -144,8 +144,8 @@ those consumers.
 
 ## See also
 
-- [Feature flags](./feature-flags.md) — ship the new route or persona dark, then flip
-  Railway and the local mirror only with explicit approval.
+- [Feature flags](./feature-flags.md) — there are none: a new route or persona
+  ships on.
 - `verify-production-release` skill — destructive-migration, rollback, and
   mixed-version deployment checks.
 - `docs/specs/api-reference.md` — "Universal links and deep-link landing pages" and the

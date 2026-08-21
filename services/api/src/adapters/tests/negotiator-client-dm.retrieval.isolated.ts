@@ -2,7 +2,7 @@
  * Integration tests for NegotiatorClientDmRetrievalAdapter (A2H read path).
  * Requires a live database connection (.env.test).
  *
- * Covers: the NEGOTIATOR_CLIENT_DM_INJECT flag gate, resolving a real excerpt
+ * Covers: resolving a real excerpt
  * for a user who has a negotiator DM on that signal, [] for one who does not,
  * the recent-tail cap and its ordering, per-message truncation, and the two
  * isolations that make the seam safe — a different user's DM on the same
@@ -40,7 +40,6 @@ describe('NegotiatorClientDmRetrievalAdapter', () => {
   const otherSignalId = `intent-${run}-b`;
   const silentSignalId = `intent-${run}-quiet`;
 
-  const origFlag = process.env.NEGOTIATOR_CLIENT_DM_INJECT;
 
   /** Seeds a negotiator DM through the real writer, then its messages. */
   async function seedDm(
@@ -67,7 +66,6 @@ describe('NegotiatorClientDmRetrievalAdapter', () => {
   }
 
   beforeAll(async () => {
-    process.env.NEGOTIATOR_CLIENT_DM_INJECT = 'true';
     const users = await db.insert(schema.users).values(
       ['owner', 'stranger'].map((label) => ({
         email: `negodm-${label}-${run}@test.local`,
@@ -106,20 +104,9 @@ describe('NegotiatorClientDmRetrievalAdapter', () => {
   }, 30_000);
 
   afterAll(async () => {
-    if (origFlag === undefined) delete process.env.NEGOTIATOR_CLIENT_DM_INJECT;
-    else process.env.NEGOTIATOR_CLIENT_DM_INJECT = origFlag;
     await db.delete(schema.conversations).where(inArray(schema.conversations.id, conversationIds));
     await db.delete(schema.users).where(inArray(schema.users.id, userIds));
   }, 30_000);
-
-  it('returns [] when NEGOTIATOR_CLIENT_DM_INJECT is off', async () => {
-    process.env.NEGOTIATOR_CLIENT_DM_INJECT = 'false';
-    try {
-      expect(await retrieval.retrieveForNegotiation({ userId: ownerId, intentId: signalId })).toEqual([]);
-    } finally {
-      process.env.NEGOTIATOR_CLIENT_DM_INJECT = 'true';
-    }
-  });
 
   it('resolves a real excerpt for a user who has a negotiator DM on that signal', async () => {
     const excerpt = await retrieval.retrieveForNegotiation({ userId: ownerId, intentId: signalId });

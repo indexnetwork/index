@@ -123,7 +123,6 @@ function opportunity(input: {
 
 describe('home graph status filter', () => {
   afterEach(() => {
-    delete process.env.POOL_QUESTIONS_RANKING;
   });
 
   test('DEFAULT_RADAR_STATUSES is exactly latent, pending', () => {
@@ -161,7 +160,7 @@ describe('home graph status filter', () => {
     expect(captured.scopeId).toBe('00000000-0000-4000-8000-00000000a111');
   });
 
-  test('lifecycle order is unchanged while ranking is off and adjusted when on', async () => {
+  test('pool-adjusted confidence reorders the lifecycle list, in both phases', async () => {
     const rows = [
       opportunity({
         id: 'newer-demoted',
@@ -180,13 +179,6 @@ describe('home graph status filter', () => {
       }),
     ];
 
-    const offGraph = new RadarGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
-    const off = await offGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'], presentation: 'skeleton' });
-    expect(off.items.map((item) => item.opportunityId))
-      .toEqual(['newer-demoted', 'older-prioritized']);
-    expect(off.items[0]?.deprioritizedReason).toBeUndefined();
-
-    process.env.POOL_QUESTIONS_RANKING = 'on';
     const onGraph = new RadarGraphFactory(createMockDb({}, rows), createMockCache()).createGraph();
     const on = await onGraph.invoke({ userId: 'u1', scopeType: 'intent', scopeId: 'intent-1', statuses: ['draft'], presentation: 'skeleton' });
     const onItems = on.items;
@@ -202,7 +194,6 @@ describe('home graph status filter', () => {
   });
 
   test('stale-only scoped adjustments preserve lifecycle order and presentation', async () => {
-    process.env.POOL_QUESTIONS_RANKING = 'on';
     const rows = [
       opportunity({
         id: 'newer-stale-demotion',
@@ -238,7 +229,6 @@ describe('home graph status filter', () => {
   });
 
   test('mixed active and stale adjustments rank and present from active entries only', async () => {
-    process.env.POOL_QUESTIONS_RANKING = 'on';
     const rows = [
       opportunity({
         id: 'newer-active-priority',
@@ -277,7 +267,6 @@ describe('home graph status filter', () => {
   });
 
   test('ranking and demotion details require exact viewer and intent scope provenance', async () => {
-    process.env.POOL_QUESTIONS_RANKING = 'on';
     const cases = [
       {
         name: 'global home',

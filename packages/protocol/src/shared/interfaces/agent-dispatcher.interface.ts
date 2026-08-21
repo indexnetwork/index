@@ -39,8 +39,7 @@ export interface NegotiationTurnPayload {
   /**
    * The acting user's OWN negotiator memories (P5.3 read path) — private
    * context for the dispatched agent. Never contains the counterparty's
-   * memory; absent when `NEGOTIATOR_MEMORY_INJECT` is off or nothing was
-   * retrieved.
+   * memory; absent when nothing was retrieved.
    */
   negotiatorMemory?: NegotiatorMemoryEntry[];
   /**

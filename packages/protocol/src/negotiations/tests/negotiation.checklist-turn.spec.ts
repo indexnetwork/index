@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
@@ -7,6 +7,7 @@ import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL, type ChecklistDraftItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The checklist protocol at the graph seam
@@ -186,10 +187,14 @@ function persistedChecklists(stubs: ReturnType<typeof mkStubs>) {
 let agentInputs: NegotiationAgentInput[] = [];
 let agentScript: NegotiationTurn[] = [];
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("checklist protocol at the turn seam", () => {
   let origAgentInvoke: typeof IndexNegotiator.prototype.invoke;
   let origStallGapAuthor: typeof NegotiationStallGapAuthor.prototype.author;
-  const originals: Record<string, string | undefined> = {};
 
   beforeAll(() => {
     origAgentInvoke = IndexNegotiator.prototype.invoke;
@@ -203,9 +208,6 @@ describe("checklist protocol at the turn seam", () => {
     // message; held to "no gap" so it cannot be mistaken for one of these.
     origStallGapAuthor = NegotiationStallGapAuthor.prototype.author;
     NegotiationStallGapAuthor.prototype.author = async function () { return null; };
-    for (const key of ["NEGOTIATION_ASK_USER_ENABLED", "NEGOTIATION_CONSULTATION_POLICY_MODE", "NEGOTIATION_PROTOCOL_VERSION", "NEGOTIATION_SCREEN_MODE", "NEGOTIATOR_STANCE"]) {
-      originals[key] = process.env[key];
-    }
   });
 
   afterAll(() => {
@@ -216,19 +218,8 @@ describe("checklist protocol at the turn seam", () => {
   beforeEach(() => {
     agentInputs = [];
     agentScript = [];
-    // The dev configuration this ships into.
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "on";
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATOR_STANCE = "skeptic";
   });
 
-  afterEach(() => {
-    for (const [key, value] of Object.entries(originals)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  });
 
   it("authors the checklist on the opening turn and persists it with the turn", async () => {
     const stubs = mkStubs();
@@ -408,18 +399,4 @@ describe("checklist protocol at the turn seam", () => {
     expect(stubs.stateWrites.some((write) => write.state === "input_required")).toBe(false);
   });
 
-  it("carries no checklist at all under advocate — the pre-checklist negotiation is untouched", async () => {
-    process.env.NEGOTIATOR_STANCE = "advocate";
-    const stubs = mkStubs();
-    agentScript = [
-      turn("outreach", "opening", { message: "hi", checklist: CHECKLIST } as Partial<NegotiationTurn>),
-      turn("decline", "not for me"),
-    ];
-    await runGraph(stubs);
-
-    expect(agentInputs[0].checklist).toBeUndefined();
-    expect(agentInputs[0].questionsSpent).toBeUndefined();
-    // A draft that arrives anyway is not reconciled onto the turn.
-    expect(stubs.createdMessages[0].parts[0].data.checklist).toEqual(CHECKLIST);
-  });
 });

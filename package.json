@@ -35,7 +35,6 @@
     "db:seed:sandbox": "cd services/api && bun run db:seed:sandbox --confirm",
     "sync:lockfile-versions": "bun scripts/sync-lockfile-versions.ts",
     "check:lockfile-versions": "bun scripts/sync-lockfile-versions.ts --check",
-    "check:flags": "bun scripts/check-feature-flag.ts",
     "pr:snapshot": "bun scripts/pr-snapshot.ts",
     "test:scripts": "bun test scripts/tests",
     "test": "cd services/api && bun test",

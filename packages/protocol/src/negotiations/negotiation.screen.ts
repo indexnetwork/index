@@ -9,7 +9,7 @@ import { attributedDialogueIsEmpty, renderAttributedPriorDialogue, type Attribut
 // Re-export domain screen contracts for backward-compat consumers of this module path.
 export {
   NEGOTIATION_SCREEN_MODES,
-  configuredScreenMode,
+  SCREEN_MODE,
   ScreenDecisionSchema,
   blocksNegotiationBeforeFirstTurn,
   negotiationHasMadeContact,

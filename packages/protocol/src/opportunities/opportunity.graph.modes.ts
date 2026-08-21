@@ -14,6 +14,7 @@ import type { Id, NegotiationContinuationReceipt, OpportunityActor } from '../sh
 import type { DebugMetaAgent } from '../agents/agent.module.js';
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
 import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";
+import { NEGOTIATION_MAX_TURNS_AMBIENT } from '../negotiations/negotiation.module.js';
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
@@ -171,6 +172,7 @@ const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
   manual: 'Manual',
   cron: 'Scheduled',
   member_added: 'Member added',
+  // Read-only history: nothing stamps this source any more, but old rows carry it.
   introducer_discovery: 'Suggested by contact',
 };
 
@@ -307,7 +309,7 @@ export async function negotiateExisting(
           [candidate],
           { networkId: '', prompt: '' },
           {
-            maxTurns: Number(process.env.NEGOTIATION_MAX_TURNS_AMBIENT) || 6,
+            maxTurns: NEGOTIATION_MAX_TURNS_AMBIENT,
             indexContextOverrides,
             timeoutMs: AMBIENT_PARK_WINDOW_MS,
             ...(execution ? {
@@ -611,7 +613,6 @@ function introductionState(request: IntroductionRequest): OpportunityState {
     indexScope: undefined,
     triggerIntentId: undefined,
     targetUserId: undefined,
-    onBehalfOfUserId: undefined,
     options: { ...(request.options ?? {}) },
     operationMode: 'create_introduction',
     introductionEntities: request.introductionEntities,

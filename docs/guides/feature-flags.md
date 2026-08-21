@@ -1,89 +1,62 @@
 # Feature Flags
 
-Every env-gated flag in this repo lives on **four primary surfaces**, updated at two
-different stages: registration and docs ship with the code; live values change at flip
-time. Missing an applicable surface produces "works on dev but not locally" drift, or an
-undocumented flag nobody can find.
+There are none, and adding one needs a better reason than "this feels risky".
 
-## The four surfaces
+Every behaviour-changing environment variable was deleted in one pass
+(`chore/remove-env-feature-gates`). What each environment was running became
+what the code does. Configuration narrowed to three kinds of value:
 
-| Surface | Tracked? | Role | When |
-|---|---|---|---|
-| `services/api/src/startup.env.ts` | yes (feature PR) | zod registration, e.g. `z.union([z.literal(''), z.enum(['off','on'])]).optional()` | with the feature code |
-| `.env.example` | yes (feature PR) | commented-out entry + docs, **default off**, in the correct numbered section beside related flags | with the feature code |
-| Railway dev (`protocol` service) | no | the live value | at flip time |
-| root `.env.development` | no (gitignored) | local mirror of Railway dev, so local runs behave like dev | at flip time, same value as Railway |
+- **Credentials and endpoints** — `DATABASE_URL`, `OPENROUTER_API_KEY`,
+  `REDIS_*`, `S3_*`, `API_URL`, `WEB_APP_URL`, and the rest of `.env.example`.
+  These differ by environment for reasons that are not product decisions.
+- **Two ops levers** — `CHAT_MODEL` / `CHAT_REASONING_EFFORT` choose which
+  model answers; `LOG_LEVEL` is the incident lever. Values, not gates.
+- **Test opt-ins** — `TEST_DATABASE_SAFE`, `RUN_PAID_INTEGRATION_TESTS`,
+  `RUN_REDIS_INTEGRATION_TESTS`, `RUN_LOCAL_API_E2E`.
 
-`.env.test` is a **conditional fifth surface**, used only when a test deliberately needs
-a non-default value. Otherwise leave the flag unset there so tests cover the default-off
-contract.
+`services/api/src/startup.env.ts` is the registry, `.env.example` is the
+documentation, and a test pins them to each other. If a name is in one it must
+be in the other.
 
-**House style.** Code reads a flag through a centralized accessor module
-(`discriminator.env.ts`, `questioner.env.ts`, …) — never bare `process.env` at a call
-site — and the default is always the "off" behavior.
+## Why the flags went
 
-## Order of operations
+They were designed to converge: ship dark, flip dev, watch, flip main, delete.
+The middle steps happened; the last one never did. The result was three
+different products — what CI proved, what dev demoed, and what users got — and
+the most thoroughly tested configuration in the repo was the one no environment
+had run in months. The default-off contract the suite defended was fiction.
 
-1. **Ship dark.** The feature PR carries the code (default off), the `startup.env.ts`
-   registration, and the commented `.env.example` entry. Merge, then verify the deploy
-   is healthy.
+## What to do instead
 
-2. **Flip Railway.** This is a mutation and needs explicit user approval.
+**Ship it on.** New behaviour ships enabled, for everyone, in every
+environment. If that is too frightening to do, the change is not ready — the
+fear is information about the change, not a reason for a switch.
 
-   ```
-   railway_set_variables({
-     service_id: "protocol",
-     environment_id: "dev",
-     variables: { FLAG_NAME: "on" }
-   })
-   ```
+**Make it small enough to ship.** A change you can reason about end to end
+does not need an escape hatch. One that does not fit in your head will not be
+made safe by a boolean.
 
-   Gotchas: parameter names are **snake_case** (`service_id`, not `service`);
-   `variables` is a **map**, not an array of `KEY=value` strings; and setting a variable
-   **triggers an automatic redeploy** — wait for the new deployment to reach `SUCCESS`
-   (`railway_list_deployments`) and health-check it before claiming the flag is live.
-   Confirm with `railway_list_variables`.
+**Roll back with git.** Reverting a commit and redeploying is the rollback.
+It is one action, it is auditable, and unlike a flag it cannot leave the code
+in a state nobody has tested.
 
-3. **Mirror locally.** Add or update the same value in the root `.env.development`,
-   grouped with related flags, with one comment line naming the feature or issue.
-   Worktrees pick it up automatically — `worktree:setup` symlinks the root file.
+**Pass it as an argument.** When two callers genuinely need different
+behaviour, that is a parameter on the function, injected by the composition
+root — not a process-wide switch read at the point of use. The frame-drift
+cohort bounds and the opportunity graph's threshold overrides both work this
+way: production uses the constant, a test injects something else.
 
-4. **Pre-flipping** is allowed when the deployed code does not read the flag yet: the
-   Railway variable sits inert and activates the moment the feature PR's deploy lands
-   (this is how `POOL_QUESTIONS_RANKING` shipped). Do it only when activating-on-deploy
-   is the explicit intent — it forfeits the ship-dark observation window.
+**Shadow it in code, not in config.** A pipeline that mines and measures
+without writing is a mode of the pipeline, expressed as a constant beside it
+(`NEGOTIATION_EVIDENCE_QUESTIONS_MODE`, `OUTCOME_QUESTIONS_MODE`). Moving to
+the next mode is a one-line diff and a deploy.
 
-## Auditing a flag
-
-```bash
-bun run check:flags FLAG_NAME
-```
-
-This reports where the flag is registered — `startup.env.ts` for api-side flags, or a
-`packages/protocol/src/**/*.env.ts` accessor for protocol-side ones — plus its value on
-`.env.example`, `.env.development`, and `.env.test`, and it flags the common drift
-patterns. Values that are not flag-shaped are redacted rather than printed, so running it
-on a non-flag key like `DATABASE_URL` cannot leak a credential into a log or transcript.
-
-It cannot read Railway — pair it with
-`railway_list_variables({ service_id: "protocol", environment_id: "dev" })`.
-
-A flag present on Railway but absent from `.env.development` (or the reverse) is drift.
-Fix it in the same sitting.
-
-## The pool-questions flag family
-
-Six related flags, all with accessors in
-`packages/protocol/src/opportunities/discriminator/discriminator.env.ts` and documented
-commented-off in `.env.example` section 13:
-
-`POOL_QUESTIONS_MINING`, `POOL_QUESTIONS_MODE`, `POOL_QUESTIONS_PUSH`,
-`POOL_QUESTIONS_RANKING`, `POOL_QUESTIONS_STAMP_NEWBORN`, `POOL_QUESTIONS_VISIT_TRIGGER`.
-
-This list records the *names* only. Live values rot — check them with `check:flags` plus
-`railway_list_variables` before reasoning about pool-question behavior.
+**If you still need a switch,** it is a product decision and belongs in the
+database next to the thing it decides — a per-network setting, a per-user
+preference — with a UI and an owner. Not an environment variable nobody
+remembers setting.
 
 ## See also
 
 - [Railway auth](./railway-auth.md) — headless tokens for the Railway MCP tools.
-- [Routing and surfaces](./routing-and-surfaces.md) — flag-gated route/persona cutovers.
+- [Routing and surfaces](./routing-and-surfaces.md) — route and persona cutovers.

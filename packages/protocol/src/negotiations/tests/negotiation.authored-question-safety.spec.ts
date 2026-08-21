@@ -7,6 +7,7 @@ import type { NegotiationGraphState, NegotiationTurn } from "../negotiation.stat
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
 import type { StructuredQuestion } from "../../shared/schemas/structured-question.schema.js";
 import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The authored `ask_user` question is the first negotiator output rendered to a
@@ -54,6 +55,11 @@ function withOption(option: Partial<StructuredQuestion["options"][number]>): Str
 }
 
 // ─── The validator ───────────────────────────────────────────────────────────
+
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
 
 describe("isSafeAuthoredNegotiationQuestion", () => {
   it("accepts a question that says nothing it should not", () => {
@@ -287,9 +293,6 @@ function persistedTurns(stubs: ReturnType<typeof mkStubs>): NegotiationTurn[] {
 describe("negotiation graph — the authored question is gated before it is persisted", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
   let authored: StructuredQuestion | undefined;
-  const origFlag = process.env.NEGOTIATION_ASK_USER_ENABLED;
-  const origScreenMode = process.env.NEGOTIATION_SCREEN_MODE;
-  const origPolicyMode = process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
 
   beforeAll(() => {
     origInvoke = IndexNegotiator.prototype.invoke;
@@ -307,18 +310,9 @@ describe("negotiation graph — the authored question is gated before it is pers
 
   beforeEach(() => {
     authored = undefined;
-    process.env.NEGOTIATION_ASK_USER_ENABLED = "true";
-    process.env.NEGOTIATION_SCREEN_MODE = "off";
-    process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = "off";
   });
 
   afterEach(() => {
-    if (origFlag === undefined) delete process.env.NEGOTIATION_ASK_USER_ENABLED;
-    else process.env.NEGOTIATION_ASK_USER_ENABLED = origFlag;
-    if (origScreenMode === undefined) delete process.env.NEGOTIATION_SCREEN_MODE;
-    else process.env.NEGOTIATION_SCREEN_MODE = origScreenMode;
-    if (origPolicyMode === undefined) delete process.env.NEGOTIATION_CONSULTATION_POLICY_MODE;
-    else process.env.NEGOTIATION_CONSULTATION_POLICY_MODE = origPolicyMode;
   });
 
   it("keeps a safe authored question on the persisted turn", async () => {

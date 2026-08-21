@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState, type NegotiationTurn } from "../negotiation.state.js";
@@ -7,6 +7,7 @@ import { buildAttributedDialogue } from "../negotiation.graph.shared.js";
 import type { AttributedPriorDialogue, SeededAttribution } from "../negotiation.attribution.js";
 import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 /**
  * The initiator seat re-opened on every one of its turns.
@@ -191,17 +192,18 @@ function actionsOf(result: { messages?: Array<{ parts: unknown[] }> }): string[]
   });
 }
 
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
+
 describe("initiator continuation — this session's turns reach the next prompt", () => {
   let priorVersion: string | undefined;
 
   beforeEach(() => {
-    priorVersion = process.env.NEGOTIATION_PROTOCOL_VERSION;
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
   });
 
   afterEach(() => {
-    if (priorVersion === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION;
-    else process.env.NEGOTIATION_PROTOCOL_VERSION = priorVersion;
   });
 
   it("the initiator replies to a question on its second turn instead of re-opening", async () => {

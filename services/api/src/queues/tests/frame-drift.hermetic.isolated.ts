@@ -1,21 +1,9 @@
-import { afterAll, describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 
 import { FrameDriftQueue } from '../frame-drift.queue';
 
-const originalEnabled = process.env.FRAME_DRIFT_MONITORING_ENABLED;
-const originalSchedule = process.env.FRAME_DRIFT_MONITORING_SCHEDULE;
-
-afterAll(() => {
-  if (originalEnabled === undefined) delete process.env.FRAME_DRIFT_MONITORING_ENABLED;
-  else process.env.FRAME_DRIFT_MONITORING_ENABLED = originalEnabled;
-  if (originalSchedule === undefined) delete process.env.FRAME_DRIFT_MONITORING_SCHEDULE;
-  else process.env.FRAME_DRIFT_MONITORING_SCHEDULE = originalSchedule;
-});
-
 describe('FrameDriftQueue hermetic scheduler contract', () => {
   it('reconciles through QueueFactory and exposes an authoritative next timestamp', async () => {
-    process.env.FRAME_DRIFT_MONITORING_ENABLED = 'true';
-    process.env.FRAME_DRIFT_MONITORING_SCHEDULE = '15 0 * * *';
     const info = mock(() => undefined);
     const queue = new FrameDriftQueue({
       createWorker: () => ({ close: async () => undefined }),

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 
@@ -114,9 +115,10 @@ let stubAction: string | ((input: NegotiationAgentInput) => string) = "counter";
 
 describe("negotiation graph — seat rules + protocol version (IND-397)", () => {
   let origInvoke: typeof IndexNegotiator.prototype.invoke;
-  const origEnv = process.env.NEGOTIATION_PROTOCOL_VERSION;
+  let restoreScreener: () => void;
 
   beforeAll(() => {
+    restoreScreener = stubScreenerReachOut();
     origInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function (input: NegotiationAgentInput) {
       agentInputs.push(input);
@@ -131,21 +133,15 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
 
   afterAll(() => {
     IndexNegotiator.prototype.invoke = origInvoke;
+    restoreScreener();
   });
 
   beforeEach(() => {
     agentInputs.length = 0;
     stubAction = "counter";
-    delete process.env.NEGOTIATION_PROTOCOL_VERSION;
   });
 
-  afterEach(() => {
-    if (origEnv === undefined) delete process.env.NEGOTIATION_PROTOCOL_VERSION;
-    else process.env.NEGOTIATION_PROTOCOL_VERSION = origEnv;
-  });
-
-  it("fresh run with env=v2: stamps protocolVersion v2 and forces turn 0 to outreach", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
+  it("fresh run: stamps protocolVersion v2 and forces turn 0 to outreach", async () => {
     const stubs = mkStubs();
     stubAction = "counter"; // out-of-position opening — must be forced
 
@@ -158,19 +154,7 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
     expect(agentInputs[0].protocolVersion).toBe("v2");
   });
 
-  it("fresh run without env: stays v1 and forces turn 0 to propose (legacy unchanged)", async () => {
-    const stubs = mkStubs();
-    stubAction = "counter";
-
-    await runGraph(stubs, { opportunityId: "opp-1" });
-
-    expect(stubs.createdTasks[0].metadata.protocolVersion).toBe("v1");
-    expect(stubs.createdMessages[0].parts[0].data.action).toBe("propose");
-    expect(agentInputs[0].protocolVersion).toBe("v1");
-  });
-
-  it("version pinning: re-run of a v1 opportunity stays v1 even with env=v2", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
+  it("version pinning: re-run of a v1 opportunity stays v1", async () => {
     const stubs = mkStubs({
       priorOpportunityTask: mkTask({
         metadata: { type: "negotiation", initiatorUserId: "u-src", sourceUserId: "u-src", protocolVersion: "v1" },
@@ -186,7 +170,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
   });
 
   it("version pinning: same-opportunity prior task without a version field grandfathers to v1 under env=v2", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const stubs = mkStubs({
       priorOpportunityTask: mkTask({
         metadata: { type: "negotiation", initiatorUserId: "u-src", sourceUserId: "u-src" }, // pre-v2 task
@@ -200,7 +183,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
   });
 
   it("no conversation inheritance: continuation without a same-opportunity task stamps from env", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const stubs = mkStubs({
       priorMessages: [priorMsg("u-src", "propose", 0), priorMsg("u-cand", "counter", 1)],
     });
@@ -211,7 +193,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
   });
 
   it("no conversation inheritance: a v1 task on the same DM does not pin a new match's version", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const stubs = mkStubs({
       conversationTask: mkTask({
         id: "task-other-opp",
@@ -225,8 +206,7 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
     expect(stubs.createdTasks[0].metadata.protocolVersion).toBe("v2");
   });
 
-  it("version pinning: a v2 opportunity stays v2 even after env rollback to v1", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v1";
+  it("version pinning: a task already stamped v2 stays v2", async () => {
     const stubs = mkStubs({
       priorOpportunityTask: mkTask({
         metadata: { type: "negotiation", initiatorUserId: "u-src", sourceUserId: "u-src", protocolVersion: "v2" },
@@ -241,7 +221,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
   });
 
   it("v2 continuation: counterparty seat is derived from initiatorUserId, not speaking order", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     // Prior session: initiator u-src spoke last → this session opens with the
     // candidate (u-cand) speaking. u-cand holds the counterparty seat.
     const stubs = mkStubs({
@@ -260,7 +239,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
   });
 
   it("v2: personal-agent accept from the initiator seat is coerced to conservative counter", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     // Prior session: counterparty (u-cand) spoke last → initiator (u-src)
     // speaks next. Its personal agent tries to accept — out of seat.
     const stubs = mkStubs({
@@ -285,7 +263,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
   });
 
   it("v2: withdraw finalizes as rejected (reject-like), not stalled", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const statusUpdates: string[] = [];
     const stubs = mkStubs({
       priorOpportunityTask: mkTask({
@@ -304,7 +281,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
   });
 
   it("v2 final turn: agent is invoked with isFinalTurn and the parked seat", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const stubs = mkStubs();
     stubAction = (input) => (input.isFinalTurn ? "decline" : "counter");
 
@@ -318,7 +294,6 @@ describe("negotiation graph — seat rules + protocol version (IND-397)", () => 
   });
 
   it("dispatch payload announces seat, version, and allowedActions", async () => {
-    process.env.NEGOTIATION_PROTOCOL_VERSION = "v2";
     const payloads: Array<Record<string, unknown>> = [];
     const stubs = mkStubs({
       dispatch: async () => ({ handled: false, reason: "no_agent" }),

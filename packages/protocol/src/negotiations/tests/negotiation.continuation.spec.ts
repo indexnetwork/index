@@ -4,6 +4,7 @@ import { NegotiationGraphState } from "../negotiation.state.js";
 import type { NegotiationGraphDatabase } from "../../shared/interfaces/database.interface.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
 import { IndexNegotiator } from "../negotiation.agent.js";
+import { stubScreenerReachOut } from "./screen.stub.js";
 
 let msgCounter = 0;
 
@@ -62,6 +63,11 @@ const origInvoke = IndexNegotiator.prototype.invoke;
 afterAll(() => {
   IndexNegotiator.prototype.invoke = origInvoke;
 });
+
+// The outreach screen runs before first contact on every negotiation; stub it
+// so these cases exercise the turns they are about rather than a live model.
+const restoreScreenStub = stubScreenerReachOut();
+afterAll(() => { restoreScreenStub(); });
 
 describe("Negotiation continuation telemetry", () => {
   beforeEach(() => {

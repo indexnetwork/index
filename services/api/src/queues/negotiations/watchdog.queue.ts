@@ -58,9 +58,12 @@ export interface NegotiationWatchdogQueueDeps {
   clock?: () => Date;
 }
 
-/** Strict default-off gate for the stale negotiation task reconciliation loop. */
+/**
+ * @returns true — stale-task reconciliation always runs. This path has never
+ * run in production; the `watchdogAttempts` cap is what bounds it.
+ */
 export function isNegotiationWatchdogEnabled(): boolean {
-  return process.env.NEGOTIATION_WATCHDOG_ENABLED === 'true';
+  return true;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -75,8 +78,7 @@ function watchdogAttempts(metadata: Record<string, unknown>): number {
 
 /**
  * Reconciles negotiation tasks whose kickoff or active worker may have been
- * lost. The queue is never constructed or registered while the feature flag is
- * off, preserving the current runtime behavior byte-for-byte.
+ * lost.
  */
 export class NegotiationWatchdogQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
