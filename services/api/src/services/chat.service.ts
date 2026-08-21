@@ -1,13 +1,9 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
-import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID, createNegotiatorPersona } from '@indexnetwork/protocol';
+import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
-import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
-import { readOpenQuestionsForIntent } from '../lib/question/open-question-message';
-import { readActionableCounterparties } from '../lib/agent/negotiator-verdict.host';
-import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
 const logger = log.service.from("ChatSessionService");
@@ -764,64 +760,13 @@ export class ChatSessionService {
     return this.factory.withPersona(ONBOARDING_PERSONA);
   }
 
-  /**
-   * Derive a negotiator-persona graph factory bound to the client's personal
-   * negotiator agent identity. Shares all dependencies with the orchestrator
-   * factory; only prompt/toolset/loop behaviors differ.
-   *
-   * @param agent - Identity from the user's `type='personal'` agent row
-   * @param pinnedIntent - The pinned signal for intent-scoped sessions (P4.2):
-   *                       its id, and its label for the prompt's pinned signal
-   *                       section. The id also resolves the signal's OPEN
-   *                       questions (#1466) — what the client's own agent is
-   *                       currently waiting on them for.
-   */
-  async getNegotiatorGraphFactory(
-    agent: { name: string; description?: string | null },
-    userId: string,
-    pinnedIntent?: { intentId?: string; label?: string },
-  ): Promise<ChatGraphFactory> {
-    // P5.3: the client's accumulated negotiator memories inform the DM
-    // persona (gated on NEGOTIATOR_MEMORY_INJECT; [] → byte-identical
-    // prompt). The adapter never throws — the catch is belt and braces so a
-    // memory failure can never take down the chat surface.
-    const memory = await negotiatorMemoryRetrievalAdapter.retrieveForChat(userId).catch(() => []);
-    // #1466: the questions this signal's DM currently has open. Without them
-    // the persona could not tell that a message answering one WAS an answer —
-    // its only move on such a message was to edit the signal, which is what it
-    // did on 2026-08-20. Never throws (the reader swallows its own failures);
-    // absent → the prompt is byte-identical to before.
-    const openQuestions = pinnedIntent?.intentId
-      ? (await readOpenQuestionsForIntent(userId, pinnedIntent.intentId))?.questions ?? []
-      : [];
-    // #1471: the counterparties of this signal the client can still pass a
-    // verdict on. Without them the persona has numbers for nothing and the
-    // verdict tools are unreachable — which was the whole gap: told to reject
-    // a match, the agent's only moves were to say so, or to edit the signal.
-    // Never throws (the reader swallows its own failures); empty → the prompt
-    // is byte-identical to before.
-    const actionableCounterparties = pinnedIntent?.intentId
-      ? await readActionableCounterparties(userId, pinnedIntent.intentId)
-      : [];
-    return this.factory.withPersona(
-      createNegotiatorPersona({
-        agentName: agent.name,
-        ...(agent.description?.trim() ? { agentDescription: agent.description } : {}),
-        ...(pinnedIntent?.label?.trim() ? { pinnedIntentLabel: pinnedIntent.label.trim() } : {}),
-        ...(memory.length > 0 ? { memory } : {}),
-        // P5.4: the remember/forget tools are registered by the composition
-        // root under the same flag — the prompt advertises them only when
-        // they actually exist for this session.
-        ...(isNegotiatorMemoryWriteEnabled() ? { memoryToolsEnabled: true } : {}),
-        ...(openQuestions.length > 0
-          ? { openQuestions: openQuestions.map((question) => question.label) }
-          : {}),
-        ...(actionableCounterparties.length > 0
-          ? { actionableCounterparties: actionableCounterparties.map((counterparty) => counterparty.label) }
-          : {}),
-      }),
-    );
-  }
+  // The negotiator-persona graph factory retired with phase 2 of the
+  // holistic intent-agent (full chat ownership): every turn of the
+  // negotiator intent DM runs the IntentAgent on its serialized inbox, so no
+  // persona graph — and none of the persona's chat tool registrations
+  // (answer_pending_question, accept/reject_opportunity, remember/forget) —
+  // exists for this scope any more. The hosts those tools called stay
+  // shared: the MCP surface (mcp.controller toolDeps) still registers them.
 
   /**
    * Verify that a message belongs to a session owned by the given user.

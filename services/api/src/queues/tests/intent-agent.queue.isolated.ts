@@ -29,6 +29,7 @@ function buildQueue(script: (context: IntentAgentTurnContext) => IntentAgentDeci
     context: {
       readParkedNegotiations: async () => [],
       readDossier: async () => [],
+      readOpportunities: async () => [],
       readLedger: async () => [],
       findSession: async () => null,
       getSessionMessages: async () => [],
@@ -48,6 +49,8 @@ function buildQueue(script: (context: IntentAgentTurnContext) => IntentAgentDeci
         spans.push(span);
         return script(context);
       },
+      // Phase 2: client-message turns end with the reply stage.
+      reply: async () => 'Right here.',
     },
     chatSessions: {
       resolveNegotiatorIntentSession: async () => ({ session: { id: 'session-1' } }),
@@ -111,8 +114,10 @@ describe('IntentAgentQueue serialization', () => {
     });
   });
 
-  it('runUserMessageTurn returns what the agent did, messages included', async () => {
-    await withQueue(buildQueue(() => [{ tool: 'message_user', text: 'Right here.' }]), async ({ queue, delivered }) => {
+  it('runUserMessageTurn returns what the agent did, the reply-stage message included', async () => {
+    // Phase 2: the reply is the streaming stage's delivery, not an
+    // acts-stage message_user.
+    await withQueue(buildQueue(() => [{ tool: 'wait', reason: 'Only conversation.' }]), async ({ queue, delivered }) => {
       const result = await queue.runUserMessageTurn({
         kind: 'user_message',
         userId: 'user-1',
@@ -124,7 +129,8 @@ describe('IntentAgentQueue serialization', () => {
 
       expect(result.messages).toEqual(['Right here.']);
       expect(result.acts).toEqual([
-        { tool: 'message_user', text: 'Right here.', sessionId: 'session-1', messageId: 'message-1' },
+        { tool: 'wait', reason: 'Only conversation.' },
+        { tool: 'message_user', text: 'Right here.', sessionId: 'session-1', messageId: 'message-1', stage: 'reply' },
       ]);
       expect(delivered).toEqual(['Right here.']);
     });

@@ -13,8 +13,8 @@ import { userService } from "../services/user.service";
 import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { intentAgentQueue } from "../queues/intent-agent.queue";
-import { intentAgentOwnsTurn } from "../lib/intent-agent/intent-agent.host";
-import type { IntentAgentTurnResult } from "../lib/intent-agent/intent-agent.types";
+import { subscribeIntentAgentReply } from "../lib/intent-agent/intent-agent-reply.stream";
+import type { IntentAgentTurnResult, IntentAgentUserMessageEvent } from "../lib/intent-agent/intent-agent.types";
 import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
@@ -26,10 +26,11 @@ const logger = log.controller.from("chat");
 
 /**
  * The orchestrator's event stream when it does not run: the signal's
- * IntentAgent owned this turn, so the response came from its serialized turn
- * instead of the persona graph. An empty stream rather than a branch around
- * the loop keeps one path through persistence, title, suggestions and `done`
- * — the turn differs only in where its text came from.
+ * IntentAgent owns every turn of this scope (phase 2 full chat ownership),
+ * so the response comes from its serialized turn instead of the persona
+ * graph. An empty stream rather than a branch around the loop keeps one path
+ * through persistence, title, suggestions and `done` — the turn differs only
+ * in where its text came from.
  */
 async function* emptyEventStream(): AsyncGenerator<never, void, unknown> {}
 
@@ -203,6 +204,10 @@ export class ChatController {
 
   constructor(
     private readonly suggestionGenerator: () => Pick<SuggestionGenerator, 'generate'> = getSuggestionGenerator,
+    /** Seam for tests; production awaits the serialized inbox turn. */
+    private readonly runIntentAgentUserTurn: (
+      event: IntentAgentUserMessageEvent,
+    ) => Promise<IntentAgentTurnResult> = (event) => intentAgentQueue.runUserMessageTurn(event),
   ) {}
   /**
    * SSE streaming endpoint for chat messages with context support.
@@ -292,10 +297,6 @@ export class ChatController {
     const requestedScope = normalizeChatScope(body);
     if (requestedScope instanceof Response) return requestedScope;
 
-    // Captured by validateScope when an intent scope validates — used to pin
-    // the signal by name in the negotiator prompt (P4.2) without re-fetching.
-    let pinnedIntentLabel: string | undefined;
-
     const validateScope = async (scope: ChatScope | undefined) => {
       if (!scope) return undefined;
       if (scope.scopeType === 'network') {
@@ -309,7 +310,6 @@ export class ChatController {
       if (!validation.ok) {
         return Response.json({ error: validation.error }, { status: validation.status });
       }
-      pinnedIntentLabel = validation.title;
       return undefined;
     };
 
@@ -476,23 +476,22 @@ export class ChatController {
     }
 
     const sessionId = currentSessionId;
-    const factory = sessionPersona === ONBOARDING_PERSONA_ID
-      ? chatSessionService.getOnboardingGraphFactory()
-      : sessionPersona === SIGNAL_PERSONA_ID
-        ? chatSessionService.getSignalGraphFactory()
-        : sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
-        ? await chatSessionService.getNegotiatorGraphFactory(
-            negotiatorAgent,
-            user.id,
-            effectiveScope?.scopeType === 'intent'
-              ? {
-                intentId: effectiveScope.scopeId,
-                ...(pinnedIntentLabel ? { label: pinnedIntentLabel } : {}),
-              }
-              : undefined,
-          )
-        : null;
-    if (!factory) {
+    // ─── Phase 2 (full chat ownership): the negotiator intent DM runs no
+    // persona graph at all — EVERY turn is the signal's IntentAgent's,
+    // decided and executed on its serialized inbox. Negotiator sessions are
+    // intent-scoped by construction (enforced above), so no negotiator
+    // persona factory is derived; other personas and network scope are
+    // untouched.
+    const agentOwnsTurn = sessionPersona === NEGOTIATOR_PERSONA_ID
+      && effectiveScope?.scopeType === 'intent';
+    const factory = agentOwnsTurn
+      ? null
+      : sessionPersona === ONBOARDING_PERSONA_ID
+        ? chatSessionService.getOnboardingGraphFactory()
+        : sessionPersona === SIGNAL_PERSONA_ID
+          ? chatSessionService.getSignalGraphFactory()
+          : null;
+    if (!factory && !agentOwnsTurn) {
       return Response.json(
         { error: 'This chat cannot be continued safely.', code: 'CHAT_PERSONA_UNSUPPORTED' },
         { status: 409 },
@@ -524,6 +523,7 @@ export class ChatController {
     const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "").split(",").map(o => o.trim()).filter(Boolean);
     const originUrl = rawOrigin && trustedOrigins.includes(rawOrigin) ? rawOrigin : undefined;
     const suggestionGenerator = this.suggestionGenerator;
+    const runIntentAgentUserTurn = this.runIntentAgentUserTurn;
 
     const stream = new ReadableStream({
       start(controller) {
@@ -567,23 +567,19 @@ export class ChatController {
           let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown} | undefined;
           let decisionQuestions: import("@indexnetwork/protocol").Question[] | undefined;
 
-          // ─── The IntentAgent's turn (holistic intent-agent collapse) ─────
-          // While a negotiation is parked awaiting this client on this
-          // signal, the turn belongs to the signal's IntentAgent: the message
-          // is persisted, its event runs on the agent's serialized inbox, and
-          // whatever the agent said back is emitted as the response. The
-          // persona graph does not run — so no tool, and in particular not
-          // the signal edit rule, can consume an answer before the agent
-          // judges it (the 2026-08-20 incident's fix, kept by construction:
-          // the agent turn sits exactly where the precedence gate sat).
-          // While nothing is parked, the persona streams byte-identically to
-          // before.
+          // ─── The IntentAgent's turn (phase 2: full chat ownership) ──────
+          // EVERY turn of a negotiator intent-scoped DM belongs to the
+          // signal's IntentAgent: the message is persisted, its event runs
+          // on the agent's serialized inbox, and the agent's reply streams
+          // back over the turn's Redis channel as token events. The persona
+          // graph never runs for this scope — the 2026-08-20 incident's fix
+          // is now unconditional, and the client talks to one mind. If the
+          // channel yields nothing (or only a prefix) but the turn
+          // completes, the completed text is emitted as a token event — a
+          // turn is never lost to a dropped subscription.
           let agentTurn: IntentAgentTurnResult | null = null;
           let agentUserMessageId: string | null = null;
           let agentAssistantMessageId: string | undefined;
-          const agentOwnsTurn =
-            sessionPersona === NEGOTIATOR_PERSONA_ID && effectiveScope?.scopeType === 'intent'
-            && await intentAgentOwnsTurn(user.id, effectiveScope.scopeId);
 
           if (agentOwnsTurn && effectiveScope) {
             // The conversation is the agent's memory, so the client's message
@@ -595,8 +591,31 @@ export class ChatController {
               role: 'user',
               content: messageContent,
             });
+            // Subscribe BEFORE enqueueing so no chunk can be published into
+            // an unwatched channel. Everything on the channel was checked
+            // and persisted by the host before publishing.
+            let streamedText = '';
+            let lastSeq = 0;
+            let unsubscribeReply: (() => void) | null = null;
             try {
-              agentTurn = await intentAgentQueue.runUserMessageTurn({
+              unsubscribeReply = await subscribeIntentAgentReply(agentUserMessageId, (chunk) => {
+                if (chunk.seq <= lastSeq) return;
+                lastSeq = chunk.seq;
+                streamedText += chunk.content;
+                try {
+                  controller.enqueue(
+                    encoder.encode(formatSSEEvent(createTokenEvent(sessionId, chunk.content))),
+                  );
+                } catch {
+                  // Stream may have already closed.
+                }
+              });
+            } catch (subscribeErr) {
+              // Degraded to the fallback emission below, never a lost turn.
+              logger.warn('Intent-agent reply subscription failed', { sessionId, error: subscribeErr });
+            }
+            try {
+              agentTurn = await runIntentAgentUserTurn({
                 kind: 'user_message',
                 userId: user.id,
                 intentId: effectiveScope.scopeId,
@@ -608,11 +627,26 @@ export class ChatController {
               for (const act of agentTurn.acts) {
                 if (act.tool === 'message_user') agentAssistantMessageId = act.messageId;
               }
+              // Dropped-subscription fallback: whatever the channel did not
+              // deliver of the completed turn is emitted as one token event.
+              // The host publishes chunks whose concatenation IS the joined
+              // messages, so a healthy stream leaves no remainder.
+              if (fullResponse && fullResponse !== streamedText) {
+                const remainder = fullResponse.startsWith(streamedText)
+                  ? fullResponse.slice(streamedText.length)
+                  : null;
+                if (remainder) {
+                  controller.enqueue(
+                    encoder.encode(formatSSEEvent(createTokenEvent(sessionId, remainder))),
+                  );
+                }
+                // A non-prefix divergence emits nothing more: the done
+                // event's response is authoritative for the final text.
+              }
             } catch (agentErr) {
               // The event is durable on the inbox and retries in the
               // background; the client hears honest fixed copy rather than
-              // losing the turn — or having it silently re-decided by the
-              // persona.
+              // losing the turn.
               logger.error('Intent-agent turn failed; replying with fixed copy', { sessionId, error: agentErr });
               fullResponse = INTENT_AGENT_TURN_FAILURE_REPLY;
               try {
@@ -624,16 +658,22 @@ export class ChatController {
               } catch (persistErr) {
                 logger.error('Failed to persist intent-agent failure copy', { sessionId, error: persistErr });
               }
-            }
-            if (fullResponse) {
-              controller.enqueue(
-                encoder.encode(formatSSEEvent(createTokenEvent(sessionId, fullResponse))),
-              );
+              try {
+                controller.enqueue(
+                  encoder.encode(formatSSEEvent(createTokenEvent(sessionId, fullResponse))),
+                );
+              } catch {
+                // Stream may have already closed.
+              }
+            } finally {
+              unsubscribeReply?.();
             }
           }
 
-          // Use context-aware streaming to load previous messages
-          const orchestratorEvents = agentOwnsTurn
+          // Use context-aware streaming to load previous messages. An
+          // agent-owned turn has no factory (checked above): its stream is
+          // empty so one path runs persistence, title, suggestions and done.
+          const orchestratorEvents = !factory || agentOwnsTurn
             ? emptyEventStream()
             : factory.streamChatEventsWithContext(
               {

@@ -28,8 +28,15 @@ const cleanup = newParkFixtureCleanup();
 afterAll(() => cleanupParkFixtures(cleanup));
 
 /** A deterministic judgment seam: the loop runs everything else for real. */
-function scriptedTurn(script: (context: IntentAgentTurnContext) => IntentAgentDecidedAct[]) {
-  return { decide: async (context: IntentAgentTurnContext) => script(context) };
+function scriptedTurn(
+  script: (context: IntentAgentTurnContext) => IntentAgentDecidedAct[],
+  reply?: string,
+) {
+  return {
+    decide: async (context: IntentAgentTurnContext) => script(context),
+    // Phase 2: a client-message turn ends with the streaming reply stage.
+    ...(reply !== undefined ? { reply: async () => reply } : {}),
+  };
 }
 
 describe('IntentAgent loop over the real settle/claim substrate', () => {
@@ -69,6 +76,8 @@ describe('IntentAgent loop over the real settle/claim substrate', () => {
     // ── Turn 2: the client replies; the agent answers the negotiation. ──
     const replyId = await chatSessionService.addMessage({ sessionId: session!.id, role: 'user', content: 'Q4 works; EU preferred.' });
     const ackText = 'Thanks — I have taken Q4 with an EU preference back to that conversation.';
+    // Phase 2: the acknowledgment is the reply STAGE's, not an acts-stage
+    // message_user — the acts decide effects, the reply speaks.
     const turn2 = await runIntentAgentTurn(
       { kind: 'user_message', userId: fixture.recipientId, intentId: fixture.recipientIntentId, sessionId: session!.id, messageId: replyId, text: 'Q4 works; EU preferred.' },
       {
@@ -77,9 +86,8 @@ describe('IntentAgent loop over the real settle/claim substrate', () => {
           expect(waiting).toBeDefined();
           return [
             { tool: 'answer_negotiation', opportunityId: waiting!.opportunityId, answer: 'Q4 works; EU preferred.' },
-            { tool: 'message_user', text: ackText },
           ];
-        }),
+        }, ackText),
       },
     );
 
@@ -116,10 +124,12 @@ describe('IntentAgent loop over the real settle/claim substrate', () => {
       continuationSettlementId: fixture.settlementId,
     });
 
-    // The client heard back, and both acts are on the ledger.
+    // The client heard back — the reply-stage delivery — and both acts are
+    // on the ledger, the reply marked with its stage.
     expect(turn2.messages).toEqual([ackText]);
     const ledgerAfterAnswer = await intentAgentLedgerAdapter.readRecent(fixture.recipientId, fixture.recipientIntentId);
     expect(ledgerAfterAnswer.map((row) => row.act.tool)).toEqual(['message_user', 'answer_negotiation', 'message_user']);
+    expect(ledgerAfterAnswer[0]!.act).toMatchObject({ stage: 'reply', text: ackText });
   });
 
   test('answer-from-knowledge: a dossier fact answers the park without asking — the duplicate-question kill', async () => {

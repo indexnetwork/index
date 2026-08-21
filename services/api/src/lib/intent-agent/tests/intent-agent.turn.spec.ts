@@ -15,7 +15,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { IntentAgentTurn } from '../intent-agent.turn';
 import type { IntentAgentTurnContext } from '../intent-agent.context';
-import { INTENT_AGENT_SILENT_TURN_REPLY, INTENT_AGENT_UNRESUMABLE_MESSAGE, executeIntentAgentActs } from '../intent-agent.host';
+import { INTENT_AGENT_REPLY_FALLBACK, INTENT_AGENT_UNRESUMABLE_MESSAGE, executeIntentAgentActs, runIntentAgentTurn } from '../intent-agent.host';
 import type { IntentAgentHostDeps } from '../intent-agent.host';
 import type { IntentAgentInboxEvent } from '../intent-agent.types';
 import type { ParkedNegotiation } from '../../../adapters/parked-negotiation.reader.adapter';
@@ -52,6 +52,10 @@ function context(overrides: Partial<IntentAgentTurnContext> = {}): IntentAgentTu
     dossier: [
       { id: 'entry-1', text: 'Timing: Q4 works.', source: 'user_message', createdAt: new Date(2000) },
     ],
+    opportunities: [
+      { position: 1, opportunityId: OPP_A, name: 'Camille Dubois', status: 'stalled', label: 'Camille Dubois — parked, waiting on you' },
+      { position: 2, opportunityId: OPP_B, name: 'Ilya Roth', status: 'pending', label: 'Ilya Roth — waiting on your decision' },
+    ],
     recentDm: [],
     recentActs: [],
     ...overrides,
@@ -69,6 +73,19 @@ class ScriptedModelTurn extends IntentAgentTurn {
     this.calls += 1;
     if (output instanceof Error) throw output;
     return output;
+  }
+}
+
+/** A turn whose reply-stage round trips are scripted. */
+class ScriptedReplyTurn extends IntentAgentTurn {
+  replyCalls = 0;
+  constructor(private readonly replies: string[]) {
+    super({ model: 'test-model' });
+  }
+  protected override async callReplyModel(): Promise<string> {
+    const output = this.replies[this.replyCalls];
+    this.replyCalls += 1;
+    return output ?? '';
   }
 }
 
@@ -135,6 +152,50 @@ describe('IntentAgentTurn.decide', () => {
     expect(await turn.decide(context())).toEqual([
       { tool: 'message_user', text: 'One conversation needs your timing.' },
     ]);
+  });
+
+  it('an acts-stage message_user is refused for a client-message turn — the reply stage speaks there', async () => {
+    // Phase 2 (full chat ownership): the client's reply is the streaming
+    // reply stage's; an acts-stage message would double-speak.
+    const turn = new ScriptedModelTurn([
+      { acts: [{ act: 'message_user', text: 'Right away.' }] },
+      { acts: [{ act: 'wait', reason: 'Nothing to execute; the reply handles it.' }] },
+    ]);
+    expect(await turn.decide(context({ event: USER_MESSAGE }))).toEqual([
+      { tool: 'wait', reason: 'Nothing to execute; the reply handles it.' },
+    ]);
+  });
+
+  it('maps a verdict number onto the matches list — and refuses one outside it or doubled', async () => {
+    const turn = new ScriptedModelTurn([{
+      acts: [{ act: 'reject_opportunity', opportunity: 2, reason: 'Client said reject the second one.' }],
+    }]);
+    expect(await turn.decide(context({ event: USER_MESSAGE }))).toEqual([
+      { tool: 'reject_opportunity', opportunityId: OPP_B, reason: 'Client said reject the second one.' },
+    ]);
+
+    const outside = new ScriptedModelTurn([
+      { acts: [{ act: 'accept_opportunity', opportunity: 3 }] },
+      { acts: [{ act: 'accept_opportunity', opportunity: 9 }] },
+    ]);
+    await expect(outside.decide(context({ event: USER_MESSAGE }))).rejects.toThrow('no valid act list');
+
+    const doubled = new ScriptedModelTurn([
+      { acts: [{ act: 'accept_opportunity', opportunity: 1 }, { act: 'reject_opportunity', opportunity: 1 }] },
+      { acts: [{ act: 'wait' }] },
+    ]);
+    expect(await doubled.decide(context({ event: USER_MESSAGE }))).toEqual([{ tool: 'wait' }]);
+  });
+
+  it('a verdict act without a client message behind it is structurally impossible', async () => {
+    // A background event carries no client word, so no verdict can exist —
+    // the explicitness of the word itself is the prompt's law, pinned in the
+    // live eval (there is no code fence for judgment).
+    const turn = new ScriptedModelTurn([
+      { acts: [{ act: 'reject_opportunity', opportunity: 1 }] },
+      { acts: [{ act: 'reject_opportunity', opportunity: 2 }] },
+    ]);
+    await expect(turn.decide(context())).rejects.toThrow('no valid act list');
   });
 
   it('a model outage propagates — the inbox retry owns recovery, never a guess', async () => {
@@ -251,15 +312,31 @@ describe('executeIntentAgentActs', () => {
     expect(harness.delivered).toEqual([INTENT_AGENT_UNRESUMABLE_MESSAGE]);
   });
 
-  it('rule 8 backstop: a client message that produced no reply gets the fixed copy, unledgered', async () => {
+  // The rule-8 silent-turn backstop left with phase 2: a client message is
+  // always followed by the reply stage (see the runIntentAgentTurn suite
+  // below), which owns the never-silent guarantee now.
+  it('a verdict act executes through the injected #1471 lane and ledgers the outcome verbatim', async () => {
     const harness = hostDeps();
+    const passed: Array<{ input: Record<string, unknown>; target: string }> = [];
+    harness.deps.verdict = async (_userId, input, target) => {
+      passed.push({ input, target });
+      return { status: 'executed', counterparty: 'Ilya Roth' };
+    };
     const result = await executeIntentAgentActs(USER_MESSAGE, [
-      { tool: 'note_dossier', text: 'Prefers EU manufacturing.' },
+      { tool: 'reject_opportunity', opportunityId: OPP_B, reason: 'reject the second one' },
     ], harness.deps);
-    expect(result.messages).toEqual([INTENT_AGENT_SILENT_TURN_REPLY]);
-    // The backstop is the executor's copy, not an agent act — only the
-    // decided act is on the ledger.
-    expect(harness.ledgered.map((act) => act.tool)).toEqual(['note_dossier']);
+    expect(passed).toEqual([{
+      input: { intentId: 'intent-1', opportunityId: OPP_B, reason: 'reject the second one' },
+      target: 'rejected',
+    }]);
+    expect(result.acts).toEqual([{
+      tool: 'reject_opportunity',
+      opportunityId: OPP_B,
+      outcome: 'executed',
+      counterparty: 'Ilya Roth',
+      reason: 'reject the second one',
+    }]);
+    expect(harness.ledgered.map((act) => act.tool)).toEqual(['reject_opportunity']);
   });
 
   it('a needs_input turn with no message stays silent — the backstop is for a client who spoke', async () => {
@@ -269,5 +346,122 @@ describe('executeIntentAgentActs', () => {
     ], harness.deps);
     expect(result.messages).toEqual([]);
     expect(harness.delivered).toEqual([]);
+  });
+});
+
+describe('IntentAgentTurn.reply', () => {
+  it('returns checked prose — an identifier leak is retried once, then refused', async () => {
+    const leaky = new ScriptedReplyTurn([
+      `Your opportunity_id is ${OPP_A}.`,
+      'Sent your timing along; one match is waiting on your decision.',
+    ]);
+    expect(await leaky.reply(context({ event: USER_MESSAGE }), [])).toBe(
+      'Sent your timing along; one match is waiting on your decision.',
+    );
+    expect(leaky.replyCalls).toBe(2);
+
+    const hopeless = new ScriptedReplyTurn([
+      `The opportunity_id is ${OPP_A}.`,
+      `Still the opportunity_id: ${OPP_B}.`,
+    ]);
+    expect(await hopeless.reply(context({ event: USER_MESSAGE }), [])).toBeNull();
+    expect(hopeless.replyCalls).toBe(2);
+  });
+
+  it('an empty reply counts as refused prose, not a message', async () => {
+    const empty = new ScriptedReplyTurn(['', '   ']);
+    expect(await empty.reply(context({ event: USER_MESSAGE }), [])).toBeNull();
+  });
+});
+
+/**
+ * The reply stage in the loop: a client-message turn always ends with a
+ * delivered reply — checked model prose when possible, the fixed fallback
+ * copy (failure ledgered) when not — and its chunks are published only after
+ * delivery (check-then-stream). Background events skip the stage entirely.
+ */
+describe('runIntentAgentTurn reply stage', () => {
+  function loopDeps(overrides: {
+    reply?: (context: IntentAgentTurnContext) => Promise<string | null>;
+    withReplySeam?: boolean;
+  } = {}) {
+    const harness = hostDeps();
+    const published: Array<{ messageId: string; seq: number; content: string }> = [];
+    let replyCalls = 0;
+    harness.deps.context = {
+      readParkedNegotiations: async () => [],
+      readDossier: async () => [],
+      readOpportunities: async () => [],
+      readLedger: async () => [],
+      findSession: async () => ({ id: 'session-1' }),
+      getSessionMessages: async () => [],
+      getIntentText: async () => 'Find a manufacturing partner',
+    };
+    harness.deps.turn = {
+      decide: async () => [{ tool: 'wait' as const, reason: 'Nothing to execute.' }],
+      ...(overrides.withReplySeam === false ? {} : {
+        reply: async (turnContext: IntentAgentTurnContext) => {
+          replyCalls += 1;
+          return overrides.reply ? overrides.reply(turnContext) : 'All quiet on this signal.';
+        },
+      }),
+    } as never;
+    harness.deps.publishReplyChunk = async (messageId, chunk) => {
+      published.push({ messageId, ...chunk });
+    };
+    return { harness, published, replyCalls: () => replyCalls };
+  }
+
+  it('delivers the checked reply, ledgers it with its stage, and publishes chunks whose join is the delivered text', async () => {
+    const { harness, published } = loopDeps({
+      reply: async () => 'I sent your timing along. One match is still waiting on your decision — want my read?',
+    });
+    const result = await runIntentAgentTurn(USER_MESSAGE, harness.deps);
+
+    const replyText = 'I sent your timing along. One match is still waiting on your decision — want my read?';
+    expect(result.messages).toEqual([replyText]);
+    expect(harness.delivered).toEqual([replyText]);
+    const replyAct = harness.ledgered.find((act) => act.stage === 'reply');
+    expect(replyAct).toMatchObject({ tool: 'message_user', text: replyText });
+    expect(replyAct!.fallback).toBeUndefined();
+
+    // Check-then-stream: publication happens after delivery, in order, and
+    // reassembles exactly.
+    expect(published.length).toBeGreaterThan(1);
+    expect(published.map((chunk) => chunk.seq)).toEqual(published.map((_, index) => index + 1));
+    expect(published.every((chunk) => chunk.messageId === USER_MESSAGE.messageId)).toBe(true);
+    expect(published.map((chunk) => chunk.content).join('')).toBe(replyText);
+  });
+
+  it('a reply refused by the safety gate twice delivers the fixed copy and ledgers the failure', async () => {
+    const { harness, published } = loopDeps({ reply: async () => null });
+    const result = await runIntentAgentTurn(USER_MESSAGE, harness.deps);
+
+    expect(result.messages).toEqual([INTENT_AGENT_REPLY_FALLBACK]);
+    const replyAct = harness.ledgered.find((act) => act.stage === 'reply');
+    expect(replyAct).toMatchObject({ fallback: 'safety_check_failed', text: INTENT_AGENT_REPLY_FALLBACK });
+    expect(published.map((chunk) => chunk.content).join('')).toBe(INTENT_AGENT_REPLY_FALLBACK);
+  });
+
+  it('a reply-stage model failure falls back instead of retrying the whole turn — the acts already executed', async () => {
+    const { harness } = loopDeps({
+      reply: async () => {
+        throw new Error('provider down');
+      },
+    });
+    const result = await runIntentAgentTurn(USER_MESSAGE, harness.deps);
+
+    expect(result.messages).toEqual([INTENT_AGENT_REPLY_FALLBACK]);
+    expect(harness.ledgered.find((act) => act.stage === 'reply')).toMatchObject({ fallback: 'model_error' });
+  });
+
+  it('background events skip the reply stage — no client is waiting', async () => {
+    const { harness, published, replyCalls } = loopDeps();
+    const result = await runIntentAgentTurn(NEEDS_INPUT, harness.deps);
+
+    expect(replyCalls()).toBe(0);
+    expect(result.messages).toEqual([]);
+    expect(published).toEqual([]);
+    expect(harness.ledgered.map((act) => act.tool)).toEqual(['wait']);
   });
 });

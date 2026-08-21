@@ -1,8 +1,9 @@
 # The holistic intent agent
 
-**Status:** phase 1 in progress on `feat/intent-agent`. Phase 1 ships the
-IntentAgent actor and collapses the DM ask→answer pipeline into it; the
-phases after it are listed at the end.
+**Status:** phase 1 shipped (#1477): the IntentAgent actor, with the DM
+ask→answer pipeline collapsed into it. Phase 2 shipped on
+`feat/agent-full-chat`: full chat ownership + verdicts through the agent
+(see "Phase 2 — shipped" below). Later phases are listed at the end.
 
 **Date:** 2026-08-21
 **Builds on:** [2026-08-18-conversational-questions](2026-08-18-conversational-questions.md)
@@ -242,20 +243,89 @@ the answer is durably heard rather than fail-open lost.
 
 Tables are left alone; no migration drops data.
 
-## Phase 2+
+## Phase 2 — shipped (full chat ownership + verdicts through the agent)
 
-- **Verdicts through the agent** — the accept/reject lane (#1471) becomes
-  agent judgment with the same proposal discipline.
+Built together because they are one seam: retiring the persona from intent
+scope orphans its verdict tools unless the agent absorbs them.
+
+**Ownership is unconditional.** For the negotiator persona + intent scope,
+EVERY user turn runs the IntentAgent on its serialized inbox — the
+`intentAgentOwnsTurn` parked-set gate is deleted, and the persona graph is
+never derived for this scope (`getNegotiatorGraphFactory` deleted from the
+chat service; the controller has no negotiator factory branch). With the
+persona gone from chat, its chat-side tool registrations for this scope —
+`answer_pending_question`, `accept_opportunity`/`reject_opportunity`,
+`remember`/`forget` — no longer exist; the HOSTS stay shared, and the MCP
+surface (`mcp.controller` toolDeps) still registers them unchanged. The
+controller's post-turn machinery (title, suggestions, done event, reflect
+queue) runs on the agent's response exactly as before.
+
+**The turn is two stages.** The acts stage (structured judgment) decides
+effects only — for a client message, `message_user` is structurally refused
+there (the validator rejects it; `wait` is the honest "nothing to execute").
+The reply stage then composes the conversational reply: a second model call
+under the same law plus a reply instruction, given the context and the
+just-executed acts. The reply persists as the assistant message inside the
+host and is ledgered as a `message_user` act with `stage: 'reply'`.
+Background events (`negotiation_needs_input`) skip the reply stage; the acts
+stage keeps `message_user` for authoring asks, exactly as phase 1.
+
+**Streaming: check-then-stream.** Tokens cross from the inbox worker to the
+waiting controller over Redis pub/sub on a channel keyed by the turn's
+message id (`intent-agent-reply.stream.ts`; hermetic in-process bus under
+test). The streaming tension — tokens reaching the client before the safety
+check completes — is resolved by CHECKING FIRST: the reply is generated to
+completion, passes `isSafeQuestionMessageProse` (fail → one retry → fixed
+fallback copy, failure ledgered on the act), is persisted, and only then is
+published as ordered sentence chunks. The latency cost is honest: the first
+token waits for the full reply generation plus the check — no earlier than
+phase 1's single emission, so nothing regressed, but not token-by-token
+model latency either. Chosen over buffer-and-flush-by-sentence because a
+mid-reply check failure there would need retraction semantics
+(`response_reset`) on a surface whose web client only consumes token/done —
+and no unchecked token may ever be persisted or shown. The transport is
+already incremental; a future incremental safety formulation can move the
+flush earlier without touching the SSE contract. The controller subscribes
+before enqueueing, relays chunks as SSE token events, and falls back to
+emitting the completed turn text if the channel delivered nothing (or only a
+prefix) — a turn is never lost to a dropped subscription, and the fixed
+failure copy still answers a failed/timed-out turn.
+
+**Verdicts execute only on the client's explicit word.** New acts
+`accept_opportunity`/`reject_opportunity` refer by number to a bounded
+active-match list now assembled into the turn context by the SAME reader the
+#1471 tools use (`readActionableCounterparties`; capped, newest kept,
+truncation logged). Execution reuses the #1471 lane via
+`passVerdictOnOpportunity` — the same
+`opportunityService.updateOpportunityStatus` write and failure
+classification the Radar card and MCP tools ride — and the outcome is
+ledgered verbatim. THE LAW lives in prompt v2
+(`INTENT_AGENT_SYSTEM_PROMPT_VERSION = 2`): explicit word → act; hedge →
+recommendation plus a settling question in the reply, never an act. The
+explicit/hedged boundary is judgment, so it is pinned in the live eval, not
+fenced in code; the structural fences (verdict acts only on user_message
+events, numbers only from the list, one verdict per match per turn) are in
+the validator.
+
+**Signal edits stay explicit.** The persona's chat edit rule was NOT
+inherited: there is no signal-edit act. The agent's reply directs the client
+to edit the signal directly (prompt rule 6). Deferred, not wired: absorbing
+the explicit intent-update host as an `update_signal` act.
+
+## Phase 3+
+
 - **Proactive contact** — the agent decides to open the conversation
   (new-match arrivals, expiring windows), with notification hanging off its
   `message_user` acts.
-- **Full chat ownership** — the agent takes every turn of the intent DM and
-  the persona graph retires from this scope; requires the inbox to carry
-  streaming turns.
+- **Incremental reply streaming** — an incremental safety formulation that
+  lets checked sentences flush before the reply completes.
 - **Cross-intent parallelism** — worker concurrency N with a per-intent
   advisory lock in the processor, if inbox latency ever warrants it.
 - **Question-block UI retirement** — once no legacy open blocks remain, the
   steps renderer and block parser leave the floor.
+- **Negotiator persona cleanup** — `createNegotiatorPersona` and the chat
+  persona module in the protocol package are now chat-dead (no api caller);
+  removing them is a protocol-major cleanup left for its own lane.
 - **MCP surface** — expose the dossier and the ledger to the user
   (`read`/curate), and route external-agent asks through the inbox.
 - **Dossier UI** — the disclosure boundary as a visible, editable list.
