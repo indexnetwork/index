@@ -32,19 +32,22 @@ const MAX_TURN_CHARS = 500;
 const MAX_TRANSCRIPT_TURNS = 6;
 const MAX_DM_CHARS = 1000;
 
+// Optional fields are `.nullable().optional()`: the OpenAI structured-output
+// schema translation refuses optional-without-nullable, and the validator
+// below treats null and absent alike.
 const DecidedActsSchema = z.object({
   acts: z.array(z.object({
     act: z.enum(['message_user', 'answer_negotiation', 'note_dossier', 'retire_dossier', 'wait']),
     /** message_user: the message. note_dossier: the fact. */
-    text: z.string().max(4000).optional(),
+    text: z.string().max(4000).nullable().optional(),
     /** answer_negotiation: 1-based number from the waiting list. */
-    negotiation: z.number().int().min(1).optional(),
+    negotiation: z.number().int().min(1).nullable().optional(),
     /** answer_negotiation: the answer, restated so it stands alone. */
-    answer: z.string().max(4000).optional(),
+    answer: z.string().max(4000).nullable().optional(),
     /** retire_dossier: 1-based number from the dossier list. */
-    entry: z.number().int().min(1).optional(),
+    entry: z.number().int().min(1).nullable().optional(),
     /** wait: why nothing needs doing. */
-    reason: z.string().max(500).optional(),
+    reason: z.string().max(500).nullable().optional(),
   })).min(1).max(6),
 });
 
