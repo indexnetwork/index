@@ -8,6 +8,7 @@
  * conduct. Nothing here is cached or carried between turns.
  */
 import type { ParkedNegotiation } from '../../adapters/parked-negotiation.reader.adapter';
+import type { ActionableCounterparty } from '../agent/negotiator-verdict.host';
 import type { IntentDossierEntryRow } from '../../adapters/intent-dossier.adapter';
 import type { IntentAgentLedgerRow } from '../../adapters/intent-agent-ledger.adapter';
 import type { IntentAgentInboxEvent } from './intent-agent.types';
@@ -15,6 +16,13 @@ import type { IntentAgentInboxEvent } from './intent-agent.types';
 /** How much conversation memory a turn reads. */
 const MAX_DM_MESSAGES = 20;
 const MAX_LEDGER_ACTS = 20;
+/**
+ * How many active matches a turn sees. Bounded so a prolific signal cannot
+ * flood the prompt; the newest matches are kept because they are the ones a
+ * verdict or a status question is most likely about, and what is dropped is
+ * logged so the truncation is never silent.
+ */
+const MAX_OPPORTUNITIES = 12;
 
 export interface IntentAgentTurnContext {
   event: IntentAgentInboxEvent;
@@ -24,6 +32,14 @@ export interface IntentAgentTurnContext {
   parked: ParkedNegotiation[];
   /** Active dossier entries, oldest first — the numbered list. */
   dossier: IntentDossierEntryRow[];
+  /**
+   * This signal's active matches (statuses a verdict can still land on),
+   * oldest first — the numbered list verdict acts refer to. Served by the
+   * SAME reader the #1471 verdict tools use, so the state the agent reasons
+   * over is the state the verdict host would act on. Bounded to
+   * MAX_OPPORTUNITIES, keeping the newest.
+   */
+  opportunities: ActionableCounterparty[];
   /** Recent DM transcript, oldest first. */
   recentDm: Array<{ role: string; content: string }>;
   /** The agent's own recent acts, newest first. */
@@ -34,6 +50,7 @@ export interface IntentAgentTurnContext {
 export interface IntentAgentContextDeps {
   readParkedNegotiations?: (userId: string, intentId: string) => Promise<ParkedNegotiation[]>;
   readDossier?: (userId: string, intentId: string) => Promise<IntentDossierEntryRow[]>;
+  readOpportunities?: (userId: string, intentId: string) => Promise<ActionableCounterparty[]>;
   readLedger?: (userId: string, intentId: string, limit: number) => Promise<IntentAgentLedgerRow[]>;
   findSession?: (userId: string, intentId: string) => Promise<{ id: string } | null>;
   getSessionMessages?: (sessionId: string) => Promise<Array<{ role: string; content: string }>>;
@@ -52,6 +69,11 @@ export async function assembleIntentAgentContext(
   const readDossier = deps?.readDossier
     ?? (async (id: string, intent: string) => (await import('../../adapters/intent-dossier.adapter'))
       .intentDossierAdapter.readActiveEntries(id, intent));
+  // The verdict reader never throws (an unreadable list reads as "no
+  // verdicts to offer") — the same degradation the persona prompt used.
+  const readOpportunities = deps?.readOpportunities
+    ?? (async (id: string, intent: string) => (await import('../agent/negotiator-verdict.host'))
+      .readActionableCounterparties(id, intent));
   const readLedger = deps?.readLedger
     ?? (async (id: string, intent: string, limit: number) => (await import('../../adapters/intent-agent-ledger.adapter'))
       .intentAgentLedgerAdapter.readRecent(id, intent, limit));
@@ -61,12 +83,27 @@ export async function assembleIntentAgentContext(
     return intent?.payload ?? null;
   });
 
-  const [parked, dossier, recentActs, signalText] = await Promise.all([
+  const [parked, dossier, allOpportunities, recentActs, signalText] = await Promise.all([
     readParked(userId, intentId),
     readDossier(userId, intentId),
+    readOpportunities(userId, intentId),
     readLedger(userId, intentId, MAX_LEDGER_ACTS),
     getIntentText(intentId).catch(() => null),
   ]);
+
+  // Bounded, keeping the newest (the reader lists oldest first). The agent's
+  // numbers are context-relative — its validator resolves them to ids — so
+  // truncation renumbers nothing anywhere else.
+  const opportunities = allOpportunities.slice(-MAX_OPPORTUNITIES);
+  if (allOpportunities.length > opportunities.length) {
+    const { log } = await import('../log');
+    log.lib.from('intent-agent.context').warn('intent_agent_context_opportunities_truncated', {
+      userId,
+      intentId,
+      total: allOpportunities.length,
+      kept: opportunities.length,
+    });
+  }
 
   // The DM may not exist yet (a park can fire before the client ever opened
   // this signal's conversation). The transcript read degrades to empty; the
@@ -93,5 +130,5 @@ export async function assembleIntentAgentContext(
     }
   })();
 
-  return { event, signalText, parked: [...parked], dossier, recentDm, recentActs };
+  return { event, signalText, parked: [...parked], dossier, opportunities, recentDm, recentActs };
 }

@@ -13,16 +13,37 @@ import { join } from 'path';
 const read = (relative: string) => readFileSync(join(__dirname, '../../../..', relative), 'utf8');
 
 describe('intent-agent wiring', () => {
-  it('the chat controller routes the owned turn through the serialized inbox, before the persona stream', () => {
+  it('the chat controller routes every intent-scoped negotiator turn through the serialized inbox — ownership is unconditional', () => {
     const controller = read('src/controllers/chat.controller.ts');
-    expect(controller).toContain('intentAgentOwnsTurn');
+    // Phase 2 (full chat ownership): the parked-set ownership gate is gone —
+    // the agent owns the turn because the scope is its, not because
+    // something happens to be parked.
+    expect(controller).not.toContain('intentAgentOwnsTurn');
     expect(controller).toContain('runUserMessageTurn');
+    // The reply streams over the turn's channel, subscribed before enqueue.
+    expect(controller.indexOf('subscribeIntentAgentReply(')).toBeGreaterThan(0);
+    expect(controller.indexOf('subscribeIntentAgentReply(')).toBeLessThan(controller.indexOf('runIntentAgentUserTurn({'));
     // Order: the agent turn is decided before the orchestrator stream is
     // even constructed — no persona tool can consume an answer first.
     expect(controller.indexOf('runUserMessageTurn')).toBeLessThan(controller.indexOf('streamChatEventsWithContext'));
     // The replaced gate machinery is gone, not dormant.
     expect(controller).not.toContain('evaluateQuestionAnswerPrecedence');
     expect(controller).not.toContain('enqueueQuestionAnswerReply');
+  });
+
+  it('the negotiator persona graph is retired from chat — no factory derivation, no persona tool registrations for this scope', () => {
+    const controller = read('src/controllers/chat.controller.ts');
+    const service = read('src/services/chat.service.ts');
+    // Phase 2: intent-scope negotiator turns never invoke the persona
+    // factory; the persona's chat-side tool registrations (answer, verdict,
+    // memory) died with it. The MCP surface registers the shared hosts
+    // through its own toolDeps and is deliberately untouched.
+    expect(controller).not.toContain('getNegotiatorGraphFactory');
+    expect(service).not.toContain('getNegotiatorGraphFactory');
+    expect(service).not.toContain('createNegotiatorPersona');
+    const mcp = read('src/controllers/mcp.controller.ts');
+    expect(mcp).toContain('negotiatorAnswerTools');
+    expect(mcp).toContain('negotiatorVerdictTools');
   });
 
   it('every park wakes the agent through the one enqueue seam, behind the principal fence', () => {

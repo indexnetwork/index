@@ -17,37 +17,15 @@
 import { resumeParkedNegotiation } from '@indexnetwork/protocol';
 import type { NegotiationAnswerConsumptionPorts } from '@indexnetwork/protocol';
 
+import { chunkReplyText, publishIntentAgentReplyChunk } from './intent-agent-reply.stream';
+import type { NegotiatorVerdictResult } from '../agent/negotiator-verdict.host';
 import { assembleIntentAgentContext } from './intent-agent.context';
 import type { IntentAgentContextDeps, IntentAgentTurnContext } from './intent-agent.context';
 import { IntentAgentTurn } from './intent-agent.turn';
-import type { IntentAgentDecidedAct, IntentAgentEvent, IntentAgentExecutedAct, IntentAgentInboxEvent, IntentAgentTurnResult } from './intent-agent.types';
+import type { IntentAgentDecidedAct, IntentAgentEvent, IntentAgentExecutedAct, IntentAgentInboxEvent, IntentAgentReplyFallbackReason, IntentAgentTurnResult, IntentAgentUserMessageEvent } from './intent-agent.types';
 import { log } from '../log';
 
 const logger = log.lib.from('intent-agent.host');
-
-/**
- * Whether the signal's IntentAgent owns a DM turn: true while a negotiation
- * is parked awaiting this client on this signal
- * (docs/plans/2026-08-21-holistic-intent-agent.md, "Answer side"). A cheap
- * honest read, not judgment — whether a message ANSWERS anything is the
- * agent's call, made inside its serialized turn. Never throws: an unreadable
- * parked set falls through to the persona, exactly as the retired
- * answer-precedence gate failed open.
- */
-export async function intentAgentOwnsTurn(userId: string, intentId: string): Promise<boolean> {
-  try {
-    const { parkedNegotiationReaderAdapter } = await import('../../adapters/parked-negotiation.reader.adapter');
-    const parked = await parkedNegotiationReaderAdapter.readParkedNegotiations(userId, intentId);
-    return parked.length > 0;
-  } catch (err) {
-    logger.error('intent_agent_turn_ownership_read_failed; falling through to the persona', {
-      userId,
-      intentId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return false;
-  }
-}
 
 /**
  * Fixed honest copy for an answer heard on a park whose negotiation cannot
@@ -62,12 +40,15 @@ export const INTENT_AGENT_UNRESUMABLE_MESSAGE =
   + 'I can propose re-running discovery under your updated signal.';
 
 /**
- * Backstop reply for the impossible case rule 8 forbids: the client spoke
- * and the agent's acts delivered nothing back. Code-owned copy — the prompt
- * carries the judgment; this only refuses silence.
+ * Fixed honest copy delivered when the reply stage could not produce prose
+ * that passes the safety gate (fail → one retry → this), or the reply model
+ * call itself failed. Server-owned, never model text: the acts the turn
+ * executed are durable either way, so the copy says that instead of
+ * pretending nothing happened. The failure is ledgered on the act.
  */
-export const INTENT_AGENT_SILENT_TURN_REPLY =
-  'Noted — I have taken that in. Nothing on this signal needs your attention right now.';
+export const INTENT_AGENT_REPLY_FALLBACK =
+  'I acted on your message and everything I did is recorded, but I could not compose a clean reply just now. '
+  + 'Ask me where things stand and I will lay it out.';
 
 /** Structural slice of ChatSessionService the executor needs. */
 export interface IntentAgentChatSessions {
@@ -81,8 +62,16 @@ export interface IntentAgentChatSessions {
 /** Injectable seams; production resolves the real collaborators lazily. */
 export interface IntentAgentHostDeps {
   context?: IntentAgentContextDeps;
-  turn?: Pick<IntentAgentTurn, 'decide'>;
+  turn?: Pick<IntentAgentTurn, 'decide'> & Partial<Pick<IntentAgentTurn, 'reply'>>;
   chatSessions?: IntentAgentChatSessions;
+  /** The #1471 verdict lane, by opportunity id; production is the shared host. */
+  verdict?: (
+    userId: string,
+    input: { intentId: string; opportunityId: string; reason?: string },
+    target: 'accepted' | 'rejected',
+  ) => Promise<NegotiatorVerdictResult>;
+  /** Reply-chunk publisher; production is the Redis transport. */
+  publishReplyChunk?: typeof publishIntentAgentReplyChunk;
   dossier?: {
     addEntry(input: { userId: string; intentId: string; text: string; source: 'user_message' | 'answer' | 'agent_note' }): Promise<string>;
     retireEntry(input: { userId: string; entryId: string }): Promise<boolean>;
@@ -235,6 +224,31 @@ export async function executeIntentAgentActs(
         result.acts.push(executed);
         break;
       }
+      case 'accept_opportunity':
+      case 'reject_opportunity': {
+        // The client's explicit word, executing through the SAME #1471 host
+        // the persona tools and the MCP surface call — one write path, one
+        // classification. Nothing here re-decides explicitness: that law is
+        // the prompt's, pinned by the live eval.
+        const verdict = deps?.verdict
+          ?? (async (userId: string, input: { intentId: string; opportunityId: string; reason?: string }, target: 'accepted' | 'rejected') =>
+            (await import('../agent/negotiator-verdict.host')).passVerdictOnOpportunity(userId, input, target, undefined));
+        const outcome = await verdict(
+          event.userId,
+          { intentId: event.intentId, opportunityId: act.opportunityId, ...(act.reason ? { reason: act.reason } : {}) },
+          act.tool === 'accept_opportunity' ? 'accepted' : 'rejected',
+        );
+        const executed: IntentAgentExecutedAct = {
+          tool: act.tool,
+          opportunityId: act.opportunityId,
+          outcome: outcome.status,
+          ...('counterparty' in outcome ? { counterparty: outcome.counterparty } : {}),
+          ...(act.reason ? { reason: act.reason } : {}),
+        };
+        await appendLedger(event, executed, deps);
+        result.acts.push(executed);
+        break;
+      }
       case 'note_dossier': {
         const dossier = await resolveDossier(deps);
         const entryId = await dossier.addEntry({
@@ -265,14 +279,9 @@ export async function executeIntentAgentActs(
     }
   }
 
-  // Rule 8's backstop: the client spoke, so the client hears back. Code-owned
-  // copy, not ledgered as an agent act — the agent's decision (whatever it
-  // was) is already on the ledger above.
-  if (event.kind === 'user_message' && result.messages.length === 0) {
-    const delivered = await deliverMessage(event, INTENT_AGENT_SILENT_TURN_REPLY, deps);
-    if (delivered) result.messages.push(INTENT_AGENT_SILENT_TURN_REPLY);
-  }
-
+  // Phase 2: a client message is always followed by the reply stage
+  // (runIntentAgentTurn), which guarantees the client hears back — the old
+  // rule-8 backstop's job, now owned by the stage that composes the reply.
   return result;
 }
 
@@ -283,8 +292,94 @@ function getDefaultTurn(): IntentAgentTurn {
 }
 
 /**
+ * The reply stage (phase 2): a client-message turn always ends with the
+ * agent's conversational reply — composed by a second model call over the
+ * same context plus the just-executed acts, checked (isSafeQuestionMessage-
+ * Prose, fail → one retry inside `reply`) BEFORE it is persisted or a single
+ * chunk leaves the host. A reply the model could not produce safely becomes
+ * the fixed fallback copy, and the failure is ledgered on the act — never a
+ * thrown error: the acts already executed, and re-running them to retry
+ * prose would trade a wording problem for duplicate effects.
+ */
+async function runReplyStage(
+  event: IntentAgentUserMessageEvent,
+  context: IntentAgentTurnContext,
+  turn: NonNullable<IntentAgentHostDeps['turn']>,
+  result: IntentAgentTurnResult,
+  deps?: IntentAgentHostDeps,
+): Promise<void> {
+  let text: string | null = null;
+  let fallback: IntentAgentReplyFallbackReason | undefined;
+  if (!turn.reply) {
+    // An injected judgment seam without a reply seam cannot compose one.
+    fallback = 'model_error';
+  } else {
+    try {
+      text = await turn.reply(context, result.acts);
+      if (text === null) fallback = 'safety_check_failed';
+    } catch (err) {
+      logger.error('intent_agent_reply_stage_failed', {
+        userId: event.userId,
+        intentId: event.intentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      fallback = 'model_error';
+    }
+  }
+  if (fallback) {
+    logger.warn('intent_agent_reply_fell_back', {
+      userId: event.userId,
+      intentId: event.intentId,
+      reason: fallback,
+    });
+  }
+
+  const content = text ?? INTENT_AGENT_REPLY_FALLBACK;
+  const delivered = await deliverMessage(event, content, deps);
+  if (!delivered) return;
+  const executed: IntentAgentExecutedAct = {
+    tool: 'message_user',
+    text: content,
+    ...delivered,
+    stage: 'reply',
+    ...(fallback ? { fallback } : {}),
+  };
+  await appendLedger(event, executed, deps);
+  result.acts.push(executed);
+  result.messages.push(content);
+}
+
+/**
+ * Stream a completed client-message turn's delivered messages to whichever
+ * controller is waiting, as ordered chunks on the turn's channel. Runs only
+ * AFTER everything is checked and persisted (check-then-stream); joining the
+ * chunks reproduces `result.messages.join('\n\n')` exactly, so the
+ * controller's fallback and the stream can never disagree about the text.
+ */
+async function publishTurnMessages(
+  event: IntentAgentUserMessageEvent,
+  result: IntentAgentTurnResult,
+  deps?: IntentAgentHostDeps,
+): Promise<void> {
+  if (result.messages.length === 0) return;
+  const publish = deps?.publishReplyChunk ?? publishIntentAgentReplyChunk;
+  let seq = 0;
+  for (const [index, message] of result.messages.entries()) {
+    const prefixed = index > 0 ? `\n\n${message}` : message;
+    for (const content of chunkReplyText(prefixed)) {
+      seq += 1;
+      await publish(event.messageId, { seq, content });
+    }
+  }
+}
+
+/**
  * The loop, whole: event → assemble context → one judgment → execute the
- * acts. This is what the inbox worker runs, one event at a time per intent.
+ * acts — and, for a client message, the streaming reply stage (phase 2).
+ * Background events (`negotiation_needs_input`) skip the reply stage: no
+ * client is waiting, and the acts stage keeps `message_user` for authoring
+ * asks exactly as phase 1. This is what the inbox worker runs, one event at
+ * a time per intent.
  */
 export async function runIntentAgentTurn(
   event: IntentAgentInboxEvent,
@@ -299,5 +394,10 @@ export async function runIntentAgentTurn(
     event: event.kind,
     acts: decided.map((act) => act.tool),
   });
-  return executeIntentAgentActs(event, decided, deps);
+  const result = await executeIntentAgentActs(event, decided, deps);
+  if (event.kind === 'user_message') {
+    await runReplyStage(event, context, turn, result, deps);
+    await publishTurnMessages(event, result, deps);
+  }
+  return result;
 }

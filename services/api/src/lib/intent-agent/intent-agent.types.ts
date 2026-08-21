@@ -55,6 +55,14 @@ export type IntentAgentDecidedAct =
   | { tool: 'answer_negotiation'; opportunityId: string; answer: string }
   | { tool: 'note_dossier'; text: string }
   | { tool: 'retire_dossier'; entryId: string }
+  /**
+   * The client's explicit verdict on a counterparty (phase 2). Decided only
+   * for user_message events — a verdict without the client's word behind it
+   * is structurally impossible — and only in the client's explicit words
+   * (the prompt's law; hedges become proposals in the reply, never acts).
+   */
+  | { tool: 'accept_opportunity'; opportunityId: string; reason?: string }
+  | { tool: 'reject_opportunity'; opportunityId: string; reason?: string }
   | { tool: 'wait'; reason?: string };
 
 // ─── Executed acts (decision + durable effects) ─────────────────────────────
@@ -67,8 +75,24 @@ export type NegotiationAnswerOutcome =
   | 'no_negotiation'
   | 'wrong_recipient';
 
+/** Why a reply-stage delivery fell back to the fixed server-owned copy. */
+export type IntentAgentReplyFallbackReason = 'safety_check_failed' | 'model_error';
+
 export type IntentAgentExecutedAct =
-  | { tool: 'message_user'; text: string; sessionId: string; messageId: string }
+  | {
+    tool: 'message_user';
+    text: string;
+    sessionId: string;
+    messageId: string;
+    /**
+     * 'reply' marks the streaming reply stage's delivery (phase 2); absent
+     * for acts-stage messages (background-event asks). `fallback` records
+     * that the model's reply was refused and the fixed copy delivered
+     * instead — the ledgered failure the spec demands.
+     */
+    stage?: 'reply';
+    fallback?: IntentAgentReplyFallbackReason;
+  }
   | {
     tool: 'answer_negotiation';
     opportunityId: string;
@@ -81,6 +105,15 @@ export type IntentAgentExecutedAct =
   }
   | { tool: 'note_dossier'; text: string; entryId: string }
   | { tool: 'retire_dossier'; entryId: string; retired: boolean }
+  | {
+    /** The #1471 verdict lane's outcome, verbatim from the shared host. */
+    tool: 'accept_opportunity' | 'reject_opportunity';
+    opportunityId: string;
+    outcome: 'executed' | 'none_actionable' | 'unknown_counterparty' | 'already_decided' | 'error';
+    /** Who the write actually landed on, when it landed. */
+    counterparty?: string;
+    reason?: string;
+  }
   | { tool: 'wait'; reason?: string };
 
 /** One completed turn: what the agent did, plus what the client should see. */

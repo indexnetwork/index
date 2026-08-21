@@ -21,9 +21,9 @@ import { z } from 'zod';
 import { getModelName } from '@indexnetwork/protocol';
 
 import { isSafeQuestionMessageProse } from '../question/negotiation-question.contract';
-import { INTENT_AGENT_SYSTEM_PROMPT } from './intent-agent.prompt';
+import { INTENT_AGENT_REPLY_INSTRUCTION, INTENT_AGENT_SYSTEM_PROMPT } from './intent-agent.prompt';
 import type { IntentAgentTurnContext } from './intent-agent.context';
-import type { IntentAgentDecidedAct } from './intent-agent.types';
+import type { IntentAgentDecidedAct, IntentAgentExecutedAct } from './intent-agent.types';
 import { log } from '../log';
 
 const logger = log.lib.from('intent-agent.turn');
@@ -37,16 +37,18 @@ const MAX_DM_CHARS = 1000;
 // below treats null and absent alike.
 const DecidedActsSchema = z.object({
   acts: z.array(z.object({
-    act: z.enum(['message_user', 'answer_negotiation', 'note_dossier', 'retire_dossier', 'wait']),
+    act: z.enum(['message_user', 'answer_negotiation', 'accept_opportunity', 'reject_opportunity', 'note_dossier', 'retire_dossier', 'wait']),
     /** message_user: the message. note_dossier: the fact. */
     text: z.string().max(4000).nullable().optional(),
     /** answer_negotiation: 1-based number from the waiting list. */
     negotiation: z.number().int().min(1).nullable().optional(),
     /** answer_negotiation: the answer, restated so it stands alone. */
     answer: z.string().max(4000).nullable().optional(),
+    /** accept/reject_opportunity: 1-based number from the matches list. */
+    opportunity: z.number().int().min(1).nullable().optional(),
     /** retire_dossier: 1-based number from the dossier list. */
     entry: z.number().int().min(1).nullable().optional(),
-    /** wait: why nothing needs doing. */
+    /** wait: why nothing needs doing. accept/reject: the client's words. */
     reason: z.string().max(500).nullable().optional(),
   })).min(1).max(6),
 });
@@ -83,6 +85,14 @@ function renderDossier(context: IntentAgentTurnContext): string {
   return `Dossier — the facts you may use at the negotiation table (refer by number):\n${lines.join('\n')}`;
 }
 
+function renderOpportunities(context: IntentAgentTurnContext): string {
+  if (context.opportunities.length === 0) return 'Active matches on this signal: none right now.';
+  const lines = context.opportunities.map((opportunity, index) =>
+    `${index + 1}. ${opportunity.label}`);
+  return `Your client's active matches on this signal (refer by number; a verdict acts on exactly one of these):
+${lines.join('\n')}`;
+}
+
 function renderLedger(context: IntentAgentTurnContext): string {
   if (context.recentActs.length === 0) return '';
   const lines = context.recentActs.slice(0, 10).map((row) => {
@@ -107,7 +117,7 @@ function renderDm(context: IntentAgentTurnContext): string {
 function renderEvent(context: IntentAgentTurnContext): string {
   const { event } = context;
   if (event.kind === 'user_message') {
-    return `THE EVENT: your client just wrote to you:\n"${truncate(event.text, 4000)}"\n\nDecide what to do with it. If it answers something a negotiation is waiting on, resolve that negotiation with it. Either way, reply to your client.`;
+    return `THE EVENT: your client just wrote to you:\n"${truncate(event.text, 4000)}"\n\nDecide what to do with it. If it answers something a negotiation is waiting on, resolve that negotiation with it. If it explicitly renders a verdict on a listed match, execute the verdict — and remember the verdict law: a hedge is not a verdict. If it states a fact worth keeping, note it. If none of your tools apply, wait — your reply to your client is composed in a separate step after these acts, so do not use message_user here.`;
   }
   const position = context.parked.findIndex((parked) => parked.opportunityId === event.opportunityId);
   const which = position >= 0
@@ -123,6 +133,8 @@ export function renderIntentAgentTurn(context: IntentAgentTurnContext): string {
     '',
     renderParked(context),
     '',
+    renderOpportunities(context),
+    '',
     renderDossier(context),
     renderLedger(context),
     '',
@@ -130,6 +142,40 @@ export function renderIntentAgentTurn(context: IntentAgentTurnContext): string {
     '',
     renderEvent(context),
   ].join('\n');
+}
+
+/** Compact prose record of the acts the turn just executed, for the reply. */
+function renderExecutedAct(act: IntentAgentExecutedAct): string {
+  switch (act.tool) {
+    case 'message_user':
+      return `- You sent your client a message: ${act.text}`;
+    case 'answer_negotiation':
+      return `- You resolved a waiting negotiation with the answer "${act.answer}" (outcome: ${act.outcome}).`;
+    case 'accept_opportunity':
+    case 'reject_opportunity': {
+      const verb = act.tool === 'accept_opportunity' ? 'ACCEPTED' : 'REJECTED';
+      return act.outcome === 'executed'
+        ? `- You executed your client's verdict: ${verb} ${act.counterparty ?? 'the match'}.`
+        : `- You tried to execute your client's verdict (${verb.toLowerCase()}) but it did not land: ${act.outcome === 'already_decided' ? 'they had already committed on this match — it is the other side\'s move now' : act.outcome === 'unknown_counterparty' || act.outcome === 'none_actionable' ? 'that match is no longer open to a verdict' : 'the write failed'}. Tell your client honestly.`;
+    }
+    case 'note_dossier':
+      return `- You noted a fact for the negotiation table: ${act.text}`;
+    case 'retire_dossier':
+      return act.retired ? '- You retired an outdated dossier entry.' : '- You tried to retire a dossier entry that was already gone.';
+    case 'wait':
+      return `- You decided nothing needed doing${act.reason ? ` (${act.reason})` : ''}.`;
+  }
+}
+
+/** What the reply stage sees, rendered; exported for the live eval's transparency. */
+export function renderIntentAgentReplyStage(
+  context: IntentAgentTurnContext,
+  executed: IntentAgentExecutedAct[],
+): string {
+  const acts = executed.length === 0
+    ? 'You executed no acts this turn.'
+    : `The acts you just executed for this turn:\n${executed.map(renderExecutedAct).join('\n')}`;
+  return `${renderIntentAgentTurn(context)}\n\n${acts}\n\nNow write your reply to your client.`;
 }
 
 export interface IntentAgentTurnConfig {
@@ -177,13 +223,36 @@ export class IntentAgentTurn {
     if (acts.some((act) => act.act === 'wait') && acts.length > 1) return null;
 
     const answered = new Set<number>();
+    const judged = new Set<number>();
     const decided: IntentAgentDecidedAct[] = [];
     for (const act of acts) {
       switch (act.act) {
         case 'message_user': {
+          // Phase 2: when the client themselves wrote, the reply is the
+          // dedicated streaming stage's — an acts-stage message would race
+          // it and double-speak. Structural, not judgment: rejected here so
+          // the retry re-decides without it.
+          if (context.event.kind === 'user_message') return null;
           const text = act.text?.trim();
           if (!text || !isSafeQuestionMessageProse(text)) return null;
           decided.push({ tool: 'message_user', text });
+          break;
+        }
+        case 'accept_opportunity':
+        case 'reject_opportunity': {
+          // A verdict exists only as the client's explicit word — an event
+          // with no client message cannot carry one. Whether the word WAS
+          // explicit is the prompt's law (pinned by the live eval); this
+          // only refuses the structurally impossible.
+          if (context.event.kind !== 'user_message') return null;
+          if (!act.opportunity || act.opportunity > context.opportunities.length) return null;
+          if (judged.has(act.opportunity)) return null;
+          judged.add(act.opportunity);
+          decided.push({
+            tool: act.act,
+            opportunityId: context.opportunities[act.opportunity - 1]!.opportunityId,
+            ...(act.reason?.trim() ? { reason: act.reason.trim() } : {}),
+          });
           break;
         }
         case 'answer_negotiation': {
@@ -218,15 +287,56 @@ export class IntentAgentTurn {
   }
 
   /**
+   * The reply stage (phase 2): the streaming conversational reply for a
+   * client-message turn, composed AFTER the acts executed. One plain-text
+   * call under the same law plus the reply instruction; the returned prose
+   * must pass the identifier-leak gate before anyone sees it — fail → one
+   * retry → null, and the caller delivers the fixed fallback copy. This is
+   * the honest resolution of the streaming tension: the check runs on the
+   * COMPLETED reply, and the transport streams it only afterwards
+   * (check-then-stream) — no unchecked token ever leaves the host.
+   *
+   * Model errors propagate — the caller distinguishes a provider outage
+   * (fallback, reason 'model_error') from refused prose.
+   */
+  async reply(context: IntentAgentTurnContext, executed: IntentAgentExecutedAct[]): Promise<string | null> {
+    const userMessage = renderIntentAgentReplyStage(context, executed);
+    const system = `${INTENT_AGENT_SYSTEM_PROMPT}\n\n${INTENT_AGENT_REPLY_INSTRUCTION}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const raw = (await this.callReplyModel([
+        { role: 'system', content: system },
+        { role: 'user', content: userMessage },
+      ])).trim();
+      if (raw && isSafeQuestionMessageProse(raw)) return raw;
+      logger.warn('intent_agent_reply_rejected', { attempt: attempt + 1, empty: !raw });
+    }
+    return null;
+  }
+
+  /**
    * Raw structured-model round trip. A seam so tests drive the
    * validate → retry loop without a live provider — the model is constructed
    * here, not in the constructor, so tests never need a key.
    */
   protected async callModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
+    return this.buildModel()
+      .withStructuredOutput(DecidedActsSchema, { name: 'intent_agent_acts' })
+      .invoke(messages);
+  }
+
+  /** Raw plain-text round trip for the reply stage; same seam discipline. */
+  protected async callReplyModel(messages: Array<{ role: string; content: string }>): Promise<string> {
+    const response = await this.buildModel().invoke(messages);
+    return typeof response.content === 'string'
+      ? response.content
+      : response.content.map((part) => (typeof part === 'string' ? part : 'text' in part ? part.text : '')).join('');
+  }
+
+  private buildModel(): ChatOpenAI {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey?.trim()) throw new Error('IntentAgentTurn: OPENROUTER_API_KEY is required');
     const timeoutEnv = Number.parseInt(process.env.OPENROUTER_REQUEST_TIMEOUT_MS ?? '', 10);
-    const model = new ChatOpenAI({
+    return new ChatOpenAI({
       model: this.modelName,
       configuration: {
         baseURL: process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
@@ -237,8 +347,5 @@ export class IntentAgentTurn {
       timeout: Number.isFinite(timeoutEnv) && timeoutEnv > 0 ? timeoutEnv : 60_000,
       maxRetries: 1,
     });
-    return model
-      .withStructuredOutput(DecidedActsSchema, { name: 'intent_agent_acts' })
-      .invoke(messages);
   }
 }
