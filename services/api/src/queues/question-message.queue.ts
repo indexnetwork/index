@@ -117,6 +117,19 @@ export const QUESTION_ANSWER_CLARIFICATION_MESSAGE =
   + 'Could you say which question you are answering, or restate the answer together with it?';
 
 /**
+ * Server-owned copy for an answer that was heard on a park whose negotiation
+ * cannot continue (terminal opportunity / archived signal). Fixed copy, never
+ * model text — same rule as the close-out prose. It tells the truth about why
+ * nothing resumed and PROPOSES the next step in the owner's vocabulary:
+ * re-running discovery under the updated signal is offered, never performed.
+ */
+export const QUESTION_ANSWER_UNRESUMABLE_MESSAGE =
+  'I recorded your answer, but that negotiation cannot pick up where it left off — '
+  + 'the opportunity it was exploring has since closed, or the signal behind it is no longer active. '
+  + 'Nothing happens automatically from here: if this still matters to you, tell me and '
+  + 'I can propose re-running discovery under your updated signal.';
+
+/**
  * Singleton job id per scope: while a regeneration is queued for a signal,
  * further triggers coalesce into it instead of racing it. Dashes only —
  * BullMQ reserves colons for Redis key namespacing.
@@ -173,6 +186,8 @@ export interface QuestionMessageQueueDeps {
   publishRegenerationEvent?: (userId: string, event: { intentId: string; pending: boolean }) => Promise<void>;
   /** Notification seam; production enqueues onto the notification queue. */
   notify?: (data: QuestionMessageNotificationJobData) => Promise<unknown>;
+  /** Regeneration seam for the unresumable tail; production re-enters addRegenerateJob. */
+  enqueueRegeneration?: (data: QuestionMessageJobData) => Promise<unknown>;
 }
 
 export class QuestionMessageQueue {
@@ -624,10 +639,15 @@ export class QuestionMessageQueue {
       intentId,
       questionMessageId: data.questionMessageId,
       resumed: result.resumed.length,
+      recorded: result.recorded.length,
       skipped: result.skipped.length,
       unmatched: result.unmatched.length,
       needsClarification: result.needsClarification,
     });
+
+    if (result.recorded.length > 0) {
+      await this.settleUnresumableTail(data);
+    }
 
     if (result.needsClarification) {
       const chatSessions = this.deps?.chatSessions ?? (await import('../services/chat.service')).chatSessionService;
@@ -635,6 +655,44 @@ export class QuestionMessageQueue {
         sessionId,
         role: 'assistant',
         content: QUESTION_ANSWER_CLARIFICATION_MESSAGE,
+      });
+    }
+  }
+
+  /**
+   * The honest end of an answer whose negotiation cannot continue: tell the
+   * client the truth and propose the next step (fixed copy — the proposal is
+   * offered, never performed), then retire the now-dead question from the DM
+   * through the ordinary #1441 regeneration: the settled park has dropped out
+   * of the parked set, so the message shrinks or closes out.
+   *
+   * Best-effort by the same rule as notification: the answer is already
+   * durably recorded on the settlement, and a retry of this job would find
+   * the park already retired and never reach this tail again — throwing here
+   * could only lose the copy, not recover it.
+   */
+  private async settleUnresumableTail(data: QuestionAnswerJobData): Promise<void> {
+    try {
+      const chatSessions = this.deps?.chatSessions ?? (await import('../services/chat.service')).chatSessionService;
+      await chatSessions.addMessage({
+        sessionId: data.sessionId,
+        role: 'assistant',
+        content: QUESTION_ANSWER_UNRESUMABLE_MESSAGE,
+      });
+      const enqueueRegeneration = this.deps?.enqueueRegeneration
+        ?? ((target: QuestionMessageJobData) => this.addRegenerateJob(target));
+      await enqueueRegeneration({ userId: data.userId, intentId: data.intentId });
+      this.logger.info('question_answer_unresumable_settled', {
+        userId: data.userId,
+        intentId: data.intentId,
+        questionMessageId: data.questionMessageId,
+      });
+    } catch (err) {
+      this.logger.warn('question_answer_unresumable_tail_failed', {
+        userId: data.userId,
+        intentId: data.intentId,
+        questionMessageId: data.questionMessageId,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
   }
