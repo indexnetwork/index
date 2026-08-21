@@ -26,7 +26,8 @@ import { readFileSync } from 'node:fs';
 const read = (relative: string) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 
 const composition = read('../../../controllers/mcp.controller.ts');
-const chatService = read('../../../services/chat.service.ts');
+const agentContext = read('../../intent-agent/intent-agent.context.ts');
+const agentHost = read('../../intent-agent/intent-agent.host.ts');
 const main = read('../../../main.ts');
 const persona = read('../../../../../../packages/protocol/src/chat/negotiator.persona.ts');
 const host = read('../negotiator-verdict.host.ts');
@@ -39,22 +40,26 @@ describe('owner-verdict wiring', () => {
     expect(composition).not.toMatch(/isNegotiatorVerdict\w*Enabled/);
   });
 
-  it('registers the tools only in an intent-pinned session with the host injected', () => {
+  it('keeps the MCP surface registered on the shared host — the persona registration is chat-dead, not the lane', () => {
+    // Phase 2 retired the negotiator persona from chat, and with it the
+    // persona-side tool registration; the claude.ai connector's path is a
+    // DIFFERENT registration (McpToolDeps) and must keep working.
+    expect(composition).toContain('negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools');
+    // The protocol persona module still gates on a pinned intent; it simply
+    // has no chat caller any more (cleanup deferred to a protocol lane).
     expect(persona).toContain('if (deps.negotiatorVerdictTools && pinnedIntentId) {');
-    expect(persona).toContain('createNegotiatorVerdictTools({');
   });
 
-  it('feeds the prompt from the same reader the host maps against', () => {
+  it('feeds the agent context from the same reader the host maps against', () => {
     // One ordering, two consumers. A second enumeration would be a second
     // order, and the number the client's agent read would resolve elsewhere.
-    expect(chatService).toContain("import { readActionableCounterparties } from '../lib/agent/negotiator-verdict.host'");
-    expect(chatService).toContain('await readActionableCounterparties(userId, pinnedIntent.intentId)');
-    expect(chatService).toContain('actionableCounterparties: actionableCounterparties.map((counterparty) => counterparty.label)');
+    // Phase 2 (full chat ownership) moved the chat consumer from the retired
+    // persona prompt into the IntentAgent's turn context — same reader, and
+    // the acts execute back through this host's id-keyed lane.
+    expect(agentContext).toContain('.readActionableCounterparties(id, intent)');
+    expect(agentHost).toContain('passVerdictOnOpportunity(userId, input, target');
     expect(host).toContain('export async function readActionableCounterparties');
-  });
-
-  it('offers verdicts only for a pinned signal', () => {
-    expect(chatService).toContain('const actionableCounterparties = pinnedIntent?.intentId');
+    expect(host).toContain('export async function passVerdictOnOpportunity');
   });
 
   it('executes the verdict through the same owner status path the Radar card uses', () => {
