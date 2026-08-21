@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Navigate, useNavigate, useLocation } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { MoreHorizontal, Trash2, ChevronRight } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import ConversationPreviewLine from '@/components/ConversationPreviewLine';
@@ -68,7 +68,7 @@ export default function ChatSidebar() {
     return () => { cancelled = true; };
   }, [user?.id, refreshConversations, refreshNegotiations]);
 
-  const showingNegotiations = new URLSearchParams(search).get('tab') === 'negotiations';
+  const showingNegotiations = pathname === '/negotiations' || pathname.startsWith('/negotiations/');
 
   const negotiationOutline = useMemo(
     () => groupNegotiationOutline(negotiations, user?.id),
@@ -126,15 +126,13 @@ export default function ChatSidebar() {
 
   const selectedTaskId = new URLSearchParams(search).get('taskId');
 
-  // The former in-chat negotiations tab has a dedicated page now. Preserve
-  // bookmarks from the short-lived tab URL without mixing the two surfaces.
-  if (showingNegotiations) return <Navigate to="/negotiations" replace />;
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="lg:hidden px-4 py-3 min-h-[68px] flex items-center gap-3">
         <button onClick={() => navigate('/')} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
-        <h2 className="text-lg font-bold text-black font-ibm-plex-mono">Conversations</h2>
+        <h2 className="text-lg font-bold text-black font-ibm-plex-mono">
+          {showingNegotiations ? 'Negotiations' : 'Conversations'}
+        </h2>
       </div>
       <div className="flex-1 overflow-y-auto px-4 pt-4 lg:pt-4">
         <div className="flex items-center justify-end mb-3">

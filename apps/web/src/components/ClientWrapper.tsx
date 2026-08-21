@@ -54,7 +54,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const isCliAuth = pathname?.startsWith('/cli-auth');
 
   const isMessagesView = useMemo(() =>
-    pathname === '/chat' || pathname?.startsWith('/chat/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
+    pathname === '/chat' || pathname?.startsWith('/chat/') || pathname === '/negotiations' || pathname?.startsWith('/negotiations/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
   [pathname]);
 
   // Agent chat routes get the conversation-history aside (relocated from the

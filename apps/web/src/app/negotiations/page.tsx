@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 
-import NegotiationsInbox from '@/components/NegotiationsInbox';
+import ChatLandingPage from '@/app/chat/page';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 export default function NegotiationsPage() {
@@ -13,7 +13,7 @@ export default function NegotiationsPage() {
   }, [isAuthenticated, isLoading, navigate]);
 
   if (isLoading || !isAuthenticated) return null;
-  return <NegotiationsInbox />;
+  return <ChatLandingPage />;
 }
 
 export const Component = NegotiationsPage;
