@@ -974,6 +974,13 @@
       "when": 1786886087819,
       "tag": "0139_retire_personal_networks",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1786886087820,
+      "tag": "0140_finalize_personal_network_retirement",
+      "breakpoints": true
     }
   ]
 }
