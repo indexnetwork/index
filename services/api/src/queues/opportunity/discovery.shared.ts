@@ -7,6 +7,19 @@ import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, 
 
 import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
 
+/**
+ * Worker concurrency shared by the from-intent and from-enrichment discovery
+ * queues. The factory default (1) serialized every user's scan behind every
+ * other user's, which is what made a second onboarding look stalled. 4 lets a
+ * handful of signals scan side by side; it stays low because one scan already
+ * fans its evaluator out in parallel (one LLM call per candidate) on top of
+ * HyDE and embedder calls, so worker concurrency multiplies provider load —
+ * raise it only after checking LLM/embedder rate limits. The intent-agent
+ * queue deliberately keeps 1 (agent turns for one conversation must not
+ * interleave) and is not covered by this constant.
+ */
+export const DISCOVERY_WORKER_CONCURRENCY = 4;
+
 /** Graph DB shape the opportunity/HyDE graphs require — every `from-*` queue casts its ChatDatabaseAdapter to this. */
 export type OpportunityGraphDb = OpportunityGraphDatabase & HydeGraphDatabase;
 

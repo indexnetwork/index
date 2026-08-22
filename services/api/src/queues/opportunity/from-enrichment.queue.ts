@@ -3,7 +3,7 @@ import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
 
-import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
+import { createOpportunityGraphDb, runOpportunityDiscovery, DISCOVERY_WORKER_CONCURRENCY, type OpportunityGraphDb } from './discovery.shared';
 import { buildEnrichmentDiscoveryTrigger } from './discovery-trigger.builders';
 
 export const QUEUE_NAME = 'opportunity-from-enrichment';
@@ -112,7 +112,11 @@ export class FromEnrichmentQueue {
       this.queueLogger.info('Processing job', { jobId: job.id });
       await this.processJob(job.name, job.data);
     };
-    this.worker = QueueFactory.createWorker<FromEnrichmentJobData>(QUEUE_NAME, processor);
+    this.worker = QueueFactory.createWorker<FromEnrichmentJobData>(QUEUE_NAME, processor, {
+      // Profile scans for different users run side by side; rationale for the
+      // number lives with the constant.
+      concurrency: DISCOVERY_WORKER_CONCURRENCY,
+    });
   }
 
   async close(): Promise<void> {
