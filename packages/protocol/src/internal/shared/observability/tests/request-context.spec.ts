@@ -3,7 +3,10 @@ import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
-import { requestContext } from "../request-context.js";
+import { AsyncLocalStorage } from "async_hooks";
+import { requestContext, setRequestContextStore } from "../request-context.js";
+
+setRequestContextStore(new AsyncLocalStorage());
 
 describe('requestContext', () => {
   it('returns undefined outside of a run() scope', () => {

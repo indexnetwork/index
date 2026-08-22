@@ -24,7 +24,7 @@ export type {
 export { ChatContextAccessError, resolveChatContext } from "./internal/shared/agent/tool.helpers.js";
 export { deriveAllowedNetworkIds, deriveDiscoveryNetworkIds } from "./internal/shared/agent/tool.scope.js";
 export type { ToolScopeType, ScopeMembership } from "./protocol/scope.js";
-export { requestContext } from "./internal/shared/observability/request-context.js";
+export { requestContext, setRequestContextStore } from "./internal/shared/observability/request-context.js";
 export { setLoggerFactory } from "./internal/shared/observability/log.js";
 export { setTimingWrapper } from "./internal/shared/observability/performance.js";
 export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } from "./internal/shared/agent/tool.runtime.js";
@@ -62,7 +62,7 @@ export type {
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/embedder.js";
 export type { IntentGraphQueue } from "./platform/queue.js";
 export type { Scraper } from "./platform/scraper.js";
-export type { Logger, ProtocolError, RequestContext, RequestContextStore } from "./platform/observability.js";
+export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/observability.js";
 export type { EnrichmentRunInput, EnrichmentRunRecord } from "./platform/enrichment-run.js";
 export type {
   NegotiationTimeoutQueue,

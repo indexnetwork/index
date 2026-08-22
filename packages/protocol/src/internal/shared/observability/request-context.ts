@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "async_hooks";
+import type { RequestContext, RequestContextStore } from "../../../platform/observability.js";
 
 /**
  * Callback for streaming trace events from deep inside graph nodes back to
@@ -21,15 +21,24 @@ export type TraceEmitter = (
       }
 ) => void;
 
-interface RequestContext {
-  originUrl?: string;
-  traceEmitter?: TraceEmitter;
-  /** Signal for cooperative cancellation in long-running graph nodes. */
-  abortSignal?: AbortSignal;
+type ProtocolRequestContext = Omit<RequestContext, "traceEmitter"> & { traceEmitter?: TraceEmitter };
+
+let store: RequestContextStore | undefined;
+
+/** Configure host-owned request storage once during host composition. */
+export function setRequestContextStore(next: RequestContextStore | undefined): void {
+  store = next;
 }
 
 /**
- * AsyncLocalStorage for propagating request-scoped context through the protocol layer.
- * The host application is responsible for calling `requestContext.run()` to set the context.
+ * Compatibility request-context facade. Storage is owned by the consuming host;
+ * without a configured store it deliberately behaves as an empty context.
  */
-export const requestContext = new AsyncLocalStorage<RequestContext>();
+export const requestContext = {
+  getStore(): ProtocolRequestContext | undefined {
+    return store?.getStore() as ProtocolRequestContext | undefined;
+  },
+  run<T>(context: ProtocolRequestContext, operation: () => T): T {
+    return store ? store.run(context, operation) : operation();
+  },
+};

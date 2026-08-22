@@ -7,11 +7,21 @@ export interface Logger {
   error(message: string, meta?: Record<string, unknown>): void;
 }
 
+export type ProtocolTraceEvent = {
+  type: "graph_start" | "graph_end" | "agent_start" | "agent_end";
+  name: string;
+  durationMs?: number;
+  summary?: string;
+} | {
+  type: "status";
+  message: string;
+};
+
 /** Values a host may propagate through one protocol request. */
 export interface RequestContext {
   originUrl?: string;
   abortSignal?: AbortSignal;
-  traceEmitter?: (event: Record<string, unknown>) => void;
+  traceEmitter?: (event: ProtocolTraceEvent) => void;
 }
 
 /** A host-owned store for request-scoped values. */
