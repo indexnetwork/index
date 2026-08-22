@@ -8,7 +8,7 @@ tool names, serialized data, or supported root exports.
 | --- | --- | --- |
 | `protocol/` | Framework-free vocabulary, schemas, and deterministic rules | Schemas, request scope, retrieval lenses, and intent-indexing contracts |
 | `platform/` | Host ports and supported runtime hooks | TypeScript contracts for database, cache, queue, embedder, scraper, logging, request context, and errors; no adapter implementations |
-| `capabilities/` | Small executable entry points | The real `Intents`, `Networks`, `Agents`, and `Discovery` capability classes |
+| `capabilities/` | Small executable entry points | Executable intent, network, context, contact, opportunity, negotiation, agent, and discovery capability classes |
 
 `internal/` is private and now contains graphs, prompts, agents, retrieval,
 tests, and the existing domain-first implementation directories.
@@ -33,7 +33,7 @@ subpaths.
 | --- | --- | --- |
 | Stable schemas and deterministic vocabulary | `protocol/` | Moved where framework-free |
 | Database, cache, queue, embedder, scraper, request/context, and service contracts | `platform/` | Contracts only; no Drizzle/Postgres/Redis/BullMQ adapters, API controllers, web concerns, configuration, or host wiring |
-| Intent, network, chat-agent, and HyDE discovery composition | `capabilities/` | Real executable capability modules: `Intents`, `Networks`, `Agents`, and `Discovery` |
+| Intent, network, context, contact, opportunity, negotiation, chat-agent, and HyDE discovery composition | `capabilities/` | Executable capability modules; internal graphs and tools remain private |
 | Existing domain-first implementation directories | `internal/` | Moved without workflow rewrites |
 
 `scripts/architecture/kernel-boundaries.ts` enforces the dependency direction

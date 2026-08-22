@@ -143,6 +143,13 @@ export type {
 } from "./capabilities/networks.js";
 export { Agents } from "./capabilities/agents.js";
 export type { AgentsDeps } from "./capabilities/agents.js";
+export { Contexts } from "./capabilities/contexts.js";
+export type { ContextsDeps } from "./capabilities/contexts.js";
+export { Contacts } from "./capabilities/contacts.js";
+export { Opportunities } from "./capabilities/opportunities.js";
+export type { OpportunitiesDeps } from "./capabilities/opportunities.js";
+export { Negotiations } from "./capabilities/negotiations.js";
+export type { NegotiationsDeps } from "./capabilities/negotiations.js";
 
 // ─── Intents ──────────────────────────────────────────────────────────────────
 // The whole capability behind one class: lifecycle graph, verification,

@@ -70,7 +70,7 @@ export function barrelFilenameForCapability(capability: Capability): string {
 
 /** The source-relative barrel path for a capability, if it has one. */
 export function barrelPathForCapability(capability: Capability): string | undefined {
-  if (capability === "intents" || capability === "networks" || capability === "agents" || capability === "discovery") return `capabilities/${capability}.ts`;
+  if (["intents", "networks", "agents", "discovery", "contexts", "contacts"].includes(capability)) return `capabilities/${capability}.ts`;
   const directory = CAPABILITY_BARREL_DIRECTORIES[capability];
   return directory ? `internal/${directory}/${barrelFilenameForCapability(capability)}` : undefined;
 }
@@ -137,6 +137,8 @@ export function barrelCapabilityForSourcePath(
   if (pathFromSource === "capabilities/networks.ts") return "networks";
   if (pathFromSource === "capabilities/agents.ts") return "agents";
   if (pathFromSource === "capabilities/discovery.ts") return "discovery";
+  if (pathFromSource === "capabilities/contexts.ts") return "contexts";
+  if (pathFromSource === "capabilities/contacts.ts") return "contacts";
   const normalized = implementationPath(pathFromSource);
   const match = /^([a-z-]+)\/([a-z0-9.-]+\.ts)$/.exec(normalized);
   if (!match) return undefined;

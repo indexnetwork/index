@@ -12,9 +12,14 @@ const legacyCapabilityDirectories: Readonly<Record<string, string>> = {
   networks: "networks",
   agents: "agents",
   discovery: "discovery",
+  contexts: "contexts",
+  contacts: "contacts",
+  opportunities: "opportunities",
+  negotiations: "negotiations",
 };
 const capabilityImplementationAreas: Readonly<Record<string, readonly string[]>> = {
   agents: ["agents", "chat"],
+  contexts: ["contexts", "enrichment", "premises"],
 };
 const capabilityCompositionRoots = new Set([
   "internal/shared/agent/tool.factory.ts",

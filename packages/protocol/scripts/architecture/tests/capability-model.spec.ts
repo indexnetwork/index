@@ -27,6 +27,8 @@ describe("protocol capability model", () => {
     expect(barrelCapabilityForSourcePath("capabilities/intents.ts")).toBe("intents");
     expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("capabilities/agents.ts")).toBe("agents");
+    expect(barrelCapabilityForSourcePath("capabilities/contexts.ts")).toBe("contexts");
+    expect(barrelCapabilityForSourcePath("capabilities/contacts.ts")).toBe("contacts");
     expect(barrelCapabilityForSourcePath("intents/index.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("intents/graph/intent.graph.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("capabilities/networks.ts")).toBe("networks");
