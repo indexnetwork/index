@@ -2,6 +2,7 @@ import { config } from "dotenv";
 import { describe, expect, test } from "bun:test";
 
 import type { UserNegotiationContext } from "../../internal/negotiations/negotiation.state.js";
+import type { OpportunityStatus } from "../../platform/database.js";
 import { createModel } from "../../internal/shared/agent/model.config.js";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { Negotiations } from "../negotiations.js";
@@ -72,7 +73,7 @@ type QuestionDelivery = {
 
 /** In-memory host implementing the ports a real `Negotiations` capability uses. */
 class FakeNegotiationHost {
-  readonly opportunity = { id: "opportunity-1", status: "latent", updatedAt: new Date("2026-08-22T00:00:00Z") };
+  readonly opportunity: { id: string; status: OpportunityStatus; updatedAt: Date } = { id: "opportunity-1", status: "latent", updatedAt: new Date("2026-08-22T00:00:00Z") };
   readonly timeline: Array<{ at: number; kind: string; detail: unknown }> = [];
   readonly messages: Array<Record<string, unknown>> = [];
   readonly tasks = new Map<string, FakeTask>();
@@ -117,7 +118,7 @@ class FakeNegotiationHost {
     captureNegotiationAskUserBinding: async (input: { taskId: string; settlementId: string; recipientUserId: string; recipientIntentId: string; opportunityId: string; networkId: string }) => {
       const task = this.tasks.get(input.taskId)!;
       task.metadata.questionSettlement = { settlementId: input.settlementId, taskId: input.taskId };
-      return { version: 2, settlementId: input.settlementId, recipientUserId: input.recipientUserId, recipientIntentId: input.recipientIntentId, opportunityId: input.opportunityId, networkId: input.networkId, intentFingerprint: "fingerprint", opportunityStatus: "negotiating", opportunityUpdatedAt: this.opportunity.updatedAt.toISOString(), counterpartyUserId: bob.id, counterpartyIntentId: bob.intents[0].id };
+      return { version: 2, settlementId: input.settlementId, recipientUserId: input.recipientUserId, recipientIntentId: input.recipientIntentId, opportunityId: input.opportunityId, networkId: input.networkId, intentFingerprint: "fingerprint", opportunityStatus: "negotiating", opportunityUpdatedAt: this.opportunity.updatedAt.toISOString(), counterpartyUserId: bob.id, counterpartyBinding: { kind: "intent" as const, id: bob.intents[0].id } };
     },
   };
   readonly dispatcher = { hasExternalAgent: async () => false, dispatch: async () => {
@@ -154,7 +155,7 @@ class FakeNegotiationHost {
       resumeFromTaskId: parked.id,
       continuationSettlementId: this.delivery.settlementId,
       continuationExecution: {
-        taskId: parked.id, settlementId: this.delivery.settlementId, opportunityId: this.opportunity.id, userId: ownerUserId, recipientIntentId: this.delivery.ownerIntentId, networkId: context.networkId, intentFingerprint: "fingerprint", opportunityStatus: "negotiating", opportunityUpdatedAt: this.opportunity.updatedAt.toISOString(), counterpartyUserId: ownerUserId === alice.id ? bob.id : alice.id, counterpartyIntentId: ownerUserId === alice.id ? bob.intents[0].id : alice.intents[0].id, successorTaskId: successor.id, conversationId: parked.conversationId, token: "continuation-token", fence: 1, leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(), consultation: { recipientUserId: ownerUserId, recipientIntentId: this.delivery.ownerIntentId, kind: "answer", selectedOptions: [], freeText: answer },
+        taskId: parked.id, settlementId: this.delivery.settlementId, opportunityId: this.opportunity.id, userId: ownerUserId, recipientIntentId: this.delivery.ownerIntentId, networkId: context.networkId, intentFingerprint: "fingerprint", opportunityStatus: "negotiating", opportunityUpdatedAt: this.opportunity.updatedAt.toISOString(), counterpartyUserId: ownerUserId === alice.id ? bob.id : alice.id, counterpartyBinding: { kind: "intent" as const, id: ownerUserId === alice.id ? bob.intents[0].id : alice.intents[0].id }, successorTaskId: successor.id, conversationId: parked.conversationId, token: "continuation-token", fence: 1, leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(), consultation: { recipientUserId: ownerUserId, recipientIntentId: this.delivery.ownerIntentId, kind: "answer" as const, selectedOptions: [], freeText: answer },
       },
     };
   }
@@ -178,6 +179,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("PersonalAgentChat negotiation — in-chat 
       host.database as never,
       host.dispatcher as never,
       host.timeoutQueue as never,
+      undefined,
       undefined,
       undefined,
       host.clientDmRetrieve,
@@ -222,7 +224,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("PersonalAgentChat negotiation — in-chat 
       [alice.id]: "I want a New York technical co-founder and can meet on Tuesday evening this month.",
       [bob.id]: "I want a New York developer-tools co-founder role and can meet on Tuesday evening this month.",
     });
-    const graph = new Negotiations([host.database as never, host.dispatcher as never, host.timeoutQueue as never, undefined, undefined, host.clientDmRetrieve]).createGraph();
+    const graph = new Negotiations([host.database as never, host.dispatcher as never, host.timeoutQueue as never, undefined, undefined, undefined, host.clientDmRetrieve]).createGraph();
     const result = await graph.invoke({
       sourceUser: alice,
       candidateUser: bob,
@@ -247,7 +249,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("PersonalAgentChat negotiation — in-chat 
       [alice.id]: "I need an ML technical co-founder for my New York developer-tools startup.",
       [casey.id]: "I am looking only for a ceramics workspace.",
     });
-    const graph = new Negotiations([host.database as never, host.dispatcher as never, host.timeoutQueue as never, undefined, undefined, host.clientDmRetrieve, host.deliveryPort]).createGraph();
+    const graph = new Negotiations([host.database as never, host.dispatcher as never, host.timeoutQueue as never, undefined, undefined, undefined, host.clientDmRetrieve, host.deliveryPort]).createGraph();
     const result = await graph.invoke({
       sourceUser: alice,
       candidateUser: casey,
