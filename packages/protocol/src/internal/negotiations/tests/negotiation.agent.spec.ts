@@ -5,7 +5,7 @@ mock.module("../../shared/agent/model.config", () => ({
     invoke: async (messages: Array<{ content?: unknown }>) => {
       const systemPrompt = String(messages[0]?.content ?? "");
       return {
-        action: systemPrompt.includes("FINAL turn") ? "accept" : "propose",
+        action: systemPrompt.includes("FINAL turn") ? "accept" : "outreach",
         assessment: {
           reasoning: "The ML-engineering experience directly satisfies the startup's stated hiring need.",
           suggestedRoles: { ownUser: "patient", otherUser: "agent" },
@@ -56,7 +56,7 @@ describe('IndexNegotiator', () => {
       history: [],
     });
 
-    expect(['propose', 'accept', 'reject', 'counter']).toContain(result.action);
+    expect(['outreach', 'accept', 'decline', 'withdraw', 'counter']).toContain(result.action);
     expect(typeof result.assessment.reasoning).toBe('string');
     expect(result.assessment.reasoning.length).toBeGreaterThan(0);
     expect(['agent', 'patient', 'peer']).toContain(result.assessment.suggestedRoles.ownUser);

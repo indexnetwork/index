@@ -318,10 +318,7 @@ describe("checklist protocol — the pre-registered screen", () => {
  * rests on. Both rules are duties of the seat that did not open, so
  * seat-scoping stays the invariant this file pins hardest.
  *
- * Seats here are the RESOLVED ones. Under v1 there is no `seat` on the input
- * at all, so the `isDiscoverer` fallback decides it: `v1` (not the discoverer)
- * responds, `v1-discovery-query` (the discoverer) opens. Those two entries are
- * what make the derivation itself a checked claim.
+ * Seats here are the resolved ones supplied by the matrix.
  */
 const OPENING_MARKER = "THE OPENING IS ADVOCACY, NOT A COMMITMENT";
 const SPEND_MARKER = "WHAT AGREEING SPENDS";
@@ -340,14 +337,13 @@ function responderPortion(): string {
 }
 
 /** Matrix entries whose RESOLVED seat is the responding one. */
-const RESPONDER_IDS = ["v2-counterparty", "v2-counterparty-discovery-query", "v1"];
+const RESPONDER_IDS = ["v2-counterparty", "v2-counterparty-discovery-query"];
 const INITIATOR_IDS = PROMPT_MATRIX.map((e) => e.id).filter((id) => !RESPONDER_IDS.includes(id));
 
 describe("responder scoring — the opening is a claim, not a commitment", () => {
-  it("covers both resolved seats in the matrix, v1 fallback included", () => {
+  it("covers both resolved seats in the matrix", () => {
     // Guards the two id lists above against drifting out of the matrix.
     expect(RESPONDER_IDS.every((id) => PROMPT_MATRIX.some((e) => e.id === id))).toBe(true);
-    expect(INITIATOR_IDS).toContain("v1-discovery-query");
     expect(INITIATOR_IDS).toContain("v2-initiator");
   });
 
@@ -473,7 +469,7 @@ describe("deadlock resolution", () => {
   });
 });
 
-describe("seat and version invariants", () => {
+describe("seat invariants", () => {
   it("no quoted withdraw leaks into the counterparty seat", async () => {
     const rendered = await renderMatrix();
     for (const id of ["v2-counterparty", "v2-counterparty-discovery-query"]) {
@@ -485,7 +481,6 @@ describe("seat and version invariants", () => {
   it("ask_user is never named when the grant is absent, and the grant still renders it", async () => {
     const rendered = await renderMatrix();
     expect(rendered["v2-initiator"]).not.toContain("ask_user");
-    expect(rendered["v1"]).not.toContain("ask_user");
     expect(rendered["v2-counterparty"]).not.toContain("ask_user");
     expect(rendered["v2-initiator-ask-user"]).toContain('"ask_user"');
   });

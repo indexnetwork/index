@@ -95,7 +95,7 @@ class CapturingNegotiator extends IndexNegotiator {
   ): Promise<unknown> {
     this.captured.push(chatMessages);
     return {
-      action: "propose",
+      action: "outreach",
       assessment: { reasoning: "stub", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
       message: "hello",
     };

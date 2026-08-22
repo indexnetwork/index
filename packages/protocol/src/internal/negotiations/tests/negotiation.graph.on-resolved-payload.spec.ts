@@ -40,7 +40,7 @@ const fakeGraph: NegotiationGraphLike = {
         id: "m1",
         senderId: "agent:source-1",
         role: "agent",
-        parts: [{ kind: "data", data: { action: "propose", assessment: { reasoning: "lets pair", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } }],
+        parts: [{ kind: "data", data: { action: "outreach", assessment: { reasoning: "lets pair", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } }],
         createdAt: new Date(),
       },
       {

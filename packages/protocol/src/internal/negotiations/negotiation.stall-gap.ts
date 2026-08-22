@@ -1,7 +1,7 @@
 /**
  * Post-stall gap authoring (conversational-questions plan).
  *
- * When a negotiation ends unconcluded — no opportunity, no explicit reject:
+ * When a negotiation ends unconcluded — no opportunity, no explicit decline or withdrawal:
  * turn cap, timeout, or stall — the finalize node asks the negotiator for the
  * ONE question whose answer would let a retry conclude, and parks the
  * negotiation carrying that gap as an `ask_user` message in its own record.

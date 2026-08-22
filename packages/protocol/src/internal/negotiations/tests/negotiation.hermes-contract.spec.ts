@@ -37,7 +37,7 @@ describe('Hermes negotiation response contract', () => {
   it('maps every shared turn to fixed server prose and fixed assessment prose', () => {
     const turn = buildHermesNegotiationTurn(
       { action: 'request_time', roleAlignment: 'counterparty_leads' },
-      ['counter', 'question', 'reject'],
+      ['counter', 'question', 'decline'],
     );
 
     expect(turn).toEqual({

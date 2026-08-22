@@ -38,7 +38,7 @@ const richNegotiation: DiscoveryNegotiation = {
     "A focused community of AI infrastructure builders, founding engineers, and ML platform leads who are actively looking for collaborators on agentic systems, LLM eval pipelines, and retrieval architectures.",
   turns: [
     {
-      action: "propose",
+      action: "outreach",
       reasoning:
         "Source operates an AI startup and is hiring a founding ML engineer with production LLM experience; counterparty has shipped retrieval pipelines and vector index systems at scale, so the seed assessment is strong. Proposing the connection with both as peers initially.",
       suggestedRoles: { ownUser: "peer", otherUser: "peer" },
@@ -111,7 +111,7 @@ describe("NegotiationSummarizer", () => {
       counterpartyId: "user-cara",
       turns: [
         {
-          action: "propose",
+          action: "outreach",
           reasoning: "Source proposes connection on AI infra collaboration.",
           suggestedRoles: { ownUser: "peer", otherUser: "peer" },
         },

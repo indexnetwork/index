@@ -43,11 +43,11 @@ function dataMessage(id: string, senderId: string, t: NegotiationTurn, taskId: s
 describe("IND-569 buildSeededAttribution", () => {
   it("groups prior turns by opportunity, isolates unattributed, keeps same-opportunity turns current", async () => {
     const entries = [
-      { taskId: "task-A", turn: turn("propose", "A1") },
+      { taskId: "task-A", turn: turn("outreach", "A1") },
       { taskId: "task-A", turn: turn("accept", "A2") },
       { taskId: "task-B", turn: turn("outreach", "B1") },
       { taskId: null, turn: turn("counter", "legacy") },
-      { taskId: "task-cur", turn: turn("propose", "same opp") },
+      { taskId: "task-cur", turn: turn("outreach", "same opp") },
     ];
 
     const meta: Record<string, TaskAttribution> = {
@@ -71,7 +71,7 @@ describe("IND-569 buildSeededAttribution", () => {
 
   it("degrades unresolved / opportunity-less tasks to the unattributed block", async () => {
     const entries = [
-      { taskId: "task-missing", turn: turn("propose", "unresolved") },
+      { taskId: "task-missing", turn: turn("outreach", "unresolved") },
       { taskId: "task-noopp", turn: turn("counter", "no opp") },
     ];
     const seeded = await buildSeededAttribution(entries, "opp-current", async (id) =>
@@ -89,7 +89,7 @@ describe("IND-569 renderAttributedPriorDialogue", () => {
   it("emits labeled earlier, unattributed, and current blocks; re-indexes each block from 1", () => {
     const dialogue: AttributedPriorDialogue = {
       earlier: [
-        { opportunityId: "opp-A", opportunityTitle: "ML co-founder search", outcome: "accepted", concludedAt: "2026-05-01T10:00:00Z", turns: [turn("propose", "A1"), turn("accept", "A2")] },
+        { opportunityId: "opp-A", opportunityTitle: "ML co-founder search", outcome: "accepted", concludedAt: "2026-05-01T10:00:00Z", turns: [turn("outreach", "A1"), turn("accept", "A2")] },
         { opportunityId: "opp-B", opportunityTitle: "Design partner intro", outcome: "declined", concludedAt: "2026-04-15T09:00:00Z", turns: [turn("outreach", "B1")] },
       ],
       unattributed: [turn("counter", "legacy")],
@@ -107,7 +107,7 @@ describe("IND-569 renderAttributedPriorDialogue", () => {
 
   it("degrades missing title / outcome / date gracefully", () => {
     const dialogue: AttributedPriorDialogue = {
-      earlier: [{ opportunityId: "opp-X", opportunityTitle: null, outcome: null, concludedAt: null, turns: [turn("propose", "x")] }],
+      earlier: [{ opportunityId: "opp-X", opportunityTitle: null, outcome: null, concludedAt: null, turns: [turn("outreach", "x")] }],
       unattributed: [],
       current: [],
     };
@@ -118,7 +118,7 @@ describe("IND-569 renderAttributedPriorDialogue", () => {
 
   it("attributedDialogueIsEmpty detects blockless dialogue", () => {
     expect(attributedDialogueIsEmpty({ earlier: [], unattributed: [], current: [] })).toBe(true);
-    expect(attributedDialogueIsEmpty(combineAttributedDialogue({ earlier: [], unattributed: [], currentSeeded: [] }, [turn("propose", "x")]))).toBe(false);
+    expect(attributedDialogueIsEmpty(combineAttributedDialogue({ earlier: [], unattributed: [], currentSeeded: [] }, [turn("outreach", "x")]))).toBe(false);
   });
 });
 
@@ -139,7 +139,7 @@ describe("IND-569 negotiator prompt rendering", () => {
     const agent = new CapturingNegotiator();
     const priorDialogue: AttributedPriorDialogue = {
       earlier: [
-        { opportunityId: "opp-A", opportunityTitle: "ML co-founder search", outcome: "accepted", concludedAt: "2026-05-01T10:00:00Z", turns: [turn("propose", "Great fit"), turn("accept", "Agreed")] },
+        { opportunityId: "opp-A", opportunityTitle: "ML co-founder search", outcome: "accepted", concludedAt: "2026-05-01T10:00:00Z", turns: [turn("outreach", "Great fit"), turn("accept", "Agreed")] },
         { opportunityId: "opp-B", opportunityTitle: "Design partner intro", outcome: "declined", concludedAt: "2026-04-15T09:00:00Z", turns: [turn("outreach", "Reaching out"), turn("decline", "Not a fit")] },
       ],
       unattributed: [turn("counter", "legacy turn text")],
@@ -183,7 +183,7 @@ describe("IND-569 negotiator prompt rendering", () => {
       otherUser: { id: "u-cp", intents: [], profile: { name: "Bob" } },
       indexContext: { networkId: "net-1", prompt: "" },
       seedAssessment: { reasoning: "seed", valencyRole: "peer" },
-      history: [turn("propose", "flat prior")],
+      history: [turn("outreach", "flat prior")],
       seat: "initiator",
       protocolVersion: "v2",
       isContinuation: true,
@@ -221,7 +221,7 @@ const candidateUser = {
 function createWiringDatabase() {
   const now = Date.now();
   const priorMessages = [
-    dataMessage("m1", `agent:${sourceUser.id}`, turn("propose", "A1"), "task-A", 500_000),
+    dataMessage("m1", `agent:${sourceUser.id}`, turn("outreach", "A1"), "task-A", 500_000),
     dataMessage("m2", `agent:${candidateUser.id}`, turn("accept", "A2"), "task-A", 490_000),
     dataMessage("m3", `agent:${sourceUser.id}`, turn("outreach", "B1"), "task-B", 400_000),
     dataMessage("m4", `agent:${candidateUser.id}`, turn("decline", "B2"), "task-B", 390_000),

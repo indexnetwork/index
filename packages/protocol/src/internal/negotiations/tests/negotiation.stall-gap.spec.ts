@@ -33,7 +33,7 @@ class ScriptedGapAuthor extends NegotiationStallGapAuthor {
 
 const history: NegotiationTurn[] = [
   {
-    action: "propose",
+    action: "outreach",
     assessment: { reasoning: "worth exploring", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
     message: "Shall we collaborate?",
   },
@@ -114,7 +114,7 @@ describe("NegotiationStallGapAuthor — prompt grounding", () => {
     expect(system.content).toContain("the turn limit was reached without agreement");
     expect(system.content).toContain("Alice");
     expect(system.content).not.toContain("{userName}");
-    expect(user.content).toContain("Turn 1: propose — reasoning: worth exploring — message: Shall we collaborate?");
+    expect(user.content).toContain("Turn 1: outreach — reasoning: worth exploring — message: Shall we collaborate?");
     expect(user.content).toContain("Turn 2: counter");
     expect(user.content).toContain("Build AI: Find an AI collaborator");
     expect(user.content).toContain("complementary skills");

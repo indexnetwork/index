@@ -58,7 +58,7 @@ describe("assessDeadlock — trailing-run semantics", () => {
     const a = assessDeadlock(turns("counter", "counter", "counter", "outreach", "counter"), 3);
     expect(a.deadlocked).toBe(false);
     expect(a.consecutiveNonConvergent).toBe(1);
-    expect(assessDeadlock(turns("counter", "counter", "propose", "counter"), 2).consecutiveNonConvergent).toBe(1);
+    expect(assessDeadlock(turns("counter", "counter", "outreach", "counter"), 2).consecutiveNonConvergent).toBe(1);
   });
 
   it("ask_user resets the run (new principal input is about to arrive)", () => {
@@ -72,7 +72,7 @@ describe("assessDeadlock — trailing-run semantics", () => {
   });
 
   it("terminal actions reset the run (the game decided, not stalled)", () => {
-    for (const terminal of ["accept", "reject", "withdraw", "decline"]) {
+    for (const terminal of ["accept", "withdraw", "decline"]) {
       const a = assessDeadlock(turns("counter", "counter", terminal as NegotiationTurn["action"]), 2);
       expect(a.deadlocked).toBe(false);
       expect(a.consecutiveNonConvergent).toBe(0);
@@ -179,9 +179,4 @@ describe("IndexNegotiator — bargaining stance prompt (IND-428)", () => {
     expect(withoutField.captured[0][0].content).not.toContain("{bargainingShift}");
   });
 
-  it("v1 never gains the section even if the field is passed (defense in depth)", async () => {
-    const agent = new CapturingNegotiator({ ...counterOutput });
-    await agent.invoke(agentInput({ protocolVersion: "v1", bargaining: { consecutiveNonConvergent: 4 } }));
-    expect(agent.captured[0][0].content).not.toContain("BARGAINING");
-  });
 });

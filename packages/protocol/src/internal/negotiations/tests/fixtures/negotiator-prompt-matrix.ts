@@ -5,7 +5,7 @@ import type { NegotiationAgentInput } from "../../negotiation.agent.js";
  * (IND-611).
  *
  * Every branch of the prompt builder that a stance fragment could plausibly
- * disturb is represented: both v2 seats, v1, the discovery-query block, the
+ * disturb is represented: both seats, the discovery-query block, the
  * `canAskUser` grant, the deadlock/bargaining shift, and the final turn. The
  * golden file captured from the pre-stance revision pins each rendering, so a
  * stance fragment that leaks under `advocate` fails loudly here rather than in
@@ -37,7 +37,6 @@ const base: NegotiationAgentInput = {
     { action: "question", assessment: { reasoning: "need a clarification", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: "which stack?" },
   ],
   seat: "initiator",
-  protocolVersion: "v2",
 };
 
 export interface PromptMatrixEntry {
@@ -86,11 +85,5 @@ export const PROMPT_MATRIX: PromptMatrixEntry[] = [
     id: "v2-counterparty-discovery-query",
     action: "accept",
     input: { ...base, seat: "counterparty", isDiscoverer: true, discoveryQuery: "ML engineers" },
-  },
-  { id: "v1", action: "counter", input: { ...base, protocolVersion: "v1", seat: undefined } },
-  {
-    id: "v1-discovery-query",
-    action: "counter",
-    input: { ...base, protocolVersion: "v1", seat: undefined, isDiscoverer: true, discoveryQuery: "ML engineers" },
   },
 ];

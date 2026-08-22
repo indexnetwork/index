@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { AsyncLocalStorage } from "async_hooks";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator } from "../negotiation.agent.js";
 import { NegotiationStallGapAuthor, NEGOTIATION_PARK_REASONING, type NegotiationStallGap, type StallGapAuthorInput } from "../negotiation.stall-gap.js";
 import { negotiationAskRoundsCap, CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP, DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP } from "../negotiation.protocol.js";
 import { countNegotiationAskRounds, hasPriorAskUser } from "../negotiation.graph.shared.js";
-import { requestContext } from "../../shared/observability/request-context.js";
+import { requestContext, setRequestContextStore } from "../../shared/observability/request-context.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
+
+setRequestContextStore(new AsyncLocalStorage());
 
 /**
  * Post-stall park with a bounded ask cap (conversational-questions plan).
@@ -155,7 +158,7 @@ describe("negotiation graph — post-stall park", () => {
 
   beforeEach(() => {
     agentScript = [
-      { ...counterTurn, action: "propose" },
+      { ...counterTurn, action: "outreach" },
       counterTurn,
     ];
     authorInputs = [];
@@ -220,7 +223,7 @@ describe("negotiation graph — post-stall park", () => {
     // both sides. Seeded from the constant: under the checklist protocol the
     // cap is both principals' budgets plus one, not a fixed three.
     const CAP = CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP;
-    const priorMessages = [priorMsg("u-src", "propose", 0)];
+    const priorMessages = [priorMsg("u-src", "outreach", 0)];
     for (let i = 0; i < CAP; i++) {
       // Alternate the asking seat so neither side's own budget binds first.
       priorMessages.push(priorMsg(i % 2 === 0 ? "u-cand" : "u-src", "ask_user", priorMessages.length));
@@ -268,7 +271,7 @@ describe("negotiation graph — post-stall park", () => {
 
   it("does not park an accepted negotiation", async () => {
     agentScript = [
-      { ...counterTurn, action: "propose" },
+      { ...counterTurn, action: "outreach" },
       { ...counterTurn, action: "accept" },
     ];
     const stubs = mkStubs();
@@ -317,7 +320,7 @@ describe("ask-rounds cap config", () => {
 
 describe("countNegotiationAskRounds — one substrate with hasPriorAskUser", () => {
   const messages = [
-    priorMsg("u-src", "propose", 0),
+    priorMsg("u-src", "outreach", 0),
     priorMsg("u-cand", "ask_user", 1),
     priorMsg("u-cand", "counter", 2),
     priorMsg("u-src", "ask_user", 3),

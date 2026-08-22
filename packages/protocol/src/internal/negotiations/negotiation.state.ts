@@ -341,7 +341,7 @@ export const NegotiationGraphState = Annotation.Root({
    * - `waiting_for_agent` — graph suspended; awaiting external agent response or timeout
    * - `input_required` — graph suspended on an `ask_user` pause; awaiting the
    *   negotiator's own client (answer or 24 h window expiry resumes it)
-   * - `completed` — negotiation finalized (accept/reject/turn-cap/timeout)
+   * - `completed` — negotiation finalized (accept/decline/withdraw/turn-cap/timeout)
    */
   status: Annotation<'active' | 'waiting_for_agent' | 'input_required' | 'completed'>({
     reducer: (curr, next) => next ?? curr,

@@ -6,7 +6,7 @@ mock.module("../../shared/agent/model.config", () => ({
       new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           resolve({
-            action: "propose",
+            action: "outreach",
             assessment: {
               reasoning: "The candidate's ML experience is relevant to the startup's hiring need.",
               suggestedRoles: { ownUser: "patient", otherUser: "agent" },
@@ -80,7 +80,7 @@ describe('IndexNegotiator turn timeout', () => {
       history: [],
     });
     expect(result.action).toBeDefined();
-    expect(['propose', 'counter', 'accept', 'reject']).toContain(result.action);
+    expect(['outreach', 'counter', 'accept', 'withdraw', 'decline']).toContain(result.action);
   }, 60_000);
 
   it('falls back to the default for out-of-range overrides', () => {

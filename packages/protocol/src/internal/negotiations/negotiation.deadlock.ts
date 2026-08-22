@@ -42,7 +42,7 @@ export const MIN_DEADLOCK_THRESHOLD = 2;
 /**
  * The locutions that count toward a stalemate: challenges and information
  * requests that keep the dialogue open without converging. Everything else —
- * openings (`propose`/`outreach`: a fresh case is on the table), terminal
+ * openings (`outreach`: a fresh case is on the table), terminal
  * actions (the game is deciding, not stalling), and `ask_user` (new principal
  * input is about to arrive) — RESETS the run to zero. Unknown/missing actions
  * also reset (conservative: never manufacture a deadlock from unreadable data).

@@ -79,7 +79,7 @@ describe("negotiation graph — memory injection (IND-407)", () => {
     IndexNegotiator.prototype.invoke = async function (input: NegotiationAgentInput): Promise<NegotiationTurn> {
       capturedInputs.push(input);
       // Turn 0 (source): propose; turn 1 (candidate): accept.
-      const action = input.history.length === 0 ? ("propose" as const) : ("accept" as const);
+      const action = input.history.length === 0 ? ("outreach" as const) : ("accept" as const);
       return {
         action,
         assessment: { reasoning: "stub reasoning", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
@@ -144,7 +144,7 @@ describe("negotiation graph — memory injection (IND-407)", () => {
         return {
           handled: true,
           turn: {
-            action: payload.ownUser.id === "u-src" ? "propose" : "accept",
+            action: payload.ownUser.id === "u-src" ? "outreach" : "accept",
             assessment: { reasoning: "ext", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
             message: "ext message",
           },

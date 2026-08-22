@@ -36,9 +36,7 @@ BEGIN
 END $$;--> statement-breakpoint
 
 UPDATE "messages" m
-SET "parts" = normalized.parts
-FROM "tasks" t
-CROSS JOIN LATERAL (
+SET "parts" = (
   SELECT jsonb_agg(
     CASE
       WHEN part.value->'data'->>'action' = 'propose' THEN
@@ -51,9 +49,10 @@ CROSS JOIN LATERAL (
       ELSE part.value
     END
     ORDER BY part.ordinality
-  ) AS parts
+  )
   FROM jsonb_array_elements(m."parts") WITH ORDINALITY AS part(value, ordinality)
-) normalized
+)
+FROM "tasks" t
 WHERE t."id" = m."task_id"
   AND t."metadata"->>'type' = 'negotiation'
   AND m."parts" @? '$[*].data.action ? (@ == "propose" || @ == "reject")';--> statement-breakpoint

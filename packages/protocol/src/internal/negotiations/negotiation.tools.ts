@@ -243,7 +243,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       '- `active` — Negotiation is in progress, agents are exchanging turns.\n' +
       '- `waiting_for_agent` — The graph has yielded and is waiting for an agent response (e.g. from the user via respond_to_negotiation) or a timeout.\n' +
       '- `input_required` — The negotiation is PARKED on a person’s answer. Read `park` for whose.\n' +
-      '- `completed` — The agent negotiation has concluded (agent-side accept/reject, or turn cap). This is not a completed connection or an owner decision.\n\n' +
+      '- `completed` — The agent negotiation has concluded (agent-side accept, decline, withdraw, or turn cap). This is not a completed connection or an owner decision.\n\n' +
       '**Parked negotiations:** A negotiation that is waiting on a person carries a `park` object (`waitingOn: "you" | "counterparty"`, and for the ' +
       'user’s own side the open question’s `question` number and `questionLabel`). It comes from the SAME open-question record that the ' +
       'open-questions section of your context is built from and that `answer_pending_question` routes against, so the numbers are the same numbers ' +
@@ -1168,7 +1168,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
  *
  * @param history - All negotiation turns
  * @param turnCount - Total number of turns
- * @param lastAction - The last turn's action (accept/reject/counter)
+ * @param lastAction - The last turn's action (accept/decline/withdraw/counter)
  * @param sourceUserId - Source user ID
  * @param candidateUserId - Candidate user ID
  * @param currentSpeaker - Who would speak next (the person after the accepter/rejector)

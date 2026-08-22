@@ -234,7 +234,7 @@ describe("list_negotiations — no park", () => {
     const message = {
       senderId: `agent:${VIEWER}`,
       taskId: TASK_ID,
-      parts: [{ kind: "data", data: { action: "propose", assessment: { reasoning: "why" }, message: "hello" } }],
+      parts: [{ kind: "data", data: { action: "outreach", assessment: { reasoning: "why" }, message: "hello" } }],
     };
     const negotiation = await listOne({
       negotiationDatabase: {
@@ -259,7 +259,7 @@ describe("list_negotiations — no park", () => {
       isUsersTurn: false,
       isContinuation: false,
       priorTurnCount: 0,
-      latestAction: "propose",
+      latestAction: "outreach",
       latestActionActor: "agent",
       latestMessagePreview: "hello",
       lifecycle: {

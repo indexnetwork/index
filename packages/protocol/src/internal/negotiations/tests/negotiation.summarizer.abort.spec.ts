@@ -20,7 +20,7 @@ const baseNegotiation: DiscoveryNegotiation = {
   indexContext: "AI infra builders",
   turns: [
     {
-      action: "propose",
+      action: "outreach",
       reasoning: "Source seeks infra collaborator.",
       suggestedRoles: { ownUser: "peer", otherUser: "peer" },
     },

@@ -59,9 +59,9 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
       'The discoverer searched for "samurai" — an identity query meaning someone who IS a samurai. ' +
       'Yuki Tanaka is a character design artist, not a samurai. Even though she matches the background intent "connect with visual artists", ' +
       'the discovery query takes priority. ' +
-      'PASS criteria: The action should be "reject" (preferred) or "counter" with strong reservations about the identity mismatch. ' +
+      'PASS criteria: The action should be "withdraw" (preferred) or "counter" with strong reservations about the identity mismatch. ' +
       'The reasoning must acknowledge that the user searched for "samurai" and this candidate is not one. ' +
-      'FAIL if action is "accept" or "propose" without acknowledging the identity mismatch. ' +
+      'FAIL if action is "accept" or "outreach" without acknowledging the identity mismatch. ' +
       'FAIL if the reasoning primarily justifies the match based on the "visual artists" background intent rather than the "samurai" query.'
     );
   }, 120000);
@@ -92,8 +92,8 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
     await assertLLM(
       { discoveryQuery: 'samurai', candidate: 'Takeshi Yamamoto — kendo instructor and samurai historian', action: result.action, reasoning: result.assessment.reasoning },
       'The discoverer searched for "samurai". Takeshi Yamamoto is a kendo 7th dan, samurai martial arts instructor and historian — this IS a samurai practitioner. ' +
-      'PASS criteria: The action should be "propose" or "accept". The reasoning should identify this as a strong match for the "samurai" query. ' +
-      'FAIL if the action is "reject".'
+      'PASS criteria: The action should be "outreach" or "accept". The reasoning should identify this as a strong match for the "samurai" query. ' +
+      'FAIL if the action is "withdraw".'
     );
   }, 120000);
 
@@ -122,7 +122,7 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
       indexContext,
       seedAssessment: { reasoning: 'Founder seeking AI investment, investor found via consumer AI lens.', valencyRole: 'agent' },
       history: [{
-        action: 'propose' as const,
+        action: 'outreach' as const,
         assessment: { reasoning: 'Sam is looking for investors and Jane is an investor in consumer AI.', suggestedRoles: { ownUser: 'patient' as const, otherUser: 'agent' as const } },
       }],
       isDiscoverer: false,
@@ -137,12 +137,12 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
       { discoveryQuery: null, candidate: 'Jane VC — GP at AI Ventures, investor in consumer AI', action: result.action, reasoning: result.assessment.reasoning },
       'Jane VC is an investor being asked to evaluate a founder seeking investment. No discoveryQuery is present (the graph only passes it to the discoverer side). ' +
       'Jane should evaluate based on profile and intent alignment — a founder seeking AI investment matches her stated intent to find AI startups. ' +
-      'PASS criteria: The action should be "accept" or "counter" — NOT "reject". The reasoning should evaluate fit based on intents and profiles. ' +
-      'FAIL if the action is "reject" due to applying an inverted query check (e.g. "Sam is not an investor").'
+      'PASS criteria: The action should be "accept" or "counter" — NOT "decline". The reasoning should evaluate fit based on intents and profiles. ' +
+      'FAIL if the action is "decline" due to applying an inverted query check (e.g. "Sam is not an investor").'
     );
   }, 120000);
 
-  it('proposes normally when no discoveryQuery is set (background intent match)', async () => {
+  it('opens normally when no discoveryQuery is set (background intent match)', async () => {
     const result = await negotiator.invoke({
       ownUser: discovererUser,
       otherUser: characterArtist,
@@ -162,8 +162,8 @@ describe('IndexNegotiator: discoveryQuery priority', () => {
       { discoveryQuery: null, candidate: 'Yuki Tanaka — character design artist', action: result.action, reasoning: result.assessment.reasoning },
       'No explicit discovery query was set. The discoverer has a background intent "Connect and collaborate with visual artists". ' +
       'Yuki Tanaka IS a visual artist. This is a legitimate intent-based match. ' +
-      'PASS criteria: The action should be "propose" (opening turn for a valid match). ' +
-      'FAIL if the action is "reject" — without an explicit query, background intent matching is the correct behavior.'
+      'PASS criteria: The action should be "outreach" (opening turn for a valid match). ' +
+      'FAIL if the action is "withdraw" — without an explicit query, background intent matching is the correct behavior.'
     );
   }, 120000);
 });

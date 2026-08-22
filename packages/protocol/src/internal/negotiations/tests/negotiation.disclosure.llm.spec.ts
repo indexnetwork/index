@@ -46,7 +46,7 @@ const memory: NegotiatorMemoryEntry[] = [
 
 const history: NegotiationTurn[] = [
   {
-    action: 'propose',
+    action: 'outreach',
     assessment: {
       reasoning: 'Dana needs a fractional CFO; Sam offers exactly that.',
       suggestedRoles: { ownUser: 'patient', otherUser: 'agent' },

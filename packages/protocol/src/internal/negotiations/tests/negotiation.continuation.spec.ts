@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterAll } from "bun:test";
+import { AsyncLocalStorage } from "async_hooks";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import type { NegotiationGraphDatabase } from "../../../platform/database.js";
 import type { AgentDispatcher } from "../../shared/interfaces/agent-dispatcher.interface.js";
 import { IndexNegotiator } from "../negotiation.agent.js";
+import { setRequestContextStore } from "../../shared/observability/request-context.js";
+
+setRequestContextStore(new AsyncLocalStorage());
 
 let msgCounter = 0;
 
@@ -71,9 +75,9 @@ describe("Negotiation continuation telemetry", () => {
   });
 
   it("fresh flow: isContinuation defaults to false, priorTurnCount defaults to 0", async () => {
-    // Scripted: propose then accept to complete quickly
+    // Scripted: outreach then accept to complete quickly
     const scripted = [
-      { action: "propose", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "agent", otherUser: "patient" } } },
+      { action: "outreach", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "agent", otherUser: "patient" } } },
       { action: "accept", assessment: { reasoning: "r2", suggestedRoles: { ownUser: "agent", otherUser: "patient" } } },
     ];
     let call = 0;
@@ -103,14 +107,14 @@ describe("Negotiation continuation telemetry", () => {
     expect(result.isContinuation).toBe(false);
     expect(result.priorTurnCount).toBe(0);
 
-    // Outcome should be accepted (propose → accept)
+    // Outcome should be accepted (outreach → accept)
     expect(result.outcome).not.toBeNull();
     expect(result.outcome!.hasOpportunity).toBe(true);
   }, 30_000);
 
   it("negotiation_outcome trace event includes continuation fields", async () => {
     const scripted = [
-      { action: "propose", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } },
+      { action: "outreach", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } },
       { action: "accept", assessment: { reasoning: "r2", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } },
     ];
     let call = 0;
@@ -195,7 +199,7 @@ describe("Negotiation continuation telemetry", () => {
     let call = 0;
     IndexNegotiator.prototype.invoke = async function () {
       call++;
-      if (call === 1) return { action: "propose", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+      if (call === 1) return { action: "outreach", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
       return { action: "counter", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
     };
 
@@ -267,7 +271,7 @@ describe("Negotiation continuation telemetry", () => {
 
   it("continuation: reuses conversation, seeds prior turns, sets isContinuation true", async () => {
     const priorTurn = {
-      action: "propose",
+      action: "outreach",
       assessment: { reasoning: "Good fit", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
     };
     const priorMessages = [{
@@ -356,7 +360,7 @@ describe("Negotiation continuation telemetry", () => {
 
   it("continuation with userAnswers: passes answers to agent prompt", async () => {
     const priorTurn = {
-      action: "propose",
+      action: "outreach",
       assessment: { reasoning: "Good fit", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
     };
     const priorMessages = [{
@@ -406,7 +410,7 @@ describe("Negotiation continuation telemetry", () => {
   it("fresh flow: userAnswers not loaded when not a continuation", async () => {
     let getAnswersCalled = false;
     const scripted = [
-      { action: "propose", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } },
+      { action: "outreach", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } },
       { action: "accept", assessment: { reasoning: "r2", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } },
     ];
     let call = 0;
@@ -463,7 +467,7 @@ describe("Negotiation continuation telemetry", () => {
     let call = 0;
     IndexNegotiator.prototype.invoke = async function () {
       call++;
-      if (call === 1) return { action: "propose", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+      if (call === 1) return { action: "outreach", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
       return { action: "accept", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
     };
 
