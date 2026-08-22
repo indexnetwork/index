@@ -26,7 +26,7 @@ describe("protocol capability model", () => {
     expect(barrelCapabilityForSourcePath("negotiations/negotiation.module.ts")).toBe("negotiations");
     expect(barrelCapabilityForSourcePath("negotiations/index.ts")).toBeUndefined();
     // Flattened capabilities use named module barrels rather than `index.ts`.
-    expect(barrelCapabilityForSourcePath("intents/intent.module.ts")).toBe("intents");
+    expect(barrelCapabilityForSourcePath("capabilities/intents.ts")).toBe("intents");
     expect(barrelCapabilityForSourcePath("contexts/context.module.ts")).toBe("contexts");
     expect(barrelCapabilityForSourcePath("negotiations/negotiation.module.ts")).toBe("negotiations");
     expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBe("questions");
@@ -34,7 +34,7 @@ describe("protocol capability model", () => {
     expect(barrelCapabilityForSourcePath("contacts/contact.module.ts")).toBe("contacts");
     expect(barrelCapabilityForSourcePath("intents/index.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("intents/graph/intent.graph.ts")).toBeUndefined();
-    expect(barrelCapabilityForSourcePath("networks/network.module.ts")).toBe("networks");
+    expect(barrelCapabilityForSourcePath("capabilities/networks.ts")).toBe("networks");
     expect(barrelCapabilityForSourcePath("networks/index.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("networks/network.graph.ts")).toBeUndefined();
     // HyDE used to live in shared/ and was unclassified; it is a capability now.
@@ -42,6 +42,6 @@ describe("protocol capability model", () => {
     expect(implementationCapabilityForSourcePath("discovery/hyde.graph.ts")).toBe("discovery");
     // What remains under shared/ is genuinely neutral and stays unclassified.
     expect(implementationCapabilityForSourcePath("shared/observability/log.ts")).toBeUndefined();
-    expect(implementationCapabilityForSourcePath("shared/interfaces/cache.interface.ts")).toBeUndefined();
+    expect(implementationCapabilityForSourcePath("shared/interfaces/scraper.interface.ts")).toBeUndefined();
   });
 });

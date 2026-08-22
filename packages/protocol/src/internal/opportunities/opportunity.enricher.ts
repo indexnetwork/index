@@ -1,0 +1,345 @@
+/**
+ * Opportunity enricher: when creating an opportunity, find overlapping existing
+ * opportunities (by non-introducer actor userId), check semantic relatedness, and
+ * optionally merge into a single enriched opportunity and expire the old one(s).
+ */
+
+import type { CreateOpportunityData, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunitySignal, OpportunityStatus } from '../../platform/database.js';
+import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
+import type { Embedder } from '../../platform/embedder.js';
+import type { Id } from '../../platform/database.js';
+import { protocolLogger } from '../shared/observability/protocol.logger.js';
+
+const logger = protocolLogger('OpportunityEnricher');
+
+const DEFAULT_SIMILARITY_THRESHOLD = 0.7;
+const MIN_REASONING_LENGTH_FOR_EMBEDDING = 10;
+
+/**
+ * Statuses excluded from the merge-candidate pool by default.
+ *
+ * - 'accepted': the pair already connected — do NOT fold a new discovery into
+ *   the historical opp. IND-237 surfaces the existing conversation separately.
+ * - 'negotiating': a negotiation is in-flight for this pair; rolling a new
+ *   candidate into it would blur the outcome of the active turn. Wait for the
+ *   negotiation to finalize (→ draft/pending/rejected/stalled) first, then
+ *   enrichment can pick it up on the next pass.
+ * - 'expired': already superseded by a later enriched opportunity. Without this
+ *   exclusion, each enrichment cycle re-merges previously-expired enriched
+ *   opportunities, compounding their actor arrays into 100+ entries.
+ *
+ * Exported for callers that want to extend rather than replace the default.
+ */
+export const DEFAULT_ENRICHER_EXCLUDE_STATUSES: OpportunityStatus[] = ['accepted', 'negotiating', 'expired'];
+
+export type EnricherDatabase = {
+  findOpportunitiesByActors(
+    actorIds: string[],
+    options?: { includeIntroducers?: boolean; statuses?: OpportunityStatus[]; excludeStatuses?: OpportunityStatus[] }
+  ): Promise<Opportunity[]>;
+};
+
+export type EnrichmentResult =
+  | { enriched: false; data: CreateOpportunityData }
+  | { enriched: true; data: CreateOpportunityData; expiredIds: string[]; resolvedStatus: OpportunityStatus };
+
+export type EnrichOrCreateOptions = {
+  similarityThreshold?: number;
+  /**
+   * Statuses to exclude from the merge-candidate pool. Defaults to
+   * {@link DEFAULT_ENRICHER_EXCLUDE_STATUSES} (`['accepted', 'negotiating']`).
+   * Pass an empty array `[]` to consider all statuses.
+   */
+  excludeStatuses?: OpportunityStatus[];
+  /** Restrict merge/expiration candidates to the authoritative owned intent. */
+  ownedIntentScope?: { triggerIntentId: string; ownerUserId: string };
+};
+
+/**
+ * Cosine similarity between two vectors (0–1).
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  if (denom === 0) return 0;
+  const sim = dot / denom;
+  return Math.max(0, Math.min(1, sim));
+}
+
+/**
+ * Resolve enriched opportunity status from related opportunities' statuses and the incoming status.
+ * Priority: accepted > pending > rejected > stalled > draft (only when incoming is draft) > latent.
+ * The incoming status is included so we do not wrongly downgrade when the new opportunity has a higher-priority status.
+ * When incoming is 'draft' (e.g. from in-chat discovery), we preserve draft so the opportunity stays chat-only and
+ * does not appear on the radar view (radar excludes draft).
+ * When incoming is NOT draft (e.g. 'latent' from the background broker), existing draft status does NOT contaminate
+ * the result — the broker-created opportunity retains its own status and can appear on the radar view.
+ */
+function resolveEnrichedStatus(relatedStatuses: string[], incomingStatus?: string): OpportunityStatus {
+  const statuses = incomingStatus ? [...relatedStatuses, incomingStatus] : relatedStatuses;
+  if (statuses.includes('accepted')) return 'accepted';
+  if (statuses.includes('pending')) return 'pending';
+  if (statuses.includes('rejected')) return 'rejected';
+  if (statuses.includes('stalled')) return 'stalled';
+  if (incomingStatus === 'draft') return 'draft';
+  return 'latent';
+}
+
+/**
+ * Extract non-introducer actor userIds from create data.
+ */
+function getNonIntroducerUserIds(data: CreateOpportunityData): Id<'users'>[] {
+  const ids = data.actors
+    .filter((a) => a.role !== 'introducer')
+    .map((a) => a.userId);
+  return [...new Set(ids)];
+}
+
+/**
+ * Extract intent IDs from actors.
+ */
+function belongsToOwnedIntent(
+  opportunity: Opportunity,
+  scope: { triggerIntentId: string; ownerUserId: string },
+): boolean {
+  if (opportunity.detection.triggeredBy === scope.triggerIntentId) return true;
+  return opportunity.actors.some((actor) =>
+    actor.userId === scope.ownerUserId && actor.intent === scope.triggerIntentId);
+}
+
+function getIntentIdsFromActors(actors: OpportunityActor[]): Set<string> {
+  const ids = new Set<string>();
+  for (const a of actors) {
+    if (a.intent) ids.add(a.intent);
+  }
+  return ids;
+}
+
+/**
+ * Check if two opportunities share at least one intent ID.
+ */
+function shareIntentIds(
+  newData: CreateOpportunityData,
+  existing: Opportunity
+): boolean {
+  const newIntents = getIntentIdsFromActors(newData.actors);
+  const existingIntents = getIntentIdsFromActors(existing.actors);
+  for (const id of newIntents) {
+    if (existingIntents.has(id)) return true;
+  }
+  return false;
+}
+
+/**
+ * Merge actors from new data and existing opportunities: union by (networkId, userId, intent),
+ * preserving all unique introducers and preferring newer role on conflict.
+ */
+function mergeActors(
+  newData: CreateOpportunityData,
+  existingList: Opportunity[]
+): OpportunityActor[] {
+  const key = (a: OpportunityActor) =>
+    `${a.networkId}:${a.userId}:${a.intent ?? ''}`;
+  const map = new Map<string, OpportunityActor>();
+
+  // Add all from existing first (older)
+  for (const opp of existingList) {
+    for (const a of opp.actors) {
+      map.set(key(a), a);
+    }
+  }
+  // Add/overwrite with new (newer wins for same key, e.g. role)
+  for (const a of newData.actors) {
+    map.set(key(a), a);
+  }
+
+  return [...map.values()];
+}
+
+/**
+ * Merge interpretation: single reasoning (new data only), max confidence, merged signals.
+ * We use only the new opportunity's reasoning to avoid repetitive concatenation when
+ * multiple overlapping opportunities share the same or similar text (e.g. same pair
+ * across indexes), which previously produced long duplicated paragraphs in chat cards.
+ */
+function mergeInterpretation(
+  newData: CreateOpportunityData,
+  existingList: Opportunity[]
+): OpportunityInterpretation {
+  const reasoning = newData.interpretation.reasoning;
+
+  let maxConf =
+    typeof newData.interpretation.confidence === 'number'
+      ? newData.interpretation.confidence
+      : parseFloat(String(newData.interpretation.confidence ?? 0));
+  for (const o of existingList) {
+    const c = o.interpretation?.confidence;
+    const cNum = typeof c === 'number' ? c : parseFloat(String(c ?? 0));
+    if (cNum > maxConf) maxConf = cNum;
+  }
+  const confidence = maxConf;
+
+  const signals: OpportunitySignal[] = [
+    ...(newData.interpretation.signals ?? []),
+    ...existingList.flatMap((o) => o.interpretation?.signals ?? []),
+  ];
+  const seen = new Set<string>();
+  const dedupedSignals = signals.filter((s) => {
+    const k = `${s.type}:${s.detail ?? ''}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  return {
+    category: newData.interpretation.category,
+    reasoning,
+    confidence: typeof confidence === 'string' ? parseFloat(confidence) : confidence,
+    signals: dedupedSignals.length > 0 ? dedupedSignals : newData.interpretation.signals,
+  };
+}
+
+/**
+ * Enrich or create: find overlapping opportunities, filter by semantic relatedness
+ * using a two-phase approach, merge actors and interpretation into a single
+ * CreateOpportunityData, and return the data plus IDs to expire. If no related
+ * overlap, return original data unchanged.
+ *
+ * Phase 1 — Intent check (free, no API call):
+ *   Shared intent IDs mean the same declared user goal drove both opportunities.
+ *   This is rare because the IntentReconciler already deduplicates intents per-user
+ *   upstream, but when it fires it is definitive.
+ *
+ * Phase 2 — Batched embedding similarity (one API call for all remaining):
+ *   For opportunities without shared intents, embed all reasoning texts in a single
+ *   batch call and compare cosine similarity. Cross-user intent comparison (e.g.
+ *   Alice's "find ML co-founder" vs Bob's "join ML startup") is implicitly handled
+ *   here since reasoning text synthesizes both users' intents.
+ */
+export async function enrichOrCreate(
+  database: EnricherDatabase,
+  embedder: Embedder,
+  newData: CreateOpportunityData,
+  options?: EnrichOrCreateOptions
+): Promise<EnrichmentResult> {
+  const actorUserIds = getNonIntroducerUserIds(newData);
+  if (actorUserIds.length === 0) {
+    return { enriched: false, data: newData };
+  }
+
+  const excludeStatuses = options?.excludeStatuses ?? DEFAULT_ENRICHER_EXCLUDE_STATUSES;
+  const pairOverlaps = await database.findOpportunitiesByActors(actorUserIds, { excludeStatuses });
+  const ownedIntentScope = options?.ownedIntentScope;
+  const overlapping = ownedIntentScope
+    ? pairOverlaps.filter((opportunity) => belongsToOwnedIntent(opportunity, ownedIntentScope))
+    : pairOverlaps;
+  if (ownedIntentScope && pairOverlaps.length > overlapping.length) {
+    logger.info('Excluded cross-trigger overlaps from owned-intent enrichment', {
+      triggerIntentId: ownedIntentScope.triggerIntentId,
+      pairOverlapCount: pairOverlaps.length,
+      sameTriggerOverlapCount: overlapping.length,
+    });
+  }
+  if (overlapping.length === 0) {
+    return { enriched: false, data: newData };
+  }
+
+  const threshold = options?.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD;
+
+  // Phase 1: Intent-based relatedness (free, strongest signal)
+  const related: Opportunity[] = [];
+  const remaining: Opportunity[] = [];
+  for (const opp of overlapping) {
+    if (shareIntentIds(newData, opp)) {
+      related.push(opp);
+    } else {
+      remaining.push(opp);
+    }
+  }
+
+  // Phase 2: Batched embedding similarity (one API call for all remaining)
+  if (remaining.length > 0) {
+    const newReasoning = (newData.interpretation?.reasoning ?? '').trim();
+
+    // Only embed opps where both reasonings are long enough
+    const embeddable: Opportunity[] = [];
+    for (const opp of remaining) {
+      const existingReasoning = (opp.interpretation?.reasoning ?? '').trim();
+      if (
+        newReasoning.length >= MIN_REASONING_LENGTH_FOR_EMBEDDING &&
+        existingReasoning.length >= MIN_REASONING_LENGTH_FOR_EMBEDDING
+      ) {
+        embeddable.push(opp);
+      }
+      // Short reasoning + no shared intents (Phase 1 missed) → not related
+    }
+
+    if (embeddable.length > 0) {
+      try {
+        const textsToEmbed = [
+          newReasoning,
+          ...embeddable.map((o) => (o.interpretation?.reasoning ?? '').trim()),
+        ];
+        const vectors = (await embedder.generate(textsToEmbed, undefined, getAbortSignalConfig())) as number[][];
+        const newVec = vectors[0];
+        if (newVec?.length) {
+          for (let i = 0; i < embeddable.length; i++) {
+            const existingVec = vectors[i + 1];
+            if (existingVec?.length && cosineSimilarity(newVec, existingVec) >= threshold) {
+              related.push(embeddable[i]);
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn('Embedding check failed; intent-matched opportunities already captured', { error: e });
+        // Phase 1 matches are preserved; remaining opps without shared intents are not related
+      }
+    }
+  }
+
+  if (related.length === 0) {
+    return { enriched: false, data: newData };
+  }
+
+  const mergedActors = mergeActors(newData, related);
+  const mergedInterpretation = mergeInterpretation(newData, related);
+  const enrichedFrom = related.map((o) => o.id);
+  const mergedConfidence =
+    typeof mergedInterpretation.confidence === 'number'
+      ? String(mergedInterpretation.confidence)
+      : mergedInterpretation.confidence;
+
+  const enrichedData: CreateOpportunityData = {
+    ...newData,
+    detection: {
+      ...newData.detection,
+      source: 'enrichment',
+      enrichedFrom,
+    },
+    actors: mergedActors,
+    interpretation: mergedInterpretation,
+    confidence: mergedConfidence,
+  };
+
+  const resolvedStatus = resolveEnrichedStatus(related.map((o) => o.status), newData.status);
+
+  logger.verbose('Enriched opportunity', {
+    enrichedFrom,
+    actorCount: mergedActors.length,
+  });
+
+  return {
+    enriched: true,
+    data: enrichedData,
+    expiredIds: enrichedFrom,
+    resolvedStatus,
+  };
+}

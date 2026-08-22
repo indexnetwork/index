@@ -100,7 +100,7 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
     return model;
   };
 
-  mock.module(import.meta.resolve("./src/shared/agent/model.config.js"), () => ({
+  mock.module(import.meta.resolve("./src/internal/shared/agent/model.config.js"), () => ({
     createModel: (agent: string) => modelFor(agent),
     createFallbackModel: () => undefined,
     createStructuredModel: (agent: string) => modelFor(agent),

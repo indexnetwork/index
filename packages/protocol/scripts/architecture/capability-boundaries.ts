@@ -3,7 +3,7 @@
  * Enforces the capability seams introduced by IND-528.
  *
  * One rule: a capability may reach another capability only through that
- * capability's barrel — `index.ts`, or `intent.module.ts` for intents.
+ * capability's public module — `capabilities/<name>.ts` for migrated capabilities.
  * Direct implementation imports are prohibited.
  *
  * This replaces the capabilities/*.facade.ts layer, where the contract lived in

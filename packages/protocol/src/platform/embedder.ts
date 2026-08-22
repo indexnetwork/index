@@ -1,0 +1,119 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// HyDE (Hypothetical Document Embeddings) search types
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type { Lens, HydeTargetCorpus } from "../protocol/lens.js";
+
+/** A single lens embedding ready for search. */
+export interface LensEmbedding {
+  /** Free-text lens label (e.g. "crypto infrastructure VC"). */
+  lens: string;
+  /** Which corpus to search. */
+  corpus: 'profiles' | 'intents' | 'premises';
+  /** 2000-dim embedding vector. */
+  embedding: number[];
+}
+
+/** Options for searchWithHydeEmbeddings (network scope, limits, min score). */
+export interface HydeSearchOptions {
+  /** Network IDs to scope the search (members / assigned intents only). */
+  indexScope: string[];
+  /** Exclude this user ID from results (e.g. source intent owner). */
+  excludeUserId?: string;
+  /** Max results per lens before merge (default 10). */
+  limitPerStrategy?: number;
+  /** Max results after merge/rank (default 20). */
+  limit?: number;
+  /** Minimum cosine similarity for intent searches (default 0.40). */
+  minScore?: number;
+}
+
+/** A single candidate from HyDE search, with score and which lens matched. */
+export interface HydeCandidate {
+  type: 'intent';
+  id: string;
+  userId: string;
+  score: number;
+  /** Free-text lens label that produced this match. */
+  matchedVia: string;
+  networkId: string;
+  /** Candidate document text (populated for user_context matches; used as candidatePayload). */
+  text?: string;
+  /** Set after merge when user matched via multiple lenses. */
+  matchedLenses?: string[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Embedding and vector store
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface EmbeddingGenerateOptions {
+  signal?: AbortSignal;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Embedding generation + vector / HyDE search
+//
+// Port contract (host application implements):
+//   • `generate` is shape-preserving: a `string` input yields one `number[]`; a
+//     `string[]` input yields `number[][]` in the same order. Vectors are
+//     `dimensions`-long (default per the adapter; the schema assumes 2000).
+//   • `search` returns matches sorted by descending `score` (cosine similarity in
+//     [0,1]); it returns an empty array — never null — when nothing clears `minScore`.
+//   • Implementations should be deterministic for a fixed input/model and must not
+//     throw for an empty corpus (return []). Network/model failures may throw.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface EmbeddingGenerator {
+  generate(text: string | string[], dimensions?: number, options?: EmbeddingGenerateOptions): Promise<number[] | number[][]>;
+}
+
+export interface VectorSearchResult<T> {
+  item: T;
+  score: number; // similarity (0-1)
+}
+
+export type VectorStoreOption<T> = {
+  limit?: number;
+  // Generic filter object passed to the store implementation
+  filter?: Record<string, any>;
+  // For stateless store: explicitly provide the candidates to search against
+  candidates?: (T & { embedding?: number[] | null })[];
+  // Minimum similarity score to include in results
+  minScore?: number;
+};
+
+export interface VectorStore {
+  /**
+   * Search for similar items in the vector store.
+   *
+   * @param queryVector - The embedding vector to search for
+   * @param collection - The logical name of the collection (e.g., 'profiles', 'intents')
+   * @param options - generic options including limit, filter, and candidates
+   */
+  search<T>(
+    queryVector: number[],
+    collection: string,
+    options?: VectorStoreOption<T>
+  ): Promise<VectorSearchResult<T>[]>;
+}
+
+/**
+ * Embedder: generate embeddings and run vector / HyDE search.
+ * Implementations: OpenAI/OpenRouter for generate, pgvector for search.
+ */
+export interface Embedder extends EmbeddingGenerator, VectorStore {
+  /**
+   * Multi-lens HyDE search: run one vector search per lens embedding,
+   * then merge, deduplicate by userId, and rank (boost for multiple lens matches).
+   *
+   * @param lensEmbeddings - Array of lens embeddings to search with
+   * @param options - indexScope, excludeUserId, limits, minScore
+   * @returns Deduplicated, ranked candidates (intent or premise) with scores
+   */
+  searchWithHydeEmbeddings(
+    lensEmbeddings: LensEmbedding[],
+    options: HydeSearchOptions
+  ): Promise<HydeCandidate[]>;
+
+}

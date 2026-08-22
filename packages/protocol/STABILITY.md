@@ -30,6 +30,9 @@ change. It is the reference behind the tier annotations in `src/index.ts`.
   as a class rather than a re-export list — `intents` does, via `Intents` in
   `intents/intent.module.ts` — which makes the whole capability one exported
   symbol and its internal layout free to change without a contract change.
+- `protocol/`, `platform/`, `capabilities/`, and `internal/` are source-level
+  boundaries, not consumer subpaths. The sole supported Node import remains the
+  package root; the existing browser-safe question-block subpaths remain stable.
 
 ## Stability tiers
 
