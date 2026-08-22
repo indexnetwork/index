@@ -80,6 +80,8 @@ describe("buildNegotiatorSystemContent", () => {
     expect(prompt).toContain("You are Alice's Negotiator");
     expect(prompt).toContain("working for Alice Test");
     expect(prompt).toContain(AGENT_OPTS.agentDescription);
+    expect(prompt).toContain("CHANNEL CONTEXT — A2H chat");
+    expect(prompt).toContain("Alice Test's personal agent speaking directly with your own client");
   });
 
   it("is not the generic Index identity", () => {

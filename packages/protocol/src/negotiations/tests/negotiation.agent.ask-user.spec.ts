@@ -102,6 +102,16 @@ describe("IndexNegotiator — canAskUser (IND-401)", () => {
     expect(prompt).toContain("Never mirror a fit question back");
   });
 
+  it("identifies the negotiation as an A2A conversation between personal agents", async () => {
+    const agent = new CapturingNegotiator([validTurn("counter")]);
+    await agent.invoke(baseInput);
+
+    const prompt = agent.systemPrompts[0];
+    expect(prompt).toContain("CHANNEL CONTEXT — A2A negotiation");
+    expect(prompt).toContain("Alice's personal agent in a conversation with another person's personal agent");
+    expect(prompt).toContain("You are not Alice");
+  });
+
   it("accepts an ask_user turn with payload when granted, and the prompt carries the rule", async () => {
     const agent = new CapturingNegotiator([askUserOutput]);
     const turn = await agent.invoke({ ...baseInput, canAskUser: true });
