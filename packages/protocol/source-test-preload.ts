@@ -13,6 +13,13 @@
  * double would make them assert the double instead of the contract.
  */
 import { mock } from "bun:test";
+import { AsyncLocalStorage } from "async_hooks";
+import { setRequestContextStore } from "./src/internal/shared/observability/request-context.js";
+
+// Tests are a host too: each isolated worker provides Node request storage so
+// cancellation and tracing semantics are exercised without shipping that
+// implementation in the package runtime.
+setRequestContextStore(new AsyncLocalStorage());
 
 const modelConfigSpecs = [
   "/shared/agent/tests/model.config.spec.ts",
