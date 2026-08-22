@@ -75,6 +75,37 @@ export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
 export { ChatContextDigestSchema, type ChatContextDigest } from "./protocol/schemas/chat-context.schema.js";
+export {
+  QuestionBlockSchema,
+  QuestionBlockQuestionSchema,
+  parseQuestionMessage,
+  serializeQuestionMessage,
+} from "./protocol/question-block.schema.js";
+export type { ParsedQuestionMessage, QuestionBlock, QuestionBlockQuestion } from "./protocol/question-block.schema.js";
+export {
+  questionBlockFixture,
+  questionMessageFixture,
+  questionProseFixture,
+} from "./protocol/question-block.fixture.js";
+export {
+  QuestionPurposeSchema,
+  QuestionStrategySchema,
+  UnderspecificationTypeSchema,
+} from "./protocol/question.js";
+export type {
+  NegotiationQuestionProvenance,
+  Question,
+  QuestionPoolPush,
+  QuestionPoolPushRequestReason,
+  QuestionPoolPushRequestStatus,
+  QuestionPoolSnapshot,
+  QuestionPurpose,
+  QuestionRecoverySnapshot,
+  QuestionStrategy,
+  QuestionVoidedReason,
+  UnderspecificationType,
+} from "./protocol/question.js";
+export type { QuestionerEnqueueFn, QuestionerEnqueuePayload, QuestionerInput } from "./protocol/question-input.js";
 export { McpApiKeyMetadataSchema } from "./platform/auth/mcp.js";
 export type {
   McpAuthInput,
@@ -92,6 +123,12 @@ export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIE
 
 export { PersonalAgentChat } from "./capabilities/agents.js";
 export type { AgentsDeps as PersonalAgentChatDeps } from "./capabilities/agents.js";
+export { ChatGraphFactory } from "./internal/chat/chat.graph.js";
+export { NEGOTIATOR_PERSONA_ID } from "./internal/chat/negotiator.persona.js";
+export { ONBOARDING_PERSONA_ID, createOnboardingPersona } from "./internal/chat/onboarding.persona.js";
+export { SIGNAL_PERSONA_ID, createSignalPersona } from "./internal/chat/signal.persona.js";
+export { buildAgentSelfIntroduction } from "./internal/chat/agent-identity.prompt.js";
+export type { AgentIdentityOptions } from "./internal/chat/agent-identity.prompt.js";
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
 export { Discovery } from "./capabilities/discovery.js";
 export type { DiscoveryDeps } from "./capabilities/discovery.js";
@@ -193,6 +230,8 @@ export type { NegotiationLifecycleNarration, NegotiationParkNarration } from "./
 export { buildFallbackDigest, NegotiationSummarizer } from "./internal/negotiations/negotiation.summarizer.js";
 export { IndexNegotiator } from "./internal/negotiations/negotiation.agent.js";
 export { negotiateCandidates, NegotiationGraphFactory } from "./internal/negotiations/negotiation.graph.js";
+export { resumeParkedNegotiation } from "./internal/negotiations/negotiation.answer-consumption.js";
+export type { NegotiationAnswerConsumptionPorts } from "./internal/negotiations/negotiation.answer-consumption.js";
 export { NegotiationInsightsGenerator } from "./internal/negotiations/insight.generator.js";
 export { NegotiationReflector } from "./internal/negotiations/negotiation.reflect.js";
 export type {

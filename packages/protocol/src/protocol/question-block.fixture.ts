@@ -3,8 +3,8 @@
  *
  * `questionMessageFixture` is a literal — not derived from the serializer — so
  * a serializer change that would alter the wire format breaks the spec loudly.
- * The web client's steps-UI tests should import this via
- * `@indexnetwork/protocol/question-block/fixture` instead of minting their own.
+ * The web client's steps-UI tests import these from the package root instead
+ * of minting their own wire format.
  */
 import type { QuestionBlock } from "./question-block.schema.js";
 

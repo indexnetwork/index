@@ -1,4 +1,5 @@
-import { createHash } from 'crypto';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 
 import type { HydeDocument } from '../../platform/database.js';
 /** HyDE generation mode. Frame-v1 is the only supported mode. */
@@ -7,7 +8,7 @@ export type HydeGenerationMode = typeof HYDE_FRAME_GENERATION_VERSION;
 
 /** Hash source text without persisting the source itself in frame metadata. */
 export function computeHydeSourceTextHash(sourceText: string): string {
-  return createHash('sha256').update(sourceText).digest('hex');
+  return bytesToHex(sha256(utf8ToBytes(sourceText)));
 }
 
 function isFrameStrategy(strategy: string): boolean {

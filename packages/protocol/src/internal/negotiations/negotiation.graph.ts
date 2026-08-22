@@ -19,6 +19,7 @@ import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryRetrieveFn } from "./negotiation.memory.js";
 import type { NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";
 import type { InChatNegotiationQuestionDelivery } from "../../platform/chat/ports.js";
+import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 import { initNode } from "./negotiation.graph.init.js";
 import { turnNode } from "./negotiation.graph.turn.js";
@@ -40,6 +41,7 @@ export class NegotiationGraphFactory {
     database: NegotiationGraphDatabase,
     dispatcher: AgentDispatcher,
     timeoutQueue?: import("../../platform/negotiation/events.js").NegotiationTimeoutQueue,
+    questionerEnqueue?: QuestionerEnqueueFn,
     reflectEnqueue?: ReflectEnqueueFn,
     memoryRetrieve?: NegotiatorMemoryRetrieveFn,
     clientDmRetrieve?: NegotiatorClientDmRetrieveFn,
@@ -49,6 +51,7 @@ export class NegotiationGraphFactory {
       database,
       dispatcher,
       timeoutQueue,
+      questionerEnqueue,
       reflectEnqueue,
       memoryRetrieve,
       clientDmRetrieve,

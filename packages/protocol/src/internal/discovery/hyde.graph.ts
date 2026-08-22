@@ -4,7 +4,6 @@
  * Legacy flow: infer_lenses → check_cache → generate_missing? → embed → cache_results.
  * Frame-v1 flow adds one batch validate_generated node before embed.
  */
-import { createHash } from 'crypto';
 import { END, START, StateGraph } from '@langchain/langgraph';
 
 import type { DebugMetaAgent } from "../../protocol/core.js";
@@ -57,11 +56,11 @@ function lensHash(label: string, corpus?: string): string {
   const input = corpus
     ? `${label.toLowerCase().trim()}:${corpus}`
     : label.toLowerCase().trim();
-  return createHash('sha256').update(input).digest('hex').slice(0, 16);
+  return computeHydeSourceTextHash(input).slice(0, 16);
 }
 
 function entityCacheKey(sourceId: string | undefined, sourceText: string): string {
-  return sourceId ?? `q:${createHash('sha256').update(sourceText).digest('hex').slice(0, 16)}`;
+  return sourceId ?? `q:${computeHydeSourceTextHash(sourceText).slice(0, 16)}`;
 }
 
 function sortedFrame(frame: HydeSourceFrame): HydeSourceFrame {
@@ -81,11 +80,7 @@ function sortedFrame(frame: HydeSourceFrame): HydeSourceFrame {
 
 /** Deterministic identity for the source content and sanitized frame. */
 function computeHydeFrameFingerprint(sourceText: string, sourceFrame: HydeSourceFrame): string {
-  return createHash('sha256')
-    .update(sourceText)
-    .update('\0')
-    .update(JSON.stringify(sortedFrame(sourceFrame)))
-    .digest('hex');
+  return computeHydeSourceTextHash(`${sourceText}\0${JSON.stringify(sortedFrame(sourceFrame))}`);
 }
 
 function requireFrameFingerprint(frameFingerprint: string | undefined): string {
@@ -164,10 +159,7 @@ function emptyFrame(): HydeSourceFrame {
 }
 
 function opaqueDocumentKey(doc: HydeDocumentState): string {
-  return `d-${createHash('sha256')
-    .update(`${doc.lens}\0${doc.targetCorpus}\0${doc.hydeText}`)
-    .digest('hex')
-    .slice(0, 16)}`;
+  return `d-${computeHydeSourceTextHash(`${doc.lens}\0${doc.targetCorpus}\0${doc.hydeText}`).slice(0, 16)}`;
 }
 
 function isRuntimeVerdict(value: unknown): value is HydeValidationVerdict {

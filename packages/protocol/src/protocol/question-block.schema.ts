@@ -15,8 +15,7 @@
  * with a trailing ask_user gap → post-stall park, answered via a retry).
  *
  * This module must stay browser-safe: it may import zod and nothing else.
- * It is exposed to the web client via the `@indexnetwork/protocol/question-block`
- * subpath export (see STABILITY.md).
+ * It is exposed to the web client through the package root (see STABILITY.md).
  */
 import { z } from "zod";
 

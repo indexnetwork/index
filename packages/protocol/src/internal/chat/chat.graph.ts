@@ -82,6 +82,23 @@ export class ChatGraphFactory {
   }
 
   /**
+   * Rebind the shared chat runtime to a persona without changing its host
+   * dependencies. Hosts use this for the restricted signal and onboarding
+   * chat surfaces; each returned factory owns its own streamer for that
+   * persona.
+   */
+  public withPersona(persona: ChatPersonaConfig): ChatGraphFactory {
+    return new ChatGraphFactory(
+      this.database,
+      this.embedder,
+      this.scraper,
+      this.chatSession,
+      this.protocolDeps,
+      persona,
+    );
+  }
+
+  /**
    * Creates and compiles the Chat Graph without persistence.
    * @returns Compiled StateGraph ready for invocation
    */
