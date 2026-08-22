@@ -168,7 +168,7 @@ export const OpportunityGraphState = Annotation.Root({
 
   /**
    * Optional set of indexes discovery may search within (e.g. a network-scoped
-   * agent's reachable networks: the bound network plus the user's personal network).
+   * agent's reachable networks: the bound network).
    * The scope node intersects this with the user's actual memberships. Ignored
    * when `networkId` is set (single-network override). When unset, discovery
    * spans all of the user's networks.

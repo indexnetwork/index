@@ -10,4 +10,4 @@ export { RESET, BOLD, DIM, ITALIC, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHIT
 export { MarkdownRenderer } from "./markdown";
 
 export type { ProfileData } from "./formatters";
-export { profileCard, contactTable, intentTable, intentCard, opportunityTable, opportunityCard, networkTable, networkCard, memberTable, conversationTable, conversationCard, messageList } from "./formatters";
+export { profileCard, intentTable, intentCard, opportunityTable, opportunityCard, networkTable, networkCard, memberTable, conversationTable, conversationCard, messageList } from "./formatters";

@@ -2,7 +2,7 @@
  * Characterization: privacy/scope intersection policy.
  *
  * Verifies the effective-scope rules enforced by NetworkGraphFactory (read mode):
- * - In a network-scoped chat, only the focused network + personal network are shown.
+ * - In a network-scoped chat, only the focused network is shown.
  * - Non-members receive an empty result when queried in scope.
  * - showAll: true bypasses the scope restriction (full membership list).
  * - Unscoped read returns all memberships, owned networks, and public networks.
@@ -17,13 +17,11 @@ import type { NetworkGraphDatabase } from "../../../platform/database.js";
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const SCOPED_NET = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
-const PERSONAL_NET = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
 const OTHER_NET = "cccccccc-cccc-4ccc-cccc-cccccccccccc";
 
 const ALL_MEMBERSHIPS = [
-  { networkId: SCOPED_NET, networkTitle: "Scoped Net", indexPrompt: "AI", autoAssign: true, isPersonal: false, joinedAt: new Date() },
-  { networkId: PERSONAL_NET, networkTitle: "My Contacts", indexPrompt: null, autoAssign: false, isPersonal: true, joinedAt: new Date() },
-  { networkId: OTHER_NET, networkTitle: "Other Net", indexPrompt: null, autoAssign: false, isPersonal: false, joinedAt: new Date() },
+  { networkId: SCOPED_NET, networkTitle: "Scoped Net", indexPrompt: "AI", autoAssign: true, joinedAt: new Date() },
+  { networkId: OTHER_NET, networkTitle: "Other Net", indexPrompt: null, autoAssign: false, joinedAt: new Date() },
 ];
 
 function makeDb(overrides: Partial<NetworkGraphDatabase> = {}): NetworkGraphDatabase {
@@ -50,7 +48,7 @@ function makeGraph(overrides: Partial<NetworkGraphDatabase> = {}) {
 // ── Scoped chat effective-scope intersection ───────────────────────────────────
 
 describe("scope policy: network-scoped read", () => {
-  it("returns only the scoped network and personal network when networkId is set", async () => {
+  it("returns only the scoped network when networkId is set", async () => {
     const graph = makeGraph();
     const result = await graph.invoke({
       userId: "user-1",
@@ -61,7 +59,6 @@ describe("scope policy: network-scoped read", () => {
     expect(result.readResult).toBeDefined();
     const memberOfIds = result.readResult!.memberOf.map((m) => m.networkId);
     expect(memberOfIds).toContain(SCOPED_NET);
-    expect(memberOfIds).toContain(PERSONAL_NET);
     // other memberships must be excluded by scope intersection
     expect(memberOfIds).not.toContain(OTHER_NET);
     // publicNetworks is omitted in scoped mode
@@ -93,23 +90,6 @@ describe("scope policy: network-scoped read", () => {
     expect(result.readResult?.stats.scopeNote).toContain("showAll");
   });
 
-  it("returns only the scoped network when it is also the personal network", async () => {
-    const personalOnlyMemberships = [
-      { networkId: SCOPED_NET, networkTitle: "Personal Net", indexPrompt: null, autoAssign: false, isPersonal: true, joinedAt: new Date() },
-    ];
-    const graph = makeGraph({
-      getNetworkMemberships: async () => personalOnlyMemberships,
-    });
-    const result = await graph.invoke({
-      userId: "user-1",
-      networkId: SCOPED_NET,
-      operationMode: "read" as const,
-      showAll: false,
-    });
-    const memberOfIds = result.readResult!.memberOf.map((m) => m.networkId);
-    expect(memberOfIds).toHaveLength(1);
-    expect(memberOfIds[0]).toBe(SCOPED_NET);
-  });
 });
 
 // ── showAll bypass ────────────────────────────────────────────────────────────
@@ -126,7 +106,6 @@ describe("scope policy: showAll bypass", () => {
     const memberOfIds = result.readResult!.memberOf.map((m) => m.networkId);
     expect(memberOfIds).toContain(SCOPED_NET);
     expect(memberOfIds).toContain(OTHER_NET);
-    expect(memberOfIds).toContain(PERSONAL_NET);
   });
 });
 
@@ -146,7 +125,7 @@ describe("scope policy: unscoped read", () => {
       networkId: undefined,
       operationMode: "read" as const,
     });
-    expect(result.readResult?.memberOf).toHaveLength(3);
+    expect(result.readResult?.memberOf).toHaveLength(2);
     expect(result.readResult?.publicNetworks).toHaveLength(1);
     expect(result.readResult?.publicNetworks?.[0].networkId).toBe("pub-net");
   });

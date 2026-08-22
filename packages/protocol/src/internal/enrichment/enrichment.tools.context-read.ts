@@ -39,7 +39,7 @@ export function createUserContextReadTools(defineTool: DefineTool, deps: Enrichm
       "or to check if a profile exists before suggesting create_user_context.\n\n" +
       "**Returns:** Profile objects with name, bio, location, and (for single-user reads) a `context` paragraph. Use userId from results with other tools like read_intents(userId, networkId).",
     querySchema: z.object({
-      userId: z.string().optional().describe("Fetch a specific user's profile by their user ID. Get user IDs from read_network_memberships or list_contacts."),
+      userId: z.string().optional().describe("Fetch a specific user's profile by their user ID. Get user IDs from read_network_memberships."),
       networkId: z.string().optional().describe("Network UUID — fetch profiles of all members in this network, or narrow a name search to this network. Get from read_networks."),
       query: z.string().optional().describe("Name to search for (case-insensitive substring match). Searches across all the user's indexes unless networkId is also provided. Use this when the user asks to 'find' or 'look up' someone."),
     }),

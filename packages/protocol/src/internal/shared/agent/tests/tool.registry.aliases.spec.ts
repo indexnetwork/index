@@ -6,8 +6,8 @@ import type { ToolDeps } from "../tool.helpers.js";
 /**
  * Surface-aware tool registry (IND-596/597/598, IND-373).
  *
- * Contact/Gmail-import tools, `scrape_url`, and `complete_onboarding` remain
- * REST/chat-only. The retired profile/profile-run compatibility aliases are
+ * `scrape_url` and `complete_onboarding` remain REST/chat-only. The retired
+ * profile/profile-run compatibility aliases are
  * absent from every surface; canonical identity/context and enrichment-run
  * names remain available.
  */
@@ -34,9 +34,6 @@ const ALIASES: ReadonlyArray<readonly [string, string]> = [
 ];
 
 const REST_ONLY_TOOLS: readonly string[] = [
-  "list_contacts",
-  "remove_contact",
-  "search_contacts",
   "scrape_url",
   "complete_onboarding",
 ];
@@ -57,7 +54,7 @@ describe("tool registry surface profiles", () => {
   const restRegistry = createToolRegistry(makeDeps());
   const mcpRegistry = createToolRegistry(makeDeps(), { surface: "mcp" });
 
-  test("default (REST) profile retains contact tools and scrape_url", () => {
+  test("default (REST) profile retains REST-only tools", () => {
     for (const name of REST_ONLY_TOOLS) {
       expect(restRegistry.get(name), `REST profile must retain ${name}`).toBeDefined();
     }
@@ -76,12 +73,8 @@ describe("tool registry surface profiles", () => {
     }
   });
 
-  test("MCP profile omits contact tools, and the retired import/add names never resolve", () => {
-    for (const name of ["list_contacts", "remove_contact", "search_contacts"]) {
-      expect(mcpRegistry.get(name)).toBeUndefined();
-    }
-    // Retired with the ghost-user path — must not resolve on either surface.
-    for (const name of ["import_contacts", "add_contact", "import_gmail_contacts"]) {
+  test("retired contact and import names never resolve", () => {
+    for (const name of ["list_contacts", "remove_contact", "search_contacts", "import_contacts", "add_contact", "import_gmail_contacts"]) {
       expect(restRegistry.get(name), `REST must omit ${name}`).toBeUndefined();
       expect(mcpRegistry.get(name), `MCP must omit ${name}`).toBeUndefined();
     }

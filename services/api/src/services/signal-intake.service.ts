@@ -534,9 +534,9 @@ async function getPremisesProduction(userId: string): Promise<Array<{ text: stri
   return premises.map((p) => ({ text: p.assertion.text })).filter((p) => p.text.length > 0);
 }
 
-/** Titles of every non-personal network the user belongs to. */
+/** Titles of every network the user belongs to. */
 async function getNetworkTitlesProduction(userId: string): Promise<string[]> {
-  const networkIds = await chatDatabaseAdapter.getNonPersonalNetworkIds(userId);
+  const networkIds = await chatDatabaseAdapter.getUserIndexIds(userId);
   const networks = await Promise.all(networkIds.map((id) => chatDatabaseAdapter.getNetwork(id)));
   return networks.filter((network): network is NonNullable<typeof network> => Boolean(network)).map((network) => network.title);
 }

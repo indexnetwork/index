@@ -34,7 +34,6 @@ import { WebhooksController } from './controllers/webhooks.controller';
 import { QuestionController } from './controllers/question.controller';
 import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { IntegrationService } from './services/integration.service';
-import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
 import { HermesNegotiatorRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
@@ -420,7 +419,7 @@ const integrationService = new IntegrationService(integrationAdapter);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
 controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
-const toolService = new ToolService(contactService);
+const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
 controllerInstances.set(QuestionController, new QuestionController());
 

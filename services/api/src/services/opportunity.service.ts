@@ -748,25 +748,6 @@ export class OpportunityService {
       });
     }
 
-    // Accepter explicitly acted — restore if previously removed.
-    // Counterpart: add them to the accepter but honour any prior opt-out on their side.
-    await this.db.upsertContactMembership(userId, counterpartUserId, { restore: true }).catch((err) => {
-      updateStatusLogger.error('upsertContactMembership failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId,
-        error: err,
-      });
-    });
-    await this.db.upsertContactMembership(counterpartUserId, userId, { restore: false }).catch((err) => {
-      updateStatusLogger.error('upsertContactMembership (counterpart) failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId,
-        error: err,
-      });
-    });
-
     return {
       opportunity: sanitizeOpportunityForResponse(updated),
       counterpartUserId,
@@ -790,9 +771,8 @@ export class OpportunityService {
    *    known, so we never flip status without a destination to navigate to.
    * 3. `acceptSiblingOpportunities` — matches the PATCH /status='accepted'
    *    side effect; already transactional internally.
-   * 4. `upsertContactMembership` — idempotent; safe to re-run.
    *
-   * Steps 3 and 4 are best-effort after the status flip: their failure must
+   * Step 3 is best-effort after the status flip: its failure must
    * not block the user from reaching the chat (the opp is already accepted
    * and the conversation already resolved). Errors are logged for later
    * reconciliation.
@@ -947,8 +927,8 @@ export class OpportunityService {
     }
 
     // Best-effort side effects — their failure must not block the user from
-    // reaching the chat. The opp is already accepted and the DM already
-    // resolved; these keep the radar and contacts view in sync.
+    // reaching the chat. The opportunity is already accepted and the DM already
+    // resolved.
     if (options?.scopeType !== 'intent') {
       await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
         startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
@@ -959,23 +939,6 @@ export class OpportunityService {
         });
       });
     }
-    await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true }).catch((err) => {
-      startChatLogger.error('upsertContactMembership failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId: counterpart.userId,
-        error: err,
-      });
-    });
-    await this.db.upsertContactMembership(counterpart.userId, userId, { restore: false }).catch((err) => {
-      startChatLogger.error('upsertContactMembership (counterpart) failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId: counterpart.userId,
-        error: err,
-      });
-    });
-
     return {
       conversationId: conversation.id,
       counterpartUserId: counterpart.userId,

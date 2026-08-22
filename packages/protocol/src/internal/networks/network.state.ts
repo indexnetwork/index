@@ -10,8 +10,8 @@ import { Annotation } from "@langchain/langgraph";
  * ## Scope semantics
  *
  * When the chat is network-scoped (`networkId` is set) and `showAll` is false,
- * readNode surfaces only the focused network plus the user's personal network
- * (contacts).  Setting `showAll: true` bypasses the restriction (admin use).
+ * readNode surfaces only the focused network.
+ * Setting `showAll: true` bypasses the restriction (admin use).
  */
 export const NetworkGraphState = Annotation.Root({
   // --- Core Inputs (from ChatGraph via ToolContext) ---
@@ -73,7 +73,6 @@ export const NetworkGraphState = Annotation.Root({
       title: string;
       prompt: string | null;
       autoAssign: boolean;
-      isPersonal: boolean;
       joinedAt: Date;
     }>;
     owns: Array<{

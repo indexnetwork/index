@@ -59,12 +59,6 @@ describe("parseArgs", () => {
 
   // ── Global flags ───────────────────────────────────────────────────
 
-  it("parses --json flag on contact list", () => {
-    const result = parseArgs(["contact", "list", "--json"]);
-    expect(result.command).toBe("contact");
-    expect(result.json).toBe(true);
-  });
-
   it("parses --json flag on intent list", () => {
     const result = parseArgs(["intent", "list", "--json"]);
     expect(result.command).toBe("intent");
@@ -81,23 +75,6 @@ describe("parseArgs", () => {
     const result = parseArgs(["login", "--app-url", "http://app.example.com"]);
     expect(result.command).toBe("login");
     expect(result.appUrl).toBe("http://app.example.com");
-  });
-
-  // ── Contact commands ───────────────────────────────────────────────
-
-  describe("contact", () => {
-    it("parses contact list", () => {
-      const result = parseArgs(["contact", "list"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("list");
-    });
-
-    it("parses contact remove", () => {
-      const result = parseArgs(["contact", "remove", "foo@bar.com"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("remove");
-      expect(result.positionals).toEqual(["foo@bar.com"]);
-    });
   });
 
   // ── Intent commands ────────────────────────────────────────────────

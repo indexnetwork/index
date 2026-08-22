@@ -9,7 +9,7 @@ import type { NegotiatorAnswerToolsHost } from "../../platform/negotiation/answe
  *
  * Defined inline here (not derived from ToolRegistryCompositionDeps) to avoid
  * a negotiation → interaction-composition capability dependency, following the
- * same pattern as contacts/contact.tools.port.ts.
+ * same narrow-port pattern as the other tool contracts.
  *
  * IND-550: canonical port type for negotiation tool host dependencies.
  */

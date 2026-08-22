@@ -52,7 +52,7 @@ export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
   'chatSession' | 'agentDatabase' | 'agentDispatcher'
 >): string {
   // Contact tools are omitted from the MCP surface entirely (IND-596), so no
-  // contacts-related input can change the MCP tool set.
+  // Request-scoped input can change the MCP tool set.
   return [
     `chat:${deps.chatSession ? '1' : '0'}`,
     `agent:${deps.agentDatabase ? '1' : '0'}`,
@@ -626,10 +626,8 @@ export function createMcpServer(
           reportContext = context;
 
           // Build per-request scoped databases via injected factory.
-          // Network-scoped agents are clamped to their bound network plus the user's
-          // personal network — they cannot reach other networks even when the user is
-          // a member of them. The personal-index reachability is preserved so the
-          // agent can still manage its owner's profile and contacts.
+          // Network-scoped agents are clamped to their bound network, even when the
+          // user belongs to other networks.
           const allowedNetworkIds = deriveAllowedNetworkIds({
             memberships: context.userNetworks,
             ...(context.scopeType && context.scopeId

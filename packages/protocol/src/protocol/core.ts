@@ -3,7 +3,6 @@ export type ToolScopeType = "network" | "intent";
 
 export interface ScopeMembership {
   networkId: string;
-  isPersonal?: boolean | null;
 }
 
 /** A corpus that can be searched through inferred semantic lenses. */

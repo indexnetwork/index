@@ -162,7 +162,6 @@ export interface Network {
   title: string;
   prompt?: string | null;
   joinPolicy?: string;
-  isPersonal?: boolean;
   memberCount?: number;
   createdAt?: string;
   owner?: { id: string; name: string; email: string };

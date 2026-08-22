@@ -69,10 +69,7 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
   const prepareRef = useRef<Promise<{ runId: string }> | null>(null);
   const resumeAttemptedRef = useRef(false);
 
-  // The community picker offers communities, and a personal network is not one: it is the
-  // user's own private space. Mirrors NetworksPanel's `!i.isPersonal` filter and
-  // the server-side brief, which is built from `getNonPersonalNetworkIds`.
-  const communities = useMemo(() => indexes.filter((item) => !item.isPersonal), [indexes]);
+  const communities = useMemo(() => indexes, [indexes]);
 
   // Depends only on identifiers already available at this point, so callbacks
   // declared further down (resume completion included) can safely list it as

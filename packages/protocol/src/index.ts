@@ -37,7 +37,6 @@ export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platfor
 export type { ChatSummaryReader, InChatNegotiationQuestionDelivery } from "./platform/chat/ports.js";
 export type { NegotiationSummaryReader } from "./platform/negotiation/summary.js";
 export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
-export type { ContactServiceAdapter } from "./internal/contacts/contact.repository.port.js";
 export type {
   ChatGraphCompositeDatabase,
   UserDatabase,
@@ -108,7 +107,6 @@ export type {
 } from "./capabilities/networks.js";
 export { Contexts } from "./capabilities/contexts.js";
 export type { ContextsDeps } from "./capabilities/contexts.js";
-export { Contacts } from "./capabilities/contacts.js";
 export { Opportunities } from "./capabilities/opportunities.js";
 export type { OpportunitiesDeps } from "./capabilities/opportunities.js";
 export { Negotiations } from "./capabilities/negotiations.js";

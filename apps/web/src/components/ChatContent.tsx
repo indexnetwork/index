@@ -841,7 +841,6 @@ export default function ChatContent({
   // have no messages yet; keep that in conversation mode so intent-scoped
   // sessions open directly into the chat shell with their scope chip visible.
   if (messages.length === 0 && !sessionIdFromUrl) {
-    const personalIndex = indexes.find((i) => i.isPersonal);
     const selectedIndex = indexes.find((i) => selectedNetworkIds.includes(i.id));
 
     const renderScopeDropdown = () => {
@@ -876,9 +875,7 @@ export default function ChatContent({
               isInputMultiline ? "px-1.5" : "px-3",
             )}
           >
-            {selectedIndex?.isPersonal ? (
-              <Users className="w-4 h-4" />
-            ) : selectedIndex?.permissions?.joinPolicy ===
+            {selectedIndex?.permissions?.joinPolicy ===
               "invite_only" ? (
               <Lock className="w-4 h-4" />
             ) : (
@@ -917,25 +914,8 @@ export default function ChatContent({
                 >
                   <Globe className="w-4 h-4" /> Everywhere
                 </button>
-                {personalIndex && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleIndexSelect(personalIndex.id);
-                      setIsIndexDropdownOpen(false);
-                    }}
-                    className={cn(
-                      "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                      selectedNetworkIds.includes(personalIndex.id) &&
-                        "text-gray-900 font-medium",
-                    )}
-                  >
-                    <Users className="w-4 h-4" /> {personalIndex.title}
-                  </button>
-                )}
                 <div className="my-1 border-t border-gray-200" />
                 {[...indexes]
-                  .filter((i) => !i.isPersonal)
                   .sort(
                     (a, b) =>
                       (a.permissions?.joinPolicy === "invite_only"

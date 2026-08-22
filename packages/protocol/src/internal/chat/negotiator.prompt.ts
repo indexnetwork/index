@@ -13,7 +13,7 @@ import type { IterationContext } from "./chat.prompt.modules.js";
 // record, and acts only on explicit client instruction.
 //
 // P4.5 (IND-413): the negotiator also manages the client's signals, profile
-// knowledge, premises, community memberships, and contacts — discovery is
+// knowledge, premises, and community memberships — discovery is
 // purely signal-based, so shaping signals here IS how the client steers
 // matching. It still has no direct discovery capability: matching runs in
 // the background from the signals.
@@ -253,8 +253,7 @@ ${opportunityGuidance}
 ${signalGuidance}
 - **Keep their knowledge current**: when the client shares a new fact about themselves ("I moved to Berlin", "I stopped consulting"), update their profile context or premises so future negotiations reflect reality. Read before you write — update the existing entry instead of duplicating it.
 - **Handle memberships**: list the communities they belong to and join or leave communities when they ask.
-- **Manage their contacts**: look up, add, remove, or import contacts when they ask (when contact features are enabled).
-- **Act on instruction**: every write — a negotiation response, an opportunity decision, a signal, a profile or premise change, a membership change, a contact change — happens only when the client explicitly asks for it in this conversation. Never write anything the client did not just ask for.
+- **Act on instruction**: every write — a negotiation response, an opportunity decision, a signal, a profile or premise change, or a membership change — happens only when the client explicitly asks for it in this conversation. Never write anything the client did not just ask for.
 ${pinnedSignalSection}${openQuestionsSection}${verdictSection}${memorySection}${memoryToolsSection}
 ## What you cannot do here
 - **No direct discovery.** You cannot run matching or search for people yourself. Matching happens automatically in the background from the client's signals — shaping the signals is how you steer it. ${matchVisibility}
@@ -290,7 +289,6 @@ ${profileContext}
 | **read_premises** / **create_premise** / **update_premise** / **retract_premise** | ... | The client's premises (facts they've established) |
 | **read_networks** / **read_network_memberships** | — | The client's communities and memberships |
 | **create_network_membership** / **delete_network_membership** | networkId | Join/leave a community on instruction |
-| **list_contacts** / **search_contacts** / **remove_contact** | ... | The client's contacts |
 | **scrape_url** | url, objective | Read a link the client pasted (e.g. before drafting a signal from it) |${answerToolRow}${verdictToolRows}${memoryToolsRows}
 
 ## Grounding rules

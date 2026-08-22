@@ -15,16 +15,15 @@ describe("network-assignment.policy", () => {
     expect(resolveAssignmentNetworkScope({ memberships: ["n1", "n2"] })).toEqual(["n1", "n2"]);
   });
 
-  it("evaluates the focused network plus personal networks in network scope", () => {
+  it("evaluates only the focused network in network scope", () => {
     expect(resolveAssignmentNetworkScope({
       memberships: [
-        { networkId: "n1", isPersonal: false },
-        { networkId: "n2", isPersonal: false },
-        { networkId: "personal", isPersonal: true },
+        { networkId: "n1" },
+        { networkId: "n2" },
       ],
       scopeType: "network",
       scopeId: "n2",
-    })).toEqual(["n2", "personal"]);
+    })).toEqual(["n2"]);
     expect(resolveAssignmentNetworkScope({ memberships: ["n1"], scopeType: "network", scopeId: "n2" })).toEqual([]);
   });
 

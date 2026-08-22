@@ -1049,8 +1049,8 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   /**
    * Ensure the user has a personal negotiator agent row (one per user).
-   * Idempotent — safe to call on every sign-in; follows the ensurePersonalNetwork
-   * setup-side-effect pattern. A missing user row is skipped rather than provisioned.
+   * Idempotent — safe to call on every sign-in. A missing user row is skipped
+   * rather than provisioned.
    *
    * @param userId - The user to provision a negotiator for
    * @returns The negotiator agent id, or null when the user is missing

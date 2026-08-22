@@ -13,7 +13,6 @@ const legacyCapabilityDirectories: Readonly<Record<string, string>> = {
   agents: "agents",
   discovery: "discovery",
   contexts: "contexts",
-  contacts: "contacts",
   opportunities: "opportunities",
   negotiations: "negotiations",
 };

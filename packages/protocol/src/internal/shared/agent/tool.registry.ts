@@ -8,7 +8,6 @@ import { Networks } from '../../../capabilities/networks.js';import { createOppo
 import { createOpportunityVerdictTools } from "../../opportunities/opportunity.verdict.tools.js";
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
-import { createContactTools } from '../../contacts/contact.tools.js';
 import { createAgentTools } from '../../agents/agent.tools.js';import { createNegotiationAnswerTools } from "../../negotiations/negotiation.answer.tools.js";
 import { createNegotiationTools } from "../../negotiations/negotiation.tools.js";
 import { createChatTools } from '../../chat/chat.tools.js';
@@ -23,8 +22,8 @@ const logger = protocolLogger('ToolRegistry');
 export interface CreateToolRegistryOptions {
   /**
    * Tool-surface profile. The default `'rest'` profile (direct HTTP Tool API)
-   * exposes contact/Gmail tools, `scrape_url`, and `complete_onboarding`. The
-   * restricted `'mcp'` profile omits those surfaces (IND-596/597). Retired
+   * exposes `scrape_url` and `complete_onboarding`. The restricted `'mcp'`
+   * profile omits those surfaces (IND-596/597). Retired
    * profile/profile-run compatibility aliases are absent from both profiles
    * (IND-373/598).
    */
@@ -108,11 +107,6 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   // (IND-597). The retired report_agent_activity name retains no alias on
   // either surface (IND-605).
   createUtilityTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
-  // Contact tools are omitted from the MCP surface (IND-596). Their
-  // implementations remain available to the REST Tool API and chat agent.
-  if (!isMcpSurface) {
-    createContactTools(dt, deps);
-  }
   createAgentTools(dt, deps);
   createNegotiationTools(dt, deps);
   // The MCP question flow: the answer lane for parked negotiations and the

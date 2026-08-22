@@ -16,7 +16,6 @@ import { deriveAllowedNetworkIds, filterToolsForScope, scopeFromNetworkId } from
 import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";import { createOpportunityTools } from "../../opportunities/opportunity.tools.js";
 import { createUtilityTools } from "./utility.tools.js";
-import { createContactTools } from "../../contacts/contact.tools.js";
 // The composition root reaches the leaf directly (it is exempt from the barrel
 // rule by design): importing agents/agent.module.js here would pull in the
 // chat personas, which import this module back -- a runtime cycle.
@@ -188,7 +187,6 @@ export async function createChatTools(
     scraper,
     embedder,
     cache,
-    contactService: deps.contactService,
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
     negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
@@ -231,7 +229,6 @@ export async function createChatTools(
   const networkTools = Networks.createTools(defineTool, toolDeps);
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);
-  const contactTools = createContactTools(defineTool, toolDeps);
   const agentTools = createAgentTools(defineTool, toolDeps);
   const negotiationTools = deps.agentDispatcher
     ? createNegotiationTools(defineTool, toolDeps)
@@ -253,7 +250,6 @@ export async function createChatTools(
     ...networkTools,
     ...opportunityToolsForChat,
     ...utilityTools,
-    ...contactTools,
     ...agentTools,
     ...negotiationTools,
     ...premiseTools,

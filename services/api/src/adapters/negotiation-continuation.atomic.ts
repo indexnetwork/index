@@ -222,7 +222,6 @@ async function validateMaterialBinding(
     ))
     .innerJoin(networks, and(
       eq(networks.id, input.networkId),
-      eq(networks.isPersonal, false),
       isNull(networks.deletedAt),
     ))
     .innerJoin(opportunities, eq(opportunities.id, input.opportunityId))

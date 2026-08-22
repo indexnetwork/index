@@ -146,18 +146,6 @@ index profile create                # Generate profile from social links
 index profile update <action> [--details <text>]  # Update profile (action is the verb-phrase, e.g. "add interests")
 ```
 
-### `index contact`
-
-Manage your contacts. Add, list, remove, or import contacts.
-
-```bash
-index contact list                     # List your contacts
-index contact add user@email           # Add a contact by email
-index contact add user@email --name "Name"  # Add with display name
-index contact remove user@email        # Remove a contact
-index contact import --gmail           # Import contacts from Gmail
-```
-
 ### `index scrape`
 
 Scrape and extract content from a URL.
@@ -169,7 +157,7 @@ index scrape https://example.com --objective "..."   # Scrape with focus
 
 ### `index sync`
 
-Sync all user context (profile, networks, intents, contacts) to a local file.
+Sync profile, networks, and intents to a local file.
 
 ```bash
 index sync                             # Sync to ~/.index/context.json
@@ -211,8 +199,6 @@ index opportunity reject <id>
 | `--since <date>`     |       | Filter by time: ISO date or duration like `1h`, `2d`, `1w`      |
 | `--prompt <text>`    | `-p`  | Network description (for `network create`)                      |
 | `--title <text>`     |       | Network title (for `network update`)                            |
-| `--name <name>`      |       | Display name (for `contact add`)                                |
-| `--gmail`            |       | Import from Gmail (for `contact import`)                        |
 | `--objective <text>` |       | Focus objective (for `scrape`)                                  |
 | `--json`             |       | Output raw JSON to stdout                                       |
 | `--help`             | `-h`  | Show help                                                       |
@@ -237,4 +223,3 @@ bun test
 # Dry-run publish
 bun scripts/publish.ts --dry-run
 ```
-

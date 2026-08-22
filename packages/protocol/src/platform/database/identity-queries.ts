@@ -229,8 +229,7 @@ export interface DatabaseIdentityQueries {
 
   /**
    * Return only requested user/network pairs backed by a live membership row
-   * and a non-deleted network. Permissions are intentionally not filtered:
-   * personal-network contacts are valid discovery participants.
+   * and a non-deleted network. Permissions are intentionally not filtered.
    */
   getActiveNetworkMembershipPairs(
     pairs: ActiveNetworkMembershipPair[],

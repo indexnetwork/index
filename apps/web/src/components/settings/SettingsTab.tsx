@@ -106,14 +106,9 @@ export default function SettingsTab({
       } else if (removeImageRequested) {
         finalImageUrl = null;
       }
-      // Personal networks accept only a prompt edit (rename/avatar are blocked
-      // server-side); send prompt alone to avoid a rejected update.
-      const updatedIndex = await updateNetwork(
-        networkId,
-        network.isPersonal
-          ? { prompt: prompt.trim() || null }
-          : { title: title.trim(), prompt: prompt.trim() || null, imageUrl: finalImageUrl },
-      );
+      const updatedIndex = await updateNetwork(networkId, {
+        title: title.trim(), prompt: prompt.trim() || null, imageUrl: finalImageUrl,
+      });
       setOriginalTitle(title);
       setOriginalPrompt(prompt);
       setOriginalImageUrl(finalImageUrl);
@@ -160,7 +155,7 @@ export default function SettingsTab({
           <button
             type="button"
             onClick={() => imageInputRef.current?.click()}
-            disabled={isSavingSettings || network.isPersonal}
+            disabled={isSavingSettings}
             className="relative flex-shrink-0 group cursor-pointer disabled:cursor-not-allowed"
           >
             <div className="w-[72px] h-[72px] rounded-full overflow-hidden">
@@ -181,7 +176,7 @@ export default function SettingsTab({
             onChange={handleImageChange}
             className="hidden"
           />
-          {displayImageUrl && !network.isPersonal && (
+          {displayImageUrl && (
             <button
               type="button"
               onClick={handleRemoveImage}
@@ -198,15 +193,12 @@ export default function SettingsTab({
           <label htmlFor="title" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
             Title
           </label>
-          <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" disabled={network.isPersonal} />
-          {network.isPersonal && (
-            <p className="text-xs text-gray-400 mt-1.5">Your personal network can&apos;t be renamed.</p>
-          )}
+          <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" />
         </div>
         <div>
           <label className="block text-sm font-medium font-ibm-plex-mono text-gray-700 mb-1.5">Prompt</label>
-          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={network.isPersonal ? 'Optional — describe what should land in My Network. Leave empty to keep every signal.' : 'What people can share in this network...'} className="min-h-[100px]" rows={4} />
-          <p className="text-xs text-gray-400 mt-1.5">{network.isPersonal ? 'Filters which of your signals auto-assign to My Network. Empty keeps everything.' : 'Guides what kind of signals people can share.'}</p>
+          <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What people can share in this network..." className="min-h-[100px]" rows={4} />
+          <p className="text-xs text-gray-400 mt-1.5">Guides what kind of signals people can share.</p>
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => { setTitle(originalTitle); setPrompt(originalPrompt); setImageUrl(originalImageUrl); setImageFile(null); setImagePreview(null); setRemoveImageRequested(false); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={isSavingSettings || !hasSettingsChanged}>
@@ -218,7 +210,7 @@ export default function SettingsTab({
         </div>
 
         {/* Danger zone */}
-        {!network.isPersonal && (
+        {(
           <div className="pt-6 border-t border-gray-100">
             <button
               onClick={() => setIsDangerZoneExpanded(!isDangerZoneExpanded)}

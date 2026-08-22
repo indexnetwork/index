@@ -109,13 +109,6 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
   },
 
   /**
-   * Remove a contact from the authenticated user's personal network.
-   */
-  removeContact: async (contactUserId: string): Promise<void> => {
-    await api.delete(`/users/contacts/${contactUserId}`);
-  },
-
-  /**
    * Get negotiation dashboard data: LLM-generated summary + structured stats. Self-only.
    */
   getNegotiationInsights: async (userId: string): Promise<NegotiationInsights | null> => {

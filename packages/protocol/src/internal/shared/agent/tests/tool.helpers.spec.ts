@@ -77,7 +77,6 @@ describe("resolveChatContext", () => {
   });
 
   test("sets network scope envelope and derives allowed/discovery IDs when networkId is provided", async () => {
-    const personalIndexId = "00000000-0000-0000-0000-000000000099";
     const otherIndexId = "00000000-0000-0000-0000-000000000088";
     const memberships = [
       {
@@ -87,18 +86,7 @@ describe("resolveChatContext", () => {
         permissions: ["member"],
         memberPrompt: null,
         autoAssign: true,
-        isPersonal: false,
         joinedAt: new Date("2026-01-01"),
-      },
-      {
-        networkId: personalIndexId,
-        networkTitle: "Personal",
-        indexPrompt: null,
-        permissions: ["owner"],
-        memberPrompt: null,
-        autoAssign: true,
-        isPersonal: true,
-        joinedAt: new Date("2026-01-02"),
       },
       {
         networkId: otherIndexId,
@@ -107,7 +95,6 @@ describe("resolveChatContext", () => {
         permissions: ["member"],
         memberPrompt: null,
         autoAssign: true,
-        isPersonal: false,
         joinedAt: new Date("2026-01-03"),
       },
     ];
@@ -120,19 +107,17 @@ describe("resolveChatContext", () => {
     const ctx = await resolveChatContext({ database: db, userId, networkId });
     expect(ctx.scopeType).toBe("network");
     expect(ctx.scopeId).toBe(networkId);
-    expect(deriveAllowedNetworkIds({ memberships: ctx.userNetworks, scopeType: ctx.scopeType, scopeId: ctx.scopeId }).sort()).toEqual([networkId, personalIndexId].sort());
+    expect(deriveAllowedNetworkIds({ memberships: ctx.userNetworks, scopeType: ctx.scopeType, scopeId: ctx.scopeId })).toEqual([networkId]);
     expect(deriveDiscoveryNetworkIds({ memberships: ctx.userNetworks, scopeType: ctx.scopeType, scopeId: ctx.scopeId })).toEqual([networkId]);
     // Other Community should NOT be in scope despite being a membership.
     expect(ctx.indexScope).not.toContain(otherIndexId);
   });
 
   test("unscoped contexts derive all memberships for allowed and discovery IDs", async () => {
-    const personalIndexId = "00000000-0000-0000-0000-000000000099";
     const otherIndexId = "00000000-0000-0000-0000-000000000088";
     const memberships = [
-      { networkId, networkTitle: "AI Builders", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
-      { networkId: personalIndexId, networkTitle: "Personal", indexPrompt: null, permissions: ["owner"], memberPrompt: null, autoAssign: true, isPersonal: true, joinedAt: new Date() },
-      { networkId: otherIndexId, networkTitle: "Other", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
+      { networkId, networkTitle: "AI Builders", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
+      { networkId: otherIndexId, networkTitle: "Other", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
     ];
     const db = createContextDatabase({
       getNetworkMemberships: async () => memberships,
@@ -141,9 +126,9 @@ describe("resolveChatContext", () => {
     const ctx = await resolveChatContext({ database: db, userId });
     expect(ctx.scopeType).toBeUndefined();
     expect(ctx.scopeId).toBeUndefined();
-    expect(deriveAllowedNetworkIds({ memberships: ctx.userNetworks }).sort()).toEqual([networkId, personalIndexId, otherIndexId].sort());
-    expect(deriveDiscoveryNetworkIds({ memberships: ctx.userNetworks }).sort()).toEqual([networkId, personalIndexId, otherIndexId].sort());
-    expect(ctx.indexScope.sort()).toEqual([networkId, personalIndexId, otherIndexId].sort());
+    expect(deriveAllowedNetworkIds({ memberships: ctx.userNetworks }).sort()).toEqual([networkId, otherIndexId].sort());
+    expect(deriveDiscoveryNetworkIds({ memberships: ctx.userNetworks }).sort()).toEqual([networkId, otherIndexId].sort());
+    expect(ctx.indexScope.sort()).toEqual([networkId, otherIndexId].sort());
   });
 
   test("maps scoped membership role to member", async () => {

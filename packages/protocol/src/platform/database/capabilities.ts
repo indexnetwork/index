@@ -107,8 +107,6 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'unassignIntentFromIndex'
   | 'getNetworkIdsForIntent'
   | 'getIntentIndexScores'
-  // Personal network auto-assignment (used by intent graph executor)
-  | 'getPersonalIndexesForContact'
   // Index Ownership Operations (owner-only)
   | 'getOwnedIndexes'
   | 'isIndexOwner'
@@ -240,7 +238,6 @@ export type OpportunityControllerDatabase = Pick<
   | 'getNetworkMemberships'
   | 'getProfile'
   | 'getActiveIntents'
-  | 'upsertContactMembership'
   // Start Chat endpoint (Plan B Task 8): atomic pair → conversation resolution
   // for the "Open h2h chat from this opportunity" flow. Kept on this interface
   // (rather than ConversationControllerDatabase) because the transition is
@@ -277,8 +274,6 @@ export type IntentGraphDatabase = Pick<
   // Global user_context paragraph, read to verify an owner-edited proposal.
   // Never used to rewrite a description: intents derive from what the user said.
   | 'getUserContext'
-  // Personal network auto-assignment
-  | 'getPersonalIndexesForContact'
   | 'assignIntentToNetwork'
 >;
 

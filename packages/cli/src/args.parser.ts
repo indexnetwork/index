@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "profile" | "intent" | "opportunity" | "negotiation" | "network" | "conversation" | "contact" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
+  command: "login" | "logout" | "profile" | "intent" | "opportunity" | "negotiation" | "network" | "conversation" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
   /** @deprecated Unused. */
   list: boolean;
   /** Override the API base URL. */
@@ -54,7 +54,7 @@ export interface ParsedCommand {
   acknowledgeUptake?: string[];
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "contact", "scrape", "onboarding", "sync", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "scrape", "onboarding", "sync", "help", "version"]);
 
 const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
 
@@ -244,17 +244,6 @@ export function parseArgs(args: string[]): ParsedCommand {
     const sub = positionals[0];
     if (sub === "complete") {
       result.subcommand = "complete";
-    }
-  }
-
-  // Contact command: first positional is subcommand, rest are args
-  if (result.command === "contact") {
-    if (positionals.length > 0) {
-      const sub = positionals[0];
-      if (["list", "add", "remove", "import"].includes(sub)) {
-        result.subcommand = sub as ParsedCommand["subcommand"];
-        result.positionals = positionals.slice(1);
-      }
     }
   }
 

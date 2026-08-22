@@ -18,7 +18,6 @@ export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
 export interface AuthDbContract {
   /** Returns a configured adapter object for Better Auth's `database` option. */
   createDrizzleAdapter(): unknown;
-  ensurePersonalNetwork(userId: string): Promise<string>;
   /** Ensures the user has a personal negotiator agent row. Idempotent. */
   ensureNegotiatorAgent(userId: string): Promise<string | null>;
 }
@@ -74,11 +73,6 @@ export function createAuth(deps: AuthDeps) {
         create: {
           after: async (session) => {
             try {
-              await authDb.ensurePersonalNetwork(session.userId);
-            } catch (err) {
-              logger.error('Failed to ensure personal network on sign-in', { userId: session.userId, error: err });
-            }
-            try {
               await authDb.ensureNegotiatorAgent(session.userId);
             } catch (err) {
               logger.error('Failed to ensure negotiator agent on sign-in', { userId: session.userId, error: err });
@@ -89,11 +83,6 @@ export function createAuth(deps: AuthDeps) {
       user: {
         create: {
           after: async (user) => {
-            try {
-              await authDb.ensurePersonalNetwork(user.id);
-            } catch (err) {
-              logger.error('Failed to create personal network on registration', { userId: user.id, error: err });
-            }
             try {
               await authDb.ensureNegotiatorAgent(user.id);
             } catch (err) {

@@ -286,16 +286,9 @@ describe('getMcpToolMetadataCacheKey', () => {
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, chatSession: {} as never })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, agentDatabase: {} as never })).not.toBe(base);
     expect(getMcpToolMetadataCacheKey({ ...baseDeps, agentDispatcher: {} as never })).not.toBe(base);
-    expect(getMcpToolMetadataCacheKey({ ...baseDeps, questionerEnqueue: (async () => undefined) as never })).not.toBe(base);
+    expect(getMcpToolMetadataCacheKey({ ...baseDeps, questionerEnqueue: (async () => undefined) as never })).toBe(base);
   });
 
-  test('contact-related deps never shape the MCP registry cache key', () => {
-    // Contact tools are omitted from the MCP surface entirely, so no
-    // contacts-related dep can change the tool set or its cache key (IND-596).
-    const base = getMcpToolMetadataCacheKey(baseDeps);
-    const withContacts = { ...baseDeps, contactService: {} } as Parameters<typeof getMcpToolMetadataCacheKey>[0];
-    expect(getMcpToolMetadataCacheKey(withContacts)).toBe(base);
-  });
 });
 
 /**

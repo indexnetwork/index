@@ -125,14 +125,6 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     action: "Look up docs",
     running: "Looking up documentation...",
   },
-  list_contacts: {
-    action: "List contacts",
-    running: "Listing your contacts...",
-  },
-  remove_contact: {
-    action: "Remove contact",
-    running: "Removing contact...",
-  },
 };
 
 function getToolDescription(name: string): { action: string; running: string } {

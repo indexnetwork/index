@@ -43,7 +43,6 @@ const FAST_TOOLS = new Set([
   "read_docs",
   "get_enrichment_run",
   "cancel_enrichment_run",
-  "remove_contact",
   "read_own_agent",
   "register_agent",
   "list_agents",

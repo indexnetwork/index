@@ -3,7 +3,7 @@
  *
  * `scopeType`/`scopeId` describe the user's focused scope, not the full set of
  * networks a caller may read or write. Helper functions derive concrete network
- * id sets from the focused scope plus the caller's memberships.
+ * id sets from the focused scope and the caller's memberships.
  */
 import type { ScopeMembership, ToolScopeType } from '../../../protocol/core.js';
 export type { ScopeMembership, ToolScopeType } from '../../../protocol/core.js';
@@ -101,7 +101,7 @@ export function deriveAllowedNetworkIds(input: DeriveNetworkScopeInput): string[
 
   return uniqueNetworkIds(
     input.memberships
-      .filter((membership) => membership.networkId === input.scopeId || membership.isPersonal === true)
+      .filter((membership) => membership.networkId === input.scopeId)
       .map((membership) => membership.networkId),
   );
 }

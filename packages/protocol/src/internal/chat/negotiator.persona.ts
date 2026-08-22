@@ -26,8 +26,7 @@ export const NEGOTIATOR_PERSONA_ID = "negotiator";
  * P4.5 (IND-413) expanded this from the read-mostly P4.1 set: with direct
  * opportunity discovery retiring alongside the orchestrator, discovery is
  * purely signal-based — so the negotiator (the surviving personal-agent chat
- * surface) manages the client's signals, profile knowledge, memberships, and
- * contacts.
+ * surface) manages the client's signals, profile knowledge, and memberships.
  *
  * Still deliberately excluded:
  * - discovery runs (`discover_opportunities`, `get/cancel_discovery_run`) —
@@ -70,10 +69,6 @@ export const NEGOTIATOR_TOOL_NAMES = [
   "read_network_memberships",
   "create_network_membership",
   "delete_network_membership",
-  // Contacts — read/remove only; contacts arise from accepted opportunities
-  "list_contacts",
-  "search_contacts",
-  "remove_contact",
   // Utility — create_intent's own contract instructs scraping pasted URLs
   // before synthesizing a signal description (P4.5)
   "scrape_url",

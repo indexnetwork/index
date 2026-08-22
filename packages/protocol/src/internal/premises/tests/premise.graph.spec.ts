@@ -121,8 +121,8 @@ describe("PremiseGraphFactory", () => {
     const db = {
       ...createMockDatabase(),
       getAssignmentNetworkMembershipsForUser: async () => [
-        { networkId: "n1", isPersonal: false },
-        { networkId: "n2", isPersonal: false },
+        { networkId: "n1" },
+        { networkId: "n2" },
       ],
       getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
       assignPremiseToNetwork: async (_premiseId: string, networkId: string, score: number, metadata: unknown) => {
@@ -145,14 +145,13 @@ describe("PremiseGraphFactory", () => {
     expect(assignments[0].metadata).toMatchObject({ resourceType: "premise", scope: "global", assigned: true, finalScore: 1 });
   }, 60_000);
 
-  it("restricts premise assignment to focused plus personal networks in active network scope", async () => {
+  it("restricts premise assignment to the focused network in active network scope", async () => {
     const assignments: string[] = [];
     const db = {
       ...createMockDatabase(),
       getAssignmentNetworkMembershipsForUser: async () => [
-        { networkId: "active-network", isPersonal: false },
-        { networkId: "personal-network", isPersonal: true },
-        { networkId: "other-network", isPersonal: false },
+        { networkId: "active-network" },
+        { networkId: "other-network" },
       ],
       getNetworkAssignmentContext: async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }),
       assignPremiseToNetwork: async (_premiseId: string, networkId: string) => {
@@ -171,7 +170,7 @@ describe("PremiseGraphFactory", () => {
       scopeId: "active-network",
     });
 
-    expect(assignments).toEqual(["active-network", "personal-network"]);
+    expect(assignments).toEqual(["active-network"]);
   }, 60_000);
 
   it("skips persisting a near-duplicate premise on create", async () => {

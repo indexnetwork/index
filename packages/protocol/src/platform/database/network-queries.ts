@@ -35,8 +35,7 @@ export interface DatabaseNetworkQueries {
 
   /**
    * Network memberships that should be considered for assignment policy. Unlike
-   * getUserIndexIds, this is not gated by network_members.autoAssign and carries
-   * personal-index metadata so scoped writes can include the user's personal network.
+   * getUserIndexIds, this is not gated by network_members.autoAssign.
    */
   getAssignmentNetworkMembershipsForUser(userId: string): Promise<AssignmentNetworkMembership[]>;
 
@@ -249,7 +248,7 @@ export interface DatabaseNetworkQueries {
 
   /**
    * Soft-delete a network (set deletedAt).
-   * Caller must ensure network is not personal and has no other members.
+   * Caller must ensure the network has no other members.
    *
    * @param networkId - The network to soft-delete
    */

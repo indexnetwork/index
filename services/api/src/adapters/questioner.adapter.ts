@@ -448,7 +448,6 @@ export class QuestionerAdapter {
       ))
       .innerJoin(networks, and(
         eq(networks.id, candidate.networkId),
-        eq(networks.isPersonal, false),
         isNull(networks.deletedAt),
       ))
       .innerJoin(opportunities, eq(opportunities.id, candidate.opportunityId))

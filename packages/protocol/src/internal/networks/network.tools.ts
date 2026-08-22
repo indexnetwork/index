@@ -88,8 +88,6 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       "**When to use:** To find network IDs for scoping other operations (read_intents, list_opportunities, read_network_memberships), " +
       "or to show the user which communities they belong to.\n\n" +
       "**Returns:** Up to three lists — `memberOf` (networks the user joined), `owns` (networks the user created), and `publicNetworks` " +
-      "(publicly joinable communities the user is not yet a member of). Entries in `memberOf` include `isPersonal` set to `true` for the user's " +
-      "personal network.\n\n" +
       "**Note:** In network-scoped chats, only the scoped network is returned. During onboarding, `orderedNetworkIds` " +
       "may be returned alongside `publicNetworks` \u2014 a ranked array of network IDs ordered by relevance to the user's profile (omitted when ranking is unavailable or fails).",
     querySchema: z.object({
@@ -216,9 +214,6 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       "**When to use:** Before creating introductions (need to verify shared network membership), to explore community members, " +
       "or to check if a user belongs to a specific network.\n\n" +
       "**Returns:** Member list with user details, or membership list with network details, or a membership check result.\n\n" +
-      "**Personal network semantics.** The personal network (`isPersonal: true` on the membership) is the user's " +
-      "contact list — members of that network are the user's contacts. For another user, this tool only reveals the " +
-      "networks you already share with them.\n\n" +
       "**Shared-context pattern.** To find overlap with another user: (1) omit `userId` to read your own " +
       "memberships, (2) call this tool with the other person's actual `userId` to get the shared networks, " +
       "(3) call read_intents for each shared network to see what each is looking for there, (4) call " +
@@ -525,12 +520,12 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
     name: "delete_network",
     description:
       "Permanently deletes a network (community). Only the owner can delete, and the network must have no other members " +
-      "(remove all members first with delete_network_membership). Personal networks cannot be deleted.\n\n" +
+      "(remove all members first with delete_network_membership).\n\n" +
       "**When to use:** When the owner wants to disband a community. This is irreversible — all intent–network links to this network are removed.\n\n" +
       "**Prerequisites:** Must be the owner. Must be the sole remaining member (remove others first).\n\n" +
       "**Returns:** Confirmation that the network was deleted.",
     querySchema: z.object({
-      networkId: z.string().optional().describe("Network UUID to delete. Get from read_networks. Defaults to the scoped network in network-scoped chats. Cannot be a personal network."),
+      networkId: z.string().optional().describe("Network UUID to delete. Get from read_networks. Defaults to the scoped network in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
       const boundNetworkId = boundCommunityId(context);

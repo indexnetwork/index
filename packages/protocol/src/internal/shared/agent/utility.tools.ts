@@ -121,42 +121,17 @@ export function createUtilityTools(
         });
       }
 
-      // REST/chat surfaces: provide full legacy documentation alongside canonical.
-      // Contact management tools are not exposed on the MCP surface (IND-596), so
-      // full guidance includes contact workflows. This is for REST/chat only.
-      const contactsSection = `## Contact Management
-
-Contacts are people in a user's personal network, stored as members of their personal network with 'contact' permission.
-
-- **How contacts arise**: Accepting an opportunity puts both people in each other's personal network. There is no import or manual-add path.
-- **Personal network scope**: Approved signals from personal-network contacts are matched in the background. Use list_opportunities only to review persisted results.
-- **Contact data**: Each contact has userId, name, email, and avatar.
-
-### Contact Workflow
-1. list_contacts → view all contacts with userId
-2. create_intent or update_intent → create or refine an approved signal for background matching
-3. list_opportunities → review persisted results when background processing finds matches
-4. remove_contact(contactUserId) → remove from network`;
-
-      const managingContactsWorkflow = `### Managing Contacts
-1. list_contacts() → view network
-2. create_intent or update_intent → create or refine an approved signal for background matching
-3. list_opportunities → review persisted results
-
-`;
-
       const sections: Record<string, string> = {
         // Legacy topics (REST/chat only)
         entities: `## Entity Model & Relationships
 
 - **Users**: People on the platform. Authenticated via API key (X-API-Key header) for MCP/external agents, or session-based (Better Auth) for the web app.
 - **Profiles**: A user's identity — name, bio, skills, interests, location, social links. Generated from account data or social URLs via enrichment. One profile per user.
-- **Indexes** (also called "networks"): Communities or groups where members share intents and discover opportunities. Each has a title, optional prompt (purpose description), join policy (anyone or invite_only), and an owner. The user's **personal network** (isPersonal=true) stores their contacts.
-- **Network Members**: Junction between Users and Indexes. Tracks permissions (owner, member, contact), join date, auto-assign setting, and optional member prompt.
+- **Indexes** (also called "networks"): Communities or groups where members share intents and discover opportunities. Each has a title, optional prompt (purpose description), join policy (anyone or invite_only), and an owner.
+- **Network Members**: Junction between Users and Indexes. Tracks permissions (owner, member), join date, auto-assign setting, and optional member prompt.
 - **Intents**: Signals of interest/need — what a user is looking for (e.g. "Looking for a React developer in Berlin"). Each has a description (payload), summary, confidence score (0-1), inferenceType (explicit/implicit), source tracking, and vector embedding.
 - **IntentNetworks**: Many-to-many junction between Intents and Indexes. An intent can be in multiple indexes. Has a relevancyScore (0-1) indicating how well the intent fits the index's purpose.
 - **Opportunities**: Discovered connections between users based on complementary intents within shared networks. Have actors with roles (introducer, party), status lifecycle, match reasoning, confidence score, and presentation data.
-- **Contacts**: People in a user's personal network, stored as network members with 'contact' permission on the personal network. Established by accepting an opportunity, which adds both people to each other's personal network. Always real accounts.
 
 ### Key Relationships
 - Users → Profiles (1:1)
@@ -164,8 +139,7 @@ Contacts are people in a user's personal network, stored as members of their per
 - Users → Intents (1:many, user owns intents)
 - Intents → Indexes (many:many via IntentNetworks with relevancyScore)
 - Opportunities → Users (many:many via actors with roles)
-- Opportunities → Indexes (scoped to shared network context)
-- Contacts → Personal Network (stored as members with 'contact' permission)`,
+- Opportunities → Indexes (scoped to shared network context)`,
 
         intents: `## Intent Lifecycle
 
@@ -214,7 +188,6 @@ Indexes (also called "networks") are communities where members share what they'r
 
 - **Purpose prompt**: Each index has an optional prompt describing its purpose (e.g. "AI/ML co-founders in Berlin"). This prompt is used by the intent indexer to evaluate whether an intent belongs in this community. Networks without prompts accept all intents (relevancyScore defaults to 1.0).
 - **Join policy**: "anyone" (open — any user can self-join) or "invite_only" (only the owner can add members).
-- **Personal network**: Each user has exactly one personal network (isPersonal=true) created on registration. It stores their contacts. Cannot be deleted, renamed, or listed publicly.
 - **Membership**: Members can see all intents in the index. The **auto-assign** setting on a membership means new intents by that user are automatically evaluated against the index.
 - **Owner permissions**: Network owners can update settings (title, prompt, joinPolicy), add/remove members, and delete the network (if sole member).
 - **Discovery scope**: Opportunities are discovered within index boundaries — the system matches intents of members who share at least one index.
@@ -243,8 +216,6 @@ Profiles are the user's identity on the platform, used for semantic matching in 
 - Richer profiles produce better opportunity matches
 - Social links enable enrichment — encourage users to add LinkedIn/GitHub
 - Profiles are recalculated when updated, which may surface new matches`,
-
-        contacts: contactsSection,
 
         discovery: `## Discovery Mechanics
 
@@ -287,7 +258,7 @@ Discovery is the process of finding meaningful connections between users based o
 3. Background matching evaluates approved signals
 4. list_opportunities() → review persisted results
 
-${managingContactsWorkflow}### Creating a Community
+### Creating a Community
 1. create_network(title, prompt) → create network
 2. create_network_membership(networkId, userId) → invite members
 3. Members create intents → auto-indexed
@@ -305,7 +276,6 @@ ${managingContactsWorkflow}### Creating a Community
 - Users can only read their own intents globally, or intents in indexes they belong to
 - Users can only read profiles of people in shared networks
 - Network-scoped operations are restricted to that index
-- Personal networks cannot be deleted or renamed
 - Only network owners can update settings, add/remove members (for invite_only networks)
 
 ### Rate Limits & Best Practices

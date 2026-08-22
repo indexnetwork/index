@@ -103,17 +103,16 @@ describe("handleNetwork", () => {
     expect(terminal).toContain("Create directly or request early access with a description");
   });
 
-  it("lists networks, filtering out personal networks", async () => {
+  it("lists every network returned by the API", async () => {
     mock.on("GET", "/api/networks", () =>
       Response.json({
         networks: [
-          { id: "n1", title: "Public Net", memberCount: 5, isPersonal: false, joinPolicy: "anyone", createdAt: "2026-01-01" },
-          { id: "n2", title: "My Personal", memberCount: 1, isPersonal: true, joinPolicy: "invite_only", createdAt: "2026-01-01" },
+          { id: "n1", title: "Public Net", memberCount: 5, joinPolicy: "anyone", createdAt: "2026-01-01" },
+          { id: "n2", title: "Private Net", memberCount: 1, joinPolicy: "invite_only", createdAt: "2026-01-01" },
         ],
       }),
     );
 
-    // Should not throw; personal network filtered in handler
     await handleNetwork(client, "list", [], {});
   });
 

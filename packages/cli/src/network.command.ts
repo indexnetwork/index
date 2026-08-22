@@ -72,18 +72,16 @@ export async function handleNetwork(
 }
 
 /**
- * List networks the user is a member of, excluding personal networks.
+ * List networks the user is a member of.
  */
 async function networkList(client: ApiClient, json?: boolean): Promise<void> {
   const networks = await client.listNetworks();
-  const filtered = networks.filter((n) => !n.isPersonal);
-
   if (json) {
-    console.log(JSON.stringify(filtered));
+    console.log(JSON.stringify(networks));
     return;
   }
   output.heading("Networks");
-  output.networkTable(filtered);
+  output.networkTable(networks);
   console.log();
 }
 
@@ -248,4 +246,3 @@ async function networkInvite(
   output.success(`Invitation sent to ${result.user.email}.`);
   if (result.created) output.dim("  Created a pending account for this invitee.");
 }
-

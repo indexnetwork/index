@@ -27,9 +27,9 @@ const logger = protocolLogger("NetworkGraphFactory");
  *
  * ## Scope semantics (read mode)
  *
- * When `networkId` is set and `showAll` is false, only the focused network and
- * the user's personal network (contacts) are returned.  This is the strict-scope
- * invariant for network-bound agents.  Set `showAll: true` to bypass.
+ * When `networkId` is set and `showAll` is false, only the focused network is
+ * returned. This is the strict-scope invariant for network-bound agents.
+ * Set `showAll: true` to bypass.
  *
  * Flow:
  * START → routerNode → {createNode | readNode | updateNode | deleteNode} → END
@@ -88,7 +88,6 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
       title: m.networkTitle,
       prompt: m.indexPrompt,
       autoAssign: m.autoAssign,
-      isPersonal: m.isPersonal,
       joinedAt: m.joinedAt,
     });
     const projectOwned = (o: Awaited<ReturnType<typeof deps.database.getOwnedIndexes>>[number]) => ({
@@ -107,12 +106,7 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
         deps.database.getPublicIndexesNotJoined(state.userId),
       ]);
 
-      // If network-scoped and not showAll, return just that network plus the
-      // user's personal network (their contacts).  The personal network is part
-      // of every allowed-network reach calculation for network-bound agents,
-      // and a user in a community-scoped chat still owns their contact list —
-      // so surfacing it here keeps contact tools discoverable.  Other community
-      // memberships are still hidden, and `publicNetworks` is omitted.
+      // If network-scoped and not showAll, return just that network.
       const scopeToCurrentNetwork = state.networkId && !state.showAll;
       if (scopeToCurrentNetwork) {
         const networkId = state.networkId!;
@@ -127,20 +121,12 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
           };
         }
         const scopedMembership = allMemberships.find((m) => m.networkId === networkId);
-        const personalMembership = scopedMembership?.isPersonal
-          ? undefined
-          : allMemberships.find((m) => m.isPersonal);
         const scopedOwned = ownedIndexes.find((o) => o.id === networkId);
-        const personalOwned = personalMembership
-          ? ownedIndexes.find((o) => o.id === personalMembership.networkId)
-          : undefined;
         const memberOf = [
           ...(scopedMembership ? [projectMembership(scopedMembership)] : []),
-          ...(personalMembership ? [projectMembership(personalMembership)] : []),
         ];
         const owns = [
           ...(scopedOwned ? [projectOwned(scopedOwned)] : []),
-          ...(personalOwned ? [projectOwned(personalOwned)] : []),
         ];
         return {
           readResult: {
@@ -149,7 +135,7 @@ export async function readNode(state: NetworkState, deps: NetworkGraphDeps) {
             stats: {
               memberOfCount: memberOf.length,
               ownsCount: owns.length,
-              scopeNote: "Showing current network and your personal network. Use showAll: true for all networks.",
+              scopeNote: "Showing the current network. Use showAll: true for all networks.",
             },
           },
         };
@@ -335,4 +321,3 @@ export function routeByMode(state: NetworkState): string {
     default: return 'read';
   }
 }
-

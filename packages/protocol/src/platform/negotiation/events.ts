@@ -82,7 +82,7 @@ export interface AskUserExpiryPayload {
   userId: string;
   /** Exact owned signal consulted by the paused negotiator. */
   recipientIntentId: string;
-  /** Exact non-personal network shared by the opportunity actors. */
+  /** Exact network shared by the opportunity actors. */
   networkId: string;
   /** Admission-time canonical hash of the recipient intent payload/summary. */
   intentFingerprint: string;

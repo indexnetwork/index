@@ -53,7 +53,7 @@ export function classifyPromptPresence(input: PromptPresenceInput): NetworkAssig
 
 /**
  * Resolves the networks to evaluate: all memberships in global scope, or the
- * focused network plus personal memberships in network scope. The focused
+ * focused network in network scope. The focused
  * network must also be a membership to avoid broadening scope accidentally.
  *
  * @param args - User memberships plus optional active network scope.
@@ -62,7 +62,7 @@ export function classifyPromptPresence(input: PromptPresenceInput): NetworkAssig
 export function resolveAssignmentNetworkScope(args: ResolveAssignmentNetworkScopeArgs): string[] {
   const memberships = args.memberships.map((membership) => (
     typeof membership === "string"
-      ? { networkId: membership, isPersonal: false }
+      ? { networkId: membership }
       : membership
   ));
   const scope = args.scopeType && args.scopeId

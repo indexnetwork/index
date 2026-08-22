@@ -5,7 +5,6 @@ export type Capability =
   | "opportunities"
   | "negotiations"
   | "agents"
-  | "contacts"
   | "discovery"
   | "interaction-composition";
 
@@ -21,7 +20,6 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   negotiations: "negotiations",
   agents: "agents",
   chat: "agents",
-  contacts: "contacts",
   discovery: "discovery",
   maintenance: "interaction-composition",
 };
@@ -40,7 +38,6 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
   opportunities: undefined,
   negotiations: undefined,
   agents: "agents",
-  contacts: undefined,
   discovery: undefined,
   // The composition root is the one all-capability point; it has no barrel of
   // its own and is reached through the package entry point instead.
@@ -67,7 +64,7 @@ export function barrelFilenameForCapability(capability: Capability): string {
 
 /** The source-relative barrel path for a capability, if it has one. */
 export function barrelPathForCapability(capability: Capability): string | undefined {
-  if (["intents", "networks", "agents", "discovery", "contexts", "contacts"].includes(capability)) return `capabilities/${capability}.ts`;
+  if (["intents", "networks", "agents", "discovery", "contexts"].includes(capability)) return `capabilities/${capability}.ts`;
   const directory = CAPABILITY_BARREL_DIRECTORIES[capability];
   return directory ? `internal/${directory}/${barrelFilenameForCapability(capability)}` : undefined;
 }
@@ -82,7 +79,6 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   opportunities: ["agents", "intents", "negotiations", "discovery"],
   negotiations: ["opportunities"],
   agents: ["negotiations"],
-  contacts: [],
   // discovery needs only the debug-metadata type it stamps on graph state.
   discovery: ["agents"],
   "interaction-composition": [
@@ -92,7 +88,6 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
     "opportunities",
     "negotiations",
     "agents",
-    "contacts",
     "discovery",
   ],
 };
@@ -133,7 +128,6 @@ export function barrelCapabilityForSourcePath(
   if (pathFromSource === "capabilities/agents.ts") return "agents";
   if (pathFromSource === "capabilities/discovery.ts") return "discovery";
   if (pathFromSource === "capabilities/contexts.ts") return "contexts";
-  if (pathFromSource === "capabilities/contacts.ts") return "contacts";
   const normalized = implementationPath(pathFromSource);
   const match = /^([a-z-]+)\/([a-z0-9.-]+\.ts)$/.exec(normalized);
   if (!match) return undefined;

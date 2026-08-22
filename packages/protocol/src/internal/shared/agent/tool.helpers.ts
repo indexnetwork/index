@@ -10,7 +10,6 @@ import type { UserIdentity } from "../../../protocol/schemas/identity.schema.js"
 import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../../../platform/database.js";
 import type { Scraper } from "../../../platform/discovery/scraper.js";
 import type { Cache, HydeCache } from "../../../platform/discovery/cache.js";
-import type { ContactServiceAdapter } from "../../contacts/contact.repository.port.js";
 import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
 import type { IntentGraphQueue } from "../../../platform/runtime/queue.js";
 import type { ChatSessionReader } from "../../../platform/chat/ports.js";
@@ -151,8 +150,6 @@ interface ToolContextBindings {
   hydeCache: HydeCache;
   /** Queue for enqueuing follow-up intent processing (HyDE generation/deletion). */
   intentQueue: IntentGraphQueue;
-  /** Contact management operations. */
-  contactService: ContactServiceAdapter;
   /** Chat session reader for loading conversation history. */
   chatSession: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
@@ -459,7 +456,6 @@ interface ToolDepsBindings {
   scraper: Scraper;
   embedder: import('../../../platform/discovery/embedder.js').Embedder;
   cache: Cache;
-  contactService: ContactServiceAdapter;
   enricher: ProfileEnricher;
   /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;

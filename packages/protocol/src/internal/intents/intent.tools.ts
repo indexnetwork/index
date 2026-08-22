@@ -163,7 +163,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       "Retrieves intents (signals of interest/need, e.g. 'Looking for a React developer in Berlin'). " +
       "Intents are the core unit of discovery — they represent what users are seeking and drive semantic matching for opportunities.\n\n" +
       "**Usage modes:**\n" +
-      "- No parameters: returns the **caller's own** active intents. In an network-scoped chat the result is clamped to the reachable networks (the bound network plus the user's personal network). In an unscoped chat the result spans all of the user's active intents. There is no implicit default to the scoped network — to browse the bound community's intents, pass `networkId` explicitly.\n" +
+      "- No parameters: returns the **caller's own** active intents. In a network-scoped chat the result is clamped to the bound network. In an unscoped chat the result spans all of the user's active intents. There is no implicit default to the scoped network — to browse the bound community's intents, pass `networkId` explicitly.\n" +
       "- With networkId: returns **all members'** intents in that index (community browse path). Add userId to filter to one member.\n" +
       "- With userId in an network-scoped chat: reads that member's intents in the bound network. The target user must be a member of that index.\n" +
       "- With userId in an unscoped chat: only works for the current user (cannot read another user's global intents without an network scope).\n\n" +

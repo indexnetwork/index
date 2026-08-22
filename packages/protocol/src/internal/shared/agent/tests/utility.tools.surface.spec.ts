@@ -34,24 +34,10 @@ function capture() {
 
 const stubDeps = { scraper: {}, userDb: {} } as unknown as Parameters<typeof createUtilityTools>[1];
 
-// Contact tool names that appear verbatim in the REST/chat read_docs prose.
-// import_contacts / add_contact / import_gmail_contacts were retired with the
-// ghost-user path; they stay in ALL_MCP_REMOVED_NAMES as regression guards.
-const CONTACT_TOOL_NAMES = [
-  "list_contacts",
-  "remove_contact",
-];
-
 // The complete set of 14 names removed from the MCP surface. NONE may appear in
 // any MCP read_docs output, even ones (scrape_url, profile aliases) that were
 // never in the original prose — this guards against future regressions.
 const ALL_MCP_REMOVED_NAMES = [
-  "import_contacts",
-  "list_contacts",
-  "add_contact",
-  "remove_contact",
-  "search_contacts",
-  "import_gmail_contacts",
   "scrape_url",
   "read_user_profiles",
   "create_user_profile",
@@ -87,26 +73,15 @@ describe("createUtilityTools surface profile", () => {
     expect(mcp.tools.has("report_agent_activity")).toBe(false);
   });
 
-  test("REST read_docs retains contact-tool guidance", async () => {
-    const rest = capture();
-    createUtilityTools(rest.defineTool, stubDeps);
-    const contacts = await readDocs(rest.tools, "contacts");
-    const workflows = await readDocs(rest.tools, "workflows");
-    for (const name of CONTACT_TOOL_NAMES) {
-      expect(contacts + workflows).toContain(name);
-    }
-  });
-
   test("REST read_docs guides background matching without retired discovery", async () => {
     const rest = capture();
     createUtilityTools(rest.defineTool, stubDeps);
-    const contacts = await readDocs(rest.tools, "contacts");
     const workflows = await readDocs(rest.tools, "workflows");
     const opportunities = await readDocs(rest.tools, "opportunities");
 
-    expect(contacts + workflows + opportunities).not.toContain("discover_opportunities");
-    expect(contacts + workflows + opportunities).toContain("background matching");
-    expect(contacts + workflows + opportunities).toContain("list_opportunities");
+    expect(workflows + opportunities).not.toContain("discover_opportunities");
+    expect(workflows + opportunities).toContain("background matching");
+    expect(workflows + opportunities).toContain("list_opportunities");
   });
 
   // Canonical MCP read_docs topic inventory (IND-602/603). These are the only

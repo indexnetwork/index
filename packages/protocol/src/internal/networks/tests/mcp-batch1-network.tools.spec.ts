@@ -43,7 +43,7 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
 }
 
 describe("network MCP copy", () => {
-  test("read_networks description documents owns, publicNetworks, and isPersonal", () => {
+  test("read_networks description documents owns and publicNetworks", () => {
     const tools = captureTools({
       graphs: {
         index: { invoke: async () => ({}) },
@@ -55,7 +55,6 @@ describe("network MCP copy", () => {
 
     expect(tool.description).toContain("`owns`");
     expect(tool.description).toContain("`publicNetworks`");
-    expect(tool.description).toContain("`isPersonal`");
     expect(tool.description).not.toContain("`ownerOf`");
   });
 

@@ -235,15 +235,9 @@ const FULL_REGISTRY_NAMES = [
   "get_discovery_run",
   "cancel_discovery_run",
   "confirm_opportunity_delivery",
-  // utilities / integrations / contacts / agents
+  // utilities / integrations / agents
   "scrape_url",
   "read_docs",
-  "import_gmail_contacts",
-  "import_contacts",
-  "list_contacts",
-  "search_contacts",
-  "add_contact",
-  "remove_contact",
   "register_agent",
   "list_agents",
   "update_agent",
@@ -304,7 +298,7 @@ describe("filterNegotiatorTools", () => {
     expect(new Set(filteredNames)).toEqual(new Set(NEGOTIATOR_TOOL_NAMES));
   });
 
-  it("keeps the P4.5 capability groups (signals, knowledge writes, joins, contacts)", () => {
+  it("keeps the P4.5 capability groups (signals, knowledge writes, and joins)", () => {
     for (const allowed of [
       "create_intent",
       "update_intent",
@@ -317,9 +311,6 @@ describe("filterNegotiatorTools", () => {
       "read_networks",
       "create_network_membership",
       "delete_network_membership",
-      "list_contacts",
-      "search_contacts",
-      "remove_contact",
       "update_opportunity",
       "scrape_url",
     ]) {

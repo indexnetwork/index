@@ -223,7 +223,7 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
                row_number() OVER (ORDER BY created_at ASC, id ASC) AS admission_ordinal,
                count(*) OVER () AS total_count
         FROM networks
-        WHERE deleted_at IS NULL AND is_personal = false
+        WHERE deleted_at IS NULL
         ORDER BY created_at ASC, id ASC
         LIMIT ${request.maxNetworks}
       `);
@@ -241,7 +241,7 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
         WITH bounded_networks AS MATERIALIZED (
           SELECT id, created_at
           FROM networks
-          WHERE deleted_at IS NULL AND is_personal = false
+          WHERE deleted_at IS NULL
           ORDER BY created_at ASC, id ASC
           LIMIT ${request.maxNetworks}
         ), selected_networks AS MATERIALIZED (
@@ -337,7 +337,7 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
         WITH bounded_networks AS MATERIALIZED (
           SELECT id, created_at
           FROM networks
-          WHERE deleted_at IS NULL AND is_personal = false
+          WHERE deleted_at IS NULL
           ORDER BY created_at ASC, id ASC
           LIMIT ${request.maxNetworks}
         ), selected_networks AS MATERIALIZED (

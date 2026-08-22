@@ -1,20 +1,13 @@
 /**
- * Database operations for contacts, premises, and user contexts.
+ * Database operations for premises and user contexts.
  */
 
 import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
 import type { PremiseAnalysis, PremiseAssertion, PremiseProvenance, PremiseRecord, PremiseValidity } from './entities.js';
 import type { Database } from '../database.js';
 
-/** Contact, premise and user-context operations. */
+/** Premise and user-context operations. */
 export interface DatabaseMemberQueries {
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Contact / My Network Operations
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /** Upsert a contact membership in the owner's personal network (network_members with permissions=['contact']). */
-  upsertContactMembership(ownerId: string, contactUserId: string, options?: { restore?: boolean }): Promise<void>;
-
   /**
    * Finds an existing DM conversation between two users, or creates one.
    * Uses a unique `dmPair` column (sorted user IDs joined by ':') to
@@ -30,27 +23,6 @@ export interface DatabaseMemberQueries {
    * that the user had previously hidden.
    */
   unhideConversation(userId: string, conversationId: string): Promise<void>;
-
-  /** Hard-delete a contact membership from the owner's personal network. */
-  hardDeleteContactMembership(ownerId: string, contactUserId: string): Promise<void>;
-
-  /** Get all contact members from the owner's personal network with user details. */
-  getContactMembers(ownerId: string): Promise<Array<{
-    userId: string;
-    user: { id: string; name: string; email: string; avatar: string | null };
-  }>>;
-
-  /** Clear a reverse opt-out (reactivate soft-deleted contact membership in another user's personal network). */
-  clearReverseOptOut(ownerId: string, otherUserId: string): Promise<void>;
-
-  /**
-   * Returns the IDs of personal networks where the given user is a contact member.
-   * Used for auto-assigning new intents to personal networks of contacts who imported this user.
-   *
-   * @param userId - The user whose contact memberships to look up
-   * @returns Array of personal network IDs
-   */
-  getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]>;
 
   /** Find a user by email. */
   getUserByEmail(email: string): Promise<{ id: string; name: string; email: string } | null>;

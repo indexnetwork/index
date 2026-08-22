@@ -41,7 +41,6 @@ export function buildOnboardingSystemContent(
     ctx.userNetworks.map((network) => ({
       id: network.networkId,
       title: network.networkTitle,
-      isPersonal: network.isPersonal,
     })),
     null,
     2,
@@ -59,7 +58,7 @@ The profile phase is durably complete. Do not call profile preview/confirmation 
     role: "the restricted setup assistant",
   })}
 
-Your only job is to collect an explicitly approved profile and guide the user's first signal. You cannot import Gmail or contacts, discover or act on opportunities, negotiate, choose or join communities, change memberships, administer agents or networks, or perform arbitrary orchestration.
+Your only job is to collect an explicitly approved profile and guide the user's first signal. You cannot discover or act on opportunities, negotiate, choose or join communities, change memberships, administer agents or networks, or perform arbitrary orchestration.
 
 ## Safety and privacy rules
 - The authenticated user's latest explicit answer is the authority for every write.

@@ -20,7 +20,7 @@ packages/protocol/src/
 ```
 
 The existing domain-first implementation tree now lives under `internal/`.
-`Intents`, `Networks`, `Contexts`, `Contacts`, `Opportunities`, `Negotiations`,
+`Intents`, `Networks`, `Contexts`, `Opportunities`, `Negotiations`,
 `Agents`, and `Discovery` are executable capability modules; consumers continue
 to import only from the package root. `platform/`
 defines TypeScript ports for a host to implement; it contains no adapter,
@@ -77,8 +77,6 @@ output with `setLoggerFactory()`. The package does not implement
 | Lens Inferrer | `internal/discovery/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
 | Opportunity Evaluator | `internal/opportunities/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
-| Opportunity Introducer | `internal/opportunities/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
-| Contact Inviter | `internal/contacts/contact.inviter.ts` | Invite flow — generates personalized invite messages |
 | Index Negotiator | `internal/negotiations/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
 | Negotiation Insights Generator | `internal/negotiations/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
 | Negotiation Summarizer | `internal/negotiations/negotiation.summarizer.ts` | Negotiation — builds the discovery negotiation digest (deterministic fallback when LLM unavailable) |
@@ -94,7 +92,6 @@ Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled p
 | `internal/intents/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `internal/networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `internal/opportunities/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
-| `internal/contacts/contact.tools.ts`³ | `list_contacts`, `remove_contact`, `search_contacts` |
 | `internal/agents/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
 | `internal/negotiations/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
 | `internal/questions/question.tools.ts` | `read_pending_questions` |
@@ -102,8 +99,7 @@ Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled p
 
 ¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — it is filtered out of regular chat sessions and only reachable over MCP.
 ² Negotiation tools are only registered when an `agentDispatcher` is provided.
-³ Chat/REST-only: the contact and Gmail-import tools, `scrape_url`, and
-  `complete_onboarding` are omitted from the MCP registry entirely
+³ Chat/REST-only: `scrape_url` and `complete_onboarding` are omitted from the MCP registry entirely
   (IND-596/597), as are the deprecated `*_user_profile`/`*_profile_run`
   aliases (IND-598) — none of these are MCP tools. MCP does not gate on
   web/CLI onboarding. On the MCP surface, agent administration follows the IND-599 split:

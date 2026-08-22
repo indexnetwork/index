@@ -12,7 +12,6 @@ capability façades decide what is supported.
 | `discovery/` | Opportunity and context workflows | HyDE search preparation and retrieval |
 | `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, delivery, and radar |
 | `negotiations/`, `questions/` | Negotiation factory, tool registry | Bilateral negotiation and decision questions |
-| `contacts/` | Tool registry | Contact discovery and invitation behavior |
 | `maintenance/` | Scheduler host | Periodic radar-health and expiration work |
 | `mcp/` | `createMcpServer` | MCP transport composition and authorization |
 | `shared/` | Internal implementation only | Cross-cutting model, tool-runtime, schemas, observability, and utilities |

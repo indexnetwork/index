@@ -33,7 +33,6 @@ export interface NetworkAssignmentContext {
 
 export interface AssignmentNetworkMembership extends ScopeMembership {
   networkId: string;
-  isPersonal: boolean;
 }
 
 /** Final-authority result for an existing intent-to-network assignment. */
@@ -322,8 +321,6 @@ export interface NetworkMembership {
   memberPrompt: string | null;
   /** Whether new intents are auto-assigned to this network */
   autoAssign: boolean;
-  /** Whether this is the user's personal network ("My Network") */
-  isPersonal: boolean;
   /** When the user joined the network */
   joinedAt: Date;
 }
@@ -394,8 +391,6 @@ export interface OwnedIndex {
     joinPolicy: 'anyone' | 'invite_only';
     invitationLink: { code: string } | null;
   };
-  /** Whether this is a personal network */
-  isPersonal: boolean;
   /** When the index was created */
   createdAt: Date;
   /** When the index was last updated */

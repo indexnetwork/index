@@ -21,29 +21,10 @@ interface TelegramDb {
   clearTelegramPrefs(userId: string): Promise<void>;
 }
 
-/** A single contact entry returned by the Gmail People API. */
-interface GmailContact {
-  names?: Array<{ displayName?: string }>;
-  emailAddresses?: Array<{ value?: string }>;
-}
-
-/** A single member entry returned by the Slack users.list API. */
-interface SlackMember {
-  id?: string;
-  deleted?: boolean;
-  is_bot?: boolean;
-  profile?: { real_name?: string; email?: string };
-}
-
 type Toolkit = 'gmail' | 'slack';
 
 /**
- * Fetches contacts from external integration platforms and imports them
- * into a user's network via ContactService.
- *
- * @remarks Each toolkit has its own paginated fetch strategy. The service
- * normalises provider responses into `{name, email}` pairs before delegating
- * bulk import to ContactService.
+ * Coordinates supported external integrations.
  */
 export class IntegrationService {
   private db: ChatDatabaseAdapter;

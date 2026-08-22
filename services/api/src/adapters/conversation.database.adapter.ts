@@ -3494,7 +3494,6 @@ export class ConversationDatabaseAdapter {
       .from(schema.networkMembers)
       .innerJoin(schema.networks, and(
         eq(schema.networks.id, schema.networkMembers.networkId),
-        eq(schema.networks.isPersonal, false),
         isNull(schema.networks.deletedAt),
       ))
       .where(and(
@@ -3656,7 +3655,6 @@ export class ConversationDatabaseAdapter {
         .from(schema.networkMembers)
         .innerJoin(schema.networks, and(
           eq(schema.networks.id, schema.networkMembers.networkId),
-          eq(schema.networks.isPersonal, false),
           isNull(schema.networks.deletedAt),
         ))
         .where(and(
@@ -3885,7 +3883,6 @@ export class ConversationDatabaseAdapter {
       const members = await tx.select({ userId: schema.networkMembers.userId }).from(schema.networkMembers)
         .innerJoin(schema.networks, and(
           eq(schema.networks.id, schema.networkMembers.networkId),
-          eq(schema.networks.isPersonal, false),
           isNull(schema.networks.deletedAt),
         ))
         .where(and(

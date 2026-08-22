@@ -97,7 +97,6 @@ export class IntentQueue implements IntentGraphQueue {
    * Enqueue a job to generate HyDE documents for an intent (implements {@link IntentGraphQueue}).
    * @param data - intentId, userId, and optional scope envelope. When scopeType/scopeId
    *   is set, the worker restricts indexing to the focused network plus the user's
-   *   personal networks (see {@link IntentJobData}).
    * @returns The BullMQ job
    */
   addGenerateHydeJob(data: IntentJobData): Promise<Job<IntentJobPayload>> {
@@ -139,7 +138,7 @@ export class IntentQueue implements IntentGraphQueue {
       return db.getAssignmentNetworkMembershipsForUser(userId);
     }
     const networkIds = await db.getAssignmentNetworkIdsForUser(userId);
-    return networkIds.map((networkId) => ({ networkId, isPersonal: false }));
+    return networkIds.map((networkId) => ({ networkId }));
   }
 
   /**
@@ -379,7 +378,6 @@ export class IntentQueue implements IntentGraphQueue {
       this.deps?.addOpportunityJob ??
       ((d: { intentId: string; userId: string; networkIds?: string[] }) => fromIntentQueue.addJob(d));
     // Carry only the focused network scope into discovery. Assignment writes may
-    // include the user's personal network, but scoped opportunity discovery must not.
     const discoveryScope: { networkIds?: string[] } = await (async () => {
       try {
         const assignmentMemberships = await this.getAssignmentMemberships(userId);

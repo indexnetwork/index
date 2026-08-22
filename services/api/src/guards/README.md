@@ -13,9 +13,6 @@ Accepts only a Better Auth session JWT (`Authorization: Bearer` or `?token=`) an
 ### `agent-scope.guard.ts` — `assertAgentNetworkScope` / `withAgentScope`
 Restricts API-key-authenticated agents to their bound network: if the key's agent has a `scope='network'` permission, requests targeting any other network throw a `ScopeViolationError` (mapped to HTTP 403). JWT-authenticated requests and global (unscoped) agents pass through unaffected; `withAgentScope` exposes the scope for handlers that need to filter list results.
 
-### `contacts.guard.ts` — `ContactsEnabledGuard`
-Environment-based feature gate for the contact import / manual-add endpoints. Throws a 404-mapped error unless `CONTACTS_ENABLED === 'true'`, so disabled endpoints behave as if they don't exist.
-
 ### `debug.guard.ts` — `DebugGuard`
 Environment-based gate for debug API endpoints. Allows requests only when `NODE_ENV === 'development'` or `ENABLE_DEBUG_API === 'true'`; otherwise throws a 404-mapped error.
 

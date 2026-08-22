@@ -69,8 +69,8 @@ export default function AccessTab({
   const [showCsvModal, setShowCsvModal] = useState(false);
 
   const [isAddingMember, setIsAddingMember] = useState(false);
-  const [contactsPage, setContactsPage] = useState(1);
-  const CONTACTS_PAGE_SIZE = 10;
+  const [membersPage, setMembersPage] = useState(1);
+  const MEMBERS_PAGE_SIZE = 10;
 
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local state from prop changes */
   useEffect(() => {
@@ -119,7 +119,7 @@ export default function AccessTab({
   }, [networkService, networkId]);
 
   useEffect(() => {
-    setContactsPage(1); // eslint-disable-line react-hooks/set-state-in-effect -- reset page on search change
+    setMembersPage(1); // eslint-disable-line react-hooks/set-state-in-effect -- reset page on search change
     const timeoutId = setTimeout(() => {
       if (memberSearchQuery) searchUsers(memberSearchQuery);
       else { setSuggestedUsers([]); setSearchHasQueried(false); }
@@ -203,11 +203,7 @@ export default function AccessTab({
 
   const handleRemoveMember = async (memberId: string) => {
     try {
-      if (network.isPersonal) {
-        await usersService.removeContact(memberId);
-      } else {
-        await networkService.removeMember(networkId, memberId);
-      }
+      await networkService.removeMember(networkId, memberId);
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (err) {
       logger.error('Error removing member', { error: err });
@@ -308,11 +304,11 @@ export default function AccessTab({
     ),
     [members, memberSearchQuery]
   );
-  const totalContactsPages = Math.max(1, Math.ceil(filteredMembers.length / CONTACTS_PAGE_SIZE));
-  const safePage = Math.min(contactsPage, totalContactsPages);
+  const totalMembersPages = Math.max(1, Math.ceil(filteredMembers.length / MEMBERS_PAGE_SIZE));
+  const safePage = Math.min(membersPage, totalMembersPages);
   const paginatedMembers = filteredMembers.slice(
-    (safePage - 1) * CONTACTS_PAGE_SIZE,
-    safePage * CONTACTS_PAGE_SIZE
+    (safePage - 1) * MEMBERS_PAGE_SIZE,
+    safePage * MEMBERS_PAGE_SIZE
   );
   const noResults = searchHasQueried && filteredSuggestions.length === 0 && filteredMembers.length === 0;
 
@@ -321,7 +317,7 @@ export default function AccessTab({
       <div className="space-y-8">
 
         {/* Who can join — master-key networks are always private */}
-        {!network.isPersonal && !network.hasMasterKey && (
+        {!network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
             <div className="grid grid-cols-2 gap-2">
@@ -352,7 +348,7 @@ export default function AccessTab({
         )}
 
         {/* Invitation link — not applicable for master-key networks */}
-        {!network.isPersonal && !network.hasMasterKey && (
+        {!network.hasMasterKey && (
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
               Invitation link
@@ -389,11 +385,9 @@ export default function AccessTab({
 
         {/* Members */}
         <div>
-          {!network.isPersonal && (
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-              Members <span className="normal-case font-normal">({members.length})</span>
-            </p>
-          )}
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+            Members <span className="normal-case font-normal">({members.length})</span>
+          </p>
 
           {/* Smart search input */}
           <div ref={searchContainerRef} className="relative mb-3">
@@ -559,25 +553,25 @@ export default function AccessTab({
               </div>
             ))}
           </div>
-          {totalContactsPages > 1 && (
+          {totalMembersPages > 1 && (
             <div className="flex items-center justify-between pt-3 mt-1 border-t border-gray-100">
               <span className="text-xs text-gray-400">
-                {(safePage - 1) * CONTACTS_PAGE_SIZE + 1}–{Math.min(safePage * CONTACTS_PAGE_SIZE, filteredMembers.length)} of {filteredMembers.length}
+                {(safePage - 1) * MEMBERS_PAGE_SIZE + 1}–{Math.min(safePage * MEMBERS_PAGE_SIZE, filteredMembers.length)} of {filteredMembers.length}
               </span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setContactsPage(p => Math.max(1, p - 1))}
+                  onClick={() => setMembersPage(p => Math.max(1, p - 1))}
                   disabled={safePage === 1}
                   className="p-1 rounded-sm text-gray-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <span className="text-xs text-gray-500 min-w-[3rem] text-center">
-                  {safePage} / {totalContactsPages}
+                  {safePage} / {totalMembersPages}
                 </span>
                 <button
-                  onClick={() => setContactsPage(p => Math.min(totalContactsPages, p + 1))}
-                  disabled={safePage === totalContactsPages}
+                  onClick={() => setMembersPage(p => Math.min(totalMembersPages, p + 1))}
+                  disabled={safePage === totalMembersPages}
                   className="p-1 rounded-sm text-gray-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronRight className="h-4 w-4" />
