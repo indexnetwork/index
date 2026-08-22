@@ -1,4 +1,4 @@
-import { isNegotiationTurnCapReached, type NegotiationContinuationTimeoutIdentity, type NegotiationGraphDatabase, type NegotiationOutcome, type NegotiationProtocolVersion, type NegotiationTurn, type SeedAssessment, type UserNegotiationContext } from '@indexnetwork/protocol';
+import { isNegotiationTurnCapReached, type NegotiationContinuationTimeoutIdentity, type NegotiationGraphDatabase, type NegotiationOutcome, type NegotiationTurn, type SeedAssessment, type UserNegotiationContext } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
 import type { ContinuationExecutionFence } from '../../adapters/negotiation-continuation.atomic';
@@ -39,22 +39,17 @@ export type TimeoutNegotiatorInvoke = (input: {
   history: NegotiationTurn[];
   isDiscoverer: boolean;
   seat: NegotiationSeat;
-  protocolVersion: NegotiationProtocolVersion;
   isFinalTurn?: boolean;
   /** Stable key for provider tracing/deduplication across Bull redelivery. */
   executionId?: string;
 }) => Promise<NegotiationTurn>;
 
 function isTerminalAction(action: string): boolean {
-  return action === 'accept' || action === 'reject' || action === 'withdraw' || action === 'decline';
+  return action === 'accept' || action === 'withdraw' || action === 'decline';
 }
 
 function isRejectLikeAction(action: string): boolean {
-  return action === 'reject' || action === 'withdraw' || action === 'decline';
-}
-
-function readProtocolVersion(meta: NegotiationTaskMeta | null): NegotiationProtocolVersion | null {
-  return meta?.protocolVersion === 'v2' ? 'v2' : meta?.protocolVersion === 'v1' ? 'v1' : null;
+  return action === 'withdraw' || action === 'decline';
 }
 
 function resolveSeat(userId: string, meta: NegotiationTaskMeta | null): NegotiationSeat {
@@ -72,8 +67,6 @@ export interface NegotiationTaskMeta {
   candidateUserId?: string;
   /** Rigid initiator seat, stamped at discovery time (v2 client-advocate). */
   initiatorUserId?: string;
-  /** Negotiation protocol version; absent on pre-v2 tasks (treated as v1). */
-  protocolVersion?: string;
   type?: string;
   maxTurns?: number | null;
   opportunityId?: string;
@@ -201,9 +194,8 @@ export async function runResumableTimeoutFallback(params: {
   const isSource = currentSpeaker === 'source';
   const activeUserId = expectedSpeaker;
   const otherUserId = isSource ? meta.candidateUserId! : meta.sourceUserId!;
-  const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
   const seat = resolveSeat(activeUserId, meta);
-  const isFinalTurn = protocolVersion === 'v2' && isNegotiationTurnCapReached(currentTurnCount + 1, maxTurns);
+  const isFinalTurn = isNegotiationTurnCapReached(currentTurnCount + 1, maxTurns);
   const history: NegotiationTurn[] = messages.map((message) => {
     const dataPart = (message.parts as Array<{ kind?: string; data?: unknown }>)
       ?.find((part) => part.kind === 'data');
@@ -226,7 +218,6 @@ export async function runResumableTimeoutFallback(params: {
       history,
       isDiscoverer: isSource,
       seat,
-      protocolVersion,
       ...(isFinalTurn ? { isFinalTurn: true } : {}),
       executionId: execution.executionId,
     });
@@ -326,7 +317,7 @@ export async function runResumableTimeoutFallback(params: {
  *
  * This is the block that was copy-pasted between {@link NegotiationTimeoutQueue}
  * and {@link NegotiationClaimTimeoutQueue}: parse history → run {@link IndexNegotiator}
- * → persist the turn → finalize (accept/reject/turn-cap) or re-arm (counter under cap).
+ * → persist the turn → finalize (accept/decline/withdraw/turn-cap) or re-arm (counter under cap).
  * The two workers differ only in their log strings, seed reasoning, max-turns source,
  * the extra fallback-log fields, and how the next timeout is re-armed (`rearm`).
  *
@@ -375,13 +366,11 @@ export async function runTimeoutFallback(params: {
   const activeUserId = expectedSpeaker;
   const otherUserId = isSource ? meta.candidateUserId! : meta.sourceUserId!;
 
-  // Seat + version for the parked seat (v2 client-advocate): the system agent
+  // Seat for the parked client-advocate turn: the system agent
   // taking over this turn must use the seat-scoped schema — an initiator-seat
-  // fallback can never accept on the user's behalf. v1 tasks keep the legacy
-  // schema and the legacy non-final behavior (no isFinalTurn forcing).
-  const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
+  // fallback can never accept on the user's behalf.
   const seat = resolveSeat(activeUserId, meta);
-  const isFinalTurn = protocolVersion === 'v2' && isNegotiationTurnCapReached(currentTurnCount + 1, maxTurns);
+  const isFinalTurn = isNegotiationTurnCapReached(currentTurnCount + 1, maxTurns);
 
   logger.info(labels.fallback, {
     negotiationId,
@@ -409,7 +398,6 @@ export async function runTimeoutFallback(params: {
     history,
     isDiscoverer: isSource,
     seat,
-    protocolVersion,
     ...(isFinalTurn && { isFinalTurn }),
   });
 

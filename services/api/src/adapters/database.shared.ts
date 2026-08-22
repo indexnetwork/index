@@ -34,69 +34,6 @@ export function detectSocialLabel(value: string): string {
 /** Sentinel participant ID for the built-in chat agent. */
 export const SYSTEM_AGENT_ID = 'system-agent';
 
-/**
- * Creates a personal network for the user if one doesn't exist.
- * Adds the user as the owner member.
- * @param userId - The user to create a personal network for
- * @returns The personal network ID
- */
-export async function ensurePersonalNetwork(userId: string): Promise<string> {
-  // Fast path: check mapping table
-  const existing = await db
-    .select({ networkId: schema.personalNetworks.networkId })
-    .from(schema.personalNetworks)
-    .where(eq(schema.personalNetworks.userId, userId))
-    .limit(1);
-
-  if (existing.length > 0) return existing[0].networkId;
-
-  const networkId = crypto.randomUUID();
-
-  // Personal networks are prompt-less by default so the assignment policy treats
-  // them as "no filtration" (score 1.0) — every one of the owner's intents lands
-  // in their own personal network. The owner may later set a prompt to curate it.
-  await db.insert(schema.networks).values({
-    id: networkId,
-    title: 'My Network',
-    isPersonal: true,
-  }).onConflictDoNothing();
-
-  await db.insert(schema.personalNetworks).values({
-    userId,
-    networkId,
-  }).onConflictDoNothing();
-
-  await db.insert(schema.networkMembers).values({
-    networkId,
-    userId,
-    permissions: ['owner'],
-    autoAssign: true,
-  }).onConflictDoNothing();
-
-  // Re-query to return the actual persisted ID (handles race with concurrent calls)
-  const persisted = await db
-    .select({ networkId: schema.personalNetworks.networkId })
-    .from(schema.personalNetworks)
-    .where(eq(schema.personalNetworks.userId, userId))
-    .limit(1);
-
-  return persisted[0]?.networkId ?? networkId;
-}
-
-/**
- * Returns the personal network ID for a user.
- * @param userId - The user to look up
- * @returns The personal network ID, or null if not found
- */
-export async function getPersonalIndexId(userId: string): Promise<string | null> {
-  const result = await db
-    .select({ networkId: schema.personalNetworks.networkId })
-    .from(schema.personalNetworks)
-    .where(eq(schema.personalNetworks.userId, userId))
-    .limit(1);
-
-  return result[0]?.networkId ?? null;
-}
 
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
 export interface ActiveIntentRow {
@@ -220,7 +157,6 @@ export interface NetworkMembershipRow {
   permissions: string[];
   memberPrompt: string | null;
   autoAssign: boolean;
-  isPersonal: boolean;
   joinedAt: Date;
 }
 

@@ -2,7 +2,7 @@ import type { ComponentType, ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Loader2 } from "lucide-react";
-import { parseQuestionMessage } from "@indexnetwork/protocol/question-block";
+import { parseQuestionMessage } from "@indexnetwork/protocol";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import IntentProposalCard, { type IntentProposalData, IntentProposalSkeleton } from "@/components/chat/IntentProposalCard";
 import NetworksPanel from "@/components/chat/NetworksPanel";

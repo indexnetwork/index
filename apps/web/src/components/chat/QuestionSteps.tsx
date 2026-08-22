@@ -1,5 +1,5 @@
 import { CornerDownRight } from "lucide-react";
-import type { QuestionBlock } from "@indexnetwork/protocol/question-block";
+import type { QuestionBlock } from "@indexnetwork/protocol";
 
 export interface QuestionStepsProps {
   block: QuestionBlock;

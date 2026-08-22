@@ -79,7 +79,7 @@ Implemented a canonical three-value QUD taxonomy across IntentClarifier and the 
 
 **Work items:**
 - Document the existing protocol as a formal game (locutions, combination rules via `allowedActionsFor`, commitment via persisted turns, termination via `isTerminalAction`) — a docs-only PR with high explanatory payoff.
-- Implement the one genuinely new mechanism: **deadlock detection + mode shift**. After N consecutive `counter`/`question` turns without convergence (detectable in `negotiation.graph.ts` state), let `negotiation.agent.ts` legally shift from arguing merits to offering concessions/scope reductions, or escalate to `ask_user`. The protocol-version plumbing (`readProtocolVersion`) is the natural gate for rolling this out.
+- Implement the one genuinely new mechanism: **deadlock detection + mode shift**. After N consecutive `counter`/`question` turns without convergence (detectable in `negotiation.graph.ts` state), let `negotiation.agent.ts` legally shift from arguing merits to offering concessions/scope reductions, or escalate to `ask_user`.
 
 ## 7. Tie-strength-gated context exposure — **L (design doc first)**
 

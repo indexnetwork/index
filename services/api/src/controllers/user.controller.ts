@@ -6,7 +6,6 @@ import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { userService } from '../services/user.service';
-import { contactService } from '../services/contact.service';
 import { TaskService } from '../services/task.service';
 import { NegotiationService } from '../services/negotiation.service';
 import { negotiatorMemoryInspectionService } from '../services/negotiator-memory-inspection.service';
@@ -161,28 +160,6 @@ export class UserController {
       updatedAt: row.updatedAt,
     }));
     return Response.json({ users });
-  }
-
-  /**
-   * DELETE /users/contacts/:contactId — remove a contact from the authenticated user's personal network.
-   * @param _req - Request (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing contactId (the contact's userId)
-   * @returns JSON `{ success: true }` or 404 if not found
-   */
-  @Delete('/contacts/:contactId')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async removeContact(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
-    try {
-      await contactService.removeContact(user.id, params.contactId);
-      return Response.json({ success: true });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('not found') || msg.includes('Not found')) {
-        return Response.json({ error: 'Contact not found' }, { status: 404 });
-      }
-      throw err;
-    }
   }
 
   /**

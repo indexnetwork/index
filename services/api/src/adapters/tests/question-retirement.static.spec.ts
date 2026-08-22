@@ -17,7 +17,7 @@ const read = (relative: string): string =>
 
 const main = read('../../main.ts');
 const opportunityService = read('../../services/opportunity.service.ts');
-const opportunityTools = read('../../../../../packages/protocol/src/opportunities/opportunity.tools.ts');
+const opportunityTools = read('../../../../../packages/protocol/src/internal/opportunities/opportunity.tools.ts');
 const parkedEnqueue = read('../../queues/parked-question.enqueue.ts');
 
 describe('question retirement static invariants', () => {
@@ -124,7 +124,7 @@ describe('question retirement static invariants', () => {
       }
       const intentService = read('../../services/intent.service.ts');
       expect(intentService).not.toContain('questionerEnqueue');
-      const intentGraphExecute = read('../../../../../packages/protocol/src/intents/graph/intent.graph.execute.ts');
+      const intentGraphExecute = read('../../../../../packages/protocol/src/internal/intents/graph/intent.graph.execute.ts');
       expect(intentGraphExecute).not.toContain('questionerEnqueue');
       expect(main).not.toContain('enqueueIntentRefinement');
     });
@@ -143,14 +143,14 @@ describe('question retirement static invariants', () => {
       // analytics mirror are gone; personas ask in plain conversation.
       expect(existsSync(new URL('../../lib/chat-question.events.ts', import.meta.url))).toBe(false);
       expect(existsSync(new URL(
-        '../../../../../packages/protocol/src/questions/question.ask.tool.ts',
+        '../../../../../packages/protocol/src/internal/questions/question.ask.tool.ts',
         import.meta.url,
       ))).toBe(false);
       expect(read('../../controllers/mcp.controller.ts')).not.toContain('chatQuestions');
       expect(read('../../services/signal-intake.service.ts')).not.toContain('recordAnsweredQuestion');
       for (const persona of ['signal', 'onboarding']) {
         expect(read(
-          `../../../../../packages/protocol/src/chat/${persona}.persona.ts`,
+          `../../../../../packages/protocol/src/internal/chat/${persona}.persona.ts`,
         )).not.toContain('ask_user_question');
       }
     });
@@ -166,9 +166,9 @@ describe('question retirement static invariants', () => {
   describe('generation half', () => {
     it('deletes the QuestionerAgent, its presets, and the generation envelope', () => {
       for (const relative of [
-        '../../../../../packages/protocol/src/questions/question.agent.ts',
-        '../../../../../packages/protocol/src/questions/question.presets.ts',
-        '../../../../../packages/protocol/src/questions/question.ask.tool.ts',
+        '../../../../../packages/protocol/src/internal/questions/question.agent.ts',
+        '../../../../../packages/protocol/src/internal/questions/question.presets.ts',
+        '../../../../../packages/protocol/src/internal/questions/question.ask.tool.ts',
         '../../queues/questioner.queue.ts',
       ]) {
         expect(existsSync(new URL(relative, import.meta.url))).toBe(false);
@@ -176,7 +176,7 @@ describe('question retirement static invariants', () => {
       // The input union admits only the two park families; the generator's
       // per-mode envelope, its runtime contract, and the master switch died
       // with the queue.
-      const input = read('../../../../../packages/protocol/src/questions/question.input.ts');
+      const input = read('../../../../../packages/protocol/src/protocol/question-input.ts');
       expect(input).toContain('PostStallQuestionerInput');
       expect(input).toContain('InflightQuestionerInput');
       for (const retired of [
@@ -189,8 +189,8 @@ describe('question retirement static invariants', () => {
       ]) {
         expect(input).not.toContain(retired);
       }
-      expect(read('../../../../../packages/protocol/src/questions/question.env.ts'))
-        .not.toContain('QUESTIONER_ENABLED');
+      expect(existsSync(new URL('../../../../../packages/protocol/src/internal/questions/question.env.ts', import.meta.url)))
+        .toBe(false);
       expect(main).not.toContain('QUESTIONER_ENABLED');
       // The park routing is unconditional: composition sites inject
       // parkedQuestionEnqueue, which drops retired families.

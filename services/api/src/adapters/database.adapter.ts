@@ -15,7 +15,6 @@ export { FileDatabaseAdapter } from './file.database.adapter';
 export { ConversationDatabaseAdapter } from './conversation.database.adapter';
 
 // ── Public helpers + DTO types ──
-export { ensurePersonalNetwork, getPersonalIndexId } from './database.shared';
 export type {
   ChatSession, ChatMessage, ChatConversationMeta, ChatMessageMeta,
   CreateSessionInput, CreateMessageInput, CreateFileInput,
@@ -28,7 +27,7 @@ import { ChatDatabaseAdapter } from './chat.database.adapter';
 import { UserDatabaseAdapter } from './user.database.adapter';
 import { FileDatabaseAdapter } from './file.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
-import { Id, SimilarIntent, VectorStore, canActorSeeOpportunity, getPersonalIndexId, log } from './database.shared';
+import { Id, SimilarIntent, VectorStore, canActorSeeOpportunity, log } from './database.shared';
 
 // ── Singletons ──
 export const chatDatabaseAdapter = new ChatDatabaseAdapter();
@@ -166,8 +165,6 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     softDeleteNetwork: async (networkId: string) => {
       const isOwner = await db.isIndexOwner(networkId, authUserId);
       if (!isOwner) throw new Error('Access denied: not network owner');
-      const isPersonal = await db.isPersonalNetwork(networkId);
-      if (isPersonal) throw new Error('Cannot delete personal network');
       return db.softDeleteNetwork(networkId);
     },
 
@@ -222,7 +219,6 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
  * @param authUserId - The authenticated user's ID
  * @param indexScope - Array of network IDs the user has access to
  * @param embedder - Optional vector store for findSimilarIntentsInScope (pgvector search). When omitted, findSimilarIntentsInScope returns [].
- * @param findPersonalIndexId - Injectable personal-index lookup for hermetic callers and tests.
  * @returns A SystemDatabase bound to authUserId and indexScope
  */
 export function createSystemDatabase(
@@ -230,7 +226,6 @@ export function createSystemDatabase(
   authUserId: string,
   indexScope: string[],
   embedder?: VectorStore,
-  findPersonalIndexId: (userId: string) => Promise<string | null> = getPersonalIndexId,
 ) {
   /**
    * Verify that a networkId is within the allowed scope.
@@ -251,18 +246,6 @@ export function createSystemDatabase(
     const theirMemberships = await db.getNetworkMemberships(userId);
     if (theirMemberships.some((m) => indexScope.includes(m.networkId))) return true;
 
-    // Check if either user's personal network contains the other as a contact
-    const myPersonalId = await findPersonalIndexId(authUserId);
-    const theirPersonalId = await findPersonalIndexId(userId);
-
-    if (myPersonalId) {
-      const theirMembership = await db.getNetworkMembership(myPersonalId, userId);
-      if (theirMembership) return true;
-    }
-    if (theirPersonalId) {
-      const myMembership = await db.getNetworkMembership(theirPersonalId, authUserId);
-      if (myMembership) return true;
-    }
     return false;
   };
 
@@ -368,8 +351,8 @@ export function createSystemDatabase(
     getMembersFromScope: () => db.getMembersFromUserIndexes(authUserId as Id<'users'>),
     /**
      * Adds a member to an index without scope check.
-     * @remarks Intentionally unscoped -- used by join flows, invitation acceptance, and
-     * contact addition that operate outside the caller's current network scope.
+     * @remarks Intentionally unscoped -- used by join flows and invitation acceptance
+     * that operate outside the caller's current network scope.
      */
     addMemberToNetwork: (networkId: string, userId: string, role: 'owner' | 'member') => db.addMemberToNetwork(networkId, userId, role),
     /**

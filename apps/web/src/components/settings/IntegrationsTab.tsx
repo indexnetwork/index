@@ -23,8 +23,8 @@ const TOOLKIT_LABELS: Record<string, string> = {
 };
 
 const TOOLKIT_DESCRIPTIONS: Record<string, string> = {
-  gmail: 'Import contacts and monitor conversations',
-  slack: 'Import contacts and monitor channels',
+  gmail: 'Connect Gmail conversations',
+  slack: 'Connect Slack channels',
 };
 
 const toolkitLabel = (t: string) => TOOLKIT_LABELS[t] ?? t;
@@ -258,7 +258,7 @@ export default function IntegrationsTab({
         </div>
 
         {/* Master-key signup section */}
-        {!network.isPersonal && (
+        {(
           <div className="pt-2">
             <div className="flex items-start gap-3 p-3 border border-gray-200 rounded-sm">
               <div className="flex-1 min-w-0 space-y-3">

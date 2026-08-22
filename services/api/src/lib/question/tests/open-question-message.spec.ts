@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { questionBlockFixture, questionMessageFixture, questionProseFixture } from '@indexnetwork/protocol/question-block/fixture';
-import { parseQuestionMessage, serializeQuestionMessage } from '@indexnetwork/protocol';
+import { parseQuestionMessage, questionBlockFixture, questionMessageFixture, questionProseFixture, serializeQuestionMessage } from '@indexnetwork/protocol';
 import type { QuestionBlock } from '@indexnetwork/protocol';
 
 import type { ParkedNegotiation } from '../../../adapters/parked-negotiation.reader.adapter';

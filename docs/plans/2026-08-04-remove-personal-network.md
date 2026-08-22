@@ -35,58 +35,58 @@ default.
 
 ### Task 1 — Protocol package (`packages/protocol`)
 
-- [ ] Delete contacts modules (`src/contacts/`, `src/contact/`,
+- [x] Delete contacts modules (`src/contacts/`, `src/contact/`,
       `src/capabilities/contacts.tools.port.ts`), contact tool registrations
       in `mcp.server.ts`, tool registry aliases, and contact references in
       chat prompt modules/personas.
-- [ ] Delete introducer discovery (`opportunity.introducer.ts`) and its
+- [x] Delete introducer discovery (`opportunity.introducer.ts`) and its
       wiring in `src/maintenance/maintenance.graph.ts`.
-- [ ] Simplify scope policy: `deriveAllowedNetworkIds` in `tool.scope.ts`
+- [x] Simplify scope policy: `deriveAllowedNetworkIds` in `tool.scope.ts`
       and `network-assignment.policy.ts` drop the "plus personal" branch;
       remove `isPersonal` from `network.graph.ts`, `network.tools.ts`,
       `utility.tools.ts`, `database.interface.ts`, and prompts
       (`chat.prompt.ts`, `signal.prompt.ts`, `onboarding.prompt.ts`,
       `reporter.prompt.ts`).
-- [ ] Update affected architecture specs and the protocol-atlas export metadata
+- [x] Update affected architecture specs and the protocol-atlas export metadata
       if the root export sources change.
 
 ### Task 2 — API service (`services/api`)
 
-- [ ] Remove `ensurePersonalNetwork` (database.shared.ts, auth.adapter.ts,
+- [x] Remove `ensurePersonalNetwork` (database.shared.ts, auth.adapter.ts,
       betterauth hooks, network-invitation.service.ts) and
       `assertNotPersonalNetwork` guards in `network.service.ts` /
       `network.controller.ts`.
-- [ ] Delete `ContactService`, `contact.database.adapter.ts`,
+- [x] Delete `ContactService`, `contact.database.adapter.ts`,
       `lib/contacts-feature.ts`, and the `CONTACTS_ENABLED` flag
       (startup.env.ts, .env.example, .env.development, Railway dev vars per
       `.agents/skills/manage-feature-flags`).
-- [ ] Strip personal/contact logic from `chat.database.adapter.ts` (largest
+- [x] Strip personal/contact logic from `chat.database.adapter.ts` (largest
       single file, ~60 references), `integration.service.ts` (omitted
       `networkId` no longer defaults to personal — make it an error),
       `intent.queue.ts`, `signal-intake.service.ts`
       (`getNonPersonalNetworkIds` becomes plain network list), and the
       smaller adapters (uptake-question, frame-drift, questioner,
       conversation, user delete path).
-- [ ] Delete CLI script `backfill-personal-index-prompts.ts`; update
+- [x] Delete CLI script `backfill-personal-index-prompts.ts`; update
       `seed-experiment-network.ts` and `db-flush.ts`.
-- [ ] Delete/update tests (`personal-network.adapter.spec.ts`, contact
+- [x] Delete/update tests (`personal-network.adapter.spec.ts`, contact
       service specs, and the many specs asserting personal-network behavior).
 
 ### Task 3 — Frontends
 
-- [ ] Web: delete `/mynetwork` page and route; remove `isPersonal` handling
+- [x] Web: delete `/mynetwork` page and route; remove `isPersonal` handling
       from networks list page, `ChatContent` scope dropdown ("My Network"
       entry), `NetworksPanel`, `SettingsTab`, `AccessTab`, `IntegrationsTab`,
       `FastSignalIntake`, `ClientWrapper`, and services (`networks.ts`,
       `v2/networks.service.ts`, `users.ts`).
-- [ ] CLI (`packages/cli`): remove the `!isPersonal` filter and related test
+- [x] CLI (`packages/cli`): remove the `!isPersonal` filter and related test
       expectations in `network.command.ts`.
-- [ ] Mac app: drop `isPersonal` mapping in
+- [x] Mac app: drop `isPersonal` mapping in
       `apps/mac/IndexApp/src/index-amiga/api.jsx`.
 
 ### Task 4 — Docs
 
-- [ ] Light pass over `docs/guides/development-reference.md`,
+- [x] Light pass over `docs/guides/development-reference.md`,
       `docs/domain/*` (networks, opportunities, agents,
       identity-and-context), `docs/specs/api-reference.md`, and README to
       remove personal-network/contacts sections.
@@ -112,7 +112,7 @@ default.
     network-unassigned but stay owned by the user — verify counts and pause
     for owner confirmation if the number is large (prior art:
     `.rpiv/artifacts/designs/intent-network-orphaning-fix.md`).
-- [ ] Drizzle migration: drop `personal_networks` table and
+- [x] Drizzle migration: drop `personal_networks` table and
       `networks.is_personal`; schema cleanup in
       `services/api/src/schemas/database.schema.ts`.
 - [ ] Open PR 2, merged only after cleanup counts are verified.

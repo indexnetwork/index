@@ -3,7 +3,7 @@
  * Enforces the capability seams introduced by IND-528.
  *
  * One rule: a capability may reach another capability only through that
- * capability's barrel — `index.ts`, or `intent.module.ts` for intents.
+ * capability's public module — `capabilities/<name>.ts` for migrated capabilities.
  * Direct implementation imports are prohibited.
  *
  * This replaces the capabilities/*.facade.ts layer, where the contract lived in
@@ -20,7 +20,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 
-import { ALLOWED_CAPABILITY_DIRECTIONS, barrelCapabilityForSourcePath, barrelPathForCapability, CAPABILITY_BARREL_DIRECTORIES, capabilityForSourcePath, DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES, implementationCapabilityForSourcePath } from "./capability-model.ts";
+import { ALLOWED_CAPABILITY_DIRECTIONS, barrelCapabilityForSourcePath, barrelPathForCapability, capabilityForSourcePath, DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES, implementationCapabilityForSourcePath } from "./capability-model.ts";
 
 const packageRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const sourceRoot = resolve(packageRoot, "src");
@@ -92,20 +92,15 @@ for (const filePath of await sourceFiles(sourceRoot)) {
     const barrelTarget = barrelCapabilityForSourcePath(importedPathFromSource);
     const target = barrelTarget ?? directTarget;
     if (!target || target === from) continue;
+    const targetHasBarrel = barrelPathForCapability(target) !== undefined;
 
     // interaction-composition is the composition root, not a capability with a
     // public surface: it has no barrel, so reaching its implementation is the
     // only way to reach it at all.
-    const targetHasBarrel = CAPABILITY_BARREL_DIRECTORIES[target] !== undefined;
-
-    if (isRootIndex) {
-      if (!barrelTarget && targetHasBarrel) {
-        violations.push(
-          `${relative(packageRoot, filePath)} exports ${target} implementation directly via ${specifier}; root exports must use the capability barrel ${barrelPathForCapability(target)}`,
-        );
-      }
-      continue;
-    }
+    // The package root is the sole supported consumer entry point. It may
+    // export the concrete owning module directly; requiring another export-only
+    // capability barrel here would recreate the wrapper layer this check bans.
+    if (isRootIndex) continue;
 
     if (!ALLOWED_CAPABILITY_DIRECTIONS[from!].includes(target)) {
       violations.push(

@@ -31,7 +31,6 @@ import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
 import { NegotiationSummaryService } from '../services/negotiation-summary.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
-import { contactService } from '../services/contact.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
@@ -80,7 +79,6 @@ const protocolDeps = {
   cache: cacheAdapter,
   hydeCache: hydeCacheAdapter,
   intentQueue,
-  contactService,
   intentProposalStore: intentProposalDatabaseAdapter,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
@@ -668,7 +666,6 @@ function createMcpServerInstance(): McpServer {
     scraper: protocolDeps.scraper,
     embedder: protocolDeps.embedder,
     cache: protocolDeps.cache,
-    contactService: protocolDeps.contactService,
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
     agentDispatcher: protocolDeps.agentDispatcher,

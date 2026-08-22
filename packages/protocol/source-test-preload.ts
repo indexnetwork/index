@@ -13,6 +13,13 @@
  * double would make them assert the double instead of the contract.
  */
 import { mock } from "bun:test";
+import { AsyncLocalStorage } from "async_hooks";
+import { setRequestContextStore } from "./src/internal/shared/observability/request-context.js";
+
+// Tests are a host too: each isolated worker provides Node request storage so
+// cancellation and tracing semantics are exercised without shipping that
+// implementation in the package runtime.
+setRequestContextStore(new AsyncLocalStorage());
 
 const modelConfigSpecs = [
   "/shared/agent/tests/model.config.spec.ts",
@@ -21,7 +28,6 @@ const modelConfigSpecs = [
 const localModelMockSpecs = [
   "/chat/tests/chat.agent.persona.spec.ts",
   "/chat/tests/chat.agent.spec.ts",
-  "/contacts/tests/contact.inviter.claim-safety.spec.ts",
   "/enrichment/tests/enrichment.graph.spec.ts",
   "/intents/tests/intent.clarifier.spec.ts",
   "/intents/tests/intent.graph.spec.ts",
@@ -100,7 +106,7 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
     return model;
   };
 
-  mock.module(import.meta.resolve("./src/shared/agent/model.config.js"), () => ({
+  mock.module(import.meta.resolve("./src/internal/shared/agent/model.config.js"), () => ({
     createModel: (agent: string) => modelFor(agent),
     createFallbackModel: () => undefined,
     createStructuredModel: (agent: string) => modelFor(agent),

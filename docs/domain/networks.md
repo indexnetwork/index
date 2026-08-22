@@ -1,7 +1,7 @@
 ---
 title: "Networks"
 type: domain
-tags: [networks, communities, permissions, personal-networks, contacts, auto-assign]
+tags: [networks, communities, permissions, auto-assign]
 created: 2026-03-26
 updated: 2026-05-24
 ---
@@ -22,7 +22,6 @@ A network can represent:
 - A project team ("DeFi Protocol Builders")
 - A topical interest group ("Climate Tech")
 - A time-bound event ("Edge Esmeralda 2026")
-- A personal space (see Personal Networks below)
 
 Each network has:
 - **Title**: Human-readable name
@@ -52,7 +51,6 @@ Network membership is tracked in the `network_members` table with a composite pr
 |---|---|
 | **owner** | Full access: manage members, settings, read/write intents. Cannot be removed except by self. |
 | **member** | Standard access: read/write intents within the network. |
-| **contact** | Special permission indicating a contact relationship (see Contacts below). |
 
 Ownership is determined through the `network_members` table's `permissions` array containing `'owner'`, not through a denormalized column on the network itself.
 
@@ -63,38 +61,6 @@ Each member can customize their relationship with a network:
 - **Member prompt**: A personal description of what they want to share in this network. For example, a network's prompt might be "AI/ML collaborators" while a member's prompt says "Specifically seeking PyTorch experts". The member prompt adds specificity that the Intent Indexer agent uses when evaluating intent-network fit.
 
 - **Auto-assign** (`autoAssign: boolean`): When enabled, new intents from this user are automatically evaluated against this network and assigned if they qualify. When disabled, assignment requires explicit action.
-
----
-
-## Personal Networks
-
-Every user has exactly one personal network, created automatically on registration. Personal networks are identified by `isPersonal: true` on the `networks` row and enforced by the `personal_networks` mapping table (primary key on `userId`, unique constraint on `networkId`).
-
-Personal networks serve as the user's private workspace:
-- They cannot be deleted, renamed, or listed publicly
-- They are filtered from public network listings by guards
-- They store the user's contacts (see below)
-- They hold intents that the user has not explicitly shared with any community
-
----
-
-## Contacts as Members
-
-Index Network does not have a separate contacts table. Instead, contacts are stored as `network_members` rows with the `'contact'` permission on the owner's personal network.
-
-Contacts are created by one path only: accepting an opportunity. On accept (and
-on the Start Chat transition) both parties are written into each other's
-personal network as `network_members` rows with `permissions: ['contact']`.
-
-The accepter's own row uses `restore: true`, re-activating a contact they had
-previously removed — an explicit act overrides their earlier removal. The
-counterpart's row uses `restore: false`, so a person who removed this contact is
-not silently re-added. Removal is a hard delete, and that absence *is* the
-opt-out signal.
-
-There is no import path and no manual-add path, so every contact is a real
-account. Placeholder "ghost" accounts were retired in api 0.92.0; the
-`users.is_ghost` column was dropped in migration 0130.
 
 ---
 

@@ -27,7 +27,7 @@ export class NetworkService {
   constructor(private adapter = new ChatDatabaseAdapter()) {}
 
   /**
-   * Get all networks that a user is a member of, including their personal network.
+   * Get all networks that a user is a member of.
    */
   async getNetworksForUser(userId: string) {
     logger.verbose('Getting networks for user', { userId });
@@ -107,24 +107,9 @@ export class NetworkService {
 
   /**
    * Update index settings (title, prompt, permissions). Owner-only.
-   * @throws Error if the index is a personal network.
    */
   async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; metadata?: Record<string, unknown>; contextInjection?: { discovery: boolean } }) {
     logger.verbose('Updating index', { networkId, userId });
-    if (await this.adapter.isPersonalNetwork(networkId)) {
-      // Personal networks can't be renamed/deleted/repurposed (see assertNotPersonal),
-      // but the owner may set or clear a discovery prompt to curate what auto-assigns
-      // into My Network. Restrict edits to the prompt field only; ownership is
-      // enforced inside updateIndexSettings.
-      const editableForPersonal = new Set<string>(['prompt']);
-      const rejected = Object.keys(data).filter(
-        (k) => (data as Record<string, unknown>)[k] !== undefined && !editableForPersonal.has(k),
-      );
-      if (rejected.length > 0) {
-        throw new Error(`Access denied: personal networks only allow editing the prompt (rejected: ${rejected.join(', ')}).`);
-      }
-      return this.adapter.updateIndexSettings(networkId, userId, { prompt: data.prompt });
-    }
     const validatedMetadata = data.metadata !== undefined
       ? validateNetworkMetadata(data.metadata)
       : undefined;
@@ -138,7 +123,6 @@ export class NetworkService {
    * Update index permissions. Owner-only.
    */
   async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; contextInjection?: { discovery: boolean } }) {
-    await this.assertNotPersonal(networkId);
     const validatedContextInjection = data.contextInjection !== undefined
       ? ContextInjectionSchema.parse(data.contextInjection)
       : undefined;
@@ -158,26 +142,15 @@ export class NetworkService {
    * @throws Error if the network is personal or the caller is not an owner
    */
   async regenerateInvitationLink(networkId: string, userId: string) {
-    await this.assertNotPersonal(networkId);
     logger.verbose('Regenerating invitation link', { networkId, userId });
     return this.adapter.regenerateInvitationLink(networkId, userId);
   }
 
   /**
-   * Search users within the caller's personal network members,
-   * optionally excluding existing members of a target index.
-   */
-  async searchPersonalNetworkMembers(userId: string, q: string, excludeIndexId?: string) {
-    return this.adapter.searchPersonalNetworkMembers(userId, q, excludeIndexId);
-  }
-
-  /**
    * Add a member to an index. Owner-only.
-   * @throws Error if the index is a personal network.
    */
   async addMember(networkId: string, userId: string, requestingUserId: string, role: 'owner' | 'member' = 'member') {
     logger.verbose('Adding member', { networkId, userId, role });
-    await this.assertNotPersonal(networkId);
     return this.adapter.addMemberForOwner(networkId, userId, requestingUserId, role);
   }
 
@@ -187,17 +160,14 @@ export class NetworkService {
    */
   async updateMemberRole(networkId: string, targetUserId: string, requestingUserId: string, role: 'owner' | 'member') {
     logger.verbose('Updating member role', { networkId, targetUserId, role });
-    await this.assertNotPersonal(networkId);
     return this.adapter.updateMemberRole(networkId, targetUserId, requestingUserId, role);
   }
 
   /**
    * Remove a member from an index. Owner-only.
-   * @throws Error if the index is a personal network.
    */
   async removeMember(networkId: string, memberId: string, userId: string) {
     logger.verbose('Removing member', { networkId, memberId, userId });
-    await this.assertNotPersonal(networkId);
     return this.adapter.removeMemberForOwner(networkId, memberId, userId);
   }
 
@@ -209,11 +179,9 @@ export class NetworkService {
    * agents, so the cascade no-ops on ordinary networks. The cohort lookup
    * keys off agents/agent_permissions, not network_members, so it still
    * resolves after the network is soft-deleted.
-   * @throws Error if the index is a personal network.
    */
   async deleteNetwork(networkId: string, userId: string) {
     logger.verbose('Deleting index', { networkId, userId });
-    await this.assertNotPersonal(networkId);
 
     const isOwner = await this.adapter.isIndexOwner(networkId, userId);
     if (!isOwner) throw new Error('Access denied: Not an owner of this network');
@@ -253,10 +221,10 @@ export class NetworkService {
   }
 
   /**
-   * Get non-personal networks shared between the current user and a target user.
+   * Get networks shared between the current user and a target user.
    * @param currentUserId - Authenticated user ID.
    * @param targetUserId - Profile user ID to compare memberships with.
-   * @returns Shared non-personal networks with member counts.
+   * @returns Shared networks with member counts.
    */
   async getSharedNetworks(currentUserId: string, targetUserId: string) {
     logger.verbose('Getting shared networks', { currentUserId, targetUserId });
@@ -304,11 +272,9 @@ export class NetworkService {
 
   /**
    * Leave an index. Members (non-owners) can leave.
-   * @throws Error if the index is a personal network.
    */
   async leaveNetwork(networkId: string, userId: string) {
     logger.verbose('Leaving index', { networkId, userId });
-    await this.assertNotPersonal(networkId);
     await this.adapter.leaveNetwork(networkId, userId);
   }
 
@@ -419,17 +385,6 @@ export class NetworkService {
    */
   async isIndexOwner(networkId: string, userId: string): Promise<boolean> {
     return this.adapter.isIndexOwner(networkId, userId);
-  }
-
-  /**
-   * Assert that an index is not a personal network.
-   * @throws Error if the index is personal.
-   */
-  private async assertNotPersonal(networkId: string): Promise<void> {
-    const isPersonal = await this.adapter.isPersonalNetwork(networkId);
-    if (isPersonal) {
-      throw new Error('Access denied: personal networks cannot be modified directly.');
-    }
   }
 
   /**

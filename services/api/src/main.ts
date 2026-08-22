@@ -34,7 +34,6 @@ import { WebhooksController } from './controllers/webhooks.controller';
 import { QuestionController } from './controllers/question.controller';
 import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { IntegrationService } from './services/integration.service';
-import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
 import { HermesNegotiatorRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
@@ -86,7 +85,8 @@ import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { AMBIENT_PARK_WINDOW_MS, Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
+import { requestContext as hostRequestContext } from './lib/request-context';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
@@ -118,6 +118,8 @@ setTimingWrapper((name, fn) => traceAppOperation(
   },
   fn,
 ));
+
+setRequestContextStore(hostRequestContext);
 
 // Wire negotiation into background discovery so the post-assignment HyDE path
 // negotiates latent opportunities consistently with chat/MCP discovery.
@@ -417,7 +419,7 @@ const integrationService = new IntegrationService(integrationAdapter);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
 controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
-const toolService = new ToolService(contactService);
+const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
 controllerInstances.set(QuestionController, new QuestionController());
 

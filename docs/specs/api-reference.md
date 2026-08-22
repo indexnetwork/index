@@ -1738,11 +1738,11 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 
 **Controller prefix**: `/networks`
 
-**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `isPersonal`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
+**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
 
 ### GET /api/networks
 
-List networks the authenticated user is a member of, including their personal network.
+List networks the authenticated user is a member of.
 
 **Auth**: AuthGuard
 
@@ -1853,7 +1853,7 @@ Get a public network by ID. Only works for indexes with `joinPolicy: 'anyone'`.
 
 ### GET /api/networks/shared/:userId
 
-Get non-personal networks shared between the authenticated user and a target user.
+Get networks shared between the authenticated user and a target user.
 
 **Auth**: AuthGuard
 
@@ -3307,14 +3307,6 @@ Batch-fetch users by IDs (max 100).
 }
 ```
 
-### DELETE /api/users/contacts/:contactId
-
-Remove a contact from the authenticated user's personal network (soft delete of the `'contact'` membership).
-
-**Auth**: AuthGuard
-
-**Response**: `{ "success": true }` on success, `404` if the contact is not a member.
-
 ### POST /api/users/:userId/negotiations
 
 Trigger a discovery negotiation between the authenticated viewer and the target user. Responds with `400` if the viewer targets themselves, `404` if the target does not exist, `409` if a negotiation between the two parties is already in flight.
@@ -3550,8 +3542,6 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_network_membership` | Network | Remove a member from a network |
 | `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
 | `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. With the uptake guard enabled, a first accept can return `success:false` plus `advisory.code="unresolved_uptake_questions"` without mutation; retry with the current `acknowledgedUptakeQuestionIds` only after explicit user approval to continue anyway. Successful acceptance returns a `conversationId`. |
-| `list_contacts` | Contact | List user's contacts |
-| `remove_contact` | Contact | Remove a contact |
 | `scrape_url` | Utility | Scrape and extract content from a URL |
 | `read_docs` | Utility | Read protocol documentation |
 

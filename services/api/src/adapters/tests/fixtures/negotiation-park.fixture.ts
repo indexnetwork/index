@@ -74,7 +74,6 @@ export async function seedWorkingNegotiation(
   cleanup.users.push(recipient.id, counterparty.id);
   const [network] = await db.insert(networks).values({
     title: `Binding stamp ${randomUUID()}`,
-    isPersonal: false,
   }).returning({ id: networks.id });
   cleanup.networks.push(network.id);
   await db.insert(networkMembers).values([

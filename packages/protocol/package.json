@@ -8,14 +8,6 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./question-block": {
-      "types": "./dist/shared/schemas/question-block.schema.d.ts",
-      "import": "./dist/shared/schemas/question-block.schema.js"
-    },
-    "./question-block/fixture": {
-      "types": "./dist/shared/schemas/question-block.fixture.d.ts",
-      "import": "./dist/shared/schemas/question-block.fixture.js"
     }
   },
   "files": [
@@ -34,7 +26,8 @@
     "test:architecture": "bun test scripts/architecture/tests",
     "architecture:host-isolation": "bun scripts/architecture/host-isolation.ts",
     "architecture:capabilities": "bun scripts/architecture/capability-boundaries.ts",
-    "architecture:check": "bun run architecture:host-isolation && bun run architecture:capabilities && bun run test:architecture",
+    "architecture:kernel": "bun scripts/architecture/kernel-boundaries.ts",
+    "architecture:check": "bun run architecture:host-isolation && bun run architecture:capabilities && bun run architecture:kernel && bun run test:architecture",
     "prepublishOnly": "bun run build",
     "prepack": "bun run build:package"
   },
@@ -43,6 +36,7 @@
     "@langchain/langgraph": "1.3.2",
     "@langchain/openai": "1.4.7",
     "@modelcontextprotocol/server": "2.0.0",
+    "@noble/hashes": "2.2.0",
     "zod": "3.25.76"
   },
   "devDependencies": {

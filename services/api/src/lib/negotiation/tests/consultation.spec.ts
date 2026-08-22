@@ -176,7 +176,6 @@ describe('external owner consultation eligibility', () => {
   );
 
   it.each([
-    ['v1', (input: ExternalConsultationEligibilityInput) => { input.task.metadata.protocolVersion = 'v1'; }],
     ['opening turn', (input: ExternalConsultationEligibilityInput) => { input.messages = []; }],
     ['final turn', (input: ExternalConsultationEligibilityInput) => { input.task.metadata.maxTurns = 3; }],
     ['wrong claim agent', (input: ExternalConsultationEligibilityInput) => { input.task.claimedByAgentId = 'agent-other'; }],

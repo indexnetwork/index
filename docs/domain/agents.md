@@ -121,9 +121,8 @@ Every pickup endpoint (`opportunities/pickup`, `test-messages/pickup`, `negotiat
 When a user is invited by a network owner, imported via CSV, or signed up through the headless master-key flow, the system automatically provisions:
 
 1. A user account.
-2. A personal network for that user.
-3. A personal agent with `scope = 'network'`, restricted to that network.
-4. An API key bound to that agent.
+2. A personal agent with `scope = 'network'`, restricted to the invited network.
+3. An API key bound to that agent.
 
 The signup response returns the user, the API key, and a drop-in `mcpServer` config (`name`, `url`, `headers`) ready to paste into any MCP-compatible runtime. No follow-up `agentId` lookup is needed.
 

@@ -13,7 +13,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
-import { questionBlockFixture, questionMessageFixture } from "@indexnetwork/protocol/question-block/fixture";
+import { questionBlockFixture, questionMessageFixture } from "@indexnetwork/protocol";
 
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
 import { QuestionRegenerationIndicator, QuestionSteps } from "@/components/chat/QuestionSteps";

@@ -12,7 +12,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { deriveAllowedNetworkIds, Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
@@ -42,10 +42,7 @@ export class ToolService {
   private compiledGraphs: ToolDeps['graphs'] | null = null;
   private cachedToolList: Array<{ name: string; description: string; schema: Record<string, unknown> }> | null = null;
 
-  constructor(
-    private contactService: ContactServiceAdapter,
-    options: { graphs?: ToolDeps['graphs'] } = {},
-  ) {
+  constructor(options: { graphs?: ToolDeps['graphs'] } = {}) {
     this.compiledGraphs = options.graphs ?? null;
   }
 
@@ -68,7 +65,6 @@ export class ToolService {
       scraper: this.scraper,
       embedder: this.embedder,
       cache: this.cache,
-      contactService: this.contactService,
       enricher: { enrichUserProfile },
       getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],

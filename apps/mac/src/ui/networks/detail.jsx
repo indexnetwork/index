@@ -321,7 +321,7 @@ const memberActStyle = {
 };
 
 function networkShareUrl(net) {
-  if (!net || net.isPersonal || net.hasMasterKey || !networkIsOwner(net)) return null;
+  if (!net || net.hasMasterKey || !networkIsOwner(net)) return null;
   const base = (window.IndexApp && window.IndexApp.webBaseUrl
     ? window.IndexApp.webBaseUrl()
     : "https://index.network").replace(/\/+$/, "");
@@ -330,7 +330,7 @@ function networkShareUrl(net) {
 }
 
 function networkIsOwner(net) {
-  if (!net || net.isPersonal) return false;
+  if (!net) return false;
   const role = net.role || (net.source && net.source.role);
   return role === "owner" || role === "admin";
 }

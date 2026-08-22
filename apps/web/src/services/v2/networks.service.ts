@@ -3,7 +3,7 @@ import type { Network } from '@/types';
 import type { PaginatedResponse } from '@/types';
 import { apiClient } from '@/lib/api';
 
-/** Response shape from GET /networks (member + personal networks; "Everywhere" is static in UI). */
+/** Response shape from GET /networks. */
 export interface NetworkListV2Response {
   networks: Network[];
   pagination: { current: number; total: number; count: number; totalCount: number };

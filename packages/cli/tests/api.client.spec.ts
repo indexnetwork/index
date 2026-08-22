@@ -205,8 +205,8 @@ describe("ApiClient", () => {
       mock.on("GET", "/api/networks", () =>
         Response.json({
           networks: [
-            { id: "n1", title: "Test Network", memberCount: 5, isPersonal: false },
-            { id: "n2", title: "Personal", memberCount: 1, isPersonal: true },
+            { id: "n1", title: "Test Network", memberCount: 5 },
+            { id: "n2", title: "Private Network", memberCount: 1 },
           ],
         }),
       );

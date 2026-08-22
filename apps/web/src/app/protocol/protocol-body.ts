@@ -37,7 +37,6 @@ Confidence      <span class="cli-green">########</span><span class="cli-dim">-- 
 <span class="cli-title">Network Assignments</span>
 <span class="cli-cyan">*</span> AI Research Collaborations <span class="cli-dim">(0.92)</span>
 <span class="cli-cyan">*</span> Crypto &amp; Identity <span class="cli-dim">(0.78)</span>
-<span class="cli-cyan">*</span> Personal Network <span class="cli-dim">(1.00)</span></code></pre>
 
     <h4>Negotiation detail</h4>
     <pre class="cli-code"><code><span class="cli-cmd">$ index negotiation show &lt;negotiation-id&gt;</span>

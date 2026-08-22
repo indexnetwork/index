@@ -196,7 +196,7 @@ const SCENARIOS: ScenarioDefinition[] = [
           'I founded the company 18 months ago; we are two co-founders and one contract engineer.',
           'We have eleven paying practices at around $300 a month each and about four months of runway left.',
           'We raised a $400k pre-seed from angels last year and are not raising again until we have a repeatable acquisition channel.',
-          'All of our customers so far came from my personal network and referrals.',
+          'All of our customers so far came from my professional network and referrals.',
           'I can pay a fractional marketer a monthly retainer but cannot offer a full-time salary.',
         ],
         intents: [

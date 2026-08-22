@@ -4,13 +4,11 @@ export type Capability =
   | "networks"
   | "opportunities"
   | "negotiations"
-  | "questions"
   | "agents"
-  | "contacts"
   | "discovery"
   | "interaction-composition";
 
-/** Single-segment top-level directories with a fixed capability assignment. */
+/** Internal implementation directories with a fixed capability assignment. */
 export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   // Every top-level directory maps to exactly one capability.
   intents: "intents",
@@ -20,10 +18,8 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   networks: "networks",
   opportunities: "opportunities",
   negotiations: "negotiations",
-  questions: "questions",
   agents: "agents",
   chat: "agents",
-  contacts: "contacts",
   discovery: "discovery",
   maintenance: "interaction-composition",
 };
@@ -37,14 +33,12 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
  */
 export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string | undefined>> = {
   intents: "intents",
-  contexts: "contexts",
+  contexts: undefined,
   networks: "networks",
-  opportunities: "opportunities",
-  negotiations: "negotiations",
-  questions: "questions",
+  opportunities: undefined,
+  negotiations: undefined,
   agents: "agents",
-  contacts: "contacts",
-  discovery: "discovery",
+  discovery: undefined,
   // The composition root is the one all-capability point; it has no barrel of
   // its own and is reached through the package entry point instead.
   "interaction-composition": undefined,
@@ -57,14 +51,10 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
  * `index.ts` files, so their entry points describe the capability they expose.
  */
 export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, string>>> = {
-  intents: "intent.module.ts",
-  contexts: "context.module.ts",
-  networks: "network.module.ts",
-  opportunities: "opportunity.module.ts",
-  negotiations: "negotiation.module.ts",
-  questions: "question.module.ts",
+  intents: "../capabilities/intents.ts",
+  networks: "../capabilities/networks.ts",
   agents: "agent.module.ts",
-  contacts: "contact.module.ts",
+  discovery: "../capabilities/discovery.ts",
 };
 
 /** The barrel filename a capability's public surface must live in. */
@@ -74,22 +64,21 @@ export function barrelFilenameForCapability(capability: Capability): string {
 
 /** The source-relative barrel path for a capability, if it has one. */
 export function barrelPathForCapability(capability: Capability): string | undefined {
+  if (["intents", "networks", "agents", "discovery", "contexts"].includes(capability)) return `capabilities/${capability}.ts`;
   const directory = CAPABILITY_BARREL_DIRECTORIES[capability];
-  return directory ? `${directory}/${barrelFilenameForCapability(capability)}` : undefined;
+  return directory ? `internal/${directory}/${barrelFilenameForCapability(capability)}` : undefined;
 }
 
 /** Every permitted direction is deliberately named and reviewed here. */
 export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   Record<Capability, readonly Capability[]>
 > = {
-  intents: ["agents", "questions"],
-  contexts: ["agents", "questions", "discovery"],
+  intents: ["agents"],
+  contexts: ["agents", "discovery"],
   networks: ["agents", "intents"],
-  opportunities: ["agents", "intents", "negotiations", "questions", "discovery"],
-  negotiations: ["opportunities", "questions"],
-  questions: ["negotiations"],
-  agents: ["negotiations", "questions"],
-  contacts: [],
+  opportunities: ["agents", "intents", "negotiations", "discovery"],
+  negotiations: ["opportunities"],
+  agents: ["negotiations"],
   // discovery needs only the debug-metadata type it stamps on graph state.
   discovery: ["agents"],
   "interaction-composition": [
@@ -98,9 +87,7 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
     "networks",
     "opportunities",
     "negotiations",
-    "questions",
     "agents",
-    "contacts",
     "discovery",
   ],
 };
@@ -110,7 +97,7 @@ export const DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES: ReadonlySet<Capability> 
   new Set<Capability>(["interaction-composition"]);
 
 export function capabilityForSourcePath(pathFromSource: string): Capability | undefined {
-  const normalized = pathFromSource.replace(/\\/g, "/");
+  const normalized = implementationPath(pathFromSource);
   const [topLevel] = normalized.split("/");
   if (topLevel === "shared" && /^shared\/agent\/tool\.(?:factory|registry|helpers)\.ts$/.test(normalized)) {
     return "interaction-composition";
@@ -121,7 +108,7 @@ export function capabilityForSourcePath(pathFromSource: string): Capability | un
 export function implementationCapabilityForSourcePath(
   pathFromSource: string,
 ): Capability | undefined {
-  const normalized = pathFromSource.replace(/\\/g, "/");
+  const normalized = implementationPath(pathFromSource);
   const [topLevel] = normalized.split("/");
   return CAPABILITY_DIRECTORIES[topLevel];
 }
@@ -136,7 +123,12 @@ export function implementationCapabilityForSourcePath(
 export function barrelCapabilityForSourcePath(
   pathFromSource: string,
 ): Capability | undefined {
-  const normalized = pathFromSource.replace(/\\/g, "/");
+  if (pathFromSource === "capabilities/intents.ts") return "intents";
+  if (pathFromSource === "capabilities/networks.ts") return "networks";
+  if (pathFromSource === "capabilities/agents.ts") return "agents";
+  if (pathFromSource === "capabilities/discovery.ts") return "discovery";
+  if (pathFromSource === "capabilities/contexts.ts") return "contexts";
+  const normalized = implementationPath(pathFromSource);
   const match = /^([a-z-]+)\/([a-z0-9.-]+\.ts)$/.exec(normalized);
   if (!match) return undefined;
   const [, directory, filename] = match;
@@ -144,4 +136,9 @@ export function barrelCapabilityForSourcePath(
   if (!capability) return undefined;
   if (CAPABILITY_BARREL_DIRECTORIES[capability] !== directory) return undefined;
   return barrelFilenameForCapability(capability) === filename ? capability : undefined;
+}
+
+function implementationPath(pathFromSource: string): string {
+  const normalized = pathFromSource.replace(/\\/g, "/");
+  return normalized.startsWith("internal/") ? normalized.slice("internal/".length) : normalized;
 }

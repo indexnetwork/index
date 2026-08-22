@@ -1199,7 +1199,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   }
 
   function networkShareUrl(network, webUrl, apiUrl) {
-    if (!network || network.isPersonal || network.hasMasterKey) return null;
+    if (!network || network.hasMasterKey) return null;
     if (network.role !== "owner") return null;
     const base = resolveShareBase(webUrl, apiUrl);
     if (!base) return null;
@@ -1254,7 +1254,7 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
   function NetworkDetailModal(props) {
     const network = props.network || {};
     const isOwner = network.role === "owner";
-    const showOwnerTabs = isOwner && !network.isPersonal;
+    const showOwnerTabs = isOwner;
     const meId = props.currentUserId || "";
     const tabState = React.useState("overview");
     const tab = tabState[0];

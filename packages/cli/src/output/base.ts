@@ -123,8 +123,6 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   update_opportunity: "Updating opportunity status...",
   scrape_url: "Reading content from URL...",
   read_docs: "Looking up documentation...",
-  list_contacts: "Listing your contacts...",
-  remove_contact: "Removing contact...",
 };
 
 /** Get a human-friendly description for a raw tool name. */

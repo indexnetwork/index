@@ -89,11 +89,9 @@ export default function NetworksPage() {
     }
   }, [networkRequestsService, loadRequests, success, error]);
 
-  const allNetworks = (rawIndexes || []).filter(Boolean).sort((a, b) => {
-    if (a.isPersonal && !b.isPersonal) return -1;
-    if (!a.isPersonal && b.isPersonal) return 1;
-    return (a.title || '').localeCompare(b.title || '');
-  });
+  const allNetworks = (rawIndexes || []).filter(Boolean).sort((a, b) =>
+    (a.title || '').localeCompare(b.title || ''),
+  );
 
   const loadPublicNetworks = async () => {
     try {
@@ -267,10 +265,8 @@ export default function NetworksPage() {
                       return (
                         <button
                           key={network.id}
-                          onClick={() => navigate(network.isPersonal ? '/mynetwork' : `/networks/${network.id}`)}
-                          className={`w-full flex items-center gap-3 py-3 -mx-2 px-2 rounded-sm transition-colors text-left group ${
-                            network.isPersonal ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'
-                          }`}
+                          onClick={() => navigate(`/networks/${network.id}`)}
+                          className="w-full flex items-center gap-3 py-3 -mx-2 px-2 rounded-sm transition-colors text-left group hover:bg-gray-50"
                         >
                           <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
                             <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />

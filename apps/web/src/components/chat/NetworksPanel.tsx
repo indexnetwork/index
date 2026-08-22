@@ -67,7 +67,7 @@ export default function NetworksPanel({ onJoin, pendingJoinIds = new Set(), orde
       .finally(() => setLoading(false));
   }, [indexesService]);
 
-  const joinedNonPersonal = joinedIndexes.filter((i) => !i.isPersonal);
+  const joinedNonPersonal = joinedIndexes;
   const joinedIds = new Set(joinedNonPersonal.map((i) => i.id));
   const joinable = (() => {
     const unfiltered = publicNetworks.filter((n) => !joinedIds.has(n.id));

@@ -15,7 +15,6 @@ import { handleOpportunity } from "../src/opportunity.command";
 import { handleProfile } from "../src/profile.command";
 import { handleIntent } from "../src/intent.command";
 import { handleNetwork } from "../src/network.command";
-import { handleContact } from "../src/contact.command";
 import { handleScrape } from "../src/scrape.command";
 import { handleSync } from "../src/sync.command";
 import { createMockServer as createBaseMockServer } from "./helpers/mock-http";
@@ -322,41 +321,6 @@ describe("CLI tool call contracts", () => {
     });
   });
 
-  // ── Contact ──────────────────────────────────────────────────────
-
-  describe("contact", () => {
-    it("list calls list_contacts", async () => {
-      mock.setToolResponse("list_contacts", {
-        success: true,
-        data: { count: 0, contacts: [] },
-      });
-
-      await handleContact(client, "list", [], { json: true });
-
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("list_contacts");
-      expect(mock.toolCalls[0].query).toEqual({});
-    });
-
-    it("remove calls list_contacts then remove_contact with resolved userId", async () => {
-      mock.setToolResponse("list_contacts", {
-        success: true,
-        data: {
-          count: 1,
-          contacts: [{ userId: "user-jane", email: "jane@example.com", name: "Jane" }],
-        },
-      });
-      mock.setToolResponse("remove_contact", { success: true, data: {} });
-
-      await handleContact(client, "remove", ["jane@example.com"], { json: true });
-
-      expect(mock.toolCalls).toHaveLength(2);
-      expect(mock.toolCalls[0].toolName).toBe("list_contacts");
-      expect(mock.toolCalls[1].toolName).toBe("remove_contact");
-      expect(mock.toolCalls[1].query).toEqual({ contactUserId: "user-jane" });
-    });
-  });
-
   // ── Scrape ───────────────────────────────────────────────────────
 
   describe("scrape", () => {
@@ -395,16 +359,15 @@ describe("CLI tool call contracts", () => {
   // ── Sync ─────────────────────────────────────────────────────────
 
   describe("sync", () => {
-    it("calls 4 tools in parallel: read_user_contexts, read_networks, read_intents, list_contacts", async () => {
+    it("calls the profile, network, and intent tools in parallel", async () => {
       mock.setToolResponse("read_user_contexts", { success: true, data: { profile: {} } });
       mock.setToolResponse("read_networks", { success: true, data: { networks: [] } });
       mock.setToolResponse("read_intents", { success: true, data: { intents: [] } });
-      mock.setToolResponse("list_contacts", { success: true, data: { contacts: [] } });
 
       await handleSync(client, { json: true });
 
       const toolNames = mock.toolCalls.map((c) => c.toolName).sort();
-      expect(toolNames).toEqual(["list_contacts", "read_intents", "read_networks", "read_user_contexts"]);
+      expect(toolNames).toEqual(["read_intents", "read_networks", "read_user_contexts"]);
 
       // All should send empty queries
       for (const call of mock.toolCalls) {

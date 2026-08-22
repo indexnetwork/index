@@ -21,9 +21,10 @@ test('security workflow watches the full Mac/plugin/protocol/API authority closu
   expect(securityWorkflow).not.toContain('services/api/src/services/agent-runtime.service.ts');
   expect(securityWorkflow).toContain('bun run architecture:check');
   for (const test of [
-    'src/negotiation/tests/negotiation.hermes-contract.spec.ts',
-    'src/negotiation/tests/negotiator-timeout.spec.ts',
-    'src/lib/agent/tests/hermes-negotiation-run.spec.ts',
+    './src/internal/mcp/tests/mcp.authorization-policy.spec.ts',
+    './src/internal/mcp/tests/mcp.server.spec.ts',
+    './src/internal/negotiations/tests/negotiation.hermes-contract.spec.ts',
+    './src/internal/negotiations/tests/negotiator-timeout.spec.ts',
   ]) expect(securityWorkflow).toContain(test);
 });
 

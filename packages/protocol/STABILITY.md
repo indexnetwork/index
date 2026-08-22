@@ -10,8 +10,7 @@ change. It is the reference behind the tier annotations in `src/index.ts`.
 - The supported entry points are the package root:
   `import { ... } from "@indexnetwork/protocol"` — and the **browser-safe
   subpaths** listed in `package.json` `exports` (as of 21.1.0:
-  `@indexnetwork/protocol/question-block` and
-  `@indexnetwork/protocol/question-block/fixture`). A browser-safe subpath
+  package root. There are no supported browser subpaths.
   exposes one shared-schema module whose only runtime dependency is `zod`, for
   consumers (the web client) that cannot load the node-only package root. The
   schema module's symbols are also re-exported from the root (the fixture is
@@ -30,6 +29,9 @@ change. It is the reference behind the tier annotations in `src/index.ts`.
   as a class rather than a re-export list — `intents` does, via `Intents` in
   `intents/intent.module.ts` — which makes the whole capability one exported
   symbol and its internal layout free to change without a contract change.
+- `protocol/`, `platform/`, `capabilities/`, and `internal/` are source-level
+  boundaries, not consumer subpaths. The sole supported Node import remains the
+  package root.
 
 ## Stability tiers
 

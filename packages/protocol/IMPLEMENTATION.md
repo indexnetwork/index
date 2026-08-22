@@ -18,12 +18,22 @@ deep imports are not part of the contract. Every symbol is re-exported explicitl
 See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
 and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
-Internal source is domain-first: `signals`, `communities`, `questions`,
+Private source under `src/internal/` is domain-first: `signals`, `communities`, `questions`,
 `participant-agents`, `contacts`, and `integrations`; opportunity and negotiation
 place state/contracts in `domain/` and workflows/tools in `application/`. The
 `intents` capability is instead organized by function behind a single exported
 class, `Intents`: files sit flat and named for what they do, with `graph/` and
 `intake/` the two multi-file stages that keep a directory.
+
+## Boundary model
+
+The package is migrating incrementally to a protocol kernel. `protocol/`
+contains portable, framework-free contracts; `platform/` contains host-facing
+ports and supported runtime hooks; and `capabilities/` exposes small named
+behavior surfaces. Graphs, prompts, retrieval, and agent helpers remain
+private implementation. These are source boundaries only: import supported
+symbols from `@indexnetwork/protocol`, not source subpaths. See
+[docs/protocol-kernel.md](./docs/protocol-kernel.md) for migration status.
 
 
 ## Install
@@ -57,7 +67,6 @@ The package defines interfaces — your application provides the concrete implem
 | `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
 | `IntegrationAdapter` | OAuth and external tool actions |
 | `IntentGraphQueue` | Background intent processing queue |
-| `ContactServiceAdapter` | Contact management |
 | `ChatSessionReader` | Load conversation history |
 | `ProfileEnricher` | Enrich profiles from external sources |
 | `NegotiationGraphDatabase` | Negotiation state persistence |
@@ -74,7 +83,6 @@ The package defines interfaces — your application provides the concrete implem
 | `MintConnectLink` | Mints short connect links for opportunity accepts |
 | `ChatSummaryReader` | Read-through chat-session digest |
 | `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |
-| `QuestionGeneratorReader` / `QuestionerDatabase` | Decision-question generation and persistence |
 | `NegotiationSummaryReader` | Negotiation-digest summarization (falls back to deterministic digests) |
 
 All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
@@ -188,7 +196,6 @@ const intents = new Intents({
   database,           // IntentGraphDatabase — required only by createGraph()
   embedder,           // EmbeddingGenerator
   queue,              // IntentGraphQueue
-  questionerEnqueue,  // QuestionerEnqueueFn
 });
 ```
 

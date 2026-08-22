@@ -1,4 +1,4 @@
-import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, ensurePersonalNetwork, eq, getPersonalIndexId, gt, gte, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
+import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, gt, gte, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
 
 import { tasks } from '../schemas/conversation.schema';
 import { notArchivedNegotiationTaskWhere } from './negotiation-attempt.atomic';
@@ -533,24 +533,15 @@ export class ChatDatabaseAdapter {
           permissions: schema.networkMembers.permissions,
           memberPrompt: schema.networkMembers.prompt,
           autoAssign: schema.networkMembers.autoAssign,
-          isPersonal: schema.networks.isPersonal,
           joinedAt: schema.networkMembers.createdAt,
         })
         .from(schema.networkMembers)
         .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
-        .leftJoin(schema.personalNetworks, eq(schema.networks.id, schema.personalNetworks.networkId))
         .where(
           and(
             eq(schema.networkMembers.userId, userId),
             isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt),
-            or(
-              eq(schema.networks.isPersonal, false),
-              and(
-                eq(schema.networks.isPersonal, true),
-                eq(schema.personalNetworks.userId, userId),
-              )
-            ),
           )
         );
       return result;
@@ -570,7 +561,6 @@ export class ChatDatabaseAdapter {
           permissions: schema.networkMembers.permissions,
           memberPrompt: schema.networkMembers.prompt,
           autoAssign: schema.networkMembers.autoAssign,
-          isPersonal: schema.networks.isPersonal,
           joinedAt: schema.networkMembers.createdAt,
         })
         .from(schema.networkMembers)
@@ -641,39 +631,6 @@ export class ChatDatabaseAdapter {
     return { ...row, permissions: { ...toPublicNetworkPermissions(row.permissions) } };
   }
 
-  /**
-   * IDs of all non-personal (community) networks the user is an active member of.
-   * Excludes soft-deleted memberships, soft-deleted networks, and personal networks.
-   * @param userId - The user whose community memberships to resolve
-   * @returns Array of network IDs (possibly empty)
-   */
-  async getNonPersonalNetworkIds(userId: string): Promise<string[]> {
-    const rows = await db
-      .select({ networkId: schema.networkMembers.networkId })
-      .from(schema.networkMembers)
-      .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
-      .where(and(
-        eq(schema.networkMembers.userId, userId),
-        isNull(schema.networkMembers.deletedAt),
-        isNull(schema.networks.deletedAt),
-        eq(schema.networks.isPersonal, false),
-      ));
-    return rows.map((r) => r.networkId);
-  }
-
-  /**
-   * Check whether an index is a personal network.
-   * @param networkId - The index to check
-   * @returns true if the index has isPersonal = true
-   */
-  async isPersonalNetwork(networkId: string): Promise<boolean> {
-    const rows = await db
-      .select({ isPersonal: schema.networks.isPersonal })
-      .from(schema.networks)
-      .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
-      .limit(1);
-    return rows[0]?.isPersonal === true;
-  }
 
   async getNetworkWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null> {
     const rows = await db
@@ -741,7 +698,6 @@ export class ChatDatabaseAdapter {
         prompt: schema.networks.prompt,
         imageUrl: schema.networks.imageUrl,
         permissions: schema.networks.permissions,
-        isPersonal: schema.networks.isPersonal,
         masterKeyHash: schema.networks.masterKeyHash,
         ownerId: ownerMembers.userId,
         createdAt: schema.networks.createdAt,
@@ -757,15 +713,9 @@ export class ChatDatabaseAdapter {
         and(
           isNull(schema.networks.deletedAt),
           inArray(schema.networks.id, ids),
-          // Only include personal networks owned by the requesting user;
-          // contacts in someone else's personal network must not see it.
-          or(
-            eq(schema.networks.isPersonal, false),
-            eq(ownerMembers.userId, userId)
-          ),
         )
       )
-      .orderBy(desc(schema.networks.isPersonal), desc(schema.networks.createdAt));
+      .orderBy(desc(schema.networks.createdAt));
 
     // Deduplicate: ownerMembers join can produce multiple rows per network
     // when a network has multiple owners. Keep the first encounter only.
@@ -790,7 +740,6 @@ export class ChatDatabaseAdapter {
           imageUrl: row.imageUrl,
           metadata: (row.metadata ?? {}) as Record<string, unknown>,
           permissions: toPublicNetworkPermissions(row.permissions),
-          isPersonal: row.isPersonal,
           hasMasterKey: row.masterKeyHash != null,
           role,
           createdAt: row.createdAt,
@@ -819,10 +768,7 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  /**
-   * Get non-personal networks that both users share membership in.
-   * Returns id, title, and member count for each shared network.
-   */
+  /** Get networks that both users share membership in. */
   async getSharedNetworks(currentUserId: string, targetUserId: string): Promise<{ id: string; title: string; _count: { members: number } }[]> {
     const currentUserIndexIds = db
       .select({ networkId: schema.networkMembers.networkId })
@@ -845,7 +791,6 @@ export class ChatDatabaseAdapter {
       .where(
         and(
           isNull(schema.networks.deletedAt),
-          eq(schema.networks.isPersonal, false),
           inArray(schema.networks.id, currentUserIndexIds),
           inArray(schema.networks.id, targetUserIndexIds),
         )
@@ -872,7 +817,6 @@ export class ChatDatabaseAdapter {
 
     const whereConditions = [
       isNull(schema.networks.deletedAt),
-      eq(schema.networks.isPersonal, false),
       // Unapproved network requests are inert rows, never discoverable.
       isNull(schema.networks.requestStatus),
     ];
@@ -963,32 +907,6 @@ export class ChatDatabaseAdapter {
       return result.map((r) => r.networkId);
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.getUserIndexIds error', { error: error instanceof Error ? error.message : String(error) });
-      return [];
-    }
-  }
-
-  /**
-   * Returns the user's own personal network ID(s). Sourced from `personal_networks`
-   * (PK on userId) rather than joining `network_members` × `isPersonal=true`, so
-   * contact memberships on other users' personal networks are excluded by
-   * construction. Fail-soft (returns []) to match {@link getUserIndexIds} since
-   * this runs in the HyDE worker path.
-   */
-  async getUserPersonalNetworkIds(userId: string): Promise<string[]> {
-    try {
-      const result = await db
-        .select({ networkId: schema.personalNetworks.networkId })
-        .from(schema.personalNetworks)
-        .innerJoin(schema.networks, eq(schema.personalNetworks.networkId, schema.networks.id))
-        .where(
-          and(
-            eq(schema.personalNetworks.userId, userId),
-            isNull(schema.networks.deletedAt)
-          )
-        );
-      return result.map((r) => r.networkId);
-    } catch (error: unknown) {
-      logger.error('ChatDatabaseAdapter.getUserPersonalNetworkIds error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -1123,31 +1041,22 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  async getAssignmentNetworkMembershipsForUser(userId: string): Promise<Array<{ networkId: string; isPersonal: boolean }>> {
+  async getAssignmentNetworkMembershipsForUser(userId: string): Promise<Array<{ networkId: string }>> {
     try {
       const result = await db
         .select({
           networkId: schema.networkMembers.networkId,
-          isPersonal: schema.networks.isPersonal,
         })
         .from(schema.networkMembers)
         .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
-        .leftJoin(schema.personalNetworks, eq(schema.networks.id, schema.personalNetworks.networkId))
         .where(
           and(
             eq(schema.networkMembers.userId, userId),
             isNull(schema.networkMembers.deletedAt),
             isNull(schema.networks.deletedAt),
-            or(
-              eq(schema.networks.isPersonal, false),
-              and(
-                eq(schema.networks.isPersonal, true),
-                eq(schema.personalNetworks.userId, userId),
-              ),
-            ),
           )
         );
-      return result.map((r) => ({ networkId: r.networkId, isPersonal: r.isPersonal }));
+      return result.map((r) => ({ networkId: r.networkId }));
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.getAssignmentNetworkMembershipsForUser error', { error: error instanceof Error ? error.message : String(error) });
       return [];
@@ -1301,7 +1210,6 @@ export class ChatDatabaseAdapter {
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
-        isPersonal: networks.isPersonal,
         createdAt: networks.createdAt,
         updatedAt: networks.updatedAt,
         ownerId: networkMembers.userId,
@@ -1333,7 +1241,6 @@ export class ChatDatabaseAdapter {
           prompt: row.prompt,
           imageUrl: row.imageUrl,
           permissions: perms,
-          isPersonal: row.isPersonal,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           memberCount,
@@ -1810,7 +1717,6 @@ export class ChatDatabaseAdapter {
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
-        isPersonal: networks.isPersonal,
         createdAt: networks.createdAt,
         updatedAt: networks.updatedAt,
         ownerId: networkMembers.userId,
@@ -1846,7 +1752,6 @@ export class ChatDatabaseAdapter {
       imageUrl: updatedRow.imageUrl,
       metadata: (updatedRow.metadata ?? {}) as Record<string, unknown>,
       permissions,
-      isPersonal: updatedRow.isPersonal,
       createdAt: updatedRow.createdAt,
       updatedAt: updatedRow.updatedAt,
       memberCount,
@@ -1959,19 +1864,6 @@ export class ChatDatabaseAdapter {
         .update(schema.networkMembers)
         .set({ deletedAt: now, updatedAt: now })
         .where(inArray(schema.networkMembers.userId, userIds));
-
-      // Soft-delete their personal networks
-      const personalNetworkIds = await db
-        .select({ networkId: schema.personalNetworks.networkId })
-        .from(schema.personalNetworks)
-        .where(inArray(schema.personalNetworks.userId, userIds));
-
-      if (personalNetworkIds.length > 0) {
-        await db
-          .update(schema.networks)
-          .set({ deletedAt: now, updatedAt: now })
-          .where(inArray(schema.networks.id, personalNetworkIds.map(p => p.networkId)));
-      }
 
       // Soft-delete their agents
       await db
@@ -2271,7 +2163,6 @@ export class ChatDatabaseAdapter {
         and(
           sql`${networks.permissions}->'invitationLink'->>'code' = ${code}`,
           isNull(networks.deletedAt),
-          eq(networks.isPersonal, false)
         )
       )
       .limit(1);
@@ -2337,7 +2228,6 @@ export class ChatDatabaseAdapter {
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
-        isPersonal: networks.isPersonal,
         masterKeyHash: networks.masterKeyHash,
         createdAt: networks.createdAt,
         updatedAt: networks.updatedAt,
@@ -2376,57 +2266,12 @@ export class ChatDatabaseAdapter {
       imageUrl: row.imageUrl,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
       permissions: toPublicNetworkPermissions(row.permissions),
-      isPersonal: row.isPersonal,
       hasMasterKey: row.masterKeyHash != null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
       _count: { members: memberCount },
     };
-  }
-
-  /**
-   * Search users within the caller's personal network members by name or email,
-   * optionally excluding existing members of a target index.
-   */
-  async searchPersonalNetworkMembers(userId: string, query: string, excludeIndexId?: string) {
-    if (!query || query.trim().length === 0) return [];
-
-    // Find user's contacts from personal network (index_members with permissions=['contact'])
-    const personalIndexId = await getPersonalIndexId(userId);
-    if (!personalIndexId) return [];
-
-    const contactUserIds = db
-      .select({ userId: schema.networkMembers.userId })
-      .from(schema.networkMembers)
-      .where(
-        and(
-          eq(schema.networkMembers.networkId, personalIndexId),
-          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-          isNull(schema.networkMembers.deletedAt)
-        )
-      );
-
-    const pattern = `%${query.trim()}%`;
-    const conditions = [
-      isNull(users.deletedAt),
-      inArray(users.id, contactUserIds),
-      or(ilike(users.name, pattern), ilike(users.email, pattern)),
-    ];
-
-    if (excludeIndexId) {
-      const existingMembers = db
-        .select({ userId: networkMembers.userId })
-        .from(networkMembers)
-        .where(eq(networkMembers.networkId, excludeIndexId));
-      conditions.push(notInArray(users.id, existingMembers));
-    }
-
-    return db
-      .select({ id: users.id, name: users.name, email: users.email, avatar: users.avatar })
-      .from(users)
-      .where(and(...conditions))
-      .limit(20);
   }
 
   /**
@@ -2457,7 +2302,7 @@ export class ChatDatabaseAdapter {
 
   /**
    * Update an existing member's role. Owner-only.
-   * Cannot demote the last owner. Cannot change contacts.
+   * Cannot demote the last owner.
    * @param networkId - The network ID
    * @param targetUserId - The member whose role is being changed
    * @param requestingUserId - The user making the change (must be owner)
@@ -2494,11 +2339,6 @@ export class ChatDatabaseAdapter {
 
     if (!existing) {
       throw new Error('Member not found');
-    }
-
-    // Don't allow changing contacts
-    if (existing.permissions?.includes('contact')) {
-      throw new Error('Cannot change role of a contact');
     }
 
     const newPermissions = role === 'owner' ? ['owner'] : ['member'];
@@ -2882,25 +2722,6 @@ export class ChatDatabaseAdapter {
 
 
   /**
-   * Returns personal network IDs where the given user is a contact member.
-   * @param userId - The user whose contact memberships to look up
-   * @returns Array of personal network IDs
-   */
-  async getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]> {
-    return db
-      .select({ networkId: schema.networkMembers.networkId })
-      .from(schema.networkMembers)
-      .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
-      .where(
-        and(
-          eq(schema.networkMembers.userId, userId),
-          eq(schema.networks.isPersonal, true),
-          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-        )
-      );
-  }
-
-  /**
    * Find a user by email (case-insensitive).
    * @param email - The email to search for
    * @returns User record or null
@@ -2941,100 +2762,6 @@ export class ChatDatabaseAdapter {
   }
 
 
-
-  /**
-   * Upsert a contact membership in the owner's personal network.
-   * Inserts an index_members row with permissions=['contact'].
-   * @param ownerId - The owner of the personal network
-   * @param contactUserId - The user to add as a contact member
-   * @param options - If restore=true, reactivates soft-deleted rows via onConflictDoUpdate(deletedAt=null).
-   *                  If restore=false (default), skips soft-deleted rows and uses onConflictDoNothing for active ones.
-   */
-  async upsertContactMembership(
-    ownerId: string,
-    contactUserId: string,
-    options: { restore?: boolean } = {}
-  ): Promise<void> {
-    const personalIndexId = await ensurePersonalNetwork(ownerId);
-
-    if (options.restore) {
-      await db
-        .insert(schema.networkMembers)
-        .values({
-          networkId: personalIndexId,
-          userId: contactUserId,
-          permissions: ['contact'],
-          autoAssign: false,
-        })
-        .onConflictDoUpdate({
-          target: [schema.networkMembers.networkId, schema.networkMembers.userId],
-          set: { deletedAt: null, updatedAt: new Date() },
-        });
-    } else {
-      // Check for soft-deleted row first — skip if found (opt-out respected)
-      const [existing] = await db
-        .select({ deletedAt: schema.networkMembers.deletedAt })
-        .from(schema.networkMembers)
-        .where(
-          and(
-            eq(schema.networkMembers.networkId, personalIndexId),
-            eq(schema.networkMembers.userId, contactUserId),
-            sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-          )
-        )
-        .limit(1);
-
-      if (existing?.deletedAt) return; // soft-deleted — do not restore
-
-      await db
-        .insert(schema.networkMembers)
-        .values({
-          networkId: personalIndexId,
-          userId: contactUserId,
-          permissions: ['contact'],
-          autoAssign: false,
-        })
-        .onConflictDoNothing();
-    }
-  }
-
-  /**
-   * Bulk upsert contact memberships in the owner's personal network.
-   * Respects opt-outs: skips contacts that have a soft-deleted membership row.
-   * @param ownerId - The owner of the personal network
-   * @param contactUserIds - User IDs to add as contacts
-   * @returns Resolves when all non-opted-out memberships are upserted
-   */
-  async upsertContactMembershipBulk(ownerId: string, contactUserIds: string[]): Promise<void> {
-    if (contactUserIds.length === 0) return;
-    const personalIndexId = await ensurePersonalNetwork(ownerId);
-
-    const softDeleted = new Set(
-      (await db
-        .select({ userId: schema.networkMembers.userId })
-        .from(schema.networkMembers)
-        .where(
-          and(
-            eq(schema.networkMembers.networkId, personalIndexId),
-            inArray(schema.networkMembers.userId, contactUserIds),
-            sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-            isNotNull(schema.networkMembers.deletedAt),
-          )
-        )
-      ).map(r => r.userId)
-    );
-
-    const idsToInsert = contactUserIds.filter(id => !softDeleted.has(id));
-    if (idsToInsert.length === 0) return;
-
-    const values = idsToInsert.map(userId => ({
-      networkId: personalIndexId,
-      userId,
-      permissions: ['contact'],
-      autoAssign: false,
-    }));
-    await db.insert(schema.networkMembers).values(values).onConflictDoNothing();
-  }
 
   /**
    * Bulk-add users as members to a specific index.
@@ -3109,186 +2836,6 @@ export class ChatDatabaseAdapter {
     })
       .from(schema.networkIntegrations)
       .where(eq(schema.networkIntegrations.networkId, networkId));
-  }
-
-  /**
-   * Hard-delete a contact membership from the owner's personal network.
-   * @param ownerId - The owner of the personal network
-   * @param contactUserId - The contact user to remove
-   */
-  async hardDeleteContactMembership(ownerId: string, contactUserId: string): Promise<void> {
-    const personalIndexId = await getPersonalIndexId(ownerId);
-    if (!personalIndexId) return;
-
-    await db.delete(schema.networkMembers)
-      .where(
-        and(
-          eq(schema.networkMembers.networkId, personalIndexId),
-          eq(schema.networkMembers.userId, contactUserId),
-          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-        )
-      );
-  }
-
-  /**
-   * Clear a soft-deleted contact membership that the other user has for this owner.
-   * This removes the "reverse opt-out" so the other user's personal network no longer blocks the owner.
-   * @param ownerId - The user being added as a contact
-   * @param otherUserId - The other user whose personal network may have a soft-deleted row for ownerId
-   */
-  async clearReverseOptOut(ownerId: string, otherUserId: string): Promise<void> {
-    const otherPersonalIndexId = await getPersonalIndexId(otherUserId);
-    if (!otherPersonalIndexId) return;
-
-    await db.delete(schema.networkMembers)
-      .where(
-        and(
-          eq(schema.networkMembers.networkId, otherPersonalIndexId),
-          eq(schema.networkMembers.userId, ownerId),
-          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-          isNotNull(schema.networkMembers.deletedAt),
-        )
-      );
-  }
-
-  /**
-   * Bulk clear soft-deleted contact memberships (reverse opt-outs) for multiple users.
-   * Removes rows where `ownerId` appears as a soft-deleted contact in each user's personal network.
-   * @param ownerId - The user being added as a contact
-   * @param otherUserIds - The users whose personal networks may have soft-deleted rows for ownerId
-   */
-  async clearReverseOptOutBulk(ownerId: string, otherUserIds: string[]): Promise<void> {
-    if (otherUserIds.length === 0) return;
-
-    // Batch lookup personal networks for all other users
-    const personalIndexRows = await db
-      .select({ userId: schema.personalNetworks.userId, networkId: schema.personalNetworks.networkId })
-      .from(schema.personalNetworks)
-      .where(inArray(schema.personalNetworks.userId, otherUserIds));
-
-    const personalIndexIds = personalIndexRows.map(r => r.networkId);
-    if (personalIndexIds.length === 0) return;
-
-    // Single DELETE across all matching personal networks
-    await db.delete(schema.networkMembers)
-      .where(
-        and(
-          inArray(schema.networkMembers.networkId, personalIndexIds),
-          eq(schema.networkMembers.userId, ownerId),
-          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-          isNotNull(schema.networkMembers.deletedAt),
-        )
-      );
-  }
-
-  /**
-   * Get all contact members from the owner's personal network.
-   * @param ownerId - The owner of the personal network
-   * @returns Array of contact members with user details
-   */
-  async getContactMembers(ownerId: string): Promise<Array<{
-    userId: string;
-    user: { id: string; name: string; email: string; avatar: string | null };
-  }>> {
-    const personalIndexId = await getPersonalIndexId(ownerId);
-    if (!personalIndexId) return [];
-
-    const rows = await db
-      .select({
-        userId: schema.networkMembers.userId,
-        userName: schema.users.name,
-        userEmail: schema.users.email,
-        userAvatar: schema.users.avatar,
-      })
-      .from(schema.networkMembers)
-      .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
-      .where(
-        and(
-          eq(schema.networkMembers.networkId, personalIndexId),
-          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-          isNull(schema.networkMembers.deletedAt),
-          isNull(schema.users.deletedAt),
-        )
-      );
-
-    return rows.map((row) => ({
-      userId: row.userId,
-      user: {
-        id: row.userId,
-        name: row.userName,
-        email: row.userEmail,
-        avatar: row.userAvatar,
-      },
-    }));
-  }
-
-  /**
-   * Get the user's personal network ID.
-   * @param userId - The user whose personal network to find
-   * @returns The personal network ID, or null if none exists
-   */
-  async getPersonalIndexId(userId: string): Promise<string | null> {
-    return getPersonalIndexId(userId);
-  }
-
-  /**
-   * Get contacts from a personal network with their latest intent timestamp and intent count.
-   * Contacts are sorted by most recent intent (freshest first) for introducer discovery.
-   *
-   * @param personalIndexId - The personal network to query
-   * @param ownerId - The network owner (excluded from results)
-   * @param limit - Maximum contacts to return
-   * @returns Contacts with intent freshness data
-   */
-  async getContactsWithIntentFreshness(
-    personalIndexId: string,
-    ownerId: string,
-    limit: number,
-  ): Promise<Array<{ userId: string; latestIntentAt: string | null; intentCount: number }>> {
-    try {
-      const rows = await db
-        .select({
-          userId: schema.networkMembers.userId,
-          latestIntentAt: sql<string | null>`MAX(${schema.intents.updatedAt})`.as('latest_intent_at'),
-          intentCount: sql<number>`COUNT(${schema.intents.id})::int`.as('intent_count'),
-        })
-        .from(schema.networkMembers)
-        .innerJoin(
-          schema.users,
-          eq(schema.networkMembers.userId, schema.users.id),
-        )
-        .leftJoin(
-          schema.intents,
-          and(
-            eq(schema.intents.userId, schema.networkMembers.userId),
-            isNull(schema.intents.archivedAt),
-            activeIntentLifecycleWhere(),
-          ),
-        )
-        .where(
-          and(
-            eq(schema.networkMembers.networkId, personalIndexId),
-            sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-            isNull(schema.networkMembers.deletedAt),
-            isNull(schema.users.deletedAt),
-            sql`${schema.networkMembers.userId} != ${ownerId}`,
-          ),
-        )
-        .groupBy(schema.networkMembers.userId)
-        .orderBy(sql`MAX(${schema.intents.updatedAt}) DESC NULLS LAST`)
-        .limit(limit);
-
-      return rows.map((row) => ({
-        userId: row.userId,
-        latestIntentAt: row.latestIntentAt ? new Date(row.latestIntentAt).toISOString() : null,
-        intentCount: Number(row.intentCount) || 0,
-      }));
-    } catch (error) {
-      logger.error('ChatDatabaseAdapter.getContactsWithIntentFreshness error', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return [];
-    }
   }
 
   /**

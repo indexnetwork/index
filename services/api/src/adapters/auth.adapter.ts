@@ -4,7 +4,6 @@ import { and, eq, sql } from 'drizzle-orm/sql';
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
 import { agentDatabaseAdapter } from './agent.database.adapter';
-import { ensurePersonalNetwork } from './database.adapter';
 
 /**
  * Database adapter for Better Auth integration.
@@ -68,16 +67,6 @@ export class AuthDatabaseAdapter {
         },
       };
     };
-  }
-
-  /**
-   * Creates a personal network for the user if one doesn't exist.
-   * Idempotent — safe to call on every sign-in.
-   * @param userId - The authenticated user
-   * @returns The personal network ID
-   */
-  async ensurePersonalNetwork(userId: string): Promise<string> {
-    return ensurePersonalNetwork(userId);
   }
 
   /**

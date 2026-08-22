@@ -145,8 +145,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/networks/:id/*", () => import("@/app/networks/[id]/page")),
       },
       {
-        path: "/mynetwork/*",
-        lazy: lazyRoute("/mynetwork/*", () => import("@/app/mynetwork/page")),
       },
       {
         path: "/pages/privacy-policy",

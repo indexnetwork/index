@@ -32,7 +32,7 @@ export { computePremiseHash, type ContextPremise };
  * protocol graph, or DB query so the per-network loop can be unit-tested in isolation.
  */
 export interface UserContextQueueDeps {
-  /** Non-personal network IDs the user belongs to. */
+  /** Network IDs the user belongs to. */
   getUserNetworkIds?: (userId: string) => Promise<string[]>;
   /** The user's ACTIVE premises (id, updatedAt, assertion text). */
   getActivePremises?: (userId: string) => Promise<ContextPremise[]>;
@@ -77,7 +77,7 @@ export interface UserContextQueueDeps {
 /**
  * Per-network user-context regeneration queue: queue + worker + handler in one class.
  *
- * `regenerate_contexts` — rebuilds each non-personal network's `user_contexts` row
+ * `regenerate_contexts` — rebuilds each network's `user_contexts` row
  * (synthetic paragraph + embedding + HyDE) from the user's current active premises,
  * skipping networks whose premise hash is unchanged. Workers are started only by the
  * protocol server via {@link UserContextQueue.startWorker}.
@@ -240,7 +240,7 @@ export class UserContextQueue {
     };
 
     // Global row (networkId = null): the profile-replacing projection. Always generated
-    // from active premises, even when the user belongs to no non-personal networks.
+    // from active premises, even when the user belongs to no networks.
     // The generated text is captured for the fast-intake pack below; when the row is
     // skipped as fresh, the pack falls back to the stored row's text instead.
     let globalContextText: string | null = null;
@@ -347,9 +347,9 @@ export class UserContextQueue {
   // Default production implementations
   // -------------------------------------------------------------------------
 
-  /** All non-personal network IDs the user is a member of. */
+  /** All network IDs the user is a member of. */
   private async defaultGetUserNetworkIds(userId: string): Promise<string[]> {
-    return chatDatabaseAdapter.getNonPersonalNetworkIds(userId);
+    return chatDatabaseAdapter.getUserIndexIds(userId);
   }
 
   /** The user's ACTIVE premises, narrowed to the fields contexts need. */

@@ -20,7 +20,7 @@ const ROOT = new URL("../src", import.meta.url).pathname;
  * credential-free source-test gate.
  */
 export const LIVE_MODEL_SPECS = new Set([
-  "contacts/tests/contact.inviter.spec.ts",
+  "capabilities/tests/negotiations.spec.ts",
   "enrichment/tests/enrichment.generator.spec.ts",
   "negotiations/tests/insight.generator.spec.ts",
   "negotiations/tests/negotiator-discovery-query.spec.ts",
@@ -47,7 +47,7 @@ async function runOne(file: string): Promise<ChildTestInput> {
   ]);
   const exitCode = await proc.exited;
   return {
-    file: file.replace(ROOT + "/", ""),
+    file: file.replace(ROOT + "/", "").replace(/^internal\//, ""),
     exitCode,
     durationMs: Date.now() - started,
     output: stdout + stderr,
@@ -72,7 +72,7 @@ export async function main(): Promise<number> {
   console.log(`Running ${files.length} provider-free spec files with concurrency=${concurrency}`);
   if (liveFiles.length > 0) {
     console.log("Excluded explicit live-model specs (run through the live-evaluation workflow):");
-    for (const file of liveFiles) console.log(`  ${file.replace(ROOT + "/", "")}`);
+    for (const file of liveFiles) console.log(`  ${file.replace(ROOT + "/", "").replace(/^internal\//, "")}`);
   }
   console.log();
 

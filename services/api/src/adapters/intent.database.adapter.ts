@@ -1023,25 +1023,6 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Returns personal network IDs where the given user is a contact member.
-   * @param userId - The user whose contact memberships to look up
-   * @returns Array of personal network IDs
-   */
-  async getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]> {
-    return db
-      .select({ networkId: schema.networkMembers.networkId })
-      .from(schema.networkMembers)
-      .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
-      .where(
-        and(
-          eq(schema.networkMembers.userId, userId),
-          eq(schema.networks.isPersonal, true),
-          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-        )
-      );
-  }
-
-  /**
    * Delete all intents for a user (for test teardown).
    */
   async deleteByUserId(userId: string): Promise<void> {

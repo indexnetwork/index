@@ -21,7 +21,6 @@ import { handleOpportunity } from "./opportunity.command";
 import { handleNegotiation } from "./negotiation.command";
 import { handleNetwork } from "./network.command";
 import { handleConversation } from "./conversation.command";
-import { handleContact } from "./contact.command";
 import { handleScrape } from "./scrape.command";
 import { handleSync } from "./sync.command";
 import { handleOnboarding } from "./onboarding.command";
@@ -108,7 +107,6 @@ function renderHelp(): void {
     "profile",
     "conversation",
     "network",
-    "contact",
     "scrape",
     "sync",
     "onboarding",
@@ -171,7 +169,6 @@ function renderHelp(): void {
     helpRowCmd(cmdLW, "conversation", "list · with · show · send · stream"),
     helpRowCmd(cmdLW, "network", "list · create · show · update · delete"),
     helpRowCont(cmdLW, "join · leave · invite"),
-    helpRowCmd(cmdLW, "contact", "list · remove"),
     "",
     helpRowCmd(cmdLW, "scrape", "extract content from a URL"),
     helpRowCmd(cmdLW, "sync", "download your context locally"),
@@ -381,11 +378,6 @@ async function main(): Promise<void> {
     case "conversation":
       await handleConversation(client, args.subcommand, args.positionals ?? [], {
         limit: args.limit,
-        json: args.json,
-      });
-      return;
-    case "contact":
-      await handleContact(client, args.subcommand, args.positionals ?? [], {
         json: args.json,
       });
       return;
