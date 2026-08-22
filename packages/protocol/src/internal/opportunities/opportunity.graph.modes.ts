@@ -13,13 +13,12 @@
 import type { Id, NegotiationContinuationReceipt, OpportunityActor } from '../../platform/database.js';
 import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
-import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";
-import { NEGOTIATION_MAX_TURNS_AMBIENT } from '../negotiations/negotiation.module.js';
+import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../negotiations/negotiation.protocol.js";
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
-import { safeFallbackSummary } from "./opportunity.presentation.js";
-import { AMBIENT_PARK_WINDOW_MS, negotiateCandidates } from '../negotiations/negotiation.module.js';
+import { safeFallbackSummary } from "./opportunity.presentation.js";import { AMBIENT_PARK_WINDOW_MS } from "../negotiations/negotiation.tools.js";
+import { negotiateCandidates } from "../negotiations/negotiation.graph.js";
 import type { OpportunityMutationResult } from "./opportunity.lifecycle.js";
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
 import { negotiateExistingOpportunity } from "./opportunity.existing-negotiation.js";

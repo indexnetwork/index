@@ -36,7 +36,6 @@ export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platfor
 export type { ChatSummaryReader } from "./platform/chat-summary.js";
 export type { NegotiationSummaryReader } from "./platform/negotiation-summary.js";
 export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
-export { NegotiationSummarizer } from "./internal/negotiations/negotiation.module.js";
 export type { ContactServiceAdapter } from "./internal/contacts/contact.repository.port.js";
 export type {
   ChatGraphCompositeDatabase,
@@ -168,7 +167,6 @@ export type {
 
 export { MaintenanceGraphFactory } from "./internal/maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./internal/maintenance/maintenance.graph.js";
-export { NegotiationGraphFactory, negotiateCandidates } from "./internal/negotiations/negotiation.module.js";
 export { OpportunityGraphFactory } from "./internal/opportunities/opportunity.module.js";
 export { hasUnsupportedOpportunityClaim } from "./internal/opportunities/opportunity.module.js";
 export type { StampNewbornOpportunitiesFn } from "./internal/opportunities/opportunity.module.js";
@@ -202,34 +200,6 @@ export { ChatSummarizer } from "./internal/chat/chat.summarizer.js";
 export { HydeGenerator } from "./internal/discovery/hyde.generator.js";
 export { SuggestionGenerator } from "./internal/chat/chat.suggester.js";
 export { LensInferrer } from "./internal/discovery/lens.inferrer.js";
-export { NegotiationInsightsGenerator } from "./internal/negotiations/negotiation.module.js";
-export type { NegotiationDigest } from "./internal/negotiations/negotiation.module.js";
-export { IndexNegotiator } from "./internal/negotiations/negotiation.module.js";
-export {
-  QUESTION_BUDGET_PER_PRINCIPAL,
-  assessAskAdmissibility,
-  authorChecklist,
-  checklistFromTurns,
-  checklistVerdictState,
-  configuredQuestionBudgetPerPrincipal,
-  countPrincipalAskUserTurns,
-  isChecklistAuthored,
-  reconcileChecklist,
-  renderChecklistSection,
-} from "./internal/negotiations/negotiation.module.js";
-export type {
-  Answerhood,
-  AskAdmissibility,
-  AskInadmissibility,
-  ChecklistItem,
-  ChecklistKind,
-  ChecklistResult,
-  NegotiationChecklist,
-} from "./internal/negotiations/negotiation.module.js";
-export { NegotiationReflector } from "./internal/negotiations/negotiation.module.js";
-export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./internal/negotiations/negotiation.module.js";
-export type { NegotiatorMemoryEntry } from "./internal/negotiations/negotiation.module.js";
-export type { NegotiatorClientDmMessage, NegotiatorClientDmQuery, NegotiatorClientDmRetrieveFn } from "./internal/negotiations/negotiation.module.js";
 export type { QuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn } from "./protocol/question-input.js";
 export { INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./protocol/question.js";
 export { PoolDiscriminatorMiner } from "./internal/opportunities/opportunity.module.js";
@@ -291,7 +261,6 @@ export { createToolRegistry } from "./internal/shared/agent/tool.registry.js";
 // capability implementation directories remain private to the package.
 export { createEnrichmentTools } from "./internal/enrichment/enrichment.tools.js";
 export type { EnrichmentToolDeps } from "./internal/contexts/context.tools.port.js";
-export { AMBIENT_PARK_WINDOW_MS } from './internal/negotiations/negotiation.module.js';
 export { normalizeTelegramHandle } from './internal/shared/utils/telegram-handle.js';
 
 // ─── MCP ──────────────────────────────────────────────────────────────────────
@@ -316,38 +285,73 @@ export { NegotiationConsultationReasonSchema } from "./protocol/schemas/negotiat
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./protocol/schemas/negotiation-state.schema.js";
 export type { NegotiationCounterpartyBinding } from "./platform/database.js";
 export type { NegotiationAction, NegotiationConsultationReason, NegotiationSeat, NegotiationProtocolVersion } from "./protocol/schemas/negotiation-state.schema.js";
-export type { NegotiationGraphLike } from "./internal/negotiations/negotiation.module.js";
-export {
-  HERMES_OWNER_DIRECTIVE,
-  HermesNegotiationResponseSchema,
-  allowedHermesActionsFor,
-  buildHermesNegotiationTurn,
-} from "./internal/negotiations/negotiation.module.js";
+
+// ─── Negotiation compatibility exports ─────────────────────────────────────
+/**
+ * negotiation — the capability's sole cross-capability surface.
+ *
+ * Anything outside this capability imports from here and nowhere else.
+ */
+export { AMBIENT_PARK_WINDOW_MS, createNegotiationTools } from "./internal/negotiations/negotiation.tools.js";
+export { createNegotiationAnswerTools } from "./internal/negotiations/negotiation.answer.tools.js";
+export { buildLifecycleNarration, parkLifecycleLabel } from "./internal/negotiations/negotiation.lifecycle-narration.js";
+export type { NegotiationLifecycleNarration, NegotiationParkNarration } from "./internal/negotiations/negotiation.lifecycle-narration.js";
+export { buildFallbackDigest, NegotiationSummarizer } from "./internal/negotiations/negotiation.summarizer.js";
+export { IndexNegotiator } from "./internal/negotiations/negotiation.agent.js";
+export { negotiateCandidates, NegotiationGraphFactory } from "./internal/negotiations/negotiation.graph.js";
+export { NegotiationInsightsGenerator } from "./internal/negotiations/insight.generator.js";
+export { NegotiationReflector } from "./internal/negotiations/negotiation.reflect.js";
 export type {
-  HermesNegotiationAction,
-  HermesNegotiationResponse,
-} from "./internal/negotiations/negotiation.module.js";
+  ChatReflectionInput,
+  DistilledMemory,
+  NegotiationReflectionInput,
+  NegotiationReflectJobData,
+  ReflectEnqueueFn,
+  ReflectionTranscriptEntry,
+} from "./internal/negotiations/negotiation.reflect.js";
+export type { NegotiationCandidate, OnNegotiationResolved } from "./internal/negotiations/negotiation.graph.js";
+export type { NegotiationDigest } from "./internal/negotiations/insight.generator.js";
 
-// ─── Negotiation seat rules (v2 client-advocate protocol) ───────────────────
-
-export { isNegotiationTurnCapReached, expectedNegotiationSpeaker, negotiationScopeKey, readNegotiationMessages, allowedActionsFor, ASK_USER_WINDOW_MS, isTerminalAction, isRejectLikeAction, readProtocolVersion, resolveSeat, seatViolationMessage } from "./internal/negotiations/negotiation.module.js";
-export type { NegotiationSpeakerParticipants, NegotiationSpeakerMessage, NegotiationScopeMetadata } from "./internal/negotiations/negotiation.module.js";
-export { assessConsultationEligibility, consultationPromptFor, NEGOTIATION_CONSULTATION_POLICY_MODE } from "./internal/negotiations/negotiation.module.js";
-export type { ConsultationEligibility, ConsultationEligibilityInput, NegotiationConsultationPolicyMode } from "./internal/negotiations/negotiation.module.js";
-// The pre-contact park predicate (#1445), re-exported for the radar read path:
-// the "asking you first" state is the same open-consult recognition the
-// per-signal cap performs, so both sides must read the stamp through one
-// function rather than two copies of the same JSON walk.
-export { countOpenPreContactConsults } from "./internal/negotiations/negotiation.module.js";
-export type { PreContactConsultTaskRow } from "./internal/negotiations/negotiation.module.js";
 export {
-  NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
-  NEGOTIATION_QUESTION_GENERIC_NETWORK,
-  negotiationQuestionSettlementId,
-} from "./internal/negotiations/negotiation.module.js";
-
-// ─── Negotiation answer consumption (conversational questions) ──────────────
-
+  ASK_USER_LOCK_SLACK_MS,
+  DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP,
+  allowedActionsFor,
+  ASK_USER_WINDOW_MS,
+  NEGOTIATION_MAX_TURNS_AMBIENT,
+  NEGOTIATION_MAX_TURNS_CHAT,
+  isRejectLikeAction,
+  isTerminalAction,
+  negotiationAskRoundsCap,
+  readProtocolVersion,
+  resolveSeat,
+  seatViolationMessage,
+} from "./internal/negotiations/negotiation.protocol.js";
+export { countNegotiationAskRounds, countPrincipalAskUserTurns } from "./internal/negotiations/negotiation.graph.shared.js";
+export {
+  QUESTION_BUDGET_PER_PRINCIPAL,
+  configuredQuestionBudgetPerPrincipal,
+  MAX_CHECKLIST_DIMENSIONS,
+  MIN_CHECKLIST_DIMENSIONS,
+  NegotiationChecklistSchema,
+  assessAskAdmissibility,
+  authorChecklist,
+  checklistFromTurns,
+  checklistVerdictState,
+  isChecklistAuthored,
+  reconcileChecklist,
+  renderChecklistSection,
+} from "./internal/negotiations/negotiation.checklist.contracts.js";
+export type {
+  Answerhood,
+  AskAdmissibility,
+  AskInadmissibility,
+  ChecklistItem,
+  ChecklistKind,
+  ChecklistResult,
+  NegotiationChecklist,
+} from "./internal/negotiations/negotiation.checklist.contracts.js";
+export { NEGOTIATION_PARK_REASONING, NegotiationStallGapAuthor } from "./internal/negotiations/negotiation.stall-gap.js";
+export type { NegotiationStallGap, NegotiationStallReason, StallGapAuthorInput } from "./internal/negotiations/negotiation.stall-gap.js";
 export {
   classifyInflightPark,
   classifyParkedNegotiation,
@@ -356,7 +360,7 @@ export {
   negotiationParkAnswerId,
   resumeParkedNegotiation,
   routeAnswerRef,
-} from "./internal/negotiations/negotiation.module.js";
+} from "./internal/negotiations/negotiation.answer-consumption.js";
 export type {
   AnswerRoute,
   InflightAnswerSettlementInput,
@@ -370,4 +374,58 @@ export type {
   QuestionBlockAnswerConsumptionInput,
   QuestionBlockAnswerConsumptionResult,
   RoutedAnswer,
-} from "./internal/negotiations/negotiation.module.js";
+} from "./internal/negotiations/negotiation.answer-consumption.js";
+export {
+  HERMES_OWNER_DIRECTIVE,
+  HERMES_SHARED_MESSAGE_TEMPLATES,
+  HermesNegotiationActionSchema,
+  HermesNegotiationResponseSchema,
+  HermesOwnerDirectiveSchema,
+  HermesRoleAlignmentSchema,
+  allowedHermesActionsFor,
+  buildHermesNegotiationTurn,
+} from "./internal/negotiations/negotiation.hermes-contract.js";
+export { DEFAULT_NEGOTIATION_MAX_TURNS, isNegotiationTurnCapReached } from "./internal/negotiations/negotiation.turn-cap.js";
+export { MAX_CONSECUTIVE_TURN_FAILURES, appendTurnFailure, isTimeoutFailure, turnFailureBoundReached } from "./internal/negotiations/negotiation.turn-failure.js";
+export type { NegotiationTurnFailure } from "./internal/negotiations/negotiation.turn-failure.js";
+export { expectedNegotiationSpeaker } from "./internal/negotiations/negotiation.expected-speaker.js";
+export { negotiationScopeKey, readNegotiationMessages } from "./internal/negotiations/negotiation.scope.js";
+export {
+  NEGOTIATION_CONSULTATION_POLICY_MODE,
+  assessConsultationEligibility,
+  consultationPromptFor,
+  countOpenPreContactConsults,
+} from "./internal/negotiations/negotiation.consultation-policy.js";
+export {
+  NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
+  NEGOTIATION_QUESTION_GENERIC_NETWORK,
+  isSafeAuthoredNegotiationQuestion,
+  isSafeNegotiationQuestionText,
+  negotiationQuestionSettlementId,
+  validateInflightAskUserFields,
+} from "./internal/negotiations/negotiation.question-safety.js";
+export { renderNegotiatorChatMemorySection } from "./internal/negotiations/negotiation.memory.js";
+export type {
+  ConsultationEligibility,
+  ConsultationEligibilityInput,
+  NegotiationConsultationPolicyMode,
+  PreContactConsultTaskRow,
+} from "./internal/negotiations/negotiation.consultation-policy.js";
+export type {
+  HermesNegotiationAction,
+  HermesNegotiationResponse,
+  HermesOwnerDirective,
+  HermesRoleAlignment,
+} from "./internal/negotiations/negotiation.hermes-contract.js";
+export type {
+  NegotiationGraphLike,
+} from "./internal/negotiations/negotiation.state.js";
+export type { NegotiationSpeakerMessage, NegotiationSpeakerParticipants } from "./internal/negotiations/negotiation.expected-speaker.js";
+export type { NegotiationScopeMetadata } from "./internal/negotiations/negotiation.scope.js";
+export type { NegotiatorMemoryEntry } from "./internal/negotiations/negotiation.memory.js";
+export type {
+  NegotiatorClientDmMessage,
+  NegotiatorClientDmQuery,
+  NegotiatorClientDmRetrieveFn,
+} from "./internal/negotiations/negotiation.client-dm.js";
+export type { NegotiationToolDeps } from "./internal/negotiations/negotiation.tools.port.js";

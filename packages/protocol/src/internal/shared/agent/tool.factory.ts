@@ -7,8 +7,7 @@ import { OpportunityGraphFactory } from "../../opportunities/opportunity.module.
 import { HydeGraphFactory } from "../../discovery/hyde.graph.js";
 import { HydeGenerator } from "../../discovery/hyde.generator.js";
 import { LensInferrer } from "../../discovery/lens.inferrer.js";
-import { Networks } from "../../../capabilities/networks.js";
-import { NegotiationGraphFactory } from "../../negotiations/negotiation.module.js";
+import { Networks } from "../../../capabilities/networks.js";import { NegotiationGraphFactory } from "../../negotiations/negotiation.graph.js";
 import { PremiseGraphFactory } from "../../premises/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 
@@ -24,8 +23,7 @@ import { createContactTools } from "../../contacts/contact.tools.js";
 // The composition root reaches the leaf directly (it is exempt from the barrel
 // rule by design): importing agents/agent.module.js here would pull in the
 // chat personas, which import this module back -- a runtime cycle.
-import { createAgentTools } from "../../agents/agent.tools.js";
-import { createNegotiationTools } from "../../negotiations/negotiation.module.js";
+import { createAgentTools } from "../../agents/agent.tools.js";import { createNegotiationTools } from "../../negotiations/negotiation.tools.js";
 import { createPremiseTools } from "../../premises/premise.tools.js";
 import type { OpportunityOwnerApprovalDeps } from "../../opportunities/opportunity.tools.port.js";
 import { bindOwnerApprovalProvenance } from "../../opportunities/opportunity.owner-provenance.js";

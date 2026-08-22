@@ -1,9 +1,4 @@
-/**
- * Pure mappers from raw per-candidate negotiation data to the protocol's
- * `DiscoveryNegotiation` / `DiscoverySummary` shapes consumed by the question
- * generator. No DB access, no LLM — safe to import from anywhere.
- */
-import type { NegotiationTurn, NegotiationOutcome } from "../negotiations/negotiation.module.js";
+import type { NegotiationTurn, NegotiationOutcome } from "../negotiations/negotiation.state.js";
 import type { DiscoveryNegotiation, DiscoveryOutcome, DiscoverySummary, DiscoveryTurn, NegotiationRole } from "../../protocol/schemas/discovery-question.schema.js";
 
 /**

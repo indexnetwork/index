@@ -9,8 +9,8 @@ import { createOpportunityTools, createOpportunityVerdictTools } from '../../opp
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
 import { createContactTools } from '../../contacts/contact.tools.js';
-import { createAgentTools } from '../../agents/agent.tools.js';
-import { createNegotiationAnswerTools, createNegotiationTools } from '../../negotiations/negotiation.module.js';
+import { createAgentTools } from '../../agents/agent.tools.js';import { createNegotiationAnswerTools } from "../../negotiations/negotiation.answer.tools.js";
+import { createNegotiationTools } from "../../negotiations/negotiation.tools.js";
 import { createChatTools } from '../../chat/chat.tools.js';
 import { createPremiseTools } from '../../premises/premise.tools.js';
 import type { OpportunityOwnerApprovalDeps } from '../../opportunities/opportunity.tools.port.js';

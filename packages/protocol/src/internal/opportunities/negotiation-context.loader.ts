@@ -19,8 +19,7 @@
  * private gate decision as a "counterparty declined" event.
  */
 
-import type { NegotiationGraphDatabase, OpportunityStatus } from '../../platform/database.js';
-import type { NegotiationOutcome, NegotiationTurn } from '../negotiations/negotiation.module.js';
+import type { NegotiationGraphDatabase, OpportunityStatus } from '../../platform/database.js';import type { NegotiationOutcome, NegotiationTurn } from "../negotiations/negotiation.state.js";
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('NegotiationContextLoader');
