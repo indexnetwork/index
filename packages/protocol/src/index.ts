@@ -21,7 +21,8 @@ export type {
   ToolDeps,
   RawToolDefinition,
 } from "./internal/shared/agent/tool.helpers.js";
-export { ChatContextAccessError, resolveChatContext } from "./internal/shared/agent/tool.helpers.js";
+export { resolveChatContext } from "./internal/shared/agent/tool.helpers.js";
+export { ChatContextAccessError } from "./platform/errors.js";
 export { deriveAllowedNetworkIds, deriveDiscoveryNetworkIds } from "./internal/shared/agent/tool.scope.js";
 export type { ToolScopeType, ScopeMembership } from "./protocol/scope.js";
 export { requestContext, setRequestContextStore } from "./internal/shared/observability/request-context.js";

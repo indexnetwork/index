@@ -1,4 +1,5 @@
 import type { Id } from '../../../platform/database.js';
+import { ChatContextAccessError } from '../../../platform/errors.js';
 import type { OpportunityGraphDeps } from '../../opportunities/opportunity.graph.shared.js';
 import type { OpportunityMutationOutcome } from '../../opportunities/opportunity.graph.modes.js';
 import { z } from "zod";
@@ -285,16 +286,7 @@ export type ProtocolDeps = ChatToolHostDeps;
  * Thrown when a requested chat scope is invalid for the authenticated user.
  * Controllers can map this to an HTTP status code.
  */
-export class ChatContextAccessError extends Error {
-  constructor(
-    message: string,
-    public readonly statusCode: number,
-    public readonly code: "USER_NOT_FOUND" | "INDEX_NOT_FOUND" | "INDEX_MEMBERSHIP_REQUIRED"
-  ) {
-    super(message);
-    this.name = "ChatContextAccessError";
-  }
-}
+export { ChatContextAccessError } from "../../../platform/errors.js";
 
 /**
  * Resolve the canonical context used by chat tools and system prompt.
