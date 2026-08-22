@@ -372,7 +372,7 @@ interfaces in `internal/shared/interfaces/`. The canonical Drizzle schema lives 
 Core tables the protocol interfaces read/write:
 
 - **Identity, premises, and context**: `users` (name/bio/location), `user_socials`, `premises`, `premise_networks`, `user_contexts`
-- **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`, `personal_networks`
+- **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`
 - **Opportunities & discovery**: `opportunities`, `hyde_documents`, `opportunity_discovery_runs`, `enrichment_tool_runs`, `questions`
 - **Agents**: `agents`, `agent_transports`, `agent_permissions`, `apikey`
 

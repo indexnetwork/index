@@ -967,6 +967,13 @@
       "when": 1786886087818,
       "tag": "0138_add_intent_agent_dossier_and_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1786886087819,
+      "tag": "0139_retire_personal_networks",
+      "breakpoints": true
     }
   ]
 }

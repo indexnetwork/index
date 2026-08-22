@@ -311,9 +311,7 @@ window.IndexApp = (function () {
     const apiRole = n.role === "owner" || n.role === "member" ? n.role : null;
     const ownerId = n.user && n.user.id;
     const inferredOwner = !!(meId && ownerId && meId === ownerId);
-    const role = n.isPersonal
-      ? "personal"
-      : (apiRole || (inferredOwner ? "owner" : "member"));
+    const role = apiRole || (inferredOwner ? "owner" : "member");
     return {
       id: n.id,
       name: n.title || n.name || "untitled",
@@ -321,7 +319,6 @@ window.IndexApp = (function () {
       members: (n._count && n._count.members) || n.memberCount || 0,
       role,
       joined,
-      isPersonal: n.isPersonal === true,
       hasMasterKey: n.hasMasterKey === true,
       hidden: n.hidden === true,
       privacy: joinPolicy === "anyone" ? "public" : "private",

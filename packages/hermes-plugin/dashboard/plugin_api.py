@@ -807,7 +807,6 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         title = _text(network.get("title") or network.get("name"), "Untitled network")
         detail = _truncate(network.get("prompt") or network.get("description"))
         owner = network.get("user") if isinstance(network.get("user"), dict) else {}
-        is_personal = network.get("isPersonal") is True
         # Prefer viewer membership role from GET /networks; owner-id compare
         # fails when a network has multiple owners.
         api_role = _text(network.get("role"))
@@ -824,7 +823,6 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         member_count = _member_count(network)
         if member_count is not None:
             item["memberCount"] = member_count
-        item["isPersonal"] = is_personal
         item["role"] = "owner" if is_owner else "member"
         if network.get("hasMasterKey") is True:
             item["hasMasterKey"] = True
@@ -845,7 +843,7 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         if detail:
             item["detail"] = detail
         items.append(item)
-    items.sort(key=lambda n: (not n.get("isPersonal"), n.get("title", "").lower()))
+    items.sort(key=lambda n: n.get("title", "").lower())
     return {
         "items": items,
         "count": len(items),

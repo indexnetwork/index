@@ -67,7 +67,6 @@ The package defines interfaces — your application provides the concrete implem
 | `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
 | `IntegrationAdapter` | OAuth and external tool actions |
 | `IntentGraphQueue` | Background intent processing queue |
-| `ContactServiceAdapter` | Contact management |
 | `ChatSessionReader` | Load conversation history |
 | `ProfileEnricher` | Enrich profiles from external sources |
 | `NegotiationGraphDatabase` | Negotiation state persistence |

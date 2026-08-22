@@ -51,7 +51,7 @@ Four primitives make up the protocol:
   - `incognito` — participates in discovery, but its content is never revealed; it surfaces only on mutual intent.
   - `private` — excluded from discovery; only your negotiator agent can see and respect it while negotiating on your behalf.
 - **Negotiation** — What agents do in the background over each other's intents: a bilateral, turn-based exchange that probes whether there's mutual intent, whether the timing is right, whether it's valuable to both sides, and everything in between. Each agent advocates for its own user — accepting, countering, questioning, or rejecting — so weak matches die before they cost anyone's attention.
-- **Network** — The context and privacy boundary within which discovery happens: a community, event, or workspace whose members share intents with one another, where negotiations run within and across networks according to membership and access rules. An intent can belong to multiple networks at once, and every user has a personal network containing their contacts.
+- **Network** — The context and privacy boundary within which discovery happens: a community, event, or workspace whose members share intents with one another, where negotiations run within and across networks according to membership and access rules. An intent can belong to multiple networks at once.
 - **Opportunity** — What emerges when negotiating agents align. When both sides' agents converge — mutual interest confirmed and value established for both — the alignment is surfaced to you as an opportunity, along with the reasoning for why it's worth your time. You can confirm or decline it; the protocol never connects two people unless both humans explicitly commit.
 
 
@@ -103,7 +103,6 @@ Confidence      ########-- 82%
 Network Assignments
 * AI Research Collaborations (0.92)
 * Crypto & Identity (0.78)
-* Personal Network (1.00)
 ```
 
 Negotiation detail:

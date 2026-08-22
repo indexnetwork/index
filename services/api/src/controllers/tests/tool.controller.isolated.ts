@@ -74,18 +74,6 @@ describe("ToolController Integration", () => {
   }, 60_000);
 
   afterAll(async () => {
-    // Remove contacts and memberships created during tests before deleting users
-    if (testUserId) {
-      try {
-        // Remove any contacts added during tests
-        const contacts = await invokeTool("list_contacts", {});
-        const contactList = ((contacts.data as Record<string, unknown>)?.contacts as Array<{ userId: string }>) ?? [];
-        for (const c of contactList) {
-          await invokeTool("remove_contact", { contactUserId: c.userId });
-        }
-      } catch { /* ignore cleanup errors */ }
-    }
-
     for (const id of [testUserId, testUserBId]) {
       if (id) {
         try { await userAdapter.deleteById(id); } catch { /* FK constraint — user has memberships */ }
@@ -127,7 +115,7 @@ describe("ToolController Integration", () => {
   }, 60_000);
 
   test("POST /tools blocks non-onboarding tools for incomplete users", async () => {
-    const { status, data } = await invokeTool("list_contacts", {}, {
+    const { status, data } = await invokeTool("list_opportunities", {}, {
       id: testUserBId,
       email: testEmailB,
       name: "Test Tool User B",
@@ -153,13 +141,6 @@ describe("ToolController Integration", () => {
     expect(data.error).toBeDefined();
     expect(data.error).toContain("not found");
     console.log("unknown_tool error:", data.error);
-  }, 60_000);
-
-  test("POST /tools/list_contacts should return contacts for user", async () => {
-    const { status, data } = await invokeTool("list_contacts", {});
-    expect(status).toBe(200);
-    expect(data).toBeDefined();
-    console.log("list_contacts result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
   test("POST /tools/read_networks should return indexes for user", async () => {
@@ -303,31 +284,6 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    // ── Contact (CLI: contact list, add, remove) ─────────────────
-
-    test("list_contacts with empty query (CLI: contact list)", async () => {
-      const { status, data } = await invokeTool("list_contacts", {});
-      expect(status).toBe(200);
-      expect(data.success).toBe(true);
-    }, 60_000);
-
-    test("add_contact with email + name (CLI: contact add)", async () => {
-      const { status, data } = await invokeTool("add_contact", {
-        email: "new-contact-test@example.com",
-        name: "New Contact",
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 60_000);
-
-    test("remove_contact with contactUserId (CLI: contact remove)", async () => {
-      const { status, data } = await invokeTool("remove_contact", {
-        contactUserId: "00000000-0000-0000-0000-000000000000",
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 60_000);
-
     // ── Membership (CLI: introduce prerequisite calls) ───────────
 
     test("read_network_memberships with userId (CLI: introduce step 1)", async () => {
@@ -362,7 +318,7 @@ describe("ToolController Integration", () => {
     // ── Sync (CLI: sync) ─────────────────────────────────────────
 
     test("all sync tools accept empty query (CLI: sync)", async () => {
-      const syncTools = ["read_user_contexts", "read_networks", "read_intents", "list_contacts"];
+      const syncTools = ["read_user_contexts", "read_networks", "read_intents"];
       for (const toolName of syncTools) {
         const { status, data } = await invokeTool(toolName, {});
         expect(status).toBe(200);

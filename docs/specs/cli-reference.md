@@ -236,7 +236,7 @@ The `index network` command manages networks (the user-facing term for indexes) 
 
 ### `index network list`
 
-Lists networks the authenticated user is a member of. Calls `GET /api/networks`. Renders a table with columns: title, member count, role (owner/admin/member), join policy, created date. Personal networks (`isPersonal: true`) are filtered from the display.
+Lists networks the authenticated user is a member of. Calls `GET /api/networks`. Renders a table with columns: title, member count, role (owner/admin/member), join policy, created date.
 
 ### `index network create <name>`
 
@@ -265,18 +265,6 @@ Deletes a network. Calls the `delete_network` MCP tool via the Tool HTTP API. Pr
 ### `index network invite <id> <email>`
 
 Invites directly by any valid email through the server invitation flow. Calls `POST /api/networks/:id/members/invite` with `{ email }`; the server resolves existing users or provisions the pending invitee as needed. Prints whether the invitation was sent or the user was already a member.
-
----
-
-## Contact
-
-### `index contact list`
-
-Lists the authenticated user's contacts. Calls the `list_contacts` MCP tool via the Tool HTTP API. Renders a table of contacts with name, email, and added date.
-
-### `index contact remove <email>`
-
-Removes a contact by email. First calls `list_contacts` to resolve the email to a `userId`, then calls the `remove_contact` MCP tool with `{ contactUserId }`.
 
 ---
 
@@ -367,7 +355,7 @@ Marks the user's onboarding as complete.
 34. `index opportunity reject <id>` sends rejected status and prints confirmation.
 
 ### Network
-36. `index network list` displays non-personal networks.
+36. `index network list` displays the user's networks.
 37. `index network create <name>` creates directly when eligible; otherwise it submits an early-access request only after the exact early-access denial.
 38. `index network show <id>` displays network details and member table.
 39. `index network join <id>` joins a public network.

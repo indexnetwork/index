@@ -81,7 +81,7 @@ function NewIntent({ onDone, onBack }) {
   const fastChoice = useRef({});          // { networkId } or { whereText }, matching web
   const fastWhereLabel = useRef("everywhere");
 
-  const fastCommunities = (env.networks || []).filter((network) => !network.isPersonal);
+  const fastCommunities = env.networks || [];
 
   const showFastQuestion = (q, kind = "question") => {
     setThinking(false);

@@ -30,7 +30,7 @@ There is no longer a dedicated `user_profiles` table -- it was dropped in the pr
 
 Context is the synthesized representation of a user, derived from their premises and stored in `user_contexts`:
 
-- A **global** context row (`networkId = null`) -- the network-agnostic identity paragraph that replaces the old profile document. It is enforced unique per user by the partial `user_contexts_user_global_uniq` index and is always (re)built from active premises, even when the user belongs to no non-personal networks.
+- A **global** context row (`networkId = null`) -- the network-agnostic identity paragraph that replaces the old profile document. It is enforced unique per user by the partial `user_contexts_user_global_uniq` index and is always (re)built from active premises, even when the user belongs to no networks.
 - Zero or more **per-network** context rows -- network-lensed paragraphs generated for each network the user belongs to.
 
 Each context row carries its own vector embedding (and, for per-network rows, HyDE documents). Contexts are generated during enrichment and regenerated whenever the user's premises change.

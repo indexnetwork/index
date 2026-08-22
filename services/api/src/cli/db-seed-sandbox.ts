@@ -215,19 +215,8 @@ async function main(): Promise<void> {
           await tx.delete(schema.intents).where(inArray(schema.intents.id, fixtureIntentIds));
         }
 
-        // Signing in as a persona creates the user record (a NO ACTION
-        // reference to the user), so a re-seed after anyone has logged in must
-        // remove those before the users can go.
-        const personalNetworks = await tx.select({ networkId: schema.personalNetworks.networkId })
-          .from(schema.personalNetworks)
-          .where(inArray(schema.personalNetworks.userId, fixtureUserIds));
-        const personalNetworkIds = personalNetworks.map((row) => row.networkId);
-        await tx.delete(schema.personalNetworks).where(inArray(schema.personalNetworks.userId, fixtureUserIds));
         await tx.delete(schema.networkMembers).where(inArray(schema.networkMembers.userId, fixtureUserIds));
         await tx.delete(schema.users).where(inArray(schema.users.id, fixtureUserIds));
-        if (personalNetworkIds.length > 0) {
-          await tx.delete(schema.networks).where(inArray(schema.networks.id, personalNetworkIds));
-        }
       }
 
       for (const network of fixtureNetworks) {

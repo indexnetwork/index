@@ -1531,7 +1531,6 @@ def main() -> None:
                                 "id": "network-1",
                                 "title": "Robotics Guild",
                                 "prompt": "People building robotics companies.",
-                                "isPersonal": False,
                                 "type": "community",
                                 "hasMasterKey": False,
                                 "role": "owner",

@@ -754,7 +754,6 @@ export const networks = pgTable('networks', {
   key: text('key'),
   prompt: text('prompt'),
   imageUrl: text('image_url'),
-  isPersonal: boolean('is_personal').default(false).notNull(),
   masterKeyHash: text('master_key_hash'),
   // Non-null only while this row is an unapproved "create a network" request
   // (early access). Cleared to null when a staff reviewer approves it.
@@ -987,14 +986,6 @@ export const networkMembers = pgTable('network_members', {
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
   pk: primaryKey({ columns: [table.networkId, table.userId] }),
-}));
-
-export const personalNetworks = pgTable('personal_networks', {
-  userId: text('user_id').notNull().references(() => users.id),
-  networkId: text('network_id').notNull().references(() => networks.id),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.userId] }),
-  networkUnique: uniqueIndex('personal_networks_network_id_unique').on(t.networkId),
 }));
 
 export const networkIntegrations = pgTable('network_integrations', {
@@ -1478,17 +1469,6 @@ export const networkMembersRelations = relations(networkMembers, ({ one }) => ({
   }),
 }));
 
-export const personalNetworksRelations = relations(personalNetworks, ({ one }) => ({
-  user: one(users, {
-    fields: [personalNetworks.userId],
-    references: [users.id],
-  }),
-  network: one(networks, {
-    fields: [personalNetworks.networkId],
-    references: [networks.id],
-  }),
-}));
-
 export const networkIntegrationsRelations = relations(networkIntegrations, ({ one }) => ({
   network: one(networks, {
     fields: [networkIntegrations.networkId],
@@ -1569,8 +1549,6 @@ export type HydeDocument = typeof hydeDocuments.$inferSelect;
 export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
-export type PersonalNetwork = typeof personalNetworks.$inferSelect;
-export type NewPersonalNetwork = typeof personalNetworks.$inferInsert;
 export type NetworkIntegration = typeof networkIntegrations.$inferSelect;
 export type NewNetworkIntegration = typeof networkIntegrations.$inferInsert;
 export type Agent = typeof agents.$inferSelect;

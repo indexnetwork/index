@@ -121,7 +121,6 @@ function Networks({ onClose, onOpenSignal }) {
       invitationCode: null,
       role: "owner",
       joined: true,
-      isPersonal: false,
       hasMasterKey: false,
       signals: [],
     };
