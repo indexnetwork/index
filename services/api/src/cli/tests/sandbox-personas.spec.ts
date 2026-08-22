@@ -11,7 +11,7 @@ const FIXED_INVESTORS = [
   { email: 'ruth.langley@sandbox.test', userId: 'f1000000-0000-4000-8000-000000000003', intentId: 'f2000000-0000-4000-8000-000000000003' },
 ];
 
-function assertPopulationShape(personas: SandboxPersona[]): void {
+function assertPopulationShape(personas: SandboxPersona[], { minIntents = 3 }: { minIntents?: number } = {}): void {
   const emails = personas.map((persona) => persona.email);
   expect(new Set(emails).size).toBe(emails.length);
 
@@ -21,7 +21,7 @@ function assertPopulationShape(personas: SandboxPersona[]): void {
     expect(isSyntheticUserEmail(persona.email)).toBe(true);
     expect(persona.premises.length).toBeGreaterThanOrEqual(4);
     expect(persona.premises.length).toBeLessThanOrEqual(6);
-    expect(persona.intents.length).toBeGreaterThanOrEqual(3);
+    expect(persona.intents.length).toBeGreaterThanOrEqual(minIntents);
     expect(persona.intents.length).toBeLessThanOrEqual(5);
     expect(new Set(persona.premises).size).toBe(persona.premises.length);
     expect(new Set(persona.intents).size).toBe(persona.intents.length);
@@ -63,9 +63,10 @@ describe('SANDBOX_PERSONAS', () => {
 });
 
 describe('SANDBOX_MINIMAL_PERSONAS', () => {
-  it('is exactly two fully authored people on a distinct address family', () => {
-    expect(SANDBOX_MINIMAL_PERSONAS).toHaveLength(2);
-    assertPopulationShape(SANDBOX_MINIMAL_PERSONAS);
+  it('is exactly five fully authored people on a distinct address family', () => {
+    expect(SANDBOX_MINIMAL_PERSONAS).toHaveLength(5);
+    // One shared market: the supporting people carry two focused signals each.
+    assertPopulationShape(SANDBOX_MINIMAL_PERSONAS, { minIntents: 2 });
     for (const persona of SANDBOX_MINIMAL_PERSONAS) {
       expect(persona.email).toMatch(/^sandbox-minimal-\d{2}@index-network\.test$/);
       expect(persona.fixedIds).toBeUndefined();
