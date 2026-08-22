@@ -9,7 +9,7 @@
  * Status updates land in the DB; in-memory state.opportunities is not mutated.
  */
 
-import type { ActiveIntent, OpportunityActor } from '../../platform/database.js';import { NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "../../protocol/negotiation-policy.js";
+import type { ActiveIntent, OpportunityActor } from '../../platform/database.js';import { NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "../../protocol/core.js";
 import { requestContext } from '../shared/observability/request-context.js';import { AMBIENT_PARK_WINDOW_MS } from "../negotiations/negotiation.tools.js";
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from "../negotiations/negotiation.graph.js";
 import { buildDiscoverySummary, toDiscoveryNegotiation, type NegotiationResolution } from './negotiation-summary.builder.js';

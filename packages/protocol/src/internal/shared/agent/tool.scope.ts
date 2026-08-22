@@ -5,8 +5,8 @@
  * networks a caller may read or write. Helper functions derive concrete network
  * id sets from the focused scope plus the caller's memberships.
  */
-import type { ScopeMembership, ToolScopeType } from '../../../protocol/scope.js';
-export type { ScopeMembership, ToolScopeType } from '../../../protocol/scope.js';
+import type { ScopeMembership, ToolScopeType } from '../../../protocol/core.js';
+export type { ScopeMembership, ToolScopeType } from '../../../protocol/core.js';
 
 export interface ToolScopeEnvelope {
   scopeType?: ToolScopeType;

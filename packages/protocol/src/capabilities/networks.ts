@@ -27,7 +27,7 @@ import { NetworkMembershipGraphFactory } from "../internal/networks/membership.g
 import { NetworkGraphFactory } from "../internal/networks/network.graph.js";
 import { createNetworkTools } from "../internal/networks/network.tools.js";
 
-import type { IntentNetworkIndexer } from "../protocol/intent-indexing.js";
+import type { IntentNetworkIndexer } from "../protocol/core.js";
 import type { NetworkToolDeps } from "../internal/networks/network.tools.js";
 
 // ── Public types ──────────────────────────────────────────────────────────────

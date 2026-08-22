@@ -2,7 +2,7 @@
 // HyDE (Hypothetical Document Embeddings) search types
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type { Lens, HydeTargetCorpus } from "../protocol/lens.js";
+export type { Lens, HydeTargetCorpus } from "../protocol/core.js";
 
 /** A single lens embedding ready for search. */
 export interface LensEmbedding {

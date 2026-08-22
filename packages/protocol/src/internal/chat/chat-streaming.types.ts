@@ -6,8 +6,8 @@
  */
 
 import type { Question, QuestionStrategy } from "../../protocol/question.js";
-import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
-export type { DebugMetaAgent } from "../../protocol/debug-meta.js";
+import type { DebugMetaAgent } from "../../protocol/core.js";
+export type { DebugMetaAgent } from "../../protocol/core.js";
 
 // Event type discriminator
 export type ChatStreamEventType =

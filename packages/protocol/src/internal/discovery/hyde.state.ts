@@ -7,7 +7,7 @@ import { Annotation } from '@langchain/langgraph';
 import type { Id } from '../../platform/database.js';
 import type { Lens, HydeTargetCorpus } from './lens.inferrer.js';
 import type { HydeSourceFrame } from './hyde.frame.js';
-import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
+import type { DebugMetaAgent } from "../../protocol/core.js";
 
 export type HydeDocumentOrigin = 'cache' | 'db' | 'generated';
 export type HydeValidationStatus = 'valid' | 'invalid' | 'failed_open';

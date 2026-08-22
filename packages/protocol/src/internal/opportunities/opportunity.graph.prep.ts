@@ -6,10 +6,10 @@
  */
 
 import type { ActiveIntent, Id } from '../../platform/database.js';
-import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
+import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { IndexedIntent, TargetNetwork } from './opportunity.state.js';
 import { IntentIndexer } from '../shared/intent-indexer.js';
-import type { IntentIndexingResult } from '../../protocol/intent-indexing.js';
+import type { IntentIndexingResult } from '../../protocol/core.js';
 import { withCallLogging } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from '../shared/observability/request-context.js';

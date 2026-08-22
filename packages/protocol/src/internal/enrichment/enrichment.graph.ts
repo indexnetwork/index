@@ -8,7 +8,7 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
+import type { DebugMetaAgent } from "../../protocol/core.js";
 import { PremiseDecomposer } from "../premises/premise.decomposer.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 

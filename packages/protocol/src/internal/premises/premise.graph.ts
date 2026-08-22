@@ -12,7 +12,7 @@ import type { PremiseGraphDatabase, PremiseAnalysis } from "../../platform/datab
 import type { Embedder } from "../../platform/embedder.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
-import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
+import type { DebugMetaAgent } from "../../protocol/core.js";
 
 const queryLog = protocolLogger("PremiseGraph:query");
 const analyzeLog = protocolLogger("PremiseGraph:analyze");

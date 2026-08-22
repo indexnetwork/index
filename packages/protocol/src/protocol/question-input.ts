@@ -12,7 +12,7 @@
  * the durable record and the DM message is its rendering.
  */
 import type { ChecklistKind } from "./schemas/negotiation-checklist.schema.js";
-import type { ToolScopeType } from "./scope.js";
+import type { ToolScopeType } from "./core.js";
 import type { NegotiationQuestionCandidate } from "./question.js";
 import type { NegotiationConsultationReason } from "./schemas/negotiation-state.schema.js";
 

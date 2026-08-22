@@ -2,7 +2,7 @@
  * Queue types for protocol layer.
  */
 
-import type { ToolScopeType } from "../protocol/scope.js";
+import type { ToolScopeType } from "../protocol/core.js";
 
 export interface IntentGraphQueueScope {
   scopeType?: ToolScopeType;

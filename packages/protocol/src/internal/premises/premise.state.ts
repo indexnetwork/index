@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import type { PremiseAnalysis, PremiseProvenance, PremiseRecord } from "../../platform/database.js";
-import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
+import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { ToolScopeType } from '../shared/agent/tool.scope.js';
 
 export const PremiseGraphState = Annotation.Root({

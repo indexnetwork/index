@@ -23,7 +23,7 @@ import { AskUserGenerationSchema } from "../../protocol/schemas/negotiation-stat
 import { ChecklistDraftGenerationSchema } from "../../protocol/schemas/negotiation-checklist.schema.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL } from "./negotiation.checklist.contracts.js";
 import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
-export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "../../protocol/negotiation-policy.js";
+export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "../../protocol/core.js";
 
 // ─── Shared assessment fragment ──────────────────────────────────────────────
 

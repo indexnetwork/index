@@ -24,7 +24,7 @@ export type {
 export { resolveChatContext } from "./internal/shared/agent/tool.helpers.js";
 export { ChatContextAccessError } from "./platform/errors.js";
 export { deriveAllowedNetworkIds, deriveDiscoveryNetworkIds } from "./internal/shared/agent/tool.scope.js";
-export type { ToolScopeType, ScopeMembership } from "./protocol/scope.js";
+export type { ToolScopeType, ScopeMembership } from "./protocol/core.js";
 export { requestContext, setRequestContextStore } from "./internal/shared/observability/request-context.js";
 export { setLoggerFactory } from "./internal/shared/observability/log.js";
 export { setTimingWrapper } from "./internal/shared/observability/performance.js";
@@ -108,11 +108,11 @@ export {
   type ParsedQuestionMessage,
 } from "./protocol/question-block.schema.js";
 export type { NetworkAssignmentMetadata } from "./protocol/schemas/network-assignment.schema.js";
-export type { IntentIndexingResult } from "./protocol/intent-indexing.js";
-export type { HydeTargetCorpus, Lens } from "./protocol/lens.js";
-export type { DebugMetaAgent } from "./protocol/debug-meta.js";
+export type { IntentIndexingResult } from "./protocol/core.js";
+export type { HydeTargetCorpus, Lens } from "./protocol/core.js";
+export type { DebugMetaAgent } from "./protocol/core.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./internal/shared/assignment/network-assignment.policy.js";
-export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "./protocol/negotiation-policy.js";
+export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "./protocol/core.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 

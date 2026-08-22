@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import type { UserIdentity } from "../../protocol/schemas/identity.schema.js";
-import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
+import type { DebugMetaAgent } from "../../protocol/core.js";
 
 /**
  * The Graph State for Profile Generation.

@@ -6,7 +6,7 @@
  * one file. Import from `database.interface.js` — it re-exports all of them.
  */
 
-import type { ScopeMembership } from '../../protocol/scope.js';
+import type { ScopeMembership } from '../../protocol/core.js';
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
 import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
 
