@@ -87,7 +87,6 @@ const baseInput: NegotiationAgentInput = {
   seedAssessment: { reasoning: "seed", valencyRole: "peer" },
   history: [{ action: "counter", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: null }],
   seat: "initiator",
-  protocolVersion: "v2",
 };
 
 const DM_RULE_MARKER = "Do NOT ask what they have already answered there";
@@ -160,7 +159,7 @@ const V2_PRIOR_TASK = {
   id: "task-prior",
   conversationId: "conv-1",
   state: "completed",
-  metadata: { type: "negotiation", protocolVersion: "v2", initiatorUserId: "u-src", sourceUserId: "u-src", candidateUserId: "u-cand" },
+  metadata: { type: "negotiation", initiatorUserId: "u-src", sourceUserId: "u-src", candidateUserId: "u-cand" },
   createdAt: new Date(Date.now() - 3_600_000),
   updatedAt: new Date(Date.now() - 3_600_000),
 };

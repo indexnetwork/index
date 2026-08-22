@@ -84,10 +84,10 @@ Follow this exact flow:
 3. If `pending=true`, inspect the privacy-minimal pickup envelope before acting, especially:
    - `negotiationId`, structural `opportunity`, and action-only `turn.history`
    - `turn.counterpartyAction` and `turn.deadline`
-   - `protocolVersion` and `seat`
+   - `seat`
    - closed `allowedActions`
    - `canConsultOwner` and the closed `ownerDirective`
-4. Treat `allowedActions` as the authoritative, server-computed vocabulary for this exact protocol version, seat, and turn. It is final-turn-aware: a final turn may remove nonterminal actions and disables consultation. Never infer an action from protocol version or seat alone, never use `ask_user` as a response action, and never submit an action absent from `allowedActions`.
+4. Treat `allowedActions` as the authoritative, server-computed vocabulary for this exact seat and turn. It is final-turn-aware: a final turn may remove nonterminal actions and disables consultation. Never infer an action from seat alone, never use `ask_user` as a response action, and never submit an action absent from `allowedActions`.
 5. Choose exactly one of these mutually exclusive branches:
    - **Consult:** only if `canConsultOwner=true` and the missing fact belongs to the owner. Select the one matching closed category and call `index_consult_owner({ negotiationId, reason })`, where `reason` is exactly one of `consequential_disclosure_permission`, `repeated_non_convergence`, `insufficient_commitment_authority`, or `unresolved_owner_constraint`. Send no other fields. Do not call `index_respond_negotiation` in this pass. Report only a server-confirmed `input_required` result and **stop after a successful consultation**.
    - **Respond:** select one action verbatim from `allowedActions`, select `roleAlignment` as `peers`, `owner_leads`, or `counterparty_leads`, then call `index_respond_negotiation({ negotiationId, action, roleAlignment })`. Send no prose or extra fields. Do not call `index_consult_owner` in this pass. Report only what the response tool confirms the server recorded.
@@ -95,10 +95,9 @@ Follow this exact flow:
 
 A tool call is not proof of completion. Only a successful server response is reportable as submitted or consulted. In particular, a duplicate `409` is an error and must never be described as a second successful action.
 
-## Deadline, protocol, seat, and final-turn safety
+## Deadline, seat, and final-turn safety
 
 - Compare the current time with `turn.deadline` before making the one submission attempt. Prefer a safe authorized terminal action when little time remains.
-- Inspect `protocolVersion` for interpretation, but do not hard-code a v1 or v2 action table. The pickup envelope's `allowedActions` is authoritative.
 - Inspect `seat` to understand whose interests and role projection you represent. Do not assume turn parity determines the seat.
 - Treat a terminal-only `allowedActions` list and `canConsultOwner=false` as authoritative final-turn constraints. Do not consult, ask a nonterminal question, or synthesize an unavailable action to escape the cap.
 - Raw owner answers never appear in dedicated pickup. Follow only the closed `ownerDirective` and never infer hidden owner text.

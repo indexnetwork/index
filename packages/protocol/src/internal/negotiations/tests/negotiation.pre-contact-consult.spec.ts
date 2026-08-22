@@ -223,7 +223,6 @@ function resumeFixtures(consultation: {
     state: "canceled",
     metadata: {
       type: "negotiation",
-      protocolVersion: "v2",
       initiatorUserId: "u-src",
       sourceUserId: "u-src",
       candidateUserId: "u-cand",
@@ -328,7 +327,6 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
 
   describe("admission", () => {
     const base = {
-      protocolVersion: "v2" as const,
       seat: "initiator" as const,
       isOpeningTurn: true,
       isFinalTurn: false,
@@ -657,7 +655,6 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
       seedAssessment: { reasoning: "seed", valencyRole: "peer" },
       history: [],
       seat: "initiator",
-      protocolVersion: "v2",
       ...over,
     });
 

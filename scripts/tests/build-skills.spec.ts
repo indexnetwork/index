@@ -130,7 +130,7 @@ describe('resolveHermesPluginOutputs', () => {
     ]);
   });
 
-  test('generated negotiator guidance pins the v2-safe single-submission contract', () => {
+  test('generated negotiator guidance pins the single-vocabulary submission contract', () => {
     const repoRoot = resolve(import.meta.dir, '../..');
     const generated = readFileSync(
       join(repoRoot, 'packages/hermes-plugin/skills/index-negotiator/SKILL.md'),
@@ -138,7 +138,6 @@ describe('resolveHermesPluginOutputs', () => {
     );
 
     for (const field of [
-      'protocolVersion',
       'allowedActions',
       'seat',
       'deadline',
@@ -146,6 +145,8 @@ describe('resolveHermesPluginOutputs', () => {
     ]) {
       expect(generated).toContain(field);
     }
+    expect(generated).not.toContain('protocolVersion');
+    expect(generated).not.toMatch(/\bv1\b|\bv2\b/);
     expect(generated).toContain('at most one response or consultation call per pass');
     expect(generated).toContain('stop after a successful consultation');
     expect(generated).toContain('select one action verbatim from `allowedActions`');

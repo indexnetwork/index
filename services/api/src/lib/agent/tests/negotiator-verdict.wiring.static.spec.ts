@@ -29,7 +29,7 @@ const composition = read('../../../controllers/mcp.controller.ts');
 const agentContext = read('../../intent-agent/intent-agent.context.ts');
 const agentHost = read('../../intent-agent/intent-agent.host.ts');
 const main = read('../../../main.ts');
-const persona = read('../../../../../../packages/protocol/src/chat/negotiator.persona.ts');
+const persona = read('../../../../../../packages/protocol/src/internal/chat/negotiator.persona.ts');
 const host = read('../negotiator-verdict.host.ts');
 
 describe('owner-verdict wiring', () => {

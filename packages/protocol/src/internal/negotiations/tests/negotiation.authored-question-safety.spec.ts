@@ -194,7 +194,7 @@ const V2_PRIOR_TASK = {
   id: "task-prior",
   conversationId: "conv-1",
   state: "completed",
-  metadata: { type: "negotiation", protocolVersion: "v2", initiatorUserId: "u-src", sourceUserId: "u-src", candidateUserId: "u-cand" },
+  metadata: { type: "negotiation", initiatorUserId: "u-src", sourceUserId: "u-src", candidateUserId: "u-cand" },
   createdAt: new Date(Date.now() - 3_600_000),
   updatedAt: new Date(Date.now() - 3_600_000),
 };

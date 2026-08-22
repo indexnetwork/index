@@ -776,7 +776,6 @@ const agentBaseInput: NegotiationAgentInput = {
     message: OPENING,
   }],
   seat: "counterparty",
-  protocolVersion: "v2",
 };
 
 describe("the prompt closes the hatch the floor exists to close", () => {

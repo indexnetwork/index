@@ -490,7 +490,6 @@ const agentBaseInput: NegotiationAgentInput = {
     message: THE_QUESTION,
   }],
   seat: "initiator",
-  protocolVersion: "v2",
 };
 
 describe("the prompt gives the corner its missing move", () => {

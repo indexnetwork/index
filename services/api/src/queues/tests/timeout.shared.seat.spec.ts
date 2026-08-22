@@ -1,8 +1,8 @@
 /**
- * IND-397 — timeout fallback uses the parked seat's schema (v2 seat rules).
+ * IND-397 — timeout fallback uses the parked seat's schema.
  *
  * When a parked turn times out and the system agent takes over, the agent must
- * be invoked with the parked seat + the task's protocol version — an
+ * be invoked with the parked seat — an
  * initiator-seat fallback can never accept on the user's behalf. Speaker
  * attribution derives from the canonical action-aware speaker helper, not turn parity.
  * Hermetic: negotiator invocation and database are injected directly.
@@ -67,12 +67,11 @@ function run(meta: Record<string, unknown>, messages: Array<Record<string, unkno
   };
 }
 
-const v2Meta = {
+const negotiationMeta = {
   type: 'negotiation',
   sourceUserId: 'u-a',
   candidateUserId: 'u-b',
   initiatorUserId: 'u-a',
-  protocolVersion: 'v2',
   opportunityId: 'opp-1',
 };
 
@@ -82,27 +81,26 @@ beforeEach(() => {
 });
 
 describe('runTimeoutFallback — seat-scoped schema selection (IND-397)', () => {
-  it('v2: parked counterparty turn invokes the agent with counterparty seat + v2', async () => {
+  it('parks the counterparty seat after an initiator turn', async () => {
     // Initiator (u-a) spoke last → the parked seat is u-b (counterparty).
-    const { done } = run(v2Meta, [msgFrom('u-a')]);
+    const { done } = run(negotiationMeta, [msgFrom('u-a')]);
     await done;
 
     expect(invokeInputs[0].seat).toBe('counterparty');
-    expect(invokeInputs[0].protocolVersion).toBe('v2');
   });
 
-  it('v2: counterparty-spoke-first continuation parks the initiator seat (parity would flip it)', async () => {
+  it('counterparty-spoke-first continuation parks the initiator seat (parity would flip it)', async () => {
     // One message from u-b → parity (odd count) would call the active speaker
     // "candidate" (u-b); senderId-based attribution correctly parks u-a.
     MOCK_TURN = { action: 'withdraw', assessment: { reasoning: 'not a fit', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } } };
-    const { db, done } = run(v2Meta, [msgFrom('u-b')]);
+    const { db, done } = run(negotiationMeta, [msgFrom('u-b')]);
     await done;
 
     expect(invokeInputs[0].seat).toBe('initiator');
     // The withdrawing turn is attributed to the initiator's agent
     const created = (db.createMessage.mock.calls[0] as unknown[])[0] as { senderId: string };
     expect(created.senderId).toBe('agent:u-a');
-    // withdraw is reject-like → opportunity rejected
+    // Withdraw finalizes the opportunity as rejected.
     const statusCall = (db.updateOpportunityStatus.mock.calls[0] as unknown[]) as [string, string];
     expect(statusCall[1]).toBe('rejected');
   });
@@ -110,8 +108,8 @@ describe('runTimeoutFallback — seat-scoped schema selection (IND-397)', () => 
   it.each([
     ['u-a', 'initiator'],
     ['u-b', 'counterparty'],
-  ] as const)('v2: %s ask_user retains its seat after settlement noise', async (speaker, expectedSeat) => {
-    const { done } = run(v2Meta, [actionMsgFrom(speaker, 'ask_user'), settlementNoise]);
+  ] as const)('%s ask_user retains its seat after settlement noise', async (speaker, expectedSeat) => {
+    const { done } = run(negotiationMeta, [actionMsgFrom(speaker, 'ask_user'), settlementNoise]);
     await done;
 
     expect(invokeInputs[0].seat).toBe(expectedSeat);
@@ -121,15 +119,15 @@ describe('runTimeoutFallback — seat-scoped schema selection (IND-397)', () => 
     { sourceUserId: '', candidateUserId: 'u-b' },
     { sourceUserId: 'u-a', candidateUserId: 'u-a' },
   ])('fails closed before timeout invocation for malformed participants %#', async (participantMeta) => {
-    const { done } = run({ ...v2Meta, ...participantMeta }, []);
+    const { done } = run({ ...negotiationMeta, ...participantMeta }, []);
 
     await expect(done).rejects.toThrow(/malformed bilateral speaker metadata/);
     expect(invokeInputs).toHaveLength(0);
   });
 
-  it('v2: final allowed turn passes isFinalTurn so the final seat schema is selected', async () => {
+  it('final allowed turn passes isFinalTurn so the final seat schema is selected', async () => {
     MOCK_TURN = { action: 'decline', assessment: { reasoning: 'no', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } } };
-    const { done } = run(v2Meta, [msgFrom('u-a')], { maxTurns: 2 });
+    const { done } = run(negotiationMeta, [msgFrom('u-a')], { maxTurns: 2 });
     await done;
 
     expect(invokeInputs[0].isFinalTurn).toBe(true);
@@ -140,27 +138,17 @@ describe('runTimeoutFallback — seat-scoped schema selection (IND-397)', () => 
     ['uncapped zero', 0, false, 'waiting_for_agent'],
     ['absent defaults to six', undefined, true, 'completed'],
     ['positive boundary', 6, true, 'completed'],
-  ] as const)('legacy fallback applies %s cap semantics to final-turn and persistence', async (_label, maxTurns, final, expectedState) => {
+  ] as const)('timeout fallback applies %s cap semantics to final-turn and persistence', async (_label, maxTurns, final, expectedState) => {
     const messages = Array.from({ length: 5 }, (_, index) => msgFrom(index % 2 === 0 ? 'u-a' : 'u-b'));
-    const { db, done } = run(v2Meta, messages, { maxTurns });
+    const { db, done } = run(negotiationMeta, messages, { maxTurns });
     await done;
 
     expect(invokeInputs[0].isFinalTurn === true).toBe(final);
     expect(db.updateTaskState.mock.calls[0]?.[1]).toBe(expectedState);
   });
 
-  it('v1 tasks keep legacy behavior: v1 version, no final-turn forcing', async () => {
-    const v1Meta = { type: 'negotiation', sourceUserId: 'u-a', candidateUserId: 'u-b' };
-    const { done } = run(v1Meta, [legacyMsg()], { maxTurns: 2 });
-    await done;
-
-    expect(invokeInputs[0].protocolVersion).toBe('v1');
-    expect(invokeInputs[0].isFinalTurn).toBeUndefined();
-  });
-
-  it('legacy rows without a canonical participant sender fail safely to the source opener', async () => {
-    const v1Meta = { type: 'negotiation', sourceUserId: 'u-a', candidateUserId: 'u-b' };
-    const { db, done } = run(v1Meta, [legacyMsg()]);
+  it('unlabeled stored rows fail safely to the source opener', async () => {
+    const { db, done } = run(negotiationMeta, [legacyMsg()]);
     await done;
 
     const created = (db.createMessage.mock.calls[0] as unknown[])[0] as { senderId: string };

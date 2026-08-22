@@ -44,7 +44,6 @@ function v2Task(initiatorUserId: string) {
       sourceUserId: "user-src",
       candidateUserId: "user-cand",
       initiatorUserId,
-      protocolVersion: "v2",
       maxTurns: 6,
     },
     createdAt: new Date("2026-01-01"),

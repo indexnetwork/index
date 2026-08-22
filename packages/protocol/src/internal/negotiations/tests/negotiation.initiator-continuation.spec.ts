@@ -297,7 +297,6 @@ function midExchangeInput(overrides?: Partial<NegotiationAgentInput>): Negotiati
     seedAssessment: { reasoning: "seed", valencyRole: "peer" },
     history: [turn("outreach", "opening", "Opening pitch"), turn("question", "asking", COUNTERPARTY_QUESTION)],
     seat: "initiator",
-    protocolVersion: "v2",
     ...overrides,
   } as NegotiationAgentInput;
 }

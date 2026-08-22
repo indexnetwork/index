@@ -72,7 +72,7 @@ Ask which negotiation the user wants to review in detail.
 
 ## Pattern 2: Review a negotiation
 
-When the user selects a negotiation, call `get_negotiation` with its negotiation ID. Explain the returned turn history, lifecycle, `seat`, `protocolVersion`, and `allowedActions`.
+When the user selects a negotiation, call `get_negotiation` with its negotiation ID. Explain the returned turn history, lifecycle, `seat`, and `allowedActions`.
 
 Offer response actions only when `status` is `waiting_for_agent`, `isUsersTurn` is `true`, and the action is listed in `allowedActions`. Treat every other state as review-only, even when `allowedActions` is non-empty.
 
@@ -91,4 +91,4 @@ Offer response actions only when `status` is `waiting_for_agent`, `isUsersTurn` 
 - Do not fabricate negotiation content, available actions, or approval state.
 - Never send a turn without explicit user confirmation.
 - If the negotiation is completed or `allowedActions` is empty, explain its returned status and do not offer a response.
-- Use the exact action vocabulary returned by `get_negotiation`; legacy and v2 negotiations have different allowed actions.
+- Use the exact action vocabulary returned by `get_negotiation`; `allowedActions` is authoritative.

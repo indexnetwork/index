@@ -153,7 +153,6 @@ describe("IND-569 negotiator prompt rendering", () => {
       seedAssessment: { reasoning: "seed", valencyRole: "peer" },
       history: [],
       seat: "initiator",
-      protocolVersion: "v2",
       isContinuation: true,
       priorDialogue,
     };
@@ -185,7 +184,6 @@ describe("IND-569 negotiator prompt rendering", () => {
       seedAssessment: { reasoning: "seed", valencyRole: "peer" },
       history: [turn("outreach", "flat prior")],
       seat: "initiator",
-      protocolVersion: "v2",
       isContinuation: true,
     };
     await agent.invoke(input);

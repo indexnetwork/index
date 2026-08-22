@@ -28,7 +28,6 @@ const baseInput: NegotiationAgentInput = {
   seedAssessment: { reasoning: "seed", valencyRole: "peer" },
   history: [],
   seat: "initiator",
-  protocolVersion: "v2",
 };
 
 function validTurn(action: string) {

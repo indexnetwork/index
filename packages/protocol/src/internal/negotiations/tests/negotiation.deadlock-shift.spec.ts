@@ -269,7 +269,6 @@ describe("get_negotiation — deadlockShift metadata privacy (IND-428)", () => {
         type: "negotiation",
         sourceUserId: "u-src",
         candidateUserId: "u-cand",
-        protocolVersion: "v2",
         maxTurns: 6,
         deadlockShift: {
           reason: "consecutive_non_convergent",

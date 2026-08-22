@@ -74,7 +74,6 @@ function parkedTask(recipientUserId: string, overrides: { state?: string; turnCo
       type: "negotiation",
       sourceUserId: VIEWER,
       candidateUserId: COUNTERPARTY,
-      protocolVersion: "v2",
       maxTurns: 6,
       opportunityId: OPPORTUNITY_ID,
       turnContext: {

@@ -185,10 +185,10 @@ describe('persisted opportunity history hydration', () => {
   test('has no live draft-ready event in stream contracts while retaining historical draft hydration', () => {
     const root = resolve(process.cwd(), '../..');
     const streamContractFiles = [
-      'packages/protocol/src/chat/chat.agent.ts',
-      'packages/protocol/src/chat/chat-streaming.types.ts',
-      'packages/protocol/src/shared/observability/request-context.ts',
-      'packages/protocol/src/mcp/mcp.server.ts',
+      'packages/protocol/src/internal/chat/chat.agent.ts',
+      'packages/protocol/src/internal/chat/chat-streaming.types.ts',
+      'packages/protocol/src/internal/shared/observability/request-context.ts',
+      'packages/protocol/src/internal/mcp/mcp.server.ts',
       'services/api/src/types/chat-streaming.types.ts',
       'services/api/src/controllers/mcp.controller.ts',
       'apps/web/src/contexts/AIChatContext.tsx',

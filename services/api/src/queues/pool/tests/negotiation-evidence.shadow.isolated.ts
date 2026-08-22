@@ -76,7 +76,7 @@ function makeDeps(overrides: Partial<NegotiationEvidenceShadowDeps> = {}): {
     getIntent: mock(async () => INTENT),
     getNegotiationTasksForOpportunity: mock(async () => [task('task-1')]),
     getMessagesByTaskIds: mock(async () => new Map([
-      ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: 'hello' } }] }]],
+      ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach', message: 'hello' } }] }]],
     ])),
     getArtifactsForTask: mock(async () => []),
     getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
@@ -135,7 +135,7 @@ describe('maybeRunNegotiationEvidenceShadow — gating', () => {
 describe('negotiation evidence task isolation and validation', () => {
   it('builds one segment per continuation using only exact task-linked messages and artifacts', async () => {
     const getMessagesByTaskIds = mock(async () => new Map([
-      ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose' } }] }]],
+      ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach' } }] }]],
       ['task-2', [{ senderId: 'agent:counterparty-1', parts: [{ kind: 'data', data: { action: 'counter' } }] }]],
     ]));
     const getArtifactsForTask = mock(async (taskId: string) => taskId === 'task-2'
@@ -165,7 +165,7 @@ describe('negotiation evidence task isolation and validation', () => {
       actions: segment.turns.map((turn) => turn.action),
       hasOutcome: Boolean(segment.outcome),
     }))).toEqual([
-      { taskId: 'task-1', conversationId: 'conversation-task-1', actions: ['propose'], hasOutcome: false },
+      { taskId: 'task-1', conversationId: 'conversation-task-1', actions: ['outreach'], hasOutcome: false },
       { taskId: 'task-2', conversationId: 'conversation-task-2', actions: ['counter'], hasOutcome: true },
     ]);
   });
@@ -208,7 +208,7 @@ describe('negotiation evidence task isolation and validation', () => {
       getIntent: mock(async () => INTENT),
       getNegotiationTasksForOpportunity: mock(async () => [task('task-1')]),
       getMessagesByTaskIds: mock(async () => new Map([['task-1', [
-        { senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose' } }] },
+        { senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach' } }] },
         { senderId: 'agent:counterparty-1', parts: [{ kind: 'data', data: { action: 'counter' } }] },
         { senderId: 'owner-1', parts: [{ kind: 'data', data: { action: 'accept' } }] },
         { senderId: 'agent:third-user', parts: [{ kind: 'data', data: { action: 'decline' } }] },
@@ -224,7 +224,7 @@ describe('negotiation evidence task isolation and validation', () => {
       networkId: 'net-1',
     }, database);
     expect(segment.turns.map((turn) => [turn.senderUserId, turn.action])).toEqual([
-      ['owner-1', 'propose'],
+      ['owner-1', 'outreach'],
       ['counterparty-1', 'counter'],
     ]);
   });
@@ -509,7 +509,7 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
       async (opportunityId: string) => tasksByOpportunityId[opportunityId] ?? [],
     );
     deps.database.getMessagesByTaskIds = mock(async (taskIds: string[]) => new Map(
-      taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: null } }] }]]),
+      taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach', message: null } }] }]]),
     ));
 
     await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
@@ -553,7 +553,7 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
         async (opportunityId: string) => [task(`task-${opportunityId}`, { opportunityId })],
       );
       deps.database.getMessagesByTaskIds = mock(async (taskIds: string[]) => new Map(
-        taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: null } }] }]]),
+        taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach', message: null } }] }]]),
       ));
       await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
       return { mine, infos };

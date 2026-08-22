@@ -8,8 +8,8 @@ const continuationMigration = readFileSync(new URL('../../../drizzle/0107_add_ne
 const continuationAtomic = readFileSync(new URL('../negotiation-continuation.atomic.ts', import.meta.url), 'utf8');
 const readiness = readFileSync(new URL('../../lib/drizzle/test-database-readiness.ts', import.meta.url), 'utf8');
 const runExisting = readFileSync(new URL('../../queues/negotiations/run-existing.queue.ts', import.meta.url), 'utf8');
-const negotiationGraph = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.ts', import.meta.url), 'utf8');
-const negotiationGraphFinalize = readFileSync(new URL('../../../../../packages/protocol/src/negotiations/negotiation.graph.finalize.ts', import.meta.url), 'utf8');
+const negotiationGraph = readFileSync(new URL('../../../../../packages/protocol/src/internal/negotiations/negotiation.graph.ts', import.meta.url), 'utf8');
+const negotiationGraphFinalize = readFileSync(new URL('../../../../../packages/protocol/src/internal/negotiations/negotiation.graph.finalize.ts', import.meta.url), 'utf8');
 const opportunityService = readFileSync(new URL('../../services/opportunity.service.ts', import.meta.url), 'utf8');
 
 describe('negotiation question routing static invariants', () => {

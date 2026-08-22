@@ -246,9 +246,9 @@ describe('NegotiationClaimTimeoutQueue.handleClaimTimeout', () => {
     expect(database.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'pending');
   });
 
-  it('reject: finalizes with rejected opportunity', async () => {
+  it('withdraw: finalizes with rejected opportunity for the initiator seat', async () => {
     mockTurn = {
-      action: 'reject',
+      action: 'withdraw',
       assessment: { reasoning: 'no', suggestedRoles: { ownUser: 'role-ai' } },
     };
     const database = makeDb([msg(), msg()]);
@@ -320,7 +320,7 @@ describe('NegotiationClaimTimeoutQueue.handleClaimTimeout', () => {
     claimedTaskResult = claimedTask({
       metadata: {
         type: 'negotiation', sourceUserId: 'src', candidateUserId: 'cand',
-        initiatorUserId: 'src', protocolVersion: 'v2', opportunityId: 'opp-1',
+        initiatorUserId: 'src', opportunityId: 'opp-1',
         ...(maxTurns !== undefined ? { maxTurns } : {}),
       },
     });

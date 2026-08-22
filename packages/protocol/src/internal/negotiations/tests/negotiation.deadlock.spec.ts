@@ -151,7 +151,6 @@ function agentInput(extra?: Partial<NegotiationAgentInput>): NegotiationAgentInp
       { action: "counter", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: null },
     ],
     seat: "initiator",
-    protocolVersion: "v2",
     ...extra,
   };
 }

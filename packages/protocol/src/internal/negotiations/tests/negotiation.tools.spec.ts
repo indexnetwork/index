@@ -401,7 +401,6 @@ describe('readAuthorizedNegotiationDetail', () => {
         sourceUserId: 'user-src',
         candidateUserId: 'user-cand',
         opportunityId: 'opp-1',
-        protocolVersion: 'v2',
         initiatorUserId: 'user-src',
       },
       callerUserId: 'user-cand',

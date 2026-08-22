@@ -51,7 +51,6 @@ const baseInput: NegotiationAgentInput = {
     { action: "question", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: null },
   ],
   seat: "initiator",
-  protocolVersion: "v2",
 };
 
 function validTurn(action: string) {

@@ -42,7 +42,6 @@ const baseInput: NegotiationAgentInput = {
   seedAssessment: { reasoning: "seed", valencyRole: "peer" },
   history: [{ action: "counter", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: null }],
   seat: "initiator",
-  protocolVersion: "v2",
 };
 
 const askUserOutput = {
