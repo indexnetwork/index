@@ -1,7 +1,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { describe, it, expect, spyOn, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { log, setLoggerFactory, sanitizeForLog, type LoggerWithSource } from "../log.js";
 
 // Default factory reference — used to reset state between tests
@@ -36,29 +36,15 @@ describe("log.protocol.from()", () => {
   });
 });
 
-describe("default logger", () => {
-  it("writes to console.info when .info() is called", () => {
-    const spy = spyOn(console, "info").mockImplementation(() => {});
+describe("unconfigured logger", () => {
+  it("is a safe no-op until the host injects a logger", () => {
+    setLoggerFactory(undefined);
     const logger = log.protocol.from("Src");
-    logger.info("hello world");
-    expect(spy).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it("writes to console.warn when .warn() is called", () => {
-    const spy = spyOn(console, "warn").mockImplementation(() => {});
-    const logger = log.protocol.from("Src");
-    logger.warn("warning");
-    expect(spy).toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it("writes to console.error when .error() is called", () => {
-    const spy = spyOn(console, "error").mockImplementation(() => {});
-    const logger = log.protocol.from("Src");
-    logger.error("oops");
-    expect(spy).toHaveBeenCalled();
-    spy.mockRestore();
+    expect(() => {
+      logger.info("hello world");
+      logger.warn("warning");
+      logger.error("oops");
+    }).not.toThrow();
   });
 });
 

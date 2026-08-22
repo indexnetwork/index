@@ -1,11 +1,8 @@
 /**
  * Protocol-internal logging module.
  *
- * Self-contained — no imports from outside the protocol library.
- * Ships with a minimal console-based default. The host application can
- * call `setLoggerFactory()` at startup to wire in a richer implementation
- * (e.g. the project-wide `log` utility with ANSI colors, context filtering,
- * and embedding redaction).
+ * The package emits through a host-provided logger factory. It intentionally
+ * has no console or vendor logger implementation; hosts wire their own logger.
  */
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -31,20 +28,13 @@ export type LogLevel = 'verbose' | 'debug' | 'info' | 'warn' | 'error';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function defaultCreateLogger(_context: string, source: string): LoggerWithSource {
-  const prefix = `[${source}]`;
-  const emit = (sink: (...args: unknown[]) => void, msg: string, meta?: Record<string, unknown>) =>
-    sink(prefix, msg, ...(meta ? [sanitizeFn(meta)] : []));
+  void source;
   return {
-    // eslint-disable-next-line no-console
-    verbose: (msg, meta) => emit(console.debug, msg, meta),
-    // eslint-disable-next-line no-console
-    debug: (msg, meta) => emit(console.debug, msg, meta),
-    // eslint-disable-next-line no-console
-    info: (msg, meta) => emit(console.info, msg, meta),
-    // eslint-disable-next-line no-console
-    warn: (msg, meta) => emit(console.warn, msg, meta),
-    // eslint-disable-next-line no-console
-    error: (msg, meta) => emit(console.error, msg, meta),
+    verbose: () => {},
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
   };
 }
 
@@ -106,8 +96,8 @@ let factoryGeneration = 0;
  * );
  * ```
  */
-export function setLoggerFactory(factory: LoggerFactory, sanitize?: SanitizeFn) {
-  createLoggerFn = factory;
+export function setLoggerFactory(factory: LoggerFactory | undefined, sanitize?: SanitizeFn) {
+  createLoggerFn = factory ?? defaultCreateLogger;
   if (sanitize) sanitizeFn = sanitize;
   factoryGeneration++;
 }
