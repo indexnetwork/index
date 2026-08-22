@@ -111,6 +111,7 @@ export type { IntentIndexingResult } from "./protocol/intent-indexing.js";
 export type { HydeTargetCorpus, Lens } from "./protocol/lens.js";
 export type { DebugMetaAgent } from "./protocol/debug-meta.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./internal/shared/assignment/network-assignment.policy.js";
+export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "./protocol/negotiation-policy.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
@@ -249,12 +250,8 @@ export type { NegotiationCandidate, OnNegotiationResolved } from "./internal/neg
 export type { NegotiationDigest } from "./internal/negotiations/insight.generator.js";
 
 export {
-  ASK_USER_LOCK_SLACK_MS,
   DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP,
   allowedActionsFor,
-  ASK_USER_WINDOW_MS,
-  NEGOTIATION_MAX_TURNS_AMBIENT,
-  NEGOTIATION_MAX_TURNS_CHAT,
   isRejectLikeAction,
   isTerminalAction,
   negotiationAskRoundsCap,

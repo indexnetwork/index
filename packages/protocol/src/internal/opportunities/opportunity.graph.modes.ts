@@ -13,7 +13,7 @@
 import type { Id, NegotiationContinuationReceipt, OpportunityActor } from '../../platform/database.js';
 import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
-import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../negotiations/negotiation.protocol.js";
+import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../../protocol/negotiation-policy.js";
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';

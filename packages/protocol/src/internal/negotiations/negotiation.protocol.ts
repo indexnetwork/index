@@ -23,6 +23,7 @@ import { AskUserGenerationSchema } from "../../protocol/schemas/negotiation-stat
 import { ChecklistDraftGenerationSchema } from "../../protocol/schemas/negotiation-checklist.schema.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL } from "./negotiation.checklist.contracts.js";
 import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
+export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "../../protocol/negotiation-policy.js";
 
 // ─── Shared assessment fragment ──────────────────────────────────────────────
 
@@ -307,29 +308,6 @@ export function negotiationAskRoundsCap(opts?: { checklist?: boolean }): number 
     ? CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP
     : DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP;
 }
-
-/**
- * Turn caps. One definition each: these were previously re-derived at three
- * separate call sites with their own `|| 6` fallback, which could silently
- * drift apart.
- */
-export const NEGOTIATION_MAX_TURNS_CHAT = 4;
-export const NEGOTIATION_MAX_TURNS_AMBIENT = 6;
-
-/**
- * Answer window for a paused `ask_user` negotiation: 24 hours. The single
- * definition — the API's attempt adapter used to parse the same variable
- * independently, with its own copy of this default.
- */
-export const ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Slack added on top of the answer window when deciding whether a paused
- * (`input_required`) task still holds the conversation lock. Covers expiry
- * worker delay: the lock must outlive the timer slightly, so ambient
- * rediscovery cannot slip in between window expiry and the worker's resume.
- */
-export const ASK_USER_LOCK_SLACK_MS = 60 * 60 * 1000;
 
 /**
  * Resolve the seat of `userId` on a negotiation task.
