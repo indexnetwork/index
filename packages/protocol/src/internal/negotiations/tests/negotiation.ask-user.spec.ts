@@ -380,7 +380,7 @@ describe("negotiation graph — ask_user pause (IND-401)", () => {
     ['opening', [], { priorTask: null }, { ...declineTurn, action: 'question' as const }, { maxTurns: 4, fresh: true }],
     ['final', continuationMessages, {}, { ...declineTurn, action: 'question' as const }, { maxTurns: 1 }],
     ['accept', continuationMessages, {}, { ...declineTurn, action: 'accept' as const }, { maxTurns: 4 }],
-    ['reject', continuationMessages, {}, { ...declineTurn, action: 'reject' as const }, { maxTurns: 4 }],
+    ['decline', continuationMessages, {}, declineTurn, { maxTurns: 4 }],
     ['withdraw', continuationMessages, {}, { ...declineTurn, action: 'withdraw' as const }, { maxTurns: 4 }],
     ['already consulted', [...continuationMessages, priorMsg('u-src', 'ask_user', 2), priorMsg('u-cand', 'counter', 3)], {}, { ...declineTurn, action: 'question' as const }, { maxTurns: 4 }],
   ] as Array<[string, FakeMessage[], Parameters<typeof mkStubs>[0], NegotiationTurn, { maxTurns: number; fresh?: boolean }]>)('no consultation effects for %s', async (_label, priorMessages, stubOptions, draft, runOptions) => {

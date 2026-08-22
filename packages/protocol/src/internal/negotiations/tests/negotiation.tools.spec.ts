@@ -80,7 +80,7 @@ describe("list_negotiations — isUsersTurn", () => {
   test("completed negotiation always returns isUsersTurn=false even when parity says it is their turn", async () => {
     // 1 message → parity says source's turn → but status=completed → must be false
     const task = makeTask("completed", "user-src", "user-cand");
-    const msg = makeMessage("propose", "reasoning", "proposal message");
+    const msg = makeMessage("outreach", "reasoning", "outreach message");
 
     const deps = {
       negotiationDatabase: {
@@ -922,7 +922,7 @@ describe('list_negotiations — detail:"narrative"', () => {
   test('narrative mode includes recentTurns — last 3 when more than 3 messages exist', async () => {
     const task = makeTask('working', 'user-src', 'user-cand');
     const messages = [
-      makeMessage('propose', 'r1', 'turn 1'),
+      makeMessage('outreach', 'r1', 'turn 1'),
       makeMessage('counter', 'r2', 'turn 2'),
       makeMessage('counter', 'r3', 'turn 3'),
       makeMessage('counter', 'r4', 'turn 4'),
@@ -953,7 +953,7 @@ describe('list_negotiations — detail:"narrative"', () => {
   test('narrative mode recentTurns — fewer than 3 messages returns all', async () => {
     const task = makeTask('working', 'user-src', 'user-cand');
     const messages = [
-      makeMessage('propose', 'r1', 'only turn'),
+      makeMessage('outreach', 'r1', 'only turn'),
     ];
 
     const deps = {
@@ -972,7 +972,7 @@ describe('list_negotiations — detail:"narrative"', () => {
     const turns = result.data.negotiations[0].recentTurns;
     expect(turns).toHaveLength(1);
     expect(turns[0].turnNumber).toBe(1);
-    expect(turns[0].action).toBe('propose');
+    expect(turns[0].action).toBe('outreach');
     expect(turns[0].message).toBe('only turn');
   });
 
@@ -981,7 +981,7 @@ describe('list_negotiations — detail:"narrative"', () => {
     // turn 1: source speaks (index 0, even → source). Caller is source → own
     // turn 2: candidate speaks (index 1, odd → candidate). Caller is source → other
     const messages = [
-      makeMessage('propose', 'r1', 'source speaks'),
+      makeMessage('outreach', 'r1', 'source speaks'),
       makeMessage('counter', 'r2', 'candidate speaks'),
     ];
 
