@@ -14,7 +14,7 @@ graphs, prompts, agents, retrieval, and implementation helpers. See
 packages/protocol/src/
   protocol/         Stable, framework-free protocol concepts and deterministic rules
   capabilities/     Small host-facing entry points for supported behaviors
-  platform/         Host integration contracts and cross-cutting runtime hooks
+  platform/         Host-supplied port contracts, grouped by concern
   internal/         Graphs, prompts, agents, retrieval, tests, and implementation helpers
   index.ts           Curated package API only
 ```

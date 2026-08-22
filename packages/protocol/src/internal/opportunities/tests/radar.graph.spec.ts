@@ -31,7 +31,7 @@ afterAll(() => mock.restore());
 import { selectByComposition, classifyOpportunity, RADAR_SOFT_TARGETS } from '../opportunity.utils.js';
 import type { RadarGraphDatabase } from '../../../platform/database.js';
 import type { Opportunity } from '../../../platform/database.js';
-import type { OpportunityCache } from '../../../platform/cache.interface.js';
+import type { OpportunityCache } from '../../../platform/cache.js';
 
 function createMockCache(): OpportunityCache {
   const store = new Map<string, unknown>();

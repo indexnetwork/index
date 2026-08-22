@@ -1,4 +1,4 @@
-import type { Cache } from '../../platform/cache.interface.js';
+import type { Cache } from '../../platform/cache.js';
 import type { OpportunityPresenter, PresenterDatabase } from "./opportunity.presentation.js";
 import { gatherPresenterContext } from "./opportunity.presentation.js";
 import { buildDeliveryCardPresentationCacheKey } from "./opportunity.presentation.js";

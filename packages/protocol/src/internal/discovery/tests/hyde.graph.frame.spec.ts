@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { computeHydeSourceTextHash, selectHydeDocumentsForGeneration } from '../../shared/hyde-documents.js';
 import { HydeGraphFactory, type HydeGeneratorLike, type HydeLensInferrerLike, type HydeValidatorLike } from '../hyde.graph.js';
-import type { HydeCache } from '../../../platform/cache.interface.js';
+import type { HydeCache } from '../../../platform/cache.js';
 import type { CreateHydeDocumentData, HydeDocument, HydeGraphDatabase } from '../../../platform/database.js';
 import type { EmbeddingGenerator } from '../../../platform/embedder.js';
 import { requestContext } from '../../shared/observability/request-context.js';

@@ -7,7 +7,7 @@ config({ path: '.env.test', override: true });
 import { afterEach, describe, test, expect } from 'bun:test';
 import { RadarGraphFactory, DEFAULT_RADAR_STATUSES, ALL_OPPORTUNITY_STATUSES } from '../radar/radar.graph.js';
 import type { RadarGraphDatabase, Opportunity, OpportunityStatus } from '../../../platform/database.js';
-import type { OpportunityCache } from '../../../platform/cache.interface.js';
+import type { OpportunityCache } from '../../../platform/cache.js';
 
 function createMockCache(): OpportunityCache {
   const store = new Map<string, unknown>();

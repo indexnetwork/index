@@ -12,7 +12,7 @@ import { ChatGraphFactory } from "../chat.graph.js";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../../platform/database.js";
 import type { Embedder } from "../../../platform/embedder.js";
 import type { Scraper } from "../../../platform/scraper.js";
-import type { ChatSessionReader } from "../../../platform/chat-session.js";
+import type { ChatSessionReader } from "../../../platform/chat.js";
 import type { ChatStreamEvent } from "../chat-streaming.types.js";
 import { mockChatSessionReader, createMockProtocolDeps } from "./chat.graph.mocks.js";
 import { FULL_TOOLSET_TEST_PERSONA } from "./full-toolset.persona.js";

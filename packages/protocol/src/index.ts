@@ -33,8 +33,8 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 // ─── Interfaces (implement these to wire up your infrastructure) ───────────────
 
 export type { McpAuthResolver } from "./platform/auth.js";
-export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/cache.interface.js";
-export type { ChatSummaryReader } from "./platform/chat-summary.js";
+export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/cache.js";
+export type { ChatSummaryReader } from "./platform/chat.js";
 export type { NegotiationSummaryReader } from "./platform/negotiation-summary.js";
 export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
 export type { ContactServiceAdapter } from "./internal/contacts/contact.repository.port.js";

@@ -2,7 +2,7 @@ import { HydeGraphFactory } from "../internal/discovery/hyde.graph.js";
 
 import type { HydeGraphDatabase } from "../platform/database.js";
 import type { EmbeddingGenerator } from "../platform/embedder.js";
-import type { HydeCache } from "../platform/cache.interface.js";
+import type { HydeCache } from "../platform/cache.js";
 import type { HydeGeneratorLike, HydeGraphOptions, HydeLensInferrerLike } from "../internal/discovery/hyde.graph.js";
 
 /** Host ports and model-backed collaborators required for HyDE generation. */

@@ -7,7 +7,7 @@ import type { ChatGraphCompositeDatabase } from "../../platform/database.js";
 import type { Embedder } from "../../platform/embedder.js";
 import type { Scraper } from "../../platform/scraper.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { ChatSessionReader } from "../../platform/chat-session.js";
+import type { ChatSessionReader } from "../../platform/chat.js";
 import type { ProtocolDeps } from "../shared/agent/tool.helpers.js";
 import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "./chat.utils.js";
 import { ChatStreamer } from "./chat.streamer.js";

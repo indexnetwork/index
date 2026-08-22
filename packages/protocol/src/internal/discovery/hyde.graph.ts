@@ -9,7 +9,7 @@ import { END, START, StateGraph } from '@langchain/langgraph';
 
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
-import type { HydeCache } from '../../platform/cache.interface.js';
+import type { HydeCache } from '../../platform/cache.js';
 import type { HydeGraphDatabase } from '../../platform/database.js';
 import type { EmbeddingGenerator } from '../../platform/embedder.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
