@@ -62,6 +62,7 @@ export type {
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/embedder.js";
 export type { IntentGraphQueue } from "./platform/queue.js";
 export type { Scraper } from "./platform/scraper.js";
+export type { Logger, ProtocolError, RequestContext, RequestContextStore } from "./platform/observability.js";
 export type { EnrichmentRunInput, EnrichmentRunRecord } from "./platform/enrichment-run.js";
 export type {
   NegotiationTimeoutQueue,
@@ -549,4 +550,3 @@ export {
 export type {
   RadarHealthInput,
 } from "./internal/opportunities/radar/radar.health.js";
-

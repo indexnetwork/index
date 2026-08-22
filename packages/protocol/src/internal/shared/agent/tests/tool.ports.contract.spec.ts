@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import type { AskUserQuestionToolDeps, QuestionerToolDeps } from "../../../questions/question.module.js";
 import type { EnrichmentToolDeps } from "../../../contexts/context.tools.port.js";
-import type { NetworkToolDeps } from "../../../../capabilities/networks.js";import type { OpportunityToolDeps } from "../../../opportunities/opportunity.tools.port.js";
+import type { NetworkToolDeps } from "../../../../capabilities/networks.js";
+import type { OpportunityToolDeps } from "../../../opportunities/opportunity.tools.port.js";
 import type { ToolDeps } from "../tool.helpers.js";
 
 type Equal<Left, Right> =
@@ -11,8 +11,7 @@ type Equal<Left, Right> =
     : false;
 type Expect<Value extends true> = Value;
 
-// These compile-time assertions import capability facades, not the shared
-// composition helper: a capability can only grow its port in its own contract.
+// These compile-time assertions protect the narrow ports consumed by tool composition.
 type _EnrichmentPortIsExact = Expect<Equal<keyof EnrichmentToolDeps,
   | "userDb" | "systemDb" | "graphs" | "enricher"
   | "grantDefaultSystemPermissions" | "reportToolError" | "getUserContextText"
@@ -29,9 +28,6 @@ type _OpportunityPortIsExact = Expect<Equal<keyof OpportunityToolDeps,
   | "negotiationDatabase" | "deliveryLedger"
   | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
 >>;
-type _AskUserPortIsExact = Expect<Equal<keyof AskUserQuestionToolDeps,
-  "chatQuestions" | "chatSession" | "getUserContextText"
->>;
 type _EnrichmentGraphsAreExact = Expect<Equal<keyof EnrichmentToolDeps["graphs"], "profile">>;
 type _OpportunityGraphsAreExact = Expect<Equal<keyof OpportunityToolDeps["graphs"], "index" | "networkMembership" | "opportunity">>;
 
@@ -40,8 +36,6 @@ test("ToolDeps remains structurally compatible with each narrow tool port", () =
   const enrichment: EnrichmentToolDeps = compatibility;
   const network: NetworkToolDeps = compatibility;
   const opportunity: OpportunityToolDeps = compatibility;
-  const askUser: AskUserQuestionToolDeps = compatibility;
-  const questioner: QuestionerToolDeps = compatibility;
 
-  expect([enrichment, network, opportunity, askUser, questioner]).toHaveLength(5);
+  expect([enrichment, network, opportunity]).toHaveLength(3);
 });

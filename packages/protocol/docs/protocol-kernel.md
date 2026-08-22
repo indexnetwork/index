@@ -7,8 +7,8 @@ tool names, serialized data, or supported root exports.
 | Boundary | Responsibility | First-slice contents |
 | --- | --- | --- |
 | `protocol/` | Framework-free vocabulary, schemas, and deterministic rules | Schemas, request scope, retrieval lenses, and intent-indexing contracts |
-| `platform/` | Host ports and supported runtime hooks | Database, cache, queue, embedder, scraper, request-context, and related host contracts |
-| `capabilities/` | Small executable entry points | The real `Intents` and `Networks` capability classes |
+| `platform/` | Host ports and supported runtime hooks | TypeScript contracts for database, cache, queue, embedder, scraper, logging, request context, and errors; no adapter implementations |
+| `capabilities/` | Small executable entry points | The real `Intents`, `Networks`, `Agents`, and `Discovery` capability classes |
 
 `internal/` is private and now contains graphs, prompts, agents, retrieval,
 tests, and the existing domain-first implementation directories.
@@ -32,10 +32,11 @@ subpaths.
 | Current area | Boundary | Status |
 | --- | --- | --- |
 | Stable schemas and deterministic vocabulary | `protocol/` | Moved where framework-free |
-| Database, cache, queue, embedder, scraper, request/context, and service contracts | `platform/` | Moved; contracts only, no adapters or host wiring |
-| `intents/`, `networks/` composition classes | `capabilities/` | Moved as real executable capability modules |
+| Database, cache, queue, embedder, scraper, request/context, and service contracts | `platform/` | Contracts only; no Drizzle/Postgres/Redis/BullMQ adapters, API controllers, web concerns, configuration, or host wiring |
+| Intent, network, chat-agent, and HyDE discovery composition | `capabilities/` | Real executable capability modules: `Intents`, `Networks`, `Agents`, and `Discovery` |
 | Existing domain-first implementation directories | `internal/` | Moved without workflow rewrites |
 
-`scripts/architecture/kernel-boundaries.ts` enforces the dependency direction;
-the existing host-isolation and cross-capability checks ensure no host adapter
-or private cross-capability import enters the package.
+`scripts/architecture/kernel-boundaries.ts` enforces the dependency direction
+and rejects export-only source modules outside the root entry point. The
+existing host-isolation and cross-capability checks ensure no host adapter or
+private cross-capability import enters the package.

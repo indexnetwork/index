@@ -44,6 +44,13 @@ function importSpecifiers(source: string, path: string): string[] {
   return found;
 }
 
+function isExportOnlyModule(source: string, path: string): boolean {
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  return file.statements.length > 0 && file.statements.every((statement) =>
+    ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement),
+  );
+}
+
 function targetPath(importer: string, specifier: string): string | undefined {
   if (!specifier.startsWith(".")) return undefined;
   return relative(sourceRoot, resolve(dirname(importer), specifier.replace(/\.js$/, "")));
@@ -52,6 +59,9 @@ function targetPath(importer: string, specifier: string): string | undefined {
 const violations: string[] = [];
 for (const directory of boundaryDirectories) {
   for (const file of await sourceFiles(resolve(sourceRoot, directory))) {
+    if (isExportOnlyModule(await readFile(file, "utf8"), file)) {
+      violations.push(`${relative(packageRoot, file)} is an export-only module; keep package exports in src/index.ts or give the file executable/contracts behavior.`);
+    }
     const from = relative(sourceRoot, file).split("/")[0];
     for (const specifier of importSpecifiers(await readFile(file, "utf8"), file)) {
       if (!specifier.startsWith(".")) {

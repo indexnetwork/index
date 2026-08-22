@@ -25,7 +25,7 @@ describe("protocol capability model", () => {
     expect(barrelCapabilityForSourcePath("negotiations/index.ts")).toBeUndefined();
     // Flattened capabilities use named module barrels rather than `index.ts`.
     expect(barrelCapabilityForSourcePath("capabilities/intents.ts")).toBe("intents");
-    expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBe("questions");
+    expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("capabilities/agents.ts")).toBe("agents");
     expect(barrelCapabilityForSourcePath("intents/index.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("intents/graph/intent.graph.ts")).toBeUndefined();
