@@ -84,7 +84,6 @@ The package defines interfaces — your application provides the concrete implem
 | `MintConnectLink` | Mints short connect links for opportunity accepts |
 | `ChatSummaryReader` | Read-through chat-session digest |
 | `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |
-| `QuestionGeneratorReader` / `QuestionerDatabase` | Decision-question generation and persistence |
 | `NegotiationSummaryReader` | Negotiation-digest summarization (falls back to deterministic digests) |
 
 All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
@@ -198,7 +197,6 @@ const intents = new Intents({
   database,           // IntentGraphDatabase — required only by createGraph()
   embedder,           // EmbeddingGenerator
   queue,              // IntentGraphQueue
-  questionerEnqueue,  // QuestionerEnqueueFn
 });
 ```
 

@@ -8,14 +8,6 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./question-block": {
-      "types": "./dist/protocol/question-block.schema.d.ts",
-      "import": "./dist/protocol/question-block.schema.js"
-    },
-    "./question-block/fixture": {
-      "types": "./dist/protocol/question-block.fixture.d.ts",
-      "import": "./dist/protocol/question-block.fixture.js"
     }
   },
   "files": [

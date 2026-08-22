@@ -5,7 +5,6 @@ import { Scraper } from "../../platform/discovery/scraper.js";
 import type { ProfileEnricher } from "../../platform/enrichment/ports.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../protocol/core.js";

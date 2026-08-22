@@ -49,7 +49,7 @@ const mcpToolMetadataCache = new Map<string, McpToolRegistrationMetadata[]>();
  * the cached metadata set is automatically invalidated.
  */
 export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
-  'chatSession' | 'agentDatabase' | 'agentDispatcher' | 'questionerEnqueue'
+  'chatSession' | 'agentDatabase' | 'agentDispatcher'
 >): string {
   // Contact tools are omitted from the MCP surface entirely (IND-596), so no
   // contacts-related input can change the MCP tool set.
@@ -57,7 +57,6 @@ export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
     `chat:${deps.chatSession ? '1' : '0'}`,
     `agent:${deps.agentDatabase ? '1' : '0'}`,
     `negotiation:${deps.agentDispatcher ? '1' : '0'}`,
-    `questioner:${deps.questionerEnqueue ? '1' : '0'}`,
   ].join('|');
 }
 

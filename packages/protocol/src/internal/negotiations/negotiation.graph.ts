@@ -9,14 +9,12 @@
 import { StateGraph } from "@langchain/langgraph";
 
 import type { NegotiationGraphDatabase } from "../../platform/database.js";
-import type { NegotiationTimeoutQueue } from "../../platform/negotiation/events.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
 import { NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 import { isTerminalAction } from "./negotiation.protocol.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
-import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryRetrieveFn } from "./negotiation.memory.js";
 import type { NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";
@@ -40,8 +38,7 @@ export class NegotiationGraphFactory {
   constructor(
     database: NegotiationGraphDatabase,
     dispatcher: AgentDispatcher,
-    timeoutQueue?: NegotiationTimeoutQueue,
-    questionerEnqueue?: QuestionerEnqueueFn,
+    timeoutQueue?: import("../../platform/negotiation/events.js").NegotiationTimeoutQueue,
     reflectEnqueue?: ReflectEnqueueFn,
     memoryRetrieve?: NegotiatorMemoryRetrieveFn,
     clientDmRetrieve?: NegotiatorClientDmRetrieveFn,
@@ -50,7 +47,6 @@ export class NegotiationGraphFactory {
       database,
       dispatcher,
       timeoutQueue,
-      questionerEnqueue,
       reflectEnqueue,
       memoryRetrieve,
       clientDmRetrieve,

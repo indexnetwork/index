@@ -76,37 +76,12 @@ export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
 export { ChatContextDigestSchema, type ChatContextDigest } from "./protocol/schemas/chat-context.schema.js";
-export {
-  type Question,
-  type UnderspecificationType,
-  type QuestionStrategy,
-  type QuestionGenerationResult,
-  type QuestionPurpose,
-  type NegotiationQuestionProvenance,
-  NegotiationQuestionCandidateSchema,
-  type QuestionPoolPush,
-  type QuestionRecoverySnapshot,
-  type QuestionVoidedReason,
-  type QuestionPoolPushRequestStatus,
-  type QuestionPoolPushRequestReason,
-} from "./protocol/question.js";
 export { McpApiKeyMetadataSchema } from "./platform/auth/mcp.js";
 export type {
   McpAuthInput,
   McpResolvedIdentity,
 } from "./platform/auth/mcp.js";
 export type { DiscoveryNegotiation } from "./protocol/schemas/discovery-question.schema.js";
-export {
-  QUESTION_BLOCK_MARKER,
-  QUESTION_BLOCK_VERSION,
-  QuestionBlockSchema,
-  QuestionBlockQuestionSchema,
-  parseQuestionMessage,
-  serializeQuestionMessage,
-  type QuestionBlock,
-  type QuestionBlockQuestion,
-  type ParsedQuestionMessage,
-} from "./protocol/question-block.schema.js";
 export type { NetworkAssignmentMetadata } from "./protocol/schemas/network-assignment.schema.js";
 export type { IntentIndexingResult } from "./protocol/core.js";
 export type { HydeTargetCorpus, Lens } from "./protocol/core.js";
@@ -114,22 +89,10 @@ export type { DebugMetaAgent } from "./protocol/core.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./internal/shared/assignment/network-assignment.policy.js";
 export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "./protocol/core.js";
 
-// ─── Graph factories ──────────────────────────────────────────────────────────
+// ─── Personal agent chat ─────────────────────────────────────────────────────
 
-export { ChatGraphFactory } from "./internal/chat/chat.graph.js";
-export { type ChatPersonaConfig } from "./internal/chat/chat.persona.js";
-export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./internal/chat/negotiator.persona.js";
-// The shared self-identification helper: every surface that speaks AS the
-// user's own agent introduces itself through this one sentence builder.
-export { buildAgentSelfIntroduction, type AgentIdentityOptions } from "./internal/chat/agent-identity.prompt.js";
-export {
-  SIGNAL_PERSONA_ID,
-  createSignalPersona,
-} from "./internal/chat/signal.persona.js";
-export {
-  ONBOARDING_PERSONA_ID,
-  createOnboardingPersona,
-} from "./internal/chat/onboarding.persona.js";
+export { PersonalAgentChat } from "./capabilities/agents.js";
+export type { AgentsDeps as PersonalAgentChatDeps } from "./capabilities/agents.js";
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
 export { Discovery } from "./capabilities/discovery.js";
 export type { DiscoveryDeps } from "./capabilities/discovery.js";
@@ -143,8 +106,6 @@ export type {
   NetworksDeps,
   NetworkToolDeps,
 } from "./capabilities/networks.js";
-export { Agents } from "./capabilities/agents.js";
-export type { AgentsDeps } from "./capabilities/agents.js";
 export { Contexts } from "./capabilities/contexts.js";
 export type { ContextsDeps } from "./capabilities/contexts.js";
 export { Contacts } from "./capabilities/contacts.js";
@@ -188,9 +149,6 @@ export { ChatSummarizer } from "./internal/chat/chat.summarizer.js";
 export { HydeGenerator } from "./internal/discovery/hyde.generator.js";
 export { SuggestionGenerator } from "./internal/chat/chat.suggester.js";
 export { LensInferrer } from "./internal/discovery/lens.inferrer.js";
-export type { QuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn } from "./protocol/question-input.js";
-export { INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./protocol/question.js";
-export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./protocol/question.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
 
@@ -286,29 +244,6 @@ export type {
 } from "./internal/negotiations/negotiation.checklist.contracts.js";
 export { NEGOTIATION_PARK_REASONING, NegotiationStallGapAuthor } from "./internal/negotiations/negotiation.stall-gap.js";
 export type { NegotiationStallGap, NegotiationStallReason, StallGapAuthorInput } from "./internal/negotiations/negotiation.stall-gap.js";
-export {
-  classifyInflightPark,
-  classifyParkedNegotiation,
-  classifyPostStallPark,
-  consumeQuestionBlockAnswers,
-  negotiationParkAnswerId,
-  resumeParkedNegotiation,
-  routeAnswerRef,
-} from "./internal/negotiations/negotiation.answer-consumption.js";
-export type {
-  AnswerRoute,
-  InflightAnswerSettlementInput,
-  InflightAnswerSettlementResult,
-  NegotiationAnswerConsumptionPorts,
-  NegotiationAnswerInput,
-  NegotiationAnswerResumeOutcome,
-  ParkClassification,
-  ParkClassificationMessage,
-  ParkClassificationTask,
-  QuestionBlockAnswerConsumptionInput,
-  QuestionBlockAnswerConsumptionResult,
-  RoutedAnswer,
-} from "./internal/negotiations/negotiation.answer-consumption.js";
 export {
   HERMES_OWNER_DIRECTIVE,
   HERMES_SHARED_MESSAGE_TEMPLATES,
@@ -449,26 +384,8 @@ export type {
   PoolDiscriminatorAssignmentInput,
 } from "./internal/opportunities/discriminator/discriminator.assigner.js";
 export {
-  POOL_DISCRIMINATOR_MAX_CANDIDATES,
-  POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS,
-  POOL_DISCRIMINATOR_MIN_POOL_SIZE,
-  POOL_QUESTION_MAX_PENDING_PER_INTENT,
-  POOL_QUESTION_MIN_VOI,
-  POOL_RERUN_DEBOUNCE_MS,
-} from "./internal/opportunities/discriminator/discriminator.env.js";
-export {
   PoolDiscriminatorMiner,
 } from "./internal/opportunities/discriminator/discriminator.miner.js";
-export {
-  buildPoolQuestionPushMessage,
-  poolQuestionCycleKey,
-} from "./internal/opportunities/discriminator/discriminator.push.js";
-export {
-  BOTH_MATTER_LABEL,
-  selectQuestionDiscriminators,
-  synthesizePoolQuestion,
-  toQuestionDiscriminator,
-} from "./internal/opportunities/discriminator/discriminator.question.js";
 export {
   runPoolDiscriminatorShadow,
 } from "./internal/opportunities/discriminator/discriminator.shadow.js";

@@ -71,7 +71,6 @@ output with `setLoggerFactory()`. The package does not implement
 | Premise Analyzer | `internal/premises/premise.analyzer.ts` | Premise graph — classifies the premise speech act (declarative/assertive) and scores felicity |
 | Premise Indexer | `internal/premises/premise.indexer.ts` | Premise graph — embeds premises and scores network fit for assignment |
 | User Context Generator | `internal/contexts/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
-| Questioner Agent | `internal/questions/question.agent.ts` | Questioner queue — mode-driven structured decision-question generation (enrichment/intent/negotiation/discovery) |
 | Network Recommender | `internal/networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
 | HyDE Generator | `internal/discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
 | HyDE Strategies | `internal/discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
@@ -79,7 +78,6 @@ output with `setLoggerFactory()`. The package does not implement
 | Opportunity Evaluator | `internal/opportunities/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
 | Opportunity Introducer | `internal/opportunities/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
-| Questioner Agent | `internal/questions/question.agent.ts` | Mode-driven decision-question generation (discovery, intent, enrichment, negotiation, chat) |
 | Contact Inviter | `internal/contacts/contact.inviter.ts` | Invite flow — generates personalized invite messages |
 | Index Negotiator | `internal/negotiations/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
 | Negotiation Insights Generator | `internal/negotiations/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |

@@ -4,7 +4,6 @@ export type Capability =
   | "networks"
   | "opportunities"
   | "negotiations"
-  | "questions"
   | "agents"
   | "contacts"
   | "discovery"
@@ -20,7 +19,6 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   networks: "networks",
   opportunities: "opportunities",
   negotiations: "negotiations",
-  questions: "questions",
   agents: "agents",
   chat: "agents",
   contacts: "contacts",
@@ -41,7 +39,6 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
   networks: "networks",
   opportunities: undefined,
   negotiations: undefined,
-  questions: undefined,
   agents: "agents",
   contacts: undefined,
   discovery: undefined,
@@ -79,13 +76,12 @@ export function barrelPathForCapability(capability: Capability): string | undefi
 export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   Record<Capability, readonly Capability[]>
 > = {
-  intents: ["agents", "questions"],
-  contexts: ["agents", "questions", "discovery"],
+  intents: ["agents"],
+  contexts: ["agents", "discovery"],
   networks: ["agents", "intents"],
-  opportunities: ["agents", "intents", "negotiations", "questions", "discovery"],
-  negotiations: ["opportunities", "questions"],
-  questions: ["negotiations"],
-  agents: ["negotiations", "questions"],
+  opportunities: ["agents", "intents", "negotiations", "discovery"],
+  negotiations: ["opportunities"],
+  agents: ["negotiations"],
   contacts: [],
   // discovery needs only the debug-metadata type it stamps on graph state.
   discovery: ["agents"],
@@ -95,7 +91,6 @@ export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
     "networks",
     "opportunities",
     "negotiations",
-    "questions",
     "agents",
     "contacts",
     "discovery",

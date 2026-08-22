@@ -157,7 +157,7 @@ export const NegotiationTurnSchema = z.object({
     }),
   }),
   message: z.string().nullable().optional(),
-  /** Present when action is `ask_user` (v2, P3.2). */
+  /** Read-only legacy wire field. New A2A turns cannot generate this action. */
   askUser: AskUserPayloadSchema.nullable().optional(),
   /**
    * The negotiation's checklist as this turn scored it (checklist plan §2).

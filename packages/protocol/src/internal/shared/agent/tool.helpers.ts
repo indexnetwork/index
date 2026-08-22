@@ -26,7 +26,6 @@ import type { NegotiatorMemoryToolsHost } from "../../../platform/negotiation/me
 import type { NegotiatorAnswerToolsHost } from "../../../platform/negotiation/answer.js";
 import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
 import type { NegotiationListingParkHost } from "../../../platform/negotiation/listing.js";
-import type { QuestionerEnqueueFn } from "../../../protocol/question-input.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../../../platform/enrichment/runs.js";
 import type { McpActivityCaller } from "./activity-projection.js";
 
@@ -160,12 +159,6 @@ interface ToolContextBindings {
   chatSummary?: ChatSummaryReader;
   /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
   chatMessageWriter?: ChatMessageWriter;
-  /**
-   * Optional async question enqueue callback. When provided, question generation
-   * is dispatched asynchronously to the QuestionerQueue instead of running inline.
-   * Injected by the composition root.
-   */
-  questionerEnqueue?: QuestionerEnqueueFn;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Durable host persistence for verified intent proposals shown in chat. */
@@ -506,12 +499,6 @@ interface ToolDepsBindings {
   };
   /** Writes user messages into the user's most-recent chat session (Slice 5 MCP elicitation). */
   chatMessageWriter?: ChatMessageWriter;
-  /**
-   * Optional async question enqueue callback. When provided, question generation
-   * is dispatched asynchronously to the QuestionerQueue. Injected by the
-   * composition root.
-   */
-  questionerEnqueue?: QuestionerEnqueueFn;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
   /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */

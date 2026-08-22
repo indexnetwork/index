@@ -10,7 +10,6 @@ import { Networks } from "../../../capabilities/networks.js";import { Negotiatio
 import { PremiseGraphFactory } from "../../premises/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 
-import type { QuestionerEnqueueFn } from "../../../protocol/question-input.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
 import { deriveAllowedNetworkIds, filterToolsForScope, scopeFromNetworkId } from "./tool.scope.js";
@@ -128,18 +127,6 @@ export async function createChatTools(
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
 
-  // Wrap questionerEnqueue to include scoped context when available. (The
-  // chat-session conversationId defaulting went with the retired chat-mode
-  // generator; park payloads carry their own recipient routing.)
-  const sessionAwareEnqueue: QuestionerEnqueueFn | undefined = deps.questionerEnqueue
-    ? (input) => deps.questionerEnqueue!({
-        ...input,
-        ...(resolvedContext.scopeType && resolvedContext.scopeId && !input.scopeId
-          ? { scopeType: resolvedContext.scopeType, scopeId: resolvedContext.scopeId }
-          : {}),
-      })
-    : undefined;
-
   const intents = new Intents({
     database,
     embedder,
@@ -163,7 +150,6 @@ export async function createChatTools(
         deps.negotiationDatabase,
         deps.agentDispatcher,
         deps.negotiationTimeoutQueue,
-        sessionAwareEnqueue,
       ).createGraph()
     : undefined;
   const opportunityGraph = new OpportunityGraphFactory(
@@ -219,7 +205,6 @@ export async function createChatTools(
     frontendUrl: deps.frontendUrl,
     apiBaseUrl: deps.apiBaseUrl,
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
-    ...(sessionAwareEnqueue && { questionerEnqueue: sessionAwareEnqueue }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     ...(deps.chatSession && { chatSession: deps.chatSession }),
     ...(deps.getUserContextText && { getUserContextText: deps.getUserContextText }),

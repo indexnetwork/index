@@ -19,7 +19,6 @@
  */
 import { z } from "zod";
 
-import { AskUserGenerationSchema } from "../../protocol/schemas/negotiation-state.schema.js";
 import { ChecklistDraftGenerationSchema } from "../../protocol/schemas/negotiation-checklist.schema.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL } from "./negotiation.checklist.contracts.js";
 import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
@@ -40,24 +39,16 @@ function turnSchema<T extends [NegotiationAction, ...NegotiationAction[]]>(actio
     action: z.enum(actions),
     assessment: AssessmentSchema,
     message: z.string().nullable().optional(),
-    /**
-     * Present when action is `ask_user` (v2, P3.2).
-     *
-     * The GENERATION payload, not the persisted one: these schemas are what a
-     * model drafts into, and `guaranteed` — the conclusion floor's own mark —
-     * must not be a field it can see. See `AskUserGenerationSchema`.
-     */
-    askUser: AskUserGenerationSchema.nullable().optional(),
   });
 }
 
 // ─── v2 seat-scoped turn schemas ─────────────────────────────────────────────
 
 /** Initiator seat, non-final turn: may reach out, push back, ask, or walk away — never accept. */
-export const InitiatorTurnSchema = turnSchema(["outreach", "counter", "question", "withdraw"]);
+export const InitiatorTurnSchema = turnSchema(["outreach", "counter", "withdraw"]);
 
 /** Counterparty seat, non-final turn: the only seat that can accept. */
-export const CounterpartyTurnSchema = turnSchema(["accept", "decline", "counter", "question"]);
+export const CounterpartyTurnSchema = turnSchema(["accept", "decline", "counter"]);
 
 /** Initiator seat, final allowed turn: commit to walking away or leave the door open. */
 export const FinalInitiatorTurnSchema = turnSchema(["withdraw", "counter"]);
@@ -78,10 +69,10 @@ export const CounterpartyAskUserTurnSchema = turnSchema(["accept", "decline", "c
 
 // ─── Action vocabulary per version + seat ────────────────────────────────────
 
-const V1_ACTIONS: readonly NegotiationAction[] = ["propose", "accept", "reject", "counter", "question"];
+const V1_ACTIONS: readonly NegotiationAction[] = ["propose", "accept", "reject", "counter"];
 const V1_FINAL_ACTIONS: readonly NegotiationAction[] = ["accept", "reject"];
-const V2_INITIATOR_ACTIONS: readonly NegotiationAction[] = ["outreach", "counter", "question", "withdraw"];
-const V2_COUNTERPARTY_ACTIONS: readonly NegotiationAction[] = ["accept", "decline", "counter", "question"];
+const V2_INITIATOR_ACTIONS: readonly NegotiationAction[] = ["outreach", "counter", "withdraw"];
+const V2_COUNTERPARTY_ACTIONS: readonly NegotiationAction[] = ["accept", "decline", "counter"];
 const V2_FINAL_INITIATOR_ACTIONS: readonly NegotiationAction[] = ["withdraw", "counter"];
 const V2_FINAL_COUNTERPARTY_ACTIONS: readonly NegotiationAction[] = ["accept", "decline"];
 const V2_INITIATOR_ASK_USER_ACTIONS: readonly NegotiationAction[] = [...V2_INITIATOR_ACTIONS, "ask_user"];
@@ -100,11 +91,10 @@ export function allowedActionsFor(
   opts?: TurnVocabularyOpts,
 ): readonly NegotiationAction[] {
   if (version !== "v2") return isFinalTurn ? V1_FINAL_ACTIONS : V1_ACTIONS;
-  const askUser = opts?.askUser === true && !isFinalTurn;
   if (seat === "initiator") {
-    return isFinalTurn ? V2_FINAL_INITIATOR_ACTIONS : (askUser ? V2_INITIATOR_ASK_USER_ACTIONS : V2_INITIATOR_ACTIONS);
+    return isFinalTurn ? V2_FINAL_INITIATOR_ACTIONS : V2_INITIATOR_ACTIONS;
   }
-  return isFinalTurn ? V2_FINAL_COUNTERPARTY_ACTIONS : (askUser ? V2_COUNTERPARTY_ASK_USER_ACTIONS : V2_COUNTERPARTY_ACTIONS);
+  return isFinalTurn ? V2_FINAL_COUNTERPARTY_ACTIONS : V2_COUNTERPARTY_ACTIONS;
 }
 
 /**
@@ -125,11 +115,10 @@ export function turnSchemaFor(
 ): z.ZodTypeAny {
   const base = ((): z.ZodTypeAny => {
     if (version !== "v2") return isFinalTurn ? v1Schemas.final : v1Schemas.system;
-    const askUser = opts?.askUser === true && !isFinalTurn;
     if (seat === "initiator") {
-      return isFinalTurn ? FinalInitiatorTurnSchema : (askUser ? InitiatorAskUserTurnSchema : InitiatorTurnSchema);
+      return isFinalTurn ? FinalInitiatorTurnSchema : InitiatorTurnSchema;
     }
-    return isFinalTurn ? FinalCounterpartyTurnSchema : (askUser ? CounterpartyAskUserTurnSchema : CounterpartyTurnSchema);
+    return isFinalTurn ? FinalCounterpartyTurnSchema : CounterpartyTurnSchema;
   })();
   return opts?.checklist === true ? withChecklistField(base) : base;
 }
@@ -225,7 +214,7 @@ export function isRejectLikeAction(action: string | undefined | null): boolean {
 export function negotiationHasMadeContact(
   turns: readonly { action: string }[],
 ): boolean {
-  return turns.some((turn) => turn.action !== "ask_user");
+  return turns.length > 0;
 }
 
 /**
