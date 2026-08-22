@@ -6,7 +6,7 @@ import ts from "typescript";
 
 const packageRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const sourceRoot = resolve(packageRoot, "src");
-const bannedPackages = /^(?:drizzle-orm(?:\/.*)?|bullmq|ioredis|pg|postgres|redis|express(?:\/.*)?|fastify(?:\/.*)?|hono(?:\/.*)?|next(?:\/.*)?|@trpc\/server(?:\/.*)?)$/;
+const bannedPackages = /^(?:async_hooks|drizzle-orm(?:\/.*)?|bullmq|ioredis|pg|postgres|redis|express(?:\/.*)?|fastify(?:\/.*)?|hono(?:\/.*)?|next(?:\/.*)?|@trpc\/server(?:\/.*)?)$/;
 
 async function sourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory);
