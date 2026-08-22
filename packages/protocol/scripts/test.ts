@@ -20,6 +20,7 @@ const ROOT = new URL("../src", import.meta.url).pathname;
  * credential-free source-test gate.
  */
 export const LIVE_MODEL_SPECS = new Set([
+  "capabilities/tests/negotiations.spec.ts",
   "contacts/tests/contact.inviter.spec.ts",
   "enrichment/tests/enrichment.generator.spec.ts",
   "negotiations/tests/insight.generator.spec.ts",

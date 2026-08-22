@@ -18,6 +18,7 @@ import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryRetrieveFn } from "./negotiation.memory.js";
 import type { NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";
+import type { InChatNegotiationQuestionDelivery } from "../../platform/chat/ports.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 import { initNode } from "./negotiation.graph.init.js";
 import { turnNode } from "./negotiation.graph.turn.js";
@@ -42,6 +43,7 @@ export class NegotiationGraphFactory {
     reflectEnqueue?: ReflectEnqueueFn,
     memoryRetrieve?: NegotiatorMemoryRetrieveFn,
     clientDmRetrieve?: NegotiatorClientDmRetrieveFn,
+    inChatQuestionDelivery?: InChatNegotiationQuestionDelivery,
   ) {
     this.deps = {
       database,
@@ -50,6 +52,7 @@ export class NegotiationGraphFactory {
       reflectEnqueue,
       memoryRetrieve,
       clientDmRetrieve,
+      inChatQuestionDelivery,
       systemAgent: new IndexNegotiator(),
       stallGapAuthor: new NegotiationStallGapAuthor(),
     };

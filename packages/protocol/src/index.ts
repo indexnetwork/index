@@ -34,7 +34,7 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 
 export type { McpAuthResolver } from "./platform/auth/ports.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
-export type { ChatSummaryReader } from "./platform/chat/ports.js";
+export type { ChatSummaryReader, InChatNegotiationQuestionDelivery } from "./platform/chat/ports.js";
 export type { NegotiationSummaryReader } from "./platform/negotiation/summary.js";
 export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
 export type { ContactServiceAdapter } from "./internal/contacts/contact.repository.port.js";

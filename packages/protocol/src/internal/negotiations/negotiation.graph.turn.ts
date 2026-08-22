@@ -164,7 +164,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     const askUserWiringAvailable =
       version === 'v2'
       && !isFinalTurn
-      && !!deps.questionerEnqueue
+      && (!!deps.inChatQuestionDelivery || !!deps.questionerEnqueue)
       && !!deps.timeoutQueue?.enqueueAskUserExpiry
       && !!state.opportunityId
       && !!ownIntentId
@@ -192,7 +192,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       askUserEligibility: {
         versionV2: version === 'v2',
         nonFinal: !isFinalTurn,
-        questionerWired: !!deps.questionerEnqueue,
+        inChatQuestionDeliveryWired: !!deps.inChatQuestionDelivery,
         expiryWired: !!deps.timeoutQueue?.enqueueAskUserExpiry,
         opportunityBound: !!state.opportunityId,
         intentBound: !!ownIntentId,
@@ -648,7 +648,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       priorActions: history.map((prior) => prior.action),
       consultationBudgetSpent: questionsSpent >= questionBudget,
       hasExactResumeCoordinate: Boolean(
-        deps.questionerEnqueue
+        (deps.inChatQuestionDelivery || deps.questionerEnqueue)
         && deps.timeoutQueue?.enqueueAskUserExpiry
         && state.taskId
         && state.opportunityId
@@ -1322,6 +1322,17 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       }
     }
 
+    // An in-chat consultation has no fallback renderer: its structured question
+    // is the assistant message the owner must be able to answer. Never persist
+    // or park a turn the configured delivery surface cannot present.
+    if (turn.action === 'ask_user' && deps.inChatQuestionDelivery && !turn.askUser?.question) {
+      turnLog.warn('ask_user missing in-chat question; coercing to seat fallback', {
+        taskId: state.taskId,
+        seat,
+      });
+      turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+    }
+
     const parts = [{ kind: "data" as const, data: turn }];
     const message = await deps.database.createMessage({
       conversationId: state.conversationId,
@@ -1465,7 +1476,29 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         settlementId,
         recipientIntentId: ownIntentId,
       });
-      if (safeAskUser) {
+      if (deps.inChatQuestionDelivery && turn.askUser?.question) {
+        try {
+          await deps.inChatQuestionDelivery.deliver({
+            ownerUserId: ownUser.id,
+            ownerIntentId: ownIntentId!,
+            opportunityId: state.opportunityId,
+            negotiationTaskId: state.taskId,
+            settlementId,
+            question: turn.askUser.question,
+          });
+          turnLog.info('negotiation_ask_user_delivered_to_chat', {
+            taskId: state.taskId,
+            opportunityId: state.opportunityId,
+            recipientIntentId: ownIntentId,
+          });
+        } catch (error) {
+          turnLog.error('Failed to deliver ask_user question to the owner chat; timeout recovery remains armed', {
+            taskId: state.taskId,
+            opportunityId: state.opportunityId,
+            error,
+          });
+        }
+      } else if (safeAskUser) {
         const userContext = (await deps.database.getUserContext(ownUser.id, null).catch(() => null))?.text ?? '';
         try {
           await deps.questionerEnqueue!({

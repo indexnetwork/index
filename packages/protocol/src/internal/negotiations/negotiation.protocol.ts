@@ -20,6 +20,7 @@
 import { z } from "zod";
 
 import { ChecklistDraftGenerationSchema } from "../../protocol/schemas/negotiation-checklist.schema.js";
+import { AskUserGenerationSchema } from "../../protocol/schemas/negotiation-state.schema.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL } from "./negotiation.checklist.contracts.js";
 import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
 export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "../../protocol/core.js";
@@ -62,10 +63,12 @@ export const FinalCounterpartyTurnSchema = turnSchema(["accept", "decline"]);
 // base schemas above stay byte-identical for every existing caller.
 
 /** Initiator seat, non-final turn, with the client-consult pause available. */
-export const InitiatorAskUserTurnSchema = turnSchema(["outreach", "counter", "question", "withdraw", "ask_user"]);
+export const InitiatorAskUserTurnSchema = turnSchema(["outreach", "counter", "question", "withdraw", "ask_user"])
+  .extend({ askUser: AskUserGenerationSchema.nullable().optional() });
 
 /** Counterparty seat, non-final turn, with the client-consult pause available. */
-export const CounterpartyAskUserTurnSchema = turnSchema(["accept", "decline", "counter", "question", "ask_user"]);
+export const CounterpartyAskUserTurnSchema = turnSchema(["accept", "decline", "counter", "question", "ask_user"])
+  .extend({ askUser: AskUserGenerationSchema.nullable().optional() });
 
 // ─── Action vocabulary per version + seat ────────────────────────────────────
 
@@ -92,9 +95,13 @@ export function allowedActionsFor(
 ): readonly NegotiationAction[] {
   if (version !== "v2") return isFinalTurn ? V1_FINAL_ACTIONS : V1_ACTIONS;
   if (seat === "initiator") {
-    return isFinalTurn ? V2_FINAL_INITIATOR_ACTIONS : V2_INITIATOR_ACTIONS;
+    return isFinalTurn
+      ? V2_FINAL_INITIATOR_ACTIONS
+      : (opts?.askUser ? V2_INITIATOR_ASK_USER_ACTIONS : V2_INITIATOR_ACTIONS);
   }
-  return isFinalTurn ? V2_FINAL_COUNTERPARTY_ACTIONS : V2_COUNTERPARTY_ACTIONS;
+  return isFinalTurn
+    ? V2_FINAL_COUNTERPARTY_ACTIONS
+    : (opts?.askUser ? V2_COUNTERPARTY_ASK_USER_ACTIONS : V2_COUNTERPARTY_ACTIONS);
 }
 
 /**
@@ -116,9 +123,13 @@ export function turnSchemaFor(
   const base = ((): z.ZodTypeAny => {
     if (version !== "v2") return isFinalTurn ? v1Schemas.final : v1Schemas.system;
     if (seat === "initiator") {
-      return isFinalTurn ? FinalInitiatorTurnSchema : InitiatorTurnSchema;
+      return isFinalTurn
+        ? FinalInitiatorTurnSchema
+        : (opts?.askUser ? InitiatorAskUserTurnSchema : InitiatorTurnSchema);
     }
-    return isFinalTurn ? FinalCounterpartyTurnSchema : CounterpartyTurnSchema;
+    return isFinalTurn
+      ? FinalCounterpartyTurnSchema
+      : (opts?.askUser ? CounterpartyAskUserTurnSchema : CounterpartyTurnSchema);
   })();
   return opts?.checklist === true ? withChecklistField(base) : base;
 }

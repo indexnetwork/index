@@ -1,4 +1,5 @@
 import type { ChatContextDigest } from "../../protocol/schemas/chat-context.schema.js";
+import type { StructuredQuestion } from "../../protocol/schemas/structured-question.schema.js";
 
 /** Host reads of H2A chat sessions. */
 export interface ChatSessionSummary { sessionId: string; title: string | null; messageCount: number; lastMessageAt: Date | null; createdAt: Date; }
@@ -14,3 +15,15 @@ export interface ChatMessageWriter { addUserMessage(userId: string, content: str
 
 /** Host reader for an incrementally maintained chat digest. */
 export interface ChatSummaryReader { getDigest(sessionId: string): Promise<ChatContextDigest | null>; }
+
+/** Delivers a negotiation clarification as an assistant message in its owner's chat. */
+export interface InChatNegotiationQuestionDelivery {
+  deliver(input: {
+    ownerUserId: string;
+    ownerIntentId: string;
+    opportunityId: string;
+    negotiationTaskId: string;
+    settlementId: string;
+    question: StructuredQuestion;
+  }): Promise<void>;
+}
