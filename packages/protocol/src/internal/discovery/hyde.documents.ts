@@ -1,7 +1,9 @@
 import { createHash } from 'crypto';
 
 import type { HydeDocument } from '../../platform/database.js';
-import { HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from './hyde.env.js';
+/** HyDE generation mode. Frame-v1 is the only supported mode. */
+export const HYDE_FRAME_GENERATION_VERSION = "frame-v1" as const;
+export type HydeGenerationMode = typeof HYDE_FRAME_GENERATION_VERSION;
 
 /** Hash source text without persisting the source itself in frame metadata. */
 export function computeHydeSourceTextHash(sourceText: string): string {

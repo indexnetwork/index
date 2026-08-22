@@ -11,13 +11,11 @@
 export {
   computeHydeSourceTextHash,
   selectHydeDocumentsForGeneration,
-} from "./hyde.documents.js";
-export {
   HYDE_FRAME_GENERATION_VERSION,
-} from "./hyde.env.js";
+} from "./hyde.documents.js";
 export type {
   HydeGenerationMode,
-} from "./hyde.env.js";
+} from "./hyde.documents.js";
 export {
   HYDE_HARD_CONSTRAINT_TYPES,
   HYDE_NAMED_ENTITY_TYPES,

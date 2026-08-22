@@ -24,10 +24,10 @@
  * barrel — never from runtime/, host implementations, or other capability
  * internals.
  */
-export {
-  INTENT_QUESTION_DAILY_CAP_DEFAULT,
-  INTENT_QUESTION_DAILY_WINDOW_HOURS,
-} from "./question.env.js";
+/** Refinement questions a single intent may generate per rolling window. */
+export const INTENT_QUESTION_DAILY_CAP_DEFAULT = 2;
+/** Width of the rolling question budget window, in hours. */
+export const INTENT_QUESTION_DAILY_WINDOW_HOURS = 24;
 
 export type {
   InflightQuestionerInput,

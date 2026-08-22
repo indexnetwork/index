@@ -16,7 +16,7 @@ import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from "../shared/observability/request-context.js";
 import { computeHydeSourceTextHash } from './hyde.documents.js';
-import { HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from './hyde.env.js';
+import { HYDE_FRAME_GENERATION_VERSION, type HydeGenerationMode } from './hyde.documents.js';
 import { sanitizeHydeSourceFrame, type HydeSourceFrame } from './hyde.frame.js';
 import type { HydeGenerateInput, HydeGeneratorOutput } from './hyde.generator.js';
 import { HydeGraphState, type HydeDocumentState } from './hyde.state.js';

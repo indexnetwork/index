@@ -20,7 +20,7 @@ import { invokeToolRuntime, toolRuntimeErrorToResult } from "./tool.runtime.js";
 import { createEnrichmentTools } from "../../enrichment/enrichment.tools.js";
 import { createOpportunityTools } from "../../opportunities/opportunity.module.js";
 import { createUtilityTools } from "./utility.tools.js";
-import { createContactTools } from "../../contacts/contact.module.js";
+import { createContactTools } from "../../contacts/contact.tools.js";
 // The composition root reaches the leaf directly (it is exempt from the barrel
 // rule by design): importing agents/agent.module.js here would pull in the
 // chat personas, which import this module back -- a runtime cycle.

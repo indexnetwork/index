@@ -34,4 +34,4 @@ export {
 } from "../chat/signal.persona.js";
 export { createAgentTools } from "./agent.tools.js";
 export { SYSTEM_AGENT_IDS } from "./agent.types.js";
-export type { AgentToolDeps } from "./agent.tools.port.js";
+export type { AgentToolDeps } from "./agent.tools.js";

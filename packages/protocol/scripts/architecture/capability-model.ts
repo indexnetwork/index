@@ -37,13 +37,13 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
  */
 export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string | undefined>> = {
   intents: "intents",
-  contexts: "contexts",
+  contexts: undefined,
   networks: "networks",
   opportunities: "opportunities",
   negotiations: "negotiations",
   questions: "questions",
   agents: "agents",
-  contacts: "contacts",
+  contacts: undefined,
   discovery: "discovery",
   // The composition root is the one all-capability point; it has no barrel of
   // its own and is reached through the package entry point instead.
@@ -58,13 +58,11 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
  */
 export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, string>>> = {
   intents: "../capabilities/intents.ts",
-  contexts: "context.module.ts",
   networks: "../capabilities/networks.ts",
   opportunities: "opportunity.module.ts",
   negotiations: "negotiation.module.ts",
   questions: "question.module.ts",
   agents: "agent.module.ts",
-  contacts: "contact.module.ts",
 };
 
 /** The barrel filename a capability's public surface must live in. */

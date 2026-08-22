@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { z } from 'zod';
 
 import { createAgentTools } from '../agent.tools.js';
-import type { AgentToolDeps } from '../agent.tools.port.js';
+import type { AgentToolDeps } from '../agent.tools.js';
 
 /**
  * IND-582 — canonical-only permission actions at the public participant-agent

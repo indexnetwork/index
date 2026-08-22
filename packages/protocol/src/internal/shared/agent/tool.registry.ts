@@ -8,7 +8,7 @@ import { Networks } from '../../../capabilities/networks.js';
 import { createOpportunityTools, createOpportunityVerdictTools } from '../../opportunities/opportunity.module.js';
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
-import { createContactTools } from '../../contacts/contact.module.js';
+import { createContactTools } from '../../contacts/contact.tools.js';
 import { createAgentTools } from '../../agents/agent.module.js';
 import { createNegotiationAnswerTools, createNegotiationTools } from '../../negotiations/negotiation.module.js';
 import { createChatTools } from '../../chat/chat.tools.js';

@@ -15,7 +15,10 @@
 import { z } from 'zod';
 
 import type { DefineTool } from '../shared/agent/tool.helpers.js';
-import type { AgentToolDeps } from './agent.tools.port.js';
+import type { AgentDatabase } from "./agent.repository.port.js";
+
+/** Host capabilities consumed by participant-agent registry tools. */
+export type AgentToolDeps = { agentDatabase?: AgentDatabase };
 import { error, success } from '../shared/agent/tool.helpers.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 

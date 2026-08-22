@@ -37,7 +37,7 @@ export type { ChatSummaryReader } from "./platform/chat-summary.js";
 export type { NegotiationSummaryReader } from "./platform/negotiation-summary.js";
 export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
 export { NegotiationSummarizer } from "./internal/negotiations/negotiation.module.js";
-export type { ContactServiceAdapter } from "./internal/contacts/contact.module.js";
+export type { ContactServiceAdapter } from "./internal/contacts/contact.repository.port.js";
 export type {
   ChatGraphCompositeDatabase,
   UserDatabase,
@@ -185,12 +185,12 @@ export type {
   OpportunityOwnerInteractionProvenance,
   OpportunityOwnerInteractionSurface,
 } from "./internal/opportunities/opportunity.module.js";
-export { EnrichmentGraphFactory } from "./internal/contexts/context.module.js";
-export { PremiseGraphFactory } from "./internal/contexts/context.module.js";
+export { EnrichmentGraphFactory } from "./internal/enrichment/enrichment.graph.js";
+export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
-export { UserContextGenerator } from "./internal/contexts/context.module.js";
+export { UserContextGenerator } from "./internal/contexts/context.generator.js";
 export { ChatTitleGenerator } from "./internal/agents/agent.module.js";
 export { ChatInterruptClassifier } from "./internal/agents/agent.module.js";
 export { ChatSummarizer } from "./internal/agents/agent.module.js";
@@ -284,8 +284,8 @@ export { getOrCreateDeliveryCardBatch } from "./internal/opportunities/opportuni
 export { createToolRegistry } from "./internal/shared/agent/tool.registry.js";
 // Capability-owned tool entry points. These are explicit, narrow contracts;
 // capability implementation directories remain private to the package.
-export { createEnrichmentTools } from "./internal/contexts/context.module.js";
-export type { EnrichmentToolDeps } from "./internal/contexts/context.module.js";
+export { createEnrichmentTools } from "./internal/enrichment/enrichment.tools.js";
+export type { EnrichmentToolDeps } from "./internal/contexts/context.tools.port.js";
 export { AMBIENT_PARK_WINDOW_MS } from './internal/negotiations/negotiation.module.js';
 export { normalizeTelegramHandle } from './internal/shared/utils/telegram-handle.js';
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import type { BaseMessage } from '@langchain/core/messages';
 
-import { HYDE_FRAME_GENERATION_VERSION } from '../hyde.env.js';
+import { HYDE_FRAME_GENERATION_VERSION } from '../hyde.documents.js';
 import { HydeSourceFrameSchema, sanitizeHydeSourceFrame, type HydeSourceFrame } from '../hyde.frame.js';
 import { FrameResponseSchema, LensInferrer, type LensStructuredModel } from '../lens.inferrer.js';
 
