@@ -19,6 +19,7 @@ src/controllers/tests/opportunity.controller.isolated.ts
 src/queues/tests/enrichment.queue.jobs.isolated.ts
 src/queues/tests/expiration.queue.isolated.ts
 src/queues/tests/from-enrichment.queue.isolated.ts
+src/queues/tests/from-intent.queue.concurrency.isolated.ts
 src/queues/tests/from-intent.queue.isolated.ts
 src/queues/tests/hyde.queue.isolated.ts
 src/queues/tests/intent.queue.isolated.ts

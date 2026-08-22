@@ -6,12 +6,22 @@ import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
 
-import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
+import { createOpportunityGraphDb, runOpportunityDiscovery, DISCOVERY_WORKER_CONCURRENCY, type OpportunityGraphDb } from './discovery.shared';
 import { buildIntentDiscoveryTrigger, type FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
 export type { FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
+import { createIntentDiscoveryLock, type IntentDiscoveryLock } from './discovery.intent-lock';
 import { maybeRunNegotiationEvidenceShadow } from '../pool/negotiation-evidence.shadow';
 
 export const QUEUE_NAME = 'opportunity-from-intent';
+
+/**
+ * Same-intent overlap guard (see discovery.intent-lock.ts). The lock outlives
+ * any plausible scan so it never lapses mid-run, yet a worker that dies
+ * without releasing only blocks that intent's next run for this long.
+ */
+export const SAME_INTENT_LOCK_TTL_MS = 10 * 60 * 1000;
+/** How long a job that found its intent already running waits before re-checking. */
+export const SAME_INTENT_DEFER_DELAY_MS = 30 * 1000;
 
 export interface FromIntentJobData {
   intentId: string;
@@ -31,6 +41,10 @@ export interface FromIntentDeps {
   invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
+  /** Same-intent overlap guard; defaults to Redis (in-process map under the hermetic test baseline). */
+  intentLock?: IntentDiscoveryLock;
+  /** Test hook: shortens the re-check delay of a deferred same-intent job. */
+  sameIntentDeferDelayMs?: number;
 }
 
 export class FromIntentQueue {
@@ -42,6 +56,8 @@ export class FromIntentQueue {
   private readonly queueLogger = log.queue.from('FromIntentQueue');
   private readonly database: FromIntentDatabase | ChatDatabaseAdapter;
   private readonly graphDb: OpportunityGraphDb;
+  private readonly intentLock: IntentDiscoveryLock;
+  private readonly sameIntentDeferDelayMs: number;
   private deps: FromIntentDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<FromIntentJobData>> | null = null;
 
@@ -49,6 +65,8 @@ export class FromIntentQueue {
     this.deps = deps;
     this.database = deps?.database ?? new ChatDatabaseAdapter();
     this.graphDb = createOpportunityGraphDb(this.database);
+    this.intentLock = deps?.intentLock ?? createIntentDiscoveryLock();
+    this.sameIntentDeferDelayMs = deps?.sameIntentDeferDelayMs ?? SAME_INTENT_DEFER_DELAY_MS;
   }
 
   setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
@@ -67,6 +85,13 @@ export class FromIntentQueue {
     },
   ): Promise<Job<FromIntentJobData>> {
     await this.recordProgress(data, 'queued', 0);
+    return this.enqueueDiscover(data, options);
+  }
+
+  private enqueueDiscover(
+    data: FromIntentJobData,
+    options?: Parameters<FromIntentQueue['addJob']>[1],
+  ): Promise<Job<FromIntentJobData>> {
     return this.queue.add('discover_opportunities', data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
@@ -243,19 +268,83 @@ export class FromIntentQueue {
       .sort();
   }
 
+  /**
+   * Same-intent overlap guard around the processor. With worker concurrency
+   * above 1, a second job for an intent whose scan is still running would
+   * otherwise start alongside it; enqueue-time dedup cannot see active jobs.
+   * Returns a release function when this job owns the intent, or null when
+   * another run already holds it. Fails open: the lock only saves provider
+   * budget (persistence tolerates overlap), so a Redis hiccup must not fail a
+   * scan.
+   */
+  private async acquireIntentLock(data: FromIntentJobData): Promise<(() => Promise<void>) | null> {
+    const token = crypto.randomUUID();
+    try {
+      if (!(await this.intentLock.tryAcquire(data.intentId, token, SAME_INTENT_LOCK_TTL_MS))) return null;
+    } catch (error) {
+      this.queueLogger.warn('Same-intent lock unavailable; running unguarded', {
+        intentId: data.intentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return async () => {};
+    }
+    return async () => {
+      try {
+        await this.intentLock.release(data.intentId, token);
+      } catch (error) {
+        this.queueLogger.warn('Same-intent lock release failed; TTL will clear it', {
+          intentId: data.intentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+  }
+
+  /**
+   * A job that found its intent already running is re-added as a fresh delayed
+   * job rather than dropped: it may carry a newer trigger (an edit, a resume)
+   * than the run in flight read. No custom jobId — the original id is still
+   * occupied by this job — and no progress write: the running job's lifecycle
+   * writes for this intent are the authoritative ones.
+   */
+  private async deferOverlappingJob(job: Job<FromIntentJobData>): Promise<void> {
+    this.queueLogger.info('Discovery already running for intent; deferring job', {
+      event: 'intent_discovery_overlap_deferred',
+      jobId: job.id,
+      intentId: job.data.intentId,
+      userId: job.data.userId,
+      retryInMs: this.sameIntentDeferDelayMs,
+    });
+    await this.enqueueDiscover(job.data, {
+      priority: job.opts?.priority,
+      delay: this.sameIntentDeferDelayMs,
+    });
+  }
+
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<FromIntentJobData>) => {
       this.queueLogger.info('Processing job', { jobId: job.id });
+      const release = await this.acquireIntentLock(job.data);
+      if (!release) {
+        await this.deferOverlappingJob(job);
+        return;
+      }
       try {
         await this.processJob(job.name, job.data, job.attemptsMade + 1);
       } catch (error) {
         const attempt = job.attemptsMade + 1;
         await this.recordProgress(job.data, 'failed', attempt);
         throw error;
+      } finally {
+        await release();
       }
     };
-    this.worker = QueueFactory.createWorker<FromIntentJobData>(QUEUE_NAME, processor);
+    this.worker = QueueFactory.createWorker<FromIntentJobData>(QUEUE_NAME, processor, {
+      // Scans for different signals run side by side; same-intent runs are
+      // serialized by the lock above. Rationale for the number lives with it.
+      concurrency: DISCOVERY_WORKER_CONCURRENCY,
+    });
   }
 
   async close(): Promise<void> {

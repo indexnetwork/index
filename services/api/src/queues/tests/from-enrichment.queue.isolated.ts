@@ -37,6 +37,7 @@ import { buildEnrichmentDiscoveryTrigger } from '../opportunity/discovery-trigge
 import type { FromEnrichmentJobData } from '../opportunity/from-enrichment.queue';
 
 const { FromEnrichmentQueue, QUEUE_NAME } = await import('../opportunity/from-enrichment.queue');
+const { DISCOVERY_WORKER_CONCURRENCY } = await import('../opportunity/discovery.shared');
 
 describe('FromEnrichmentQueue', () => {
   describe('constructor and static', () => {
@@ -125,6 +126,17 @@ describe('FromEnrichmentQueue', () => {
       queue.startWorker();
       queue.startWorker();
       expect(mockCreateWorker).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs profile scans for different users side by side instead of one at a time', () => {
+      const queue = new FromEnrichmentQueue();
+      queue.startWorker();
+      expect(DISCOVERY_WORKER_CONCURRENCY).toBeGreaterThan(1);
+      expect(mockCreateWorker).toHaveBeenLastCalledWith(
+        QUEUE_NAME,
+        expect.any(Function),
+        expect.objectContaining({ concurrency: DISCOVERY_WORKER_CONCURRENCY }),
+      );
     });
 
     it('processor invokes processJob when worker runs a job', async () => {

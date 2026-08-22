@@ -16,6 +16,8 @@ mock.module('../../lib/bullmq/bullmq', () => ({
     createWorker: mockCreateWorker,
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
+  // The same-intent lock picks its in-process implementation off this guard.
+  useHermeticRedis: () => true,
 }));
 mock.module('../../adapters/database.adapter', () => ({
   ChatDatabaseAdapter: class ChatDatabaseAdapter {},
@@ -66,7 +68,7 @@ import type { FromIntentJobData, FromIntentDatabase, FromIntentDeps, FromIntentG
 import { buildIntentDiscoveryTrigger } from '../opportunity/discovery-trigger.builders';
 
 const { FromIntentQueue, QUEUE_NAME } = await import('../opportunity/from-intent.queue');
-const { summarizeOpportunityDiscoveryResult } = await import('../opportunity/discovery.shared');
+const { summarizeOpportunityDiscoveryResult, DISCOVERY_WORKER_CONCURRENCY } = await import('../opportunity/discovery.shared');
 
 type FromIntentDatabaseOverrides = Partial<FromIntentDatabase> & Pick<FromIntentDatabase, 'getIntentForIndexing'>;
 
@@ -547,6 +549,17 @@ describe('FromIntentQueue', () => {
       queue.startWorker();
       queue.startWorker();
       expect(mockCreateWorker).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs scans for different signals side by side instead of one at a time', () => {
+      const queue = new FromIntentQueue();
+      queue.startWorker();
+      expect(DISCOVERY_WORKER_CONCURRENCY).toBeGreaterThan(1);
+      expect(mockCreateWorker).toHaveBeenLastCalledWith(
+        QUEUE_NAME,
+        expect.any(Function),
+        expect.objectContaining({ concurrency: DISCOVERY_WORKER_CONCURRENCY }),
+      );
     });
 
     it('processor invokes processJob when worker runs a job', async () => {
