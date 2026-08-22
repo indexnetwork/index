@@ -176,29 +176,6 @@ describe("negotiation graph — deadlock→bargaining shift (IND-428)", () => {
     expect(inputs[FIRST_SHIFTED_TURN].bargaining).toEqual({ consecutiveNonConvergent: T });
   });
 
-  it("v1: never shifts (gated on the protocol version)", async () => {
-    // New negotiations are v2. A v1 negotiation now only arises by continuing
-    // a task stamped v1 before the cutover, so that is how this seeds one.
-    const stubs = mkStubs();
-    (stubs.database as unknown as { getNegotiationTaskForOpportunity: () => Promise<unknown> })
-      .getNegotiationTaskForOpportunity = async () => ({
-        id: "task-v1",
-        conversationId: "conv-1",
-        state: "completed",
-        metadata: { type: "negotiation", sourceUserId: "u-src", initiatorUserId: "u-src", protocolVersion: "v1" },
-        createdAt: new Date(0),
-        updatedAt: new Date(0),
-      });
-    const { inputs, restore } = patchAgent(["propose", ...Array<string>(T + 2).fill("counter")]);
-    try {
-      await runGraph(stubs);
-    } finally {
-      restore();
-    }
-    for (const input of inputs) expect(input.bargaining).toBeUndefined();
-    expect(stubs.deadlockWrites).toHaveLength(0);
-  });
-
   it("externally dispatched turns never receive the stance and never persist a record", async () => {
     const stubs = mkStubs();
     const payloads: Array<Record<string, unknown>> = [];

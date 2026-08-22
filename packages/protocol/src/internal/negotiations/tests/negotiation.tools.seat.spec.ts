@@ -186,59 +186,8 @@ describe("respond_to_negotiation — v2 seat validation", () => {
   });
 });
 
-describe("respond_to_negotiation — v1 grandfathering", () => {
-  function v1Task() {
-    return {
-      id: "task-1",
-      conversationId: "conv-1",
-      state: "waiting_for_agent",
-      metadata: { type: "negotiation", sourceUserId: "user-src", candidateUserId: "user-cand", maxTurns: 6 },
-      createdAt: new Date("2026-01-01"),
-      updatedAt: new Date("2026-01-02"),
-    };
-  }
-
-  test("in-flight v1 task accepts legacy propose", async () => {
-    const { deps } = makeDeps(v1Task(), []);
-    const tool = captureTool("respond_to_negotiation", deps);
-
-    const result = JSON.parse(await tool.handler({
-      context: makeContext("user-src"),
-      query: { negotiationId: "task-1", action: "propose", ...assessmentQuery },
-    }));
-
-    expect(result.success).toBe(true);
-  });
-
-  test("in-flight v1 task accepts legacy reject (either party)", async () => {
-    const { deps } = makeDeps(v1Task(), [msgFrom("user-src", "propose")]);
-    const tool = captureTool("respond_to_negotiation", deps);
-
-    const result = JSON.parse(await tool.handler({
-      context: makeContext("user-cand"),
-      query: { negotiationId: "task-1", action: "reject", ...assessmentQuery },
-    }));
-
-    expect(result.success).toBe(true);
-    expect(result.data.message).toContain("rejected");
-  });
-
-  test("v1 task rejects the v2-only vocabulary", async () => {
-    const { deps } = makeDeps(v1Task(), [msgFrom("user-src", "propose")]);
-    const tool = captureTool("respond_to_negotiation", deps);
-
-    const result = JSON.parse(await tool.handler({
-      context: makeContext("user-cand"),
-      query: { negotiationId: "task-1", action: "decline", ...assessmentQuery },
-    }));
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("v1");
-  });
-});
-
 describe("get_negotiation — seat announcement", () => {
-  test("returns seat, protocolVersion, and allowedActions for the caller", async () => {
+  test("returns seat and allowedActions for the caller", async () => {
     const { deps } = makeDeps(v2Task("user-src"), [msgFrom("user-src", "outreach")]);
     const tool = captureTool("get_negotiation", deps);
 
@@ -247,7 +196,6 @@ describe("get_negotiation — seat announcement", () => {
       query: { negotiationId: "task-1" },
     }));
     expect(asInitiator.data.seat).toBe("initiator");
-    expect(asInitiator.data.protocolVersion).toBe("v2");
     expect(asInitiator.data.allowedActions).toEqual(["outreach", "counter", "question", "withdraw"]);
     expect(asInitiator.data.isUsersTurn).toBe(false);
 
@@ -260,18 +208,4 @@ describe("get_negotiation — seat announcement", () => {
     expect(asCounterparty.data.isUsersTurn).toBe(true);
   });
 
-  test("v1 task announces the legacy vocabulary", async () => {
-    const { deps } = makeDeps(
-      { ...v2Task("user-src"), metadata: { type: "negotiation", sourceUserId: "user-src", candidateUserId: "user-cand" } },
-      [],
-    );
-    const tool = captureTool("get_negotiation", deps);
-
-    const result = JSON.parse(await tool.handler({
-      context: makeContext("user-src"),
-      query: { negotiationId: "task-1" },
-    }));
-    expect(result.data.protocolVersion).toBe("v1");
-    expect(result.data.allowedActions).toEqual(["propose", "accept", "reject", "counter", "question"]);
-  });
 });

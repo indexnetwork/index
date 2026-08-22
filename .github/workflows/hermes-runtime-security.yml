@@ -71,12 +71,12 @@ jobs:
           cd packages/protocol
           bun run architecture:check
           bun test \
-            src/mcp/tests/mcp.authorization-policy.spec.ts \
-            src/mcp/tests/mcp.server.spec.ts \
-            src/negotiation/tests/negotiation.hermes-contract.spec.ts \
-            src/negotiation/tests/negotiation.turn-cap.spec.ts \
-            src/negotiation/tests/negotiation.tools.spec.ts \
-            src/negotiation/tests/negotiator-timeout.spec.ts
+            ./src/internal/mcp/tests/mcp.authorization-policy.spec.ts \
+            ./src/internal/mcp/tests/mcp.server.spec.ts \
+            ./src/internal/negotiations/tests/negotiation.hermes-contract.spec.ts \
+            ./src/internal/negotiations/tests/negotiation.turn-cap.spec.ts \
+            ./src/internal/negotiations/tests/negotiation.tools.spec.ts \
+            ./src/internal/negotiations/tests/negotiator-timeout.spec.ts
           cd ../..
           bun --cwd=packages/protocol run build
           bun test apps/mac/api/task-5-acceptance.spec.ts

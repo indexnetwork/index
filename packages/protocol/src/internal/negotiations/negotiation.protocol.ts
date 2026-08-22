@@ -1,5 +1,5 @@
 /**
- * Seat-scoped negotiation protocol rules (v2 client-advocate protocol).
+ * Seat-scoped client-advocate negotiation protocol rules.
  *
  * v2 fixes exactly one initiating seat per match (`metadata.initiatorUserId`,
  * stamped at discovery time — IND-396) and makes consent asymmetric:
@@ -10,19 +10,15 @@
  * - counterparty:  `accept | decline | counter | question`
  * - final turn:    initiator `withdraw | counter`; counterparty `accept | decline`
  *
- * v1 tasks keep the legacy vocabulary (`propose | accept | reject | counter |
- * question`) — the version is inherited per conversation, never re-stamped, so
- * in-flight v1 negotiations are grandfathered untouched.
- *
- * Outcome mapping is version-independent: `accept` → opportunity `pending`,
- * `reject`/`withdraw`/`decline` → `rejected`, turn-cap → `stalled`.
+ * Outcome mapping: `accept` → opportunity `pending`, `withdraw`/`decline` →
+ * `rejected`, turn-cap → `stalled`.
  */
 import { z } from "zod";
 
 import { ChecklistDraftGenerationSchema } from "../../protocol/schemas/negotiation-checklist.schema.js";
 import { AskUserGenerationSchema } from "../../protocol/schemas/negotiation-state.schema.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL } from "./negotiation.checklist.contracts.js";
-import type { NegotiationAction, NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
+import type { NegotiationAction, NegotiationSeat } from "../../protocol/schemas/negotiation-state.schema.js";
 export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "../../protocol/core.js";
 
 // ─── Shared assessment fragment ──────────────────────────────────────────────
@@ -46,10 +42,10 @@ function turnSchema<T extends [NegotiationAction, ...NegotiationAction[]]>(actio
 // ─── v2 seat-scoped turn schemas ─────────────────────────────────────────────
 
 /** Initiator seat, non-final turn: may reach out, push back, ask, or walk away — never accept. */
-export const InitiatorTurnSchema = turnSchema(["outreach", "counter", "withdraw"]);
+export const InitiatorTurnSchema = turnSchema(["outreach", "counter", "question", "withdraw"]);
 
 /** Counterparty seat, non-final turn: the only seat that can accept. */
-export const CounterpartyTurnSchema = turnSchema(["accept", "decline", "counter"]);
+export const CounterpartyTurnSchema = turnSchema(["accept", "decline", "counter", "question"]);
 
 /** Initiator seat, final allowed turn: commit to walking away or leave the door open. */
 export const FinalInitiatorTurnSchema = turnSchema(["withdraw", "counter"]);
@@ -70,30 +66,22 @@ export const InitiatorAskUserTurnSchema = turnSchema(["outreach", "counter", "qu
 export const CounterpartyAskUserTurnSchema = turnSchema(["accept", "decline", "counter", "question", "ask_user"])
   .extend({ askUser: AskUserGenerationSchema.nullable().optional() });
 
-// ─── Action vocabulary per version + seat ────────────────────────────────────
-
-const V1_ACTIONS: readonly NegotiationAction[] = ["propose", "accept", "reject", "counter"];
-const V1_FINAL_ACTIONS: readonly NegotiationAction[] = ["accept", "reject"];
-const V2_INITIATOR_ACTIONS: readonly NegotiationAction[] = ["outreach", "counter", "withdraw"];
-const V2_COUNTERPARTY_ACTIONS: readonly NegotiationAction[] = ["accept", "decline", "counter"];
+// ─── Action vocabulary per seat ──────────────────────────────────────────────
+const V2_INITIATOR_ACTIONS: readonly NegotiationAction[] = ["outreach", "counter", "question", "withdraw"];
+const V2_COUNTERPARTY_ACTIONS: readonly NegotiationAction[] = ["accept", "decline", "counter", "question"];
 const V2_FINAL_INITIATOR_ACTIONS: readonly NegotiationAction[] = ["withdraw", "counter"];
 const V2_FINAL_COUNTERPARTY_ACTIONS: readonly NegotiationAction[] = ["accept", "decline"];
 const V2_INITIATOR_ASK_USER_ACTIONS: readonly NegotiationAction[] = [...V2_INITIATOR_ACTIONS, "ask_user"];
 const V2_COUNTERPARTY_ASK_USER_ACTIONS: readonly NegotiationAction[] = [...V2_COUNTERPARTY_ACTIONS, "ask_user"];
 
 /**
- * The set of actions a given seat may submit under a given protocol version.
- *
- * v1 ignores the seat entirely (legacy symmetric vocabulary) so pre-v2
- * negotiations behave exactly as before.
+ * The set of actions a given seat may submit.
  */
 export function allowedActionsFor(
-  version: NegotiationProtocolVersion,
   seat: NegotiationSeat,
   isFinalTurn = false,
   opts?: TurnVocabularyOpts,
 ): readonly NegotiationAction[] {
-  if (version !== "v2") return isFinalTurn ? V1_FINAL_ACTIONS : V1_ACTIONS;
   if (seat === "initiator") {
     return isFinalTurn
       ? V2_FINAL_INITIATOR_ACTIONS
@@ -105,23 +93,17 @@ export function allowedActionsFor(
 }
 
 /**
- * Zod turn schema for a system-agent turn, selected by version + seat +
- * final-turn flag. v1 returns the legacy schemas (seat-agnostic); v2 returns
- * the seat-scoped schemas above, making an initiator `accept` structurally
+ * Zod turn schema for a system-agent turn, selected by seat + final-turn flag,
+ * making an initiator `accept` structurally
  * impossible rather than prompt-discouraged.
  *
- * The v1 legacy schemas are passed in by the caller (they live in
- * `negotiation.state.ts`) to keep this module free of a state-module import.
  */
 export function turnSchemaFor(
-  version: NegotiationProtocolVersion,
   seat: NegotiationSeat,
   isFinalTurn: boolean,
-  v1Schemas: { system: z.ZodTypeAny; final: z.ZodTypeAny },
   opts?: TurnVocabularyOpts,
 ): z.ZodTypeAny {
   const base = ((): z.ZodTypeAny => {
-    if (version !== "v2") return isFinalTurn ? v1Schemas.final : v1Schemas.system;
     if (seat === "initiator") {
       return isFinalTurn
         ? FinalInitiatorTurnSchema
@@ -146,10 +128,6 @@ export function turnSchemaFor(
  * (`negotiation.state.ts`, the shared DTO) carry the field unconditionally,
  * because they must read back turns that any seat may have written.
  *
- * Non-object schemas pass through untouched: the v1 schemas arrive as
- * `z.ZodTypeAny` from the caller, so this must degrade rather than throw if
- * one is ever wrapped.
- *
  * The GENERATION variant of the draft schema, following #1466: `settles` is
  * required so the emitted JSON schema asks for it on every dimension, and
  * repairs to `either` when the model omits or garbles it rather than throwing
@@ -167,7 +145,7 @@ export function withChecklistField(schema: z.ZodTypeAny): z.ZodTypeAny {
  * Opt-in extensions of a turn's vocabulary, beyond the seat's own actions.
  *
  * `askUser` adds the client-consult pause (P3.2). Never granted on final-cap
- * turns (the final turn must decide) and never under v1. Callers pass
+ * turns (the final turn must decide). Callers pass
  * `{ askUser: true }` only when the full pause loop is available on their
  * surface: the ask-user feature flag is on, a questioner enqueue and an
  * answer-window timer are wired, the negotiation has an opportunity to resume
@@ -190,12 +168,12 @@ export type AskUserOpts = TurnVocabularyOpts;
 
 /** Terminal actions end the negotiation immediately. */
 export function isTerminalAction(action: string | undefined | null): boolean {
-  return action === "accept" || action === "reject" || action === "withdraw" || action === "decline";
+  return action === "accept" || action === "withdraw" || action === "decline";
 }
 
-/** Reject-like actions map the opportunity to `rejected` (v1 reject, v2 withdraw/decline). */
+/** Reject-like actions map the opportunity to `rejected`. */
 export function isRejectLikeAction(action: string | undefined | null): boolean {
-  return action === "reject" || action === "withdraw" || action === "decline";
+  return action === "withdraw" || action === "decline";
 }
 
 /**
@@ -225,7 +203,7 @@ export function isRejectLikeAction(action: string | undefined | null): boolean {
 export function negotiationHasMadeContact(
   turns: readonly { action: string }[],
 ): boolean {
-  return turns.length > 0;
+  return turns.some((turn) => turn.action !== "ask_user");
 }
 
 /**
@@ -233,49 +211,24 @@ export function negotiationHasMadeContact(
  * retry) or an internal error needs a seat-valid terminal placeholder.
  *
  * Non-final turns fall back to `counter` (keeps the dialogue open — the AC's
- * "conservative counter"). Final turns must decide: v1 → `reject`, v2
- * counterparty → `decline`, v2 initiator → `counter` is still legal on the
+ * "conservative counter"). Final turns must decide: the counterparty →
+ * `decline`, the initiator → `counter` is still legal on the
  * final turn so it stays `counter` (finalizes as turn-cap/stalled).
  */
 export function fallbackActionFor(
-  version: NegotiationProtocolVersion,
   seat: NegotiationSeat,
   isFinalTurn: boolean,
 ): NegotiationAction {
   if (!isFinalTurn) return "counter";
-  if (version !== "v2") return "reject";
   return seat === "counterparty" ? "decline" : "counter";
 }
 
 /** Seat-appropriate reject-like action for error paths. */
 export function rejectActionFor(
-  version: NegotiationProtocolVersion,
   seat: NegotiationSeat,
 ): NegotiationAction {
-  if (version !== "v2") return "reject";
   return seat === "initiator" ? "withdraw" : "decline";
 }
-
-// ─── Metadata readers ────────────────────────────────────────────────────────
-
-/**
- * Read the protocol version off task metadata. Returns null when the task
- * predates version stamping (treat as v1 at the call site when the task is a
- * genuine prior; fresh tasks stamp {@link NEW_NEGOTIATION_PROTOCOL_VERSION}).
- */
-export function readProtocolVersion(
-  metadata: { protocolVersion?: unknown } | null | undefined,
-): NegotiationProtocolVersion | null {
-  const v = metadata?.protocolVersion;
-  return v === "v2" ? "v2" : v === "v1" ? "v1" : null;
-}
-
-/**
- * Protocol version stamped on negotiations without a prior task for the same
- * opportunity. Every new negotiation is v2; {@link readProtocolVersion} still
- * resolves rows stamped v1 before the cutover.
- */
-export const NEW_NEGOTIATION_PROTOCOL_VERSION: NegotiationProtocolVersion = "v2";
 
 /**
  * Default per-negotiation ask cap: total client-consultation rounds (mid-flight
@@ -335,8 +288,7 @@ export function resolveSeat(
 export function seatViolationMessage(
   action: string,
   seat: NegotiationSeat,
-  version: NegotiationProtocolVersion,
 ): string {
-  const allowed = allowedActionsFor(version, seat).join(", ");
-  return `Action "${action}" is not allowed for your seat (${seat}) under negotiation protocol ${version}. Allowed actions: ${allowed}.`;
+  const allowed = allowedActionsFor(seat).join(", ");
+  return `Action "${action}" is not allowed for your seat (${seat}). Allowed actions: ${allowed}.`;
 }

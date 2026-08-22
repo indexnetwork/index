@@ -4,7 +4,7 @@ import { classifyInflightPark, classifyPostStallPark } from './negotiation.answe
 import { expectedNegotiationSpeaker } from './negotiation.expected-speaker.js';
 import { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
 import type { NegotiationParkNarration } from './negotiation.lifecycle-narration.js';
-import { allowedActionsFor, readProtocolVersion, resolveSeat } from './negotiation.protocol.js';
+import { allowedActionsFor, resolveSeat } from './negotiation.protocol.js';
 import type { SeedAssessment, UserNegotiationContext } from './negotiation.state.js';
 
 export interface AuthorizedNegotiationDetailTask {
@@ -19,7 +19,6 @@ export interface AuthorizedNegotiationDetailMetadata {
   sourceUserId?: string;
   candidateUserId?: string;
   initiatorUserId?: string;
-  protocolVersion?: string;
   maxTurns?: number;
   opportunityId?: string;
   isContinuation?: boolean;
@@ -177,7 +176,6 @@ export async function readAuthorizedNegotiationDetail(
     : task.state === 'completed' ? 'completed'
     : task.state;
   const isUsersTurn = status !== 'completed' && expectedSpeaker === callerUserId;
-  const protocolVersion = readProtocolVersion(metadata) ?? 'v1';
   const seat = resolveSeat(callerUserId, metadata);
   const priorTurnCount = metadata.priorTurnCount ?? 0;
 
@@ -188,8 +186,7 @@ export async function readAuthorizedNegotiationDetail(
     status,
     role: callerRole,
     seat,
-    protocolVersion,
-    allowedActions: allowedActionsFor(protocolVersion, seat),
+    allowedActions: allowedActionsFor(seat),
     counterpartyId: counterpartyId ?? 'unknown',
     turnCount,
     isUsersTurn,

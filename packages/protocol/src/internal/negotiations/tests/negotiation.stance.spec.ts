@@ -109,12 +109,12 @@ describe("job framing and the opportunity-cost bar", () => {
 
   it("query satisfaction is necessary-not-sufficient", async () => {
     const rendered = await renderMatrix();
-    for (const id of ["v2-initiator-discovery-query", "v1-discovery-query"]) {
+    for (const id of ["v2-initiator-discovery-query"]) {
       const prompt = rendered[id];
       expect(prompt).toContain("PRECONDITION for continuing to evaluate, NOT a reason to connect");
-      expect(prompt).not.toContain("PROPOSE or ACCEPT the connection");
+      expect(prompt).not.toContain("OUTREACH or ACCEPT the connection");
       // The mismatch half of the query rule is untouched.
-      expect(prompt).toContain("does NOT satisfy the query: REJECT the match");
+      expect(prompt).toContain("does NOT satisfy the query: decline or withdraw the match");
     }
     expect(querySatisfiedRule("Bob", "Alice")).toContain(
       "satisfying the query is a PRECONDITION for continuing to evaluate",
@@ -474,9 +474,9 @@ describe("deadlock resolution", () => {
 });
 
 describe("seat and version invariants", () => {
-  it("no quoted withdraw leaks into v1 or the v2 counterparty seat", async () => {
+  it("no quoted withdraw leaks into the counterparty seat", async () => {
     const rendered = await renderMatrix();
-    for (const id of ["v1", "v1-discovery-query", "v2-counterparty", "v2-counterparty-discovery-query"]) {
+    for (const id of ["v2-counterparty", "v2-counterparty-discovery-query"]) {
       expect(rendered[id]).not.toContain('"withdraw"');
       expect(rendered[id]).not.toContain("WITHDRAW ON DISQUALIFYING INFORMATION");
     }

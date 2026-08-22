@@ -104,7 +104,7 @@ export function routeAfterTurn(state: NegotiationState): string {
   // `state.error`, which the check above routes to finalize.
   if (state.consecutiveTurnFailures > 0) return "turn";
   if (!state.lastTurn) return "finalize";
-  // Terminal actions: accept (v1+v2), reject (v1), withdraw/decline (v2)
+  // Terminal actions: accept, withdraw, or decline.
   if (isTerminalAction(state.lastTurn.action)) return "finalize";
   // question routes same as counter — next turn
   if (isNegotiationTurnCapReached(state.turnCount, state.maxTurns)) return "finalize";

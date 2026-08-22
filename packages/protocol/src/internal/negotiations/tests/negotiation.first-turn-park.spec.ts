@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
-import { NegotiationGraphState, SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
+import { NegotiationGraphState } from "../negotiation.state.js";
 import { turnSchemaFor } from "../negotiation.protocol.js";
 import { hasGuaranteedAsk } from "../negotiation.graph.shared.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
@@ -110,10 +110,7 @@ const askTurn = (checklist: ChecklistDraftItem[] = OPEN_CHECKLIST): NegotiationT
  * survives into the graph or fails the spec.
  */
 const parseDraft = (raw: Record<string, unknown>): NegotiationTurn =>
-  turnSchemaFor("v2", "initiator", false, {
-    system: SystemNegotiationTurnSchema,
-    final: FinalNegotiationTurnSchema,
-  }, { askUser: true, checklist: true }).parse(raw) as NegotiationTurn;
+  turnSchemaFor("initiator", false, { askUser: true, checklist: true }).parse(raw) as NegotiationTurn;
 
 const OPENING = "Alice is hiring an ML engineer with studio operations experience.";
 

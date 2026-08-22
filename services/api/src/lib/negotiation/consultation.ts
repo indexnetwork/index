@@ -1,5 +1,5 @@
 import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
-import { assessConsultationEligibility, configuredQuestionBudgetPerPrincipal, isNegotiationTurnCapReached, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationProtocolVersion, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
+import { assessConsultationEligibility, configuredQuestionBudgetPerPrincipal, isNegotiationTurnCapReached, NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, type ConsultationEligibility, type ConsultationEligibilityInput, type NegotiationAction, type NegotiationConsultationPolicyMode, type NegotiationConsultationReason, type NegotiationSeat, type QuestionerInput } from '@indexnetwork/protocol';
 
 export { consultationExpiryReadiness } from './consultation-expiry';
 export type { ConsultationExpiryReadinessInput } from './consultation-expiry';
@@ -68,8 +68,7 @@ export type ExternalConsultationEligibility = {
 };
 
 const NEGOTIATION_ACTIONS = new Set<NegotiationAction>([
-  'propose', 'accept', 'reject', 'counter', 'question', 'ask_user',
-  'outreach', 'withdraw', 'decline',
+  'accept', 'counter', 'question', 'ask_user', 'outreach', 'withdraw', 'decline',
 ]);
 const ROLE_VALUES = new Set(['agent', 'patient', 'peer'] as const);
 
@@ -184,7 +183,6 @@ export function assessExternalConsultationEligibility(
   input: ExternalConsultationEligibilityInput,
 ): ExternalConsultationEligibility {
   const metadata = input.task.metadata;
-  const protocolVersion = stringValue(metadata.protocolVersion) as NegotiationProtocolVersion | null;
   const coordinates = externalConsultationCoordinatesFor(metadata, input.userId);
   const seat = seatFor(metadata, input.userId);
   const maxTurns = typeof metadata.maxTurns === 'number' ? metadata.maxTurns : undefined;
@@ -208,8 +206,7 @@ export function assessExternalConsultationEligibility(
     && input.task.claimedByAgentId === input.agentId
     && metadata.type === 'negotiation'
     && Boolean(coordinates && seat);
-  const structuralEligible = protocolVersion === 'v2'
-    && !isOpeningTurn
+  const structuralEligible = !isOpeningTurn
     && !isFinalTurn
     && counterpartyTurn
     && supportedTrigger
@@ -225,7 +222,6 @@ export function assessExternalConsultationEligibility(
     .map((message) => actionValue(message.turn.action))
     .filter((action): action is NegotiationAction => action !== null);
   const policyInput: ConsultationEligibilityInput = {
-    protocolVersion: protocolVersion ?? 'v1',
     seat,
     isOpeningTurn,
     isFinalTurn,

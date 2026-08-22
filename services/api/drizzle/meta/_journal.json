@@ -981,6 +981,13 @@
       "when": 1786886087820,
       "tag": "0140_finalize_personal_network_retirement",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1786886087821,
+      "tag": "0141_normalize_negotiation_v2",
+      "breakpoints": true
     }
   ]
 }

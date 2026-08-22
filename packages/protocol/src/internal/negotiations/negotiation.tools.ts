@@ -6,7 +6,7 @@ import { success, error } from '../shared/agent/tool.helpers.js';
 import type { NegotiationOpportunityLifecycle, OpportunityStatus } from '../../platform/database.js';
 import { IndexNegotiator } from './negotiation.agent.js';
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment, NegotiationOutcome } from './negotiation.state.js';
-import { allowedActionsFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor, resolveSeat, seatViolationMessage } from './negotiation.protocol.js';
+import { allowedActionsFor, isRejectLikeAction, isTerminalAction, rejectActionFor, resolveSeat, seatViolationMessage } from './negotiation.protocol.js';
 import { NEGOTIATION_ACTIONS } from '../../protocol/schemas/negotiation-state.schema.js';
 import type { NegotiationTurnPayload } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
@@ -506,7 +506,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
     description:
       'Get the full details of a specific negotiation, including all turns, messages, counterparty info, and current state. ' +
       'Negotiations are bilateral exchanges where two AI agents negotiate on behalf of users. Each turn contains an action ' +
-      '(propose, accept, reject, counter, question), an assessment with reasoning and suggested roles, and an optional message.\n\n' +
+      '(outreach, accept, decline, withdraw, counter, question), an assessment with reasoning and suggested roles, and an optional message.\n\n' +
       '**Access control:** You must be a party to the negotiation (source or candidate) to view it.\n\n' +
       '**Statuses:** `active` — in progress. `waiting_for_agent` — waiting for an agent response or timeout. ' +
       '`input_required` — PARKED on a person\'s answer; read `park` for whose. `completed` — the agents concluded, not that the owner accepted or a connection/message thread exists.\n\n' +
@@ -542,7 +542,6 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           sourceUserId?: string;
           candidateUserId?: string;
           initiatorUserId?: string;
-          protocolVersion?: string;
           type?: string;
           maxTurns?: number;
           opportunityId?: string;
@@ -625,17 +624,16 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       'by accepting, rejecting, countering, or asking a clarifying question.\n\n' +
       '**Turn-based model:** Negotiations alternate between source and candidate agents. When the graph yields with ' +
       '`waiting_for_agent` status, the user whose turn it is can respond.\n\n' +
-      '**Valid actions depend on the negotiation protocol version and your seat** — call get_negotiation first: ' +
-      'its `seat`, `protocolVersion`, and `allowedActions` fields tell you exactly what you may submit.\n\n' +
-      '**v1 negotiations (legacy):** `propose | accept | reject | counter | question` — on the first turn the action MUST be `propose`.\n\n' +
-      '**v2 negotiations (client-advocate seat rules):**\n' +
+      '**Valid actions depend on your seat** — call get_negotiation first: ' +
+      'its `seat` and `allowedActions` fields tell you exactly what you may submit.\n\n' +
+      '**Client-advocate seat rules:**\n' +
       '- Initiator seat (`outreach | counter | question | withdraw`): you reached out — you can NEVER accept. ' +
       '`outreach` opens the negotiation; `withdraw` ends it without an opportunity.\n' +
       '- Counterparty seat (`accept | decline | counter | question`): only your seat can `accept` (finalizes an opportunity); ' +
       '`decline` ends the negotiation without one.\n\n' +
       '- `counter` — Counter with a message (message is required). The negotiation continues.\n' +
       '- `question` — Ask the other side a clarifying question (message is required). The negotiation continues.\n\n' +
-      '**What happens after:** Terminal actions (accept/reject/withdraw/decline) finalize the negotiation immediately. ' +
+      '**What happens after:** Terminal actions (accept/withdraw/decline) finalize the negotiation immediately. ' +
       'Counter/question continues — if the counterparty has an agent, the negotiation yields again; otherwise the AI agent responds inline.\n\n' +
       '**What this surface does NOT run:** turns submitted here are NOT run through the negotiation graph\'s conclusion floor ' +
       '(the checklist gate an in-graph accept must clear), the decline law, or the copy-loop guard. Those protections apply only to ' +
@@ -647,7 +645,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       'Do not ask the user clarifying questions; you are authorized to act on their behalf within the scope granted to your agent.',
     querySchema: z.object({
       negotiationId: z.string().describe('The negotiation task ID to respond to.'),
-      action: z.enum(NEGOTIATION_ACTIONS).describe('The response action. Must be within your seat\'s allowedActions (see get_negotiation). v1 first turn MUST be "propose"; v2 initiator first turn MUST be "outreach".'),
+      action: z.enum(NEGOTIATION_ACTIONS).describe('The response action. Must be within your seat\'s allowedActions (see get_negotiation). The initiator\'s first turn MUST be "outreach".'),
       reasoning: z.string().describe('Why you are taking this action — your assessment of the opportunity.'),
       suggestedRoles: z.object({
         ownUser: z.enum(['agent', 'patient', 'peer']).describe('Suggested role for your user in this opportunity.'),
@@ -667,7 +665,6 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           candidateUserId?: string;
           initiatorUserId?: string;
           opportunityId?: string;
-          protocolVersion?: string;
           type?: string;
           maxTurns?: number;
           networkId?: string;
@@ -716,13 +713,10 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           return error('Access denied: you are not a party to this negotiation.');
         }
 
-        // Seat + version validation (v2 client-advocate): the submitted action
-        // must be within the caller's seat vocabulary. v1 tasks accept the
-        // legacy vocabulary unchanged (grandfathered).
-        const protocolVersion = readProtocolVersion(meta) ?? 'v1';
+        // Seat validation: every negotiation uses the client-advocate vocabulary.
         const seat = resolveSeat(context.userId, meta);
-        if (!allowedActionsFor(protocolVersion, seat).includes(query.action)) {
-          return error(seatViolationMessage(query.action, seat, protocolVersion));
+        if (!allowedActionsFor(seat).includes(query.action)) {
+          return error(seatViolationMessage(query.action, seat));
         }
 
         const messages = await readNegotiationMessages({
@@ -770,7 +764,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
 
         const newTurnCount = turnCount + 1;
 
-        // ── Handle terminal actions (accept / reject / withdraw / decline): finalize immediately ──
+        // ── Handle terminal actions (accept / withdraw / decline): finalize immediately ──
         if (isTerminalAction(query.action)) {
           const allMessages = [...messages, { id: turnMessage.id, senderId: turnMessage.senderId, role: turnMessage.role, parts: turnMessage.parts as unknown[], createdAt: turnMessage.createdAt }];
           const history: NegotiationTurn[] = turnsFromMessages(allMessages);
@@ -852,8 +846,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           isFinalTurn,
           isDiscoverer: false,
           seat: counterpartySeat,
-          protocolVersion,
-          allowedActions: [...allowedActionsFor(protocolVersion, counterpartySeat, isFinalTurn)],
+          allowedActions: [...allowedActionsFor(counterpartySeat, isFinalTurn)],
           ...(timeoutContinuation ? { timeoutContinuation } : {}),
         };
 
@@ -874,7 +867,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           );
 
           return success({
-            message: `${query.action === 'question' ? 'Question' : query.action === 'propose' ? 'Proposal' : query.action === 'outreach' ? 'Outreach' : 'Counter-proposal'} submitted. Waiting for counterparty response.`,
+            message: `${query.action === 'question' ? 'Question' : query.action === 'outreach' ? 'Outreach' : 'Counter-proposal'} submitted. Waiting for counterparty response.`,
             negotiationId: task.id,
             action: query.action,
             turnNumber: newTurnCount,
@@ -906,7 +899,6 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
               history: historyForDispatch,
               isFinalTurn,
               seat: counterpartySeat,
-              protocolVersion,
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -924,7 +916,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
               error: errMsg,
             });
             aiTurn = {
-              action: rejectActionFor(protocolVersion, counterpartySeat),
+              action: rejectActionFor(counterpartySeat),
               assessment: {
                 reasoning: isTimeout
                   ? 'Negotiator response timed out.'
@@ -961,7 +953,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           });
 
           return success({
-            message: `${query.action === 'question' ? 'Question' : query.action === 'propose' ? 'Proposal' : 'Counter'} submitted. Counterparty responded with ${aiTurn.action}.`,
+            message: `${query.action === 'question' ? 'Question' : query.action === 'outreach' ? 'Outreach' : 'Counter'} submitted. Counterparty responded with ${aiTurn.action}.`,
             negotiationId: task.id,
             action: query.action,
             turnNumber: newTurnCount,
@@ -1004,8 +996,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           isFinalTurn: isNegotiationTurnCapReached(finalTurnCount + 1, meta.maxTurns),
           isDiscoverer: true,
           seat,
-          protocolVersion,
-          allowedActions: [...allowedActionsFor(protocolVersion, seat, isNegotiationTurnCapReached(finalTurnCount + 1, meta.maxTurns))],
+          allowedActions: [...allowedActionsFor(seat, isNegotiationTurnCapReached(finalTurnCount + 1, meta.maxTurns))],
           ...(timeoutContinuation ? { timeoutContinuation } : {}),
         };
 

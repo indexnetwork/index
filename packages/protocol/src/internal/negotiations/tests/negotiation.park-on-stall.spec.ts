@@ -278,10 +278,10 @@ describe("negotiation graph — post-stall park", () => {
     expect(stubs.createdMessages).toHaveLength(2);
   });
 
-  it("does not park an explicitly rejected negotiation", async () => {
+  it("does not park an explicitly declined negotiation", async () => {
     agentScript = [
-      { ...counterTurn, action: "propose" },
-      { ...counterTurn, action: "reject" },
+      { ...counterTurn, action: "outreach" },
+      { ...counterTurn, action: "decline" },
     ];
     const stubs = mkStubs();
     await runGraph(stubs);

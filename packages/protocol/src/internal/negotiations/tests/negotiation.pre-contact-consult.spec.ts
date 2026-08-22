@@ -357,7 +357,6 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
 
     it("keeps every non-opening exclusion intact at the opening turn", () => {
       for (const partial of [
-        { protocolVersion: "v1" as const },
         { isFinalTurn: true },
         { consultationBudgetSpent: true },
         { hasExactResumeCoordinate: false },

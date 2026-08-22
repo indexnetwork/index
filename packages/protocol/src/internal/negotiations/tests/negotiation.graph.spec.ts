@@ -1,6 +1,12 @@
 import { describe, it, expect, afterAll } from "bun:test";
+import { AsyncLocalStorage } from "async_hooks";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
+import { setRequestContextStore } from "../../shared/observability/request-context.js";
+
+// The protocol package deliberately receives request storage from its host.
+// Configure that host boundary in this graph suite before asserting trace events.
+setRequestContextStore(new AsyncLocalStorage());
 
 function mkStubs() {
   const messages: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }> = [];
@@ -60,7 +66,7 @@ describe("negotiation graph — task intent snapshots", () => {
     const originalInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function () {
       return {
-        action: "propose" as const,
+        action: "outreach" as const,
         assessment: {
           reasoning: "stub",
           suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const },
@@ -220,7 +226,7 @@ describe("negotiation graph — task intent snapshots", () => {
     IndexNegotiator.prototype.invoke = async function () {
       turn += 1;
       return {
-        action: turn === 1 ? "propose" as const : "reject" as const,
+        action: turn === 1 ? "outreach" as const : "decline" as const,
         assessment: {
           reasoning: turn === 1 ? "considering" : "not a fit",
           suggestedRoles: { ownUser: "peer" as const, otherUser: "peer" as const },
@@ -259,7 +265,7 @@ describe("negotiation graph — negotiation_turn emission", () => {
     const origInvoke = IndexNegotiator.prototype.invoke;
     IndexNegotiator.prototype.invoke = async function () {
       return {
-        action: "propose" as const,
+        action: "outreach" as const,
         assessment: {
           reasoning: "stub reasoning",
           suggestedRoles: { ownUser: "agent" as const, otherUser: "patient" as const },
@@ -308,9 +314,9 @@ describe("negotiation graph — negotiation_turn emission", () => {
 
 describe("negotiation graph — negotiation_outcome emission", () => {
   it("emits outcome='accepted' when finalize runs after an accept turn", async () => {
-    // Scripted: first turn propose, second turn accept
+    // Scripted: first turn outreach, second turn accept
     const scripted = [
-      { action: "propose", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "agent", otherUser: "patient" } }, message: "hi" },
+      { action: "outreach", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "agent", otherUser: "patient" } }, message: "hi" },
       { action: "accept",  assessment: { reasoning: "r2", suggestedRoles: { ownUser: "agent", otherUser: "patient" } } },
     ];
     let call = 0;
@@ -350,15 +356,15 @@ describe("negotiation graph — negotiation_outcome emission", () => {
     }
   }, 30000);
 
-  it("emits outcome='turn_cap' when maxTurns is reached without accept/reject", async () => {
+  it("emits outcome='turn_cap' when maxTurns is reached without accept or decline", async () => {
     const { database, dispatcher } = mkStubs();
     const { IndexNegotiator } = await import("../negotiation.agent.js");
     const orig = IndexNegotiator.prototype.invoke;
-    // First turn must be "propose" (graph forces it), subsequent turns counter — so we hit turn_cap at maxTurns.
+    // First turn must be "outreach" (graph forces it), subsequent turns counter — so we hit turn_cap at maxTurns.
     let call = 0;
     IndexNegotiator.prototype.invoke = async function () {
       call++;
-      if (call === 1) return { action: "propose", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+      if (call === 1) return { action: "outreach", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
       return { action: "counter", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
     };
     try {
@@ -421,7 +427,7 @@ describe("negotiation graph — questioner enqueue on stall", () => {
     let call = 0;
     IndexNegotiator.prototype.invoke = async function () {
       call++;
-      if (call === 1) return { action: "propose", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
+      if (call === 1) return { action: "outreach", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
       return { action: "counter", assessment: { reasoning: "r", suggestedRoles: { ownUser: "peer", otherUser: "peer" } } } as never;
     };
     const enqueued: Array<Record<string, unknown>> = [];
@@ -474,7 +480,7 @@ describe("negotiation graph — questioner enqueue on stall", () => {
 
   it("does not enqueue when the negotiation is accepted", async () => {
     const scripted = [
-      { action: "propose", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "agent", otherUser: "patient" } }, message: "hi" },
+      { action: "outreach", assessment: { reasoning: "r1", suggestedRoles: { ownUser: "agent", otherUser: "patient" } }, message: "hi" },
       { action: "accept", assessment: { reasoning: "r2", suggestedRoles: { ownUser: "agent", otherUser: "patient" } } },
     ];
     let call = 0;

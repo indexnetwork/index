@@ -28,7 +28,7 @@ export interface NegotiationCandidate {
   /**
    * ID of the opportunity this negotiation is for. When set, the negotiation
    * graph's finalize node updates the opportunity's status based on the outcome
-   * (`accept` → 'pending', `reject` → 'rejected', otherwise → 'stalled').
+   * (`accept` → 'pending', a decline/withdraw → 'rejected', otherwise → 'stalled').
    */
   opportunityId?: string;
   /** Exact persisted lifecycle state claimed by this negotiation attempt. */

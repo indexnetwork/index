@@ -7,10 +7,10 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../../platform/database.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, negotiationHasMadeContact, readProtocolVersion } from "./negotiation.protocol.js";
+import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, negotiationAskRoundsCap, negotiationHasMadeContact } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, countOpenPreContactConsults, NEGOTIATION_CONSULTATION_POLICY_MODE, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, PRE_CONTACT_CONSULT_MARKER, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
-import type { NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
+import type { NegotiationSeat } from "../../protocol/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import type { NegotiationAntiEcho, NegotiationConcludeFloor } from "./negotiation.agent.js";
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
@@ -105,7 +105,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // Determine if this is the system agent's final allowed turn.
     const isFinalTurn = isNegotiationTurnCapReached(state.turnCount + 1, state.maxTurns);
 
-    const version = state.protocolVersion ?? 'v1';
     const seat: NegotiationSeat = actingSeat;
 
     // ask_user availability (P3.2): flag on, full pause loop wired
@@ -162,8 +161,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // exactly the legacy `hasPriorAskUser` ration expressed as a count.
     const questionBudget = configuredQuestionBudgetPerPrincipal();
     const askUserWiringAvailable =
-      version === 'v2'
-      && !isFinalTurn
+      !isFinalTurn
       && (!!deps.inChatQuestionDelivery || !!deps.questionerEnqueue)
       && !!deps.timeoutQueue?.enqueueAskUserExpiry
       && !!state.opportunityId
@@ -184,13 +182,11 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       conversationId: state.conversationId,
       turnIndex: state.turnCount,
       seat,
-      version,
       isFinalTurn,
       isContinuation: state.isContinuation,
       contactMade,
       askUserAvailable,
       askUserEligibility: {
-        versionV2: version === 'v2',
         nonFinal: !isFinalTurn,
         inChatQuestionDeliveryWired: !!deps.inChatQuestionDelivery,
         expiryWired: !!deps.timeoutQueue?.enqueueAskUserExpiry,
@@ -226,23 +222,19 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
 
     // ─── Deadlock detection → persuasion→bargaining stance (IND-428) ──────
     // Deterministic trailing-run inspection of the persisted history — no
-    // LLM in the decision. Gated on the strict default-off flag AND v2,
-    // checked alongside the protocol-version plumbing so v1 semantics stay
-    // untouched. Fail-open: any detection error means "no deadlock" and
-    // the legacy path proceeds byte-identically. The shift changes the
+    // LLM in the decision. Fail-open: any detection error means "no deadlock".
+    // The shift changes the
     // system agent's drafting stance only — allowedActions, the dispatch
     // payload, and all termination rules are untouched.
     let deadlock: DeadlockAssessment | null = null;
-    if (version === 'v2') {
-      try {
-        deadlock = assessDeadlock(history);
-      } catch (err) {
-        turnLog.warn('Deadlock detection failed; proceeding without mode shift', {
-          taskId: state.taskId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        deadlock = null;
-      }
+    try {
+      deadlock = assessDeadlock(history);
+    } catch (err) {
+      turnLog.warn('Deadlock detection failed; proceeding without mode shift', {
+        taskId: state.taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      deadlock = null;
     }
     const bargainingMode = deadlock?.deadlocked === true;
 
@@ -265,8 +257,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       isFinalTurn,
       isDiscoverer: isSource,
       seat,
-      protocolVersion: version,
-      allowedActions: [...allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable })],
+      allowedActions: [...allowedActionsFor(seat, isFinalTurn, { askUser: askUserAvailable })],
       checklist: frozenChecklist,
       questionBudget: { spent: questionsSpent, total: questionBudget },
       ...(askedDimensions.length > 0 && { askedDimensions }),
@@ -336,14 +327,12 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // forwarded to `NegotiationTurnPayload`, so an external agent holding the
       // personal-agent seat cannot receive the client's private thread.
       //
-      // v2-only: a v1 negotiation has no A2H vocabulary, so its prompt stays
-      // byte-identical.
       // Dropped from the gate are the per-turn conditions that used to ride
       // along inside `askUserAvailable`: final turn, budget spent, ask-rounds
       // cap, pre-contact bound. Those decide whether the agent may ASK, not
       // whether it may know what its client already said.
       if (clientDmForPrompt === null) {
-        clientDmForPrompt = version === 'v2' && ownIntentId
+        clientDmForPrompt = ownIntentId
           ? await retrieveClientDm(deps, ownUser.id, ownIntentId)
           : [];
       }
@@ -357,7 +346,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         isFinalTurn,
         isDiscoverer: isSource,
         seat,
-        protocolVersion: version,
         ...(state.discoveryQuery && isSource && { discoveryQuery: state.discoveryQuery }),
         isContinuation: state.isContinuation,
         ...(agentPriorDialogue && { priorDialogue: agentPriorDialogue }),
@@ -390,11 +378,11 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // these with a 400, but locally-dispatched turns land here directly.
       turn = dispatchResult.turn;
       turnSource = 'personal_agent';
-      if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable }).includes(turn.action)) {
+      if (!allowedActionsFor(seat, isFinalTurn, { askUser: askUserAvailable }).includes(turn.action)) {
         turnLog.warn('Personal agent returned out-of-seat action, coercing to conservative fallback', {
           action: turn.action, seat, isFinalTurn,
         });
-        turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+        turn = { ...turn, action: fallbackActionFor(seat, isFinalTurn) };
       }
     } else if (dispatchResult.reason === 'waiting') {
       // Long timeout — graph suspends. Persist the full turn context so the
@@ -602,8 +590,8 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     }
 
     // First turn must open the negotiation (unless continuing a prior
-    // conversation): v1 → "propose"; v2 initiator → "outreach". A v2 turn-0
-    // speaker holding the counterparty seat (tie-break inheritance) is left
+    // conversation): the initiator opens with `outreach`. A turn-0 speaker
+    // holding the counterparty seat (tie-break inheritance) is left
     // unforced — it is responding, not opening.
     //
     // A legitimate turn-0 refusal never reaches here: the opening-withdraw
@@ -616,9 +604,9 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // reply. An admissible `ask_user` is the one non-opening action left to
     // stand — it is the turn-0 third verdict, not a malformed opening.
     if (isFreshOpeningTurn || isPreContactResume) {
-      const openingAction = version === 'v2' ? 'outreach' : 'propose';
+      const openingAction = 'outreach';
       const consultingInstead = turn.action === 'ask_user' && askUserAvailable;
-      if ((version !== 'v2' || seat === 'initiator') && turn.action !== openingAction && !consultingInstead) {
+      if (seat === 'initiator' && turn.action !== openingAction && !consultingInstead) {
         turnLog.warn(`Agent returned unexpected action on turn 0, forcing to ${openingAction}`, { action: turn.action });
         // Rebind rather than mutate: `turn` may be the very object a dispatched
         // personal agent returned, and every other rewrite in this function
@@ -639,7 +627,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // action/role is fixed for the turn, so the two calls differ in exactly
     // what the policy is entitled to see.
     const consultationEligibilityFor = (candidate: NegotiationTurn) => assessConsultationEligibility({
-      protocolVersion: version,
       seat,
       isOpeningTurn: isFreshOpeningTurn,
       isFinalTurn,
@@ -755,7 +742,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         turnLog.warn('ask_user emitted while unavailable, coercing to conservative fallback', {
           seat, isFinalTurn, taskId: state.taskId, ...(opts.reissue && { reissue: true }),
         });
-        return { ...candidate, action: fallbackActionFor(version, seat, isFinalTurn) };
+        return { ...candidate, action: fallbackActionFor(seat, isFinalTurn) };
       }
 
       // ─── The five-part rule (checklist plan §3) ─────────────────────────
@@ -806,7 +793,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
             actor: isSource ? 'source' : 'candidate',
             reason: admissibility.reason,
           });
-          return { ...candidate, action: fallbackActionFor(version, seat, isFinalTurn) };
+          return { ...candidate, action: fallbackActionFor(seat, isFinalTurn) };
         }
       }
 
@@ -843,7 +830,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       opts?: { reissue?: boolean },
     ): NegotiationTurn => {
       if (
-        (candidate.action !== 'decline' && candidate.action !== 'reject')
+        candidate.action !== 'decline'
         || !isChecklistAuthored(checklist)
       ) return candidate;
       const declineAdmissibility = assessDeclineAdmissibility({ checklist });
@@ -884,7 +871,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // decline the record does not contain, which is the same class of
       // dishonesty as the decline itself. The reasoning stays — it is the
       // trace of what the agent tried to do.
-      return { ...candidate, action: fallbackActionFor(version, seat, isFinalTurn), message: null };
+      return { ...candidate, action: fallbackActionFor(seat, isFinalTurn), message: null };
     };
 
     turn = enforceDeclineVerdictLaw(turn, nextChecklist);
@@ -1047,7 +1034,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         // The re-issue inherits this turn's seat vocabulary INCLUDING the ask
         // — see the note above. An out-of-seat action is still coerced exactly
         // as a dispatched one is, and its `askUser` payload goes with it.
-        if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn, { askUser: askUserAvailable }).includes(retryTurn.action)) {
+        if (!allowedActionsFor(seat, isFinalTurn, { askUser: askUserAvailable }).includes(retryTurn.action)) {
           turnLog.warn('Conclusion-floor re-issue returned an action this turn cannot take, coercing to conservative fallback', {
             taskId: state.taskId,
             seat,
@@ -1055,7 +1042,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
             isFinalTurn,
           });
           const { askUser: _refused, ...rest } = retryTurn;
-          retryTurn = { ...rest, action: fallbackActionFor(version, seat, isFinalTurn) };
+          retryTurn = { ...rest, action: fallbackActionFor(seat, isFinalTurn) };
         }
         // Every gate the first draft passed, applied to what replaces it. The
         // decline law binds a re-issued decline as it bound the first; the ask
@@ -1164,7 +1151,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       // would let a repeated message become a park that skipped every one of
       // those gates. Its `askUser` payload goes with it: no other action may
       // carry one into the record.
-      if (version === 'v2' && !allowedActionsFor(version, seat, isFinalTurn, { askUser: false }).includes(retryTurn.action)) {
+      if (!allowedActionsFor(seat, isFinalTurn, { askUser: false }).includes(retryTurn.action)) {
         turnLog.warn('Anti-echo re-issue returned an action this turn cannot take, coercing to conservative fallback', {
           taskId: state.taskId,
           seat,
@@ -1172,7 +1159,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           isFinalTurn,
         });
         const { askUser: _refused, ...rest } = retryTurn;
-        retryTurn = { ...rest, action: fallbackActionFor(version, seat, isFinalTurn) };
+        retryTurn = { ...rest, action: fallbackActionFor(seat, isFinalTurn) };
       }
       // The gates the first draft passed, applied to what would replace it.
       retryTurn = enforceDeclineVerdictLaw(retryTurn, reissued.checklist, { reissue: true });
@@ -1330,7 +1317,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
         taskId: state.taskId,
         seat,
       });
-      turn = { ...turn, action: fallbackActionFor(version, seat, isFinalTurn) };
+      turn = { ...turn, action: fallbackActionFor(seat, isFinalTurn) };
     }
 
     const parts = [{ kind: "data" as const, data: turn }];

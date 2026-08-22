@@ -17,10 +17,10 @@ import type { InChatNegotiationQuestionDelivery } from "../../platform/chat/port
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";
-import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { allowedActionsFor, ASK_USER_WINDOW_MS, fallbackActionFor, isRejectLikeAction, isTerminalAction, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
-import type { NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
+import type { NegotiationSeat } from "../../protocol/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { AnswerhoodSchema, type Answerhood } from "../../protocol/schemas/negotiation-checklist.schema.js";
 import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";

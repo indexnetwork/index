@@ -215,7 +215,7 @@ export type {
 export { NegotiationConsultationReasonSchema } from "./protocol/schemas/negotiation-state.schema.js";
 export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./protocol/schemas/negotiation-state.schema.js";
 export type { NegotiationCounterpartyBinding } from "./platform/database.js";
-export type { NegotiationAction, NegotiationConsultationReason, NegotiationSeat, NegotiationProtocolVersion } from "./protocol/schemas/negotiation-state.schema.js";
+export type { NegotiationAction, NegotiationConsultationReason, NegotiationSeat } from "./protocol/schemas/negotiation-state.schema.js";
 
 // ─── Negotiation compatibility exports ─────────────────────────────────────
 /**
@@ -251,7 +251,6 @@ export {
   isRejectLikeAction,
   isTerminalAction,
   negotiationAskRoundsCap,
-  readProtocolVersion,
   resolveSeat,
   seatViolationMessage,
 } from "./internal/negotiations/negotiation.protocol.js";

@@ -65,7 +65,7 @@ describe('IndexNegotiator', () => {
     expect((result.assessment as Record<string, unknown>).fitScore).toBeUndefined();
   }, 60000);
 
-  it('returns propose action on opening turn for a good match', async () => {
+  it('returns an initiator-valid action on an opening turn', async () => {
     const result = await negotiator.invoke({
       ownUser: mlUser,
       otherUser: engineerUser,
@@ -74,12 +74,12 @@ describe('IndexNegotiator', () => {
       history: [],
     });
 
-    expect(result.action).toBe('propose');
+    expect(['outreach', 'counter', 'question', 'withdraw']).toContain(result.action);
   }, 60000);
 
-  it('constrains to accept/reject on final turn', async () => {
+  it('constrains a final counterparty turn to accept or decline', async () => {
     const history = [
-      { action: 'propose' as const, assessment: { reasoning: 'Good match', suggestedRoles: { ownUser: 'peer' as const, otherUser: 'peer' as const } } },
+      { action: 'outreach' as const, assessment: { reasoning: 'Good match', suggestedRoles: { ownUser: 'peer' as const, otherUser: 'peer' as const } } },
       { action: 'counter' as const, assessment: { reasoning: 'Not convinced', suggestedRoles: { ownUser: 'peer' as const, otherUser: 'peer' as const } } },
     ];
 
@@ -92,6 +92,6 @@ describe('IndexNegotiator', () => {
       isFinalTurn: true,
     });
 
-    expect(['accept', 'reject']).toContain(result.action);
+    expect(['accept', 'decline']).toContain(result.action);
   }, 60000);
 });

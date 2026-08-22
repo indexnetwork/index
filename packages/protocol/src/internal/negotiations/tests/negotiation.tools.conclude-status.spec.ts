@@ -57,7 +57,7 @@ function makeFixture(options: { priorTurns: number; maxTurns?: number; dispatchR
   /** Mirrors the host adapter: the transition emit hangs off this method only. */
   const transitions: Array<{ id: string; status: string }> = [];
   const taskStates: string[] = [];
-  const priorMessages = Array.from({ length: options.priorTurns }, () => turnMessage("user-cand", "counter"));
+  const priorMessages = Array.from({ length: options.priorTurns }, () => turnMessage("user-src", "outreach"));
 
   const deps = {
     negotiationDatabase: {
@@ -95,14 +95,14 @@ function makeFixture(options: { priorTurns: number; maxTurns?: number; dispatchR
 
 describe("respond_to_negotiation — terminal conclude writes the opportunity status", () => {
   test.each([
-    ["accept", "pending"],
-    ["reject", "rejected"],
-  ] as const)("%s advances the opportunity to %s and fires the transition", async (action, expectedStatus) => {
-    const fixture = makeFixture({ priorTurns: 2 });
+    ["accept", "pending", "user-cand"],
+    ["decline", "rejected", "user-cand"],
+  ] as const)("%s advances the opportunity to %s and fires the transition", async (action, expectedStatus, caller) => {
+    const fixture = makeFixture({ priorTurns: 1 });
     const tool = captureRespondTool(fixture.deps);
 
     const result = JSON.parse(await tool.handler({
-      context: makeContext("user-src"),
+      context: makeContext(caller),
       query: {
         negotiationId: "task-1",
         action,
@@ -123,7 +123,7 @@ describe("respond_to_negotiation — terminal conclude writes the opportunity st
     const tool = captureRespondTool(fixture.deps);
 
     const result = JSON.parse(await tool.handler({
-      context: makeContext("user-src"),
+      context: makeContext("user-cand"),
       query: {
         negotiationId: "task-1",
         action: "counter",
@@ -150,7 +150,7 @@ describe("respond_to_negotiation — terminal conclude writes the opportunity st
     const tool = captureRespondTool(fixture.deps);
 
     const result = JSON.parse(await tool.handler({
-      context: makeContext("user-src"),
+      context: makeContext("user-cand"),
       query: {
         negotiationId: "task-1",
         action: "counter",
@@ -166,11 +166,11 @@ describe("respond_to_negotiation — terminal conclude writes the opportunity st
   });
 
   test("a non-terminal turn leaves the opportunity status alone", async () => {
-    const fixture = makeFixture({ priorTurns: 2 });
+    const fixture = makeFixture({ priorTurns: 1 });
     const tool = captureRespondTool(fixture.deps);
 
     await tool.handler({
-      context: makeContext("user-src"),
+      context: makeContext("user-cand"),
       query: {
         negotiationId: "task-1",
         action: "counter",
@@ -185,16 +185,16 @@ describe("respond_to_negotiation — terminal conclude writes the opportunity st
   });
 
   test("a failed status write does not turn a completed conclude into a tool error", async () => {
-    const fixture = makeFixture({ priorTurns: 2 });
+    const fixture = makeFixture({ priorTurns: 1 });
     (fixture.deps.negotiationDatabase as { updateOpportunityStatus: () => Promise<never> }).updateOpportunityStatus =
       async () => { throw new Error("status write failed"); };
     const tool = captureRespondTool(fixture.deps);
 
     const result = JSON.parse(await tool.handler({
-      context: makeContext("user-src"),
+      context: makeContext("user-cand"),
       query: {
         negotiationId: "task-1",
-        action: "reject",
+        action: "decline",
         reasoning: "Not a fit",
         suggestedRoles: { ownUser: "peer", otherUser: "peer" },
       },

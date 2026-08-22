@@ -471,8 +471,8 @@ describe("respond_to_negotiation — schema validation", () => {
     expect(result.success).toBe(true);
   });
 
-  test("accepts propose action", () => {
-    const result = schema.safeParse({ ...validQuery, action: "propose" });
+  test("accepts outreach action", () => {
+    const result = schema.safeParse({ ...validQuery, action: "outreach" });
     expect(result.success).toBe(true);
   });
 
@@ -594,7 +594,7 @@ describe("respond_to_negotiation — handler", () => {
       context: makeContext("user-src"),
       query: {
         negotiationId: "task-1",
-        action: "propose",
+        action: "outreach",
         reasoning: "Strong synergy",
         suggestedRoles: { ownUser: "agent", otherUser: "patient" },
       },
@@ -655,11 +655,11 @@ describe("respond_to_negotiation — handler", () => {
   });
 
   test("accept finalizes with correct success message", async () => {
-    const { deps } = makeRespondDeps(2);
+    const { deps } = makeRespondDeps(1, { messages: [{ ...makeMessage("outreach", "r", "m"), senderId: "agent:user-src" }] });
     const tool = captureTool("respond_to_negotiation", deps);
 
     const raw = await tool.handler({
-      context: makeContext("user-src"),
+      context: makeContext("user-cand"),
       query: {
         negotiationId: "task-1",
         action: "accept",
@@ -672,25 +672,25 @@ describe("respond_to_negotiation — handler", () => {
     expect(result.data.message).toBe("Negotiation accepted. An opportunity has been created.");
   });
 
-  test("reject finalizes with correct success message", async () => {
-    const { deps } = makeRespondDeps(2);
+  test("decline finalizes with correct success message", async () => {
+    const { deps } = makeRespondDeps(1, { messages: [{ ...makeMessage("outreach", "r", "m"), senderId: "agent:user-src" }] });
     const tool = captureTool("respond_to_negotiation", deps);
 
     const raw = await tool.handler({
-      context: makeContext("user-src"),
+      context: makeContext("user-cand"),
       query: {
         negotiationId: "task-1",
-        action: "reject",
+        action: "decline",
         reasoning: "Not a fit",
         suggestedRoles: { ownUser: "peer", otherUser: "peer" },
       },
     });
 
     const result = JSON.parse(raw);
-    expect(result.data.message).toBe("Negotiation rejected.");
+    expect(result.data.message).toBe("Negotiation declined.");
   });
 
-  test("propose waiting uses 'Proposal' label, not 'Counter-proposal'", async () => {
+  test("outreach waiting uses 'Outreach' label, not 'Counter-proposal'", async () => {
     const { deps } = makeRespondDeps(0);
     const tool = captureTool("respond_to_negotiation", deps);
 
@@ -698,14 +698,14 @@ describe("respond_to_negotiation — handler", () => {
       context: makeContext("user-src"),
       query: {
         negotiationId: "task-1",
-        action: "propose",
+        action: "outreach",
         reasoning: "Let's explore",
         suggestedRoles: { ownUser: "peer", otherUser: "peer" },
       },
     });
 
     const result = JSON.parse(raw);
-    expect(result.data.message).toContain("Proposal submitted");
+    expect(result.data.message).toContain("Outreach submitted");
     expect(result.data.message).not.toContain("Counter");
   });
 

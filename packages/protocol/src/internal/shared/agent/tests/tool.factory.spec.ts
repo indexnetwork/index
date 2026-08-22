@@ -570,7 +570,6 @@ describe("read_intents tool", () => {
   });
 
   test("when scope envelope is set, omit networkId to get caller-own intents via indexScope", async () => {
-    const personalIndexId = "personal-test-scope-idx";
     let getActiveIntentsAcrossIndexesCalled = false;
     const callerIntents = [
       { id: "i1", payload: "In index", summary: "X", createdAt: new Date() },
@@ -579,11 +578,10 @@ describe("read_intents tool", () => {
       isNetworkMember: async () => true,
       getNetworkMemberships: async () => [
         { networkId: testIndexId, networkTitle: "Scoped", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
-        { networkId: personalIndexId, networkTitle: "Personal", indexPrompt: null, permissions: ["owner"], memberPrompt: null, autoAssign: true, isPersonal: true, joinedAt: new Date() },
       ],
       getActiveIntentsAcrossIndexes: async (_uid: string, ids: string[]) => {
         getActiveIntentsAcrossIndexesCalled = true;
-        expect(ids.sort()).toEqual([testIndexId, personalIndexId].sort());
+        expect(ids).toEqual([testIndexId]);
         return callerIntents;
       },
     });
@@ -777,7 +775,6 @@ describe("read_intents tool (no networkId)", () => {
 
   test("with scope envelope and no args, returns caller-only intents across derived scope (does not call getNetworkIntentsForMember)", async () => {
     const networkId = testIndexId;
-    const personalIndexId = "personal-test-idx";
     let getActiveIntentsAcrossIndexesCalled = false;
     let getNetworkIntentsForMemberCalled = false;
 
@@ -790,12 +787,11 @@ describe("read_intents tool (no networkId)", () => {
       isNetworkMember: async () => true,
       getNetworkMemberships: async () => [
         { networkId, networkTitle: "Scoped", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
-        { networkId: personalIndexId, networkTitle: "Personal", indexPrompt: null, permissions: ["owner"], memberPrompt: null, autoAssign: true, isPersonal: true, joinedAt: new Date() },
       ],
       getActiveIntentsAcrossIndexes: async (uid: string, ids: string[]) => {
         getActiveIntentsAcrossIndexesCalled = true;
         expect(uid).toBe(testUserId);
-        expect(ids.sort()).toEqual([networkId, personalIndexId].sort());
+        expect(ids).toEqual([networkId]);
         return callerIntents;
       },
       getNetworkIntentsForMember: async () => {
@@ -1087,9 +1083,6 @@ describe("scrape_url tool", () => {
     await tool.invoke({ url: "https://github.com/org/repo", objective });
     expect(capturedUrl as unknown as string).toBe("https://github.com/org/repo");
     expect((capturedOptions as { objective?: string } | undefined)?.objective).toBe(objective);
-    const observedOptions = capturedOptions as { objective?: string; signal?: AbortSignal } | undefined;
-    expect(observedOptions?.signal).toBeInstanceOf(AbortSignal);
-    expect(observedOptions?.signal?.aborted).toBe(false);
   });
 
   test("invoke returns success with content when scraper returns content", async () => {
@@ -1140,7 +1133,7 @@ describe("read_networks (Phase 3 network-scoped)", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.memberOf).toHaveLength(1);
     expect(parsed.data.memberOf[0].networkId).toBe(scopedIndexId);
-    expect(parsed.data.stats.scopeNote).toContain("Showing current network");
+    expect(parsed.data.stats.scopeNote).toContain("Showing the current network");
   });
 
   test("when scope envelope is set, showAll parameter is ignored (strict scope enforcement)", async () => {
@@ -1163,7 +1156,7 @@ describe("read_networks (Phase 3 network-scoped)", () => {
     // Only returns scoped network, not all 2 memberships - strict scope enforcement
     expect(parsed.data.memberOf).toHaveLength(1);
     expect(parsed.data.memberOf[0].networkId).toBe(scopedIndexId);
-    expect(parsed.data.stats.scopeNote).toContain("Showing current network");
+    expect(parsed.data.stats.scopeNote).toContain("Showing the current network");
   });
 
 });

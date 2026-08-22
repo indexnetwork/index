@@ -1,17 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "bun:test";
+import { AsyncLocalStorage } from "async_hooks";
 import { NegotiationGraphFactory } from "../negotiation.graph.js";
 import { NegotiationGraphState } from "../negotiation.state.js";
 import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agent.js";
 import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { allowedActionsFor, turnSchemaFor, ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP, DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../negotiation.protocol.js";
-import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
 import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 import { assessConsultationEligibility, NEGOTIATION_CONSULTATION_POLICY_MODE } from "../negotiation.consultation-policy.js";
 import type { NegotiationConsultationReason } from "../negotiation.consultation-policy.js";
-import { requestContext } from "../../shared/observability/request-context.js";
+import { requestContext, setRequestContextStore } from "../../shared/observability/request-context.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
+
+setRequestContextStore(new AsyncLocalStorage());
 
 /**
  * IND-401 — `ask_user` client-consult pause (P3.2).
@@ -48,34 +50,30 @@ const askUserTurn: NegotiationTurn = {
 
 describe("ask_user vocabulary + seat schemas", () => {
   it("is excluded everywhere by default (no opts)", () => {
-    expect(allowedActionsFor("v2", "initiator")).not.toContain("ask_user");
-    expect(allowedActionsFor("v2", "counterparty")).not.toContain("ask_user");
-    expect(allowedActionsFor("v1", "initiator")).not.toContain("ask_user");
+    expect(allowedActionsFor("initiator")).not.toContain("ask_user");
+    expect(allowedActionsFor("counterparty")).not.toContain("ask_user");
   });
 
   it("is granted per surface via opts.askUser, v2 non-final only", () => {
-    expect(allowedActionsFor("v2", "initiator", false, { askUser: true })).toContain("ask_user");
-    expect(allowedActionsFor("v2", "counterparty", false, { askUser: true })).toContain("ask_user");
+    expect(allowedActionsFor("initiator", false, { askUser: true })).toContain("ask_user");
+    expect(allowedActionsFor("counterparty", false, { askUser: true })).toContain("ask_user");
     // Final-cap turns must decide, never pause.
-    expect(allowedActionsFor("v2", "initiator", true, { askUser: true })).not.toContain("ask_user");
-    expect(allowedActionsFor("v2", "counterparty", true, { askUser: true })).not.toContain("ask_user");
-    // v1 has no ask_user regardless.
-    expect(allowedActionsFor("v1", "initiator", false, { askUser: true })).not.toContain("ask_user");
+    expect(allowedActionsFor("initiator", true, { askUser: true })).not.toContain("ask_user");
+    expect(allowedActionsFor("counterparty", true, { askUser: true })).not.toContain("ask_user");
   });
 
   it("keeps the base v2 vocabularies byte-identical", () => {
-    expect([...allowedActionsFor("v2", "initiator")]).toEqual(["outreach", "counter", "question", "withdraw"]);
-    expect([...allowedActionsFor("v2", "counterparty")]).toEqual(["accept", "decline", "counter", "question"]);
+    expect([...allowedActionsFor("initiator")]).toEqual(["outreach", "counter", "question", "withdraw"]);
+    expect([...allowedActionsFor("counterparty")]).toEqual(["accept", "decline", "counter", "question"]);
   });
 
   it("turnSchemaFor selects the ask_user schema variants only when granted", () => {
-    const v1Schemas = { system: SystemNegotiationTurnSchema, final: FinalNegotiationTurnSchema };
-    expect(turnSchemaFor("v2", "initiator", false, v1Schemas, { askUser: true })).toBe(InitiatorAskUserTurnSchema);
-    expect(turnSchemaFor("v2", "counterparty", false, v1Schemas, { askUser: true })).toBe(CounterpartyAskUserTurnSchema);
-    expect(turnSchemaFor("v2", "initiator", false, v1Schemas)).toBe(InitiatorTurnSchema);
-    expect(turnSchemaFor("v2", "counterparty", false, v1Schemas)).toBe(CounterpartyTurnSchema);
+    expect(turnSchemaFor("initiator", false, { askUser: true })).toBe(InitiatorAskUserTurnSchema);
+    expect(turnSchemaFor("counterparty", false, { askUser: true })).toBe(CounterpartyAskUserTurnSchema);
+    expect(turnSchemaFor("initiator", false)).toBe(InitiatorTurnSchema);
+    expect(turnSchemaFor("counterparty", false)).toBe(CounterpartyTurnSchema);
     // Final turns never get the variant.
-    expect(turnSchemaFor("v2", "initiator", true, v1Schemas, { askUser: true })).not.toBe(InitiatorAskUserTurnSchema);
+    expect(turnSchemaFor("initiator", true, { askUser: true })).not.toBe(InitiatorAskUserTurnSchema);
   });
 
   it("ask_user variants parse an ask_user turn with payload; base schemas reject it", () => {
@@ -92,7 +90,6 @@ describe("ask_user vocabulary + seat schemas", () => {
 
 describe("deterministic consultation eligibility policy (IND-508)", () => {
   const base = {
-    protocolVersion: "v2" as const,
     seat: "initiator" as const,
     isOpeningTurn: false,
     isFinalTurn: false,
@@ -113,7 +110,6 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
   });
 
   it.each([
-    { protocolVersion: "v1" as const },
     // The opening turn admits ONLY a model-authored `ask_user` from the
     // initiator seat (the pre-contact verdict); every inferred category the
     // table above relies on stays excluded there.
@@ -122,7 +118,7 @@ describe("deterministic consultation eligibility policy (IND-508)", () => {
     { isFinalTurn: true },
     { action: "accept" as const },
     { action: "decline" as const },
-    { action: "reject" as const },
+    { action: "decline" as const },
     { action: "withdraw" as const },
     { consultationBudgetSpent: true },
     { hasExactResumeCoordinate: false },

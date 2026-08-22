@@ -72,14 +72,4 @@ describe("IndexNegotiator — seat-schema validation with retry + fallback (IND-
     expect(turn.action).toBe("decline");
   });
 
-  it("v1 output is validated against the legacy schema (propose valid, outreach invalid)", async () => {
-    const v1Input: NegotiationAgentInput = { ...baseInput, seat: undefined, protocolVersion: "v1" };
-    const okAgent = new ScriptedNegotiator([validTurn("propose")]);
-    expect((await okAgent.invoke(v1Input)).action).toBe("propose");
-
-    const badAgent = new ScriptedNegotiator([validTurn("outreach"), validTurn("outreach")]);
-    const fallback = await badAgent.invoke(v1Input);
-    expect(fallback.action).toBe("counter");
-    expect(badAgent.calls).toBe(2);
-  });
 });

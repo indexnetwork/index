@@ -10,27 +10,21 @@ import { AnswerhoodSchema, ChecklistDraftSchema } from "./negotiation-checklist.
 // ─── Zod schemas (available for runtime validation) ───────────────────────────
 
 /**
- * Union of every negotiation turn action across protocol versions.
+ * Union of negotiation turn actions.
  *
- * v1 vocabulary: `propose | accept | reject | counter | question`.
- * v2 (client-advocate seat rules) renames `propose`→`outreach` and splits
- * `reject` into `withdraw` (initiator seat) / `decline` (counterparty seat).
- * Which subset is valid for a given turn depends on the task's
- * `protocolVersion` and the acting user's seat — see
+ * The protocol is seat-scoped: `outreach` belongs to the initiator and
+ * `decline` to the counterparty. Which subset is valid for a turn depends on
+ * the acting user's seat — see
  * `negotiations/negotiation.protocol.ts` for the seat-scoped schemas.
  */
 export const NEGOTIATION_ACTIONS = [
-  "propose", "accept", "reject", "counter", "question",
-  "outreach", "withdraw", "decline",
+  "accept", "counter", "question", "outreach", "withdraw", "decline",
   "ask_user",
 ] as const;
 export type NegotiationAction = (typeof NEGOTIATION_ACTIONS)[number];
 
-/** Negotiation seat under the v2 client-advocate protocol. */
+/** Negotiation seat under the client-advocate protocol. */
 export type NegotiationSeat = "initiator" | "counterparty";
-
-/** Negotiation protocol version stamped on task metadata. */
-export type NegotiationProtocolVersion = "v1" | "v2";
 
 /** Closed, content-free reasons that select server-owned consultation copy. */
 export const NEGOTIATION_CONSULTATION_REASONS = [
@@ -43,7 +37,7 @@ export const NegotiationConsultationReasonSchema = z.enum(NEGOTIATION_CONSULTATI
 export type NegotiationConsultationReason = z.infer<typeof NegotiationConsultationReasonSchema>;
 
 /**
- * Payload for a v2 `ask_user` action.
+ * Payload for an `ask_user` action.
  *
  * `reason` stays the closed enum it has always been: it is admission metadata
  * for the deterministic consultation policy, not copy. `question` is the
@@ -56,8 +50,8 @@ export const AskUserPayloadSchema = z.object({
   reason: NegotiationConsultationReasonSchema,
   /**
    * The question the negotiating agent wrote, in the structured shape the UI
-   * already renders. Optional: v1 turns, external agents, and the existing
-   * enum-only path must all keep validating, so a payload of `{ reason }`
+   * already renders. Optional: external agents and the existing enum-only path
+   * must all keep validating, so a payload of `{ reason }`
    * alone stays byte-identical in and out.
    *
    * Declared `.nullable().optional()` (not bare `.optional()`) so the enclosing
@@ -74,8 +68,8 @@ export const AskUserPayloadSchema = z.object({
    * per-dimension, and bundling two topics into one question makes the
    * principal's answer unscoreable against either.
    *
-   * Optional for the same reason `question` is: v1 turns, external agents, and
-   * the enum-only path must all keep validating. An ask that names no
+   * Optional for the same reason `question` is: external agents and the
+   * enum-only path must all keep validating. An ask that names no
    * dimension is inadmissible under the checklist protocol (the graph refuses
    * it) but must still PARSE — a schema that rejected it would fail the turn
    * instead of downgrading the move.
@@ -157,7 +151,7 @@ export const NegotiationTurnSchema = z.object({
     }),
   }),
   message: z.string().nullable().optional(),
-  /** Read-only legacy wire field. New A2A turns cannot generate this action. */
+  /** Persisted client-consult payload. */
   askUser: AskUserPayloadSchema.nullable().optional(),
   /**
    * The negotiation's checklist as this turn scored it (checklist plan §2).
@@ -166,7 +160,7 @@ export const NegotiationTurnSchema = z.object({
    * record the checklist's only store: a continuation recovers the frozen
    * dimensions from the same messages it recovers the dialogue from, with no
    * second table to keep in step. Optional and permissive here for the same
-   * reason `askUser` is — v1 turns, external agents and pre-checklist history
+   * reason `askUser` is — external agents and pre-checklist history
    * must keep validating, and the domain module (`negotiation.checklist.
    * contracts.ts`) is what enforces the invariants on the way in.
    */

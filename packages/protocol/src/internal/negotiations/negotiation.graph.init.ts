@@ -7,10 +7,10 @@ import { requestContext } from "../shared/observability/request-context.js";
 import type { NegotiationContinuationReceipt } from "../../platform/database.js";
 import type { NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { type NegotiationTurn, type NegotiationOutcome } from "./negotiation.state.js";
-import { allowedActionsFor, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEW_NEGOTIATION_PROTOCOL_VERSION, fallbackActionFor, isRejectLikeAction, isTerminalAction, readProtocolVersion, rejectActionFor } from "./negotiation.protocol.js";
+import { allowedActionsFor, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, fallbackActionFor, isRejectLikeAction, isTerminalAction, rejectActionFor } from "./negotiation.protocol.js";
 import { assessConsultationEligibility, consultationPromptFor, type NegotiationConsultationReason } from "./negotiation.consultation-policy.js";
 import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
-import type { NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
+import type { NegotiationSeat } from "../../protocol/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
@@ -161,23 +161,10 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
       ? 'source'
       : 'candidate';
 
-    // --- Protocol version: pinned per negotiation, re-stamped per match ---
-    // A prior task for this same negotiation (exact continuation resume or
-    // a re-run of the same opportunity) pins the version, so one
-    // negotiation never flips semantics mid-flight (absent field on a
-    // genuine prior = pre-v2 task = v1). Everything else — including
-    // continuations of older conversations between the same pair — stamps
-    // fresh as v2, so the cutover reaches existing pairs on their next new
-    // match instead of being pinned to v1 forever by conversation history.
-    const protocolVersion: NegotiationProtocolVersion = priorTask
-      ? (readProtocolVersion(priorTask.metadata) ?? 'v1')
-      : NEW_NEGOTIATION_PROTOCOL_VERSION;
-
     const taskMetadata = {
       type: 'negotiation',
       sourceUserId: state.sourceUser.id,
       initiatorUserId,
-      protocolVersion,
       candidateUserId: state.candidateUser.id,
       networkId: state.indexContext.networkId,
       sourceIntentId: state.sourceIntentId,
@@ -271,7 +258,6 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
       maxTurns,
       isContinuation,
       initiatorUserId,
-      protocolVersion,
       priorTurnCount: priorTurns.length,
       ...(priorAttribution && { priorAttribution }),
       ...(userAnswers.length > 0 && { userAnswers }),

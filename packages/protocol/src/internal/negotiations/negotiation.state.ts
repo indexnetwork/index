@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { NegotiationContinuationExecution, NegotiationContinuationReceipt, NegotiationPrivateConsultation, NegotiationUserAnswer, OpportunityStatus } from "../../platform/database.js";
 import type { DeadlockShiftRecord } from "./negotiation.deadlock.contracts.js";
 import type { NegotiatorMemoryEntry } from "./negotiation.memory.js";
-import { AskUserPayloadSchema, NEGOTIATION_ACTIONS, type NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
+import { AskUserPayloadSchema, NEGOTIATION_ACTIONS } from "../../protocol/schemas/negotiation-state.schema.js";
 import { ChecklistDraftSchema } from "../../protocol/schemas/negotiation-checklist.schema.js";
 import type { ChecklistItem } from "./negotiation.checklist.contracts.js";
 import type { NegotiationTurnFailure } from "./negotiation.turn-failure.js";
@@ -11,8 +11,8 @@ import type { NegotiationConsultationReason } from "./negotiation.consultation-p
 
 /**
  * Zod schema for a single negotiation turn (DataPart payload in A2A message).
- * Accepts the full v1+v2 action union — which subset is valid for a given turn
- * is enforced by the seat-scoped schemas in `negotiation.protocol.ts`.
+ * The seat-scoped schemas in `negotiation.protocol.ts` validate which actions
+ * each actor may submit.
  */
 export const NegotiationTurnSchema = z.object({
   action: z.enum(NEGOTIATION_ACTIONS),
@@ -33,32 +33,6 @@ export const NegotiationTurnSchema = z.object({
    * module enforces the invariants when the graph reconciles a draft.
    */
   checklist: ChecklistDraftSchema.nullable().optional(),
-});
-
-/** Restricted v1 turn schema for the system agent (no question action). */
-export const SystemNegotiationTurnSchema = z.object({
-  action: z.enum(["propose", "accept", "reject", "counter"]),
-  assessment: z.object({
-    reasoning: z.string(),
-    suggestedRoles: z.object({
-      ownUser: z.enum(["agent", "patient", "peer"]),
-      otherUser: z.enum(["agent", "patient", "peer"]),
-    }),
-  }),
-  message: z.string().nullable().optional(),
-});
-
-/** v1 turn schema for system agent's final allowed turn (must decide). */
-export const FinalNegotiationTurnSchema = z.object({
-  action: z.enum(["accept", "reject"]),
-  assessment: z.object({
-    reasoning: z.string(),
-    suggestedRoles: z.object({
-      ownUser: z.enum(["agent", "patient", "peer"]),
-      otherUser: z.enum(["agent", "patient", "peer"]),
-    }),
-  }),
-  message: z.string().nullable().optional(),
 });
 
 export type NegotiationTurn = z.infer<typeof NegotiationTurnSchema>;
@@ -208,17 +182,6 @@ export const NegotiationGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
-  /**
-   * Negotiation protocol version for this session's task. Resolved by the
-   * init node: inherited from the prior task on the conversation when one
-   * exists (never re-stamped — a v1 conversation stays v1 mid-flight), else
-   * stamped from `NEGOTIATION_PROTOCOL_VERSION` for genuinely fresh runs.
-   */
-  protocolVersion: Annotation<NegotiationProtocolVersion>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => "v1" as const,
-  }),
-
   /**
    * First applied deadlock→bargaining shift in this session (IND-428).
    * Written by the turn node when the system agent first drafts in the

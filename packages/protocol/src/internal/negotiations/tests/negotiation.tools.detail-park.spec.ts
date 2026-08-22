@@ -262,7 +262,7 @@ describe("get_negotiation — no park", () => {
       senderId: `agent:${VIEWER}`,
       role: "agent" as const,
       taskId: TASK_ID,
-      parts: [{ kind: "data", data: { action: "propose", assessment: { reasoning: "why", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: "hello" } }],
+      parts: [{ kind: "data", data: { action: "outreach", assessment: { reasoning: "why", suggestedRoles: { ownUser: "peer", otherUser: "peer" } }, message: "hello" } }],
       createdAt: new Date("2026-08-20T19:00:00Z"),
     };
     const detail = await getDetail(incidentDeps({ task, messages: [message], openQuestions: [] }));
@@ -277,8 +277,7 @@ describe("get_negotiation — no park", () => {
       status: "active",
       role: "source",
       seat: "initiator",
-      protocolVersion: "v1",
-      allowedActions: ["propose", "accept", "reject", "counter", "question"],
+      allowedActions: ["outreach", "counter", "question", "withdraw"],
       counterpartyId: COUNTERPARTY,
       turnCount: 1,
       isUsersTurn: false,
@@ -289,7 +288,7 @@ describe("get_negotiation — no park", () => {
         turnNumber: 1,
         speaker: "source",
         senderId: `agent:${VIEWER}`,
-        action: "propose",
+        action: "outreach",
         actionActor: "agent",
         reasoning: "why",
         suggestedRoles: { ownUser: "peer", otherUser: "peer" },

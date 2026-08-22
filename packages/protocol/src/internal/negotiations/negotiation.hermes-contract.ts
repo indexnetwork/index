@@ -42,9 +42,9 @@ export const HERMES_OWNER_DIRECTIVE: HermesOwnerDirective = 'protect_private_con
 
 const ACTION_CANDIDATES: Readonly<Record<HermesNegotiationAction, readonly NegotiationAction[]>> = Object.freeze({
   accept: ['accept'],
-  decline: ['decline', 'withdraw', 'reject'],
-  request_time: ['counter', 'outreach', 'propose'],
-  continue: ['question', 'outreach', 'propose', 'counter'],
+  decline: ['decline', 'withdraw'],
+  request_time: ['counter', 'outreach'],
+  continue: ['question', 'outreach', 'counter'],
 });
 
 const ACTION_ORDER: readonly HermesNegotiationAction[] = [

@@ -8,10 +8,10 @@ import { conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { log } from '../lib/log';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeout.queue';
-import { allowedHermesActionsFor, buildHermesNegotiationTurn, consultationPromptFor, HERMES_OWNER_DIRECTIVE, isNegotiationTurnCapReached, type HermesNegotiationAction, type HermesNegotiationResponse, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment, type NegotiationAction, type NegotiationConsultationReason, type NegotiationSeat, type NegotiationProtocolVersion, type NegotiatorMemoryEntry } from '@indexnetwork/protocol';
+import { allowedHermesActionsFor, buildHermesNegotiationTurn, consultationPromptFor, HERMES_OWNER_DIRECTIVE, isNegotiationTurnCapReached, type HermesNegotiationAction, type HermesNegotiationResponse, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment, type NegotiationAction, type NegotiationConsultationReason, type NegotiationSeat, type NegotiatorMemoryEntry } from '@indexnetwork/protocol';
 import { negotiatorMemoryRetrievalAdapter } from '../adapters/negotiator-memory.retrieval.adapter';
 import { completeContinuationExecution, parkContinuationExecution, readClaimedContinuationExecution } from '../adapters/negotiation-continuation.atomic';
-import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, ASK_USER_WINDOW_MS, isRejectLikeAction, isTerminalAction, NEGOTIATION_CONSULTATION_POLICY_MODE, negotiationQuestionSettlementId, readProtocolVersion, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS, allowedActionsFor, ASK_USER_WINDOW_MS, isRejectLikeAction, isTerminalAction, NEGOTIATION_CONSULTATION_POLICY_MODE, negotiationQuestionSettlementId, resolveSeat, seatViolationMessage } from '@indexnetwork/protocol';
 import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
 import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
 import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload, type ExternalConsultationPersistedTurn } from '../lib/negotiation/consultation';
@@ -105,13 +105,8 @@ export interface PickupResult {
     history: Array<{ turnNumber: number; agent: 'source' | 'candidate'; action: string; message: string | null | undefined }>;
     counterpartyAction: string;
   };
-  /**
-   * The claiming user's seat under the task's negotiation protocol version
-   * (v2 client-advocate: `initiator` never accepts; only `counterparty` can).
-   */
+  /** The claiming user's seat (`initiator` never accepts; only `counterparty` can). */
   seat: NegotiationSeat;
-  /** Negotiation protocol version stamped on the task (`v1` for pre-v2 tasks). */
-  protocolVersion: NegotiationProtocolVersion;
   /** Actions the claiming seat may submit on this turn. */
   allowedActions: NegotiationAction[];
   /** Whether this exact claim may enter the owner-consultation continuation. */
@@ -153,7 +148,6 @@ export interface HermesPickupResult {
     counterpartyAction: string;
   };
   seat: NegotiationSeat;
-  protocolVersion: NegotiationProtocolVersion;
   allowedActions: HermesNegotiationAction[];
   canConsultOwner: boolean;
   ownerDirective: typeof HERMES_OWNER_DIRECTIVE;
@@ -203,8 +197,6 @@ interface NegotiationTaskMetadata {
   candidateUserId: string;
   /** Rigid initiator seat, stamped at discovery time (v2 client-advocate). */
   initiatorUserId?: string;
-  /** Negotiation protocol version; absent on pre-v2 tasks (treated as v1). */
-  protocolVersion?: string;
   maxTurns?: number;
   opportunityId?: string;
   networkId?: string;
@@ -593,7 +585,7 @@ export class NegotiationPollingService {
    *
    * Validates that the task is in `claimed` state and owned by the given agent,
    * persists the turn as a message, then evaluates whether the negotiation should
-   * terminate (accept/reject/max turns) or continue.
+   * terminate (accept/decline/withdraw/max turns) or continue.
    *
    * @param agentId - The agent submitting the response
    * @param userId - The user the agent represents
@@ -652,7 +644,6 @@ export class NegotiationPollingService {
     if (metadata.sourceUserId !== userId && metadata.candidateUserId !== userId) {
       throw new NotFoundError(`Negotiation ${negotiationId} not found`);
     }
-    const protocolVersion = (readProtocolVersion(metadata) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, metadata);
     const messages = await negotiationMessagesFor(this.responsePersistence, preflight);
     if (expectedNegotiationSpeaker(metadata, messages) !== userId) {
@@ -660,7 +651,7 @@ export class NegotiationPollingService {
     }
     const newTurnCount = messages.length + 1;
     const isFinalTurn = isNegotiationTurnCapReached(newTurnCount, metadata.maxTurns);
-    const allowed = allowedActionsFor(protocolVersion, seat, isFinalTurn);
+    const allowed = allowedActionsFor(seat, isFinalTurn);
     const turn = buildHermesNegotiationTurn(input, allowed);
     if (!turn) throw new SeatViolationError('Closed Hermes action is not available for this negotiation turn');
 
@@ -785,7 +776,6 @@ export class NegotiationPollingService {
     //    caller's seat vocabulary; seat attribution keys on
     //    metadata.initiatorUserId — never on turn parity, which misattributes
     //    seats when a continuation starts with the counterparty speaking first.
-    //    v1 tasks are grandfathered: the legacy vocabulary stays valid.
     const preflight = await conversationDatabaseAdapter.getTask(negotiationId);
     if (!preflight) {
       throw new NotFoundError(`Negotiation ${negotiationId} not found`);
@@ -794,15 +784,14 @@ export class NegotiationPollingService {
     if (preflightMeta?.type !== 'negotiation') {
       throw new NotFoundError(`Task ${negotiationId} is not a negotiation`);
     }
-    const protocolVersion = (readProtocolVersion(preflightMeta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, preflightMeta);
     const preflightMessages = await negotiationMessagesFor(conversationDatabaseAdapter, preflight);
     if (expectedNegotiationSpeaker(preflightMeta, preflightMessages) !== userId) {
       throw new SeatViolationError('It is not this owner\'s turn to respond in the negotiation');
     }
     const isFinalTurn = isNegotiationTurnCapReached(preflightMessages.length + 1, preflightMeta.maxTurns);
-    if (!allowedActionsFor(protocolVersion, seat, isFinalTurn).includes(input.action)) {
-      throw new SeatViolationError(seatViolationMessage(input.action, seat, protocolVersion));
+    if (!allowedActionsFor(seat, isFinalTurn).includes(input.action)) {
+      throw new SeatViolationError(seatViolationMessage(input.action, seat));
     }
 
     // 2. Atomically transition out of 'claimed' to 'working' with CAS on
@@ -878,7 +867,7 @@ export class NegotiationPollingService {
 
     const newTurnCount = currentTurnCount + 1;
 
-    // 6. Evaluate: terminal action (accept/reject/withdraw/decline) or maxTurns
+    // 6. Evaluate: terminal action (accept/withdraw/decline) or maxTurns
     //    -> finalize, else -> waiting_for_agent + re-arm timeout
     if (isTerminalAction(input.action) || isNegotiationTurnCapReached(newTurnCount, meta.maxTurns)) {
       // Parse full history for outcome building
@@ -1000,7 +989,6 @@ export class NegotiationPollingService {
         counterpartyAction: result.turn.counterpartyAction,
       },
       seat: result.seat,
-      protocolVersion: result.protocolVersion,
       allowedActions: allowedHermesActionsFor(result.allowedActions),
       canConsultOwner: result.canConsultOwner,
       ownerDirective: HERMES_OWNER_DIRECTIVE,
@@ -1099,7 +1087,6 @@ export class NegotiationPollingService {
     // Announce the claiming user's seat + allowed actions (v2 client-advocate
     // protocol) so agents don't have to guess the valid vocabulary. Final turns
     // use the terminal-cap vocabulary and never advertise consultation.
-    const protocolVersion = (readProtocolVersion(meta) ?? 'v1') as NegotiationProtocolVersion;
     const seat = resolveSeat(userId, meta);
     const isFinalTurn = isNegotiationTurnCapReached(turnNumber + 1, meta.maxTurns);
     const questionerEnqueue = parkedQuestionEnqueue();
@@ -1149,8 +1136,7 @@ export class NegotiationPollingService {
         counterpartyAction,
       },
       seat,
-      protocolVersion,
-      allowedActions: [...allowedActionsFor(protocolVersion, seat, isFinalTurn)],
+      allowedActions: [...allowedActionsFor(seat, isFinalTurn)],
       canConsultOwner: consultation.eligible,
       context,
       ...(negotiatorMemory.length > 0 && { negotiatorMemory }),

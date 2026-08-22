@@ -139,13 +139,6 @@ describe("IndexNegotiator — canAskUser (IND-401)", () => {
     expect(agent.systemPrompts[0]).not.toContain("ask_user");
   });
 
-  it("v1 never gains the action even with canAskUser set", async () => {
-    const agent = new CapturingNegotiator([askUserOutput, validTurn("counter")]);
-    const turn = await agent.invoke({ ...baseInput, protocolVersion: "v1", seat: "initiator", canAskUser: true });
-    expect(turn.action).toBe("counter");
-    expect(agent.systemPrompts[0]).not.toContain("ask_user");
-  });
-
   it("final turns never gain the action even with canAskUser set", async () => {
     const agent = new CapturingNegotiator([askUserOutput, validTurn("withdraw")]);
     const turn = await agent.invoke({ ...baseInput, isFinalTurn: true, canAskUser: true });

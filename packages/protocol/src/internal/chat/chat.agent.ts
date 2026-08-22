@@ -87,7 +87,7 @@ export type AgentStreamEvent =
       negotiationConversationId: string;
       turnIndex: number;
       actor: "source" | "candidate";
-      action: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
+      action: "accept" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
       reasoning?: string;
       message?: string;
       suggestedRoles?: { ownUser?: string; otherUser?: string };

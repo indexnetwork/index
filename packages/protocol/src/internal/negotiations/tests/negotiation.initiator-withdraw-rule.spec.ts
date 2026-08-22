@@ -95,12 +95,6 @@ describe("IndexNegotiator — initiator withdraw-after-clarification rule", () =
     expect(prompt).not.toContain('"withdraw"');
   });
 
-  it("v1 never receives the rule", async () => {
-    const prompt = await promptFor({ protocolVersion: "v1" });
-    expect(prompt).not.toContain(RULE_MARKER);
-    expect(prompt).not.toContain('"withdraw"');
-  });
-
   it("renders identically with canAskUser off and on, and never names the ask_user action", async () => {
     const withoutGrant = await promptFor({ canAskUser: false });
     const withGrant = await promptFor({ canAskUser: true });

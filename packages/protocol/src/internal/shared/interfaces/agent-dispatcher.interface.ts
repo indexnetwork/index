@@ -32,9 +32,7 @@ export interface NegotiationTurnPayload {
   discoveryQuery?: string;
   /** The acting user's seat under the v2 client-advocate protocol (`initiator` | `counterparty`). */
   seat?: string;
-  /** Negotiation protocol version for this task (`v1` | `v2`). */
-  protocolVersion?: string;
-  /** Actions the acting seat may submit on this turn (seat + version + final-turn scoped). */
+  /** Actions the acting seat may submit on this turn (seat + final-turn scoped). */
   allowedActions?: string[];
   /**
    * The acting user's OWN negotiator memories (P5.3 read path) — private

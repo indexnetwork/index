@@ -20,14 +20,14 @@ describe('Hermes negotiation response contract', () => {
     }
   });
 
-  it('projects the legacy protocol vocabulary into the smallest useful closed set', () => {
+  it('projects the seat-scoped vocabulary into the smallest useful closed set', () => {
     expect(allowedHermesActionsFor(['outreach', 'withdraw'])).toEqual([
       'decline',
       'request_time',
       'continue',
     ]);
     expect(allowedHermesActionsFor(['accept', 'decline'])).toEqual(['accept', 'decline']);
-    expect(allowedHermesActionsFor(['propose', 'reject', 'counter', 'question'])).toEqual([
+    expect(allowedHermesActionsFor(['outreach', 'withdraw', 'counter', 'question'])).toEqual([
       'decline',
       'request_time',
       'continue',

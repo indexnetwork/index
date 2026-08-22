@@ -1,4 +1,4 @@
-import type { NegotiationAction, NegotiationConsultationReason, NegotiationProtocolVersion, NegotiationSeat } from "../../protocol/schemas/negotiation-state.schema.js";
+import type { NegotiationAction, NegotiationConsultationReason, NegotiationSeat } from "../../protocol/schemas/negotiation-state.schema.js";
 
 export type { NegotiationConsultationReason } from "../../protocol/schemas/negotiation-state.schema.js";
 
@@ -7,7 +7,6 @@ export type NegotiationConsultationPolicyMode = "off" | "shadow" | "on";
 
 /** The only data the policy may inspect: action/role enums and routing coordinates. */
 export interface ConsultationEligibilityInput {
-  protocolVersion: NegotiationProtocolVersion;
   seat: NegotiationSeat;
   isOpeningTurn: boolean;
   isFinalTurn: boolean;
@@ -43,8 +42,7 @@ export const NEGOTIATION_CONSULTATION_POLICY_MODE: NegotiationConsultationPolicy
  */
 export function assessConsultationEligibility(input: ConsultationEligibilityInput): ConsultationEligibility {
   if (
-    input.protocolVersion !== "v2"
-    || input.isFinalTurn
+    input.isFinalTurn
     || input.consultationBudgetSpent
     || !input.hasExactResumeCoordinate
     || !input.lifecycleValid
@@ -138,7 +136,7 @@ export function consultationPromptFor(reason: NegotiationConsultationReason): {
 }
 
 function isObviousTerminal(action: NegotiationAction): boolean {
-  return action === "accept" || action === "reject" || action === "withdraw" || action === "decline";
+  return action === "accept" || action === "withdraw" || action === "decline";
 }
 
 // ─── Pre-contact consultation: bounds and recognition ────────────────────────

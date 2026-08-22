@@ -4,7 +4,7 @@ import type { z } from 'zod';
 import { AskUserGenerationSchema, AskUserPayloadSchema } from '../../../protocol/schemas/negotiation-state.schema.js';
 import { StructuredQuestionSchema } from '../../../protocol/question.js';
 import { turnSchemaFor } from '../negotiation.protocol.js';
-import { NegotiationTurnSchema, SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from '../negotiation.state.js';
+import { NegotiationTurnSchema } from '../negotiation.state.js';
 import { hasGuaranteedAsk } from '../negotiation.graph.shared.js';
 import { ChecklistDraftItemGenerationSchema, ChecklistDraftItemSchema, checklistFromTurns } from '../negotiation.checklist.contracts.js';
 
@@ -26,13 +26,7 @@ import { ChecklistDraftItemGenerationSchema, ChecklistDraftItemSchema, checklist
  * schema is unchanged — it is the shape the floor's mark is read back out of.
  */
 
-const GENERATION_SCHEMA = turnSchemaFor(
-  'v2',
-  'initiator',
-  false,
-  { system: SystemNegotiationTurnSchema, final: FinalNegotiationTurnSchema },
-  { askUser: true, checklist: true },
-);
+const GENERATION_SCHEMA = turnSchemaFor('initiator', false, { askUser: true, checklist: true });
 
 const QUESTION = {
   title: 'Timing',

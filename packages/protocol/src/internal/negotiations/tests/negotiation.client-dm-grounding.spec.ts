@@ -146,12 +146,6 @@ describe("IndexNegotiator — client-DM grounding", () => {
     }
   });
 
-  it("withholds both under v1, whose prompt A2H never touches", async () => {
-    const agent = await promptFor({ canAskUser: true, protocolVersion: "v1" as const, clientDm: DM });
-    expect(agent.system).not.toContain(DM_RULE_MARKER);
-    expect(agent.user).not.toContain(DM_SECTION_MARKER);
-  });
-
   it("grants the counterparty seat the same grounding", async () => {
     const agent = await promptFor({ seat: "counterparty", canAskUser: true, clientDm: DM });
     expect(agent.system).toContain(DM_RULE_MARKER);

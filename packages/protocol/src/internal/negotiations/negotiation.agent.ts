@@ -1,8 +1,8 @@
 import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema, type NegotiationTurn, type UserNegotiationContext, type SeedAssessment } from "./negotiation.state.js";
+import { type NegotiationTurn, type UserNegotiationContext, type SeedAssessment } from "./negotiation.state.js";
 import { turnSchemaFor, fallbackActionFor } from "./negotiation.protocol.js";
-import type { NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
+import type { NegotiationSeat } from "../../protocol/schemas/negotiation-state.schema.js";
 import type { NegotiationPrivateConsultation, NegotiationUserAnswer } from "../../platform/database.js";
 import { renderNegotiatorMemorySection, type NegotiatorMemoryEntry } from "./negotiation.memory.js";
 import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage } from "./negotiation.client-dm.js";
@@ -35,13 +35,6 @@ Rules:
 - suggestedRoles: "agent" = can help, "patient" = seeks help, "peer" = mutual benefit.
 {finalTurnInstruction}{bargainingShift}{negotiatorMemory}`;
 
-/** v1 action rules — byte-identical to the pre-seat-rules prompt. */
-const V1_ACTION_RULES = `- On the FIRST turn: Propose the connection case. Explain why it would benefit both parties. Set action to "propose".
-- On SUBSEQUENT turns: Evaluate the other agent's arguments. Either:
-  - "counter" if you have specific objections but see potential
-  - "accept" if the match genuinely benefits {userName}
-  - "reject" if the match does not serve {userName}'s needs`;
-
 /**
  * v2 initiator seat: reaching stance — accept is structurally unavailable.
  *
@@ -54,7 +47,7 @@ const V1_ACTION_RULES = `- On the FIRST turn: Propose the connection case. Expla
  * channel-neutrally (it never names the `ask_user` action) so it renders
  * correctly whether or not the caller granted `canAskUser`; the answer context
  * it refers to is injected independently of that grant. It must never reach
- * `V2_COUNTERPARTY_RULES` (that seat has no `withdraw`) or `V1_ACTION_RULES`.
+ * `V2_COUNTERPARTY_RULES` (that seat has no `withdraw`).
  */
 const V2_INITIATOR_RULES = `- You hold the INITIATING seat: your user's side surfaced this match and you are reaching out. Only the counterparty may accept — "accept" is NOT available to you.
 - On the FIRST turn: Make the outreach case. Explain why the connection would benefit both parties. Set action to "outreach".
@@ -203,22 +196,13 @@ export interface NegotiationAgentInput {
   userAnswers?: NegotiationUserAnswer[];
   /** Exact recipient's private consultation; never part of shared turn history. */
   privateConsultation?: NegotiationPrivateConsultation;
-  /**
-   * The acting user's seat under the v2 client-advocate protocol. Selects the
-   * seat-scoped turn schema and prompt stance when `protocolVersion` is `v2`.
-   * Ignored under v1. Defaults from `isDiscoverer` when omitted.
-   */
+  /** The acting user's seat. Defaults from `isDiscoverer` when omitted. */
   seat?: NegotiationSeat;
-  /**
-   * Negotiation protocol version for this task (inherited, never re-stamped).
-   * `v1` (default) keeps the legacy symmetric vocabulary and prompt.
-   */
-  protocolVersion?: NegotiationProtocolVersion;
   /**
    * Whether the `ask_user` client-consult pause (P3.2) is available on this
    * turn. The caller (negotiation graph) grants it only when the feature flag
    * is on, the pause loop is fully wired (questioner + answer-window timer +
-   * opportunity to resume against), the turn is v2 non-final and non-opening,
+   * opportunity to resume against), the turn is non-final and non-opening,
    * and this side has not already consumed its one client question for the
    * negotiation. When true, the seat schema and prompt gain the action.
    */
@@ -227,8 +211,8 @@ export interface NegotiationAgentInput {
    * Deadlock→stalemate drafting stance (IND-428), set by the caller.
    * Present = the graph detected a stalemate (N consecutive counter/question
    * turns) and this turn should be drafted in the bargaining stance —
-   * concessions/scope reductions instead of re-arguing merits. v2 only;
-   * ignored under v1. Absent → the prompt is byte-identical to before.
+   * concessions/scope reductions instead of re-arguing merits. Absent → the
+   * prompt is byte-identical to before.
    */
   bargaining?: { consecutiveNonConvergent: number };
   /**
@@ -383,8 +367,8 @@ export function resolveTurnTimeoutMs(override?: number): number {
 
 /**
  * Unified system negotiation agent that advocates for its user.
- * Adapts behavior based on turn position (first turn = propose, subsequent = respond).
- * @remarks Uses structured output constrained to NegotiationTurnSchema (without question action).
+ * Adapts behavior based on turn position (first turn opens, subsequent turns respond).
+ * @remarks Uses structured output constrained to the seat-scoped turn schema.
  */
 export class IndexNegotiator {
   private readonly turnTimeoutMs: number;
@@ -400,27 +384,23 @@ export class IndexNegotiator {
    * @throws If the per-turn timeout fires before the LLM responds.
    */
   async invoke(input: NegotiationAgentInput): Promise<NegotiationTurn> {
-    const version: NegotiationProtocolVersion = input.protocolVersion ?? "v1";
     const seat: NegotiationSeat = input.seat ?? (input.isDiscoverer ? "initiator" : "counterparty");
     const isFinalTurn = input.isFinalTurn ?? false;
-    const canAskUser = input.canAskUser === true && version === "v2" && !isFinalTurn;
-    // Deadlock→bargaining stance (IND-428): v2 only — defense in depth on top
-    // of the graph-side gating, mirroring the canAskUser guard above.
-    const bargainingActive = input.bargaining != null && version === "v2";
-    // A2H client DM. Rendered on every v2 turn that carries an excerpt, NOT
+    const canAskUser = input.canAskUser === true && !isFinalTurn;
+    // Defense in depth on top of the graph-side deadlock gating.
+    const bargainingActive = input.bargaining != null;
+    // A2H client DM. Rendered on every turn that carries an excerpt, NOT
     // only the turns holding the ask grant: what the client said about this
     // signal is evidence for the whole turn, not context for the asking ones.
     // A dimension may be scored from their answers (plan §2), and an answer the
     // negotiator cannot see cannot score anything.
     //
-    // Still v2-only — defense in depth on top of the graph, which retrieves it
-    // under v2 alone, so a v1 prompt stays byte-identical.
     // `ASK_USER_DM_GROUNDING_RULE` points AT this section from inside
     // `ASK_USER_RULE` and still renders only with the live grant, so the rule
     // never dangles without the section. The section stands alone safely: its
     // own framing (`renderNegotiatorClientDmSection`) carries the leak guard
     // and the not-instructions caveat.
-    const clientDm = version === "v2" ? input.clientDm ?? [] : [];
+    const clientDm = input.clientDm ?? [];
     // The opening initiator turn: nothing has been sent, so a granted
     // consultation is the pre-contact verdict rather than a mid-exchange
     // pause. Derived, not passed: the graph grants `canAskUser` on a turn-0
@@ -431,25 +411,19 @@ export class IndexNegotiator {
     // The resume after such a pause. The negotiation's whole record is its own
     // consultation park, so this is still the opening decision — the client
     // answered, and the seat now reaches out or lets the match pass.
-    const preContactResume = version === "v2" && seat === "initiator"
+    const preContactResume = seat === "initiator"
       && isPreContactConsultResume(input.history);
     // `negotiatorActionRules` takes the resolved `seat`: the responder
     // verification rules are a duty of the seat that did NOT open, so they
-    // render only there. The resolved seat, not `input.seat`, so the v1
-    // `isDiscoverer` fallback decides it there too — under v1 the discoverer
-    // is likewise the side that opens.
-    const schema = turnSchemaFor(version, seat, isFinalTurn, {
-      system: SystemNegotiationTurnSchema,
-      final: FinalNegotiationTurnSchema,
-    }, { askUser: canAskUser, checklist: true });
+    // render only there. The resolved seat, not `input.seat`, is used so the
+    // `isDiscoverer` fallback remains deterministic.
+    const schema = turnSchemaFor(seat, isFinalTurn, { askUser: canAskUser, checklist: true });
     const model = createStructuredModel("negotiator", schema, { name: "index_negotiator" });
 
     const userName = input.ownUser.profile.name ?? "your user";
     const role = input.seedAssessment.valencyRole || "peer";
     const networkContext = input.indexContext.prompt || "General discovery";
-    const actionRules = (version === "v2"
-      ? (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES)
-      : V1_ACTION_RULES) + negotiatorActionRules(seat)
+    const actionRules = (seat === "initiator" ? V2_INITIATOR_RULES : V2_COUNTERPARTY_RULES) + negotiatorActionRules(seat)
       + (canAskUser
         ? ASK_USER_RULE
           + ASK_USER_CHECKLIST_RULE
@@ -457,11 +431,9 @@ export class IndexNegotiator {
           + (clientDm.length > 0 ? ASK_USER_DM_GROUNDING_RULE : "")
         : "");
     const finalTurnInstruction = input.isFinalTurn
-      ? (version === "v2"
-          ? (seat === "initiator"
-              ? "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'withdraw' or 'counter'. Accept is not available to your seat."
-              : "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'accept' or 'decline'. No counter is allowed.")
-          : "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'accept' or 'reject'. No counter is allowed.")
+      ? (seat === "initiator"
+          ? "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'withdraw' or 'counter'. Accept is not available to your seat."
+          : "\n\nIMPORTANT: This is your FINAL turn. You MUST choose either 'accept' or 'decline'. No counter is allowed.")
       : "";
 
     const otherName = input.otherUser.profile.name ?? "the other user";
@@ -473,7 +445,7 @@ export class IndexNegotiator {
       ? `\nDISCOVERY QUERY: ${userName} explicitly searched for "${input.discoveryQuery}".
 QUERY PRIORITY RULE: This search query is the PRIMARY criterion for this negotiation. Before evaluating intents or profile overlap, first answer: does ${otherName} satisfy the search query "${input.discoveryQuery}"?
 - If the query is a role or identity term (e.g. "samurai", "investors", "designers"): check whether ${otherName} IS that thing based on their profile. Subject-matter adjacency does not count (drawing samurai ≠ being a samurai, raising funding ≠ being an investor).
-- If ${otherName} does NOT satisfy the query: REJECT the match. Background intents cannot rescue a query mismatch.
+- If ${otherName} does NOT satisfy the query: decline or withdraw the match. Background intents cannot rescue a query mismatch.
 ${querySatisfiedRule(otherName, userName)}`
       : '';
 
@@ -651,7 +623,7 @@ ${discoveryQueryReminder}
 ${preContactResume
   ? `You paused this opening turn to ask ${userName} the one thing you could not decide without. Their answer is above. Take the opening decision now: "outreach" to make the case, or "withdraw" to let the match pass without ever contacting ${otherName}.`
   : input.history.length === 0 && !input.isContinuation
-    ? (version === "v2" && seat === "initiator"
+    ? (seat === "initiator"
         ? (preContactConsult
             // The closing line is the instruction the model acts on, and it
             // named exactly one of the three verdicts this turn holds: "make
@@ -663,7 +635,7 @@ ${preContactResume
             // out is neither.
             ? `This is the opening turn and nothing has been sent yet. You hold THREE verdicts here: ask ${userName} the one open thing only they can settle, make the outreach case, or let the match pass. Score the checklist first — if a dimension is unknown and theirs to settle, asking now costs the counterparty nothing and buys a better opening.`
             : "This is the opening turn. Make the outreach case.")
-        : "This is the opening turn. Propose the connection case.")
+        : "This is the opening turn. Evaluate the opening case.")
     : "Evaluate the latest arguments and respond."}${antiEchoInstruction}${concludeFloorInstruction}`;
 
     let chatMessages = [
@@ -700,7 +672,6 @@ ${preContactResume
       agentLog.warn("Negotiator output failed seat-schema validation", {
         attempt: attempt + 1,
         seat,
-        version,
         isFinalTurn,
         issues: parsed.error.issues.map((i) => i.message).slice(0, 3),
       });
@@ -710,7 +681,7 @@ ${preContactResume
     // counterparty turn. A minimal local park is safer than advancing the
     // shared conversation with the very message we just refused.
     if (rejectedClientConsultation && canAskUser) {
-      agentLog.warn("Negotiator client-consultation re-draft failed; parking locally", { seat, version });
+      agentLog.warn("Negotiator client-consultation re-draft failed; parking locally", { seat });
       return {
         action: "ask_user",
         assessment: {
@@ -722,9 +693,9 @@ ${preContactResume
       };
     }
 
-    const fallbackAction = fallbackActionFor(version, seat, isFinalTurn);
+    const fallbackAction = fallbackActionFor(seat, isFinalTurn);
     agentLog.warn("Negotiator output invalid after retry; using conservative fallback", {
-      seat, version, isFinalTurn, fallbackAction,
+      seat, isFinalTurn, fallbackAction,
     });
     return {
       action: fallbackAction,
