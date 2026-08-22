@@ -10,6 +10,10 @@ const boundaryDirectories = new Set(["protocol", "platform", "capabilities", "in
 const legacyCapabilityDirectories: Readonly<Record<string, string>> = {
   intents: "intents",
   networks: "networks",
+  agents: "agents",
+};
+const capabilityImplementationAreas: Readonly<Record<string, readonly string[]>> = {
+  agents: ["agents", "chat"],
 };
 const capabilityCompositionRoots = new Set([
   "internal/shared/agent/tool.factory.ts",
@@ -65,7 +69,11 @@ for (const directory of boundaryDirectories) {
         const facade = relative(sourceRoot, file).split("/")[1]?.replace(/\.ts$/, "");
         if (target === "capabilities" || target === "protocol" || target === "platform") continue;
         const internalArea = targetPathname.split("/")[1];
-        if (target === "internal" && (internalArea === "shared" || internalArea === legacyCapabilityDirectories[facade ?? ""])) continue;
+        if (target === "internal" && (
+          internalArea === "shared"
+          || internalArea === legacyCapabilityDirectories[facade ?? ""]
+          || capabilityImplementationAreas[facade ?? ""]?.includes(internalArea)
+        )) continue;
         violations.push(`${relative(packageRoot, file)} imports ${specifier}; a capability may only reach its own private implementation or shared internal support.`);
       }
     }

@@ -6,7 +6,7 @@
  */
 
 import type { ActiveIntent, Id } from '../../platform/database.js';
-import type { DebugMetaAgent } from '../agents/agent.module.js';
+import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
 import type { IndexedIntent, TargetNetwork } from './opportunity.state.js';
 import { IntentIndexer } from '../shared/intent-indexer.js';
 import type { IntentIndexingResult } from '../../protocol/intent-indexing.js';

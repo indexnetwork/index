@@ -11,7 +11,7 @@
  */
 
 import type { Id, NegotiationContinuationReceipt, OpportunityActor } from '../../platform/database.js';
-import type { DebugMetaAgent } from '../agents/agent.module.js';
+import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
 import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";
 import { NEGOTIATION_MAX_TURNS_AMBIENT } from '../negotiations/negotiation.module.js';

@@ -9,7 +9,7 @@ import { createOpportunityTools, createOpportunityVerdictTools } from '../../opp
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
 import { createContactTools } from '../../contacts/contact.tools.js';
-import { createAgentTools } from '../../agents/agent.module.js';
+import { createAgentTools } from '../../agents/agent.tools.js';
 import { createNegotiationAnswerTools, createNegotiationTools } from '../../negotiations/negotiation.module.js';
 import { createChatTools } from '../../chat/chat.tools.js';
 import { createPremiseTools } from '../../premises/premise.tools.js';

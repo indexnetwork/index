@@ -6,7 +6,7 @@
  */
 
 import type { Id } from '../../platform/database.js';
-import type { DebugMetaAgent } from '../agents/agent.module.js';
+import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
 import type { CandidateMatch, EvaluatedOpportunity } from './opportunity.state.js';
 import { OpportunityEvaluator, type EvaluatedOpportunityWithActors, type EvaluatorEntity, type EvaluatorInput, type EvaluatorRejection } from "./opportunity.evaluator.js";
 import { getModelName } from '../shared/agent/model.config.js';

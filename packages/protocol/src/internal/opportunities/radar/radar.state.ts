@@ -1,6 +1,6 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Opportunity, OpportunityStatus } from '../../../platform/database.js';
-import type { DebugMetaAgent } from '../../agents/agent.module.js';
+import type { DebugMetaAgent } from "../../../protocol/debug-meta.js";
 
 /**
  * Radar card item: one opportunity with full presenter-driven display contract.

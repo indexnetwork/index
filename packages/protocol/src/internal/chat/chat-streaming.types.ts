@@ -6,6 +6,8 @@
  */
 
 import type { Question, QuestionStrategy } from "../questions/question.module.js";
+import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
+export type { DebugMetaAgent } from "../../protocol/debug-meta.js";
 
 // Event type discriminator
 export type ChatStreamEventType =
@@ -346,13 +348,6 @@ export interface DebugMetaStep {
 /**
  * One agent invocation recorded inside a graph run.
  */
-export interface DebugMetaAgent {
-  /** Name of the agent (e.g. "opportunity.evaluator"). */
-  name: string;
-  /** Wall-clock milliseconds for this agent invocation. */
-  durationMs: number;
-}
-
 /**
  * One graph invocation recorded by a tool that calls a LangGraph graph.
  */

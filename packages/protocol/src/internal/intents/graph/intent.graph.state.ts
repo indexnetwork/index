@@ -3,7 +3,7 @@ import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "../intent.inferrer.js";
 import { SemanticVerifierOutput } from "../intent.verifier.js";
 import { IntentReconcilerOutput } from "../intent.reconciler.js";
-import type { DebugMetaAgent } from '../../agents/agent.module.js';
+import type { DebugMetaAgent } from "../../../protocol/debug-meta.js";
 import type { ToolScopeType } from '../../shared/agent/tool.scope.js';
 
 /**

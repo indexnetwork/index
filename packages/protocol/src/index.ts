@@ -70,7 +70,7 @@ export type {
   NegotiationContinuationTimeoutIdentity,
 } from "./platform/negotiation-events.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
-export { SYSTEM_AGENT_IDS } from './internal/agents/agent.module.js';
+export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
 
@@ -109,24 +109,25 @@ export {
 export type { NetworkAssignmentMetadata } from "./protocol/schemas/network-assignment.schema.js";
 export type { IntentIndexingResult } from "./protocol/intent-indexing.js";
 export type { HydeTargetCorpus, Lens } from "./protocol/lens.js";
+export type { DebugMetaAgent } from "./protocol/debug-meta.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./internal/shared/assignment/network-assignment.policy.js";
 
 // ─── Graph factories ──────────────────────────────────────────────────────────
 
-export { ChatGraphFactory } from "./internal/agents/agent.module.js";
-export { type ChatPersonaConfig } from "./internal/agents/agent.module.js";
-export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./internal/agents/agent.module.js";
+export { ChatGraphFactory } from "./internal/chat/chat.graph.js";
+export { type ChatPersonaConfig } from "./internal/chat/chat.persona.js";
+export { NEGOTIATOR_PERSONA_ID, createNegotiatorPersona } from "./internal/chat/negotiator.persona.js";
 // The shared self-identification helper: every surface that speaks AS the
 // user's own agent introduces itself through this one sentence builder.
-export { buildAgentSelfIntroduction, type AgentIdentityOptions } from "./internal/agents/agent.module.js";
+export { buildAgentSelfIntroduction, type AgentIdentityOptions } from "./internal/chat/agent-identity.prompt.js";
 export {
   SIGNAL_PERSONA_ID,
   createSignalPersona,
-} from "./internal/agents/agent.module.js";
+} from "./internal/chat/signal.persona.js";
 export {
   ONBOARDING_PERSONA_ID,
   createOnboardingPersona,
-} from "./internal/agents/agent.module.js";
+} from "./internal/chat/onboarding.persona.js";
 export { RadarGraphFactory } from "./internal/opportunities/opportunity.module.js";
 export { HydeGraphFactory } from "./internal/discovery/index.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
@@ -139,6 +140,8 @@ export type {
   NetworksDeps,
   NetworkToolDeps,
 } from "./capabilities/networks.js";
+export { Agents } from "./capabilities/agents.js";
+export type { AgentsDeps } from "./capabilities/agents.js";
 
 // ─── Intents ──────────────────────────────────────────────────────────────────
 // The whole capability behind one class: lifecycle graph, verification,
@@ -191,11 +194,11 @@ export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
 export { UserContextGenerator } from "./internal/contexts/context.generator.js";
-export { ChatTitleGenerator } from "./internal/agents/agent.module.js";
-export { ChatInterruptClassifier } from "./internal/agents/agent.module.js";
-export { ChatSummarizer } from "./internal/agents/agent.module.js";
+export { ChatTitleGenerator } from "./internal/chat/chat.title.generator.js";
+export { ChatInterruptClassifier } from "./internal/chat/chat.interrupt.classifier.js";
+export { ChatSummarizer } from "./internal/chat/chat.summarizer.js";
 export { HydeGenerator } from "./internal/discovery/index.js";
-export { SuggestionGenerator } from "./internal/agents/agent.module.js";
+export { SuggestionGenerator } from "./internal/chat/chat.suggester.js";
 export { LensInferrer } from "./internal/discovery/index.js";
 export { NegotiationInsightsGenerator } from "./internal/negotiations/negotiation.module.js";
 export type { NegotiationDigest } from "./internal/negotiations/negotiation.module.js";
