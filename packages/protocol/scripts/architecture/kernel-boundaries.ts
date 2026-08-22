@@ -11,6 +11,7 @@ const legacyCapabilityDirectories: Readonly<Record<string, string>> = {
   intents: "intents",
   networks: "networks",
   agents: "agents",
+  discovery: "discovery",
 };
 const capabilityImplementationAreas: Readonly<Record<string, readonly string[]>> = {
   agents: ["agents", "chat"],

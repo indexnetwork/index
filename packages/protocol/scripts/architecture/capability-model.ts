@@ -44,7 +44,7 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
   questions: "questions",
   agents: "agents",
   contacts: undefined,
-  discovery: "discovery",
+  discovery: undefined,
   // The composition root is the one all-capability point; it has no barrel of
   // its own and is reached through the package entry point instead.
   "interaction-composition": undefined,
@@ -63,6 +63,7 @@ export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, st
   negotiations: "negotiation.module.ts",
   questions: "question.module.ts",
   agents: "agent.module.ts",
+  discovery: "../capabilities/discovery.ts",
 };
 
 /** The barrel filename a capability's public surface must live in. */
@@ -72,7 +73,7 @@ export function barrelFilenameForCapability(capability: Capability): string {
 
 /** The source-relative barrel path for a capability, if it has one. */
 export function barrelPathForCapability(capability: Capability): string | undefined {
-  if (capability === "intents" || capability === "networks") return `capabilities/${capability}.ts`;
+  if (capability === "intents" || capability === "networks" || capability === "agents" || capability === "discovery") return `capabilities/${capability}.ts`;
   const directory = CAPABILITY_BARREL_DIRECTORIES[capability];
   return directory ? `internal/${directory}/${barrelFilenameForCapability(capability)}` : undefined;
 }
@@ -137,6 +138,8 @@ export function barrelCapabilityForSourcePath(
 ): Capability | undefined {
   if (pathFromSource === "capabilities/intents.ts") return "intents";
   if (pathFromSource === "capabilities/networks.ts") return "networks";
+  if (pathFromSource === "capabilities/agents.ts") return "agents";
+  if (pathFromSource === "capabilities/discovery.ts") return "discovery";
   const normalized = implementationPath(pathFromSource);
   const match = /^([a-z-]+)\/([a-z0-9.-]+\.ts)$/.exec(normalized);
   if (!match) return undefined;

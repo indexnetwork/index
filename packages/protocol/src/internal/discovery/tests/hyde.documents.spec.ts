@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { HydeDocument } from '../../../platform/database.js';
-import { computeHydeSourceTextHash, selectHydeDocumentsForGeneration } from '../hyde.documents.js';
+import { computeHydeSourceTextHash, selectHydeDocumentsForGeneration } from '../../shared/hyde-documents.js';
 
 function document(
   id: string,

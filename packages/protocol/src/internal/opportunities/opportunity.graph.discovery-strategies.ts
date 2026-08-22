@@ -11,7 +11,7 @@ import type { Id } from '../../platform/database.js';
 import type { CandidateMatch } from './opportunity.state.js';
 import type { LensEmbedding } from '../../platform/embedder.js';
 import { getModelName } from '../shared/agent/model.config.js';
-import { selectHydeDocumentsForGeneration, HYDE_FRAME_GENERATION_VERSION } from '../discovery/index.js';
+import { selectHydeDocumentsForGeneration, HYDE_FRAME_GENERATION_VERSION } from '../shared/hyde-documents.js';
 import { mergeOpportunityEvidence, withCandidateEvidence, withMatchedStrategies } from './opportunity.evidence.js';
 import { withMultiSignalBonus } from './opportunity.similarity.js';
 import { buildDiscovererContext, discoveryLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";

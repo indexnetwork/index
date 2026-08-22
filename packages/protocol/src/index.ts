@@ -129,7 +129,9 @@ export {
   createOnboardingPersona,
 } from "./internal/chat/onboarding.persona.js";
 export { RadarGraphFactory } from "./internal/opportunities/opportunity.module.js";
-export { HydeGraphFactory } from "./internal/discovery/index.js";
+export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
+export { Discovery } from "./capabilities/discovery.js";
+export type { DiscoveryDeps } from "./capabilities/discovery.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
 // The whole capability behind one class: the community lifecycle graph, the
 // membership graph, signal assignment, and the agent-facing tools.
@@ -197,9 +199,9 @@ export { UserContextGenerator } from "./internal/contexts/context.generator.js";
 export { ChatTitleGenerator } from "./internal/chat/chat.title.generator.js";
 export { ChatInterruptClassifier } from "./internal/chat/chat.interrupt.classifier.js";
 export { ChatSummarizer } from "./internal/chat/chat.summarizer.js";
-export { HydeGenerator } from "./internal/discovery/index.js";
+export { HydeGenerator } from "./internal/discovery/hyde.generator.js";
 export { SuggestionGenerator } from "./internal/chat/chat.suggester.js";
-export { LensInferrer } from "./internal/discovery/index.js";
+export { LensInferrer } from "./internal/discovery/lens.inferrer.js";
 export { NegotiationInsightsGenerator } from "./internal/negotiations/negotiation.module.js";
 export type { NegotiationDigest } from "./internal/negotiations/negotiation.module.js";
 export { IndexNegotiator } from "./internal/negotiations/negotiation.module.js";

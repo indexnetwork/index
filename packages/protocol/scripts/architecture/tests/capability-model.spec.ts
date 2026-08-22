@@ -29,14 +29,14 @@ describe("protocol capability model", () => {
     expect(barrelCapabilityForSourcePath("capabilities/intents.ts")).toBe("intents");
     expect(barrelCapabilityForSourcePath("negotiations/negotiation.module.ts")).toBe("negotiations");
     expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBe("questions");
-    expect(barrelCapabilityForSourcePath("agents/agent.module.ts")).toBe("agents");
+    expect(barrelCapabilityForSourcePath("capabilities/agents.ts")).toBe("agents");
     expect(barrelCapabilityForSourcePath("intents/index.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("intents/graph/intent.graph.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("capabilities/networks.ts")).toBe("networks");
     expect(barrelCapabilityForSourcePath("networks/index.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("networks/network.graph.ts")).toBeUndefined();
     // HyDE used to live in shared/ and was unclassified; it is a capability now.
-    expect(barrelCapabilityForSourcePath("discovery/index.ts")).toBe("discovery");
+    expect(barrelCapabilityForSourcePath("capabilities/discovery.ts")).toBe("discovery");
     expect(implementationCapabilityForSourcePath("discovery/hyde.graph.ts")).toBe("discovery");
     // What remains under shared/ is genuinely neutral and stays unclassified.
     expect(implementationCapabilityForSourcePath("shared/observability/log.ts")).toBeUndefined();

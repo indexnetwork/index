@@ -20,7 +20,7 @@ import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from 
 import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
 import type { UserIdentity } from '../../../protocol/schemas/identity.schema.js';
 import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
-import { computeHydeSourceTextHash } from '../../discovery/index.js';
+import { computeHydeSourceTextHash } from '../../shared/hyde-documents.js';
 import { requestContext, type TraceEmitter } from '../../shared/observability/request-context.js';
 import { setLoggerFactory, type LoggerWithSource } from '../../shared/observability/log.js';
 import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
