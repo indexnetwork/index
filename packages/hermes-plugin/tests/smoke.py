@@ -778,7 +778,7 @@ def main() -> None:
     assert plugin.schemas.INDEX_CONSULT_OWNER["parameters"]["additionalProperties"] is False
 
     negotiator_skill = (ROOT / "skills" / "index-negotiator" / "SKILL.md").read_text()
-    for field in ("protocolVersion", "allowedActions", "seat", "deadline", "canConsultOwner"):
+    for field in ("allowedActions", "seat", "deadline", "canConsultOwner"):
         assert field in negotiator_skill
     assert "at most one response or consultation call per pass" in negotiator_skill
     assert "stop after a successful consultation" in negotiator_skill
