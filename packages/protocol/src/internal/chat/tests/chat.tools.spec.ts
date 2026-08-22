@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createChatTools } from "../chat.tools.js";
 import type { ToolDeps } from "../../shared/agent/tool.helpers.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
-import type { ChatSessionReader } from "../../../platform/chat.js";
+import type { ChatSessionReader } from "../../../platform/chat/ports.js";
 
 function makeContext(userId = "user-123"): ResolvedToolContext {
   return {

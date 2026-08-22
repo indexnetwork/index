@@ -15,7 +15,7 @@ import { readAuthorizedNegotiationDetail } from './negotiation.detail-reader.js'
 import { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
 import type { NegotiationParkNarration } from './negotiation.lifecycle-narration.js';
 import { classifyInflightPark, classifyPostStallPark } from './negotiation.answer-consumption.js';
-import type { ListingOpenQuestion, NegotiationListingParkHost } from '../../platform/negotiation-listing-park.js';
+import type { ListingOpenQuestion, NegotiationListingParkHost } from '../../platform/negotiation/listing.js';
 import { isNegotiationTurnCapReached } from './negotiation.turn-cap.js';
 import { expectedNegotiationSpeaker } from './negotiation.expected-speaker.js';
 import { readNegotiationMessages } from './negotiation.scope.js';

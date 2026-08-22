@@ -221,8 +221,8 @@ import { createChatTools, type ToolContext } from "../tool.factory.js";
 import { createToolRegistry, type ToolRegistryDeps } from "../tool.registry.js";
 import type { ChatGraphCompositeDatabase, SystemDatabase } from "../../../../platform/database.js";
 import type { ActiveIntent, IndexMemberDetails, IndexedIntentDetails } from "../../../../platform/database.js";
-import type { Embedder } from "../../../../platform/embedder.js";
-import type { Scraper } from "../../../../platform/scraper.js";
+import type { Embedder } from "../../../../platform/discovery/embedder.js";
+import type { Scraper } from "../../../../platform/discovery/scraper.js";
 
 const testUserId = "test-user-id-for-tools";
 

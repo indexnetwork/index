@@ -1,4 +1,4 @@
-import type { NegotiationSummaryReader } from '../../platform/negotiation-summary.js';
+import type { NegotiationSummaryReader } from '../../platform/negotiation/summary.js';
 import type { DiscoveryNegotiationDigest } from '../../protocol/schemas/negotiation-digest.schema.js';
 import type { DiscoveryNegotiation } from '../../protocol/schemas/discovery-question.schema.js';import { buildFallbackDigest } from "../negotiations/negotiation.summarizer.js";
 import { protocolLogger } from '../shared/observability/protocol.logger.js';

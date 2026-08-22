@@ -4,7 +4,7 @@ config({ path: '.env.test', override: true });
 
 import { describe, it, expect } from "bun:test";
 import type { Opportunity, CreateOpportunityData, OpportunityStatus } from "../../../platform/database.js";
-import type { Embedder } from "../../../platform/embedder.js";
+import type { Embedder } from "../../../platform/discovery/embedder.js";
 import { persistOpportunities, type PersistOpportunityDatabase } from "../opportunity.persist.js";
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────

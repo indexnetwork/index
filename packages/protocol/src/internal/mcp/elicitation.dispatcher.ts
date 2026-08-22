@@ -1,5 +1,5 @@
 import type { Question } from "../../protocol/question.js";
-import type { ChatMessageWriter } from "../../platform/chat.js";
+import type { ChatMessageWriter } from "../../platform/chat/ports.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { buildElicitationCreate, flattenChoice } from "./elicitation.builder.js";
 

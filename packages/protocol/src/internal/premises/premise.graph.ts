@@ -9,7 +9,7 @@ import { buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from ".
 import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
 import { scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { PremiseGraphDatabase, PremiseAnalysis } from "../../platform/database.js";
-import type { Embedder } from "../../platform/embedder.js";
+import type { Embedder } from "../../platform/discovery/embedder.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
 import type { DebugMetaAgent } from "../../protocol/core.js";

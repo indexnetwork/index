@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { McpResolvedIdentity } from '../../platform/mcp-auth.schema.js';
+import type { McpResolvedIdentity } from '../../platform/auth/mcp.js';
 import { McpActivityCallerSchema } from '../shared/agent/activity-projection.js';
 import type { McpActivityCaller } from '../shared/agent/activity-projection.js';
 

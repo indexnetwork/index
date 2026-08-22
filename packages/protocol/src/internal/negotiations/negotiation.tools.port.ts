@@ -1,8 +1,8 @@
 import type { NegotiationGraphDatabase } from "../../platform/database.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
-import type { NegotiationTimeoutQueue } from "../../platform/negotiation-events.js";
-import type { NegotiationListingParkHost } from "../../platform/negotiation-listing-park.js";
-import type { NegotiatorAnswerToolsHost } from "../../platform/negotiator-answer.js";
+import type { NegotiationTimeoutQueue } from "../../platform/negotiation/events.js";
+import type { NegotiationListingParkHost } from "../../platform/negotiation/listing.js";
+import type { NegotiatorAnswerToolsHost } from "../../platform/negotiation/answer.js";
 
 /**
  * Host capabilities consumed by the negotiation tool factory.

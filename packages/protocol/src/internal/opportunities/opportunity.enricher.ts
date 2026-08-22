@@ -6,7 +6,7 @@
 
 import type { CreateOpportunityData, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunitySignal, OpportunityStatus } from '../../platform/database.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
-import type { Embedder } from '../../platform/embedder.js';
+import type { Embedder } from '../../platform/discovery/embedder.js';
 import type { Id } from '../../platform/database.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 

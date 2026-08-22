@@ -1,4 +1,4 @@
-import type { RequestContext, RequestContextStore } from "../../../platform/observability.js";
+import type { RequestContext, RequestContextStore } from "../../../platform/runtime/observability.js";
 
 /**
  * Callback for streaming trace events from deep inside graph nodes back to

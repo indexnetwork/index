@@ -12,7 +12,7 @@ import { StateGraph } from "@langchain/langgraph";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { requestContext, type TraceEmitter } from "../shared/observability/request-context.js";
 import type { NegotiationGraphDatabase, OpportunityStatus, NegotiationContinuationReceipt } from "../../platform/database.js";
-import type { NegotiationTimeoutQueue } from "../../platform/negotiation-events.js";
+import type { NegotiationTimeoutQueue } from "../../platform/negotiation/events.js";
 import type { AgentDispatcher, NegotiationTurnPayload } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type NegotiationGraphLike } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";

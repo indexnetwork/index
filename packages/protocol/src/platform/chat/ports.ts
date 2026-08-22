@@ -1,4 +1,4 @@
-import type { ChatContextDigest } from "../protocol/schemas/chat-context.schema.js";
+import type { ChatContextDigest } from "../../protocol/schemas/chat-context.schema.js";
 
 /** Host reads of H2A chat sessions. */
 export interface ChatSessionSummary { sessionId: string; title: string | null; messageCount: number; lastMessageAt: Date | null; createdAt: Date; }

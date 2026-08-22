@@ -4,7 +4,7 @@
  * for external agents that haven't responded yet.
  */
 
-import type { NegotiationCounterpartyBinding } from './database.js';
+import type { NegotiationCounterpartyBinding } from '../database.js';
 
 /** Exact parked continuation generation carried by a delayed timeout job. */
 export interface NegotiationContinuationTimeoutIdentity {

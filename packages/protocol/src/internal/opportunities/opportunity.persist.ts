@@ -4,7 +4,7 @@
  */
 
 import type { CreateOpportunityData, IntentScopedOpportunityPersistenceResult, Opportunity, OpportunityDedupConflict, OpportunityNetworkEligibility, OpportunityStatus } from '../../platform/database.js';
-import type { Embedder } from '../../platform/embedder.js';
+import type { Embedder } from '../../platform/discovery/embedder.js';
 import type { EnricherDatabase } from "./opportunity.enricher.js";
 import { enrichOrCreate } from "./opportunity.enricher.js";
 import { normalizeCreateOpportunityActorIntents } from './opportunity.actor.js';

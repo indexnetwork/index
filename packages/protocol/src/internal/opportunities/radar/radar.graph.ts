@@ -14,7 +14,7 @@
 import { StateGraph, START, END } from '@langchain/langgraph';
 
 import type { RadarGraphDatabase, OpportunityStatus } from '../../../platform/database.js';
-import type { OpportunityCache } from '../../../platform/cache.js';
+import type { OpportunityCache } from '../../../platform/discovery/cache.js';
 import { RadarGraphState, type RadarCardItem, type RadarResponseItem } from './radar.state.js';
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../opportunity.presentation.js';
 import { loadNegotiationContext } from '../negotiation-context.loader.js';

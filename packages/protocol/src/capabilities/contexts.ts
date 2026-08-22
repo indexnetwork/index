@@ -4,9 +4,9 @@ import { createEnrichmentTools } from "../internal/enrichment/enrichment.tools.j
 import type { DefineTool } from "../internal/shared/agent/tool.helpers.js";
 import type { EnrichmentToolDeps } from "../internal/contexts/context.tools.port.js";
 import type { EnrichmentGraphDatabase, PremiseGraphDatabase } from "../platform/database.js";
-import type { Embedder } from "../platform/embedder.js";
-import type { ProfileEnricher } from "../platform/enrichment.js";
-import type { Scraper } from "../platform/scraper.js";
+import type { Embedder } from "../platform/discovery/embedder.js";
+import type { ProfileEnricher } from "../platform/enrichment/ports.js";
+import type { Scraper } from "../platform/discovery/scraper.js";
 
 /** Host ports required for profile enrichment and premise lifecycle behavior. */
 export interface ContextsDeps {

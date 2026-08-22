@@ -17,7 +17,7 @@ import { describe, expect, it } from "bun:test";
 
 import { createNegotiatorAnswerTools } from "../negotiator.tools.js";
 import { buildNegotiatorSystemContent } from "../negotiator.prompt.js";
-import type { NegotiatorAnswerRoutingResult, NegotiatorAnswerToolsHost } from "../../../platform/negotiator-answer.js";
+import type { NegotiatorAnswerRoutingResult, NegotiatorAnswerToolsHost } from "../../../platform/negotiation/answer.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 const AGENT_OPTS = { agentName: "Alice's Negotiator" };

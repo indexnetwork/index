@@ -1,8 +1,8 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import type { NegotiatorMemoryToolsHost, NegotiatorMemoryToolView } from "../../platform/negotiator-memory.js";
-import type { NegotiatorAnswerToolsHost } from "../../platform/negotiator-answer.js";
-import type { NegotiatorVerdictInput, NegotiatorVerdictResult, NegotiatorVerdictToolsHost } from "../../platform/negotiator-verdict.js";
+import type { NegotiatorMemoryToolsHost, NegotiatorMemoryToolView } from "../../platform/negotiation/memory.js";
+import type { NegotiatorAnswerToolsHost } from "../../platform/negotiation/answer.js";
+import type { NegotiatorVerdictInput, NegotiatorVerdictResult, NegotiatorVerdictToolsHost } from "../../platform/negotiation/verdict.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -13,7 +13,7 @@ import type { Id } from '../../platform/database.js';
 import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type CandidateMatch } from './opportunity.state.js';
 import type { CandidateProfile, EvaluatorEntity, EvaluatorInput } from "./opportunity.evaluator.js";
 import type { OpportunityGraphDatabase, Opportunity } from '../../platform/database.js';
-import type { Embedder } from '../../platform/embedder.js';import type { NegotiationGraphLike } from "../negotiations/negotiation.state.js";import { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS } from "../../protocol/core.js";
+import type { Embedder } from '../../platform/discovery/embedder.js';import type { NegotiationGraphLike } from "../negotiations/negotiation.state.js";import { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS } from "../../protocol/core.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';

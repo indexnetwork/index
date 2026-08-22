@@ -5,7 +5,7 @@
  */
 
 import type { ChatGraphCompositeDatabase, CreateIntentData, ActiveIntent, IndexedIntentDetails, NetworkMembership, OwnedIndex, UserRecord, Opportunity, OpportunityStatus } from "../../../platform/database.js";
-import type { ChatSessionReader } from "../../../platform/chat.js";
+import type { ChatSessionReader } from "../../../platform/chat/ports.js";
 import type { ProtocolDeps } from "../../shared/agent/tool.helpers.js";
 
 // Minimal profile shape for getProfileByUserId (UserIdentity-shaped: identity + context)

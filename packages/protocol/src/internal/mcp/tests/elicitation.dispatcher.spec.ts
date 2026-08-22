@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from "bun:test";
 import { dispatchElicitations } from "../elicitation.dispatcher.js";
 import type { Question } from "../../../protocol/question.js";
-import type { ChatMessageWriter } from "../../../platform/chat.js";
+import type { ChatMessageWriter } from "../../../platform/chat/ports.js";
 
 const q1: Question = {
   title: "Stage",

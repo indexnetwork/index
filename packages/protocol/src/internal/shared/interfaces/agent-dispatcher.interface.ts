@@ -15,7 +15,7 @@ import type { ChecklistDraftItem } from '../../../protocol/schemas/negotiation-c
 import type { NegotiatorMemoryEntry } from '../../negotiations/negotiation.memory.js';
 import type { AttributedPriorDialogue } from '../../negotiations/negotiation.attribution.js';
 import type { NegotiationPrivateConsultation } from '../../../platform/database.js';
-import type { NegotiationContinuationTimeoutIdentity } from '../../../platform/negotiation-events.js';
+import type { NegotiationContinuationTimeoutIdentity } from '../../../platform/negotiation/events.js';
 
 /** Payload sent to the dispatcher for each negotiation turn. */
 export interface NegotiationTurnPayload {

@@ -9,9 +9,9 @@ import { z } from 'zod';
 import { McpServer, fromJsonSchema } from '@modelcontextprotocol/server';
 import type { ServerContext, JsonSchemaType, Tool } from '@modelcontextprotocol/server';
 
-import type { McpAuthResolver } from '../../platform/auth.js';
-import type { McpAuthInput, McpResolvedIdentity } from '../../platform/mcp-auth.schema.js';
-import { McpResolvedIdentitySchema } from '../../platform/mcp-auth.schema.js';
+import type { McpAuthResolver } from '../../platform/auth/ports.js';
+import type { McpAuthInput, McpResolvedIdentity } from '../../platform/auth/mcp.js';
+import { McpResolvedIdentitySchema } from '../../platform/auth/mcp.js';
 import { CANONICAL_GUIDANCE_SUMMARY } from '../shared/agent/canonical-guidance.js';
 import type { ToolDeps, ResolvedToolContext, RawToolDefinition } from '../shared/agent/tool.helpers.js';
 import { resolveChatContext } from '../shared/agent/tool.helpers.js';

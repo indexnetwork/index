@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test';
 import type { EnrichmentGraphFactory as EnrichmentGraphFactoryType } from '../enrichment.graph.js';
 import type { EnrichmentGraphDatabase } from '../../../platform/database.js';
-import type { Scraper } from '../../../platform/scraper.js';
+import type { Scraper } from '../../../platform/discovery/scraper.js';
 import type { UserIdentity } from '../../../protocol/schemas/identity.schema.js';
 
 mock.module("../../shared/agent/model.config", () => ({

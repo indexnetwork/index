@@ -1,4 +1,4 @@
-import type { McpAuthInput, McpResolvedIdentity } from './mcp-auth.schema.js';
+import type { McpAuthInput, McpResolvedIdentity } from './mcp.js';
 
 /**
  * Resolves the authenticated MCP identity from an auth input DTO.

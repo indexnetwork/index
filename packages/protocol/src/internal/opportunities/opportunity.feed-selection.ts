@@ -1,4 +1,4 @@
-import type { DeliveryLedger } from '../../platform/delivery-ledger.js';
+import type { DeliveryLedger } from '../../platform/runtime/delivery-ledger.js';
 import type { ChatGraphCompositeDatabase, Opportunity, OpportunityStatus } from '../../platform/database.js';
 import { deduplicateByPerson, selectByComposition, selectDigestCandidates, type DigestDeliveredRow } from './opportunity.utils.js';
 

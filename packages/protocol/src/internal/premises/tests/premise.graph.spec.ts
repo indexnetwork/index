@@ -5,7 +5,7 @@ config({ path: ".env.test", override: true });
 import { describe, it, expect } from "bun:test";
 import { PremiseGraphFactory } from "../premise.graph.js";
 import type { PremiseGraphDatabase, PremiseRecord } from "../../../platform/database.js";
-import type { Embedder } from "../../../platform/embedder.js";
+import type { Embedder } from "../../../platform/discovery/embedder.js";
 
 function createMockDatabase(): PremiseGraphDatabase {
   const premises: PremiseRecord[] = [];

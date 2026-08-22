@@ -1,9 +1,9 @@
 import { ChatGraphFactory } from "../internal/chat/chat.graph.js";
 
 import type { ChatGraphCompositeDatabase } from "../platform/database.js";
-import type { Embedder } from "../platform/embedder.js";
-import type { Scraper } from "../platform/scraper.js";
-import type { ChatSessionReader } from "../platform/chat.js";
+import type { Embedder } from "../platform/discovery/embedder.js";
+import type { Scraper } from "../platform/discovery/scraper.js";
+import type { ChatSessionReader } from "../platform/chat/ports.js";
 import type { ProtocolDeps } from "../internal/shared/agent/tool.helpers.js";
 import type { ChatPersonaConfig } from "../internal/chat/chat.persona.js";
 

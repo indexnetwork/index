@@ -23,7 +23,7 @@ import { StateGraph, START, END } from '@langchain/langgraph';
 import { OpportunityGraphState } from './opportunity.state.js';
 import { OpportunityEvaluator } from "./opportunity.evaluator.js";
 import type { OpportunityGraphDatabase } from '../../platform/database.js';
-import type { Embedder } from '../../platform/embedder.js';import type { NegotiationGraphLike } from "../negotiations/negotiation.state.js";
+import type { Embedder } from '../../platform/discovery/embedder.js';import type { NegotiationGraphLike } from "../negotiations/negotiation.state.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_SIMILARITY, validateDiscoveryEvaluatorMinScore, validateDiscoveryMinSimilarity } from './discovery.env.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";

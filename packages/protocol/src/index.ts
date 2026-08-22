@@ -22,7 +22,7 @@ export type {
   RawToolDefinition,
 } from "./internal/shared/agent/tool.helpers.js";
 export { resolveChatContext } from "./internal/shared/agent/tool.helpers.js";
-export { ChatContextAccessError } from "./platform/errors.js";
+export { ChatContextAccessError } from "./platform/runtime/errors.js";
 export { deriveAllowedNetworkIds, deriveDiscoveryNetworkIds } from "./internal/shared/agent/tool.scope.js";
 export type { ToolScopeType, ScopeMembership } from "./protocol/core.js";
 export { requestContext, setRequestContextStore } from "./internal/shared/observability/request-context.js";
@@ -32,10 +32,10 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 
 // ─── Interfaces (implement these to wire up your infrastructure) ───────────────
 
-export type { McpAuthResolver } from "./platform/auth.js";
-export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/cache.js";
-export type { ChatSummaryReader } from "./platform/chat.js";
-export type { NegotiationSummaryReader } from "./platform/negotiation-summary.js";
+export type { McpAuthResolver } from "./platform/auth/ports.js";
+export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
+export type { ChatSummaryReader } from "./platform/chat/ports.js";
+export type { NegotiationSummaryReader } from "./platform/negotiation/summary.js";
 export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
 export type { ContactServiceAdapter } from "./internal/contacts/contact.repository.port.js";
 export type {
@@ -60,16 +60,16 @@ export type {
   IntentNetworkFinalAssignmentResult,
   CreateOpportunityData,
 } from "./platform/database.js";
-export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/embedder.js";
-export type { IntentGraphQueue } from "./platform/queue.js";
-export type { Scraper } from "./platform/scraper.js";
-export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/observability.js";
-export type { EnrichmentRunInput, EnrichmentRunRecord } from "./platform/enrichment-run.js";
+export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/discovery/embedder.js";
+export type { IntentGraphQueue } from "./platform/runtime/queue.js";
+export type { Scraper } from "./platform/discovery/scraper.js";
+export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
+export type { EnrichmentRunInput, EnrichmentRunRecord } from "./platform/enrichment/runs.js";
 export type {
   NegotiationTimeoutQueue,
   AskUserExpiryPayload,
   NegotiationContinuationTimeoutIdentity,
-} from "./platform/negotiation-events.js";
+} from "./platform/negotiation/events.js";
 export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
 export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 
@@ -90,11 +90,11 @@ export {
   type QuestionPoolPushRequestStatus,
   type QuestionPoolPushRequestReason,
 } from "./protocol/question.js";
-export { McpApiKeyMetadataSchema } from "./platform/mcp-auth.schema.js";
+export { McpApiKeyMetadataSchema } from "./platform/auth/mcp.js";
 export type {
   McpAuthInput,
   McpResolvedIdentity,
-} from "./platform/mcp-auth.schema.js";
+} from "./platform/auth/mcp.js";
 export type { DiscoveryNegotiation } from "./protocol/schemas/discovery-question.schema.js";
 export {
   QUESTION_BLOCK_MARKER,

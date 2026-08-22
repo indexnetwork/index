@@ -1,8 +1,8 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { EnrichmentGraphState } from "./enrichment.state.js";
 import { EnrichmentGraphDatabase, PremiseProvenance } from "../../platform/database.js";
-import { Scraper } from "../../platform/scraper.js";
-import type { ProfileEnricher } from "../../platform/enrichment.js";
+import { Scraper } from "../../platform/discovery/scraper.js";
+import type { ProfileEnricher } from "../../platform/enrichment/ports.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";

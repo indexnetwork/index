@@ -12,7 +12,7 @@ import type { Runnable } from '@langchain/core/runnables';
 import { OpportunityGraphFactory, type OpportunityEvaluatorLike, type OpportunityGraphThresholdOverrides, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../../platform/database.js';
-import type { Embedder } from '../../../platform/embedder.js';
+import type { Embedder } from '../../../platform/discovery/embedder.js';
 import type { SourceProfileData } from '../opportunity.state.js';
 import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_SIMILARITY } from '../discovery.env.js';
 import { REJECTION_COOLDOWN_MS } from '../opportunity.graph.shared.js';

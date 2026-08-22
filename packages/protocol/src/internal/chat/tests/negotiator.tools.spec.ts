@@ -12,7 +12,7 @@ import { describe, expect, it } from "bun:test";
 import { createNegotiatorMemoryTools } from "../negotiator.tools.js";
 import { NEGOTIATOR_TOOL_NAMES, filterNegotiatorTools } from "../negotiator.persona.js";
 import { buildNegotiatorSystemContent } from "../negotiator.prompt.js";
-import type { NegotiatorMemoryForgetResult, NegotiatorMemoryRememberInput, NegotiatorMemoryToolsHost, NegotiatorMemoryToolView } from "../../../platform/negotiator-memory.js";
+import type { NegotiatorMemoryForgetResult, NegotiatorMemoryRememberInput, NegotiatorMemoryToolsHost, NegotiatorMemoryToolView } from "../../../platform/negotiation/memory.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 function makeHost(overrides: Partial<NegotiatorMemoryToolsHost> = {}): {

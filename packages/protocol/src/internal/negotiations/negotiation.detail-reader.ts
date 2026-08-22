@@ -1,5 +1,5 @@
 import type { NegotiationOpportunityLifecycle } from '../../platform/database.js';
-import type { ListingOpenQuestion } from '../../platform/negotiation-listing-park.js';
+import type { ListingOpenQuestion } from '../../platform/negotiation/listing.js';
 import { classifyInflightPark, classifyPostStallPark } from './negotiation.answer-consumption.js';
 import { expectedNegotiationSpeaker } from './negotiation.expected-speaker.js';
 import { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';

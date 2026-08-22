@@ -22,8 +22,8 @@
 
 import type { DefineTool } from "../internal/shared/agent/tool.helpers.js";
 import type { IntentGraphDatabase } from "../platform/database.js";
-import type { EmbeddingGenerator } from "../platform/embedder.js";
-import type { IntentGraphQueue } from "../platform/queue.js";
+import type { EmbeddingGenerator } from "../platform/discovery/embedder.js";
+import type { IntentGraphQueue } from "../platform/runtime/queue.js";
 
 import { IntentGraphFactory } from "../internal/intents/graph/intent.graph.js";
 import { IntentIndexer } from "../internal/shared/intent-indexer.js";

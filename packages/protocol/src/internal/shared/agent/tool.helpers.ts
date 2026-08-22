@@ -1,5 +1,5 @@
 import type { Id } from '../../../platform/database.js';
-import { ChatContextAccessError } from '../../../platform/errors.js';
+import { ChatContextAccessError } from '../../../platform/runtime/errors.js';
 import type { OpportunityGraphDeps } from '../../opportunities/opportunity.graph.shared.js';
 import type { OpportunityMutationOutcome } from '../../opportunities/opportunity.graph.modes.js';
 import { z } from "zod";
@@ -8,26 +8,26 @@ import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import type { ToolScopeType } from "./tool.scope.js";
 import type { UserIdentity } from "../../../protocol/schemas/identity.schema.js";
 import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../../../platform/database.js";
-import type { Scraper } from "../../../platform/scraper.js";
-import type { Cache, HydeCache } from "../../../platform/cache.js";
+import type { Scraper } from "../../../platform/discovery/scraper.js";
+import type { Cache, HydeCache } from "../../../platform/discovery/cache.js";
 import type { ContactServiceAdapter } from "../../contacts/contact.repository.port.js";
-import type { ProfileEnricher } from "../../../platform/enrichment.js";
-import type { IntentGraphQueue } from "../../../platform/queue.js";
-import type { ChatSessionReader } from "../../../platform/chat.js";
-import type { ChatSummaryReader } from "../../../platform/chat.js";
-import type { ChatMessageWriter } from "../../../platform/chat.js";
-import type { NegotiationSummaryReader } from "../../../platform/negotiation-summary.js";
-import type { Embedder } from "../../../platform/embedder.js";
+import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
+import type { IntentGraphQueue } from "../../../platform/runtime/queue.js";
+import type { ChatSessionReader } from "../../../platform/chat/ports.js";
+import type { ChatSummaryReader } from "../../../platform/chat/ports.js";
+import type { ChatMessageWriter } from "../../../platform/chat/ports.js";
+import type { NegotiationSummaryReader } from "../../../platform/negotiation/summary.js";
+import type { Embedder } from "../../../platform/discovery/embedder.js";
 import type { AgentDatabase } from "../../agents/agent.repository.port.js";
-import type { NegotiationTimeoutQueue } from "../../../platform/negotiation-events.js";
+import type { NegotiationTimeoutQueue } from "../../../platform/negotiation/events.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
-import type { DeliveryLedger } from "../../../platform/delivery-ledger.js";
-import type { NegotiatorMemoryToolsHost } from "../../../platform/negotiator-memory.js";
-import type { NegotiatorAnswerToolsHost } from "../../../platform/negotiator-answer.js";
-import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiator-verdict.js";
-import type { NegotiationListingParkHost } from "../../../platform/negotiation-listing-park.js";
+import type { DeliveryLedger } from "../../../platform/runtime/delivery-ledger.js";
+import type { NegotiatorMemoryToolsHost } from "../../../platform/negotiation/memory.js";
+import type { NegotiatorAnswerToolsHost } from "../../../platform/negotiation/answer.js";
+import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
+import type { NegotiationListingParkHost } from "../../../platform/negotiation/listing.js";
 import type { QuestionerEnqueueFn } from "../../../protocol/question-input.js";
-import type { EnrichmentRunQueue, EnrichmentRunStore } from "../../../platform/enrichment-run.js";
+import type { EnrichmentRunQueue, EnrichmentRunStore } from "../../../platform/enrichment/runs.js";
 import type { McpActivityCaller } from "./activity-projection.js";
 
 export type IdentityContext = UserIdentity | null;
@@ -286,7 +286,7 @@ export type ProtocolDeps = ChatToolHostDeps;
  * Thrown when a requested chat scope is invalid for the authenticated user.
  * Controllers can map this to an HTTP status code.
  */
-export { ChatContextAccessError } from "../../../platform/errors.js";
+export { ChatContextAccessError } from "../../../platform/runtime/errors.js";
 
 /**
  * Resolve the canonical context used by chat tools and system prompt.
@@ -464,7 +464,7 @@ interface ToolDepsBindings {
   /** Durable host persistence for verified intent proposals shown in chat. */
   intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   scraper: Scraper;
-  embedder: import('../../../platform/embedder.js').Embedder;
+  embedder: import('../../../platform/discovery/embedder.js').Embedder;
   cache: Cache;
   contactService: ContactServiceAdapter;
   enricher: ProfileEnricher;

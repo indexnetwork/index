@@ -2,7 +2,7 @@ import { mock, describe, expect, it, afterAll } from 'bun:test';
 import { getOrCreateDeliveryCardBatch } from '../delivery-card.cache.js';
 import type { OpportunityPresenter } from '../opportunity.presentation.js';
 import type { PresenterDatabase } from '../opportunity.presentation.js';
-import type { Cache } from '../../../platform/cache.js';
+import type { Cache } from '../../../platform/discovery/cache.js';
 
 // Mock the gatherPresenterContext function.
 // Must target the path application/delivery-card.cache.ts actually imports from

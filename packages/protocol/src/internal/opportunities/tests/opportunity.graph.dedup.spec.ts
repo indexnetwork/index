@@ -17,7 +17,7 @@ import { OpportunityGraphFactory } from '../opportunity.graph.js';
 import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../../platform/database.js';
-import type { Embedder } from '../../../platform/embedder.js';
+import type { Embedder } from '../../../platform/discovery/embedder.js';
 import type { NegotiationGraphLike } from '../../negotiations/negotiation.state.js';
 import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 

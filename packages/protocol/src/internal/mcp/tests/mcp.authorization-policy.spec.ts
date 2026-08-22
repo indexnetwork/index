@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { McpResolvedIdentity } from '../../../platform/mcp-auth.schema.js';
+import type { McpResolvedIdentity } from '../../../platform/auth/mcp.js';
 import type { McpPolicyAgentSnapshot } from '../mcp.authorization-policy.js';
 import { CANONICAL_MCP_TOOL_ACCESS_RULES, HERMES_AGENT_MCP_TOOL_PERMISSIONS, MCP_PERMISSION_ACTIONS, McpCapabilityPolicy, defineMcpToolAccessRules, defineMcpToolPermissionMap, projectStoredPermissionActions, resolveMcpCapabilitySubject } from '../mcp.authorization-policy.js';
 

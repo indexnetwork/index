@@ -14,9 +14,9 @@ import type { DefineTool, ResolvedToolContext } from "../shared/agent/tool.helpe
 import type { EnrichmentToolDeps } from "../contexts/context.tools.port.js";
 import { success, error, needsClarification, UUID_REGEX } from "../shared/agent/tool.helpers.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { EnrichmentResult } from "../../platform/enrichment.js";
+import type { EnrichmentResult } from "../../platform/enrichment/ports.js";
 import type { OnboardingProfileSeed, OnboardingState, UserRecord } from "../../platform/database.js";
-import type { EnrichmentRunInput, EnrichmentRunOperation } from "../../platform/enrichment-run.js";
+import type { EnrichmentRunInput, EnrichmentRunOperation } from "../../platform/enrichment/runs.js";
 import { socialsToEnrichmentRequest, detectSocialLabel } from "../shared/utils/social-label.js";
 import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 import { EnrichmentGenerator } from "./enrichment.generator.js";

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { DefineTool, ResolvedToolContext, ToolDeps } from '../shared/agent/tool.helpers.js';
 import { success, error } from '../shared/agent/tool.helpers.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
-import type { NegotiatorVerdictInput, NegotiatorVerdictResult } from '../../platform/negotiator-verdict.js';
+import type { NegotiatorVerdictInput, NegotiatorVerdictResult } from '../../platform/negotiation/verdict.js';
 import { ownerApprovalProvenanceFor } from './opportunity.owner-provenance.js';
 
 /**

@@ -4,7 +4,7 @@
  * P1 output is consumed only by structured logs for human review.
  */
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import type { EmbeddingGenerator } from "../../../platform/embedder.js";
+import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
 import type { PoolDiscriminatorMiner } from "./discriminator.miner.js";
 import { computeNovelty, scoreDiscriminator } from "./discriminator.scorer.js";
 import type { MinedDiscriminator, PoolCandidate, DiscriminatorShadowResult } from "./discriminator.types.js";

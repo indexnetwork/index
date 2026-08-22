@@ -15,7 +15,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 import { createResilientModel } from "../shared/agent/model.config.js";
 import { getAbortSignalConfig, invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import type { EmbeddingGenerator } from "../../platform/embedder.js";
+import type { EmbeddingGenerator } from "../../platform/discovery/embedder.js";
 
 /** Input for cold-start context generation from a full set of premises. */
 export interface UserContextInput {

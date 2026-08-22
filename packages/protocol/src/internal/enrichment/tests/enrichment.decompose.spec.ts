@@ -69,7 +69,7 @@ mock.module("../../premises/premise.decomposer.js", () => ({
 
 import { EnrichmentGraphFactory } from '../enrichment.graph.js';
 import type { EnrichmentGraphDatabase, PremiseRecord } from '../../../platform/database.js';
-import type { Scraper } from '../../../platform/scraper.js';
+import type { Scraper } from '../../../platform/discovery/scraper.js';
 import type { CompiledPremiseGraph } from '../enrichment.graph.js';
 
 interface StoredProfile {

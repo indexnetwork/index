@@ -9,7 +9,7 @@
 import { StateGraph } from "@langchain/langgraph";
 
 import type { NegotiationGraphDatabase } from "../../platform/database.js";
-import type { NegotiationTimeoutQueue } from "../../platform/negotiation-events.js";
+import type { NegotiationTimeoutQueue } from "../../platform/negotiation/events.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { NegotiationGraphState } from "./negotiation.state.js";
 import { IndexNegotiator } from "./negotiation.agent.js";

@@ -5,7 +5,7 @@ import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../../platform/database.js';
-import type { Embedder } from '../../../platform/embedder.js';
+import type { Embedder } from '../../../platform/discovery/embedder.js';
 import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
 
 const mockEvaluator: OpportunityEvaluatorLike = { invokeEntityBundle: async () => [] };

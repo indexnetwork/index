@@ -8,7 +8,7 @@ import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { OpportunityGraphDatabase, OpportunityActor } from '../../../platform/database.js';
-import type { Embedder } from '../../../platform/embedder.js';
+import type { Embedder } from '../../../platform/discovery/embedder.js';
 import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
 
 const dummyEmbedding = new Array(2000).fill(0.1);

@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from "bun:test";
 
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
-import type { EnrichmentResult } from "../../../platform/enrichment.js";
+import type { EnrichmentResult } from "../../../platform/enrichment/ports.js";
 
 // Replace the LLM-backed generator BEFORE profile.tools.js is imported.
 mock.module("../enrichment.generator.js", () => ({

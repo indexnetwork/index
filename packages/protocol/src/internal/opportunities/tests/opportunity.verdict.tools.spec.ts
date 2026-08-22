@@ -13,7 +13,7 @@ import { z } from "zod";
 import { createOpportunityVerdictTools } from "../opportunity.verdict.tools.js";
 import { bindOwnerApprovalProvenance } from "../opportunity.owner-provenance.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
-import type { NegotiatorVerdictInput, NegotiatorVerdictResult } from "../../../platform/negotiator-verdict.js";
+import type { NegotiatorVerdictInput, NegotiatorVerdictResult } from "../../../platform/negotiation/verdict.js";
 
 const OWNER = "user-owner";
 const INTENT_ID = "intent-1";

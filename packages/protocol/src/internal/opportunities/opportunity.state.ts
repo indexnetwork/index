@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import type { Id, NegotiationContinuationExecution, NegotiationContinuationReceipt, OpportunityStatus, Opportunity } from '../../platform/database.js';
-import type { Lens } from '../../platform/embedder.js';
+import type { Lens } from '../../platform/discovery/embedder.js';
 import type { EvaluatorEntity } from './opportunity.evaluator.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
