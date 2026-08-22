@@ -190,10 +190,14 @@ export function createAuth(deps: AuthDeps) {
       }) as any,
     ],
     advanced: {
-      defaultCookieAttributes: {
-        sameSite: "none",
-        secure: true,
-      },
+      // Cookie attributes must match the scheme the API is actually served on.
+      // `SameSite=None` requires `Secure`, and browsers drop Secure cookies set
+      // over plain http — Chrome carves out localhost, Firefox does not, so an
+      // unconditional `secure: true` makes local email/password login succeed
+      // server-side while the browser silently discards the session cookie.
+      defaultCookieAttributes: API_URL.startsWith("https")
+        ? { sameSite: "none", secure: true }
+        : { sameSite: "lax", secure: false },
       database: {
         generateId: () => crypto.randomUUID(),
       },
