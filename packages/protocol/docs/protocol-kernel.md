@@ -13,6 +13,14 @@ tool names, serialized data, or supported root exports.
 `internal/` is private and now contains graphs, prompts, agents, retrieval,
 tests, and the existing domain-first implementation directories.
 
+## Host composition
+
+Hosts implement the `platform/` ports and supply them when constructing a
+capability. In particular, a Node host supplies its own request-context store
+through `setRequestContextStore()` and its logger through `setLoggerFactory()`.
+The package contains neither an `AsyncLocalStorage` store nor a console/logger
+adapter. An unconfigured logger is deliberately a no-op.
+
 ## Dependency rules
 
 ```text

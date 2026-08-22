@@ -27,6 +27,10 @@ defines TypeScript ports for a host to implement; it contains no adapter,
 controller, web, database, queue, cache, or dependency-wiring implementation.
 Those belong in the consuming host.
 
+Hosts provide request-context storage with `setRequestContextStore()` and log
+output with `setLoggerFactory()`. The package does not implement
+`AsyncLocalStorage`, console logging, or any other host runtime adapter.
+
 
 ## Graphs
 
