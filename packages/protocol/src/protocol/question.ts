@@ -6,8 +6,8 @@
  * envelopes used across the questions capability.
  */
 import { z } from "zod";
-import { UnderspecificationTypeSchema, type UnderspecificationType } from "../../protocol/schemas/underspecification.schema.js";
-import { QuestionOptionSchema, StructuredQuestionSchema, type QuestionOption } from "../../protocol/schemas/structured-question.schema.js";
+import { UnderspecificationTypeSchema, type UnderspecificationType } from "./schemas/underspecification.schema.js";
+import { QuestionOptionSchema, StructuredQuestionSchema, type QuestionOption } from "./schemas/structured-question.schema.js";
 
 export { UnderspecificationTypeSchema };
 
@@ -18,7 +18,12 @@ export { UnderspecificationTypeSchema };
  * `questions/question.schema.js` stays the import site every caller already uses.
  */
 export { QuestionOptionSchema, StructuredQuestionSchema };
-export type { StructuredQuestion } from "../../protocol/schemas/structured-question.schema.js";
+export type { StructuredQuestion } from "./schemas/structured-question.schema.js";
+
+/** Refinement questions a single intent may generate per rolling window. */
+export const INTENT_QUESTION_DAILY_CAP_DEFAULT = 2;
+/** Width of the rolling question budget window, in hours. */
+export const INTENT_QUESTION_DAILY_WINDOW_HOURS = 24;
 
 export const QuestionSchema = StructuredQuestionSchema.extend({
   /**

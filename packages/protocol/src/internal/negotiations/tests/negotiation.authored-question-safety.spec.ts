@@ -5,8 +5,8 @@ import { IndexNegotiator } from "../negotiation.agent.js";
 import { isSafeAuthoredNegotiationQuestion, isSafeNegotiationQuestionText, validateInflightAskUserFields } from "../negotiation.question-safety.js";
 import type { NegotiationGraphState, NegotiationTurn } from "../negotiation.state.js";
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import type { StructuredQuestion } from "../../../protocol/schemas/structured-question.schema.js";
-import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import type { StructuredQuestion } from "../../../protocol/question.js";
+import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 
 /**
  * The authored `ask_user` question is the first negotiator output rendered to a

@@ -11,10 +11,10 @@
  * side's `(recipientUserId, recipientIntentId)`; the parked negotiation is
  * the durable record and the DM message is its rendering.
  */
-import type { ChecklistKind } from "../../protocol/schemas/negotiation-checklist.schema.js";
-import type { ToolScopeType } from "../shared/agent/tool.scope.js";
-import type { NegotiationQuestionCandidate } from "./question.schema.js";
-import type { NegotiationConsultationReason } from "../negotiations/negotiation.module.js";
+import type { ChecklistKind } from "./schemas/negotiation-checklist.schema.js";
+import type { ToolScopeType } from "./scope.js";
+import type { NegotiationQuestionCandidate } from "./question.js";
+import type { NegotiationConsultationReason } from "./schemas/negotiation-state.schema.js";
 
 // ─── Park-payload context types ─────────────────────────────────────────────
 

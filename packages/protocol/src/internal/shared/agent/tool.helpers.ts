@@ -25,7 +25,7 @@ import type { NegotiatorMemoryToolsHost } from "../../../platform/negotiator-mem
 import type { NegotiatorAnswerToolsHost } from "../../../platform/negotiator-answer.js";
 import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiator-verdict.js";
 import type { NegotiationListingParkHost } from "../../../platform/negotiation-listing-park.js";
-import type { QuestionerEnqueueFn } from "../../questions/question.input.js";
+import type { QuestionerEnqueueFn } from "../../../protocol/question-input.js";
 import type { EnrichmentRunQueue, EnrichmentRunStore } from "../../../platform/enrichment-run.js";
 import type { McpActivityCaller } from "./activity-projection.js";
 

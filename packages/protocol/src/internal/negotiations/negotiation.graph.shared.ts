@@ -22,7 +22,7 @@ import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } fro
 import type { NegotiationSeat, NegotiationProtocolVersion } from "../../protocol/schemas/negotiation-state.schema.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { AnswerhoodSchema, type Answerhood } from "../../protocol/schemas/negotiation-checklist.schema.js";
-import type { QuestionerEnqueueFn } from "../questions/question.module.js";
+import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryEntry, NegotiatorMemoryRetrieveFn, NegotiatorMemoryScope } from "./negotiation.memory.js";
 import type { NegotiatorClientDmMessage, NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";

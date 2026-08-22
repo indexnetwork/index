@@ -16,7 +16,7 @@ import { IndexNegotiator } from "./negotiation.agent.js";
 import { NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
 import { isTerminalAction } from "./negotiation.protocol.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
-import type { QuestionerEnqueueFn } from "../questions/question.module.js";
+import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";
 import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
 import type { NegotiatorMemoryRetrieveFn } from "./negotiation.memory.js";
 import type { NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";

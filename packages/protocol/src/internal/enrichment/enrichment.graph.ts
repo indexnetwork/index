@@ -5,7 +5,7 @@ import { Scraper } from "../../platform/scraper.js";
 import type { ProfileEnricher } from "../../platform/enrichment.js";
 import { socialsToEnrichmentRequest } from "../shared/utils/social-label.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { QuestionerEnqueueFn } from "../questions/question.module.js";
+import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";
 import { timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../protocol/debug-meta.js";
@@ -830,4 +830,3 @@ export function checkStateCondition(state: EnrichmentState, deps: EnrichmentGrap
   logger.verbose("All components exist - ending");
   return END;
 }
-

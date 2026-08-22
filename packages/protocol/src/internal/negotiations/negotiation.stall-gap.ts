@@ -22,7 +22,7 @@ import { z } from "zod";
 
 import { createStructuredModel } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import { StructuredQuestionSchema, type StructuredQuestion } from "../../protocol/schemas/structured-question.schema.js";
+import { StructuredQuestionSchema, type StructuredQuestion } from "../../protocol/question.js";
 import { NegotiationConsultationReasonSchema, type NegotiationConsultationReason } from "../../protocol/schemas/negotiation-state.schema.js";
 import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage } from "./negotiation.client-dm.js";
 import { resolveTurnTimeoutMs } from "./negotiation.agent.js";

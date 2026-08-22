@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { z } from 'zod';
 
 import { AskUserGenerationSchema, AskUserPayloadSchema } from '../../../protocol/schemas/negotiation-state.schema.js';
-import { StructuredQuestionSchema } from '../../../protocol/schemas/structured-question.schema.js';
+import { StructuredQuestionSchema } from '../../../protocol/question.js';
 import { turnSchemaFor } from '../negotiation.protocol.js';
 import { NegotiationTurnSchema, SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from '../negotiation.state.js';
 import { hasGuaranteedAsk } from '../negotiation.graph.shared.js';

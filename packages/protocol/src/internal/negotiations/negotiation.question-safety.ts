@@ -1,4 +1,4 @@
-import type { StructuredQuestion } from '../../protocol/schemas/structured-question.schema.js';
+import type { StructuredQuestion } from '../../protocol/question.js';
 import { hasUnsupportedOpportunityClaim } from '../shared/utils/claim-safety.js';
 
 /** Fixed prompt-safe labels; producers must not replace them with raw network/counterparty text. */

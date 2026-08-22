@@ -1,4 +1,4 @@
-import type { Question } from "../questions/question.schema.js";
+import type { Question } from "../../protocol/question.js";
 
 type SingleChoiceSchema = {
   type: "string";

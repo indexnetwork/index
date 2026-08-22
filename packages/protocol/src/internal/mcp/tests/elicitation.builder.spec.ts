@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { buildElicitationCreate, flattenChoice } from "../elicitation.builder.js";
-import type { Question } from "../../questions/question.schema.js";
+import type { Question } from "../../../protocol/question.js";
 
 const stageQ: Question = {
   title: "Stage",

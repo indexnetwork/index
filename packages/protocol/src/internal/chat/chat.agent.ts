@@ -11,7 +11,7 @@ import { createModel, type ModelConfig } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { sanitizeForDebugMeta } from "../shared/observability/debug-meta.sanitizer.js";
 import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
-import type { Question, QuestionStrategy } from "../questions/question.module.js";
+import type { Question, QuestionStrategy } from "../../protocol/question.js";
 import { Timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import { deduplicateQuestions } from "./chat.question-dedup.js";

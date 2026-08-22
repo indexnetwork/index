@@ -6,7 +6,7 @@ import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agen
 import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { assessDeclineAdmissibility, type ChecklistDraftItem, type ChecklistItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 
 /**
  * The copy loop, and the two rules that let it happen.

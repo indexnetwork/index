@@ -8,7 +8,7 @@ import { classifyParkedNegotiation } from "../negotiation.answer-consumption.js"
 import { negotiationQuestionSettlementId } from "../negotiation.question-safety.js";
 import { assessConsultationEligibility, countOpenPreContactConsults, isPreContactConsultResume, MAX_OPEN_PRE_CONTACT_CONSULTS_PER_INTENT, PRE_CONTACT_CONSULT_MARKER } from "../negotiation.consultation-policy.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 
 /**
  * Pre-contact consultation — the initiator's turn-0 THIRD verdict.

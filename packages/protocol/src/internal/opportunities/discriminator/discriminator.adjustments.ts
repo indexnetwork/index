@@ -16,7 +16,7 @@
  *   reasoning (see `packages/protocol/src/opportunity/AGENTS.md`).
  */
 import { POOL_ADJUSTMENT_FACTOR_OTHER, POOL_ADJUSTMENT_FACTOR_UNKNOWN, POOL_ADJUSTMENT_FLOOR } from "./discriminator.env.js";
-import type { QuestionPoolDiscriminator } from "../../questions/question.module.js";
+import type { QuestionPoolDiscriminator } from "../../../protocol/question.js";
 
 /** Recipient and intent provenance that scopes one pool preference. */
 export interface PoolAdjustmentProvenance {

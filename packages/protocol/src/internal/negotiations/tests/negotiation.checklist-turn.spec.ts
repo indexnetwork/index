@@ -6,7 +6,7 @@ import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agen
 import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { QUESTION_BUDGET_PER_PRINCIPAL, type ChecklistDraftItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 
 /**
  * The checklist protocol at the graph seam

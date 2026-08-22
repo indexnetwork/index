@@ -88,7 +88,7 @@ export {
   type QuestionVoidedReason,
   type QuestionPoolPushRequestStatus,
   type QuestionPoolPushRequestReason,
-} from "./internal/questions/question.module.js";
+} from "./protocol/question.js";
 export { McpApiKeyMetadataSchema } from "./platform/mcp-auth.schema.js";
 export type {
   McpAuthInput,
@@ -230,8 +230,8 @@ export { NegotiationReflector } from "./internal/negotiations/negotiation.module
 export type { DistilledMemory, ReflectionTranscriptEntry, NegotiationReflectionInput, ChatReflectionInput, NegotiationReflectJobData, ReflectEnqueueFn } from "./internal/negotiations/negotiation.module.js";
 export type { NegotiatorMemoryEntry } from "./internal/negotiations/negotiation.module.js";
 export type { NegotiatorClientDmMessage, NegotiatorClientDmQuery, NegotiatorClientDmRetrieveFn } from "./internal/negotiations/negotiation.module.js";
-export type { QuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn } from "./internal/questions/question.module.js";
-export { INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./internal/questions/question.module.js";
+export type { QuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn } from "./protocol/question-input.js";
+export { INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./protocol/question.js";
 export { PoolDiscriminatorMiner } from "./internal/opportunities/opportunity.module.js";
 export { PoolDiscriminatorAssigner } from "./internal/opportunities/opportunity.module.js";
 export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./internal/opportunities/opportunity.module.js";
@@ -251,7 +251,7 @@ export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from ".
 export type { PoolAdjustment, PoolAdjustmentSignal } from "./internal/opportunities/opportunity.module.js";
 export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./internal/opportunities/opportunity.module.js";
 export { poolQuestionCycleKey, buildPoolQuestionPushMessage } from "./internal/opportunities/opportunity.module.js";
-export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./internal/questions/question.module.js";
+export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./protocol/question.js";
 export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./internal/opportunities/opportunity.module.js";
 
 // Lens C — negotiation-evidence questions (IND-433, shadow).

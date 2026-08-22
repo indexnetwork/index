@@ -7,7 +7,7 @@ import { negotiationAskRoundsCap, CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP, DEFAULT_
 import { countNegotiationAskRounds, hasPriorAskUser } from "../negotiation.graph.shared.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 
 /**
  * Post-stall park with a bounded ask cap (conversational-questions plan).

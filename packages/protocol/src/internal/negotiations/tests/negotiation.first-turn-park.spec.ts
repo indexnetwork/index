@@ -8,7 +8,7 @@ import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agen
 import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import type { ChecklistDraftItem } from "../negotiation.checklist.contracts.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 
 /**
  * A task's FIRST turn can park.

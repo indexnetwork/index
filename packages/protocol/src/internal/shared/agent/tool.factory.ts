@@ -12,7 +12,7 @@ import { NegotiationGraphFactory } from "../../negotiations/negotiation.module.j
 import { PremiseGraphFactory } from "../../premises/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 
-import type { QuestionerEnqueueFn } from "../../questions/question.module.js";
+import type { QuestionerEnqueueFn } from "../../../protocol/question-input.js";
 
 import { type ToolContext, type ResolvedToolContext, type ToolDeps, resolveChatContext, error, redactSensitiveFields } from "./tool.helpers.js";
 import { deriveAllowedNetworkIds, filterToolsForScope, scopeFromNetworkId } from "./tool.scope.js";

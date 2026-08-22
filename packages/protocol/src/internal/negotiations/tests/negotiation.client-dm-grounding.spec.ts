@@ -5,7 +5,7 @@ import { IndexNegotiator, type NegotiationAgentInput } from "../negotiation.agen
 import { renderNegotiatorClientDmSection, type NegotiatorClientDmMessage, type NegotiatorClientDmQuery } from "../negotiation.client-dm.js";
 import type { NegotiationGraphState, NegotiationTurn } from "../negotiation.state.js";
 import type { NegotiationTurnPayload } from "../../shared/interfaces/agent-dispatcher.interface.js";
-import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 
 /**
  * A2H grounding: the negotiator authors its `ask_user` question knowing what

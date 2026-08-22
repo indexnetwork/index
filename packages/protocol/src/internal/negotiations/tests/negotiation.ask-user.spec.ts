@@ -6,7 +6,7 @@ import { NegotiationStallGapAuthor } from "../negotiation.stall-gap.js";
 import { allowedActionsFor, turnSchemaFor, ASK_USER_WINDOW_MS, ASK_USER_LOCK_SLACK_MS, CHECKLIST_NEGOTIATION_ASK_ROUNDS_CAP, DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP, InitiatorTurnSchema, CounterpartyTurnSchema, InitiatorAskUserTurnSchema, CounterpartyAskUserTurnSchema } from "../negotiation.protocol.js";
 import { SystemNegotiationTurnSchema, FinalNegotiationTurnSchema } from "../negotiation.state.js";
 import type { NegotiationTurn } from "../negotiation.state.js";
-import type { QuestionerEnqueuePayload } from "../../questions/question.input.js";
+import type { QuestionerEnqueuePayload } from "../../../protocol/question-input.js";
 import { assessConsultationEligibility, NEGOTIATION_CONSULTATION_POLICY_MODE } from "../negotiation.consultation-policy.js";
 import type { NegotiationConsultationReason } from "../negotiation.consultation-policy.js";
 import { requestContext } from "../../shared/observability/request-context.js";
