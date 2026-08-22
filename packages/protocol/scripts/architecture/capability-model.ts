@@ -39,7 +39,7 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
   intents: "intents",
   contexts: undefined,
   networks: "networks",
-  opportunities: "opportunities",
+  opportunities: undefined,
   negotiations: undefined,
   questions: "questions",
   agents: "agents",
@@ -59,7 +59,6 @@ export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string |
 export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, string>>> = {
   intents: "../capabilities/intents.ts",
   networks: "../capabilities/networks.ts",
-  opportunities: "opportunity.module.ts",
   questions: "question.module.ts",
   agents: "agent.module.ts",
   discovery: "../capabilities/discovery.ts",

@@ -127,7 +127,6 @@ export {
   ONBOARDING_PERSONA_ID,
   createOnboardingPersona,
 } from "./internal/chat/onboarding.persona.js";
-export { RadarGraphFactory } from "./internal/opportunities/opportunity.module.js";
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
 export { Discovery } from "./capabilities/discovery.js";
 export type { DiscoveryDeps } from "./capabilities/discovery.js";
@@ -167,27 +166,6 @@ export type {
 
 export { MaintenanceGraphFactory } from "./internal/maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./internal/maintenance/maintenance.graph.js";
-export { OpportunityGraphFactory } from "./internal/opportunities/opportunity.module.js";
-export { hasUnsupportedOpportunityClaim } from "./internal/opportunities/opportunity.module.js";
-export type { StampNewbornOpportunitiesFn } from "./internal/opportunities/opportunity.module.js";
-export { bindOwnerApprovalProvenance } from "./internal/opportunities/opportunity.module.js";
-// The member/parameter types below are reachable from the exported entry points
-// above: `OpportunityOwnerAction` types `OpportunityOwnerApprovalBinding.action`,
-// `OpportunityOwnerApprovalDenialReason` types the denied `…Verdict.reason`, and
-// the provenance pair types both `…Attestation.provenance` and the second
-// argument of `bindOwnerApprovalProvenance`. An exported symbol whose members
-// cannot be named is not usable, so these stay exported with it.
-export type {
-  OpportunityOwnerAction,
-  OpportunityOwnerApprovalAttestation,
-  OpportunityOwnerApprovalAuthority,
-  OpportunityOwnerApprovalBinding,
-  OpportunityOwnerApprovalChallenge,
-  OpportunityOwnerApprovalDenialReason,
-  OpportunityOwnerApprovalVerdict,
-  OpportunityOwnerInteractionProvenance,
-  OpportunityOwnerInteractionSurface,
-} from "./internal/opportunities/opportunity.module.js";
 export { EnrichmentGraphFactory } from "./internal/enrichment/enrichment.graph.js";
 export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
@@ -202,57 +180,7 @@ export { SuggestionGenerator } from "./internal/chat/chat.suggester.js";
 export { LensInferrer } from "./internal/discovery/lens.inferrer.js";
 export type { QuestionerInput, QuestionerEnqueuePayload, QuestionerEnqueueFn } from "./protocol/question-input.js";
 export { INTENT_QUESTION_DAILY_CAP_DEFAULT } from "./protocol/question.js";
-export { PoolDiscriminatorMiner } from "./internal/opportunities/opportunity.module.js";
-export { PoolDiscriminatorAssigner } from "./internal/opportunities/opportunity.module.js";
-export type { PoolDiscriminatorAssignmentInput, PoolDiscriminatorAssignedAxis } from "./internal/opportunities/opportunity.module.js";
-export { runPoolDiscriminatorShadow } from "./internal/opportunities/opportunity.module.js";
-export {
-  POOL_DISCRIMINATOR_MIN_POOL_SIZE,
-  POOL_DISCRIMINATOR_MAX_CANDIDATES,
-  POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS,
-  POOL_QUESTION_MIN_VOI,
-  POOL_QUESTION_MAX_PENDING_PER_INTENT,
-} from "./internal/opportunities/opportunity.module.js";
-export { POOL_RERUN_DEBOUNCE_MS } from "./internal/opportunities/opportunity.module.js";
-
-// Discovery env accessors (IND-XXX)
-export { DISCOVERY_EVALUATOR_MIN_SCORE } from "./internal/opportunities/opportunity.module.js";
-export { buildPoolAdjustment, planPoolAdjustments, mergePoolAdjustment } from "./internal/opportunities/opportunity.module.js";
-export type { PoolAdjustment, PoolAdjustmentSignal } from "./internal/opportunities/opportunity.module.js";
-export { synthesizePoolQuestion, selectQuestionDiscriminators, toQuestionDiscriminator, BOTH_MATTER_LABEL } from "./internal/opportunities/opportunity.module.js";
-export { poolQuestionCycleKey, buildPoolQuestionPushMessage } from "./internal/opportunities/opportunity.module.js";
 export type { QuestionPoolDiscriminator, QuestionPoolSnapshot } from "./protocol/question.js";
-export type { PoolCandidate, DiscriminatorMiningInput, MinedDiscriminator } from "./internal/opportunities/opportunity.module.js";
-
-// Lens C — negotiation-evidence questions (IND-433, shadow).
-export { NEGOTIATION_EVIDENCE_QUESTIONS_MODE, NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES } from "./internal/opportunities/opportunity.module.js";
-export { NegotiationEvidenceMiner } from "./internal/opportunities/opportunity.module.js";
-export { runNegotiationEvidenceShadow } from "./internal/opportunities/opportunity.module.js";
-export type { RawEvidenceTurn, RawEvidenceOutcome, RawEvidenceOwnerAnswer, RawEvidenceSegment } from "./internal/opportunities/opportunity.module.js";
-
-// Lens B — outcome-question shadow (IND-434)
-export { isOutcomeQuestionsActivated, OUTCOME_MIN_INDEPENDENT_EXAMPLES, OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS } from "./internal/opportunities/opportunity.module.js";
-export { runOutcomeShadow } from "./internal/opportunities/opportunity.module.js";
-export type { OutcomeLabel, OutcomeExample, OutcomeShadowResult } from "./internal/opportunities/opportunity.module.js";
-export { OpportunityEvaluator } from "./internal/opportunities/opportunity.module.js";
-export type { EvaluatorInput } from "./internal/opportunities/opportunity.module.js";
-export { OpportunityPresenter, gatherPresenterContext } from "./internal/opportunities/opportunity.module.js";
-export type { PresenterDatabase } from "./internal/opportunities/opportunity.module.js";
-
-// ─── Support utilities ────────────────────────────────────────────────────────
-
-export { canUserSeeOpportunity, isActionableForViewer, validateOpportunityActors, classifyOpportunity, selectByComposition, RADAR_SOFT_TARGETS } from "./internal/opportunities/opportunity.module.js";
-export { getPrimaryActionLabel } from "./internal/opportunities/opportunity.module.js";
-export { computeRadarHealth } from "./internal/opportunities/opportunity.module.js";
-export type { RadarHealthInput } from "./internal/opportunities/opportunity.module.js";
-export { persistOpportunities } from "./internal/opportunities/opportunity.module.js";
-export { presentOpportunity } from "./internal/opportunities/opportunity.module.js";
-export type { UserInfo } from "./internal/opportunities/opportunity.module.js";
-export { stripUuids, truncateAtBoundary } from "./internal/opportunities/opportunity.module.js";
-export { stripUnsupportedOpportunityClaims } from "./internal/opportunities/opportunity.module.js";
-export { safeFallbackSummary } from "./internal/opportunities/opportunity.module.js";
-export { buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey } from "./internal/opportunities/opportunity.module.js";
-export { getOrCreateDeliveryCardBatch } from "./internal/opportunities/opportunity.module.js";
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
 
@@ -429,3 +357,196 @@ export type {
   NegotiatorClientDmRetrieveFn,
 } from "./internal/negotiations/negotiation.client-dm.js";
 export type { NegotiationToolDeps } from "./internal/negotiations/negotiation.tools.port.js";
+
+// ─── Opportunity compatibility exports ─────────────────────────────────────
+/**
+ * opportunity — the capability's sole cross-capability surface.
+ *
+ * Anything outside this capability imports from here and nowhere else.
+ * Supersedes the capabilities/*.facade.ts + opportunities/public/ pair; the export
+ * list is the union of the facades it replaces, so the contract is unchanged.
+ */
+export {
+  getOrCreateDeliveryCardBatch,
+} from "./internal/opportunities/delivery-card.cache.js";
+export {
+  OpportunityEvaluator,
+} from "./internal/opportunities/opportunity.evaluator.js";
+export type {
+  EvaluatorInput,
+} from "./internal/opportunities/opportunity.evaluator.js";
+export {
+  OpportunityGraphFactory,
+} from "./internal/opportunities/opportunity.graph.js";
+export type {
+  OpportunityGraphThresholdOverrides,
+} from "./internal/opportunities/opportunity.graph.js";
+export type {
+  StampNewbornOpportunitiesFn,
+  StampNewbornOpportunitiesInput,
+} from "./internal/opportunities/opportunity.newborn-stamping.js";
+export {
+  opportunityOwnerActionForStatus,
+} from "./internal/opportunities/opportunity.owner-approval.js";
+export type {
+  OpportunityOwnerAction,
+  OpportunityOwnerApprovalAttestation,
+  OpportunityOwnerApprovalAuthority,
+  OpportunityOwnerApprovalBinding,
+  OpportunityOwnerApprovalChallenge,
+  OpportunityOwnerApprovalDenialReason,
+  OpportunityOwnerApprovalVerdict,
+  OpportunityOwnerInteractionProvenance,
+  OpportunityOwnerInteractionSurface,
+} from "./internal/opportunities/opportunity.owner-approval.js";
+export {
+  bindOwnerApprovalProvenance,
+} from "./internal/opportunities/opportunity.owner-provenance.js";
+export {
+  persistOpportunities,
+} from "./internal/opportunities/opportunity.persist.js";
+export {
+  gatherPresenterContext,
+  OpportunityPresenter,
+} from "./internal/opportunities/opportunity.presentation.js";
+export type {
+  PresenterDatabase,
+} from "./internal/opportunities/opportunity.presentation.js";
+export {
+  createOpportunityTools,
+} from "./internal/opportunities/opportunity.tools.js";
+export {
+  createOpportunityVerdictTools,
+} from "./internal/opportunities/opportunity.verdict.tools.js";
+export {
+  DISCOVERY_EVALUATOR_MIN_SCORE,
+  DISCOVERY_MIN_SIMILARITY,
+  validateDiscoveryEvaluatorMinScore,
+  validateDiscoveryMinSimilarity,
+} from "./internal/opportunities/discovery.env.js";
+export type {
+} from "./internal/opportunities/discovery.env.js";
+export {
+  buildPoolAdjustment,
+  mergePoolAdjustment,
+  planPoolAdjustments,
+} from "./internal/opportunities/discriminator/discriminator.adjustments.js";
+export type {
+  PoolAdjustment,
+  PoolAdjustmentSignal,
+} from "./internal/opportunities/discriminator/discriminator.adjustments.js";
+export {
+  PoolDiscriminatorAssigner,
+} from "./internal/opportunities/discriminator/discriminator.assigner.js";
+export type {
+  PoolDiscriminatorAssignedAxis,
+  PoolDiscriminatorAssignmentInput,
+} from "./internal/opportunities/discriminator/discriminator.assigner.js";
+export {
+  POOL_DISCRIMINATOR_MAX_CANDIDATES,
+  POOL_DISCRIMINATOR_MAX_PUBLIC_CONTEXT_CHARS,
+  POOL_DISCRIMINATOR_MIN_POOL_SIZE,
+  POOL_QUESTION_MAX_PENDING_PER_INTENT,
+  POOL_QUESTION_MIN_VOI,
+  POOL_RERUN_DEBOUNCE_MS,
+} from "./internal/opportunities/discriminator/discriminator.env.js";
+export {
+  PoolDiscriminatorMiner,
+} from "./internal/opportunities/discriminator/discriminator.miner.js";
+export {
+  buildPoolQuestionPushMessage,
+  poolQuestionCycleKey,
+} from "./internal/opportunities/discriminator/discriminator.push.js";
+export {
+  BOTH_MATTER_LABEL,
+  selectQuestionDiscriminators,
+  synthesizePoolQuestion,
+  toQuestionDiscriminator,
+} from "./internal/opportunities/discriminator/discriminator.question.js";
+export {
+  runPoolDiscriminatorShadow,
+} from "./internal/opportunities/discriminator/discriminator.shadow.js";
+export type {
+  DiscriminatorMiningInput,
+  MinedDiscriminator,
+  PoolCandidate,
+} from "./internal/opportunities/discriminator/discriminator.types.js";
+export {
+  hasUnsupportedOpportunityClaim,
+  stripUnsupportedOpportunityClaims,
+  stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText,
+} from "./internal/shared/utils/claim-safety.js";
+export {
+  buildCandidateEvidence,
+} from "./internal/opportunities/opportunity.evidence.js";
+export {
+  getPrimaryActionLabel,
+} from "./internal/opportunities/opportunity.labels.js";
+export {
+  buildApiChatCardPresentationCacheKey,
+  buildDeliveryCardPresentationCacheKey,
+  buildRadarCardPresentationCacheKey,
+} from "./internal/opportunities/opportunity.presentation.js";
+export {
+  presentOpportunity,
+  stripUuids,
+  truncateAtBoundary,
+} from "./internal/opportunities/opportunity.presentation.js";
+export type {
+  UserInfo,
+} from "./internal/opportunities/opportunity.presentation.js";
+export {
+  DEFAULT_FALLBACK_HEADLINE,
+  safeFallbackSummary,
+} from "./internal/opportunities/opportunity.presentation.js";
+export {
+  canUserSeeOpportunity,
+  classifyOpportunity,
+  isActionableForViewer,
+  RADAR_SOFT_TARGETS,
+  selectByComposition,
+  validateOpportunityActors,
+} from "./internal/opportunities/opportunity.utils.js";
+export {
+  NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES,
+  NEGOTIATION_EVIDENCE_QUESTIONS_MODE,
+} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.env.js";
+export {
+  NegotiationEvidenceMiner,
+} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.miner.js";
+export {
+  runNegotiationEvidenceShadow,
+} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.shadow.js";
+export type {
+  RawEvidenceOutcome,
+  RawEvidenceOwnerAnswer,
+  RawEvidenceSegment,
+  RawEvidenceTurn,
+} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.types.js";
+export {
+  isOutcomeQuestionsActivated,
+  OUTCOME_MAX_CANDIDATES,
+  OUTCOME_MAX_PUBLIC_CONTEXT_CHARS,
+  OUTCOME_MIN_INDEPENDENT_EXAMPLES,
+} from "./internal/opportunities/outcome/outcome.env.js";
+export {
+  runOutcomeShadow,
+} from "./internal/opportunities/outcome/outcome.shadow.js";
+export type {
+  OutcomeExample,
+  OutcomeLabel,
+  OutcomeShadowResult,
+} from "./internal/opportunities/outcome/outcome.types.js";
+export type {
+  OpportunityToolDeps,
+} from "./internal/opportunities/opportunity.tools.port.js";
+export {
+  RadarGraphFactory,
+} from "./internal/opportunities/radar/radar.graph.js";
+export {
+  computeRadarHealth,
+} from "./internal/opportunities/radar/radar.health.js";
+export type {
+  RadarHealthInput,
+} from "./internal/opportunities/radar/radar.health.js";
+

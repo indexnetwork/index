@@ -4,8 +4,8 @@ import type { DefineTool, ResolvedToolContext, ToolDeps, RawToolDefinition, Tool
 import { error, redactSensitiveFields } from './tool.helpers.js';
 import { createEnrichmentTools } from '../../enrichment/enrichment.tools.js';
 import { Intents } from '../../../capabilities/intents.js';
-import { Networks } from '../../../capabilities/networks.js';
-import { createOpportunityTools, createOpportunityVerdictTools } from '../../opportunities/opportunity.module.js';
+import { Networks } from '../../../capabilities/networks.js';import { createOpportunityTools } from "../../opportunities/opportunity.tools.js";
+import { createOpportunityVerdictTools } from "../../opportunities/opportunity.verdict.tools.js";
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
 import { createContactTools } from '../../contacts/contact.tools.js';
