@@ -140,7 +140,7 @@ const turnMsg = (userId: string, data: NegotiationTurn, index: number): FakeMess
   createdAt: new Date(Date.now() + index),
 });
 
-function mkStubs(opts?: { priorMessages?: FakeMessage[]; unreachableUserIds?: string[] }) {
+function mkStubs(opts?: { priorMessages?: FakeMessage[] }) {
   const createdMessages: Array<{ senderId: string; parts: Array<{ kind: string; data: NegotiationTurn }> }> = [];
   const stateWrites: Array<{ taskId: string; state: string }> = [];
   const opportunityStatuses: string[] = [];
@@ -198,7 +198,6 @@ function mkStubs(opts?: { priorMessages?: FakeMessage[]; unreachableUserIds?: st
   return {
     database, dispatcher, timeoutQueue, questionerEnqueue,
     createdMessages, stateWrites, questionerEnqueues, opportunityStatuses,
-    unreachableUserIds: opts?.unreachableUserIds ?? [],
   };
 }
 
@@ -209,20 +208,16 @@ async function runGraph(stubs: ReturnType<typeof mkStubs>, input: Record<string,
   const graph = new NegotiationGraphFactory(
     stubs.database, stubs.dispatcher, stubs.timeoutQueue, stubs.questionerEnqueue,
   ).createGraph();
-  const unreachable = (userId: string) =>
-    stubs.unreachableUserIds.includes(userId) ? { principalUnreachable: true } : {};
   const invocation = () => graph.invoke({
     sourceUser: {
       id: "u-src",
       intents: [{ id: "intent-src", title: "Hire an ML engineer", description: "Looking for applied ML depth", confidence: 1 }],
       profile: { name: "Alice", bio: "PM", skills: ["evals"] },
-      ...unreachable("u-src"),
     },
     candidateUser: {
       id: "u-cand",
       intents: [{ id: "intent-cand", title: "Join an AI product", description: "Wants applied ML work", confidence: 1 }],
       profile: { name: "Bob", bio: "ML engineer", skills: ["ml"] },
-      ...unreachable("u-cand"),
     },
     sourceIntentId: "intent-src",
     candidateIntentId: "intent-cand",
@@ -597,22 +592,6 @@ describe("the conclusion floor at the turn seam", () => {
     expect(agentInputs).toHaveLength(1);
     expect(tracesOfType("negotiation_conclude_premature")).toHaveLength(0);
     expect(tracesOfType("negotiation_ask_guaranteed")).toHaveLength(0);
-  });
-
-  it("is inert for an unreachable principal — #1459 keeps its corner", async () => {
-    const stubs = mkStubs({ unreachableUserIds: ["u-src", "u-cand"] });
-    agentScript = [
-      said("outreach", OPENING),
-      turn("accept", "the record is all there will ever be", { checklist: OPEN_CHECKLIST } as Partial<NegotiationTurn>),
-    ];
-    await runGraph(stubs);
-
-    // No question can be put and no answer can ever arrive, so the verdict is
-    // the honest move and the floor stands aside.
-    expect(persistedActions(stubs)).toEqual(["outreach", "accept"]);
-    expect(parkedCount(stubs)).toBe(0);
-    expect(stubs.questionerEnqueues).toHaveLength(0);
-    expect(agentInputs).toHaveLength(2);
   });
 
   it("lets the final turn's forced verdict stand — the cap wins", async () => {

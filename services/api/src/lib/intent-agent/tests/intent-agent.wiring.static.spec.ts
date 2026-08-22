@@ -46,11 +46,11 @@ describe('intent-agent wiring', () => {
     expect(mcp).toContain('negotiatorVerdictTools');
   });
 
-  it('every park wakes the agent through the one enqueue seam, behind the principal fence', () => {
+  it('every park wakes the agent through the one enqueue seam, with no reachability fence', () => {
     const enqueue = read('src/queues/parked-question.enqueue.ts');
     expect(enqueue).toContain('routeParkedQuestionEnqueue');
     expect(enqueue).toContain('addNeedsInputEvent');
-    expect(enqueue).toContain('resolvePrincipalUnreachable');
+    expect(enqueue).not.toContain('PrincipalUnreachable');
     expect(enqueue).not.toContain('addRegenerateJob');
   });
 

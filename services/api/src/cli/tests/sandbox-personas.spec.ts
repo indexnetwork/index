@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
 
-import { isSyntheticUserEmail } from '../../lib/users/synthetic';
 import { SANDBOX_MINIMAL_PERSONAS, SANDBOX_PERSONAS, type SandboxNetworkKey, type SandboxPersona } from '../sandbox-personas';
 
 const NETWORK_KEYS: SandboxNetworkKey[] = ['stack', 'latent', 'pixel', 'launch', 'atelier', 'arena', 'syllabus', 'reps', 'tribe', 'bench'];
@@ -16,9 +15,9 @@ function assertPopulationShape(personas: SandboxPersona[], { minIntents = 3 }: {
   expect(new Set(emails).size).toBe(emails.length);
 
   for (const persona of personas) {
-    // `.test` is load-bearing: lib/users/synthetic.ts derives "principal
-    // unreachable" from it, which keeps seed agents from consulting nobody.
-    expect(isSyntheticUserEmail(persona.email)).toBe(true);
+    // RFC 2606: `.test` can never be a deliverable mailbox, so no real user
+    // can collide with a seed persona.
+    expect(persona.email.endsWith('.test')).toBe(true);
     expect(persona.premises.length).toBeGreaterThanOrEqual(4);
     expect(persona.premises.length).toBeLessThanOrEqual(6);
     expect(persona.intents.length).toBeGreaterThanOrEqual(minIntents);

@@ -17,7 +17,6 @@ import type { QuestionerEnqueueFn, QuestionerEnqueuePayload } from '@indexnetwor
 import { log } from '../lib/log';
 import { intentAgentQueue } from './intent-agent.queue';
 import type { IntentAgentNeedsInputEvent } from '../lib/intent-agent/intent-agent.types';
-import { resolvePrincipalUnreachable } from '../lib/users/synthetic';
 
 const logger = log.queue.from('ParkedQuestionEnqueue');
 
@@ -45,7 +44,6 @@ export function parkedNeedsInputEvent(input: QuestionerEnqueuePayload): IntentAg
 
 /** Injectable seams for {@link routeParkedQuestionEnqueue}; production uses the real collaborators. */
 export interface ParkedQuestionRoutingDeps {
-  principalUnreachable?: (userId: string) => Promise<boolean>;
   addNeedsInputEvent?: (event: IntentAgentNeedsInputEvent) => Promise<unknown>;
 }
 
@@ -54,13 +52,9 @@ export interface ParkedQuestionRoutingDeps {
  * parked side's IntentAgent and report the payload as handled. Everything
  * else returns false.
  *
- * The last fence for an unreachable principal, and deliberately the widest:
- * every park-path question — inflight consultation and stalled follow-up
- * alike, from the graph or from the external-agent path — passes through
- * here on its way to the agent. A question addressed to a principal nobody
- * is behind can only rot unread in a DM no one opens, so the event is
- * dropped rather than enqueued. The payload still reports as handled: it was
- * a park payload, correctly routed and correctly declined.
+ * Every park wakes the agent — reachability is not a gate here. Whether the
+ * principal will ever read the question is the agent's and the expiry's
+ * concern, not the author's.
  */
 export async function routeParkedQuestionEnqueue(
   input: QuestionerEnqueuePayload,
@@ -68,17 +62,6 @@ export async function routeParkedQuestionEnqueue(
 ): Promise<boolean> {
   const event = parkedNeedsInputEvent(input);
   if (!event) return false;
-  const principalUnreachable = deps?.principalUnreachable ?? resolvePrincipalUnreachable;
-  if (await principalUnreachable(event.userId)) {
-    logger.info('intent_agent_principal_unreachable', {
-      userId: event.userId,
-      intentId: event.intentId,
-      opportunityId: event.opportunityId,
-      mode: input.mode,
-      purpose: input.purpose,
-    });
-    return true;
-  }
   const addNeedsInputEvent = deps?.addNeedsInputEvent
     ?? ((data: IntentAgentNeedsInputEvent) => intentAgentQueue.addNeedsInputEvent(data));
   await addNeedsInputEvent(event);

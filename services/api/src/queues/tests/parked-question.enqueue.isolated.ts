@@ -3,8 +3,7 @@
  * composition site injects. Since the intent-agent collapse
  * (docs/plans/2026-08-21-holistic-intent-agent.md) a park payload wakes the
  * parked side's IntentAgent with a `negotiation_needs_input` event; every
- * retired generator family is dropped without reaching any queue, and an
- * unreachable principal's event is dropped at this last fence.
+ * retired generator family is dropped without reaching any queue.
  */
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://unused:unused@localhost:5432/unused';
 
@@ -13,7 +12,6 @@ import { afterAll, describe, expect, it, mock } from 'bun:test';
 import type { IntentAgentNeedsInputEvent } from '../../lib/intent-agent/intent-agent.types';
 
 const events: IntentAgentNeedsInputEvent[] = [];
-const unreachable = new Set<string>();
 
 mock.module('../intent-agent.queue', () => ({
   intentAgentQueue: {
@@ -22,10 +20,6 @@ mock.module('../intent-agent.queue', () => ({
       return { id: 'job-1' };
     },
   },
-}));
-
-mock.module('../../lib/users/synthetic', () => ({
-  resolvePrincipalUnreachable: async (userId: string) => unreachable.has(userId),
 }));
 
 afterAll(() => {
@@ -81,17 +75,6 @@ describe('parkedQuestionEnqueue', () => {
       { kind: 'negotiation_needs_input', userId: 'user-1', intentId: 'intent-1', opportunityId: 'opp-1', taskId: 'task-1' },
       { kind: 'negotiation_needs_input', userId: 'user-1', intentId: 'intent-1', opportunityId: 'opp-1', taskId: 'task-1' },
     ]);
-  });
-
-  it('drops the event for an unreachable principal — the last fence', async () => {
-    events.length = 0;
-    unreachable.add('user-1');
-    try {
-      await enqueueParkedQuestion(inflightPayload as never);
-    } finally {
-      unreachable.clear();
-    }
-    expect(events).toEqual([]);
   });
 
   it('drops every retired generator family without enqueuing anything', async () => {

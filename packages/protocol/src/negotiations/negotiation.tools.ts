@@ -609,12 +609,6 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
               return undefined;
             }
           },
-          // The persisted turnContext is a park-time snapshot; reachability is
-          // re-stamped from the live read the way REST pickup does, so the
-          // flag is never served stale in either direction.
-          ...(negotiationDatabase.isPrincipalUnreachable
-            ? { resolvePrincipalUnreachable: (userId: string) => negotiationDatabase.isPrincipalUnreachable!(userId) }
-            : {}),
         });
         return success(detail);
       } catch (err) {

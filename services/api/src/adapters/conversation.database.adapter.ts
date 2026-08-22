@@ -27,7 +27,6 @@ import { consultationActorSetMatchesBinding, externalConsultationCoordinatesFor 
 import { authorizeNegotiationMutationInTransaction } from '../lib/agent/negotiation-runtime-authority';
 import { isDedicatedHermesNegotiationAudience, type NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 import { digestHermesRunId, issueHermesRunCapability, parseHermesRunCapabilityBinding, verifyHermesRunCapability, type HermesRunOutcome } from '../lib/agent/hermes-negotiation-run';
-import { resolvePrincipalUnreachable } from '../lib/users/synthetic';
 
 /**
  * In-transaction read of ONE negotiation's turn history, for the locked floor
@@ -1675,46 +1674,6 @@ export class ConversationDatabaseAdapter {
       .where(eq(schema.users.id, userId))
       .limit(1);
     return row ?? null;
-  }
-
-  /**
-   * Whether the user holds a session Better Auth still honours — a `sessions`
-   * row with `expires_at` in the future. This is the `ACTIVE_SESSION_RULE`
-   * read (`unexpired`, nothing stricter) behind seed-persona reachability:
-   * sign-in writes the row, sign-out deletes it, expiry retires it.
-   *
-   * The bound is a client `Date`, not SQL `now()`. `sessions.expires_at` is a
-   * timestamp WITHOUT time zone holding UTC wall-clock (that is what the
-   * driver writes for a `Date`), so comparing it to `now()` would make
-   * Postgres read the naive column in the connection's local zone and shift
-   * every session by the server's UTC offset — east of UTC, a live session
-   * reads as expired. Binding a `Date` round-trips through the same
-   * serialization the row was written with.
-   */
-  async hasActiveSession(userId: string): Promise<boolean> {
-    const [row] = await db
-      .select({ id: schema.sessions.id })
-      .from(schema.sessions)
-      .where(and(
-        eq(schema.sessions.userId, userId),
-        gt(schema.sessions.expiresAt, new Date()),
-      ))
-      .limit(1);
-    return row !== undefined;
-  }
-
-  /**
-   * Whether this principal can be consulted at all — the host half of the
-   * negotiation graph's `isPrincipalUnreachable` port.
-   *
-   * The rule lives in `lib/users/synthetic` and this adapter is its reader:
-   * a seed persona nobody is signed in as is unreachable; a real user, or a
-   * seed persona someone is currently driving, is not. The graph receives only
-   * the boolean, which is what keeps addresses out of negotiation context and
-   * out of every prompt built from it.
-   */
-  async isPrincipalUnreachable(userId: string): Promise<boolean> {
-    return resolvePrincipalUnreachable(userId, this);
   }
 
   /**

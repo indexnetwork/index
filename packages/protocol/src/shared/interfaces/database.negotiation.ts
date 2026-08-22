@@ -250,19 +250,6 @@ export type NegotiationGraphDatabase = Pick<
     parkGeneration?: string,
   ): Promise<{ id: string; conversationId: string; state: string }>;
 
-  /**
-   * Whether this principal can be consulted at all — true when no answer can
-   * ever arrive because nobody is behind the account. The host owns the
-   * predicate (today: the RFC 2606 `.test` domains the seed CLIs create their
-   * personas on), so the protocol receives a boolean and never the address it
-   * was derived from.
-   *
-   * Optional for backward-compatible hosts. A missing implementation, or a
-   * rejected read, means REACHABLE — real users are the default, and wrongly
-   * silencing a real principal's own agent is the costlier of the two errors.
-   */
-  isPrincipalUnreachable?(userId: string): Promise<boolean>;
-
   /** Persists a negotiation outcome artifact attached to a task. */
   createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null; continuationExecution?: NegotiationContinuationExecution }): Promise<{ id: string }>;
 

@@ -20,6 +20,21 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 25.0.0 - 2026-08-21
+
+### Removed
+
+- **BREAKING: principal reachability no longer gates consultation.** A seat's
+  agent may always `ask_user` its own client; whether anyone is behind the
+  account is not the author's concern. Gone: `UserNegotiationContext.principalUnreachable`,
+  the optional `isPrincipalUnreachable` host port on `NegotiationGraphDatabase`,
+  the `principal_unreachable` ask-inadmissibility reason, the
+  `PRINCIPAL_UNREACHABLE_*` prompt rules, the init-node stamp and the
+  detail-reader / `get_negotiation` live re-stamp. Seed personas (`.test`
+  mailboxes) negotiate exactly like real users now — in the sandbox four of
+  five personas had been silenced by construction, and the question flow
+  could not be observed for them.
+
 ## 24.0.0 - 2026-08-21
 
 ### Removed

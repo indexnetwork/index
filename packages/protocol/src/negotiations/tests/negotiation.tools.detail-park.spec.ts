@@ -12,8 +12,7 @@
  * - the persisted `askUser`/`checklist` payloads are projected on the turns
  *   that carry them (an external seat cannot see dimensions or `settles`
  *   without them), while plain turns keep their prior shape;
- * - `ownUser.principalUnreachable` is re-stamped from the live read, both
- *   directions, and a non-parked negotiation renders byte-for-byte as before.
+ * - a non-parked negotiation renders byte-for-byte as before.
  */
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
@@ -135,7 +134,6 @@ function incidentDeps(overrides: {
   messages?: Array<Record<string, unknown>>;
   openQuestions?: Array<{ opportunityId: string; question: number; label: string }>;
   withHost?: boolean;
-  isPrincipalUnreachable?: (userId: string) => Promise<boolean>;
   lifecycleStatus?: string;
 } = {}) {
   const recipientUserId = overrides.recipientUserId ?? VIEWER;
@@ -151,7 +149,6 @@ function incidentDeps(overrides: {
       getOpportunityLifecyclesForNegotiations: async () => ({
         [OPPORTUNITY_ID]: { status: overrides.lifecycleStatus ?? "negotiating", acceptedByOwner: false },
       }),
-      ...(overrides.isPrincipalUnreachable ? { isPrincipalUnreachable: overrides.isPrincipalUnreachable } : {}),
     },
     ...(overrides.withHost === false ? {} : {
       negotiationListingPark: {
@@ -241,38 +238,6 @@ describe("get_negotiation — a park on the counterparty", () => {
     expect(detail.park.questionLabel).toBeUndefined();
     expect(detail.park.label).toContain("counterparty");
     expect(detail.lifecycle.connectionState).toBe("parked_awaiting_counterparty");
-  });
-});
-
-describe("get_negotiation — principal reachability is re-stamped live", () => {
-  test("a stale persisted `false` is corrected to unreachable", async () => {
-    const detail = await getDetail(incidentDeps({
-      isPrincipalUnreachable: async () => true,
-    }));
-    expect(detail.context.ownUser.principalUnreachable).toBe(true);
-  });
-
-  test("a stale persisted `true` is corrected to reachable", async () => {
-    const detail = await getDetail(incidentDeps({
-      task: parkedTask(VIEWER, {
-        turnContextExtra: {
-          sourceUser: { id: VIEWER, intents: [], profile: {}, principalUnreachable: true },
-        },
-      }),
-      isPrincipalUnreachable: async () => false,
-    }));
-    expect(detail.context.ownUser.principalUnreachable).toBe(false);
-  });
-
-  test("without a live read the persisted flag stands verbatim", async () => {
-    const detail = await getDetail(incidentDeps({
-      task: parkedTask(VIEWER, {
-        turnContextExtra: {
-          sourceUser: { id: VIEWER, intents: [], profile: {}, principalUnreachable: true },
-        },
-      }),
-    }));
-    expect(detail.context.ownUser.principalUnreachable).toBe(true);
   });
 });
 

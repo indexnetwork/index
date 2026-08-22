@@ -316,31 +316,6 @@ describe('external owner consultation eligibility', () => {
     expect(payload.context).not.toHaveProperty('draftQuestion');
   });
 
-  // An unreachable principal — a seed persona today — has nobody who could
-  // ever answer. Refused structurally, so no policy mode can admit it and the
-  // pickup path never advertises the move either.
-  it.each(['off', 'shadow', 'on'] as const)(
-    'refuses an unreachable recipient in %s mode',
-    (policyMode) => {
-      const eligible = assessExternalConsultationEligibility(fixture({ policyMode }));
-      expect(eligible.structuralEligible).toBe(true);
-
-      const refused = assessExternalConsultationEligibility(fixture({
-        policyMode,
-        recipientPrincipalUnreachable: true,
-      }));
-      expect(refused.structuralEligible).toBe(false);
-      expect(refused.eligible).toBe(false);
-    },
-  );
-
-  it('leaves a reachable recipient exactly as before', () => {
-    const stated = assessExternalConsultationEligibility(fixture({
-      policyMode: 'on',
-      recipientPrincipalUnreachable: false,
-    }));
-    expect(stated).toEqual(assessExternalConsultationEligibility(fixture({ policyMode: 'on' })));
-  });
 });
 
 describe('consultation claim and layering source invariants', () => {

@@ -154,42 +154,6 @@ const PRE_CONTACT_ASK_USER_RULE = `
 - Use it when ONE fact you do not hold is what stands between you and the decision, and only {userName} holds it: how their own criteria bound this search, what they meant by a term in their own signal, whether a strong candidate just outside the literal wording is in scope. Ask about the SIGNAL's scope, not about this candidate — their answer has to hold for the next candidate too.
 - Do NOT use it when the evidence in front of you already decides: if this candidate plainly does not satisfy what {userName} asked for, pass, and pass silently. A contradiction is yours to judge; making {userName} confirm it spends their attention on a decision you could already make.`;
 
-/**
- * The honest replacement for `ASK_USER_RULE` when the acting principal cannot
- * be consulted (`ownUser.principalUnreachable`). Rendered instead of it, never
- * beside it: the grant is withheld on the same condition, so the action is
- * absent from both the prompt and the generation schema, and a rule describing
- * a move the schema cannot express would only invite the agent to thrash
- * against a refusal it never sees explained.
- *
- * It says what is true and nothing more: there is no channel here. It must
- * NEVER say the principal is synthetic, seeded, or a test account. The
- * counterparty's own user can read this negotiation's turns, and test framing
- * leaking into a transcript would be both a disclosure and a lie about who
- * they are talking to. "Cannot be consulted" is the whole truth the agent
- * needs to act correctly.
- *
- * The second half is the anti-thrash half. Without it the seat treats the
- * missing channel as a dead end and reaches for a terminal action, which
- * inverts the verdict law: an unknown is not a conflict, and the first
- * conversation is the cheaper next experiment.
- */
-const PRINCIPAL_UNREACHABLE_RULE = `
-- YOU CANNOT CONSULT {userName} DURING THIS NEGOTIATION. No question can be put to them here and no answer can arrive, so every decision on this turn is yours to make on the record you already hold. That record — their signal and intents, their premises, their profile, and anything of theirs already quoted in your context — IS their knowledge for this negotiation. Read it as their answer instead of waiting for one.
-- Never stall, park, or defer for their input, and never route a question meant for {userName} to the other side's agent — that reaches the wrong party and settles nothing. If the fact you want belongs to the COUNTERPARTY, "question" is still the right action and is unaffected by any of this.
-- WHEN THE COUNTERPARTY ASKS YOU SOMETHING ONLY {userName} COULD SETTLE AND YOUR RECORD DOES NOT SETTLE IT, answer with the limit of the record: "{userName}'s signal says X; it does not specify further" is a COMPLETE and honest answer, and the other side is free to treat that dimension as unknown. Say what the record does hold before you say what it does not. Never repeat, mirror, or hand their question back to them, and never invent an answer the record does not hold — an unanswerable question is answered by naming its limit, not by returning it.`;
-
-/**
- * Appended to `PRINCIPAL_UNREACHABLE_RULE` under the checklist protocol, where
- * "a dimension that is {userName}'s own to settle" is vocabulary the prompt
- * has actually established. Mirrors `ASK_USER_CHECKLIST_RULE`'s placement for
- * the same reason: it names checklist fields, so it renders only where they
- * exist.
- */
-const PRINCIPAL_UNREACHABLE_CHECKLIST_RULE = `
-- A checklist dimension that would be {userName}'s own to settle is resolved from that record where the record settles it, and carried as an open unknown where it does not. An unknown is not a conflict: it never ends a negotiation on its own, "pass" stays reserved for a genuine conflict, and where the record leaves a question open the first conversation is the cheaper next experiment.
-- If the counterparty asks about such a dimension, name it as an open unknown to them in plain words — what {userName}'s record does say, and that it does not go further — and let them score it unknown on their own checklist. That is a real contribution to the exchange; echoing their question back is not.`;
-
 /** v2 counterparty seat: receiving stance — acceptance is this seat's decision alone. */
 const V2_COUNTERPARTY_RULES = `- You hold the RECEIVING seat: the other side reached out to {userName}. Whether to accept is YOUR seat's decision alone.
 - Evaluate the initiator's arguments. Either:
@@ -439,11 +403,7 @@ export class IndexNegotiator {
     const version: NegotiationProtocolVersion = input.protocolVersion ?? "v1";
     const seat: NegotiationSeat = input.seat ?? (input.isDiscoverer ? "initiator" : "counterparty");
     const isFinalTurn = input.isFinalTurn ?? false;
-    // A principal nobody can reach has no consultation to grant. Defense in
-    // depth on top of the graph, which already withholds the grant on the same
-    // fact — mirroring the v2/final-turn guards on this same line.
-    const principalUnreachable = input.ownUser.principalUnreachable === true;
-    const canAskUser = input.canAskUser === true && version === "v2" && !isFinalTurn && !principalUnreachable;
+    const canAskUser = input.canAskUser === true && version === "v2" && !isFinalTurn;
     // Deadlock→bargaining stance (IND-428): v2 only — defense in depth on top
     // of the graph-side gating, mirroring the canAskUser guard above.
     const bargainingActive = input.bargaining != null && version === "v2";
@@ -495,9 +455,7 @@ export class IndexNegotiator {
           + ASK_USER_CHECKLIST_RULE
           + (preContactConsult ? PRE_CONTACT_ASK_USER_RULE + PRE_CONTACT_CONSULT_RULE : "")
           + (clientDm.length > 0 ? ASK_USER_DM_GROUNDING_RULE : "")
-        : principalUnreachable && version === "v2"
-          ? PRINCIPAL_UNREACHABLE_RULE + PRINCIPAL_UNREACHABLE_CHECKLIST_RULE
-          : "");
+        : "");
     const finalTurnInstruction = input.isFinalTurn
       ? (version === "v2"
           ? (seat === "initiator"
@@ -623,7 +581,6 @@ ${querySatisfiedRule(otherName, userName)}`
       checklist: input.checklist ?? [],
       questionsSpent: input.questionsSpent ?? 0,
       ...(input.askedTopics ? { askedTopics: input.askedTopics } : {}),
-      ...(principalUnreachable ? { principalUnreachable: true } : {}),
     });
 
     const privateConsultationContext = input.privateConsultation

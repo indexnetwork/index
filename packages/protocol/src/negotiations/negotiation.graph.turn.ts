@@ -161,17 +161,9 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // pre-contact consult included. Under `advocate` the budget is 1, which is
     // exactly the legacy `hasPriorAskUser` ration expressed as a count.
     const questionBudget = configuredQuestionBudgetPerPrincipal();
-    // A principal nobody can reach cannot be consulted: no question can be put
-    // to them and no answer can ever arrive, so a park here would wait out the
-    // full consultation expiry for nothing and the authored question would rot
-    // unread. Mechanically a question budget of zero — and strictly per seat,
-    // read off the ACTING side's own context, so a match between a reachable
-    // and an unreachable principal leaves the reachable one's budget intact.
-    const principalUnreachable = ownUser.principalUnreachable === true;
     const askUserWiringAvailable =
       version === 'v2'
       && !isFinalTurn
-      && !principalUnreachable
       && !!deps.questionerEnqueue
       && !!deps.timeoutQueue?.enqueueAskUserExpiry
       && !!state.opportunityId
@@ -200,7 +192,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       askUserEligibility: {
         versionV2: version === 'v2',
         nonFinal: !isFinalTurn,
-        principalReachable: !principalUnreachable,
         questionerWired: !!deps.questionerEnqueue,
         expiryWired: !!deps.timeoutQueue?.enqueueAskUserExpiry,
         opportunityBound: !!state.opportunityId,
@@ -741,34 +732,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     ): NegotiationTurn => {
       if (candidate.action !== 'ask_user') return candidate;
 
-      // An unreachable principal is refused BEFORE the generic coercion below
-      // so the trace names the condition that actually bound. The generic path
-      // logs only "unavailable", and the five-part rule further down is never
-      // reached once the action has been coerced — between them the record
-      // would have said nothing at all about why, or worse, blamed a spent
-      // budget.
-      if (principalUnreachable) {
-        turnLog.info('negotiation_ask_inadmissible', {
-          taskId: state.taskId,
-          opportunityId: state.opportunityId || undefined,
-          seat,
-          reason: 'principal_unreachable' satisfies AskInadmissibility,
-          dimension: candidate.askUser?.dimension,
-          questionsSpent,
-          questionBudget,
-          ...(opts.reissue && { reissue: true }),
-        });
-        emitWide({
-          type: 'negotiation_ask_inadmissible',
-          opportunityId: state.opportunityId,
-          negotiationConversationId: state.conversationId,
-          turnIndex: state.turnCount,
-          actor: isSource ? 'source' : 'candidate',
-          reason: 'principal_unreachable',
-        });
-        return { ...candidate, action: fallbackActionFor(version, seat, isFinalTurn) };
-      }
-
       // Policy admission for a RE-ISSUED ask. The eligibility above was
       // computed from the refused draft's action — typically a terminal
       // verdict, which the policy excludes outright — so without this an ask
@@ -823,7 +786,6 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           answerhood: candidate.askUser?.answerhood,
           askedDimensions,
           questionsSpent,
-          ...(principalUnreachable ? { principalUnreachable: true } : {}),
         });
         if (!admissibility.admissible) {
           turnLog.info('negotiation_ask_inadmissible', {

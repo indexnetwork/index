@@ -9,9 +9,8 @@
  * deliberately leaves some obvious dimension unsettled (budget, timeline,
  * remote/in-person, …) for the question flow to ask about.
  *
- * Every email lives on a `.test` domain. `lib/users/synthetic.ts` derives
- * "principal unreachable" from that TLD; introducing any other domain would make
- * seed agents consult a principal nobody is behind.
+ * Every email lives on a `.test` domain (RFC 2606): no address under it can
+ * ever be a deliverable mailbox, so no real user can collide with a persona.
  */
 export type SandboxNetworkKey =
   | 'stack'

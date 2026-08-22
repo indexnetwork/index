@@ -290,43 +290,6 @@ describe('ConversationDatabaseAdapter', () => {
     }, 10000);
   });
 
-  describe('isPrincipalUnreachable', () => {
-    it('treats a seed persona as unreachable only while nobody holds an unexpired session', async () => {
-      const run = crypto.randomUUID();
-      const seedId = `reach-seed-${run}`;
-      const realId = `reach-real-${run}`;
-      await db.insert(schema.users).values([
-        { id: seedId, email: `${seedId}@index-network.test`, name: 'Seed Persona' },
-        { id: realId, email: `${realId}@example.org`, name: 'Real Person' },
-      ]);
-      createdUserIds.push(seedId, realId);
-
-      // Nobody signed in: the #1459 default.
-      expect(await adapter.isPrincipalUnreachable(seedId)).toBe(true);
-      expect(await adapter.isPrincipalUnreachable(realId)).toBe(false);
-
-      // An expired session is no one at the keyboard.
-      const sessionId = `reach-session-${run}`;
-      await db.insert(schema.sessions).values({
-        id: sessionId,
-        token: `reach-token-${run}`,
-        userId: seedId,
-        expiresAt: new Date(Date.now() - 60_000),
-      });
-      expect(await adapter.isPrincipalUnreachable(seedId)).toBe(true);
-
-      // An unexpired session is someone driving the persona.
-      await db.update(schema.sessions)
-        .set({ expiresAt: new Date(Date.now() + 60 * 60_000) })
-        .where(eq(schema.sessions.id, sessionId));
-      expect(await adapter.isPrincipalUnreachable(seedId)).toBe(false);
-
-      // Sign-out deletes the row; the persona goes quiet again.
-      await db.delete(schema.sessions).where(eq(schema.sessions.id, sessionId));
-      expect(await adapter.isPrincipalUnreachable(seedId)).toBe(true);
-    }, 30000);
-  });
-
   describe('getOpportunityLifecyclesForNegotiations', () => {
     it('omits unrelated opportunities and projects only owner-scoped lifecycle evidence', async () => {
       const suffix = `${Date.now()}-${crypto.randomUUID()}`;

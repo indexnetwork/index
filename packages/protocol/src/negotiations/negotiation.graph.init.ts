@@ -18,7 +18,7 @@ import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
 import { expectedNegotiationSpeaker } from "./negotiation.expected-speaker.js";
 import { readNegotiationMessages } from "./negotiation.scope.js";
 import { buildSeededAttribution } from './negotiation.attribution.js';
-import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolvePrincipalUnreachable, resolveTaskAttribution, retrieveMemory, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
+import { buildAttributedDialogue, finalizeLog, hasPriorAskUser, initLog, memoryQueryText, negotiateCandidatesLog, resolveTaskAttribution, retrieveMemory, turnLog, turnsFromMessages } from "./negotiation.graph.shared.js";
 import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
 
 
@@ -262,31 +262,11 @@ export async function initNode(state: NegotiationState, deps: NegotiationGraphDe
         )
       : null;
 
-    // --- Principal reachability: resolved once, for both seats, here ---
-    // Init is the single choke point every negotiation passes through, whoever
-    // built the two contexts (ambient discovery, run-existing, chat, MCP), so
-    // stamping it here reaches all of them — and reaches the persisted
-    // `turnContext` too, since the turn node writes that from this state.
-    //
-    // Each seat is resolved independently: unreachability is a fact about one
-    // principal, never about the negotiation, and a seed-vs-real match must
-    // leave the real side's own consultation budget completely untouched.
-    // An explicit `true` from the caller wins over the lookup; anything else
-    // means reachable. Both seats unreachable — a seed-vs-seed match, which is
-    // the common shape in sandbox discovery — is a negotiation with zero
-    // consultations, decided by both agents from the record. That is the
-    // intended behaviour, not an error condition.
-    const [sourceUnreachable, candidateUnreachable] = await Promise.all([
-      resolvePrincipalUnreachable(deps, state.sourceUser),
-      resolvePrincipalUnreachable(deps, state.candidateUser),
-    ]);
 
     return {
       conversationId: conversation.id,
       taskId: task.id,
       currentSpeaker,
-      ...(sourceUnreachable ? { sourceUser: { ...state.sourceUser, principalUnreachable: true } } : {}),
-      ...(candidateUnreachable ? { candidateUser: { ...state.candidateUser, principalUnreachable: true } } : {}),
       turnCount: 0,
       maxTurns,
       isContinuation,

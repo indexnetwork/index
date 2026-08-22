@@ -500,25 +500,6 @@ describe("the prompt gives the corner its missing move", () => {
     return { system: agent.systemPrompts[0], user: agent.userMessages[0] };
   }
 
-  it("tells an unreachable principal's agent to state the limit of the record instead of echoing", async () => {
-    const { system } = await promptFor({
-      ownUser: { ...agentBaseInput.ownUser, principalUnreachable: true },
-    });
-    // The exact corner the live failure hit: the counterparty asked something
-    // only the client could settle, and the record does not settle it.
-    expect(system).toContain("WHEN THE COUNTERPARTY ASKS YOU SOMETHING ONLY Alice COULD SETTLE AND YOUR RECORD DOES NOT SETTLE IT");
-    expect(system).toContain("is a COMPLETE and honest answer");
-    expect(system).toContain("Never repeat, mirror, or hand their question back to them");
-    // Under the checklist protocol the same move is stated in checklist terms.
-    expect(system).toContain("name it as an open unknown to them in plain words");
-  });
-
-  it("never renders the rule for a reachable principal", async () => {
-    const { system } = await promptFor({ canAskUser: false });
-    expect(system).not.toContain("YOU CANNOT CONSULT");
-    expect(system).not.toContain("WHEN THE COUNTERPARTY ASKS YOU SOMETHING ONLY");
-  });
-
   it("quotes the repeated text back on a re-issue, and offers moves rather than a verdict", async () => {
     const { user } = await promptFor({ antiEcho: { repeatedMessage: THE_QUESTION } });
     expect(user).toContain("REPEATED A MESSAGE ALREADY IN THIS NEGOTIATION, WORD FOR WORD");

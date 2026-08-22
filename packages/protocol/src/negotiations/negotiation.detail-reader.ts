@@ -66,13 +66,6 @@ export interface AuthorizedNegotiationDetailReaderInput {
    * whose side, it just cannot name the question's number.
    */
   readOpenQuestion?: (opportunityId: string) => Promise<ListingOpenQuestion | undefined>;
-  /**
-   * Live principal reachability for the caller. The persisted `turnContext`
-   * is a park-time snapshot; the reachability flag must never be served stale
-   * (the same re-stamp REST pickup applies). Optional: without it the
-   * persisted context is returned verbatim.
-   */
-  resolvePrincipalUnreachable?: (userId: string) => Promise<boolean>;
 }
 
 /**
@@ -90,32 +83,16 @@ export async function readAuthorizedNegotiationDetail(
 
   // These independent reads must stay concurrent: message/artifact latency must
   // not delay lifecycle evidence, and missing lifecycle evidence remains fail-open.
-  // The reachability read rides along; a failed read resolves to null and the
-  // persisted context is served verbatim rather than failing the detail.
-  const [messages, artifacts, opportunityLifecycles, livePrincipalUnreachable] = await Promise.all([
+  const [messages, artifacts, opportunityLifecycles] = await Promise.all([
     input.readMessages(task.conversationId),
     input.readArtifacts(task.id),
     input.readLifecycleEvidence(lifecycleOpportunityId ? [lifecycleOpportunityId] : [], callerUserId),
-    input.resolvePrincipalUnreachable
-      ? input.resolvePrincipalUnreachable(callerUserId).catch(() => null)
-      : Promise.resolve<boolean | null>(null),
   ]);
 
-  // Persisted turnContext, projected into the caller's perspective — with the
-  // reachability flag re-stamped from the live read, both directions: a task
-  // parked before reachability was persisted carries nothing, and a task whose
-  // principal became reachable since must not keep advertising the opposite.
-  // Absent a live read, the persisted flag stands verbatim.
-  const persistedOwnUser = metadata.turnContext
+  // Persisted turnContext, projected into the caller's perspective.
+  const ownUser = metadata.turnContext
     ? (isSource ? metadata.turnContext.sourceUser : metadata.turnContext.candidateUser)
     : null;
-  const ownUser = persistedOwnUser === null || livePrincipalUnreachable === null
-    ? persistedOwnUser
-    : livePrincipalUnreachable
-      ? { ...persistedOwnUser, principalUnreachable: true }
-      : persistedOwnUser.principalUnreachable
-        ? { ...persistedOwnUser, principalUnreachable: false }
-        : persistedOwnUser;
   const negotiationContext = metadata.turnContext && ownUser
     ? {
         ownUser,
