@@ -7,6 +7,53 @@
 type NegotiationCounterpartyBinding =
   | { kind: 'intent'; id: string }
   | { kind: 'premise'; id: string };
+
+/**
+ * Locally aligned mirrors of the protocol's `NegotiationTaskMetadata` /
+ * `NegotiationTaskRow` (see `NegotiationCounterpartyBinding` above for why
+ * these are duck-typed mirrors, not imports).
+ */
+type NegotiationTaskMetadataMirror = {
+  type: 'negotiation';
+  opportunityId: string;
+  sourceUserId: string;
+  candidateUserId: string;
+  initiatorUserId: string;
+  networkId: string;
+  intentId: string;
+  round: number;
+  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown } | null;
+};
+
+type NegotiationTaskRowMirror = {
+  id: string;
+  conversationId: string;
+  state: 'working' | 'paused' | 'completed';
+  brief: string;
+  metadata: NegotiationTaskMetadataMirror;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function toNegotiationTaskRow(row: {
+  id: string;
+  conversationId: string;
+  state: string;
+  brief: string | null;
+  metadata: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}): NegotiationTaskRowMirror {
+  return {
+    id: row.id,
+    conversationId: row.conversationId,
+    state: row.state as NegotiationTaskRowMirror['state'],
+    brief: row.brief ?? '',
+    metadata: row.metadata as NegotiationTaskMetadataMirror,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
 import { projectOwnerScreenDecision } from './negotiation-lifecycle.projection';
 import { selectRepresentedNegotiationSession } from './negotiation-session-rollup.projection';
 import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
@@ -4254,44 +4301,185 @@ export class ConversationDatabaseAdapter {
       }]));
   }
 
-  /**
-   * Looks up the negotiation task attached to an opportunity, preferring the
-   * most-recently-created row if multiple exist (shouldn't, but defensive).
-   *
-   * @param opportunityId - Opportunity id stored on task metadata
-   * @returns The task record or null
-   */
-  async getNegotiationTaskForOpportunity(opportunityId: string): Promise<{
-    id: string;
+  // ─────────────────────────────────────────────────────────────────────────
+  // NegotiationGraph (rewrite, #1494) — implements the protocol's
+  // `NegotiationGraphDatabase` port by duck typing (adapters must not import
+  // from `@indexnetwork/protocol`; see the file-top note on
+  // `NegotiationCounterpartyBinding`). A negotiation is one `tasks` row, its
+  // own `conversations` row (never pair-shared), and its own messages —
+  // there is no continuation chain any more.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Creates the negotiation's own conversation — never a pair-shared DM. */
+  async createNegotiationConversation(sourceUserId: string, candidateUserId: string): Promise<{ id: string }> {
+    const conversation = await this.createConversation([
+      { participantId: sourceUserId, participantType: 'agent' },
+      { participantId: candidateUserId, participantType: 'agent' },
+    ]);
+    return { id: conversation.id };
+  }
+
+  /** Creates the negotiation task. Called once, at open. */
+  async createNegotiationTask(input: {
     conversationId: string;
-    state: string;
-    metadata: Record<string, unknown> | null;
-    createdAt: Date;
-    updatedAt: Date;
-  } | null> {
-    const rows = await db
+    brief: string;
+    metadata: NegotiationTaskMetadataMirror;
+  }): Promise<NegotiationTaskRowMirror> {
+    const [row] = await db
+      .insert(schema.tasks)
+      .values({
+        conversationId: input.conversationId,
+        state: 'working',
+        brief: input.brief,
+        metadata: input.metadata,
+      })
+      .returning();
+    return toNegotiationTaskRow(row);
+  }
+
+  /**
+   * The one open (non-completed) negotiation task for an opportunity, if any.
+   */
+  async getNegotiationTaskForOpportunity(opportunityId: string): Promise<NegotiationTaskRowMirror | null> {
+    const [row] = await db
       .select()
       .from(schema.tasks)
       .where(
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
           sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+          ne(schema.tasks.state, 'completed'),
         ),
       )
       .orderBy(desc(schema.tasks.createdAt))
       .limit(1);
-
-    const [row] = rows;
     if (!row) return null;
+    return toNegotiationTaskRow(row);
+  }
 
-    return {
-      id: row.id,
-      conversationId: row.conversationId,
-      state: row.state as string,
-      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
+  async getNegotiationTask(taskId: string): Promise<NegotiationTaskRowMirror | null> {
+    const [row] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).limit(1);
+    if (!row) return null;
+    return toNegotiationTaskRow(row);
+  }
+
+  /** Every negotiation task where the given user is source or candidate. */
+  async getNegotiationTasksForUser(userId: string): Promise<NegotiationTaskRowMirror[]> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          or(
+            sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
+            sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
+          ),
+        ),
+      )
+      .orderBy(desc(schema.tasks.createdAt));
+    return rows.map(toNegotiationTaskRow);
+  }
+
+  /**
+   * Transitions state and, for `paused`, records the reason/payload. Merges
+   * into metadata; other keys are untouched.
+   */
+  async updateNegotiationTaskState(
+    taskId: string,
+    state: 'working' | 'paused' | 'completed',
+    pause?: NegotiationTaskMetadataMirror['pause'],
+  ): Promise<NegotiationTaskRowMirror> {
+    const [current] = await db
+      .select({ metadata: schema.tasks.metadata })
+      .from(schema.tasks)
+      .where(eq(schema.tasks.id, taskId))
+      .limit(1);
+    const currentMetadata = (current?.metadata as NegotiationTaskMetadataMirror | null) ?? undefined;
+    const nextMetadata = pause !== undefined ? { ...currentMetadata, pause: pause ?? null } : currentMetadata;
+
+    const [row] = await db
+      .update(schema.tasks)
+      .set({ state, ...(nextMetadata !== undefined ? { metadata: nextMetadata } : {}), updatedAt: new Date() })
+      .where(eq(schema.tasks.id, taskId))
+      .returning();
+    return toNegotiationTaskRow(row);
+  }
+
+  /** Overwrites the brief at resume. */
+  async setNegotiationBrief(taskId: string, brief: string): Promise<void> {
+    await db.update(schema.tasks).set({ brief, updatedAt: new Date() }).where(eq(schema.tasks.id, taskId));
+  }
+
+  /** Persists one turn. */
+  async createNegotiationMessage(input: {
+    conversationId: string;
+    taskId: string;
+    senderId: string;
+    parts: unknown[];
+  }) {
+    return this.createMessage({
+      conversationId: input.conversationId,
+      senderId: input.senderId,
+      role: 'agent',
+      parts: input.parts,
+      taskId: input.taskId,
+    });
+  }
+
+  /** This negotiation's own turns, oldest first. */
+  async getNegotiationMessages(taskId: string): Promise<Array<{
+    id: string;
+    senderId: string;
+    parts: unknown[];
+    createdAt: Date;
+  }>> {
+    const rows = await db
+      .select({
+        id: schema.messages.id,
+        senderId: schema.messages.senderId,
+        parts: schema.messages.parts,
+        createdAt: schema.messages.createdAt,
+      })
+      .from(schema.messages)
+      .where(eq(schema.messages.taskId, taskId))
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+    return rows.map((r) => ({ ...r, parts: (r.parts as unknown[]) ?? [] }));
+  }
+
+  /** Persists the resolve outcome artifact. */
+  async createNegotiationOutcomeArtifact(taskId: string, outcome: { verdict: 'pending' | 'reject'; reasoning?: string }): Promise<void> {
+    await db.insert(schema.artifacts).values({
+      taskId,
+      name: 'negotiation_outcome',
+      parts: [{ kind: 'data', data: outcome }],
+    });
+  }
+
+  /** Bumps `intents.negotiation_round` for `intentId` and returns the new value. Called once per kickoff. */
+  async bumpIntentNegotiationRound(intentId: string): Promise<number> {
+    const [row] = await db
+      .update(schema.intents)
+      .set({ negotiationRound: sql`${schema.intents.negotiationRound} + 1` })
+      .where(eq(schema.intents.id, intentId))
+      .returning({ negotiationRound: schema.intents.negotiationRound });
+    return row?.negotiationRound ?? 0;
+  }
+
+  /** Count of this intent's round-`round` negotiations not yet `paused` or `completed`. */
+  async countActiveNegotiationsForRound(intentId: string, round: number): Promise<number> {
+    const [row] = await db
+      .select({ value: count() })
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'intentId' = ${intentId}`,
+          sql`(${schema.tasks.metadata}->>'round')::int = ${round}`,
+          eq(schema.tasks.state, 'working'),
+        ),
+      );
+    return row?.value ?? 0;
   }
 
   /**
@@ -4430,55 +4618,6 @@ export class ConversationDatabaseAdapter {
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, conversationId))
       .orderBy(asc(schema.messages.createdAt));
-
-    return rows.map((r) => ({
-      ...r,
-      parts: (r.parts as unknown[]) ?? [],
-    }));
-  }
-
-  /**
-   * Gets the messages belonging to ONE negotiation, ordered by creation time.
-   *
-   * Keyed on opportunity rather than task: an `ask_user` pause parks its task
-   * and resumes into a pre-claimed successor, so a single negotiation spans
-   * several tasks. Messages with no `taskId` — or whose task carries no
-   * opportunityId — belong to no negotiation and are excluded; they remain
-   * visible through `getMessagesForConversation` as context.
-   *
-   * Served by `tasks_metadata_opportunity_id_idx` (partial, on
-   * `metadata->>'opportunityId'` where type = negotiation) and
-   * `messages_task_id_idx`.
-   *
-   * @param opportunityId - The negotiation's opportunity
-   * @returns Array of message records
-   */
-  async getNegotiationMessages(opportunityId: string): Promise<Array<{
-    id: string;
-    senderId: string;
-    role: 'user' | 'agent';
-    parts: unknown[];
-    createdAt: Date;
-    taskId?: string | null;
-  }>> {
-    const rows = await db
-      .select({
-        id: schema.messages.id,
-        senderId: schema.messages.senderId,
-        role: schema.messages.role,
-        parts: schema.messages.parts,
-        createdAt: schema.messages.createdAt,
-        taskId: schema.messages.taskId,
-      })
-      .from(schema.messages)
-      .innerJoin(schema.tasks, eq(schema.messages.taskId, schema.tasks.id))
-      .where(
-        and(
-          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-          sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
-        ),
-      )
-      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 
     return rows.map((r) => ({
       ...r,

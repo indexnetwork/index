@@ -21,6 +21,7 @@ export const taskStateEnum = pgEnum('task_state', [
   'auth_required',
   'waiting_for_agent',
   'claimed',
+  'paused',
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,6 +89,12 @@ export const tasks = pgTable(
     statusMessage: jsonb('status_message'),
     statusTimestamp: timestamp('status_timestamp', { withTimezone: true }),
     metadata: jsonb('metadata'),
+    /**
+     * NegotiationGraph's per-negotiation brief — the one thing IS-A writes at
+     * kickoff and resume (design doc 2026-08-23). Unused by non-negotiation
+     * task rows.
+     */
+    brief: text('brief'),
     extensions: jsonb('extensions'),
     claimedByAgentId: text('claimed_by_agent_id'),
     claimedAt: timestamp('claimed_at', { withTimezone: true }),
