@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HermesNegotiationResponseSchema, NegotiationConsultationReasonSchema } from '@indexnetwork/protocol';
+import { HermesNegotiationResponseSchema, NegotiationAuthoredTurnSchema } from '@indexnetwork/protocol';
 
 import { AuthGuard, authorizeNegotiationRespondPrincipal, OwnerControlGuard, SessionOnlyGuard, requireNegotiationCredentialPrincipal, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
@@ -10,7 +10,7 @@ import { AgentTestMessageService } from '../services/agent-test-message.service'
 import { agentService } from '../services/agent.service';
 import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedError, SeatViolationError } from '../services/negotiation-polling.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
-import { parseFiniteLimit, pickupNegotiationAtControllerBoundary, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
+import { parseFiniteLimit, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
 import { readHermesRunHeaders } from '../lib/agent/hermes-negotiation-run';
 import { isDedicatedHermesNegotiationAudience } from '../lib/agent/hermes-credential';
 import { RuntimeDomainError } from '../lib/agent/runtime-errors';
@@ -67,22 +67,11 @@ const confirmOpportunityDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
 });
 
-// The polling service enforces the caller's seat subset (wrong-seat action → 400).
-const respondNegotiationSchema = z.object({
-  action: z.enum(['accept', 'counter', 'question', 'outreach', 'withdraw', 'decline']),
-  message: z.string().nullable().optional(),
-  assessment: z.object({
-    reasoning: z.string(),
-    suggestedRoles: z.object({
-      ownUser: z.enum(['agent', 'patient', 'peer']),
-      otherUser: z.enum(['agent', 'patient', 'peer']),
-    }),
-  }),
-});
-
-const consultNegotiationSchema = z.object({
-  reason: NegotiationConsultationReasonSchema,
-}).strict();
+// The graph enforces the caller's seat (wrong-seat turn → 400 via
+// SeatViolationError). `NegotiationAuthoredTurnSchema` is what an internal or
+// external agent may submit for its own side — never `counterparty_silent`,
+// which is system-only (fired by the timeout queue).
+const respondNegotiationSchema = NegotiationAuthoredTurnSchema;
 
 function jsonError(error: string, status: number) {
   return Response.json({ error }, { status });
@@ -118,7 +107,7 @@ function errorStatus(err: unknown, fallback = 400): number {
   return fallback;
 }
 
-type NegotiationControllerOperation = 'pickup' | 'respond' | 'consult';
+type NegotiationControllerOperation = 'respond';
 
 function negotiationErrorResponse(
   err: unknown,
@@ -458,40 +447,15 @@ export class AgentController {
     }
   }
 
-  @Post('/:id/negotiations/pickup')
-  @UseGuards(AuthGuard)
-  async pickupNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    try {
-      // Pickup linearizes exact runtime authority, task outcome, and heartbeat
-      // in the polling adapter's one owner-locked transaction. The hermetic
-      // controller seam has no independent heartbeat writer.
-      const outcome = await pickupNegotiationAtControllerBoundary({
-        request: req,
-        agentId,
-        ownerId: user.id,
-        resolveAgentPrincipal: this.resolveAgentPrincipal,
-        negotiations: this.negotiations,
-      });
-      if (outcome.kind === 'forbidden') {
-        throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
-      }
-      if (outcome.kind === 'empty') {
-        return new Response(null, { status: 204 });
-      }
-      return Response.json(outcome.value);
-    } catch (err) {
-      return negotiationErrorResponse(err, {
-        agentId,
-        operation: 'pickup',
-        stage: 'mutation',
-      });
-    }
-  }
+  // Negotiation pickup (claim a turn to work on) is retired whole-cloth by the
+  // negotiation-graph rewrite (#1494, docs/plans/2026-08-23-personal-agent-
+  // and-negotiation-graphs.md): a negotiation stays `working` until it pauses
+  // or resolves — it is never claimed into a distinct state, so there is
+  // nothing left to pick up. Redesigning external-agent dispatch against the
+  // new working-only lifecycle is out of scope for this PR (an explicit open
+  // item); this route is deleted rather than kept as a dead stub, since
+  // there is no longer a meaningful request/response shape for it. State
+  // this break in the PR.
 
   @Post('/:id/negotiations/:negotiationId/respond')
   @UseGuards(RateLimit('write'), AuthGuard)
@@ -524,14 +488,7 @@ export class AgentController {
         }
         const body = await parseBody(req, HermesNegotiationResponseSchema);
         if (body instanceof Response) return body;
-        return Response.json(await this.negotiations.respondHermes(
-          agentId,
-          user.id,
-          negotiationId,
-          body,
-          principal,
-          { runId: runHeaders.runId, capability: runHeaders.capability, outcome: 'responded' },
-        ));
+        return Response.json(await this.negotiations.respondHermes(agentId, user.id, negotiationId, body, principal));
       }
       const body = await parseBody(req, respondNegotiationSchema);
       if (body instanceof Response) return body;
@@ -547,56 +504,16 @@ export class AgentController {
     }
   }
 
-  @Post('/:id/negotiations/:negotiationId/consult')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async consultNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    const negotiationId = params?.negotiationId;
-    if (!agentId || !negotiationId) {
-      return jsonError('Agent ID and negotiation ID are required', 400);
-    }
-
-    try {
-      if (!await authorizeNegotiationRespondPrincipal(req, agentId, this.resolveAgentPrincipal)) {
-        throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
-      }
-    } catch (err) {
-      return negotiationErrorResponse(err, {
-        agentId,
-        negotiationId,
-        operation: 'consult',
-        stage: 'authorization',
-      });
-    }
-
-    const body = await parseBody(req, consultNegotiationSchema);
-    if (body instanceof Response) return body;
-    try {
-      const principal = requireNegotiationCredentialPrincipal(req);
-      const dedicatedHermes = isDedicatedHermesNegotiationAudience(principal.audience);
-      const runHeaders = dedicatedHermes ? readHermesRunHeaders(req) : null;
-      if (dedicatedHermes && !runHeaders?.capability) {
-        throw new UnauthorizedError('Hermes negotiation mutation requires its run-bound capability');
-      }
-      return Response.json(await this.negotiations.consult(
-        agentId,
-        user.id,
-        negotiationId,
-        body,
-        principal,
-        runHeaders?.capability
-          ? { runId: runHeaders.runId, capability: runHeaders.capability, outcome: 'consulted' }
-          : undefined,
-      ));
-    } catch (err) {
-      return negotiationErrorResponse(err, {
-        agentId,
-        negotiationId,
-        operation: 'consult',
-        stage: 'mutation',
-      });
-    }
-  }
+  // Owner consultation (pausing an exact external claim to route a
+  // privacy-minimal question through the Questioner/expiry/continuation
+  // lifecycle) is retired whole-cloth by the negotiation-graph rewrite
+  // (#1494): `NegotiationPollingService.consult` and the park-settlement
+  // machinery behind it are gone. A negotiator that cannot continue without
+  // the principal now pauses `needs_principal` instead — see
+  // docs/plans/2026-08-23-personal-agent-and-negotiation-graphs.md. This
+  // route is deleted rather than kept as a dead stub, since there is no
+  // longer a meaningful request/response shape for it. State this break in
+  // the PR.
 
   @Post('/:id/test-messages')
   @UseGuards(RateLimit('write'), AuthGuard)

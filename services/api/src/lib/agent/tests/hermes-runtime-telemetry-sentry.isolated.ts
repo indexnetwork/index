@@ -19,7 +19,6 @@ mock.module('@sentry/bun', () => ({
 }));
 
 const { HermesRuntimeTelemetry } = await import('../hermes-runtime-telemetry');
-const { logNegotiationPickupConflict } = await import('../negotiation-polling.log');
 
 afterAll(() => {
   process.env.NODE_ENV = priorNodeEnv;
@@ -44,24 +43,8 @@ describe('Hermes Sentry telemetry sink in a fresh process', () => {
     expect(JSON.stringify(calls)).not.toContain(secret);
   });
 
-  it('forwards the negotiation conflict application log with only its stable reason', () => {
-    logNegotiationPickupConflict();
-
-    const applicationLog = calls.find(({ method }) => method === 'log.info');
-    expect(applicationLog).toEqual({
-      method: 'log.info',
-      args: [
-        'Lost race to claim negotiation task',
-        {
-          service: 'backend',
-          log_context: 'service',
-          log_source: 'NegotiationPollingService',
-          'meta.reason': 'runtime_conflict',
-        },
-      ],
-    });
-    const serialized = JSON.stringify(applicationLog);
-    expect(serialized).toContain('runtime_conflict');
-    expect(serialized).not.toMatch(/agentId|userId|ownerId|credential|installationId|idxh_|idxo_/);
-  });
+  // The negotiation-pickup-conflict application log coverage was retired with
+  // pickup itself (negotiation-graph rewrite, #1494) — a negotiation can no
+  // longer be claimed, so `logNegotiationPickupConflict` is dead code, deleted
+  // alongside `negotiation-polling.log.ts`.
 });
