@@ -19,7 +19,14 @@ export function normalizeNegotiationActivity(
     .map((group) => ({
       ...group,
       messages: group.messages
-        .filter((message) => hasDisplayableText(message))
+        // Defense in depth for mixed-version deployments and cached activity:
+        // an ask_user turn belongs only to the agent's own principal. A
+        // counterparty's persisted pause must never render as an ask to the
+        // current viewer.
+        .filter((message) =>
+          hasDisplayableText(message)
+          && !(message.action === "ask_user" && message.sender === "theirs"),
+        )
         .sort((left, right) =>
           Date.parse(left.createdAt) - Date.parse(right.createdAt)
           || left.id.localeCompare(right.id),

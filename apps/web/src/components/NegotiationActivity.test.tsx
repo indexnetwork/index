@@ -86,6 +86,40 @@ describe("NegotiationActivity", () => {
     expect(screen.queryByLabelText("Match checklist")).toBeNull();
   });
 
+  it("never renders a counterparty's private ask_user consultation as an ask to the viewer", () => {
+    const groups = normalizeNegotiationActivity([{
+      correspondentUserId: "ada",
+      correspondentLabel: "Ada's agent",
+      correspondentAvatar: null,
+      messages: [
+        {
+          id: "their-private-ask",
+          opportunityId: "opp-1",
+          sender: "theirs" as const,
+          action: "ask_user",
+          text: "What stage and industries are you targeting?",
+          parts: [],
+          createdAt: "2026-07-24T00:00:01.000Z",
+        },
+        {
+          id: "public-counter",
+          opportunityId: "opp-1",
+          sender: "theirs" as const,
+          action: "counter",
+          text: "The opportunity could still be a fit.",
+          parts: [],
+          createdAt: "2026-07-24T00:00:02.000Z",
+        },
+      ],
+    }]);
+
+    render(<NegotiationActivity groups={groups} loading={false} error={false} />);
+
+    expect(screen.queryByText("ASKED YOU")).toBeNull();
+    expect(screen.queryByText(/What stage and industries/)).toBeNull();
+    expect(screen.getByText("The opportunity could still be a fit.")).toBeTruthy();
+  });
+
   it("does not fabricate messages while activity is empty", () => {
     render(<NegotiationActivity groups={[]} loading={false} error={false} />);
     expect(screen.getByText(/No agent conversations have started yet/)).toBeTruthy();

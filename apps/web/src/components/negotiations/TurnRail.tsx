@@ -74,9 +74,16 @@ interface TurnRailProps {
  * verb + role chips + reasoning per turn. No DM bubbles, no own/other alignment.
  */
 export function TurnRail({ turns, ownAgentId, participantInfo, counterpartName, now, missedWindowTurnId }: TurnRailProps) {
+  // ask_user is a private, local pause for the sending agent's own principal.
+  // It shares the durable negotiation record for resume bookkeeping, so apply
+  // the viewer boundary before rendering that record as a transcript.
+  const visibleTurns = turns.filter(
+    (turn) => turn.action !== 'ask_user' || turn.senderId === ownAgentId,
+  );
+
   return (
     <div>
-      {turns.map((turn, index) => {
+      {visibleTurns.map((turn, index) => {
         const isOwn = turn.senderId === ownAgentId;
         const info = participantInfo.get(turn.senderId);
         const seatLabel = isOwn ? 'Your agent' : `${info?.ownerName ?? counterpartName}'s agent`;
@@ -85,7 +92,7 @@ export function TurnRail({ turns, ownAgentId, participantInfo, counterpartName, 
           <div key={turn.id}>
             <TurnItem
               turn={turn}
-              isLast={index === turns.length - 1}
+              isLast={index === visibleTurns.length - 1}
               seatLabel={seatLabel}
               avatar={info?.avatar ?? null}
               avatarName={info?.ownerName ?? counterpartName}

@@ -129,10 +129,17 @@ export function projectNegotiationActivity(
   const rowsByOpportunity = new Map<string, NegotiationActivityMessageRow[]>();
 
   for (const message of messages) {
+    const turn = turnOf(message.parts);
+    const isViewerAgent = message.senderId === `agent:${userId}`;
     const text = displayTextOf(message.parts);
     if (
       !message.taskId
       || !message.senderId.startsWith('agent:')
+      // `ask_user` is a local consultation between an agent and its own
+      // principal. It is persisted in the bilateral record so the negotiation
+      // can resume deterministically, but the other principal is not its
+      // audience. In particular, never project it as "Their agent ASKED YOU".
+      || (turn?.action === 'ask_user' && !isViewerAgent)
       || text.length === 0
     ) continue;
     const opportunityId = opportunityByTask.get(message.taskId);
@@ -148,11 +155,10 @@ export function projectNegotiationActivity(
       latestOpportunityId: opportunityId,
       messages: [],
     };
-    const turn = turnOf(message.parts);
     group.messages.push({
       id: message.id,
       opportunityId,
-      sender: message.senderId === `agent:${userId}` ? 'yours' : 'theirs',
+      sender: isViewerAgent ? 'yours' : 'theirs',
       ...(turn?.action ? { action: turn.action } : {}),
       text,
       parts: message.parts,

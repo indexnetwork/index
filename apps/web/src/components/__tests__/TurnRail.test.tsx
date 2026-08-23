@@ -62,4 +62,22 @@ describe('TurnRail missed-window decay (IND-559)', () => {
     expect(askText.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(line.compareDocumentPosition(nextText) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it("does not render the counterparty agent's private ask_user turn", () => {
+    render(
+      <TurnRail
+        turns={[
+          turn('their-private-ask', 'ask_user', 'What should my client decide?', 'agent:peer'),
+          turn('public-counter', 'counter', 'Here is the public counter.', 'agent:peer'),
+        ]}
+        ownAgentId="agent:me"
+        participantInfo={participantInfo}
+        counterpartName="Mira Chen"
+        now={NOW}
+      />,
+    );
+
+    expect(screen.queryByText(/What should my client decide/)).not.toBeInTheDocument();
+    expect(screen.getByText('Here is the public counter.')).toBeInTheDocument();
+  });
 });

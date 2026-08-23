@@ -68,6 +68,28 @@ describe('projectNegotiationActivity', () => {
     expect(result[0]?.messages.map((message) => message.id)).toEqual(['a2', 'a5', 'a6']);
   });
 
+  it("keeps ask_user consultations private to the sending agent's principal", () => {
+    const askUser = (message: string) => [{
+      kind: 'data',
+      data: { action: 'ask_user', message },
+    }];
+
+    const result = projectNegotiationActivity(
+      'owner',
+      [{ id: 'opp-a', status: 'negotiating', actors: [{ userId: 'owner' }, { userId: 'ada' }] }],
+      new Map([['task-a', 'opp-a']]),
+      [
+        { id: 'public', taskId: 'task-a', senderId: 'agent:ada', parts: [{ text: 'A public counter.' }], createdAt: date(1) },
+        { id: 'their-private-ask', taskId: 'task-a', senderId: 'agent:ada', parts: askUser('What does my client want?'), createdAt: date(2) },
+        { id: 'own-private-ask', taskId: 'task-a', senderId: 'agent:owner', parts: askUser('What do you want?'), createdAt: date(3) },
+      ],
+      new Map([['ada', { name: 'Ada', avatar: null }]]),
+    );
+
+    expect(result[0]?.messages.map((message) => message.id)).toEqual(['public', 'own-private-ask']);
+    expect(JSON.stringify(result)).not.toContain('What does my client want?');
+  });
+
   /**
    * A2A negotiation turns persist as `[{ kind: 'data', data: turn }]` and carry
    * NO text part, so the text-part filter dropped every one of them — the
