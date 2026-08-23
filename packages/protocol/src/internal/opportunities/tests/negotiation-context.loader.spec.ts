@@ -4,51 +4,42 @@ config({ path: ".env.test", override: true });
 import { describe, expect, it } from "bun:test";
 
 import { loadNegotiationContext, type NegotiationContextDatabase } from "../negotiation-context.loader.js";
-import type { NegotiationOutcome } from "../../negotiations/negotiation.state.js";
+import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 
 const OPPORTUNITY_ID = "opp-123";
 
 function turnMessage(
-  action: "propose" | "accept" | "reject" | "counter" | "question",
-  reasoning: string,
+  verb: "outreach" | "counter" | "question",
+  message: string,
 ): { id: string; senderId: string; role: "user" | "agent"; parts: unknown[]; createdAt: Date } {
   return {
     id: `msg-${Math.random().toString(36).slice(2, 8)}`,
     senderId: "agent-1",
     role: "agent",
-    parts: [
-      {
-        kind: "data",
-        data: {
-          action,
-          assessment: {
-            reasoning,
-            suggestedRoles: { ownUser: "peer", otherUser: "peer" },
-          },
-          message: `says: ${action}`,
-        },
-      },
-    ],
+    parts: [{ kind: "data", data: { verb, message, reasoning: `why: ${message}` } }],
     createdAt: new Date(),
   };
 }
 
-function outcomeArtifact(
-  hasOpportunity: boolean,
-  reason?: "turn_cap" | "timeout" | "screened_out",
-): { id: string; name: string | null; parts: unknown[]; metadata: Record<string, unknown> | null } {
-  const outcome: NegotiationOutcome = {
-    hasOpportunity,
-    agreedRoles: [{ userId: "u1", role: "peer" }],
-    reasoning: hasOpportunity ? "Roles aligned." : "Not a match.",
-    turnCount: 4,
-    ...(reason ? { reason } : {}),
-  };
+function baseTask(overrides: Partial<NegotiationTaskRow> = {}): NegotiationTaskRow {
   return {
-    id: "art-1",
-    name: "negotiation-outcome",
-    parts: [{ kind: "data", data: outcome }],
-    metadata: null,
+    id: "task-1",
+    conversationId: "conv-1",
+    state: "working",
+    brief: "brief",
+    metadata: {
+      type: "negotiation",
+      opportunityId: OPPORTUNITY_ID,
+      sourceUserId: "u-source",
+      candidateUserId: "u-candidate",
+      initiatorUserId: "u-source",
+      networkId: "net-1",
+      intentId: "intent-1",
+      round: 1,
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
   };
 }
 
@@ -95,25 +86,13 @@ describe("loadNegotiationContext", () => {
     expect(result).toBeNull();
   });
 
-  it("returns turn counters only for `negotiating` without fetching artifacts", async () => {
-    let artifactFetches = 0;
+  it("returns the transcript and turn count for an in-progress negotiation", async () => {
     const db = buildDb({
-      getNegotiationTaskForOpportunity: async () => ({
-        id: "task-1",
-        conversationId: "conv-1",
-        state: "working",
-        metadata: { type: "negotiation", opportunityId: OPPORTUNITY_ID, maxTurns: 8 },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
+      getNegotiationTaskForOpportunity: async () => baseTask(),
       getNegotiationMessages: async () => [
-        turnMessage("propose", "Start with a pitch."),
-        turnMessage("counter", "Suggest a different angle."),
+        turnMessage("outreach", "Opening pitch"),
+        turnMessage("counter", "Different angle"),
       ],
-      getArtifactsForTask: async () => {
-        artifactFetches += 1;
-        return [];
-      },
     });
 
     const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "negotiating");
@@ -122,120 +101,35 @@ describe("loadNegotiationContext", () => {
     expect(result!.status).toBe("negotiating");
     expect(result!.conversationId).toBe("conv-1");
     expect(result!.turnCount).toBe(2);
-    expect(result!.turnCap).toBe(8);
-    expect(result!.turns).toBeUndefined();
-    expect(result!.outcome).toBeUndefined();
-    expect(artifactFetches).toBe(0);
-  });
-
-  it("returns full context for `pending` including turns and outcome", async () => {
-    const db = buildDb({
-      getNegotiationTaskForOpportunity: async () => ({
-        id: "task-1",
-        conversationId: "conv-1",
-        state: "completed",
-        metadata: { type: "negotiation", opportunityId: OPPORTUNITY_ID, maxTurns: 6 },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-      getNegotiationMessages: async () => [
-        turnMessage("propose", "Pitch the alignment."),
-        turnMessage("accept", "Looks good."),
-      ],
-      getArtifactsForTask: async () => [outcomeArtifact(true)],
-    });
-
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "pending");
-
-    expect(result).not.toBeNull();
-    expect(result!.status).toBe("pending");
-    expect(result!.conversationId).toBe("conv-1");
-    expect(result!.turnCount).toBe(2);
-    expect(result!.turnCap).toBe(6);
     expect(result!.turns).toHaveLength(2);
-    expect(result!.outcome?.hasOpportunity).toBe(true);
   });
 
-  it("includes `reason: turn_cap` in outcome for stalled negotiations", async () => {
+  it("surfaces the pause reason once the negotiation has paused", async () => {
     const db = buildDb({
-      getNegotiationTaskForOpportunity: async () => ({
-        id: "task-1",
-        conversationId: "conv-1",
-        state: "completed",
-        metadata: { type: "negotiation", opportunityId: OPPORTUNITY_ID, maxTurns: 6 },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-      getNegotiationMessages: async () => [
-        turnMessage("propose", "Pitch."),
-        turnMessage("counter", "Counter."),
-        turnMessage("counter", "Counter again."),
-      ],
-      getArtifactsForTask: async () => [outcomeArtifact(false, "turn_cap")],
+      getNegotiationTaskForOpportunity: async () =>
+        baseTask({
+          state: "paused",
+          metadata: { ...baseTask().metadata, pause: { reason: "counterparty_silent" } },
+        }),
+      getNegotiationMessages: async () => [turnMessage("outreach", "Opening pitch")],
     });
 
     const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "stalled");
 
-    expect(result!.outcome?.reason).toBe("turn_cap");
-    expect(result!.outcome?.hasOpportunity).toBe(false);
-    expect(result!.turns).toHaveLength(3);
+    expect(result!.pause?.reason).toBe("counterparty_silent");
   });
 
-  it("returns null for screened_out outcomes — presentation treats the client's gate decision as never-happened (P2.2)", async () => {
+  it("drops turns that fail to parse against the new turn schema", async () => {
     const db = buildDb({
-      getNegotiationTaskForOpportunity: async () => ({
-        id: "task-1",
-        conversationId: "conv-1",
-        state: "completed",
-        metadata: { type: "negotiation", opportunityId: OPPORTUNITY_ID, maxTurns: 6 },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-      getNegotiationMessages: async () => [],
-      getArtifactsForTask: async () => [outcomeArtifact(false, "screened_out")],
+      getNegotiationTaskForOpportunity: async () => baseTask(),
+      getNegotiationMessages: async () => [
+        turnMessage("outreach", "Opening pitch"),
+        { id: "bad", senderId: "agent-1", role: "agent", parts: [{ kind: "data", data: { action: "propose" } }], createdAt: new Date() },
+      ],
     });
 
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "rejected");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "pending");
 
-    expect(result).toBeNull();
-  });
-
-  it("defaults turnCap to 0 when task metadata omits maxTurns", async () => {
-    const db = buildDb({
-      getNegotiationTaskForOpportunity: async () => ({
-        id: "task-1",
-        conversationId: "conv-1",
-        state: "completed",
-        metadata: { type: "negotiation", opportunityId: OPPORTUNITY_ID },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-      getNegotiationMessages: async () => [turnMessage("propose", "pitch")],
-      getArtifactsForTask: async () => [outcomeArtifact(true)],
-    });
-
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "accepted");
-
-    expect(result!.turnCap).toBe(0);
-  });
-
-  it("returns full context without outcome when artifact is missing", async () => {
-    const db = buildDb({
-      getNegotiationTaskForOpportunity: async () => ({
-        id: "task-1",
-        conversationId: "conv-1",
-        state: "completed",
-        metadata: { type: "negotiation", opportunityId: OPPORTUNITY_ID, maxTurns: 6 },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
-      getNegotiationMessages: async () => [turnMessage("propose", "pitch")],
-      getArtifactsForTask: async () => [],
-    });
-
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "rejected");
-
-    expect(result!.outcome).toBeUndefined();
     expect(result!.turns).toHaveLength(1);
   });
 });
