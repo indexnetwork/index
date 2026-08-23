@@ -117,7 +117,7 @@ Match patterns to consider:
 Output:
 - A list of verdicts with EXACTLY ONE verdict for EVERY candidate entity (never omit a candidate).
 - Each verdict has candidateId (the candidate USER ID), accepted, reasoning, score, and actors.
-- EVERY verdict — accepted or not — must include exactly the source and that candidate as actors, with roles. A rejected candidate may still be surfaced downstream when nothing better exists, so its actors matter as much as an accepted verdict's.
+- EVERY verdict — accepted or not — must include exactly the source and that candidate as actors, with roles.
 - Rejected candidates still require a verdict: set accepted=false and score below the appropriate threshold.
 - A verdict score is 0-100:
   - 90-100: Must Meet — candidate's PRIMARY role directly matches what the discoverer seeks.
