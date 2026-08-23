@@ -1,7 +1,7 @@
-import { eq, and, sql, ne, isNull, isNotNull, count, inArray } from 'drizzle-orm/sql';
+import { eq, and, sql, ne, isNull, isNotNull, or, count, inArray } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
-import { intents, intentNetworks, networks, networkMembers, userContexts } from '../schemas/database.schema';
+import { intents, intentNetworks, networks, networkMembers, users } from '../schemas/database.schema';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
@@ -168,17 +168,19 @@ export class DebugService {
         );
       otherMembersInIndexes = memberCount?.count ?? 0;
 
-      // "Has a profile" now means the member has a global user_context (networkId IS NULL),
-      // the profile replacement (user_profiles was dropped in WS8 / IND-365).
+      // Has a profile: name or intro on the users row.
       const [profileCount] = await db
         .select({ count: count().as('count') })
-        .from(userContexts)
-        .innerJoin(networkMembers, eq(userContexts.userId, networkMembers.userId))
+        .from(users)
+        .innerJoin(networkMembers, eq(users.id, networkMembers.userId))
         .where(
           and(
             inArray(networkMembers.networkId, userIndexIds),
-            ne(userContexts.userId, userId),
-            isNull(userContexts.networkId),
+            ne(users.id, userId),
+            or(
+              sql`trim(${users.intro}) <> ''`,
+              sql`trim(${users.name}) <> ''`,
+            ),
           ),
         );
       otherMembersWithProfiles = profileCount?.count ?? 0;

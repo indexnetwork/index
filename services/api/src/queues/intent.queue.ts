@@ -4,7 +4,7 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
+import { buildProfileFromUser } from '../adapters/database.shared';
 import { HydeGraphFactory, HydeGenerator, LensInferrer, Intents, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
@@ -61,7 +61,6 @@ export type IntentQueueDatabase = Pick<
 export interface IntentQueueDeps {
   database?: IntentQueueDatabase;
   /** Resolve the user's global user_context paragraph for HyDE enrichment (generate-if-empty). */
-  getUserContextText?: (userId: string) => Promise<string>;
   invokeHyde?: (opts: {
     sourceText: string;
     sourceType: string;
@@ -324,19 +323,19 @@ export class IntentQueue implements IntentGraphQueue {
     const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, scope);
     this.hydeLogger.info('Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
 
-    // Fetch discoverer global context + active intents for HyDE context (best-effort).
-    // The global user_context paragraph replaces the old identity/narrative/attributes
-    // flattening; it is generated on demand when the user has no stored row yet.
+    // Fetch discoverer profile (users row) + active intents for HyDE context (best-effort).
     let profileContext: string | undefined;
     try {
-      const getUserContextText = this.deps?.getUserContextText ?? ensureGlobalUserContext;
-      const [userContext, activeIntents] = await Promise.all([
-        getUserContextText(userId),
+      const [profile, activeIntents] = await Promise.all([
+        buildProfileFromUser(userId),
         db.getActiveIntents(userId),
       ]);
       const lines: string[] = [];
-      if (userContext) {
-        lines.push(userContext);
+      if (profile) {
+        const id = profile.identity;
+        if (id.name?.trim()) lines.push(id.name.trim());
+        if (id.bio?.trim()) lines.push(id.bio.trim());
+        if (id.location?.trim()) lines.push(id.location.trim());
       }
       if (activeIntents?.length) {
         const capped = activeIntents.slice(0, 5);

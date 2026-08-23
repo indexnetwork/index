@@ -9,13 +9,6 @@ export type IntentDiscoveryTrigger = {
   | { networkId?: never; indexScope: string[] }
 );
 
-export interface EnrichmentDiscoveryTrigger {
-  userId: string;
-  networkId: string;
-  operationMode: 'create';
-  options: { initialStatus: 'latent' };
-}
-
 export type FromIntentGraphInvokeOptions = IntentDiscoveryTrigger;
 
 export function buildIntentDiscoveryTrigger(input: {
@@ -33,18 +26,6 @@ export function buildIntentDiscoveryTrigger(input: {
       ? { networkId: input.networkIds[0]! }
       : { indexScope: [...input.networkIds] }),
     triggerIntentId: input.triggerIntentId,
-    options: { initialStatus: 'latent' },
-  };
-}
-
-export function buildEnrichmentDiscoveryTrigger(input: {
-  userId: string;
-  networkId: string;
-}): EnrichmentDiscoveryTrigger {
-  return {
-    userId: input.userId,
-    operationMode: 'create',
-    networkId: input.networkId,
     options: { initialStatus: 'latent' },
   };
 }

@@ -68,7 +68,6 @@ export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, Hy
 export type { IntentGraphQueue } from "./platform/runtime/queue.js";
 export type { Scraper } from "./platform/discovery/scraper.js";
 export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
-export type { EnrichmentRunInput, EnrichmentRunRecord } from "./platform/enrichment/runs.js";
 export type {
   NegotiationTimeoutQueue,
   AskUserExpiryPayload,
@@ -182,7 +181,6 @@ export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
-export { UserContextGenerator } from "./internal/contexts/context.generator.js";
 export { ChatTitleGenerator } from "./internal/chat/chat.title.generator.js";
 export { ChatInterruptClassifier } from "./internal/chat/chat.interrupt.classifier.js";
 export { ChatSummarizer } from "./internal/chat/chat.summarizer.js";

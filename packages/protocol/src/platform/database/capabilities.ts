@@ -19,7 +19,7 @@ import type { SystemDatabase, UserDatabase } from './port.js';
  */
 export type EnrichmentGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser' | 'getUserContext'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser'
 > & {
   /**
    * Optional premise retraction support. When present, write-mode input that
@@ -144,12 +144,9 @@ export type ChatGraphCompositeDatabase = Pick<
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'
-  // User context methods (context-to-intent discovery) in OpportunityGraph
+  // User context text for context-to-intent discovery in OpportunityGraph
   | 'getUserContext'
-  | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
-  // Context-to-context discovery in OpportunityGraph
-  | 'searchUserContextsBySimilarity'
 > & Pick<
   NegotiationQueries,
   // Orphan heal in OpportunityGraph persist node
@@ -203,12 +200,9 @@ export type OpportunityGraphDatabase = Pick<
   | 'getPremisesForUserInNetworks'
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'
-  // User context methods (context-to-intent discovery)
+  // User context text for context-to-intent discovery
   | 'getUserContext'
-  | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
-  // Context-to-context discovery
-  | 'searchUserContextsBySimilarity'
   // HyDE documents for context-to-intent HyDE search
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)

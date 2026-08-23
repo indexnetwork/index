@@ -1,4 +1,4 @@
-import { readUserContext, readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, gt, gte, ilike, inArray, intentNetworks, intents, isNotNull, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, userContexts, users } from './database.shared';
+import { readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, gt, gte, ilike, inArray, intentNetworks, intents, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { tasks } from '../schemas/conversation.schema';
 import { notArchivedNegotiationTaskWhere } from './negotiation-attempt.atomic';
@@ -3058,19 +3058,6 @@ export class ChatDatabaseAdapter {
     return this.opportunityAdapter.searchPremisesBySimilarityBatch(params);
   }
 
-  /**
-   * Cosine similarity search against user-context embeddings, scoped to shared networks.
-   * Delegates to OpportunityDatabaseAdapter (which hosts the raw SQL query).
-   */
-  async searchUserContextsBySimilarity(params: {
-    embedding: number[];
-    networkIds: string[];
-    excludeUserId: string;
-    limit: number;
-    minScore?: number;
-  }) {
-    return this.opportunityAdapter.searchUserContextsBySimilarity(params);
-  }
 
   /**
    * Find the most-similar ACTIVE premise owned by the same user whose cosine
@@ -3375,81 +3362,16 @@ export class ChatDatabaseAdapter {
   }
 
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // User Context Methods — CRUD for per-user-per-network context summaries
-  // ─────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Upsert a user context summary for a given user+network pair.
-   * Creates a new row or updates an existing one based on the (userId, networkId) unique constraint.
-   */
-  async upsertUserContext(params: {
-    userId: string;
-    /** Concrete network id, or null for the user's global (profile-replacing) row. */
-    networkId: string | null;
-    text: string;
-    embedding: number[];
-    premiseHash: string;
-  }): Promise<{ id: string }> {
-    const vectorStr = `[${params.embedding.join(',')}]`;
-    const setOnConflict = {
-      text: params.text,
-      embedding: sql`${vectorStr}::vector` as unknown as number[],
-      premiseHash: params.premiseHash,
-      generatedAt: new Date(),
-    };
-    // A null networkId conflicts on the partial `user_contexts_user_global_uniq`
-    // index (target = userId WHERE network_id IS NULL); concrete networks conflict
-    // on the composite `user_contexts_user_network_uniq` index. The two indexes are
-    // mutually exclusive, so the conflict target must match the row being written.
-    const insert = db.insert(userContexts)
-      .values({
-        userId: params.userId,
-        networkId: params.networkId,
-        text: params.text,
-        embedding: sql`${vectorStr}::vector` as unknown as number[],
-        premiseHash: params.premiseHash,
-        generatedAt: new Date(),
-      });
-    const rows = await (params.networkId === null
-      ? insert.onConflictDoUpdate({
-          target: userContexts.userId,
-          targetWhere: isNull(userContexts.networkId),
-          set: setOnConflict,
-        })
-      : insert.onConflictDoUpdate({
-          target: [userContexts.userId, userContexts.networkId],
-          targetWhere: isNotNull(userContexts.networkId),
-          set: setOnConflict,
-        }))
-      .returning({ id: userContexts.id });
-    return { id: rows[0].id };
+  async getUserContext(userId: string, _networkId: string | null) {
+    const profile = await buildProfileFromUser(userId);
+    if (!profile) return null;
+    const text = [profile.identity.bio, profile.identity.name, profile.identity.location]
+      .map((s) => s?.trim()).filter(Boolean).join(' ');
+    if (!text) return null;
+    return { id: userId, text, embedding: [] as number[], premiseHash: '', generatedAt: new Date() };
   }
 
-  /**
-   * Retrieve a single user context for a user+network pair. Pass `null` for the
-   * user's global (profile-replacing) context row.
-   */
-  async getUserContext(userId: string, networkId: string | null) {
-    return readUserContext(userId, networkId);
-  }
-
-  /**
-   * Retrieve all user contexts for a given user.
-   */
-  async getUserContexts(userId: string) {
-    const rows = await db.select()
-      .from(userContexts)
-      .where(eq(userContexts.userId, userId));
-    return rows.map(r => ({
-      id: r.id,
-      networkId: r.networkId,
-      text: r.text,
-      embedding: r.embedding as unknown as number[],
-      premiseHash: r.premiseHash ?? '',
-      generatedAt: r.generatedAt,
-    }));
-  }
 
   /**
    * Cosine similarity search against intent embeddings using a user context embedding.

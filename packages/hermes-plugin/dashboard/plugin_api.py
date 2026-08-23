@@ -1991,15 +1991,12 @@ def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> di
 
 @full_router.post("/profile/intro")
 def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Generate an AI intro via the API-key-capable `POST /enrichment/sync`.
-
-    The enrichment graph persists the identity bio to `users.intro`; the sync
-    response surfaces it as a flat `intro` field which is echoed back to the client.
-    """
-    payload = tools._api_request("POST", "/enrichment/sync")
+    """Research public profile data via `POST /enrichment/enrich` and return intro."""
+    payload = tools._api_request("POST", "/enrichment/enrich")
     if payload.get("success") is False:
         return payload
-    intro = _text(payload.get("intro"))
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    intro = _text(profile.get("intro") or payload.get("intro"))
     return {"success": True, "intro": intro}
 
 

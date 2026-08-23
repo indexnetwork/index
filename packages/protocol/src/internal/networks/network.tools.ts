@@ -11,7 +11,7 @@ import { NetworkRecommender } from "./network.recommender.js";
 
 /** Host capabilities consumed by community discovery and membership tools. */
 export type NetworkToolDeps = Pick<ToolRegistryCompositionDeps,
-  "userDb" | "systemDb" | "getUserContextText" | "networkRanker" | "reportToolError"
+  "userDb" | "systemDb" | "networkRanker" | "reportToolError"
 > & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "index" | "networkMembership"> };
 
 /**
@@ -136,11 +136,12 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
           });
         }
 
-        // Onboarding-only: rank public networks by relevance to the user's global
-        // user_context paragraph.  Guard: only when isOnboarding, not scoped, there
-        // are public networks to rank, and a user_context is available.
+        // Onboarding-only: rank public networks by relevance to the user's profile
+        // intro (users row). Guard: only when isOnboarding, not scoped, there are
+        // public networks to rank, and profile text is available.
         let orderedNetworkIds: string[] | undefined;
-        const userContext = deps.getUserContextText ? await deps.getUserContextText(context.userId) : "";
+        const user = await userDb.getUser();
+        const userContext = user?.intro?.trim() || user?.name?.trim() || "";
         if (
           context.isOnboarding &&
           userContext &&

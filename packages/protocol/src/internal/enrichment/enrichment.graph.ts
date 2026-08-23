@@ -115,61 +115,18 @@ export class EnrichmentGraphFactory {
     // ─────────────────────────────────────────────────────────
 
     const workflow = new StateGraph(EnrichmentGraphState)
-      // Add all nodes
       .addNode("check_state", (state: EnrichmentState) => checkStateNode(state, deps))
-      .addNode("scrape", (state: EnrichmentState) => scrapeNode(state, deps))
       .addNode("decompose_premises", (state: EnrichmentState) => decomposePremisesNode(state, deps))
-      .addNode("auto_generate", (state: EnrichmentState) => autoGenerateNode(state, deps))
-
-      // Start with state check
       .addEdge(START, "check_state")
-
-      // Conditional routing from check_state
       .addConditionalEdges(
         "check_state",
         (state: EnrichmentState) => checkStateCondition(state, deps),
         {
-          auto_generate: "auto_generate",       // Generate mode -> Chat API enrichment
-          decompose_premises: "decompose_premises", // Write mode + input + premise graph -> decompose
-          scrape: "scrape",                     // Need premises, no input -> scrape first
-          [END]: END                            // Query mode, no premise graph, or everything exists
-        }
-      )
-
-      // Decompose premises creates premises as a side effect, then ends.
-      // user_context regeneration is handled downstream by premise lifecycle events.
-      .addEdge("decompose_premises", END)
-
-      // Auto-generate routes to premise decomposition (when premise graph
-      // available + enrichment produced input), otherwise ends.
-      .addConditionalEdges(
-        "auto_generate",
-        (state: typeof EnrichmentGraphState.State) => {
-          if (state.input && deps.premiseGraph) {
-            logger.verbose("Enrichment produced input — routing to premise decomposition");
-            return "decompose_premises";
-          }
-          logger.verbose("Enrichment ended without usable input (ghost soft-deleted, error, or no premise graph) — done");
-          return END;
-        },
-        {
           decompose_premises: "decompose_premises",
           [END]: END,
         }
       )
-
-      // Scrape -> decompose_premises (when premise graph available), else ends.
-      .addConditionalEdges(
-        "scrape",
-        (_state: typeof EnrichmentGraphState.State) => {
-          if (deps.premiseGraph) return "decompose_premises";
-          return END;
-        },
-        {
-          decompose_premises: "decompose_premises",
-          [END]: END,
-        },
-      );
+      .addEdge("decompose_premises", END);
 
     logger.verbose("Graph built successfully");
     return workflow.compile();
@@ -688,13 +645,7 @@ export async function decomposePremisesNode(state: EnrichmentState, deps: Enrich
       const revisedBio = result.revisedBio?.trim();
       if (revisedBio && revisedBio !== currentBio.trim()) {
         try {
-          await deps.database.saveProfile(state.userId, {
-            userId: state.userId,
-            // Empty name/location are skipped by the identity persister — only
-            // the bio is written.
-            identity: { name: '', bio: revisedBio, location: '' },
-            context: '',
-          });
+          await deps.database.updateUser(state.userId, { intro: revisedBio });
           bioRevised = true;
           logger.verbose("Revised stored bio per removal/correction instruction", { userId: state.userId });
         } catch (err) {
@@ -784,48 +735,13 @@ export async function decomposePremisesNode(state: EnrichmentState, deps: Enrich
  * Route from check_state to next step based on operation mode and detected needs.
  */
 export function checkStateCondition(state: EnrichmentState, deps: EnrichmentGraphDeps): string {
-  // Query mode: Return immediately (fast path)
   if (state.operationMode === 'query') {
-    logger.verbose("Query mode - ending (fast path)");
     return END;
   }
 
-  // Generate mode: use enrichUserProfile Chat API to auto-generate
-  if (state.operationMode === 'generate') {
-    logger.verbose("Generate mode - routing to auto_generate");
-    return "auto_generate";
+  if (state.input && isMeaningfulProfileInput(state.input) && deps.premiseGraph) {
+    return "decompose_premises";
   }
 
-  // Check if user information is insufficient for scraping
-  // Return early so chat graph can request the missing information
-  if (state.needsUserInfo) {
-    logger.verbose("⚠️ Insufficient user info - requesting from user", {
-      missingInfo: state.missingUserInfo
-    });
-    return END;
-  }
-
-  // Write mode: Check what needs generation
-  if (state.needsProfileGeneration) {
-    // Only use provided input if it's meaningful (not just "Yes" / confirmation)
-    if (state.input && isMeaningfulProfileInput(state.input)) {
-      // Route through premise decomposition when a premise graph is available.
-      // The decompose node extracts atomic premises and creates them; premise
-      // events drive user_context regeneration. Without a premise graph there
-      // is nothing to do, so end the run.
-      if (deps.premiseGraph) {
-        logger.verbose("Profile generation needed — decomposing input into premises");
-        return "decompose_premises";
-      }
-      logger.verbose("Profile generation needed but no premise graph injected — ending");
-      return END;
-    } else {
-      logger.verbose("Profile generation needed - scraping first (no meaningful input)");
-      return "scrape";
-    }
-  }
-
-  // Everything exists and is up to date
-  logger.verbose("All components exist - ending");
   return END;
 }

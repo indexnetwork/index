@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
 import { generateMasterKey } from '../lib/experiment/master-key';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkMasterKeyRotatedTemplate } from '../lib/email/templates/network-master-key-rotated.template';

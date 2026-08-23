@@ -54,10 +54,7 @@ const FAST_TOOLS = new Set([
 ]);
 
 const ASYNC_CANDIDATE_TOOLS = new Set([
-  "read_user_contexts",
-  "preview_user_context",
-  "create_user_context",
-  "update_user_context",
+  "research_profile",
   "create_intent",
   "update_intent",
   "scrape_url",

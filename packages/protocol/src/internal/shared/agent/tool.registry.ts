@@ -98,7 +98,7 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   // Create all tool domains -- each one calls defineTool() which populates the registry.
   // The local defineTool is compatible with DefineTool (which returns any).
   const dt = defineTool as DefineTool;
-  createEnrichmentTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
+  createEnrichmentTools(dt, deps);
   Intents.createTools(dt, deps);
   Networks.createTools(dt, deps);
   createOpportunityTools(dt, deps);

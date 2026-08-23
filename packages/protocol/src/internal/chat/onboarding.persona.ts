@@ -22,11 +22,8 @@ export const ONBOARDING_PERSONA_ID = "onboarding";
  * unavailable until explicitly reviewed here.
  */
 export const ONBOARDING_TOOL_NAMES = [
-  "read_user_contexts",
-  "preview_user_context",
-  "confirm_user_context",
+  "research_profile",
   "create_intent",
-  "complete_onboarding",
 ] as const;
 
 const ONBOARDING_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(ONBOARDING_TOOL_NAMES);

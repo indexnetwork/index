@@ -1840,7 +1840,7 @@ def main() -> None:
         intro_result = dashboard_api.generate_intro({})
         assert intro_result == {"success": True, "intro": "Generated intro."}
         assert captured[-1]["method"] == "POST"
-        assert captured[-1]["url"] == "https://api.example.test/api/enrichment/sync"
+        assert captured[-1]["url"] == "https://api.example.test/api/enrichment/enrich"
 
         avatar_calls = []
         original_multipart = dashboard_api._api_multipart

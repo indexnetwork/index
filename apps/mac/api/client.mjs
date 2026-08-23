@@ -320,6 +320,14 @@ export function createIndexApiClient(options = {}) {
     auth: {
       me: (options = {}) => request('/auth/me', options),
       updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),
+      confirmOnboardingProfile: (options = {}) => request(
+        '/auth/onboarding/confirm-profile',
+        { ...options, method: 'POST', body: {} },
+      ),
+      completeOnboarding: (body = {}, options = {}) => request(
+        '/auth/onboarding/complete',
+        { ...options, method: 'POST', body },
+      ),
     },
 
     storage: {
@@ -524,24 +532,9 @@ export function createIndexApiClient(options = {}) {
       ),
     },
 
-    tools: {
-      readUserContexts: (options = {}) => request(
-        '/tools/read_user_contexts', { ...options, method: 'POST', body: { query: {} } },
-      ),
-      previewUserContext: (query, options = {}) => request(
-        '/tools/preview_user_context', { ...options, method: 'POST', body: { query } },
-      ),
-      confirmUserContext: (draft, options = {}) => request(
-        '/tools/confirm_user_context', { ...options, method: 'POST', body: { query: { draft } } },
-      ),
-    },
-
     enrichment: {
-      // Run the full public-research enrichment inline for the authenticated
-      // user and resolve { enriched: true, profile: { name, intro, location,
-      // socials } } so the caller can show discovered socials immediately.
-      // Every other enrichment path is automatic (profile save, signup, imports).
-      trigger: (options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: {} }),
+      // Public profile prefill (Parallel lookup). Optional body hints merge with account defaults.
+      trigger: (hints = {}, options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: hints }),
     },
 
     conversations: {

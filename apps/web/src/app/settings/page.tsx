@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Link } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { Loader2, Camera, ArrowUpRight, Trash2, Sparkles, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
+import { Loader2, Camera, ArrowUpRight, Trash2, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -65,7 +65,6 @@ export default function ProfilePage() {
   };
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  const [generatingIntro, setGeneratingIntro] = useState(false);
 
   const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -163,22 +162,6 @@ export default function ProfilePage() {
 
   const handleDiscard = () => resetForm(user);
 
-  const handleGenerateIntro = async () => {
-    setGeneratingIntro(true);
-    try {
-      const generated = await authService.generateIntro();
-      if (generated) {
-        setIntro(generated);
-        mark();
-      } else {
-        error("Couldn't generate an intro — try adding your socials or a full name first.");
-      }
-    } catch {
-      error("Failed to generate intro");
-    } finally {
-      setGeneratingIntro(false);
-    }
-  };
 
   const handleConnectTelegram = async () => {
     setTelegramConnecting(true);
@@ -366,23 +349,7 @@ export default function ProfilePage() {
                   <label htmlFor="intro" className="text-sm font-medium font-ibm-plex-mono text-gray-700">
                     Introduction
                   </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleGenerateIntro}
-                      disabled={generatingIntro}
-                      title="Generate with AI"
-                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-black transition-colors duration-150 disabled:opacity-40"
-                    >
-                      {generatingIntro ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-3.5 h-3.5" />
-                      )}
-                      <span>{generatingIntro ? "Generating..." : intro ? "Regenerate" : "Generate"}</span>
-                    </button>
-                    <span className="text-xs text-gray-400">{intro.length}/500</span>
-                  </div>
+                  <span className="text-xs text-gray-400">{intro.length}/500</span>
                 </div>
                 <Textarea
                   id="intro"
