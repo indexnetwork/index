@@ -19,7 +19,7 @@ import { inferenceNode, prepNode } from "./intent.graph.infer.js";
 import { reconciliationNode, verificationNode } from "./intent.graph.reconcile.js";
 import { executorNode, queryNode } from "./intent.graph.execute.js";
 
-export { buildExplicitUpdateActions, enforceIntentActionBoundary } from "./intent.graph.shared.js";
+export { buildExplicitUpdateActions, enforceIntentActionBoundary, isExplicitUpdateRequest } from "./intent.graph.shared.js";
 export type { IntentGraphDeps, IntentState } from "./intent.graph.shared.js";
 
 export class IntentGraphFactory {
@@ -57,15 +57,17 @@ export class IntentGraphFactory {
       .addNode("reconciler", (state: IntentState) => reconciliationNode(state, deps))
       .addNode("executor", (state: IntentState) => executorNode(state, deps))
 
-      // Flow paths:
-      // - READ:    prep → query → END (fast path, no LLM calls)
-      // - CREATE:  prep → inference → verification → reconciler → executor → END
-      // - UPDATE:  prep → inference → reconciliation → executor → END (skips verification if no new intents)
-      // - DELETE:  prep → reconciliation → executor → END (skips inference and verification)
-      // - PROPOSE: prep → inference → verification → END (no reconciliation/execution, no DB writes)
+      // The graph routes on the shape of its input (see intent.graph.state.ts):
+      // - READ:      no content/target/proposal → prep → query → END (no LLM calls)
+      // - CREATE:    inputContent only → prep → inference → verification → reconciler → executor → END
+      // - UPDATE:    inputContent + targetIntentIds → same pipeline, bound to that one target
+      // - ARCHIVE:   targetIntentIds + archive → prep → reconciler → executor → END (no LLM)
+      // - TRANSITION: targetIntentIds + status → prep → reconciler → executor → END (no LLM)
+      // - CONFIRM:   proposalId → prep → reconciler → executor → END (no LLM)
+      // - dryRun:true on CREATE/UPDATE stops after verification (no reconciliation/execution, no writes)
       .addEdge(START, "prep")
 
-      // After prep: read mode → query; else inference or reconciler
+      // After prep: read → query; archive/status/proposal → reconciler directly; else content path → inference
       .addConditionalEdges("prep", afterPrepRoute, {
         query: "query",
         inference: "inference",
@@ -99,72 +101,53 @@ export class IntentGraphFactory {
 }
 
     /**
-     * After prep: read mode → query; otherwise decide inference vs reconciler by operation mode.
+     * After prep: an invalid input shape or a failed precondition ends the
+     * graph; a fully-empty input is a read; archive/status/proposalId skip
+     * straight to the reconciler (no LLM); otherwise the content path infers.
      */
 export function afterPrepRoute(state: IntentState): string {
   if (state.error) {
     logger.warn('Prep failed with error, short-circuiting to END', { error: state.error });
     return '__end__';
   }
-  if (state.operationMode === 'read') {
-    logger.verbose('Read mode - routing to query (fast path)');
+  const hasContent = state.inputContent !== undefined;
+  const hasArchive = state.archive === true;
+  const hasStatus = state.status !== undefined;
+  const hasProposal = state.proposalId !== undefined;
+
+  if (!hasContent && !hasArchive && !hasStatus && !hasProposal) {
+    logger.verbose('No content/target/proposal - routing to query (read fast path)');
     return 'query';
   }
-  return shouldRunInference(state);
-}
-
-
-    /**
-     * Determines if inference should run based on operation mode.
-     * Delete operations skip inference entirely and go straight to reconciliation.
-     */
-export function shouldRunInference(state: IntentState): string {
-  if (state.operationMode === 'delete') {
-    logger.verbose('Delete mode - skipping inference, routing to reconciliation');
+  if (hasArchive || hasStatus || hasProposal) {
+    logger.verbose('Deterministic route (archive/status/confirm) - skipping inference');
     return 'reconciler';
   }
-
-  logger.verbose('Running inference', {
-    operationMode: state.operationMode
-  });
+  logger.verbose('Content path - running inference');
   return 'inference';
 }
 
     /**
-     * Determines if verification should run based on operation mode and inferred intents.
-     * Skips verification for:
-     * - Operations with no inferred intents
-     * - Can be extended to skip for update operations with no new intents
+     * Determines if verification should run. Skipped when inference produced
+     * no candidates: a dry run ends there; otherwise the (empty) reconciler
+     * pass still runs so the graph reports "nothing to do" consistently.
      */
 export function shouldRunVerification(state: IntentState): string {
   if (state.inferredIntents.length === 0) {
-    if (state.operationMode === 'propose') {
-      logger.verbose('Propose mode with no inferred intents - exiting early');
+    if (state.dryRun) {
+      logger.verbose('Dry run with no inferred intents - exiting early');
       return '__end__';
     }
     logger.verbose('No intents to verify - skipping verification, routing to reconciliation');
     return 'reconciler';
   }
-
-  if (state.operationMode === 'update') {
-    logger.verbose('Update mode with new intents - running verification');
-    return 'verification';
-  }
-
-  if (state.operationMode === 'create') {
-    logger.verbose('Create mode - running verification');
-    return 'verification';
-  }
-
-  // Default to verification for safety
-  logger.verbose('Default routing to verification');
   return 'verification';
 }
 
-/** After verification: propose mode exits early; others continue to reconciliation. */
+/** After verification: a dry run exits early; otherwise continue to reconciliation. */
 export function routeAfterVerification(state: IntentState): string {
-  if (state.operationMode === 'propose') {
-    logger.verbose('Propose mode - stopping after verification, skipping reconciliation');
+  if (state.dryRun) {
+    logger.verbose('Dry run - stopping after verification, skipping reconciliation');
     return '__end__';
   }
   return 'reconciler';

@@ -18,4 +18,6 @@ export interface IntentGraphQueueScope {
 export interface IntentGraphQueue {
   addGenerateHydeJob(data: { intentId: string; userId: string } & IntentGraphQueueScope): Promise<unknown>;
   addDeleteHydeJob(data: { intentId: string }): Promise<unknown>;
+  /** Enqueue discovery for an intent resumed from PAUSED back to ACTIVE. */
+  addResumeDiscoveryJob(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown>;
 }

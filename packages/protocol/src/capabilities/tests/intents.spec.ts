@@ -73,6 +73,8 @@ class FakeIntentHost {
       intent.archivedAt = new Date();
       return { success: true };
     },
+    deleteIntentIndexAssociations: async () => {},
+    expireOpportunitiesByIntentActor: async () => 0,
   } as unknown as IntentGraphDatabase;
 
   readonly embedder: EmbeddingGenerator = {
@@ -127,7 +129,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     const scoped = { ...base, scopeType: "network" as const, scopeId: NETWORK_ID };
 
     // Create: infer → verify → reconcile → execute.
-    const created = await graph.invoke({ ...scoped, operationMode: "create", inputContent: CO_FOUNDER_SIGNAL });
+    const created = await graph.invoke({ ...scoped, inputContent: CO_FOUNDER_SIGNAL });
     show("create", CO_FOUNDER_SIGNAL, {
       classification: created.verifiedIntents[0]?.verification?.classification,
       persisted: host.intents[0]?.payload,
@@ -147,12 +149,12 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     ]);
 
     // Read: fast path, no model calls.
-    const read = await graph.invoke({ ...scoped, operationMode: "read" });
+    const read = await graph.invoke({ ...scoped });
     show("read", `network ${NETWORK_ID}`, { intents: read.readResult?.intents });
     expect(read.readResult).toMatchObject({ count: 1, intents: [{ id: "intent-1", description: host.intents[0].payload }] });
 
     // Update: bound to the explicit target.
-    const updated = await graph.invoke({ ...scoped, operationMode: "update", targetIntentIds: ["intent-1"], inputContent: UPDATED_SIGNAL });
+    const updated = await graph.invoke({ ...scoped, targetIntentIds: ["intent-1"], inputContent: UPDATED_SIGNAL });
     show("update intent-1", UPDATED_SIGNAL, {
       persisted: host.intents[0].payload,
       trace: updated.trace.map((entry) => entry.detail),
@@ -166,20 +168,20 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     expect(host.hydeJobs).toHaveLength(2);
 
     // Delete: expire without inference or verification.
-    const deleted = await graph.invoke({ ...scoped, operationMode: "delete", targetIntentIds: ["intent-1"] });
+    const deleted = await graph.invoke({ ...scoped, archive: true, targetIntentIds: ["intent-1"] });
     show("delete intent-1", "(no content; explicit target)", { executionResults: deleted.executionResults, hydeJob: host.hydeJobs.at(-1) });
     expect(deleted.executionResults).toEqual([{ actionType: "expire", success: true, intentId: "intent-1", error: undefined }]);
     expect(host.intents[0].archivedAt).toBeInstanceOf(Date);
     expect(host.hydeJobs.at(-1)).toEqual({ kind: "delete", data: { intentId: "intent-1" } });
 
-    const readAfterDelete = await graph.invoke({ ...scoped, operationMode: "read" });
+    const readAfterDelete = await graph.invoke({ ...scoped });
     show("read after delete", `network ${NETWORK_ID}`, { intents: readAfterDelete.readResult?.intents });
     expect(readAfterDelete.readResult).toMatchObject({ count: 0, intents: [] });
   }, 180_000);
 
   test.concurrent("proposes a signal without persisting it", async () => {
     const host = new FakeIntentHost();
-    const result = await host.graph().invoke({ ...base, operationMode: "propose", inputContent: CO_FOUNDER_SIGNAL });
+    const result = await host.graph().invoke({ ...base, dryRun: true, inputContent: CO_FOUNDER_SIGNAL });
     show("propose", CO_FOUNDER_SIGNAL, {
       proposed: result.verifiedIntents.map((intent) => intent.description),
       persisted: host.intents.length,
@@ -195,7 +197,7 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
 
   test.concurrent("rejects a vague utterance instead of persisting it", async () => {
     const host = new FakeIntentHost();
-    const result = await host.graph().invoke({ ...base, operationMode: "create", inputContent: VAGUE_SIGNAL });
+    const result = await host.graph().invoke({ ...base, inputContent: VAGUE_SIGNAL });
     show("create (vague)", VAGUE_SIGNAL, {
       inferred: result.inferredIntents.map((intent) => intent.description),
       failures: result.validationFailures,

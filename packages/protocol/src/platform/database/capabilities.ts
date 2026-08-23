@@ -67,6 +67,13 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'createIntent'
   | 'updateIntent'
   | 'archiveIntent'
+  | 'deleteIntentIndexAssociations'
+  | 'expireOpportunitiesByIntentActor'
+  | 'transitionIntentLifecycle'
+  | 'compensateFailedResume'
+  | 'getProposalForOwner'
+  | 'revisePendingProposal'
+  | 'confirmProposalIntent'
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
@@ -273,6 +280,18 @@ export type IntentGraphDatabase = Pick<
   // Never used to rewrite a description: intents derive from what the user said.
   | 'getUserContext'
   | 'assignIntentToNetwork'
+  // Archive action's full cleanup (network associations, referencing opportunities)
+  | 'deleteIntentIndexAssociations'
+  | 'expireOpportunitiesByIntentActor'
+  // Status transition action (pause/resume)
+  | 'transitionIntentLifecycle'
+  | 'compensateFailedResume'
+  // Confirm action (chat/MCP proposal → persisted intent). Ownership is
+  // enforced by the proposal row itself (owner-scoped) and by the caller
+  // for archive/transition, same as create/update today.
+  | 'getProposalForOwner'
+  | 'revisePendingProposal'
+  | 'confirmProposalIntent'
 >;
 
 /**

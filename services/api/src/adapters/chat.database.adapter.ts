@@ -1128,6 +1128,45 @@ export class ChatDatabaseAdapter {
     );
   }
 
+  // The Intent Graph's archive/transition/confirm actions reach these through
+  // this composite adapter when compiled for chat/MCP tools; delegate straight
+  // to IntentDatabaseAdapter, the single implementation of each.
+  deleteIntentIndexAssociations(intentId: string): ReturnType<IntentDatabaseAdapter['deleteIntentIndexAssociations']> {
+    return this.intentAdapter.deleteIntentIndexAssociations(intentId);
+  }
+
+  expireOpportunitiesByIntentActor(intentId: string): ReturnType<IntentDatabaseAdapter['expireOpportunitiesByIntentActor']> {
+    return this.intentAdapter.expireOpportunitiesByIntentActor(intentId);
+  }
+
+  transitionIntentLifecycle(
+    input: Parameters<IntentDatabaseAdapter['transitionIntentLifecycle']>[0],
+  ): ReturnType<IntentDatabaseAdapter['transitionIntentLifecycle']> {
+    return this.intentAdapter.transitionIntentLifecycle(input);
+  }
+
+  compensateFailedResume(
+    input: Parameters<IntentDatabaseAdapter['compensateFailedResume']>[0],
+  ): ReturnType<IntentDatabaseAdapter['compensateFailedResume']> {
+    return this.intentAdapter.compensateFailedResume(input);
+  }
+
+  getProposalForOwner(proposalId: string, userId: string): ReturnType<IntentDatabaseAdapter['getProposalForOwner']> {
+    return this.intentAdapter.getProposalForOwner(proposalId, userId);
+  }
+
+  revisePendingProposal(
+    input: Parameters<IntentDatabaseAdapter['revisePendingProposal']>[0],
+  ): ReturnType<IntentDatabaseAdapter['revisePendingProposal']> {
+    return this.intentAdapter.revisePendingProposal(input);
+  }
+
+  confirmProposalIntent(
+    input: Parameters<IntentDatabaseAdapter['confirmProposalIntent']>[0],
+  ): ReturnType<IntentDatabaseAdapter['confirmProposalIntent']> {
+    return this.intentAdapter.confirmProposalIntent(input);
+  }
+
   async getIntentIndexScores(intentId: string): Promise<Array<{
     networkId: string;
     relevancyScore: number | null;

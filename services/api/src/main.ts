@@ -74,7 +74,7 @@ import { parkedQuestionEnqueue } from './queues/parked-question.enqueue';
 import { questionMessageQueue } from './queues/question-message.queue';
 import { intentAgentQueue } from './queues/intent-agent.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
+import { handleIntentCreatedMaintenance, IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { evaluateOpportunityTransition } from './lib/question/question-exhaustion.evaluator';
@@ -299,25 +299,6 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
     intentId,
     userId,
     (ownerUserId, reason) => opportunityService.triggerMaintenance(ownerUserId, reason),
-  );
-};
-
-IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: number) => {
-  log.job.from('IntentEvents').verbose('Intent paused', { intentId, userId, lifecycleVersionMs });
-};
-
-IntentEvents.onResumed = async (intentId: string, userId: string, lifecycleVersionMs: number) => {
-  log.job.from('IntentEvents').verbose('Intent resumed, triggering discovery', {
-    intentId,
-    userId,
-    lifecycleVersionMs,
-  });
-  await fromIntentQueue.addJob(
-    { intentId, userId, trigger: 'intent_resume' },
-    {
-      priority: 10,
-      jobId: intentResumeDiscoveryJobId(userId, intentId, lifecycleVersionMs),
-    },
   );
 };
 

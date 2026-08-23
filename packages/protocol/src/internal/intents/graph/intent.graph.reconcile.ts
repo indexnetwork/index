@@ -9,7 +9,7 @@ import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
-import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isExplicitUpdateRequest, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
 
     /**
@@ -20,9 +20,10 @@ import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntent
 export async function verificationNode(state: IntentState, deps: IntentGraphDeps) {
   return timed("IntentGraph.verification", async () => {
     const intents = state.inferredIntents;
+    const isExplicitUpdate = isExplicitUpdateRequest(state);
 
     logger.verbose("Starting verification", {
-      operationMode: state.operationMode,
+      isExplicitUpdate,
       intentCount: intents.length
     });
 
@@ -82,7 +83,7 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
             };
           }
 
-          if (state.operationMode === 'create' && verdict.referential_breadth === 'broad') {
+          if (!state.dryRun && !isExplicitUpdate && verdict.referential_breadth === 'broad') {
             logger.warn('Dropping broad attributive intent before persistence', {
               description,
               referentialBreadth: verdict.referential_breadth,
@@ -132,7 +133,7 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
     logger.verbose(`Verification complete`, {
       passed: verified.length,
       total: intents.length,
-      operationMode: state.operationMode
+      isExplicitUpdate,
     });
 
     // Build trace entries with Felicity scores for each verified intent
@@ -181,51 +182,59 @@ export async function verificationNode(state: IntentState, deps: IntentGraphDeps
 
     /**
      * Node 3: Reconciliation
-     * Decides on final actions (Create, Update, Expire).
-     * Phase 4: Handles delete operations directly without LLM reconciliation.
+     * Decides on final actions. Archive, transition, and confirm build their
+     * one deterministic action directly (no LLM). Explicit update binds to its
+     * one target. A bare content path (no target) reconciles via the LLM.
      */
 export async function reconciliationNode(state: IntentState, deps: IntentGraphDeps) {
   return timed("IntentGraph.reconciliation", async () => {
     logger.verbose("Starting reconciliation", {
-      operationMode: state.operationMode,
       verifiedIntentCount: state.verifiedIntents.length,
-      targetIntentIds: state.targetIntentIds
+      targetIntentIds: state.targetIntentIds,
+      archive: state.archive,
+      status: state.status,
+      hasProposal: !!state.proposalId,
     });
 
     const agentTimingsAccum: DebugMetaAgent[] = [];
 
-    // Phase 4: Handle delete operations directly
-    if (state.operationMode === 'delete') {
-      if (!state.targetIntentIds || state.targetIntentIds.length === 0) {
-        logger.warn("Delete mode with no target IDs");
-        return {
-          actions: [],
-          agentTimings: agentTimingsAccum,
-          trace: [{ node: "reconciler", detail: "Delete mode with no target IDs" }],
-        };
-      }
-
-      logger.verbose("Delete mode - generating expire actions", {
-        targetIds: state.targetIntentIds
-      });
-
-      const actions = state.targetIntentIds.map(id => ({
+    if (state.archive) {
+      const actions = (state.targetIntentIds ?? []).map(id => ({
         type: 'expire' as const,
         id,
         reasoning: 'User requested deletion'
       }));
-
       return {
         actions,
         agentTimings: agentTimingsAccum,
-        trace: [{
-          node: "reconciler",
-          detail: `Actions: expire=${actions.length}`,
-        }],
+        trace: [{ node: "reconciler", detail: `Actions: expire=${actions.length}` }],
       };
     }
 
-    // Standard reconciliation for create/update operations
+    if (state.status !== undefined) {
+      const actions = [{ type: 'transition' as const, id: state.targetIntentIds![0], status: state.status }];
+      return {
+        actions,
+        agentTimings: agentTimingsAccum,
+        trace: [{ node: "reconciler", detail: `Actions: transition=1 (${state.status})` }],
+      };
+    }
+
+    if (state.proposalId !== undefined) {
+      const actions = [{
+        type: 'confirm' as const,
+        proposalId: state.proposalId,
+        description: state.description ?? '',
+        ...(state.networkId ? { networkId: state.networkId } : {}),
+      }];
+      return {
+        actions,
+        agentTimings: agentTimingsAccum,
+        trace: [{ node: "reconciler", detail: "Actions: confirm=1" }],
+      };
+    }
+
+    // Content path: explicit update or bare create.
     const candidates = state.verifiedIntents;
     if (candidates.length === 0) {
       logger.verbose("No verified intents to reconcile");
@@ -236,7 +245,7 @@ export async function reconciliationNode(state: IntentState, deps: IntentGraphDe
       };
     }
 
-    if (state.operationMode === 'update') {
+    if (isExplicitUpdateRequest(state)) {
       const explicitUpdate = buildExplicitUpdateActions(
         state.targetIntentIds,
         state.activeIntentIds,
@@ -266,7 +275,6 @@ export async function reconciliationNode(state: IntentState, deps: IntentGraphDe
 
     logger.verbose("Invoking reconciler agent", {
       candidateCount: candidates.length,
-      operationMode: state.operationMode
     });
 
     const _traceEmitterReconciler = requestContext.getStore()?.traceEmitter;
@@ -276,18 +284,14 @@ export async function reconciliationNode(state: IntentState, deps: IntentGraphDe
     agentTimingsAccum.push({ name: 'intent.reconciler', durationMs: Date.now() - reconcilerStart });
     _traceEmitterReconciler?.({ type: "agent_end", name: "intent-reconciler", durationMs: Date.now() - reconcilerStart, summary: `Reconciled ${result.actions.length} action(s)` });
 
-    const actions = enforceIntentActionBoundary(
-      state.operationMode,
-      state.targetIntentIds,
-      result.actions,
-    );
+    // Bare create path: no target boundary to enforce (that only applies to
+    // an explicit update, handled above).
+    const actions = result.actions;
     logger.verbose("Reconciliation complete", {
       actionCount: actions.length,
-      droppedActionCount: result.actions.length - actions.length,
-      operationMode: state.operationMode
     });
 
-    // Count actions by type after enforcing the operation boundary.
+    // Count actions by type.
     const counts = { create: 0, update: 0, expire: 0 };
     for (const a of actions) {
       if (a.type in counts) counts[a.type as keyof typeof counts]++;

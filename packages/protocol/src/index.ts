@@ -58,6 +58,11 @@ export type {
   AssignmentNetworkMembership,
   IntentNetworkFinalAssignmentResult,
   CreateOpportunityData,
+  IntentLifecycleStatus,
+  TransitionLifecycleResult,
+  IntentProposalRecord,
+  ReviseIntentProposalInput,
+  ConfirmProposalResult,
 } from "./platform/database.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/discovery/embedder.js";
 export type { IntentGraphQueue } from "./platform/runtime/queue.js";

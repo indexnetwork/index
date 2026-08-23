@@ -4,6 +4,8 @@ import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
+import { intentProposalDatabaseAdapter, type ReviseIntentProposalInput } from './intent-proposal.database.adapter';
+import type { IntentProposalRow } from '../schemas/database.schema';
 
 
 /** Scope type of the per-signal DM the personal agent speaks into. */
@@ -205,6 +207,23 @@ export class IntentDatabaseAdapter {
 
       return { kind: 'created', intent: created } as const;
     });
+  }
+
+  /**
+   * Resolve a durable proposal without exposing records owned by another user.
+   * Delegates to {@link IntentProposalDatabaseAdapter} — the single source of
+   * truth for the intent_proposals table's read/write surface.
+   */
+  async getProposalForOwner(proposalId: string, userId: string): Promise<IntentProposalRow | null> {
+    return intentProposalDatabaseAdapter.getProposalForOwner(proposalId, userId);
+  }
+
+  /**
+   * Atomically replace the verified payload of a still-pending owner proposal.
+   * Delegates to {@link IntentProposalDatabaseAdapter}.
+   */
+  async revisePendingProposal(input: ReviseIntentProposalInput): Promise<IntentProposalRow | null> {
+    return intentProposalDatabaseAdapter.revisePendingProposal(input);
   }
 
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {

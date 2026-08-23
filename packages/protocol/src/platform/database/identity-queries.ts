@@ -3,7 +3,7 @@
  */
 
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
-import type { ActiveIntent, ActiveNetworkMembershipPair, ArchiveResult, CreateIntentData, CreatedIntent, IntentRecord, NetworkMembership, OnboardingState, SimilarIntent, SimilarIntentSearchOptions, UpdateIntentData, UserRecord, UserSocial } from './entities.js';
+import type { ActiveIntent, ActiveNetworkMembershipPair, ArchiveResult, ConfirmProposalResult, CreateIntentData, CreatedIntent, IntentLifecycleStatus, IntentProposalRecord, IntentRecord, NetworkMembership, OnboardingState, ReviseIntentProposalInput, SimilarIntent, SimilarIntentSearchOptions, TransitionLifecycleResult, UpdateIntentData, UserRecord, UserSocial } from './entities.js';
 import type { Database } from '../database.js';
 
 /** Profile, intent-lifecycle and retrieval operations. */
@@ -147,6 +147,69 @@ export interface DatabaseIdentityQueries {
    * ```
    */
   archiveIntent(intentId: string): Promise<ArchiveResult>;
+
+  /**
+   * Atomically transition an owned intent between ACTIVE and PAUSED.
+   * Terminal/archived intents and out-of-scope requests are rejected.
+   * Idempotent: re-requesting the current status reports `changed: false`.
+   *
+   * Called when the reconciler outputs a "transition" action.
+   */
+  transitionIntentLifecycle(input: {
+    intentId: string;
+    userId: string;
+    status: 'ACTIVE' | 'PAUSED';
+    networkScopeId?: string | null;
+  }): Promise<TransitionLifecycleResult>;
+
+  /**
+   * Compare-and-set a resume back to PAUSED when its discovery-enqueue
+   * acknowledgement failed. A concurrent lifecycle write is never overwritten.
+   */
+  compensateFailedResume(input: {
+    intentId: string;
+    userId: string;
+    lifecycleVersionMs: number;
+    networkScopeId?: string | null;
+  }): Promise<{ status: IntentLifecycleStatus; lifecycleVersionMs: number } | null>;
+
+  /**
+   * Deletes every intent–network association for an archived intent.
+   * Called as part of the "expire" action's cleanup.
+   */
+  deleteIntentIndexAssociations(intentId: string): Promise<void>;
+
+  /**
+   * Expires every non-expired opportunity where this intent appears as an actor.
+   * Called as part of the "expire" action's cleanup.
+   *
+   * @returns The number of opportunities expired.
+   */
+  expireOpportunitiesByIntentActor(intentId: string): Promise<number>;
+
+  /** Resolve a durable proposal without exposing records owned by another user. */
+  getProposalForOwner(proposalId: string, userId: string): Promise<IntentProposalRecord | null>;
+
+  /**
+   * Atomically replace the verified payload of a still-pending owner proposal
+   * (an owner-edited confirmation description that re-verified successfully).
+   */
+  revisePendingProposal(input: ReviseIntentProposalInput): Promise<IntentProposalRecord | null>;
+
+  /**
+   * Atomically confirm one durable proposal into a persisted intent, with
+   * optional network assignment. Re-checks owner, expiry, exact payload,
+   * verifier analysis, and current membership under the proposal row's lock.
+   *
+   * Called when the reconciler outputs a "confirm" action.
+   */
+  confirmProposalIntent(input: {
+    proposalId: string;
+    userId: string;
+    description: string;
+    networkId?: string;
+    embedding: number[];
+  }): Promise<ConfirmProposalResult>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Query Operations

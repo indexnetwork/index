@@ -505,8 +505,8 @@ export class SignalIntakeService {
 // Production wiring
 // -----------------------------------------------------------------------------
 
-/** Compiled once and reused: the intent graph always runs in verification-only
- * `propose` mode here, so no DB writes happen from this leg of the funnel. */
+/** Compiled once and reused: the intent graph always runs with `dryRun: true`
+ * here, so no DB writes happen from this leg of the funnel. */
 const productionIntents = new Intents({
   database: intentDatabaseAdapter,
   embedder: new EmbedderAdapter(),
@@ -522,7 +522,7 @@ async function invokeIntentGraphProduction(input: {
   inputContent: string;
 }): Promise<{ verifiedIntents?: Array<Record<string, unknown>> }> {
   const result = await compiledIntentGraph.invoke(
-    { ...input, userProfile: '', operationMode: 'propose' as const },
+    { ...input, userProfile: '', dryRun: true },
     { recursionLimit: 100 },
   );
   return result as { verifiedIntents?: Array<Record<string, unknown>> };

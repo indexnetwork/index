@@ -8,6 +8,7 @@ import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { HydeGraphFactory, HydeGenerator, LensInferrer, Intents, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
+import { intentResumeDiscoveryJobId } from '../events/intent.event';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
 export const QUEUE_NAME = 'intent-hyde-queue';
@@ -110,6 +111,18 @@ export class IntentQueue implements IntentGraphQueue {
    */
   addDeleteHydeJob(data: { intentId: string }): Promise<Job<IntentJobPayload>> {
     return this.addJob('delete_hyde', data);
+  }
+
+  /**
+   * Enqueue discovery for an intent resumed from PAUSED back to ACTIVE
+   * (implements {@link IntentGraphQueue}). The lifecycle-version job id
+   * deduplicates retries of the same resume.
+   */
+  addResumeDiscoveryJob(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
+    return fromIntentQueue.addJob(
+      { intentId: data.intentId, userId: data.userId, trigger: 'intent_resume' },
+      { priority: 10, jobId: intentResumeDiscoveryJobId(data.userId, data.intentId, data.lifecycleVersionMs) },
+    );
   }
 
   private readonly logger = log.job.from('IntentJob');

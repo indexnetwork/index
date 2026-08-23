@@ -146,9 +146,9 @@ describe("create_intent", () => {
       graphs: {
         profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
         intent: {
-          invoke: async (input: { userProfile?: string; operationMode?: string }) => {
+          invoke: async (input: { userProfile?: string; dryRun?: boolean }) => {
             capturedProfiles.push(input.userProfile ?? "");
-            if (input.operationMode === "propose") {
+            if (input.dryRun) {
               return {
                 verifiedIntents: [{ description: "Find agent builders", score: 0.91, verification: { classification: "request" } }],
                 agentTimings: [],
@@ -189,8 +189,8 @@ describe("create_intent", () => {
       graphs: {
         profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
         intent: {
-          invoke: async (input: { operationMode?: string }) => {
-            if (input.operationMode === "propose") {
+          invoke: async (input: { dryRun?: boolean }) => {
+            if (input.dryRun) {
               return {
                 verifiedIntents: [{
                   description: "Meet creative people, builders, and makers interested in AI and somatic exploration",
@@ -246,8 +246,8 @@ describe("create_intent", () => {
       graphs: {
         profile: { invoke: async () => ({ profile: null, agentTimings: [] }) },
         intent: {
-          invoke: async (input: { operationMode?: string }) => {
-            if (input.operationMode === "propose") {
+          invoke: async (input: { dryRun?: boolean }) => {
+            if (input.dryRun) {
               return {
                 verifiedIntents: [{
                   description: "Meet creative people, builders, and makers interested in AI and somatic exploration",

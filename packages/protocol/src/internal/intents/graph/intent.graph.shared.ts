@@ -7,7 +7,7 @@
  */
 
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { IntentGraphState, VerifiedIntent, ExecutionResult, type IntentValidationFailure } from "./intent.graph.state.js";
+import { IntentGraphState, VerifiedIntent, ExecutionResult, type IntentGraphAction, type IntentValidationFailure } from "./intent.graph.state.js";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
 import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription } from "../intent.proposal.js";
@@ -38,16 +38,25 @@ export interface IntentGraphDeps {
 export const logger = protocolLogger("IntentGraphFactory");
 
 /**
+ * True when the input shape is an explicit update: content plus a target id.
+ * Distinguishes an explicit update from archive/transition/confirm, which also
+ * carry `targetIntentIds` but for a different purpose.
+ */
+export function isExplicitUpdateRequest(state: Pick<IntentState, 'inputContent' | 'targetIntentIds'>): boolean {
+  return state.inputContent !== undefined && !!state.targetIntentIds?.length;
+}
+
+/**
  * Enforce write-mode constraints on reconciler output before any action can
- * reach persistence. Update mode is deliberately fail-closed: only updates
- * whose id is one of the caller-provided targets survive.
+ * reach persistence. An explicit update is deliberately fail-closed: only an
+ * update whose id is the caller-provided target survives.
  */
 export function enforceIntentActionBoundary(
-  operationMode: 'create' | 'update' | 'delete' | 'read' | 'propose',
+  isExplicitUpdate: boolean,
   targetIntentIds: string[] | undefined,
-  actions: NormalizedIntentAction[],
-): NormalizedIntentAction[] {
-  if (operationMode !== 'update') return actions;
+  actions: IntentGraphAction[],
+): IntentGraphAction[] {
+  if (!isExplicitUpdate) return actions;
   const targets = new Set(targetIntentIds ?? []);
   return actions.filter((action) => action.type === 'update' && targets.has(action.id));
 }
