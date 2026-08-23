@@ -61,23 +61,9 @@ describe('negotiation state is never read from the whole conversation', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('every turn-count CAS resolves its history through the scoped helper', () => {
-    // Each method comparing against an armed turn count must derive that count
-    // the same way the arming side did — via the helper, never a raw select.
-    const casMethods = new Set(
-      [...adapterSource.matchAll(/input\.(?:turnNumber|expectedTurnCount)/g)]
-        .map((match) => enclosingMethod(adapterSource, match.index!))
-        .filter((method): method is string => method !== null),
-    );
-
-    const helperUsers = new Set(
-      [...adapterSource.matchAll(/selectNegotiationTurnHistoryInTransaction\(tx/g)]
-        .map((match) => enclosingMethod(adapterSource, match.index!))
-        .filter((method): method is string => method !== null),
-    );
-
-    expect(casMethods.size).toBeGreaterThan(0);
-    const unscoped = [...casMethods].filter((method) => !helperUsers.has(method));
-    expect(unscoped).toEqual([]);
-  });
+  // #1494: the armed turn-count CAS this pinned (`transitionWaitingNegotiationToWorking`,
+  // matched against `input.turnNumber`) belonged to the old claim/park state
+  // machine — retired by the negotiation-graph rewrite, which never parks a
+  // negotiation into a distinct state. No method compares against an armed
+  // turn count anymore, so the invariant has nothing left to protect.
 });
