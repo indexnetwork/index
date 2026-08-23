@@ -16,19 +16,21 @@ function message(parts: unknown[], overrides: Partial<ConversationMessage> = {})
 }
 
 describe('extractTurn', () => {
-  it('prefers the data message and captures action + suggested roles', () => {
+  it('prefers the data message and captures verb + suggested roles', () => {
     const turn = extractTurn(message([
       {
         kind: 'data',
         data: {
-          action: 'propose',
+          verb: 'counter',
           message: 'Proposing a connection.',
           assessment: { reasoning: 'hidden', suggestedRoles: { ownUser: 'agent', otherUser: 'patient' } },
         },
       },
     ]));
     expect(turn).toMatchObject({
-      action: 'propose',
+      verb: 'counter',
+      pauseReason: null,
+      chipKey: 'counter',
       text: 'Proposing a connection.',
       suggestedRoles: { ownUser: 'agent', otherUser: 'patient' },
     });
@@ -36,7 +38,7 @@ describe('extractTurn', () => {
 
   it('falls back to assessment reasoning when there is no message', () => {
     const turn = extractTurn(message([
-      { kind: 'data', data: { action: 'counter', assessment: { reasoning: 'Bandwidth confirmed.' } } },
+      { kind: 'data', data: { verb: 'counter', assessment: { reasoning: 'Bandwidth confirmed.' } } },
     ]));
     expect(turn?.text).toBe('Bandwidth confirmed.');
     expect(turn?.suggestedRoles).toBeNull();
@@ -45,26 +47,61 @@ describe('extractTurn', () => {
   it('falls back to a text part', () => {
     const turn = extractTurn(message([{ kind: 'text', text: 'Hello there' }]));
     expect(turn?.text).toBe('Hello there');
-    expect(turn?.action).toBeNull();
+    expect(turn?.verb).toBeNull();
   });
 
   it('drops messages without visible text', () => {
-    expect(extractTurn(message([{ kind: 'data', data: { action: 'accept' } }]))).toBeNull();
     expect(extractTurn(message([]))).toBeNull();
+  });
+
+  it('reads a needs_principal pause payload into pauseReason/pausePayload and derives fallback text', () => {
+    const turn = extractTurn(message([
+      { kind: 'data', data: { verb: 'pause', reason: 'needs_principal', payload: { question: 'What timeline works?' } } },
+    ]));
+    expect(turn).toMatchObject({
+      verb: 'pause',
+      pauseReason: 'needs_principal',
+      pausePayload: { question: 'What timeline works?' },
+      chipKey: 'needs_principal',
+      text: 'What timeline works?',
+    });
+  });
+
+  it('reads a ready_for_verdict pause, falling back to its reasoning for text', () => {
+    const turn = extractTurn(message([
+      { kind: 'data', data: { verb: 'pause', reason: 'ready_for_verdict', payload: { recommendation: 'pending', reasoning: 'Terms converged.' } } },
+    ]));
+    expect(turn).toMatchObject({
+      pauseReason: 'ready_for_verdict',
+      chipKey: 'ready_for_verdict',
+      text: 'Terms converged.',
+    });
+  });
+
+  it('reads a counterparty_silent pause (no payload) with a fixed fallback text', () => {
+    const turn = extractTurn(message([
+      { kind: 'data', data: { verb: 'pause', reason: 'counterparty_silent' } },
+    ]));
+    expect(turn).toMatchObject({
+      pauseReason: 'counterparty_silent',
+      pausePayload: null,
+      chipKey: 'counterparty_silent',
+    });
+    expect(turn?.text.length).toBeGreaterThan(0);
   });
 });
 
 describe('verbFor', () => {
-  it('maps actions to the §2.3 palette', () => {
-    expect(verbFor('propose')).toMatchObject({ label: 'PROPOSED', color: 'text-blue-600' });
+  it('maps continue verbs and pause reasons to the §2.3 palette', () => {
+    expect(verbFor('outreach')?.color).toBe('text-[#35799C]');
     expect(verbFor('counter')?.color).toBe('text-amber-600');
     expect(verbFor('question')?.color).toBe('text-[#35799C]');
-    expect(verbFor('accept')?.color).toBe('text-emerald-600');
-    expect(verbFor('decline')?.color).toBe('text-red-600');
-    expect(verbFor('withdraw')?.color).toBe('text-red-600');
+    expect(verbFor('needs_principal')?.label).toBe('ASKED YOU');
+    expect(verbFor('ready_for_verdict')).toBeTruthy();
+    expect(verbFor('counterparty_silent')).toBeTruthy();
   });
 
-  it('returns null without an action and a neutral fallback for unknown ones', () => {
+  it('returns null without a key and a neutral fallback for unknown ones', () => {
     expect(verbFor(null)).toBeNull();
     expect(verbFor('mystery_move')).toMatchObject({ label: 'MYSTERY MOVE', color: 'text-gray-500' });
   });
@@ -78,13 +115,16 @@ describe('roleLabel', () => {
   });
 });
 
-function turn(action: string | null, overrides: Partial<TranscriptTurn> = {}): TranscriptTurn {
+function turn(chipKey: string | null, overrides: Partial<TranscriptTurn> = {}): TranscriptTurn {
   return {
     id: 't1',
     sessionId: 's1',
     senderId: 'agent:own',
     createdAt: '2026-07-24T12:00:00.000Z',
-    action,
+    verb: chipKey === 'needs_principal' || chipKey === 'ready_for_verdict' || chipKey === 'counterparty_silent' ? 'pause' : chipKey,
+    pauseReason: chipKey === 'needs_principal' || chipKey === 'ready_for_verdict' || chipKey === 'counterparty_silent' ? chipKey : null,
+    pausePayload: null,
+    chipKey,
     text: 'text',
     suggestedRoles: null,
     ...overrides,
@@ -92,19 +132,19 @@ function turn(action: string | null, overrides: Partial<TranscriptTurn> = {}): T
 }
 
 describe('contactTurns', () => {
-  it('drops ask_user turns — a private client consult is not contact with the counterparty', () => {
-    const turns = [turn('ask_user')];
+  it('drops needs_principal pauses — a private agent pause is not contact with the counterparty', () => {
+    const turns = [turn('needs_principal')];
     expect(contactTurns(turns)).toEqual([]);
   });
 
-  it('keeps every other action', () => {
-    const turns = [turn('outreach'), turn('counter'), turn('withdraw')];
+  it('keeps every other turn', () => {
+    const turns = [turn('outreach'), turn('counter'), turn('ready_for_verdict')];
     expect(contactTurns(turns)).toEqual(turns);
   });
 
-  it('excludes only the ask_user turns from a mixed transcript', () => {
+  it('excludes only the needs_principal pauses from a mixed transcript', () => {
     const outreach = turn('outreach');
-    const turns = [turn('ask_user'), outreach];
+    const turns = [turn('needs_principal'), outreach];
     expect(contactTurns(turns)).toEqual([outreach]);
   });
 });
@@ -128,8 +168,8 @@ describe('roleChipLabel', () => {
 
 describe('viewerRoleLabel', () => {
   const turns: TranscriptTurn[] = [
-    { id: '1', sessionId: null, senderId: 'agent:own', createdAt: '', action: 'propose', text: 'x', suggestedRoles: { ownUser: 'agent', otherUser: 'patient' } },
-    { id: '2', sessionId: null, senderId: 'agent:other', createdAt: '', action: 'accept', text: 'y', suggestedRoles: { ownUser: 'patient', otherUser: 'agent' } },
+    turn('outreach', { id: '1', sessionId: null, createdAt: '', suggestedRoles: { ownUser: 'agent', otherUser: 'patient' } }),
+    turn('counter', { id: '2', sessionId: null, senderId: 'agent:other', createdAt: '', suggestedRoles: { ownUser: 'patient', otherUser: 'agent' } }),
   ];
 
   it('reads the viewer role from the latest role-suggesting turn', () => {
@@ -142,39 +182,15 @@ describe('viewerRoleLabel', () => {
 });
 
 describe('terminalTurnAuthor', () => {
-  const turn = (senderId: string, action: string): TranscriptTurn =>
-    ({ id: action, sessionId: null, senderId, createdAt: '', action, text: 't', suggestedRoles: null });
-
-  it('names the counterparty when their agent authored the decline', () => {
+  // A negotiation no longer ends via a turn — resolve is a separate verdict
+  // write, not part of the transcript. This always returns null now; see the
+  // function's own doc comment for why a guess here is worse than silence.
+  it('always returns null — termination is not transcript-derivable any more', () => {
     expect(terminalTurnAuthor([
-      turn('agent:own', 'outreach'),
-      turn('agent:other', 'decline'),
-    ], 'agent:own')).toBe('counterparty');
-  });
-
-  it('names this side when our own agent withdrew', () => {
-    expect(terminalTurnAuthor([
-      turn('agent:other', 'outreach'),
-      turn('agent:own', 'withdraw'),
-    ], 'agent:own')).toBe('own');
-  });
-
-  it('reads the LAST terminal turn, not the first', () => {
-    expect(terminalTurnAuthor([
-      turn('agent:own', 'withdraw'),
-      turn('agent:other', 'reject'),
-    ], 'agent:own')).toBe('counterparty');
-  });
-
-  it('settles nothing when no turn ended the negotiation', () => {
-    expect(terminalTurnAuthor([
-      turn('agent:own', 'outreach'),
-      turn('agent:other', 'question'),
+      turn('outreach'),
+      turn('ready_for_verdict', { senderId: 'agent:other' }),
     ], 'agent:own')).toBeNull();
-  });
-
-  it('settles nothing without a viewer agent id — a guess is worse than silence', () => {
-    expect(terminalTurnAuthor([turn('agent:other', 'decline')], null)).toBeNull();
+    expect(terminalTurnAuthor([], null)).toBeNull();
   });
 });
 
@@ -313,7 +329,7 @@ describe('deriveSectionLabel', () => {
 });
 
 describe('groupTurnsBySession', () => {
-  const base = { senderId: 'agent:a', createdAt: '2025-01-01T00:00:00Z', action: null, text: 'x', suggestedRoles: null };
+  const base = { senderId: 'agent:a', createdAt: '2025-01-01T00:00:00Z', verb: null, pauseReason: null, pausePayload: null, chipKey: null, text: 'x', suggestedRoles: null };
 
   it('groups consecutive turns with the same sessionId together', () => {
     const turns: TranscriptTurn[] = [
