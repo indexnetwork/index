@@ -1,4 +1,5 @@
 import type { Job, Queue, Worker } from 'bullmq';
+import type { NegotiationGraphLike } from '@indexnetwork/protocol';
 
 import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../../adapters/conversation.database.adapter';
 import type { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
@@ -49,7 +50,7 @@ export interface NegotiationWatchdogQueueDeps {
     'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog'
   >;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
-  enqueueRunExisting?: (data: { opportunityId: string; userId: string }) => Promise<unknown>;
+  negotiationGraph?: NegotiationGraphLike;
   queue?: WatchdogQueueHandle;
   createWorker?: (
     processor: (job: Job<NegotiationWatchdogJobData>) => Promise<void>,
@@ -88,22 +89,23 @@ export class NegotiationWatchdogQueue {
   private readonly clock: () => Date;
   private queueInstance: WatchdogQueueHandle | null = null;
   private worker: WatchdogWorkerHandle | null = null;
+  private negotiationGraph: NegotiationGraphLike | undefined;
 
   constructor(deps: NegotiationWatchdogQueueDeps = {}) {
     this.deps = deps;
     this.logger = deps.logger ?? log.queue.from('NegotiationWatchdogQueue');
     this.clock = deps.clock ?? (() => new Date());
+    this.negotiationGraph = deps.negotiationGraph;
+  }
+
+  /** Wired once at startup by main.ts, after the single NegotiationGraph is compiled. */
+  setNegotiationGraph(graph: NegotiationGraphLike): void {
+    this.negotiationGraph = graph;
   }
 
   private get queue(): WatchdogQueueHandle {
     this.queueInstance ??= this.deps.queue ?? QueueFactory.createQueue<NegotiationWatchdogJobData>(QUEUE_NAME);
     return this.queueInstance;
-  }
-
-  private async enqueueRunExisting(data: { opportunityId: string; userId: string }): Promise<unknown> {
-    if (this.deps.enqueueRunExisting) return this.deps.enqueueRunExisting(data);
-    const { negotiationRunExistingQueue } = await import('./run-existing.queue');
-    return negotiationRunExistingQueue.addJob(data);
   }
 
   /** Register the repeatable sweep and worker when the flag is enabled. */
@@ -253,34 +255,14 @@ export class NegotiationWatchdogQueue {
       return;
     }
 
-    const sourceUserId = typeof metadata.sourceUserId === 'string' && metadata.sourceUserId.length > 0
-      ? metadata.sourceUserId
-      : null;
-    if (!sourceUserId) {
-      await this.terminalMark(database, staleTask, 'missing_source_user_id');
+    if (!this.negotiationGraph) {
+      this.logger.error('Negotiation watchdog fired before the graph was wired', { taskId: candidate.id });
       return;
     }
 
     const nextAttempt = attempts + 1;
-    const updated = await database.transitionNegotiationTaskForWatchdog({
-      taskId: staleTask.id,
-      expectedState: staleTask.state,
-      expectedUpdatedAt: staleTask.updatedAt,
-      nextState: 'canceled',
-      metadata: {
-        ...metadata,
-        watchdogAttempts: nextAttempt,
-        watchdogLastAttemptAt: this.clock().toISOString(),
-      },
-      statusMessage: { reason: 'watchdog-requeue', attempt: nextAttempt },
-    });
-    if (!updated) {
-      this.logger.info('Negotiation watchdog skipped task after a concurrent state change', { taskId: candidate.id, opportunityId });
-      return;
-    }
-
     const ageMs = Math.max(0, this.clock().getTime() - staleTask.updatedAt.getTime());
-    this.logger.warn('Negotiation watchdog re-enqueuing stale task', {
+    this.logger.warn('Negotiation watchdog pausing stale task', {
       taskId: candidate.id,
       opportunityId,
       state: candidate.state,
@@ -288,9 +270,9 @@ export class NegotiationWatchdogQueue {
       attempt: nextAttempt,
     });
     try {
-      await this.enqueueRunExisting({ opportunityId, userId: sourceUserId });
+      await this.negotiationGraph.invoke({ negotiationId: staleTask.id, pause: 'counterparty_silent' });
     } catch (error) {
-      this.logger.error('Negotiation watchdog re-enqueue failed after task cancellation', {
+      this.logger.error('Negotiation watchdog pause invoke failed', {
         taskId: candidate.id,
         opportunityId,
         attempt: nextAttempt,

@@ -125,6 +125,7 @@ negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
+negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph);
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({
