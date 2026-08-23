@@ -207,50 +207,6 @@ export async function runAtomicOutcomeTransition<T extends OutcomeTransitionResu
 }
 
 /**
- * Restore an exact taskless attempt while holding the shared negotiation lock.
- * The opportunity row and qualifying-task query run after lock acquisition, so
- * they observe the committed winner rather than a pre-lock READ COMMITTED snapshot.
- */
-export async function compensateTasklessNegotiatingOpportunityInTransaction(
-  tx: DrizzleTx,
-  id: string,
-  expectedUpdatedAt: Date,
-  fallbackStatus: 'latent' | 'draft',
-): Promise<OpportunityRow | null> {
-  await acquireNegotiationAttemptLock(tx, id);
-
-  const [opportunity] = await tx
-    .select({ status: opportunities.status, updatedAt: opportunities.updatedAt })
-    .from(opportunities)
-    .where(eq(opportunities.id, id))
-    .for('update');
-  if (
-    opportunity?.status !== 'negotiating'
-    || opportunity.updatedAt.getTime() !== expectedUpdatedAt.getTime()
-  ) {
-    return null;
-  }
-
-  const [qualifyingTask] = await tx
-    .select({ id: schema.tasks.id })
-    .from(schema.tasks)
-    .where(qualifyingNegotiationAttemptTaskWhere(id, expectedUpdatedAt))
-    .limit(1);
-  if (qualifyingTask) return null;
-
-  const [row] = await tx
-    .update(opportunities)
-    .set({ status: fallbackStatus, acceptedBy: null, updatedAt: new Date() })
-    .where(and(
-      eq(opportunities.id, id),
-      eq(opportunities.status, 'negotiating'),
-      eq(opportunities.updatedAt, expectedUpdatedAt),
-    ))
-    .returning();
-  return row ? toOpportunityRow(row) : null;
-}
-
-/**
  * Candidate rows for persisted notification catch-up. This intentionally uses
  * actor membership rather than the legacy UI role-visibility policy; the
  * notification projection applies canonical actionability after the read.
@@ -736,29 +692,6 @@ export class OpportunityDatabaseAdapter {
       emitOpportunityTransitionBestEffort(updated);
     }
     return updated;
-  }
-
-  /**
-   * Atomically restores an exact taskless negotiation attempt to its fallback status.
-   * Compensation and attempt-bound task creation serialize on the same advisory
-   * lock before rechecking the opportunity row and qualifying task existence.
-   *
-   * @param id - Opportunity ID
-   * @param expectedUpdatedAt - Persistence boundary for the negotiation attempt
-   * @param fallbackStatus - Status to restore when the guarded update succeeds
-   * @returns The compensated opportunity, or null on a status, version, or task race
-   */
-  async compensateTasklessNegotiatingOpportunity(
-    id: string,
-    expectedUpdatedAt: Date,
-    fallbackStatus: 'latent' | 'draft',
-  ): Promise<OpportunityRow | null> {
-    return db.transaction((tx) => compensateTasklessNegotiatingOpportunityInTransaction(
-      tx,
-      id,
-      expectedUpdatedAt,
-      fallbackStatus,
-    ));
   }
 
   /**
