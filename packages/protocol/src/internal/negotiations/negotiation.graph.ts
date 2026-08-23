@@ -362,20 +362,23 @@ export class NegotiationGraphFactory {
       .addNode("apply", (s: NegotiationState) => applyNode(s, deps))
       .addNode("resolve", (s: NegotiationState) => resolveNode(s, deps))
       .addNode("read", readNode)
-      .addNode("error", errorNode)
+      // Named "fail", not "error" — "error" is already the state's own
+      // channel name, and LangGraph rejects a node name that collides with
+      // one (throws at createGraph() time, not at invoke time).
+      .addNode("fail", errorNode)
       .addEdge("__start__", "init")
       .addConditionalEdges("init", (s: NegotiationState) => s.phase, {
         turn: "turn",
         apply: "apply",
         resolve: "resolve",
         read: "read",
-        error: "error",
+        error: "fail",
       })
-      .addConditionalEdges("turn", (s: NegotiationState) => s.phase, { apply: "apply", done: END, error: "error" })
-      .addConditionalEdges("apply", (s: NegotiationState) => s.phase, { turn: "turn", done: END, error: "error" })
+      .addConditionalEdges("turn", (s: NegotiationState) => s.phase, { apply: "apply", done: END, error: "fail" })
+      .addConditionalEdges("apply", (s: NegotiationState) => s.phase, { turn: "turn", done: END, error: "fail" })
       .addEdge("resolve", END)
       .addEdge("read", END)
-      .addEdge("error", END)
+      .addEdge("fail", END)
       .compile();
 
     return {
