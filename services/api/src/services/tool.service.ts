@@ -14,9 +14,7 @@ import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { parkedQuestionEnqueue } from '../queues/parked-question.enqueue';
-import { reflectEnqueue } from '../queues/negotiations/reflect.queue';
-import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
+import { roundReflectEnqueue } from '../queues/negotiations/round-reflect.queue';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import db from '../lib/drizzle/drizzle';
@@ -236,17 +234,11 @@ export class ToolService {
       dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
       hasExternalAgent: async () => false,
     };
-    const negotiationGraph = new NegotiationGraphFactory(
-      conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
-      noOpDispatcher,
-      undefined,
-      // Park payloads route to the question-message regeneration job.
-      parkedQuestionEnqueue(),
-      // Finished negotiations enqueue memory distillation (P5.2).
-      reflectEnqueue(),
-      // P5.3 memory read path.
-      negotiatorMemoryRetrieve(),
-    ).createGraph();
+    const negotiationGraph = new NegotiationGraphFactory({
+      database: conversationDatabaseAdapter,
+      dispatcher: noOpDispatcher,
+      reflectEnqueue: roundReflectEnqueue(),
+    }).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(
       database,
       this.embedder,
