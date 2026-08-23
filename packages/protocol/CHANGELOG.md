@@ -20,6 +20,71 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 29.0.0 - 2026-08-23
+
+### Breaking
+
+- **NegotiationGraph rewritten as a single write path.** Every write to a
+  negotiation now goes through one graph, routed on the shape of its invoke
+  input — no `operationMode`: `{ opportunityId, brief, intentId }` opens,
+  `{ negotiationId, brief }` resumes, `{ negotiationId, turn }` applies a
+  submitted turn (internal, external agent, or timeout, all through the same
+  `apply` sink), `{ negotiationId, pause: 'counterparty_silent' }` is a
+  timeout, `{ negotiationId, verdict: 'pending' | 'reject' }` is the only
+  terminal write, `{ negotiationId }` reads.
+- **The negotiator no longer terminates a negotiation.** `IndexNegotiator`
+  and its stances, deadlock shift, checklist gate, conclusion floor, decline
+  law, copy-loop guard, turn cap and park window as *outcomes* are deleted.
+  A turn is now one of `outreach | counter | question` (continue) or
+  `pause(counterparty_silent | needs_principal | ready_for_verdict, payload)`.
+  There is no `accept`, `decline`, or `withdraw` on the turn surface — a side
+  that wants out pauses `ready_for_verdict(reject)`. `resolve` (writing
+  `pending`/`reject` to the opportunity) is the only way a negotiation ends,
+  and nothing calls it yet in this release; negotiations pause and wait until
+  the caller that will do so (IS-A / AgentGraph) lands.
+- **The interim internal turn author is `NegotiationAuthor`**, a single
+  structured-output call constrained to the verb schema in
+  `negotiation.turn.ts`, prompted from the brief and the thread so far. It
+  replaces `IndexNegotiator` for this release only; AgentGraph replaces it in
+  turn.
+- **The A2A conversation is per negotiation, not per pair.** A negotiation is
+  its own conversation and its own task. There is no seeded prior-pair
+  dialogue, no `priorAttribution`, no conversation lock.
+- **`respond_to_negotiation` takes a turn, not an accept/decline/withdraw
+  action.** External agents (Hermes, MCP) submit the same verbs as the
+  internal author, validated the same way. `consult` and the second
+  `ask_user` park are removed; an external agent needing its principal
+  submits `pause(needs_principal, …)` like everyone else.
+- **Removed exports**: `IndexNegotiator`, `negotiateCandidates`,
+  `NegotiationGraphFactory`'s old constructor shape (now a single
+  `NegotiationGraphDeps` object), `UserNegotiationContext`,
+  `NegotiationAction`, `NegotiationSeat`, `NegotiationConsultationReason(Schema)`,
+  `resumeParkedNegotiation`, `NegotiationAnswerConsumptionPorts`,
+  `createNegotiationAnswerTools`, `NegotiationCounterpartyBinding`,
+  `expectedNegotiationSpeaker`, `negotiationScopeKey`,
+  `NegotiationContinuationTimeoutIdentity`, `AMBIENT_PARK_WINDOW_MS`,
+  `ASK_USER_WINDOW_MS`, `ASK_USER_LOCK_SLACK_MS`,
+  `NEGOTIATION_MAX_TURNS_CHAT`, `countOpenPreContactConsults`,
+  `PreContactConsultTaskRow`, `InChatNegotiationQuestionDelivery`, and the
+  negotiation checklist/deadlock/stance/consultation-policy modules.
+- **New exports**: `NegotiationTurnSchema` and its verb/pause-reason/verdict
+  types, `NegotiationAuthor`, `negotiationRoundReflectJobId` and
+  `NegotiationRoundReflectEnqueueFn` (the all-paused → reflect trigger — the
+  reflect consumer itself is a stub until AgentGraph lands), the rewritten
+  `NegotiationGraphDatabase` port (`brief` is now a dedicated field;
+  `metadata` carries `intentId`/`round`/`pause`).
+- **`OpportunityGraph`'s `negotiateNode`** now invokes
+  `{ opportunityId, intentId, brief }` for every persisted opportunity — no
+  selection, no cap. This release's brief is a minimal deterministic string
+  built from the trigger intent; IS-A authors real briefs in the next
+  release. `negotiateCandidates`, `compensateTasklessNegotiatingOpportunity`,
+  the three hand-built `UserNegotiationContext` builders, and the
+  `negotiate_existing` operation mode are all deleted.
+- **In-flight negotiations from before this release are not migrated.** The
+  negotiation task's shape changed (per-negotiation conversation, dedicated
+  `brief` column, new `metadata` shape); old rows are orphaned, not read by
+  the new graph.
+
 ## 28.1.0 - 2026-08-23
 
 ### Changed
