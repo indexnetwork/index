@@ -30,14 +30,14 @@ import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
-import { roundReflectEnqueue } from '../queues/negotiations/round-reflect.queue';
+import { negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createSignalPersona, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createSignalPersona, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -164,12 +164,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     new LensInferrer(),
     new HydeGenerator(),
   ).createGraph();
-  const negotiationGraph = new NegotiationGraphFactory({
-    database: protocolDeps.negotiationDatabase,
-    dispatcher: protocolDeps.agentDispatcher!,
-    // All-paused → reflect trigger for the round (stub consumer for now).
-    reflectEnqueue: roundReflectEnqueue(),
-  }).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
     undefined, undefined, negotiationGraph,
@@ -637,6 +631,7 @@ function createMcpServerInstance(): McpServer {
     cache: protocolDeps.cache,
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
+    negotiationGraph,
     agentDispatcher: protocolDeps.agentDispatcher,
     negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
     // #1471: owner-verdict host behind reject/accept_opportunity (the Radar

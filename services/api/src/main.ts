@@ -63,7 +63,8 @@ import { emailQueue } from './queues/email.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
-import { roundReflectEnqueue } from './queues/negotiations/round-reflect.queue';
+import { negotiationRoundReflectQueue } from './queues/negotiations/round-reflect.queue';
+import { negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
 import { questionMessageQueue } from './queues/question-message.queue';
 import { intentAgentQueue } from './queues/intent-agent.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
@@ -77,15 +78,13 @@ import { premiseQueue } from './queues/premise.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
+import { Intents, PremiseGraphFactory, setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
-import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
+import { chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
-import { agentService } from './services/agent.service';
 import { intentService } from './services/intent.service';
 import { userService } from './services/user.service';
-import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 import { publishNotificationStreamEvent } from './lib/notification-stream-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
@@ -113,18 +112,11 @@ setTimingWrapper((name, fn) => traceAppOperation(
 
 setRequestContextStore(hostRequestContext);
 
-// Wire negotiation into background discovery so the post-assignment HyDE path
-// negotiates latent opportunities consistently with chat/MCP discovery.
-// Without this, OpportunityGraph's negotiateNode short-circuits and every evaluated
+// Wire the single NegotiationGraph (lib/negotiation/negotiation-graph.ts)
+// into background discovery so the post-assignment HyDE path negotiates
+// latent opportunities consistently with chat/MCP discovery. Without this,
+// OpportunityGraph's negotiateNode short-circuits and every evaluated
 // candidate is persisted unfiltered.
-const backgroundAgentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
-const negotiationGraph = new NegotiationGraphFactory({
-  database: conversationDatabaseAdapter,
-  dispatcher: backgroundAgentDispatcher,
-  // All-paused → reflect trigger for the round (stub consumer for now).
-  reflectEnqueue: roundReflectEnqueue(),
-}).createGraph();
-negotiationTimeoutQueue.setNegotiationGraph(negotiationGraph);
 fromIntentQueue.setRuntimeDeps({
   negotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
@@ -203,6 +195,7 @@ emailQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
+negotiationRoundReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
 questionMessageQueue.startWorker();
 intentAgentQueue.startWorker();
@@ -644,6 +637,7 @@ const shutdown = async () => {
     emailQueue.close(),
     negotiationTimeoutQueue.close(),
     negotiationClaimTimeoutQueue.close(),
+    negotiationRoundReflectQueue.close(),
     questionMessageQueue.close(),
     intentAgentQueue.close(),
     premiseQueue.close(),

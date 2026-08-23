@@ -18,14 +18,14 @@
  * machinery; the graph's `apply` node is already the one sink for every
  * turn regardless of source, so this service does not need to be.
  */
-import type { AgentDispatcher, HermesNegotiationResponse, NegotiationGraphLike, NegotiationTurn } from '@indexnetwork/protocol';
-import { buildHermesNegotiationTurn, NegotiationGraphFactory } from '@indexnetwork/protocol';
+import type { HermesNegotiationResponse, NegotiationGraphLike, NegotiationTurn } from '@indexnetwork/protocol';
+import { buildHermesNegotiationTurn } from '@indexnetwork/protocol';
 
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { log } from '../lib/log';
 import { NegotiationPollingAuthorization } from '../lib/agent/negotiation-polling-authorization';
 import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker';
-import { roundReflectEnqueue } from '../queues/negotiations/round-reflect.queue';
+import { negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 
 const logger = log.service.from('NegotiationPollingService');
@@ -68,23 +68,6 @@ export class SeatViolationError extends Error {
     this.name = 'SeatViolationError';
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Negotiation graph — a no-op dispatcher is correct here: every invoke this
-// service makes supplies `{ negotiationId, turn }`, which the graph applies
-// directly without ever reaching its own `turn`/dispatch node.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const noOpDispatcher: AgentDispatcher = {
-  dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
-  hasExternalAgent: async () => false,
-};
-
-const negotiationGraph: NegotiationGraphLike = new NegotiationGraphFactory({
-  database: conversationDatabaseAdapter,
-  dispatcher: noOpDispatcher,
-  reflectEnqueue: roundReflectEnqueue(),
-}).createGraph();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Service
