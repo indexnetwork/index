@@ -144,12 +144,16 @@ export async function createChatTools(
     lensInferrer,
     hydeGenerator
   ).createGraph();
-  const negotiationGraph = deps.agentDispatcher
+  // Prefer the host's one fully-wired composition (reflectEnqueue included —
+  // the all-paused trigger is lost for good otherwise, since BullMQ's jobId
+  // dedup means that moment doesn't come again) over building a second,
+  // reflect-less instance here.
+  const negotiationGraph = deps.negotiationGraph ?? (deps.agentDispatcher
     ? new NegotiationGraphFactory({
         database: deps.negotiationDatabase,
         dispatcher: deps.agentDispatcher,
       }).createGraph()
-    : undefined;
+    : undefined);
   const opportunityGraph = new OpportunityGraphFactory(
     database,
     embedder,

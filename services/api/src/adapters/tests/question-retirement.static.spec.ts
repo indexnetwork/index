@@ -18,7 +18,6 @@ const read = (relative: string): string =>
 const main = read('../../main.ts');
 const opportunityService = read('../../services/opportunity.service.ts');
 const opportunityTools = read('../../../../../packages/protocol/src/internal/opportunities/opportunity.tools.ts');
-const parkedEnqueue = read('../../queues/parked-question.enqueue.ts');
 
 describe('question retirement static invariants', () => {
   describe('pre-accept uptake', () => {
@@ -66,7 +65,6 @@ describe('question retirement static invariants', () => {
       const fromIntent = read('../../queues/opportunity/from-intent.queue.ts');
       expect(fromIntent).not.toContain('minePoolDiscriminators');
       expect(fromIntent).not.toContain('pool_answer');
-      expect(parkedEnqueue).not.toContain('pool_discovery');
       expect(main).not.toContain('poolQuestionPushQueue');
       expect(main).not.toContain('handlePoolAnswer');
       expect(main).not.toContain('handleMaterialIntentUpdate');
@@ -95,7 +93,6 @@ describe('question retirement static invariants', () => {
       const fromIntent = read('../../queues/opportunity/from-intent.queue.ts');
       expect(fromIntent).not.toContain('recoverAfterCompletion');
       expect(fromIntent).not.toContain('maybeEnqueueIntentRecovery');
-      expect(parkedEnqueue).not.toContain('recovery');
       // The whole refinement service retired with intent refinement (next
       // block); nothing remains that could consume a recovery completion.
       expect(existsSync(new URL('../../services/intent-recovery-refinement.service.ts', import.meta.url))).toBe(false);
@@ -164,38 +161,26 @@ describe('question retirement static invariants', () => {
   });
 
   describe('generation half', () => {
-    it('deletes the QuestionerAgent, its presets, and the generation envelope', () => {
+    it('deletes the QuestionerAgent, its presets, the generation envelope, and — after the negotiation-graph rewrite — the park-payload routing that used to sit downstream of it', () => {
       for (const relative of [
         '../../../../../packages/protocol/src/internal/questions/question.agent.ts',
         '../../../../../packages/protocol/src/internal/questions/question.presets.ts',
         '../../../../../packages/protocol/src/internal/questions/question.ask.tool.ts',
         '../../queues/questioner.queue.ts',
+        // The input union's own module — PostStallQuestionerInput/InflightQuestionerInput
+        // and every other per-mode envelope died with it.
+        '../../../../../packages/protocol/src/protocol/question-input.ts',
+        '../../../../../packages/protocol/src/internal/questions/question.env.ts',
+        // #1494: pauses are persisted turns now, not a separate park-payload
+        // family — NegotiationGraph's apply node never calls an injected
+        // questioner-enqueue callback, so the routing layer that used to carry
+        // one has nothing left to route.
+        '../../queues/parked-question.enqueue.ts',
       ]) {
         expect(existsSync(new URL(relative, import.meta.url))).toBe(false);
       }
-      // The input union admits only the two park families; the generator's
-      // per-mode envelope, its runtime contract, and the master switch died
-      // with the queue.
-      const input = read('../../../../../packages/protocol/src/protocol/question-input.ts');
-      expect(input).toContain('PostStallQuestionerInput');
-      expect(input).toContain('InflightQuestionerInput');
-      for (const retired of [
-        'isValidQuestionerInputContract',
-        'UptakeQuestionerInput',
-        'RecoveryQuestionerInput',
-        'ChatContext',
-        'PoolDiscoveryContext',
-        'StandardQuestionerInput',
-      ]) {
-        expect(input).not.toContain(retired);
-      }
-      expect(existsSync(new URL('../../../../../packages/protocol/src/internal/questions/question.env.ts', import.meta.url)))
-        .toBe(false);
       expect(main).not.toContain('QUESTIONER_ENABLED');
-      // The park routing is unconditional: composition sites inject
-      // parkedQuestionEnqueue, which drops retired families.
-      expect(main).toContain('parkedQuestionEnqueue');
-      expect(parkedEnqueue).toContain('routeParkedQuestionEnqueue');
+      expect(main).not.toContain('parkedQuestionEnqueue');
     });
   });
 

@@ -77,6 +77,11 @@ const protocolDeps = {
   negotiationSummary: negotiationSummaryService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
+  // The one fully-wired composition (reflectEnqueue included) — chat/MCP
+  // tool.factory.ts must use this instead of building its own reflect-less
+  // instance, or the all-paused -> reflect trigger is silently lost on
+  // every negotiation opened through this surface.
+  negotiationGraph,
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>

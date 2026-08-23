@@ -61,7 +61,6 @@ tests/negotiation.e2e.isolated.ts
 tests/network-resend-invite.e2e.isolated.ts
 tests/limiter.e2e.isolated.ts
 src/services/tests/integration.service.telegram.isolated.ts
-tests/negotiation.agents.isolated.ts
 tests/frame-drift.database.adapter.isolated.ts
 src/services/tests/negotiator-memory.service.isolated.ts
 src/services/tests/opportunity.service.enrichedReplacement.isolated.ts
