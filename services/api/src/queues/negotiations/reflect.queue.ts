@@ -25,7 +25,6 @@ import { NegotiationReflector, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/proto
 import type { NegotiationReflectJobData, ReflectEnqueueFn, ReflectionTranscriptEntry, DistilledMemory } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
-import { readNegotiationMessages } from '../../lib/negotiation/expected-speaker';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
 import { chatSessionService } from '../../services/chat.service';
@@ -180,19 +179,13 @@ export class NegotiationReflectQueue {
 
     const conversations: NonNullable<ReflectQueueDeps['conversations']> =
       this.deps?.conversations ?? conversationDatabaseAdapter;
-    // Reflect on THIS negotiation only. Distilling the pair's whole DM would
-    // attribute turns from other matches to this one's memories.
-    const messages = await readNegotiationMessages({
-      byNegotiation: (id) => conversations.getNegotiationMessages(id),
-      byConversation: (id) => conversations.getMessagesForConversation(id),
-    }, {
-      conversationId: data.conversationId,
-      metadata: { opportunityId: data.opportunityId },
-    });
+    // A negotiation is its own conversation now — no pair-shared thread to
+    // scope out of.
+    const messages = await conversations.getMessagesForConversation(data.conversationId);
 
     // Extract turn data parts (same projection the graph uses).
     const turns = messages
-      .map((m) => {
+      .map((m: { senderId: string; parts: unknown[] }) => {
         const dataPart = (m.parts as Array<{ kind?: string; data?: { action?: string; message?: string; assessment?: { reasoning?: string } } }>)
           .find((p) => p.kind === 'data');
         return dataPart?.data ? { senderId: m.senderId, turn: dataPart.data } : null;

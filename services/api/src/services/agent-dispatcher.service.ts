@@ -75,15 +75,13 @@ export class AgentDispatcherImpl implements AgentDispatcher {
       return { handled: false, reason: 'timeout' };
     }
 
-    const parkGeneration = crypto.randomUUID();
+    let resumeToken = payload.negotiationId;
     if (this.timeoutQueue) {
       try {
-        await this.timeoutQueue.enqueueTimeout(
+        resumeToken = await this.timeoutQueue.enqueueTimeout(
           payload.negotiationId,
-          payload.history.length,
+          payload.thread.length,
           options.timeoutMs,
-          parkGeneration,
-          payload.timeoutContinuation,
         );
       } catch (err) {
         // Without a safety timer, a parked turn could strand forever. Fall back to
@@ -104,7 +102,7 @@ export class AgentDispatcherImpl implements AgentDispatcher {
       parkWindowMs: options.timeoutMs,
     });
 
-    return { handled: false, reason: 'waiting', resumeToken: parkGeneration };
+    return { handled: false, reason: 'waiting', resumeToken };
   }
 
   /**
