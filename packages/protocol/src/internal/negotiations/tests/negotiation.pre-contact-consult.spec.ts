@@ -581,6 +581,33 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
     expect(agentInputs[1].postConsultOpen?.dimension).toBe(CHECKLIST_ASK_DIMENSION);
   }, 30_000);
 
+  it("a re-issue that drafts a malformed opening is still forced to outreach — the turn-0 force applies to the re-issue too", async () => {
+    const fixtures = resumeFixtures({
+      kind: "answer",
+      selectedOptions: ["Adjacent depth counts"],
+      freeText: "open to remote or flexible location",
+    });
+    const stubs = mkStubs({
+      priorMessages: [turnMsg("u-src", preContactAskUserTurnWithChecklist(), 0)],
+      exactTask: fixtures.exactTask,
+      successorTask: fixtures.successorTask,
+    });
+    // The turn-0 force stepped aside for the marked withdraw earlier, so a
+    // re-issue that comes back `counter` instead of taking the opening
+    // decision must be forced here — otherwise it persists as the
+    // counterparty's FIRST SIGHT of this match, mid-exchange.
+    agentScript = [withdrawTurnScoring("ok"), plainTurn("counter", "hmm", "hmm"), declineTurn()];
+
+    const result = await runGraph(stubs, {
+      resumeFromTaskId: "task-paused",
+      continuationSettlementId: SETTLEMENT_ID,
+      continuationExecution: fixtures.continuationExecution,
+    });
+
+    expect(stubs.createdMessages[0].parts[0].data.action).toBe("outreach");
+    expect(result.outcome?.reason).not.toBe("screened_out");
+  }, 30_000);
+
   it("an answer that scores ok, whose re-issue withdraws again, still screens out quietly — no message ever persisted", async () => {
     const fixtures = resumeFixtures({
       kind: "answer",

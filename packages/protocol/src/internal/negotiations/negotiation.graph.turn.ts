@@ -1064,6 +1064,28 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       });
       retryTurn = enforceAuthoredQuestionSafety(retryTurn);
 
+      // The re-issue also skipped the turn-0 opening force above — it
+      // deliberately stepped aside for exactly this marked draft. A malformed
+      // re-issue (a `counter` or `question`) must be forced here instead, or
+      // it would persist as the counterparty's FIRST SIGHT of this match: the
+      // exact hazard the force exists to prevent. `withdraw` is excluded — it
+      // is a legitimate re-issued verdict, handled by the check right below —
+      // and an admissible `ask_user` (already screened by `enforceAskAdmission`
+      // above) is the one other non-opening action left to stand, same as the
+      // original force.
+      if (
+        seat === 'initiator'
+        && retryTurn.action !== 'outreach'
+        && retryTurn.action !== 'withdraw'
+        && !(retryTurn.action === 'ask_user' && askUserAvailable)
+      ) {
+        turnLog.warn('Agent returned unexpected action on turn 0, forcing to outreach', {
+          action: retryTurn.action,
+          reissue: true,
+        });
+        retryTurn = { ...retryTurn, action: 'outreach' };
+      }
+
       turnLog.info('negotiation_post_consult_withdraw_reissued', {
         taskId: state.taskId,
         opportunityId: state.opportunityId || undefined,
