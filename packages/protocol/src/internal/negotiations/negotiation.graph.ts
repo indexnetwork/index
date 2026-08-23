@@ -31,7 +31,7 @@ export type NegotiationGraphInput =
   | { negotiationId: string; brief: string }
   | { negotiationId: string; turn: NegotiationTurn }
   | { negotiationId: string; pause: "counterparty_silent" }
-  | { negotiationId: string; verdict: NegotiationVerdict }
+  | { negotiationId: string; verdict: NegotiationVerdict; reasoning: string }
   | { negotiationId: string };
 
 export interface NegotiationGraphResult {
@@ -39,6 +39,8 @@ export interface NegotiationGraphResult {
   status: "active" | "paused" | "resolved" | "error";
   pause?: { reason: NegotiationPauseReason; payload?: unknown };
   verdict?: NegotiationVerdict;
+  /** Private to the resolving side — never appears in the A2A thread. */
+  reasoning?: string;
   turns: NegotiationTurn[];
   error?: string;
 }
@@ -314,13 +316,16 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
   const input = state.input;
   if (!task || !("verdict" in input)) return { phase: "error", error: "Missing task or verdict" };
   try {
-    await deps.database.createNegotiationOutcomeArtifact(task.id, { verdict: input.verdict });
+    // reasoning is private to the resolving side — recorded on the outcome
+    // artifact only, never persisted into the A2A thread as a message; the
+    // counterparty sees only that the negotiation closed.
+    await deps.database.createNegotiationOutcomeArtifact(task.id, { verdict: input.verdict, reasoning: input.reasoning });
     const updated = await deps.database.updateNegotiationTaskState(task.id, "completed");
     await deps.database.updateOpportunityStatus(
       task.metadata.opportunityId,
       input.verdict === "pending" ? "pending" : "rejected",
     );
-    return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", verdict: input.verdict, turns: [] } };
+    return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", verdict: input.verdict, reasoning: input.reasoning, turns: [] } };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }

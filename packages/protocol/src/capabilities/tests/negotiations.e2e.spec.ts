@@ -216,9 +216,10 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     expect(host.reflectJobs).toHaveLength(2);
 
     // verdict: IS-A promotes to pending — the only terminal write
-    const resolved = await graph.invoke({ negotiationId, verdict: "pending" });
+    const resolved = await graph.invoke({ negotiationId, verdict: "pending", reasoning: "Both sides converged on terms." });
     expect(resolved.status).toBe("resolved");
     expect(resolved.verdict).toBe("pending");
+    expect(resolved.reasoning).toBe("Both sides converged on terms.");
     expect(host.taskFor(negotiationId).state).toBe("completed");
     expect(host.opportunityStatusUpdates.at(-1)).toEqual({ id: OPPORTUNITY_ID, status: "pending" });
 
@@ -248,7 +249,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     });
     expect(paused.pause).toMatchObject({ reason: "ready_for_verdict", payload: { recommendation: "reject" } });
 
-    const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject" });
+    const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject", reasoning: "Not a fit." });
     expect(resolved.status).toBe("resolved");
     expect(resolved.verdict).toBe("reject");
     expect(host.opportunityStatusUpdates.at(-1)).toEqual({ id: OPPORTUNITY_ID, status: "rejected" });

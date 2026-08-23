@@ -179,8 +179,10 @@ dossier and reply stream become ports the host implements.
 | `{ negotiationId, brief }` | resume after reflect with new context |
 | `{ negotiationId, turn }` | apply a submitted turn — from AgentGraph or an external agent, same verbs, same validation → continue or pause |
 | `{ negotiationId, pause: counterparty_silent }` | a timeout fired |
-| `{ negotiationId, verdict: pending \| reject }` | resolve — the only terminal write, from IS-A ACT |
+| `{ negotiationId, verdict: pending \| reject, reasoning }` | resolve — the only terminal write, from IS-A ACT |
 | `{ negotiationId }` | read |
+
+`reasoning` is recorded on the outcome artifact and travels with the opportunity status — it is what the Radar card / closed card render. It is private to the resolving side: never persisted as a message into the A2A thread. A reject reason may contain principal-private material; the counterparty only ever sees that the negotiation closed.
 
 Inside: `init` loads the opportunity, actors, profiles, intents and the brief
 through the database port (callers pass ids, not pre-built user contexts);
