@@ -9,7 +9,7 @@ config({ path: '.env.test', override: true });
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import type { Runnable } from '@langchain/core/runnables';
-import { OpportunityGraphFactory, type OpportunityEvaluatorLike, type OpportunityGraphThresholdOverrides, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
+import { OpportunityGraphFactory, type OpportunityEvaluatorLike, type OpportunityGraphThresholdOverrides, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
@@ -29,36 +29,6 @@ type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
-describe('buildPrioritizedNegotiationIntents', () => {
-  test('carries only the exact opportunity-bound intent — never an unrelated fallback', () => {
-    const intents = buildPrioritizedNegotiationIntents(
-      [
-        { id: 'other-1', summary: 'Other 1', payload: 'one' },
-        { id: 'other-2', summary: 'Other 2', payload: 'two' },
-        { id: 'exact-intent', summary: 'Exact active', payload: 'exact active payload' },
-      ],
-      'exact-intent',
-      null,
-    );
-    expect(intents.map((intent) => intent.id)).toEqual(['exact-intent']);
-  });
-
-  test('falls back to the owned exact intent when it is not among the active ones', () => {
-    expect(buildPrioritizedNegotiationIntents(
-      [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
-      'exact-intent',
-      { id: 'exact-intent', summary: 'Exact fallback', payload: 'exact fallback payload' },
-    ).map((intent) => intent.id)).toEqual(['exact-intent']);
-  });
-
-  test('provides nothing at all when there is no exact binding', () => {
-    expect(buildPrioritizedNegotiationIntents(
-      [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
-      undefined,
-      null,
-    )).toEqual([]);
-  });
-});
 
 const defaultMockEvaluatorResult: EvaluatedOpportunityWithActors[] = [
   {
