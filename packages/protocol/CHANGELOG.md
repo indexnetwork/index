@@ -20,6 +20,37 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 27.0.0 - 2026-08-22
+
+### Changed
+
+- **Discovery evaluates its whole candidate pool and surfaces at least 10
+  matches when the pool allows it.** Retrieval limits were raised
+  (`LIMIT_PER_STRATEGY` 30→80, `PER_INDEX_LIMIT` 80→160) and the intent path
+  re-runs its search with no similarity floor once when the deduped pool has
+  fewer than `DISCOVERY_MIN_MATCHES` (10) distinct users. Evaluation now
+  scores the entire pool (capped at 80 by rank) in one parallel round instead
+  of batching 25 at a time with an early stop on the first passing batch —
+  pass rate does not track similarity rank, so batching was stranding real
+  matches behind an over-scored head cluster. Every passing candidate is
+  returned uncapped; when fewer than 10 pass, the run fills the rest with the
+  best-scored rejected candidates (tiebroken by similarity), persisted with
+  their real score. `rankingNode` no longer defaults to a 20-item limit —
+  only a caller-supplied `options.limit` cuts the list now.
+- `not_accepted` evaluator verdicts now carry the model's actors under
+  `returnAll` (previously always `[]`) so a rejected candidate can be used as
+  a fill; guard drops (`incomplete_actors`, `unsupported_claim`) still carry
+  none and are never fills.
+
+### Removed
+
+- **BREAKING: the `continue_discovery` operation mode is gone**, along with
+  the batched-evaluation continuation it existed for: `remainingCandidates`
+  (state field and graph output), the `evaluation_bound` trace entry, and
+  `'evaluation_bound_reached'` / `unevaluatedCandidates` on
+  `OpportunityDiscoverySummary`. Evaluation no longer batches or stops early,
+  so there is nothing left to page into.
+
 ## 26.0.0 - 2026-08-22
 
 ### Changed

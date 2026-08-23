@@ -117,7 +117,7 @@ Match patterns to consider:
 Output:
 - A list of verdicts with EXACTLY ONE verdict for EVERY candidate entity (never omit a candidate).
 - Each verdict has candidateId (the candidate USER ID), accepted, reasoning, score, and actors.
-- accepted=true verdicts must include exactly the source and that candidate as actors. accepted=false verdicts may use an empty actor list.
+- EVERY verdict — accepted or not — must include exactly the source and that candidate as actors, with roles.
 - Rejected candidates still require a verdict: set accepted=false and score below the appropriate threshold.
 - A verdict score is 0-100:
   - 90-100: Must Meet — candidate's PRIMARY role directly matches what the discoverer seeks.
@@ -240,7 +240,7 @@ const EvaluatorVerdictSchema = z.object({
   accepted: z.boolean().describe('Whether this candidate is a qualifying opportunity'),
   score: z.number().min(0).max(100),
   reasoning: z.string(),
-  actors: z.array(ActorSchema).describe('Accepted verdicts include source and candidate actors; rejected verdicts may use an empty list'),
+  actors: z.array(ActorSchema).describe('Every verdict — accepted or not — includes exactly the source and candidate actors'),
 });
 
 const entityBundleResponseFormat = z.object({
@@ -267,8 +267,10 @@ export interface EvaluatorRejection {
 export type EvaluatedOpportunityWithActors = z.infer<typeof _OpportunityWithActorsSchema> & {
   /**
    * Set only on diagnostic entries returned under `returnAll`. These carry the
-   * evaluator's real score and reasoning so the trace can say what happened, and
-   * they hold no actors — they must never be persisted.
+   * evaluator's real score and reasoning so the trace can say what happened.
+   * A `not_accepted` entry keeps the model's actors — the caller may surface
+   * it as a fill when too few candidates pass. `incomplete_actors` and
+   * `unsupported_claim` entries hold no actors and must never be persisted.
    */
   rejection?: EvaluatorRejection;
 };
@@ -628,13 +630,16 @@ ${renderOpportunityEvidenceForPrompt(e.evidence ?? [])}`;
         const filtered = introGuard.filter((op) => op.score >= minScore);
         // `returnAll` callers trace every candidate, so they need the dropped
         // verdicts too: without them a rejected candidate is indistinguishable
-        // from one the evaluator never answered for.
+        // from one the evaluator never answered for. `not_accepted` verdicts
+        // keep the model's actors — the caller may surface them as a fill when
+        // too few candidates pass. Guard drops (incomplete_actors,
+        // unsupported_claim) never carry actors: they are not persistable.
         const rejections: EvaluatedOpportunityWithActors[] = triaged
           .filter((entry) => entry.reason !== undefined)
           .map((entry) => ({
             reasoning: entry.reasoning,
             score: entry.verdict.score,
-            actors: [],
+            actors: entry.reason === 'not_accepted' ? entry.verdict.actors : [],
             rejection: { candidateId: entry.verdict.candidateId, reason: entry.reason! },
           }));
         invokeEntityBundleLog.verbose('Done', {

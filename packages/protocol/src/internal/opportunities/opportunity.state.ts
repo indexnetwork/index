@@ -199,7 +199,6 @@ export const OpportunityGraphState = Annotation.Root({
    * Operation mode controls graph flow:
    * - 'create': Existing discover pipeline (Prep → Scope → Discovery → Evaluation → Ranking → Persist)
    * - 'create_introduction': Introduction path (validation → evaluation → persist) for chat-driven intros
-   * - 'continue_discovery': Pagination path (Prep → Evaluation → Ranking → Persist) using pre-loaded candidates
    * - 'read': List opportunities filtered by userId and optionally networkId (fast path)
    * - 'update': Change opportunity status (accept, reject, etc.)
    * - 'delete': Expire/archive an opportunity
@@ -211,7 +210,7 @@ export const OpportunityGraphState = Annotation.Root({
    *
    * Defaults to 'create' for backward compatibility.
    */
-  operationMode: Annotation<'create' | 'create_introduction' | 'continue_discovery' | 'read' | 'update' | 'delete' | 'send' | 'negotiate_existing' | 'approve_introduction'>({
+  operationMode: Annotation<'create' | 'create_introduction' | 'read' | 'update' | 'delete' | 'send' | 'negotiate_existing' | 'approve_introduction'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'create' as const,
   }),
@@ -334,12 +333,6 @@ export const OpportunityGraphState = Annotation.Root({
 
   /** Candidate matches from semantic search (from discovery) */
   candidates: Annotation<CandidateMatch[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
-  /** Candidates not yet evaluated (for pagination -- cached in Redis by caller). */
-  remainingCandidates: Annotation<CandidateMatch[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),

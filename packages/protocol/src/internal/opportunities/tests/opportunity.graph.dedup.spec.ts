@@ -225,22 +225,6 @@ const ownedIntentInput = {
   options: { initialStatus: 'latent' as const },
 };
 
-const continuationInput = {
-  userId: USER_A,
-  operationMode: 'continue_discovery' as const,
-  searchQuery: 'co-founder',
-  candidates: [{
-    candidateUserId: USER_B,
-    candidateIntentId: 'intent-bob' as Id<'intents'>,
-    networkId: NET_ID,
-    similarity: 0.9,
-    lens: 'mirror',
-    candidatePayload: 'Looking to join a startup',
-    candidateSummary: 'Potential co-founder',
-  }],
-  options: {},
-};
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -400,7 +384,7 @@ describe('opportunity graph — continuation negotiation lifecycle', () => {
         negotiationInputs.push(input);
         if (input.opportunityId) observedTaskBoundaries.push(input.opportunityId);
       }),
-    }).invoke(continuationInput);
+    }).invoke(discoveryInput);
 
     expect(negotiationInputs).toHaveLength(1);
     expect(negotiationInputs[0].opportunityId).toBe('opp-continuation-new');
@@ -436,7 +420,7 @@ describe('opportunity graph — continuation negotiation lifecycle', () => {
 
     const result = await buildGraph(db, undefined, {
       negotiationGraph: resolvedNegotiationGraph(() => { negotiationInvocations += 1; }),
-    }).invoke(continuationInput);
+    }).invoke(discoveryInput);
 
     expect(negotiationInvocations).toBe(0);
     expect(compensationInvocations).toBe(0);
@@ -466,7 +450,7 @@ describe('opportunity graph — continuation negotiation lifecycle', () => {
     };
 
     await buildGraph(db, undefined, { negotiationGraph: failingNegotiationGraph })
-      .invoke(continuationInput);
+      .invoke(discoveryInput);
 
     expect(compensationCalls).toEqual([
       ['opp-init-failure', persistedBoundary, 'draft'],
@@ -498,7 +482,7 @@ describe('opportunity graph — continuation negotiation lifecycle', () => {
 
     await buildGraph(db, undefined, {
       negotiationGraph: resolvedNegotiationGraph(() => { negotiationInvocations += 1; }),
-    }).invoke(continuationInput);
+    }).invoke(discoveryInput);
 
     expect(negotiationInvocations).toBe(0);
     expect(compensationCalls).toEqual([

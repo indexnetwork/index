@@ -15,7 +15,7 @@ import { requestContext } from '../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence } from './opportunity.evidence.js';
-import { DISCOVERY_EVALUATOR_MIN_SCORE } from './discovery.env.js';
+import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_MATCHES } from './discovery.env.js';
 import { buildEvaluatorEvidenceKey, buildNetworkContexts, evaluationLog, networkMembershipPairKey, rankingLog, REJECTION_COOLDOWN_MS, REJECTION_COOLDOWN_SIMILARITY_PENALTY, safeOpportunityGraphError, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /** Pairwise verdict shape the evaluator returns, before actors are resolved. */
@@ -30,20 +30,13 @@ type PairwiseOpportunity = {
 /** Graph trace entry shape. */
 type TraceEntry = { node: string; detail?: string; data?: Record<string, unknown> };
 
-/** Batch size for one evaluator call. Larger batches time out. */
-const EVAL_BATCH_SIZE = 25;
-
 /**
- * How many batches one discovery run may evaluate.
- *
- * Candidates are taken strictly by rank, so a degenerate head cluster — many
- * candidates the retriever scored alike — used to consume the only batch and
- * strand the genuine matches behind it, reported as `evaluator_rejected_all`.
- * When a batch yields no passes we continue into the tail, bounded so a run can
- * never fan out unboundedly. Whatever is left after the bound is reported as
- * never-evaluated rather than as rejected.
+ * Every candidate in the pool is evaluated — no early stop, no similarity
+ * cutoff (pass rate does not track similarity; see the discovery match-floor
+ * PR). This still bounds the pool by rank so a run can never fan out
+ * unboundedly against a very large network.
  */
-const MAX_EVAL_BATCHES_PER_RUN = 3;
+const MAX_EVALUATION_POOL = 80;
 
 /**
  * Node 3: Evaluation (Entity bundle)
@@ -73,7 +66,6 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
       return {
         candidates: [],
         evaluatedOpportunities: [],
-        remainingCandidates: [],
         error: 'Failed to validate candidate network memberships.',
         agentTimings: [],
       };
@@ -87,7 +79,7 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
       });
     }
     if (eligibleCandidates.length === 0) {
-      return { candidates: [], evaluatedOpportunities: [], remainingCandidates: [], agentTimings: [] };
+      return { candidates: [], evaluatedOpportunities: [], agentTimings: [] };
     }
 
     if (dedupedCandidates.length < sortedCandidates.length) {
@@ -99,28 +91,13 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
     }
 
     const pool = await applyRejectionCooldown(eligibleCandidates, discoveryUserId, deps);
-
-    // Early termination: if search was query-driven and no query-sourced candidates remain,
-    // clear remaining to prevent pointless pagination through non-query leftovers
-    const isQueryDriven = !!state.searchQuery?.trim();
-    let loggedEarlyTermination = false;
-    const remainingAfter = (consumed: number): CandidateMatch[] => {
-      const rest = pool.slice(consumed);
-      const queryRest = rest.filter(
-        (c) => c.discoverySource === 'query' || c.discoverySource == null,
-      );
-      if (isQueryDriven && rest.length > 0 && queryRest.length === 0) {
-        if (!loggedEarlyTermination) {
-          loggedEarlyTermination = true;
-          evaluationLog.info(
-            "Early termination: no query-sourced candidates remain",
-            { droppedCandidates: rest.length },
-          );
-        }
-        return [];
-      }
-      return rest;
-    };
+    const boundedPool = pool.slice(0, MAX_EVALUATION_POOL);
+    if (boundedPool.length < pool.length) {
+      evaluationLog.info('Evaluation pool bounded by rank', {
+        pool: pool.length,
+        evaluated: boundedPool.length,
+      });
+    }
 
     const agentTimingsAccum: DebugMetaAgent[] = [];
 
@@ -154,80 +131,30 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
         ? (deps.evaluatorAgent as OpportunityEvaluator)
         : new OpportunityEvaluator();
 
-      const traceEntries: TraceEntry[] = [];
-      const passedOpportunities: EvaluatedOpportunity[] = [];
-      let remaining: CandidateMatch[] = [];
-      let consumed = 0;
-      let batchesRun = 0;
-
-      // Bounded batch continuation: a batch that passes nothing does not end the
-      // run while ranked-lower candidates are still waiting. Candidates arrive by
-      // rank, so a head cluster the retriever over-scored would otherwise strand
-      // every genuine match behind it.
-      while (batchesRun < MAX_EVAL_BATCHES_PER_RUN && consumed < pool.length) {
-        const batch = pool.slice(consumed, consumed + EVAL_BATCH_SIZE);
-        const batchNumber = batchesRun + 1;
-        if (batchNumber > 1) {
-          evaluationLog.info('No candidate passed; continuing into the next batch', {
-            batchNumber,
-            evaluating: batch.length,
-            alreadyEvaluated: consumed,
-          });
-        }
-        const batchResult = await evaluateCandidateBatch({
-          batch,
-          batchNumber,
-          sourceEntity,
-          state,
-          deps,
-          discoveryUserId,
-          minScore,
-          evaluator,
-          evaluatorSignalConfig,
-          agentTimingsAccum,
-        });
-        consumed += batch.length;
-        batchesRun += 1;
-        traceEntries.push(...batchResult.trace);
-        passedOpportunities.push(...batchResult.passed);
-        remaining = remainingAfter(consumed);
-        if (batchResult.passed.length > 0) break;
-        if (remaining.length === 0) break;
-      }
-
-      // A run that ends on the bound with candidates left must say so. Reporting
-      // it as "the evaluator rejected everything" hides an unevaluated tail.
-      if (passedOpportunities.length === 0 && remaining.length > 0) {
-        evaluationLog.info('Evaluation bound reached with candidates still unevaluated', {
-          batchesRun,
-          evaluated: consumed,
-          unevaluated: remaining.length,
-        });
-        traceEntries.push({
-          node: "evaluation_bound",
-          detail: `${remaining.length} candidate(s) never evaluated — stopped after ${batchesRun} batch(es) of ${EVAL_BATCH_SIZE}`,
-          data: {
-            unevaluatedCandidates: remaining.length,
-            evaluatedCandidates: consumed,
-            batchesRun,
-            maxBatches: MAX_EVAL_BATCHES_PER_RUN,
-            batchSize: EVAL_BATCH_SIZE,
-          },
-        });
-      }
+      const { passed, filled, trace: traceEntries } = await evaluateCandidatePool({
+        pool: boundedPool,
+        sourceEntity,
+        state,
+        deps,
+        discoveryUserId,
+        minScore,
+        evaluator,
+        evaluatorSignalConfig,
+        agentTimingsAccum,
+      });
 
       evaluationLog.verbose('Evaluation complete', {
-        batchesRun,
-        evaluatedCandidates: consumed,
-        passed: passedOpportunities.length,
-        unevaluated: remaining.length,
+        evaluatedCandidates: boundedPool.length,
+        passed: passed.length,
+        filled: filled.length,
       });
 
       return {
         candidates: eligibleCandidates,
-        // Only opportunities that passed the threshold reach downstream nodes
-        evaluatedOpportunities: passedOpportunities,
-        remainingCandidates: remaining,
+        // Every passing opportunity reaches downstream nodes, uncapped; filled
+        // candidates (best-scored rejects) top the run up to the match floor
+        // when too few passed.
+        evaluatedOpportunities: [...passed, ...filled],
         trace: traceEntries,
         agentTimings: agentTimingsAccum,
       };
@@ -252,10 +179,9 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
   });
 }
 
-/** Everything one evaluator batch needs, resolved once per run by {@link evaluationNode}. */
-interface CandidateBatchArgs {
-  batch: CandidateMatch[];
-  batchNumber: number;
+/** Everything the evaluation round needs, resolved once per run by {@link evaluationNode}. */
+interface CandidatePoolArgs {
+  pool: CandidateMatch[];
   sourceEntity: EvaluatorEntity;
   state: OpportunityState;
   deps: OpportunityGraphDeps;
@@ -266,21 +192,34 @@ interface CandidateBatchArgs {
   agentTimingsAccum: DebugMetaAgent[];
 }
 
+/** An {@link EvaluatedOpportunity} plus the retrieval similarity behind it, for fill-tiebreaking. */
+type ScoredOpportunity = EvaluatedOpportunity & { _similarity: number };
+
+function stripSimilarity(o: ScoredOpportunity): EvaluatedOpportunity {
+  const { _similarity: _drop, ...rest } = o;
+  return rest;
+}
+
 /**
- * Evaluate one batch of candidates: hydrate entities, invoke the evaluator, map
- * verdicts onto opportunities, and emit this batch's slice of the trace.
+ * Evaluate the whole candidate pool in one parallel round: hydrate entities,
+ * invoke the evaluator once per candidate, map verdicts onto opportunities,
+ * and emit the trace. Every passing opportunity is returned uncapped; when
+ * fewer than {@link DISCOVERY_MIN_MATCHES} pass, the best-scored non-passing
+ * verdicts (evaluator rejects and below-threshold accepts — never guard
+ * drops) fill the rest, tiebroken by retrieval similarity.
  */
-async function evaluateCandidateBatch(
-  args: CandidateBatchArgs,
-): Promise<{ passed: EvaluatedOpportunity[]; trace: TraceEntry[] }> {
+async function evaluateCandidatePool(
+  args: CandidatePoolArgs,
+): Promise<{ passed: EvaluatedOpportunity[]; filled: EvaluatedOpportunity[]; trace: TraceEntry[] }> {
   const {
-    batch, batchNumber, sourceEntity, state, deps, discoveryUserId,
+    pool, sourceEntity, state, deps, discoveryUserId,
     minScore, evaluator, evaluatorSignalConfig, agentTimingsAccum,
   } = args;
-  const batchStart = Date.now();
+  const evalStart = Date.now();
   const traceEntries: TraceEntry[] = [];
 
-  const candidateEntities = await buildCandidateEntities(batch, deps);
+  const candidateEntities = await buildCandidateEntities(pool, deps);
+  const similarityByUserId = new Map(pool.map((c) => [c.candidateUserId, c.similarity]));
 
   const userIdToIndexId = new Map<string, Id<'networks'>>();
   const evidenceByEntityKey = new Map<string, OpportunityEvidence[]>();
@@ -309,7 +248,7 @@ async function evaluateCandidateBatch(
 
   const networkContexts = await buildNetworkContexts([sourceEntity, ...candidateEntities], deps.database);
 
-  // One evaluator call per candidate, fired in parallel.
+  // One evaluator call per candidate, fired in parallel — the whole pool, one round.
   const evaluatorVerdicts: PairwiseOpportunity[] = await evaluateInParallel({
     evaluator, sourceEntity, candidateEntities, state, discoveryUserId,
     networkContexts, minScore, evaluatorSignalConfig, agentTimingsAccum, traceEntries,
@@ -321,15 +260,12 @@ async function evaluateCandidateBatch(
   const rejections = evaluatorVerdicts.filter((op) => op.rejection !== undefined);
   const pairwiseOpportunities = evaluatorVerdicts.filter((op) => op.rejection === undefined);
 
-  const evaluatedOpportunities: EvaluatedOpportunity[] = pairwiseOpportunities.map((op) => ({
-    reasoning: op.reasoning,
-    score: op.score,
-    evidence: mergeOpportunityEvidence(...op.actors.map(evidenceForActor)),
-    actors: op.actors.map((a) => {
+  function mapActors(actors: PairwiseOpportunity['actors']): EvaluatedOpportunity['actors'] {
+    return actors.map((a) => {
       const isSource = a.userId === discoveryUserId;
       if (isSource) {
         // Source actor inherits the counterpart's networkId (shared match context)
-        const counterpart = op.actors.find((other) => other.userId !== a.userId);
+        const counterpart = actors.find((other) => other.userId !== a.userId);
         const counterpartIndexId = counterpart
           ? userIdToIndexId.get(counterpart.userId) ?? (candidateEntities.find((e) => e.userId === counterpart.userId)?.networkId as Id<'networks'>)
           : undefined;
@@ -346,33 +282,73 @@ async function evaluateCandidateBatch(
         intentId: a.intentId as Id<'intents'> | undefined,
         networkId: userIdToIndexId.get(a.userId) ?? (candidateEntities.find((e) => e.userId === a.userId)?.networkId as Id<'networks'>),
       };
-    }),
-  }));
+    });
+  }
 
+  function toScoredOpportunity(op: PairwiseOpportunity, candidateUserId: string): ScoredOpportunity {
+    return {
+      reasoning: op.reasoning,
+      score: op.score,
+      evidence: mergeOpportunityEvidence(...op.actors.map(evidenceForActor)),
+      actors: mapActors(op.actors),
+      _similarity: similarityByUserId.get(candidateUserId) ?? 0,
+    };
+  }
+
+  const evaluatedOpportunities: ScoredOpportunity[] = pairwiseOpportunities.map((op) => {
+    const candidateUserId = op.actors.find((a) => a.userId !== discoveryUserId)?.userId ?? '';
+    return toScoredOpportunity(op, candidateUserId);
+  });
   const passed = evaluatedOpportunities.filter((o) => o.score >= minScore);
-  evaluationLog.verbose('Batch evaluated', {
-    batchNumber,
+
+  // Rejected-but-fillable pool for the match floor: accepted verdicts that
+  // didn't clear minScore, plus the evaluator's own `not_accepted` rejections
+  // (which now carry actors — see opportunity.evaluator.ts). Guard drops
+  // (`incomplete_actors`, `unsupported_claim`) are never fills — they hold no
+  // usable actors and were never a real verdict on the pairing.
+  const belowScore = evaluatedOpportunities.filter((o) => o.score < minScore);
+  const notAcceptedRejections = rejections
+    .filter((op) => op.rejection!.reason === 'not_accepted')
+    .map((op) => {
+      const candidateId = op.rejection!.candidateId;
+      const actorIds = new Set(op.actors.map((a) => a.userId));
+      const hasUsableActors = actorIds.size === 2 && actorIds.has(discoveryUserId) && actorIds.has(candidateId);
+      const actors = hasUsableActors ? op.actors : [
+        { userId: discoveryUserId, role: 'peer' as const, intentId: state.resolvedTriggerIntentId ?? sourceEntity.intents?.[0]?.intentId ?? null },
+        { userId: candidateId, role: 'peer' as const, intentId: candidateEntities.find((e) => e.userId === candidateId)?.intents?.[0]?.intentId ?? null },
+      ];
+      return toScoredOpportunity({ ...op, actors }, candidateId);
+    });
+  const fillPool = [...belowScore, ...notAcceptedRejections]
+    .sort((a, b) => (b.score - a.score) || (b._similarity - a._similarity));
+  const needed = Math.max(0, DISCOVERY_MIN_MATCHES - passed.length);
+  const filled = fillPool.slice(0, needed);
+  const filledCandidateIds = new Set(
+    filled.map((o) => o.actors.find((a) => a.userId !== discoveryUserId)?.userId),
+  );
+
+  evaluationLog.verbose('Pool evaluated', {
     evaluatedCount: evaluatedOpportunities.length,
     rejectedCount: rejections.length,
     passed: passed.length,
+    filled: filled.length,
   });
 
-  // Threshold filter trace: how many candidates in this batch were above/below similarity threshold
-  const aboveThreshold = batch.filter(
+  // Threshold filter trace: how many candidates in the pool were above/below the retrieval similarity threshold.
+  const aboveThreshold = pool.filter(
     (candidate) => candidate.similarity >= deps.retrievalMinSimilarity,
   ).length;
-  const belowThreshold = batch.length - aboveThreshold;
+  const belowThreshold = pool.length - aboveThreshold;
   traceEntries.push({
     node: "threshold_filter",
-    detail: `${aboveThreshold} above ${deps.retrievalMinSimilarity}, ${belowThreshold} below (batch ${batchNumber} of ${batch.length})`,
+    detail: `${aboveThreshold} above ${deps.retrievalMinSimilarity}, ${belowThreshold} below (pool of ${pool.length})`,
     data: {
       aboveThreshold,
       belowThreshold,
       minScore: deps.retrievalMinSimilarity,
       retrievalMinSimilarity: deps.retrievalMinSimilarity,
       evaluatorMinScore: minScore,
-      batchSize: batch.length,
-      batchNumber,
+      poolSize: pool.length,
     },
   });
 
@@ -396,15 +372,18 @@ async function evaluateCandidateBatch(
 
   traceEntries.push({
     node: "evaluation",
-    detail: `Evaluated ${candidateEntities.length} candidate(s) → ${passed.length} passed (min score ${minScore})`,
+    detail: filled.length > 0
+      ? `Evaluated ${candidateEntities.length} candidate(s) → ${passed.length} passed, ${filled.length} filled to reach the ${DISCOVERY_MIN_MATCHES}-match floor (min score ${minScore})`
+      : `Evaluated ${candidateEntities.length} candidate(s) → ${passed.length} passed (min score ${minScore})`,
     data: {
-      inputCandidates: batch.length,
+      inputCandidates: pool.length,
       returnedFromEvaluator: evaluatedOpportunities.length,
       rejectedByEvaluator: rejections.length,
       passedCount: passed.length,
+      filledCount: filled.length,
+      matchFloor: DISCOVERY_MIN_MATCHES,
       minScore,
-      batchNumber,
-      durationMs: Date.now() - batchStart,
+      durationMs: Date.now() - evalStart,
       model: getModelName("opportunityEvaluator"),
     },
   });
@@ -418,7 +397,6 @@ async function evaluateCandidateBatch(
       detail: `${guardDropped.length} accepted verdict(s) dropped by evaluator guards`,
       data: {
         droppedCount: guardDropped.length,
-        batchNumber,
         drops: guardDropped.map((op) => ({
           candidateUserId: op.rejection!.candidateId,
           reason: op.rejection!.reason,
@@ -435,11 +413,14 @@ async function evaluateCandidateBatch(
     const rejected = rejectedByUserId.get(entity.userId);
     const score = evaluated?.score ?? rejected?.score;
     const didPass = evaluated !== undefined && evaluated.score >= minScore;
+    const isFilled = filledCandidateIds.has(entity.userId);
     const status = didPass
       ? '✓ passed'
-      : score !== undefined
-        ? `✗ score ${score}`
-        : '✗ no verdict';
+      : isFilled
+        ? `~ filled (score ${score})`
+        : score !== undefined
+          ? `✗ score ${score}`
+          : '✗ no verdict';
 
     traceEntries.push({
       node: "candidate",
@@ -450,11 +431,11 @@ async function evaluateCandidateBatch(
         bio: entity.profile?.bio,
         score: score,
         passed: didPass,
+        filled: isFilled,
         reasoning: evaluated?.reasoning
           ?? rejected?.reasoning
           ?? 'Evaluator returned no verdict for this candidate',
         rejectionReason: rejected?.reason,
-        batchNumber,
         matchedVia: entity.matchedVia,
         ragScore: entity.ragScore,
         model: getModelName("opportunityEvaluator"),
@@ -470,7 +451,7 @@ async function evaluateCandidateBatch(
     });
   }
 
-  return { passed, trace: traceEntries };
+  return { passed: passed.map(stripSimilarity), filled: filled.map(stripSimilarity), trace: traceEntries };
 }
 /** Dedup by userId — when same similarity, prefer index with highest relevancyScore. */
 function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: OpportunityState): CandidateMatch[] {
@@ -521,7 +502,7 @@ async function filterToActiveMemberships(
  *
  * Candidates with a recently rejected or stalled opportunity receive a
  * similarity penalty so they are ranked lower (and often pushed out of
- * the evaluation batch). This prevents cross-query re-surfacing of
+ * the evaluation pool). This prevents cross-query re-surfacing of
  * false-positive matches that were already caught downstream.
  * The persist-node dedup is still the hard gate; this is a soft guard
  * that reduces evaluator cost and LLM false-positive rate.
@@ -721,8 +702,7 @@ export async function rankingNode(state: OpportunityState) {
 
     try {
       const sorted = [...state.evaluatedOpportunities].sort((a, b) => b.score - a.score);
-      const limit = state.options.limit ?? 20;
-      const ranked = sorted.slice(0, limit);
+      const ranked = state.options.limit != null ? sorted.slice(0, state.options.limit) : sorted;
 
       const actorSetKey = (opp: EvaluatedOpportunity) =>
         opp.actors

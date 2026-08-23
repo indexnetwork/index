@@ -41,7 +41,12 @@ export type OpportunityEvaluatorLike = {
     reasoning: string;
     score: number;
     actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }>;
-    /** Diagnostic-only entry under `returnAll` — carries no actors, never persisted. */
+    /**
+     * Diagnostic-only entry under `returnAll`, never itself persisted. A
+     * `not_accepted` rejection carries the model's actors (or a fallback pair)
+     * so the caller can surface it as a fill when too few candidates pass;
+     * `incomplete_actors`/`unsupported_claim` guard drops carry no actors.
+     */
     rejection?: { candidateId: string; reason: 'not_accepted' | 'incomplete_actors' | 'unsupported_claim' };
   }>>;
 };

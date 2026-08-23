@@ -77,7 +77,6 @@ export type OpportunityDiscoveryCompletionReason =
   | 'created_or_reactivated'
   | 'no_search_candidates'
   | 'evaluator_rejected_all'
-  | 'evaluation_bound_reached'
   | 'same_trigger_duplicate_suppressed'
   | 'pair_active_negotiation_suppressed'
   | 'final_atomic_conflict'
@@ -88,8 +87,6 @@ export interface OpportunityDiscoverySummary {
   evaluatedCount: number;
   opportunitiesCreated: number;
   completionReason: OpportunityDiscoveryCompletionReason;
-  /** Candidates retrieved but never handed to the evaluator (batch bound reached). */
-  unevaluatedCandidates: number;
   sameTriggerDuplicateSuppressions: number;
   pairActiveNegotiationSuppressions: number;
   crossTriggerAllowedCount: number;
@@ -98,7 +95,6 @@ export interface OpportunityDiscoverySummary {
 
 interface OpportunityDiscoveryResultShape {
   candidates?: unknown[];
-  remainingCandidates?: unknown[];
   evaluatedOpportunities?: unknown[];
   opportunities?: unknown[];
   persistenceOutcome?: {
@@ -115,7 +111,6 @@ export function summarizeOpportunityDiscoveryResult(
   result: OpportunityDiscoveryResultShape,
 ): OpportunityDiscoverySummary {
   const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-  const unevaluatedCandidates = Array.isArray(result.remainingCandidates) ? result.remainingCandidates.length : 0;
   const opportunities = Array.isArray(result.opportunities) ? result.opportunities : [];
   const persistence = result.persistenceOutcome;
   const evaluatedCount = persistence?.evaluatedCount
@@ -129,8 +124,7 @@ export function summarizeOpportunityDiscoveryResult(
     : candidates.length === 0
       ? 'no_search_candidates'
       : evaluatedCount === 0
-        // A zero-output run with candidates still queued is a bound, not a verdict.
-        ? (unevaluatedCandidates > 0 ? 'evaluation_bound_reached' : 'evaluator_rejected_all')
+        ? 'evaluator_rejected_all'
         : finalAtomicConflictCount > 0
           ? 'final_atomic_conflict'
           : pairActiveNegotiationSuppressions > 0
@@ -144,7 +138,6 @@ export function summarizeOpportunityDiscoveryResult(
     evaluatedCount,
     opportunitiesCreated: opportunities.length,
     completionReason,
-    unevaluatedCandidates,
     sameTriggerDuplicateSuppressions,
     pairActiveNegotiationSuppressions,
     crossTriggerAllowedCount,

@@ -90,7 +90,6 @@ const discoverySummary = (overrides: Partial<OpportunityDiscoverySummary> = {}):
   evaluatedCount: 0,
   opportunitiesCreated: 0,
   completionReason: 'created_or_reactivated',
-  unevaluatedCandidates: 0,
   sameTriggerDuplicateSuppressions: 0,
   pairActiveNegotiationSuppressions: 0,
   crossTriggerAllowedCount: 0,
@@ -528,18 +527,6 @@ describe('FromIntentQueue', () => {
 
       expect(evaluatorZero.completionReason).toBe('evaluator_rejected_all');
       expect(persistenceDedupZero.completionReason).toBe('same_trigger_duplicate_suppressed');
-    });
-
-    it('reports a stranded tail as a bound, not as an evaluator rejection', () => {
-      const bounded = summarizeOpportunityDiscoveryResult({
-        candidates: [{}, {}],
-        remainingCandidates: [{}],
-        evaluatedOpportunities: [],
-        opportunities: [],
-      });
-
-      expect(bounded.completionReason).toBe('evaluation_bound_reached');
-      expect(bounded.unevaluatedCandidates).toBe(1);
     });
   });
 
