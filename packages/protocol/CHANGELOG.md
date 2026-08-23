@@ -33,10 +33,17 @@ pin a supported release, use `latest`.
   anyway, seconds after the client answered the thing it did ask, with the
   counterparty never contacted. Now, if the resumed turn drafts `withdraw`
   and the dimension actually asked about reconciled to `ok`, the graph
-  overrides the draft to `outreach` — an unasked concern belongs in the
-  exchange with the counterparty's agent, not in a quiet screen-out the
-  client was never asked to weigh in on. A `conflict` or still-`unknown`
-  answer leaves the withdraw standing, unchanged.
+  RE-ISSUES the turn once — a fresh model call, explicitly told the answer
+  settled the thing it asked and that withdrawing on an unasked concern is
+  not available now — and runs the result through every gate the first draft
+  faced. A bare rebind to `outreach` was rejected in review: it would have
+  shipped the withdraw's own message and reasoning (written to argue against
+  the match) verbatim as the opening, both to the counterparty's agent and in
+  the web transcript. An unasked concern belongs in the exchange with the
+  counterparty's agent, not in a quiet screen-out the client was never asked
+  to weigh in on. A `conflict` or still-`unknown` answer leaves the withdraw
+  standing, unchanged; a re-issue that withdraws again lands on the same
+  quiet `screened_out` outcome.
 
 ## 28.0.0 - 2026-08-22
 

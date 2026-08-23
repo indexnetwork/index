@@ -179,6 +179,23 @@ export interface NegotiationConcludeFloor {
   askableDimensions: string[];
 }
 
+/**
+ * The post-consult re-issue instruction: a pre-contact resume drafted
+ * `withdraw` after its client answered the one dimension it asked about the
+ * way it said would settle it — so withdrawing now, on a concern it never put
+ * to the client, is not an available move. Carries the dimension name so the
+ * instruction can name back the thing that was actually settled.
+ *
+ * Shared by the graph (which reconciles the answered dimension) and the
+ * prompt (which states the rule), the same contract {@link NegotiationAntiEcho}
+ * and {@link NegotiationConcludeFloor} follow. Set by the graph only, and only
+ * once per turn.
+ */
+export interface NegotiationPostConsultOpen {
+  /** The checklist dimension the client answered, now scored `ok`. */
+  dimension: string;
+}
+
 export interface NegotiationAgentInput {
   ownUser: UserNegotiationContext;
   otherUser: UserNegotiationContext;
@@ -286,6 +303,17 @@ export interface NegotiationAgentInput {
    * byte-identical to before.
    */
   concludeFloor?: NegotiationConcludeFloor;
+  /**
+   * A re-issue of THIS turn after the graph refused a pre-contact-resume
+   * draft that tried to WITHDRAW while the dimension it asked its client
+   * about reconciled to `ok` (the post-consult rule in
+   * `negotiation.graph.turn.ts`). Carries that dimension's name so the
+   * instruction can name back the thing the client just settled.
+   *
+   * Set by the graph only, and only once per turn. Absent → the prompt is
+   * byte-identical to before.
+   */
+  postConsultOpen?: NegotiationPostConsultOpen;
   /**
    * Durable caller-owned execution identity. Timeout workers reuse this exact
    * value across delivery retries; it is forwarded as model-run metadata for
@@ -606,6 +634,10 @@ ${querySatisfiedRule(otherName, userName)}`
       ? `\n\nSTOP — YOUR PREVIOUS DRAFT FOR THIS TURN TRIED TO END THIS NEGOTIATION WHILE ${floorNoun.was} STILL OPEN AND STILL ASKABLE:\n${floorDimensions.map((name) => `- ${name}`).join('\n')}\nConcluding is not available to you while that is true — not in favour of the match and not against it. ${userName}'s question budget is not spent, ${userName} can be reached, and ${floorNoun.it} not been asked about in this negotiation.\nTake one of exactly two moves for each dimension above. Either SCORE it from something a principal actually STATED — their own signal text, what they have said in this exchange, an answer they gave — and write that commitment into its basis; a profile description, a job title, or the reason this match was suggested is not a commitment and cannot score it. Or ASK ${userName} about the one that is theirs to settle: their own preference, constraint, budget, availability, or willingness. Write the question yourself, give it a title of at most 12 characters, name the dimension it resolves, and declare what answer would score it ok and what would score it conflict.\nDimensions marked as the counterparty's to settle are not listed above and are not what this is about: those are resolved by asking THEIR agent — keep the dialogue open — never by asking ${userName} about the other side's own facts. What you may not do is end this negotiation with a dimension above still unknown and still unasked.`
       : '';
 
+    const postConsultOpenInstruction = input.postConsultOpen
+      ? `\n\nSTOP — YOUR PREVIOUS DRAFT FOR THIS TURN TRIED TO WITHDRAW AFTER ${userName} ANSWERED THE ONE THING YOU ASKED ABOUT ("${input.postConsultOpen.dimension}") THE WAY YOU SAID WOULD SETTLE IT.\nWithdrawing on a concern you did not ask ${userName} about is not available now. Open with "outreach": make the case from their answer. Raise any remaining concern with ${otherName}'s agent in the exchange — it is ${otherName}'s agent's to weigh, not a reason to let the match pass before ${otherName} is ever contacted.`
+      : '';
+
     const userMessage = `YOUR USER (${userName}):
 Bio: ${input.ownUser.profile.bio ?? "N/A"}
 Skills: ${input.ownUser.profile.skills?.join(", ") ?? "N/A"}
@@ -636,7 +668,7 @@ ${preContactResume
             ? `This is the opening turn and nothing has been sent yet. You hold THREE verdicts here: ask ${userName} the one open thing only they can settle, make the outreach case, or let the match pass. Score the checklist first — if a dimension is unknown and theirs to settle, asking now costs the counterparty nothing and buys a better opening.`
             : "This is the opening turn. Make the outreach case.")
         : "This is the opening turn. Evaluate the opening case.")
-    : "Evaluate the latest arguments and respond."}${antiEchoInstruction}${concludeFloorInstruction}`;
+    : "Evaluate the latest arguments and respond."}${antiEchoInstruction}${concludeFloorInstruction}${postConsultOpenInstruction}`;
 
     let chatMessages = [
       { role: "system", content: systemPrompt },

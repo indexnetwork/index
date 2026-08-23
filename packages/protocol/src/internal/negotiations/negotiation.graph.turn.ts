@@ -12,7 +12,7 @@ import { assessConsultationEligibility, consultationPromptFor, countOpenPreConta
 import { assessDeadlock, type DeadlockAssessment, type DeadlockShiftRecord } from "./negotiation.deadlock.js";
 import type { NegotiationSeat } from "../../protocol/schemas/negotiation-state.schema.js";
 import { NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY, NEGOTIATION_QUESTION_GENERIC_NETWORK, isSafeAuthoredNegotiationQuestion, negotiationQuestionSettlementId } from './negotiation.question-safety.js';
-import type { NegotiationAntiEcho, NegotiationConcludeFloor } from "./negotiation.agent.js";
+import type { NegotiationAntiEcho, NegotiationConcludeFloor, NegotiationPostConsultOpen } from "./negotiation.agent.js";
 import { buildIntentSnapshots } from "./negotiation.intent-snapshot-provenance.js";
 import { holdsNegotiationConversationLock } from "./negotiation.task-lock-policy.js";
 import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
@@ -294,7 +294,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // negotiation.
     let clientDmForPrompt: Awaited<ReturnType<typeof retrieveClientDm>> | null = null;
     const draftFromSystemAgent = async (
-      reissue?: { antiEcho?: NegotiationAntiEcho; concludeFloor?: NegotiationConcludeFloor },
+      reissue?: { antiEcho?: NegotiationAntiEcho; concludeFloor?: NegotiationConcludeFloor; postConsultOpen?: NegotiationPostConsultOpen },
     ): Promise<NegotiationTurn> => {
       const agentPriorDialogue = buildAttributedDialogue(state);
 
@@ -362,6 +362,7 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
           : {}),
         ...(reissue?.antiEcho ? { antiEcho: reissue.antiEcho } : {}),
         ...(reissue?.concludeFloor ? { concludeFloor: reissue.concludeFloor } : {}),
+        ...(reissue?.postConsultOpen ? { postConsultOpen: reissue.postConsultOpen } : {}),
       });
     };
 
@@ -556,22 +557,27 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // dimension actually asked about controls this: a `conflict` or a still-
     // `unknown` answer leaves the withdraw standing, and it flows into the
     // guard below exactly as before.
-    if (isPreContactResume && turn.action === 'withdraw' && !contactMade) {
-      const lastAskUserTurn = [...history].reverse().find((prior) => prior.action === 'ask_user' && prior.askUser?.dimension);
-      const askedDimension = lastAskUserTurn?.askUser?.dimension;
-      const reconciledDimension = askedDimension
-        ? nextChecklist.find((item) => dimensionKey(item.name) === dimensionKey(askedDimension))
-        : undefined;
-      if (reconciledDimension?.result === 'ok') {
-        turnLog.warn('negotiation_post_consult_withdraw_overridden', {
-          taskId: state.taskId,
-          opportunityId: state.opportunityId || undefined,
-          seat,
-          dimension: askedDimension,
-        });
-        turn = { ...turn, action: 'outreach' };
-      }
-    }
+    //
+    // Computed here, ACTED ON further down (past `enforceAskAdmission` /
+    // `enforceDeclineVerdictLaw` / `enforceAuthoredQuestionSafety`, which this
+    // needs and which are not defined yet at this point in the function).
+    // A bare rebind to `outreach` here would ship the withdraw's OWN
+    // `message`/`reasoning` — written to argue against the match — verbatim as
+    // the opening; the client and the counterparty would both read a refusal
+    // labelled OPENED. So this only marks the dimension; the opening-withdraw
+    // guard right below is told to let a marked draft pass through untouched,
+    // and the actual re-issue (a fresh model call asked to open) happens once
+    // the gates it must face exist.
+    const postConsultReissueDimension: string | undefined = isPreContactResume && turn.action === 'withdraw' && !contactMade
+      ? (() => {
+          const lastAskUserTurn = [...history].reverse().find((prior) => prior.action === 'ask_user' && prior.askUser?.dimension);
+          const askedDimension = lastAskUserTurn?.askUser?.dimension;
+          const reconciledDimension = askedDimension
+            ? nextChecklist.find((item) => dimensionKey(item.name) === dimensionKey(askedDimension))
+            : undefined;
+          return reconciledDimension?.result === 'ok' ? askedDimension : undefined;
+        })()
+      : undefined;
 
     // IND-564 / IND-611: the opening-withdraw guard runs BEFORE the turn-0
     // opening force below. Order matters and used to be inverted: the force
@@ -604,7 +610,12 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // withdraw there is a real move against a real message and must persist as
     // one — routing it here would relabel a live negotiation as never-contacted
     // and end it quietly under `screened_out`.
-    if (turn.action === 'withdraw' && !contactMade && (!state.continuationExecution || isPreContactResume)) {
+    //
+    // A function rather than a straight-line block: the post-consult re-issue
+    // further down needs to land on this exact same outcome when the re-issued
+    // draft STILL withdraws, and it must do so after gates (`enforceAskAdmission`
+    // and friends) that are not defined yet at this point in the function.
+    const screenOutOpeningWithdraw = () => {
       turnLog.info('negotiation_opening_withdraw_screened_out', {
         taskId: state.taskId,
         opportunityId: state.opportunityId || undefined,
@@ -614,6 +625,13 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
       });
       traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: "screened_out: opening withdraw" });
       return { lastTurn: turn, firstTurnScreenedOut: true };
+    };
+    // `postConsultReissueDimension` marks the one case that must NOT return
+    // here yet: the draft stands, unreissued, until the gates further down are
+    // available to face it. Every other withdraw this guard would have caught
+    // is caught here exactly as before.
+    if (turn.action === 'withdraw' && !contactMade && (!state.continuationExecution || isPreContactResume) && !postConsultReissueDimension) {
+      return screenOutOpeningWithdraw();
     }
 
     // First turn must open the negotiation (unless continuing a prior
@@ -630,10 +648,15 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // would make the counterparty's first sight of this match a mid-exchange
     // reply. An admissible `ask_user` is the one non-opening action left to
     // stand — it is the turn-0 third verdict, not a malformed opening.
+    //
+    // A marked `withdraw` (`postConsultReissueDimension`) is ALSO left
+    // unforced here, for the same reason it was left unforced by the guard
+    // above: forcing it to `outreach` now would be the exact hazard the
+    // post-consult re-issue exists to avoid, just one block earlier.
     if (isFreshOpeningTurn || isPreContactResume) {
       const openingAction = 'outreach';
       const consultingInstead = turn.action === 'ask_user' && askUserAvailable;
-      if (seat === 'initiator' && turn.action !== openingAction && !consultingInstead) {
+      if (seat === 'initiator' && turn.action !== openingAction && !consultingInstead && !postConsultReissueDimension) {
         turnLog.warn(`Agent returned unexpected action on turn 0, forcing to ${openingAction}`, { action: turn.action });
         // Rebind rather than mutate: `turn` may be the very object a dispatched
         // personal agent returned, and every other rewrite in this function
@@ -991,6 +1014,74 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     };
 
     turn = enforceAuthoredQuestionSafety(turn);
+
+    // ─── The post-consult re-issue: an answered `ok` decides the opening ──
+    // `postConsultReissueDimension` marks a pre-contact resume that drafted
+    // `withdraw` on a dimension it asked its client about and that client's
+    // answer reconciled to `ok`. Everything between that mark and here has
+    // left `turn` untouched — the turn-0 force and the ask/decline/question-
+    // safety gates above all pass a `withdraw` straight through — so it is
+    // still exactly the drafted withdraw, unreissued.
+    //
+    // A bare rebind to `outreach` would ship that draft's OWN `message` and
+    // `reasoning` — written to argue AGAINST the match — verbatim as the
+    // opening. So instead the turn is re-issued ONCE, the same way the
+    // conclusion floor below re-issues a premature verdict: a fresh model
+    // call, explicitly told the client's answer settled the thing it asked
+    // about and that withdrawing on an unasked concern is not available now,
+    // run through every gate the first draft would have faced.
+    if (postConsultReissueDimension) {
+      turnLog.info('negotiation_post_consult_withdraw_reissue', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        seat,
+        dimension: postConsultReissueDimension,
+      });
+
+      const reissued = applyChecklistDiscipline(
+        await draftFromSystemAgent({ postConsultOpen: { dimension: postConsultReissueDimension } }),
+        { reissue: true },
+      );
+      let retryTurn = reissued.turn;
+
+      // The re-issue inherits this turn's seat vocabulary — see the
+      // conclusion-floor re-issue below, which coerces the same way.
+      if (!allowedActionsFor(seat, isFinalTurn, { askUser: askUserAvailable }).includes(retryTurn.action)) {
+        turnLog.warn('Post-consult re-issue returned an action this turn cannot take, coercing to conservative fallback', {
+          taskId: state.taskId,
+          seat,
+          action: retryTurn.action,
+          isFinalTurn,
+        });
+        const { askUser: _refused, ...rest } = retryTurn;
+        retryTurn = { ...rest, action: fallbackActionFor(seat, isFinalTurn) };
+      }
+      // Every gate the first draft passed, applied to what replaces it.
+      retryTurn = enforceDeclineVerdictLaw(retryTurn, reissued.checklist, { reissue: true });
+      retryTurn = enforceAskAdmission(retryTurn, reissued.checklist, {
+        agentDrafted: !!retryTurn.askUser,
+        reissue: true,
+      });
+      retryTurn = enforceAuthoredQuestionSafety(retryTurn);
+
+      turnLog.info('negotiation_post_consult_withdraw_reissued', {
+        taskId: state.taskId,
+        opportunityId: state.opportunityId || undefined,
+        seat,
+        dimension: postConsultReissueDimension,
+        action: retryTurn.action,
+      });
+      turn = retryTurn;
+      nextChecklist = reissued.checklist;
+
+      // If it STILL withdraws, this is still the opening refusal, on evidence
+      // the client did weigh in on — it lands on the same quiet `screened_out`
+      // outcome the guard above would have returned to directly, for a draft
+      // that never got the chance to reconsider.
+      if (turn.action === 'withdraw') {
+        return screenOutOpeningWithdraw();
+      }
+    }
 
     // ─── The conclusion floor, part 1: a premature verdict is re-issued ───
     // The decline law above closed ONE exit: a decline with no conflict behind
