@@ -151,13 +151,6 @@ const createMockDatabase = (): IntentGraphDatabase => {
       intents.splice(index, 1);
       return { success: true };
     },
-    async getProfile(_userId: string) {
-      return {
-        identity: { name: 'Test User', bio: 'Software engineer', location: 'San Francisco' },
-        narrative: { context: 'Experienced developer' },
-        attributes: { skills: ['TypeScript'], interests: ['Web Dev'] },
-      } as any;
-    },
     async assignIntentToNetwork(_intentId: string, _indexId: string): Promise<void> {
       // no-op for tests
     },

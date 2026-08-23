@@ -137,7 +137,6 @@ describe("intent graph propose mode", () => {
   it("returns nothing verified for a vague signal, which is the wizard's clarify trigger", async () => {
     let contextReads = 0;
     const database = {
-      getProfile: async () => ({ identity: { name: "Ada" } }),
       getActiveIntents: async () => [],
       getUserContext: async () => {
         contextReads += 1;

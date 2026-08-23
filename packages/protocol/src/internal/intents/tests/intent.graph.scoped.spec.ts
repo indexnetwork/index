@@ -110,14 +110,6 @@ const makeDb = (): IntentGraphDatabase & { callLog: CallEntry[] } => {
       return { success: false, error: 'Not found' };
     },
 
-    async getProfile(_userId: string) {
-      return {
-        identity: { name: 'Test User', bio: '', location: '' },
-        narrative: { context: '' },
-        attributes: { skills: [], interests: [] },
-      } as never;
-    },
-
     async assignIntentToNetwork(_intentId: string, _indexId: string): Promise<void> {
       // no-op
     },

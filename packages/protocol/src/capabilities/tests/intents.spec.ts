@@ -17,6 +17,9 @@ const NETWORK_ID = "network-1";
 
 const CO_FOUNDER_SIGNAL =
   "I am looking for an ML engineer to co-found my New York developer-tools company; I want to start working together this quarter.";
+const UPDATED_SIGNAL =
+  "I am looking for an ML engineer with production LLM experience to co-found my New York developer-tools company, starting in October.";
+const VAGUE_SIGNAL = "I want a job.";
 
 /** In-memory host implementing the ports the intent graph uses. No profile text or premises reach the model. */
 class FakeIntentHost {
@@ -28,8 +31,6 @@ class FakeIntentHost {
   readonly embedded: string[] = [];
   private idCounter = 0;
 
-  constructor(private readonly hasProfile = true) {}
-
   private active(): ActiveIntent[] {
     return this.intents
       .filter((intent) => !intent.archivedAt)
@@ -37,8 +38,6 @@ class FakeIntentHost {
   }
 
   readonly database = {
-    // The prep gate only asks whether a profile row exists.
-    getProfile: async () => (this.hasProfile ? {} : null),
     getUser: async (id: string) => ({ id, name: "Alice", email: "alice@example.com", socials: [] }),
     getActiveIntents: async () => this.active(),
     getActiveIntentsAcrossIndexes: async () => this.active(),
@@ -96,14 +95,30 @@ class FakeIntentHost {
 /** Graph input shared by every case: a user id and nothing about the user. */
 const base = { userId: USER_ID, userProfile: "" };
 
-test("the intent graph refuses to write a signal for a user without a profile", async () => {
-  const host = new FakeIntentHost(false);
-  const result = await host.graph().invoke({ ...base, operationMode: "create", inputContent: CO_FOUNDER_SIGNAL });
+// ─── Readable transcript output ──────────────────────────────────────────────
+const paint = (code: string) => (text: string) => (Bun.enableANSIColors ? `\x1b[${code}m${text}\x1b[0m` : text);
+const bold = paint("1"), dim = paint("2"), cyan = paint("36"), green = paint("32"), magenta = paint("35"), yellow = paint("33");
 
-  expect(result.error).toContain("profile");
-  expect(host.intents).toEqual([]);
-  expect(host.hydeJobs).toEqual([]);
-});
+function render(value: unknown, indent: string): string {
+  if (typeof value === "string") return green(value);
+  if (typeof value === "number") return magenta(String(value));
+  if (Array.isArray(value) && value.length === 0) return dim("none");
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value.map((item) => `\n${indent}${dim("•")} ${green(item)}`).join("");
+  }
+  return dim(JSON.stringify(value, null, 2).replace(/\n/g, `\n${indent}`));
+}
+
+/** Prints one graph call as `→ in` / `← out` so the live run reads as a transcript. */
+function show(step: string, input: string, output: Record<string, unknown>): void {
+  const width = Math.max("in".length, ...Object.keys(output).map((key) => key.length));
+  const lines = [
+    `\n${bold(cyan(`▶ ${step}`))}`,
+    `  ${yellow("→")} ${dim("in".padEnd(width))}  ${input}`,
+    ...Object.entries(output).map(([key, value]) => `  ${cyan("←")} ${dim(key.padEnd(width))}  ${render(value, " ".repeat(width + 6))}`),
+  ];
+  console.info(lines.join("\n"));
+}
 
 describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)", () => {
   test("creates, reads, updates and deletes one signal", async () => {
@@ -113,6 +128,12 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
 
     // Create: infer → verify → reconcile → execute.
     const created = await graph.invoke({ ...scoped, operationMode: "create", inputContent: CO_FOUNDER_SIGNAL });
+    show("create", CO_FOUNDER_SIGNAL, {
+      classification: created.verifiedIntents[0]?.verification?.classification,
+      persisted: host.intents[0]?.payload,
+      trace: created.trace.map((entry) => entry.detail),
+      failures: created.validationFailures,
+    });
     expect(created.error).toBeUndefined();
     expect(created.verifiedIntents.length).toBeGreaterThan(0);
     expect(created.verifiedIntents[0].verification?.classification).toMatch(/COMMISSIVE|DIRECTIVE/);
@@ -124,21 +145,16 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
     expect(host.hydeJobs).toEqual([
       { kind: "generate", data: { intentId: "intent-1", userId: USER_ID, scopeType: "network", scopeId: NETWORK_ID } },
     ]);
-    console.info("[intents create]", { payload: host.intents[0].payload, trace: created.trace.map((entry) => entry.detail) });
 
     // Read: fast path, no model calls.
     const read = await graph.invoke({ ...scoped, operationMode: "read" });
+    show("read", `network ${NETWORK_ID}`, { intents: read.readResult?.intents });
     expect(read.readResult).toMatchObject({ count: 1, intents: [{ id: "intent-1", description: host.intents[0].payload }] });
 
     // Update: bound to the explicit target.
-    const updated = await graph.invoke({
-      ...scoped,
-      operationMode: "update",
-      targetIntentIds: ["intent-1"],
-      inputContent: "I am looking for an ML engineer with production LLM experience to co-found my New York developer-tools company, starting in October.",
-    });
-    console.info("[intents update]", {
-      payload: host.intents[0].payload,
+    const updated = await graph.invoke({ ...scoped, operationMode: "update", targetIntentIds: ["intent-1"], inputContent: UPDATED_SIGNAL });
+    show("update intent-1", UPDATED_SIGNAL, {
+      persisted: host.intents[0].payload,
       trace: updated.trace.map((entry) => entry.detail),
       failures: updated.validationFailures,
     });
@@ -151,17 +167,24 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
 
     // Delete: expire without inference or verification.
     const deleted = await graph.invoke({ ...scoped, operationMode: "delete", targetIntentIds: ["intent-1"] });
+    show("delete intent-1", "(no content; explicit target)", { executionResults: deleted.executionResults, hydeJob: host.hydeJobs.at(-1) });
     expect(deleted.executionResults).toEqual([{ actionType: "expire", success: true, intentId: "intent-1", error: undefined }]);
     expect(host.intents[0].archivedAt).toBeInstanceOf(Date);
     expect(host.hydeJobs.at(-1)).toEqual({ kind: "delete", data: { intentId: "intent-1" } });
 
     const readAfterDelete = await graph.invoke({ ...scoped, operationMode: "read" });
+    show("read after delete", `network ${NETWORK_ID}`, { intents: readAfterDelete.readResult?.intents });
     expect(readAfterDelete.readResult).toMatchObject({ count: 0, intents: [] });
   }, 180_000);
 
   test.concurrent("proposes a signal without persisting it", async () => {
     const host = new FakeIntentHost();
     const result = await host.graph().invoke({ ...base, operationMode: "propose", inputContent: CO_FOUNDER_SIGNAL });
+    show("propose", CO_FOUNDER_SIGNAL, {
+      proposed: result.verifiedIntents.map((intent) => intent.description),
+      persisted: host.intents.length,
+      trace: result.trace.map((entry) => entry.detail),
+    });
 
     expect(result.verifiedIntents.length).toBeGreaterThan(0);
     expect(result.actions).toEqual([]);
@@ -172,13 +195,17 @@ describe.skipIf(!HAS_OPENROUTER_KEY)("Intents graph — signal lifecycle (live)"
 
   test.concurrent("rejects a vague utterance instead of persisting it", async () => {
     const host = new FakeIntentHost();
-    const result = await host.graph().invoke({ ...base, operationMode: "create", inputContent: "I want a job." });
+    const result = await host.graph().invoke({ ...base, operationMode: "create", inputContent: VAGUE_SIGNAL });
+    show("create (vague)", VAGUE_SIGNAL, {
+      inferred: result.inferredIntents.map((intent) => intent.description),
+      failures: result.validationFailures,
+      persisted: host.intents.length,
+    });
 
     expect(result.executionResults).toEqual([]);
     expect(host.intents).toEqual([]);
     if (result.inferredIntents.length > 0) {
       expect(result.validationFailures.map((failure) => failure.category)).toContainEqual(expect.stringMatching(/vague_or_invalid|non_actionable/));
     }
-    console.info("[intents vague]", { inferred: result.inferredIntents.length, failures: result.validationFailures });
   }, 120_000);
 });

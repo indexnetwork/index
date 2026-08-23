@@ -26,16 +26,6 @@ export async function prepNode(state: IntentState, deps: IntentGraphDeps) {
       networkId: state.networkId,
     });
 
-    // Gate: write operations require an existing profile
-    if (state.operationMode !== 'read') {
-      const profile = await deps.database.getProfile(state.userId);
-      if (!profile) {
-        const msg = "You need to create a profile before creating intents. Please set up your profile first.";
-        logger.error("Prep failed: no profile for user", { userId: state.userId });
-        return { error: msg };
-      }
-    }
-
     const activeIntents = await deps.database.getActiveIntents(state.userId);
     const formattedActiveIntents = activeIntents
       .map(i => `ID: ${i.id}, Description: ${i.payload}, Summary: ${i.summary || 'N/A'}`)

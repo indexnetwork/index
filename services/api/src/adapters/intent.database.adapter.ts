@@ -1,4 +1,4 @@
-import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
+import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
 
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
@@ -1032,12 +1032,6 @@ export class IntentDatabaseAdapter {
       .where(eq(schema.intents.userId, userId));
     await db.delete(schema.intentNetworks).where(inArray(schema.intentNetworks.intentId, userIntentIds));
     await db.delete(schema.intents).where(eq(schema.intents.userId, userId));
-  }
-
-  // --- Profile check (required by IntentGraphDatabase for prepNode gate) ---
-
-  async getProfile(userId: string): Promise<UserIdentity | null> {
-    return buildProfileFromUser(userId);
   }
 
   // --- Read mode methods (required by IntentGraphDatabase for queryNode) ---

@@ -11,7 +11,6 @@ describe("IntentGraph explicit update lifecycle", () => {
   it("persists a broad DIRECTIVE to the exact active owned target", async () => {
     const writes: Array<{ id: string; payload?: string }> = [];
     const database = {
-      getProfile: async () => ({ identity: { name: "Alice" } }),
       getActiveIntents: async () => [{
         id: TARGET_ID,
         payload: "Build narrative AI systems",
