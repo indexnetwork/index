@@ -20,12 +20,12 @@ export function normalizeNegotiationActivity(
       ...group,
       messages: group.messages
         // Defense in depth for mixed-version deployments and cached activity:
-        // an ask_user turn belongs only to the agent's own principal. A
+        // a needs_principal pause belongs only to the agent's own principal. A
         // counterparty's persisted pause must never render as an ask to the
         // current viewer.
         .filter((message) =>
           hasDisplayableText(message)
-          && !(message.action === "ask_user" && message.sender === "theirs"),
+          && !(message.pauseReason === "needs_principal" && message.sender === "theirs"),
         )
         .sort((left, right) =>
           Date.parse(left.createdAt) - Date.parse(right.createdAt)

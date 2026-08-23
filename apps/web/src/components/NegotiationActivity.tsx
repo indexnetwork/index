@@ -91,7 +91,7 @@ export default function NegotiationActivity({
               const text = messageText(message);
               if (!text) return null;
               const yours = message.sender === "yours";
-              const verb = verbFor(message.action ?? null);
+              const verb = verbFor((message.verb === "pause" ? message.pauseReason : message.verb) ?? null);
               return (
                 <li key={message.id} className="text-xs">
                   <span className="font-semibold text-gray-600">

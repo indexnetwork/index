@@ -5,7 +5,7 @@ import { presentationForStatus } from '@/lib/negotiation-presentation';
 import type { ConversationSummary } from '@/services/conversation';
 
 const lastMessage: NonNullable<ConversationSummary['lastMessage']> = {
-  parts: [{ kind: 'data', data: { action: 'counter' } }],
+  parts: [{ kind: 'data', data: { verb: 'counter' } }],
   senderId: 'agent:peer',
   createdAt: '2026-01-03T00:00:00.000Z',
 };
@@ -23,8 +23,8 @@ const conversation: ConversationSummary = {
   lastMessageAt: '2026-01-03T00:00:00.000Z',
   createdAt: '2026-01-01T00:00:00.000Z',
   negotiationOpportunities: [
-    { intentId: 'intent-a', opportunityId: 'opportunity-a', title: 'Find a design partner', taskId: 'task-a', state: 'working', opportunityStatus: 'negotiating', acceptedByViewer: false, turnCount: 2, maxTurns: 6, signalCount: 1, outcome: null, updatedAt: '2026-01-02T00:00:00.000Z' },
-    { intentId: 'intent-b', opportunityId: 'opportunity-b', title: 'Discuss research collaboration', taskId: 'task-b', state: 'completed', opportunityStatus: 'accepted', acceptedByViewer: true, turnCount: 3, maxTurns: 6, signalCount: 1, outcome: { hasOpportunity: true, reason: null }, updatedAt: '2026-01-03T00:00:00.000Z' },
+    { intentId: 'intent-a', opportunityId: 'opportunity-a', title: 'Find a design partner', taskId: 'task-a', state: 'working', pause: null, opportunityStatus: 'negotiating', acceptedByViewer: false, turnCount: 2, signalCount: 1, updatedAt: '2026-01-02T00:00:00.000Z' },
+    { intentId: 'intent-b', opportunityId: 'opportunity-b', title: 'Discuss research collaboration', taskId: 'task-b', state: 'completed', pause: null, opportunityStatus: 'accepted', acceptedByViewer: true, turnCount: 3, signalCount: 1, updatedAt: '2026-01-03T00:00:00.000Z' },
   ],
 };
 
@@ -49,14 +49,13 @@ const ungroupableConversation: ConversationSummary = {
   negotiation: {
     taskId: '07979837-5e29-4dd9-83dc-26f593972ca6',
     state: 'completed',
+    pause: null,
     statusTimestamp: '2026-01-04T00:00:00.000Z',
     opportunityId: '6426226c-9d63-42a9-8aea-764bbe0c5b8b',
     opportunityStatus: 'pending',
     acceptedByViewer: false,
     turnCount: 2,
-    maxTurns: 6,
     signalCount: 1,
-    outcome: null,
     updatedAt: '2026-01-04T00:00:00.000Z',
   },
   negotiationOpportunities: [],
@@ -78,14 +77,13 @@ const screenedOutConversation: ConversationSummary = {
   negotiation: {
     taskId: '7bfba641-245c-4a92-9269-a798eba5c9e7',
     state: 'completed',
+    pause: null,
     statusTimestamp: '2026-01-05T00:00:00.000Z',
     opportunityId: '08b143c0-6f01-4c61-9fe9-08718744e86a',
     opportunityStatus: 'rejected',
     acceptedByViewer: false,
     turnCount: 0,
-    maxTurns: 6,
     signalCount: 1,
-    outcome: null,
     updatedAt: '2026-01-05T00:00:00.000Z',
     screenDecision: {
       source: 'screen',
@@ -100,18 +98,18 @@ const screenedOutConversation: ConversationSummary = {
 };
 
 describe('groupNegotiationOutline', () => {
-  it('does not leak the latest session action into another projected opportunity', () => {
+  it('does not leak the latest session pause into another projected opportunity', () => {
     const multiSession = {
       ...conversation,
       lastMessage: {
-        parts: [{ kind: 'data', data: { action: 'ask_user' } }],
+        parts: [{ kind: 'data', data: { verb: 'pause', reason: 'needs_principal' } }],
         senderId: 'agent:viewer',
         createdAt: '2026-01-03T00:00:00.000Z',
         taskId: 'task-b',
       },
       negotiationOpportunities: [
-        { ...conversation.negotiationOpportunities![0], taskId: 'task-a', state: 'working', opportunityStatus: 'negotiating', updatedAt: '2026-01-02T00:00:00.000Z' },
-        { ...conversation.negotiationOpportunities![1], taskId: 'task-b', state: 'input_required', opportunityStatus: 'negotiating', acceptedByViewer: false, outcome: null, updatedAt: '2026-01-03T00:00:00.000Z' },
+        { ...conversation.negotiationOpportunities![0], taskId: 'task-a', state: 'working', pause: null, opportunityStatus: 'negotiating', updatedAt: '2026-01-02T00:00:00.000Z' },
+        { ...conversation.negotiationOpportunities![1], taskId: 'task-b', state: 'paused', pause: { reason: 'needs_principal' }, opportunityStatus: 'negotiating', acceptedByViewer: false, updatedAt: '2026-01-03T00:00:00.000Z' },
       ],
     } satisfies ConversationSummary;
 
@@ -124,8 +122,8 @@ describe('groupNegotiationOutline', () => {
   it('uses a fallback turn only when it belongs to the latest lifecycle task', () => {
     const matching = {
       ...ungroupableConversation,
-      negotiation: { ...ungroupableConversation.negotiation!, state: 'input_required', opportunityStatus: 'negotiating' },
-      lastMessage: { parts: [{ kind: 'data', data: { action: 'ask_user' } }], senderId: 'agent:viewer', createdAt: '2026-01-04T00:00:00.000Z', taskId: '07979837-5e29-4dd9-83dc-26f593972ca6' },
+      negotiation: { ...ungroupableConversation.negotiation!, state: 'paused', pause: { reason: 'needs_principal' }, opportunityStatus: 'negotiating' },
+      lastMessage: { parts: [{ kind: 'data', data: { verb: 'pause', reason: 'needs_principal' } }], senderId: 'agent:viewer', createdAt: '2026-01-04T00:00:00.000Z', taskId: '07979837-5e29-4dd9-83dc-26f593972ca6' },
     } satisfies ConversationSummary;
     const mismatched = { ...matching, lastMessage: { ...matching.lastMessage, taskId: 'another-task' } };
 

@@ -42,54 +42,50 @@ export function presentationForStatus(status: NegotiationPresentationStatus): Ne
   return PRESENTATIONS[status];
 }
 
-const REJECT_ACTIONS = new Set(['reject', 'decline', 'withdraw']);
-const STALL_REASONS = new Set(['turn_cap', 'timeout', 'agent_error']);
-
 /**
  * Converts database lifecycle fields into the single state a viewer needs to
  * understand. This is deliberately the only presentation path for the inbox
  * and chat rail: neither surface should expose a raw task or opportunity state.
+ *
+ * A negotiation task's lifecycle is now exactly `working | paused | completed`
+ * (negotiation-graph rewrite, #1494); a turn can only continue or pause, never
+ * decide — `resolve` (writing `opportunityStatus` to `pending`/`rejected`) is
+ * the only terminal write, so opportunity status stays authoritative over the
+ * task snapshot the same way it always was. There is no more `outcome`
+ * object, no `turn_cap`/`agent_error`/`timeout` stall reason, and no
+ * `ask_user`/`accept`/`reject`/`decline`/`withdraw` turn action — the nearest
+ * equivalents are the task's own `pause.reason`.
  */
 export function deriveNegotiationPresentation(input: {
   lifecycle: Lifecycle;
-  latestAction?: string | null;
   latestSenderId?: string | null;
   viewerUserId?: string;
 }): NegotiationPresentation {
-  const { lifecycle, latestAction } = input;
+  const { lifecycle } = input;
   if (!lifecycle) return PRESENTATIONS.not_started;
 
   const isViewerAgent = input.latestSenderId === `agent:${input.viewerUserId}`;
   const opportunityStatus = lifecycle.opportunityStatus;
-  const outcome = lifecycle.outcome;
+  const pauseReason = 'pause' in lifecycle ? lifecycle.pause?.reason ?? null : null;
 
-  // Opportunity terminal states are authoritative over stale task snapshots,
-  // outcomes, and turns. Draft/latent rows likewise cannot be promoted by a
-  // turn from another session.
+  // Opportunity terminal states are authoritative over stale task snapshots
+  // and turns. Draft/latent rows likewise cannot be promoted by a turn from
+  // another session.
   if (opportunityStatus === 'accepted') {
     return lifecycle.acceptedByViewer ? PRESENTATIONS.accepted_by_viewer : PRESENTATIONS.connection_accepted;
   }
   if (opportunityStatus === 'rejected') return PRESENTATIONS.no_match;
-  // Checked before the `stalled` status it carries: an error-stalled run has
-  // no agreement to have failed to reach — it never got a dialogue at all —
-  // and "Couldn't complete" is the label that already says so.
-  if (outcome?.reason === 'agent_error') return PRESENTATIONS.couldnt_complete;
   if (opportunityStatus === 'stalled') return PRESENTATIONS.no_agreement;
   if (opportunityStatus === 'expired') return PRESENTATIONS.expired;
   if (opportunityStatus === 'latent' || opportunityStatus === 'draft') return PRESENTATIONS.not_started;
-  if (STALL_REASONS.has(outcome?.reason ?? '')) return PRESENTATIONS.no_agreement;
-  if (lifecycle.state === 'input_required' && latestAction === 'ask_user' && isViewerAgent) {
-    return PRESENTATIONS.needs_input;
-  }
-  if (opportunityStatus === 'pending' || outcome?.hasOpportunity === true || latestAction === 'accept') {
-    return PRESENTATIONS.awaiting_review;
-  }
-  if (['failed', 'canceled', 'auth_required'].includes(lifecycle.state)) return PRESENTATIONS.couldnt_complete;
-  if (lifecycle.state === 'rejected' || outcome?.hasOpportunity === false || (latestAction && REJECT_ACTIONS.has(latestAction))) {
-    return PRESENTATIONS.no_match;
-  }
+  if (opportunityStatus === 'pending') return PRESENTATIONS.awaiting_review;
+  if (pauseReason === 'needs_principal' && isViewerAgent) return PRESENTATIONS.needs_input;
+  // ready_for_verdict is a recommendation to that side's own principal agent,
+  // not a decision — surfaced the same as an already-pending opportunity: it
+  // needs review before anything is final.
+  if (pauseReason === 'ready_for_verdict') return PRESENTATIONS.awaiting_review;
   if (lifecycle.state === 'completed') return PRESENTATIONS.no_agreement;
-  if (['submitted', 'working', 'waiting_for_agent', 'claimed', 'input_required'].includes(lifecycle.state) || opportunityStatus === 'negotiating') {
+  if (lifecycle.state === 'working' || lifecycle.state === 'paused' || opportunityStatus === 'negotiating') {
     return PRESENTATIONS.negotiating;
   }
   return PRESENTATIONS.not_started;

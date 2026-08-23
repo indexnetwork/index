@@ -46,11 +46,12 @@ function negotiation(
   input: {
     state?: NonNullable<ConversationSummary['negotiation']>['state'];
     opportunityStatus?: NonNullable<ConversationSummary['negotiation']>['opportunityStatus'];
-    action?: string;
+    pauseReason?: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
     senderId?: string;
     turnCount?: number;
   } = {},
 ): ConversationSummary {
+  const data: Record<string, unknown> = input.pauseReason ? { verb: 'pause', reason: input.pauseReason } : { verb: 'counter' };
   return {
     id,
     participants: [
@@ -58,7 +59,7 @@ function negotiation(
       { participantId: `agent:${id}-peer`, participantType: 'agent', name: 'Index Negotiator', avatar: null, ownerName: counterpartName },
     ],
     lastMessage: {
-      parts: [{ kind: 'data', data: { action: input.action ?? 'counter' } }],
+      parts: [{ kind: 'data', data }],
       senderId: input.senderId ?? `agent:${id}-peer`,
       createdAt: '2026-07-24T11:00:00.000Z',
       taskId: `${id}-task`,
@@ -71,14 +72,13 @@ function negotiation(
     negotiation: {
       taskId: `${id}-task`,
       state: input.state ?? 'working',
+      pause: input.pauseReason ? { reason: input.pauseReason } : null,
       statusTimestamp: '2026-07-24T11:00:00.000Z',
       opportunityId: `${id}-opportunity`,
       opportunityStatus: input.opportunityStatus ?? 'negotiating',
       acceptedByViewer: false,
       turnCount: input.turnCount ?? 1,
-      maxTurns: 6,
       signalCount: 2,
-      outcome: null,
       updatedAt: '2026-07-24T11:00:00.000Z',
     },
     negotiationOpportunities: [{
@@ -87,20 +87,19 @@ function negotiation(
       title: `${counterpartName}'s opportunity`,
       taskId: `${id}-task`,
       state: input.state ?? 'working',
+      pause: input.pauseReason ? { reason: input.pauseReason } : null,
       opportunityStatus: input.opportunityStatus ?? 'negotiating',
       acceptedByViewer: false,
       turnCount: input.turnCount ?? 1,
-      maxTurns: 6,
       signalCount: 2,
-      outcome: null,
       updatedAt: '2026-07-24T11:00:00.000Z',
     }],
   };
 }
 
 const answerNegotiation = negotiation('question', 'Mira Chen', {
-  state: 'input_required',
-  action: 'ask_user',
+  state: 'paused',
+  pauseReason: 'needs_principal',
   senderId: 'agent:me',
 });
 

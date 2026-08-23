@@ -363,7 +363,9 @@ interface GraphNode {
 export interface NegotiationTurnRow {
   turnIndex: number;
   actor: "source" | "candidate";
-  action: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
+  /** `pause` carries its reason in `pauseReason`, not here. */
+  verb: "outreach" | "counter" | "question" | "pause";
+  pauseReason?: "counterparty_silent" | "needs_principal" | "ready_for_verdict";
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };
@@ -609,7 +611,8 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
         negNode.turns.push({
           turnIndex: event.turnIndex ?? negNode.turns.length,
           actor: (event.actor ?? "source") as "source" | "candidate",
-          action: (event.action ?? "propose") as NegotiationTurnRow["action"],
+          verb: (event.verb ?? "outreach") as NegotiationTurnRow["verb"],
+          pauseReason: event.pauseReason as NegotiationTurnRow["pauseReason"],
           reasoning: event.reasoning,
           message: event.message,
           suggestedRoles: event.suggestedRoles,
@@ -1162,7 +1165,7 @@ function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) 
                     <div className="flex-1">
                       <span className="text-gray-400">{t.turnIndex + 1}.</span>{" "}
                       <span className="text-gray-400 text-[10px]">[{t.actor}]</span>{" "}
-                      <span className="font-medium text-gray-700">{t.action}</span>
+                      <span className="font-medium text-gray-700">{t.verb === "pause" ? `pause (${t.pauseReason ?? "unknown"})` : t.verb}</span>
                       {t.message && <span className="text-gray-600"> — {t.message}</span>}
                       {t.reasoning && (
                         <div className="ml-5 text-gray-400 italic">{t.reasoning}</div>

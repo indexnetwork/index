@@ -2,17 +2,10 @@
  * Conversation service — typed API client for the conversations endpoints.
  */
 
-export type NegotiationTaskState =
-  | 'submitted'
-  | 'working'
-  | 'input_required'
-  | 'completed'
-  | 'failed'
-  | 'canceled'
-  | 'rejected'
-  | 'auth_required'
-  | 'waiting_for_agent'
-  | 'claimed';
+/** A negotiation task's lifecycle is now exactly these three states (negotiation-graph rewrite, #1494). */
+export type NegotiationTaskState = 'working' | 'paused' | 'completed';
+
+export type NegotiationPauseReason = 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
 
 export type NegotiationOpportunityStatus =
   | 'latent'
@@ -27,14 +20,14 @@ export type NegotiationOpportunityStatus =
 export interface ConversationNegotiationLifecycle {
   taskId: string;
   state: NegotiationTaskState;
+  /** Set only when `state === 'paused'`. */
+  pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
   statusTimestamp: string | null;
   opportunityId: string | null;
   opportunityStatus: NegotiationOpportunityStatus | null;
   acceptedByViewer: boolean;
   turnCount: number;
-  maxTurns: number | null;
   signalCount: number;
-  outcome: { hasOpportunity: boolean; reason: string | null } | null;
   updatedAt: string;
   /**
    * IND-610: the owner-facing outreach-gate decision, named-field projected by
@@ -104,8 +97,10 @@ export interface NegotiationActivityMessage {
   id: string;
   opportunityId: string;
   sender: 'yours' | 'theirs';
-  /** The turn's action (`outreach`, `counter`, `ask_user`, …) when it is one. */
-  action?: string;
+  /** The turn's verb (`outreach`, `counter`, `question`, `pause`) when it is one. */
+  verb?: string;
+  /** Set only when `verb === 'pause'`. */
+  pauseReason?: NegotiationPauseReason;
   /** What the message renders as: a text part, or the turn's own message. */
   text?: string;
   parts: unknown[];

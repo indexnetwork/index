@@ -92,7 +92,9 @@ export interface TraceEvent {
   startedAt?: number;
   turnIndex?: number;
   actor?: "source" | "candidate";
-  action?: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
+  /** `pause` carries its reason in `pauseReason`, not here. */
+  verb?: "outreach" | "counter" | "question" | "pause";
+  pauseReason?: "counterparty_silent" | "needs_principal" | "ready_for_verdict";
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };
@@ -960,7 +962,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       negotiationConversationId: event.negotiationConversationId,
                       turnIndex: event.turnIndex,
                       actor: event.actor,
-                      action: event.action,
+                      verb: event.verb,
+                      pauseReason: event.pauseReason,
                       reasoning: event.reasoning,
                       message: event.message,
                       suggestedRoles: event.suggestedRoles,
