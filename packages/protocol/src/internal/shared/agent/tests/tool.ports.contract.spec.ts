@@ -13,9 +13,7 @@ type Expect<Value extends true> = Value;
 
 // These compile-time assertions protect the narrow ports consumed by tool composition.
 type _EnrichmentPortIsExact = Expect<Equal<keyof EnrichmentToolDeps,
-  | "userDb" | "systemDb" | "graphs" | "enricher"
-  | "grantDefaultSystemPermissions" | "reportToolError" | "getUserContextText"
-  | "enrichmentRuns" | "enrichmentRunQueue"
+  | "userDb" | "enricher"
 >>;
 type _NetworkPortIsExact = Expect<Equal<keyof NetworkToolDeps,
   | "graphs" | "userDb" | "systemDb" | "getUserContextText"
@@ -28,7 +26,6 @@ type _OpportunityPortIsExact = Expect<Equal<keyof OpportunityToolDeps,
   | "negotiationDatabase" | "deliveryLedger"
   | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
 >>;
-type _EnrichmentGraphsAreExact = Expect<Equal<keyof EnrichmentToolDeps["graphs"], "profile">>;
 type _OpportunityGraphsAreExact = Expect<Equal<keyof OpportunityToolDeps["graphs"], "index" | "networkMembership" | "opportunity">>;
 
 test("ToolDeps remains structurally compatible with each narrow tool port", () => {

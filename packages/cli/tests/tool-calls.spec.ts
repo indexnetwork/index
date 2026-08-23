@@ -96,44 +96,17 @@ describe("CLI tool call contracts", () => {
   // ── Profile ──────────────────────────────────────────────────────
 
   describe("profile", () => {
-    it("search calls read_user_contexts with query", async () => {
-      mock.setToolResponse("read_user_contexts", {
-        success: true,
-        data: { profiles: [], matchCount: 0 },
-      });
-
-      await handleProfile(client, "search", ["Jane Smith"], { json: true });
-
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("read_user_contexts");
-      expect(mock.toolCalls[0].query).toEqual({ query: "Jane Smith" });
-    });
-
-    it("create calls create_user_context with confirm and social URLs", async () => {
-      mock.setToolResponse("create_user_context", { success: true, data: {} });
-
-      await handleProfile(client, "create", [], {
-        linkedin: "https://linkedin.com/in/jane",
-        github: "https://github.com/jane",
-      });
-
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("create_user_context");
-      expect(mock.toolCalls[0].query).toEqual({
-        confirm: true,
-        linkedinUrl: "https://linkedin.com/in/jane",
-        githubUrl: "https://github.com/jane",
-      });
-    });
-
-    it("update calls update_user_context with action", async () => {
-      mock.setToolResponse("update_user_context", { success: true, data: {} });
-
-      await handleProfile(client, "update", ["add Python to skills"], { details: "expert level" });
-
-      expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("update_user_context");
-      expect(mock.toolCalls[0].query).toEqual({ action: "add Python to skills", details: "expert level" });
+    it("rejects removed create subcommand", async () => {
+      let exitCode: number | undefined;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code; }) as typeof process.exit;
+      try {
+        await handleProfile(client, "create", [], { linkedin: "https://linkedin.com/in/jane" } as never);
+      } finally {
+        process.exit = originalExit;
+      }
+      expect(exitCode).toBe(1);
+      expect(mock.toolCalls).toHaveLength(0);
     });
 
     it("sync uses the synchronous enrichment endpoint", async () => {
@@ -359,20 +332,20 @@ describe("CLI tool call contracts", () => {
   // ── Sync ─────────────────────────────────────────────────────────
 
   describe("sync", () => {
-    it("calls the profile, network, and intent tools in parallel", async () => {
-      mock.setToolResponse("read_user_contexts", { success: true, data: { profile: {} } });
+    it("loads profile via REST and tool reads in parallel", async () => {
+      mock.onRest("GET", "/api/auth/me", () =>
+        Response.json({ user: { id: "user-1", name: "Test", email: "t@example.com" } }),
+      );
+      mock.onRest("GET", "/api/users/user-1", () =>
+        Response.json({ user: { id: "user-1", name: "Test", intro: "Builder", createdAt: "2026-01-01" } }),
+      );
       mock.setToolResponse("read_networks", { success: true, data: { networks: [] } });
       mock.setToolResponse("read_intents", { success: true, data: { intents: [] } });
 
       await handleSync(client, { json: true });
 
       const toolNames = mock.toolCalls.map((c) => c.toolName).sort();
-      expect(toolNames).toEqual(["read_intents", "read_networks", "read_user_contexts"]);
-
-      // All should send empty queries
-      for (const call of mock.toolCalls) {
-        expect(call.query).toEqual({});
-      }
+      expect(toolNames).toEqual(["read_intents", "read_networks"]);
     });
   });
 });

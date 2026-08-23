@@ -3,97 +3,56 @@ title: "Identity and Context"
 type: domain
 tags: [identity, context, enrichment, premises, discovery]
 created: 2026-03-26
-updated: 2026-06-19
+updated: 2026-08-23
 ---
 
 # Identity and Context
 
-A user is represented by two things: their **identity** -- the core facts about who they are (name, bio, location) stored directly on the `users` row -- and their **context** -- a synthesized prose-plus-embedding projection of their premises, stored in `user_contexts`. In Index Network's theoretical framework, these represent **constitutive facts**: they describe what is true about a person, as opposed to intents (commissive acts) which describe what a person wants.
+A user is represented by **identity** — name, bio (`users.intro`), and location on the `users` row — and **premises**: composable first-person assertions that carry embeddings and drive discovery. There is no `user_profiles` table and no `user_contexts` table (dropped in migration `0142`).
 
-Identity and context serve two purposes: they provide grounding for evaluating intents (authority and sincerity scoring depend on who the user is), and they participate directly in discovery (people can be found by who they are, not just what they want).
+Identity grounds felicity scoring for intents. Premises are the semantic discovery corpus.
 
 ---
 
 ## Identity
 
-Identity is the durable, structured information about a user, persisted on the `users` table:
+Identity is persisted on `users`:
 
-- **name**: The user's full name
-- **bio**: A professional summary (2-3 sentences), sourced from `users.intro`. This is public-facing and must not contain contact identifiers (email, phone, physical address, government ID).
-- **location**: Inferred location (City, Country) or "Remote"
+- **name**: full name
+- **bio**: professional summary from `users.intro` (no contact identifiers)
+- **location**: city/country or "Remote"
 
-There is no longer a dedicated `user_profiles` table -- it was dropped in the profile-removal epic (WS8, IND-365, migration `0084_drop_user_profiles`). Identity reads return only `name`/`bio`/`location` plus the synthesized context paragraph. The historical discrete `skills[]`/`interests[]` arrays are **no longer persisted or returned** by any read path; their content now lives in the user's premises and their synthesized `user_contexts` representation.
-
----
-
-## Context
-
-Context is the synthesized representation of a user, derived from their premises and stored in `user_contexts`:
-
-- A **global** context row (`networkId = null`) -- the network-agnostic identity paragraph that replaces the old profile document. It is enforced unique per user by the partial `user_contexts_user_global_uniq` index and is always (re)built from active premises, even when the user belongs to no networks.
-- Zero or more **per-network** context rows -- network-lensed paragraphs generated for each network the user belongs to.
-
-Each context row carries its own vector embedding (and, for per-network rows, HyDE documents). Contexts are generated during enrichment and regenerated whenever the user's premises change.
+Reads build a thin `UserIdentity` DTO from `users` via `buildProfileFromUser`. Historical `skills[]` / `interests[]` arrays are gone; that content lives in premises.
 
 ---
 
 ## Premises Are the Source of Truth
 
-A user's identity and context are both **projections** of their premises -- composable identity assertions ("I am a climate-tech founder", "I'm raising Series A") that each carry their own vector embedding. Rather than one monolithic document, a user has many premises that can be individually created, retracted, and expired. Premise lifecycle events (create, update, retract, expire) trigger automatic context regeneration via the `UserContextQueue`.
+Premises are atomic self-descriptions ("I am a climate-tech founder") with embeddings, provenance, and lifecycle (ACTIVE / RETRACTED / EXPIRED). Free text — chat, bio edits, imports — is turned into premises through `PremiseGraphFactory` `decompose` mode.
 
-Discovery searches the premise embedding space rather than a single monolithic vector, enabling more precise and granular matching. Premises also participate directly in opportunity discovery through premise-to-premise similarity search.
-
----
-
-## Enrichment
-
-The synthesis pipeline that produces identity and context from raw data is called **enrichment**. The enrichment graph (`enrichment/enrichment.graph.ts`, nodes `check_state` → `scrape` → `decompose_premises` / `auto_generate`) manages the full lifecycle. Raw data can come from several sources.
-
-### Web scraping
-
-When a user connects social accounts or provides URLs (LinkedIn, GitHub, personal website), the system can scrape publicly available information and feed it to enrichment. Network-triggered public enrichment runs automatically for members; the former `profileEnrichment` network permission has been removed, and any leftover value in stored permissions JSON is ignored. The former onboarding consent layer (`record_onboarding_privacy_consent`, `users.onboarding.privacy`) has also been removed; opt-in/opt-out will be defined per implementation/application by a separate enrichment service.
-
-### Event/import seeds and onboarding drafts
-
-Master-key `/signup` and CSV import provision the user, scoped agent, and membership immediately and apply rich payloads (`name`, `bio`, `location`, socials) to the active account. Automatic enrichment may then run for current network members. The same imported fields are retained under `users.onboarding.profileSeeds` as provenance so `preview_user_context` can explain and refine the active profile without persisting its draft; `confirm_user_context` saves approved refinements. Network-scoped seed reads never fall back across networks.
-
-### User-directed updates
-
-Users can request changes to their identity through the chat interface. The enrichment generator receives the existing identity plus the user's request and applies the requested changes while preserving everything else.
-
-### Privacy safeguards
-
-Enrichment is explicitly instructed to never include email addresses, phone numbers, physical addresses, government IDs, or other contact identifiers in the bio or context paragraph, even if they appear in the raw data. Identity describes the person professionally without including ways to contact them.
+Discovery searches premise embeddings (and intent embeddings), not a monolithic profile vector.
 
 ---
 
-## Context-Based Discovery
+## Public research prefill (not persistence)
 
-Identity and context participate in discovery through premises. When raw data is enriched, it is decomposed into premises -- composable assertions that each carry their own vector embedding. Discovery searches the premise embedding space rather than a single monolithic vector.
+`research_profile` (MCP/REST tool) and `POST /api/enrichment/enrich` run Parallel public lookup and return a **suggested** profile for review. They do not persist. Onboarding and settings persist identity through profile-save REST endpoints; approved text decomposes into premises.
 
-When a user's intent triggers discovery, the HyDE system generates hypothetical documents that describe the kind of person who would match that intent, then searches the premise embedding space for similar assertions. Candidates found this way are "found by who they are" and are typically assigned the agent (helper) role.
-
-The opportunity graph also uses contexts for **context-to-intent discovery**: it loads a user's contexts, then searches for matching intents via `searchIntentsByContextEmbedding()` (or HyDE-enhanced context embeddings). Discovery runs on **context-to-intent + premise similarity**; results are merged via `mergeStrategyCandidates()`. (The legacy profile-HyDE discovery strategy was retired in WS10, IND-367.)
+The enrichment graph (`EnrichmentGraphFactory`) is **query-only**: it reports whether ACTIVE premises exist so intent tools can gate inference.
 
 ---
 
-## Enrichment Lifecycle
+## Context reads in graphs
 
-The enrichment graph manages the full lifecycle:
+`getUserContext(userId, networkId)` still exists on database ports for negotiation and intent graphs. After `user_contexts` removal it synthesizes a short paragraph from `users` name/bio/location — a compatibility shim, not a stored embedding corpus.
 
-1. **Check** (`check_state`): Determine whether the user needs enrichment, keyed on the presence of ACTIVE premises
-2. **Draft (onboarding clients)**: Build a non-persisted draft for approval
-3. **Scrape/enrich** (`scrape`): Gather public data
-4. **Decompose** (`decompose_premises`): Break the enrichment input into premises with individual vector embeddings
-5. **Context/HyDE refresh**: Premise changes enqueue `UserContextQueue`, which regenerates the user's `user_contexts` representation (global + per-network) plus their embeddings and HyDE documents
-
-Premise creation is the terminal effect, and the user's representation is the regenerated `user_contexts`, not a persisted profile document.
+`searchIntentsByContextEmbedding` remains on adapters but is unused by production graphs while context embeddings are empty.
 
 ---
 
-## Relationship to Other Concepts
+## Relationship to other concepts
 
-- **Intents** depend on identity: felicity conditions (authority, sincerity) are scored against the user's identity and context. An identity claiming "Senior ML Engineer" gives authority to an intent about seeking ML collaborators.
-- **Opportunities** reference identity: the evaluator receives identity/context data for both the source and candidate to assess fit.
-- **HyDE** searches premises as the person-level corpus: when searching for people (as opposed to searching for intents), the HyDE system generates hypothetical documents and searches the premise embedding space.
-- **Premises** decompose a user's identity into composable self-descriptions. The user's synthesized representation lives in `user_contexts` (a global `networkId = null` row plus per-network rows) and is regenerated from active premises by the `UserContextQueue`. Premise lifecycle events trigger automatic context regeneration, and premises participate directly in opportunity discovery through premise-to-premise similarity search.
+- **Intents** use identity for felicity scoring.
+- **Opportunities** use identity and premises for evaluation.
+- **HyDE** searches premises as the person-level corpus.
+- **Opportunity enricher** (`opportunity.enricher.ts`) uses `detection.source: 'enrichment'` for a different meaning: merging duplicate opportunity rows, not profile research.

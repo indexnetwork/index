@@ -147,27 +147,15 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 ### 3.3 Enrichment Graph
 
 **File:** `enrichment/enrichment.graph.ts`
-**Purpose:** Enrich a user from identity data (optional web scraping) and decompose it into premises that drive semantic discovery. The user's presentation identity (name/bio/location) lives on the `users` table and the synthesized representation lives in `user_contexts` — no separate profile document is persisted, and no profile embeddings/HyDE are generated. All semantic discovery uses premises and user contexts.
-**Nodes:** `check_state`, `scrape`, `decompose_premises`, `auto_generate`
-**State:** `EnrichmentGraphState` (userId, operationMode, input, forceUpdate, profile, needsProfileGeneration, activeSocialIds, etc.)
-**Conditional edges:**
-- After `check_state`: routes to `scrape`, `decompose_premises`, `auto_generate`, or `END` based on operation mode and what (if anything) still needs enrichment
-- After `scrape`: routes to `decompose_premises` (decompose the scraped content into premises) or `END`
-- After `auto_generate`: routes to `decompose_premises` or `END`
-- `decompose_premises` is terminal (→ END): premise creation is the final effect, and the user's representation is the regenerated `user_contexts` — no profile document is persisted
+**Purpose:** Query-only gate: reports whether ACTIVE premises exist and returns thin identity from `users`. Public research prefill is `research_profile` / `POST /api/enrichment/enrich`; persistence is profile REST + `PremiseGraphFactory` `decompose`.
+**Nodes:** `check_state`
+**State:** `EnrichmentGraphState` (userId, operationMode: `query`, profile, readResult)
 
 **Key behaviors:**
-- Query mode returns immediately (fast path) without any LLM calls
-- Write mode detects what needs generation and only runs necessary steps
-- If input is a confirmation phrase ("yes", "go ahead"), it is treated as no input so scraping runs
-- Identity updates merge new information with the user's existing identity (name/bio/location on `users`)
-- Signup/import profile fields are applied to the account immediately and also retained as provenance seeds. `preview_user_context` uses those seeds to generate a non-persisted draft, and `confirm_user_context` saves approved refinements and stamps the durable profile-phase marker. Network-scoped seed reads never fall back across networks.
-- Automatic public enrichment runs for current network members; the former `networks.permissions.profileEnrichment` gate and the onboarding privacy-consent layer have been removed, and any leftover values in stored JSON are ignored.
-- `EnrichmentQueue` is the execution-time backstop. It carries `networkId` and `reason`, re-checks user/network existence and current membership, and skips jobs whose subject or scoped membership no longer exists.
-- When `premiseGraph` is injected, chat input and scraped content are routed through `PremiseDecomposer`. Extracted premises are persisted via the premise graph; premise changes then drive regeneration of the user's `user_contexts` representation. This ensures atomic facts are captured as premises and the synthesized representation is derived from them.
-- The `decompose_premises` node also handles direct chat input (not just scraped content) — any free-text describing the user is decomposed into premises first.
+- Query mode returns immediately without LLM calls
+- "Has profile" means ACTIVE premises exist, not merely a `users` row
 
-**Dependencies:** `EnrichmentGraphDatabase`, `Scraper`, optional `Enricher`, optional `questionerEnqueue`, optional compiled `PremiseGraph`
+**Dependencies:** `EnrichmentGraphDatabase`
 
 ### 3.4 Opportunity Graph
 
@@ -546,7 +534,7 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 
 | Tool File | Tools | Subgraph(s) Invoked |
 |-----------|-------|---------------------|
-| `enrichment.tools.ts` | read_user_contexts, preview_user_context, confirm_user_context, create_user_context, update_user_context, get_enrichment_run, cancel_enrichment_run | Enrichment Graph |
+| `enrichment.tools.ts` | `research_profile` | Parallel public lookup (prefill only) |
 | `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
 | `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Network Graph, Network Membership Graph |
 | `contact.tools.ts` | add_contact, list_contacts, search_contacts | (direct service calls) |
@@ -680,7 +668,7 @@ When `MCP_INSTRUCTIONS` changes, every connected runtime picks up the new guidan
 One section of `MCP_INSTRUCTIONS` ("Negotiation turn mode") switches the caller into a background-subagent stance when the caller's session key is prefixed `index:negotiation:`. A subagent in this mode is told to:
 
 - Fetch the full negotiation via `get_negotiation`.
-- Read the user's profile context and intents via `read_user_contexts` and `read_intents`.
+- Read the user's identity and intents via REST/`getUser` and `read_intents`.
 - Submit its response via `respond_to_negotiation` — never produce user-facing output, never ask clarifying questions, prefer conservative actions when ambiguous.
 
 This is how personal agents participate in bilateral negotiation. A polling agent pulls pending turns from `POST /api/agents/:id/negotiations/pickup` and launches subagents with an `index:negotiation:`-prefixed session key; the MCP_INSTRUCTIONS contract does the rest — the polling agent itself has no negotiation-specific prompt of its own.
@@ -845,27 +833,9 @@ Friendly ownership/membership prechecks and LLM evaluation are not write authori
 
 ## 9. Enrichment Pipeline
 
-Enrichment combines web scraping, external API enrichment, premise decomposition, and vector embedding to build a user's representation. There is no persisted profile document: identity (name/bio/location) lives on the `users` table, and the synthesized prose+embedding projection lives in `user_contexts` (a global `networkId = null` row plus per-network rows), regenerated from the user's premises.
+Public research **prefill** (`research_profile`, `POST /api/enrichment/enrich`) runs Parallel lookup and returns a suggested profile — it does not persist. Identity saves go through profile REST; free text decomposes into premises via `PremiseGraphFactory` `decompose`.
 
-### Operation modes
-
-**Write mode (with meaningful input):** User provides text about themselves -> `decompose_premises` node runs `PremiseDecomposer` to split it into atomic premises -> premise changes drive `user_contexts` regeneration.
-
-**Write mode (scraping):** User has social links or full name but no text input -> `scrape` node uses the Scraper adapter to gather public web data -> `decompose_premises` processes the scraped content.
-
-**Generate mode:** Uses the external enrichment API (Parallel Chat API) via the `auto_generate` node to enrich the user's identity and socials on `users`, then decomposes into premises.
-
-**Query mode:** Fast path that returns the user's existing identity/context without any LLM calls.
-
-### Premises and HyDE
-
-The enrichment input is decomposed into premises (composable identity assertions). Premises carry their own vector embeddings and serve as the person-level search corpus for HyDE discovery, replacing the earlier approach of embedding an entire profile into a single vector. Premise changes enqueue `UserContextQueue`, which regenerates the global and per-network `user_contexts` paragraphs, their embeddings, and per-network HyDE documents.
-
-### State detection
-
-The `check_state` node detects what (if anything) the user still needs, keyed on the presence of **ACTIVE premises**:
-- No active premises -> needs decomposition/enrichment
-- Premises present and up to date -> returns immediately
+The enrichment graph is **query-only**: `check_state` reports whether ACTIVE premises exist. Premises carry embeddings and are the person-level HyDE discovery corpus.
 
 This ensures the enrichment graph only performs expensive operations when necessary.
 

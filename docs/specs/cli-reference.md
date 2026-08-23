@@ -80,7 +80,7 @@ prints an error pointing at the app and exits 1.
 
 ## Profile
 
-The `index profile` command lets users view, create, update, and search profiles from the terminal.
+The `index profile` command views identity from REST and runs public research prefill.
 
 ### `index profile` (no args)
 
@@ -98,26 +98,10 @@ The `index profile` command lets users view, create, update, and search profiles
 ### `index profile sync`
 
 1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Call `POST /api/enrichment/enrich` exactly once to synchronously enrich the authenticated user's public profile.
-3. Return `{ enriched, profile }`, where `profile` contains the current resolved identity, social links, and avatar data. Formatted output prints the resolved name, location, and social-link count.
+2. Call `POST /api/enrichment/enrich` exactly once to run public profile research for the authenticated user.
+3. Return `{ enriched, profile }` with suggested name, intro, location, and social links. Does not persist.
 
-### `index profile create [--linkedin <url>] [--github <url>] [--twitter <url>]`
-
-1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Calls `create_user_context` tool via Tool HTTP API with the provided social links.
-3. Prints confirmation message on success.
-
-### `index profile update <action> [--details <text>]`
-
-1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Calls `update_user_context` tool via Tool HTTP API with `{ action, details }`.
-3. Prints confirmation message on success.
-
-### `index profile search <query>`
-
-1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Calls `read_user_contexts` tool via Tool HTTP API with the search query.
-3. Renders a heading followed by each match as `name (userId)` with a short bio snippet — the output is a list rather than a formatted table.
+Removed subcommands (`create`, `update`, `search`) previously called retired MCP tools (`create_user_context`, `update_user_context`, `read_user_contexts`). Use the web app or profile REST endpoints to persist identity; use `profile sync` for research prefill only.
 
 ---
 

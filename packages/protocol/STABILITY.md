@@ -48,7 +48,7 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 | **Shared schemas** | Zod schemas + inferred types that cross the boundary (questions, identity, network-assignment, chat-context, …). |
 | **Graph factories** | `*GraphFactory` classes (`ChatGraphFactory`, `OpportunityGraphFactory`, `NegotiationGraphFactory`, …). |
 | **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, network indexing, guided intake, tools) plus `IntentsDeps` and the intake/indexer types. Replaced the six separate intent exports in 18.0.0. |
-| **Agents** | Structured LLM agents (`UserContextGenerator`, `IndexNegotiator`, `OpportunityEvaluator`, …). |
+| **Agents** | Structured LLM agents (`IndexNegotiator`, `OpportunityEvaluator`, …). |
 | **MCP** | `createMcpServer` plus the types needed to call it: `ScopedDepsFactory`, `McpCapabilityPolicyOptions`, `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS`, `McpAuthorizationObserver`, `McpAuthorizationDenialEvent`. The rest of `mcp.authorization-policy.ts` is package-internal as of 15.0.0. |
 | **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories became package-internal in 15.0.0 — compose them through `createMcpServer` or `createToolRegistry`. |
 

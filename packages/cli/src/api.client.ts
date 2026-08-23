@@ -443,25 +443,6 @@ export class ApiClient {
     return await res.json() as EnrichmentResult;
   }
 
-  async readUserContexts(
-    query: { userId?: string; networkId?: string; query?: string } = {},
-  ): Promise<ToolResult> {
-    return this.callTool("read_user_contexts", query);
-  }
-
-  async createUserContext(query: {
-    confirm?: boolean;
-    linkedinUrl?: string;
-    githubUrl?: string;
-    twitterUrl?: string;
-  }): Promise<ToolResult> {
-    return this.callTool("create_user_context", query);
-  }
-
-  async updateUserContext(query: { action: string; details?: string }): Promise<ToolResult> {
-    return this.callTool("update_user_context", query);
-  }
-
   /**
    * Invoke a tool by name via the HTTP tool API.
    *

@@ -79,7 +79,6 @@ The package defines interfaces — your application provides the concrete implem
 | `AgentDispatcher` | Resolves and invokes personal agents during negotiation turns — required to register the negotiation tools |
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
 | `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
-| `EnrichmentRunStore` / `EnrichmentRunQueue` | Persist and execute async MCP enrichment runs |
 | `MintConnectLink` | Mints short connect links for opportunity accepts |
 | `ChatSummaryReader` | Read-through chat-session digest |
 | `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |

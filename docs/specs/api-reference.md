@@ -3518,13 +3518,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 
 | Tool | Domain | Description |
 |------|--------|-------------|
-| `read_user_contexts` | Profile | Read user identity and context (own or by query) |
-| `preview_user_context` | Profile | Generate a non-persisted onboarding profile draft from allowed sources |
-| `confirm_user_context` | Profile | Save an approved profile draft or explicit correction text and stamp `profileConfirmedAt` |
-| `create_user_context` | Profile | Create or regenerate profile identity and context from social links or bio |
-| `update_user_context` | Profile | Update profile details or merge reachable social handles |
-| `get_enrichment_run` | Profile | Read the status and result of an asynchronous profile preview or update run |
-| `cancel_enrichment_run` | Profile | Request cancellation of a queued or running profile preview or update run |
+| `research_profile` | Profile | Run public profile research (Parallel lookup); returns a suggested profile for review — does not persist |
 | `complete_onboarding` | Profile | Validate a durable profile-approval timestamp plus an active first signal created at or after it; optional `intentId` pins the exact eligible signal and records the completion handoff |
 | `read_intents` | Intent | List user's intents with optional filters |
 | `create_intent` | Intent | Create a new intent from natural language |

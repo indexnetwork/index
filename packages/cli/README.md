@@ -140,10 +140,7 @@ View user profiles and synchronously enrich your public identity, social, and av
 ```bash
 index profile                       # Show your own profile
 index profile show <user-id>        # Show another user's profile
-index profile sync                  # Enrich your profile now and return the resolved identity
-index profile search <query>        # Search profiles by name or keyword
-index profile create                # Generate profile from social links
-index profile update <action> [--details <text>]  # Update profile (action is the verb-phrase, e.g. "add interests")
+index profile sync                  # Run public profile research prefill (does not persist)
 ```
 
 ### `index scrape`

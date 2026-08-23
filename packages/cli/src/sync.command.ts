@@ -14,9 +14,6 @@ import * as output from "./output";
 
 /**
  * Sync all user context to a local file or stdout.
- *
- * @param client - Authenticated API client.
- * @param options - Options: json outputs to stdout instead of file.
  */
 export async function handleSync(
   client: ApiClient,
@@ -24,15 +21,16 @@ export async function handleSync(
 ): Promise<void> {
   if (!options.json) output.info("Syncing context...");
 
+  const me = await client.getMe();
   const [profile, networks, intents] = await Promise.all([
-    client.readUserContexts(),
+    client.getUser(me.id),
     client.callTool("read_networks", {}),
     client.callTool("read_intents", {}),
   ]);
 
   const context = {
     syncedAt: new Date().toISOString(),
-    profile: profile.success ? profile.data : null,
+    profile,
     networks: networks.success ? networks.data : null,
     intents: intents.success ? intents.data : null,
   };

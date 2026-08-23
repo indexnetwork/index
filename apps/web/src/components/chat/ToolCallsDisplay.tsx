@@ -23,17 +23,9 @@ function formatTime(timestamp: number): string {
 }
 
 const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
-  read_user_contexts: {
-    action: "Read profile",
-    running: "Reading your profile...",
-  },
-  create_user_context: {
-    action: "Create profile",
-    running: "Creating your profile...",
-  },
-  update_user_context: {
-    action: "Update profile",
-    running: "Updating your profile...",
+  research_profile: {
+    action: "Research profile",
+    running: "Researching your public profile...",
   },
   // Preserve friendly labels when rendering persisted traces from before the
   // canonical user-context tool-name cutover.

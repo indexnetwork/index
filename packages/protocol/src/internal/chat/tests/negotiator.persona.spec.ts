@@ -204,12 +204,7 @@ describe("buildNegotiatorSystemContent — open questions (DM)", () => {
 
 /** Representative full chat registry (superset of the negotiator allowlist). */
 const FULL_REGISTRY_NAMES = [
-  // enrichment / profile
-  "read_user_contexts",
-  "create_user_context",
-  "update_user_context",
-  "preview_user_context",
-  "confirm_user_context",
+  "research_profile",
   "complete_onboarding",
   // intents
   "read_intents",

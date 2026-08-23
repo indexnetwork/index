@@ -8,7 +8,7 @@ capability façades decide what is supported.
 | `agents/`, `chat/` | `ChatGraphFactory`, tool registry | Chat runtime, personas, streaming, and agent registration |
 | `intents/` | `Intents`, tool registry | Signal lifecycle, intake, verification, and indexing |
 | `networks/` | `Networks`, tool registry | Community lifecycle, membership, and assignments |
-| `contexts/`, `enrichment/`, `premises/` | Enrichment and premise graph factories | Participant context generation and enrichment |
+| `contexts/`, `enrichment/`, `premises/` | Enrichment query graph and premise lifecycle | Participant premise decomposition and profile query gate |
 | `discovery/` | Opportunity and context workflows | HyDE search preparation and retrieval |
 | `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, delivery, and radar |
 | `negotiations/`, `questions/` | Negotiation factory, tool registry | Bilateral negotiation and decision questions |
