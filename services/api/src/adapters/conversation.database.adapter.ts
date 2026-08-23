@@ -2796,21 +2796,45 @@ export class ConversationDatabaseAdapter {
     await db.update(schema.tasks).set({ brief, updatedAt: new Date() }).where(eq(schema.tasks.id, taskId));
   }
 
-  /** Persists one turn. */
+  /**
+   * Persists one turn, fenced against a concurrent duplicate submission: the
+   * insert only proceeds if the task's current message count still equals
+   * `expectedMessageCount` (what `apply` read immediately before deciding
+   * what to persist). The advisory lock — same key convention as
+   * `insertMessageWithConversationSession`'s own — serializes concurrent
+   * `createNegotiationMessage` calls on this negotiation's conversation, so
+   * the count check and the eventual insert observe a consistent world even
+   * though the actual insert goes through the normal (separately
+   * transactional) `createMessage` path.
+   */
   async createNegotiationMessage(input: {
     conversationId: string;
     taskId: string;
     senderId: string;
     parts: unknown[];
-  }): Promise<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }> {
-    const message = await this.createMessage({
-      conversationId: input.conversationId,
-      senderId: input.senderId,
-      role: 'agent',
-      parts: input.parts,
-      taskId: input.taskId,
+    expectedMessageCount: number;
+  }): Promise<{ id: string; senderId: string; parts: unknown[]; createdAt: Date } | null> {
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`conversation-session:${input.conversationId}`}, 0)
+        )
+      `);
+      const [{ count }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.messages)
+        .where(eq(schema.messages.taskId, input.taskId));
+      if (count !== input.expectedMessageCount) return null;
+
+      const message = await this.createMessage({
+        conversationId: input.conversationId,
+        senderId: input.senderId,
+        role: 'agent',
+        parts: input.parts,
+        taskId: input.taskId,
+      });
+      return { id: message.id, senderId: message.senderId, parts: message.parts as unknown[], createdAt: message.createdAt };
     });
-    return { id: message.id, senderId: message.senderId, parts: message.parts as unknown[], createdAt: message.createdAt };
   }
 
   /** This negotiation's own turns, oldest first. */

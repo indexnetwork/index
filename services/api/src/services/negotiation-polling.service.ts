@@ -134,7 +134,7 @@ export class NegotiationPollingService {
       throw new SeatViolationError('It is not this owner\'s turn to respond in the negotiation');
     }
 
-    const result = await this.graph.invoke({ negotiationId, turn });
+    const result = await this.graph.invoke({ negotiationId, turn, byUserId: userId });
     if (result.status === 'error') {
       throw new ConflictError(result.error ?? `Negotiation ${negotiationId} turn could not be applied`);
     }

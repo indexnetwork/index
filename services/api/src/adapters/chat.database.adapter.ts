@@ -61,6 +61,7 @@ export class ChatDatabaseAdapter {
 
   // Negotiation context methods — required by RadarGraphDatabase
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
+  async bumpIntentNegotiationRound(intentId: string) { return _convDb().bumpIntentNegotiationRound(intentId); }
   async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
   async getNegotiationMessages(opportunityId: string) { return _convDb().getNegotiationMessages(opportunityId); }
