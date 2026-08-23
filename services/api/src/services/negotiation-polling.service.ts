@@ -28,6 +28,17 @@ import { expectedNegotiationSpeaker } from '../lib/negotiation/expected-speaker'
 import { negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import type { NegotiationCredentialPrincipal } from '../lib/agent/hermes-credential';
 
+/**
+ * Stamps this external agent's negotiation-freshness heartbeat. Pickup/claim
+ * is gone, so a submitted turn is the only remaining proof of liveness the
+ * freshness gate (`AgentDispatcherImpl.dispatch`, `isNegotiationExecutorFresh`)
+ * can observe for this agent.
+ */
+async function defaultTouchNegotiationPickup(agentId: string): Promise<void> {
+  const { agentDatabaseAdapter } = await import('../adapters/agent.database.adapter');
+  await agentDatabaseAdapter.touchNegotiationPickup(agentId);
+}
+
 const logger = log.service.from('NegotiationPollingService');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,6 +89,7 @@ export class NegotiationPollingService {
     private readonly authorization: NegotiationPollingAuthorization = negotiationPollingAuthorization,
     private readonly database: Pick<typeof conversationDatabaseAdapter, 'getNegotiationTask' | 'getNegotiationMessages'> = conversationDatabaseAdapter,
     private readonly graph: NegotiationGraphLike = negotiationGraph,
+    private readonly touchPickup: (agentId: string) => Promise<void> = defaultTouchNegotiationPickup,
   ) {}
 
   /**
@@ -98,6 +110,7 @@ export class NegotiationPollingService {
     if (!await this.authorization.authorizeRespond(agentId, userId)) {
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
     }
+    await this.touchPickup(agentId);
     await this.applyTurn(userId, negotiationId, turn);
     return { success: true };
   }
@@ -117,6 +130,7 @@ export class NegotiationPollingService {
     if (!await this.authorization.authorizeRespond(agentId, userId)) {
       throw new UnauthorizedError(`Agent ${agentId} is not the selected negotiation executor`);
     }
+    await this.touchPickup(agentId);
     await this.applyTurn(userId, negotiationId, buildHermesNegotiationTurn(input));
     return { success: true };
   }
