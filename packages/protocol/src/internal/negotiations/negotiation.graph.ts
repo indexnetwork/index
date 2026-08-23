@@ -1,112 +1,391 @@
 /**
- * Bilateral negotiation graph: init → turn* → finalize.
+ * NegotiationGraph (rewrite, #1494).
  *
- * Every node is a top-level function in a sibling module, taking the graph
- * state and an explicit {@link NegotiationGraphDeps}. This file composes the
- * dependency bag and wires the edges — nothing else.
+ * Single write path for negotiations. Routes on the shape of its invoke
+ * input — no `operationMode`. `init` loads everything through the database
+ * port (callers pass ids, never pre-built contexts); `turn` produces the
+ * current seat's move, in-process or via an external agent; `apply` is the
+ * one sink for every turn regardless of source and decides continue/pause;
+ * `resolve` is the only terminal write.
+ *
+ * The negotiator never concludes a negotiation. It only ever continues or
+ * pauses. `resolve` is invoked separately (by IS-A, in step 2; nothing calls
+ * it yet in this PR) once a decision has actually been made.
  */
+import { END, StateGraph, Annotation } from "@langchain/langgraph";
 
-import { StateGraph } from "@langchain/langgraph";
-
-import type { NegotiationGraphDatabase } from "../../platform/database.js";
+import type { NegotiationGraphDatabase, NegotiationTaskRow, NegotiationTaskMetadata } from "../../platform/database/negotiation.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
-import { NegotiationGraphState } from "./negotiation.state.js";
-import { IndexNegotiator } from "./negotiation.agent.js";
-import { NegotiationStallGapAuthor } from "./negotiation.stall-gap.js";
-import { isTerminalAction } from "./negotiation.protocol.js";
-import { isNegotiationTurnCapReached } from "./negotiation.turn-cap.js";
-import type { ReflectEnqueueFn } from "./negotiation.reflect.js";
-import type { NegotiatorMemoryRetrieveFn } from "./negotiation.memory.js";
-import type { NegotiatorClientDmRetrieveFn } from "./negotiation.client-dm.js";
-import type { InChatNegotiationQuestionDelivery } from "../../platform/chat/ports.js";
-import type { QuestionerEnqueueFn } from "../../protocol/question-input.js";
-import type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
-import { initNode } from "./negotiation.graph.init.js";
-import { turnNode } from "./negotiation.graph.turn.js";
-import { finalizeNode } from "./negotiation.graph.finalize.js";
+import { protocolLogger } from "../shared/observability/protocol.logger.js";
+import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../../protocol/core.js";
+import { NegotiationAuthor } from "./negotiation.author.js";
+import { NegotiationTurnSchema, NegotiationOpeningTurnSchema, isPauseTurn, type NegotiationTurn, type NegotiationVerdict, type NegotiationPauseReason } from "./negotiation.turn.js";
+import { negotiationRoundReflectJobId, type NegotiationRoundReflectEnqueueFn } from "./negotiation.round-reflect.js";
 
-export type { NegotiationGraphDeps, NegotiationState } from "./negotiation.graph.shared.js";
-export { negotiateCandidates } from "./negotiation.candidates.js";
-export type { NegotiationCandidate, NegotiationResult, OnNegotiationResolved } from "./negotiation.candidates.js";
+const logger = protocolLogger("NegotiationGraph");
 
-/**
- * Factory for the bilateral negotiation LangGraph state machine.
- * @remarks Accepts an AgentDispatcher for per-turn agent resolution.
- */
-export class NegotiationGraphFactory {
-  /** Resolved dependency bag shared by every node. */
-  public readonly deps: NegotiationGraphDeps;
+// ─── Invoke contract ─────────────────────────────────────────────────────────
 
-  constructor(
-    database: NegotiationGraphDatabase,
-    dispatcher: AgentDispatcher,
-    timeoutQueue?: import("../../platform/negotiation/events.js").NegotiationTimeoutQueue,
-    questionerEnqueue?: QuestionerEnqueueFn,
-    reflectEnqueue?: ReflectEnqueueFn,
-    memoryRetrieve?: NegotiatorMemoryRetrieveFn,
-    clientDmRetrieve?: NegotiatorClientDmRetrieveFn,
-    inChatQuestionDelivery?: InChatNegotiationQuestionDelivery,
-  ) {
-    this.deps = {
-      database,
-      dispatcher,
-      timeoutQueue,
-      questionerEnqueue,
-      reflectEnqueue,
-      memoryRetrieve,
-      clientDmRetrieve,
-      inChatQuestionDelivery,
-      systemAgent: new IndexNegotiator(),
-      stallGapAuthor: new NegotiationStallGapAuthor(),
+export type NegotiationGraphInput =
+  | { opportunityId: string; brief: string; intentId: string }
+  | { negotiationId: string; brief: string }
+  | { negotiationId: string; turn: NegotiationTurn }
+  | { negotiationId: string; pause: "counterparty_silent" }
+  | { negotiationId: string; verdict: NegotiationVerdict }
+  | { negotiationId: string };
+
+export interface NegotiationGraphResult {
+  negotiationId: string;
+  status: "active" | "paused" | "resolved" | "error";
+  pause?: { reason: NegotiationPauseReason; payload?: unknown };
+  verdict?: NegotiationVerdict;
+  turns: NegotiationTurn[];
+  error?: string;
+}
+
+export interface NegotiationGraphDeps {
+  database: NegotiationGraphDatabase;
+  dispatcher: AgentDispatcher;
+  reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
+  /** Interim internal turn author, standing in for AgentGraph (step 2). */
+  author?: NegotiationAuthor;
+}
+
+// ─── State ───────────────────────────────────────────────────────────────────
+
+const NegotiationGraphState = Annotation.Root({
+  input: Annotation<NegotiationGraphInput>({ reducer: (c, n) => n ?? c, default: () => ({} as NegotiationGraphInput) }),
+  task: Annotation<NegotiationTaskRow | null>({ reducer: (c, n) => n ?? c, default: () => null }),
+  turns: Annotation<NegotiationTurn[]>({ reducer: (c, n) => n ?? c, default: () => [] }),
+  /** The turn to apply next — externally supplied, or produced by the turn node. */
+  pendingTurn: Annotation<NegotiationTurn | null>({ reducer: (c, n) => n ?? c, default: () => null }),
+  /** True once this invoke's own author/dispatch has produced `pendingTurn` — vs. one supplied on input. */
+  authored: Annotation<boolean>({ reducer: (c, n) => n ?? c, default: () => false }),
+  phase: Annotation<"init" | "turn" | "apply" | "resolve" | "read" | "done" | "error">({
+    reducer: (c, n) => n ?? c,
+    default: () => "init",
+  }),
+  result: Annotation<NegotiationGraphResult | null>({ reducer: (c, n) => n ?? c, default: () => null }),
+  error: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
+});
+
+type NegotiationState = typeof NegotiationGraphState.State;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
+  return messages
+    .map((m) => {
+      const part = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
+      const parsed = part ? NegotiationTurnSchema.safeParse(part.data) : undefined;
+      return parsed?.success ? parsed.data : undefined;
+    })
+    .filter((t): t is NegotiationTurn => Boolean(t));
+}
+
+/** Whose turn is next: retry the last speaker after a pause, else the other seat; the initiator opens. */
+function nextSpeaker(
+  meta: NegotiationTaskMetadata,
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+): string {
+  const last = messages[messages.length - 1];
+  if (!last) return meta.initiatorUserId;
+  const lastTurn = turnsFromMessages([last])[0];
+  const lastSpeakerId = last.senderId.replace(/^agent:/, "");
+  if (lastTurn && isPauseTurn(lastTurn)) return lastSpeakerId;
+  return lastSpeakerId === meta.sourceUserId ? meta.candidateUserId : meta.sourceUserId;
+}
+
+function toResult(task: NegotiationTaskRow, turns: NegotiationTurn[]): NegotiationGraphResult {
+  const base = { negotiationId: task.id, turns };
+  if (task.state === "paused") {
+    return { ...base, status: "paused", ...(task.metadata.pause ? { pause: task.metadata.pause } : {}) };
+  }
+  if (task.state === "completed") return { ...base, status: "resolved" };
+  return { ...base, status: "active" };
+}
+
+// ─── init ────────────────────────────────────────────────────────────────────
+
+async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
+  const { input } = state;
+  try {
+    // ── verdict: resolve is a separate write, not part of the turn loop ──
+    if ("verdict" in input) {
+      const task = await deps.database.getNegotiationTask(input.negotiationId);
+      if (!task) return { phase: "error", error: "Negotiation not found" };
+      return { task, phase: "resolve" };
+    }
+
+    // ── read-only ──
+    if (!("brief" in input) && !("turn" in input) && !("pause" in input)) {
+      const task = await deps.database.getNegotiationTask(input.negotiationId);
+      if (!task) return { phase: "error", error: "Negotiation not found" };
+      const messages = await deps.database.getNegotiationMessages(task.id);
+      return { task, turns: turnsFromMessages(messages), phase: "read" };
+    }
+
+    // ── open ──
+    if ("opportunityId" in input) {
+      const existing = await deps.database.getNegotiationTaskForOpportunity(input.opportunityId);
+      if (existing) {
+        await deps.database.setNegotiationBrief(existing.id, input.brief);
+        const messages = await deps.database.getNegotiationMessages(existing.id);
+        return {
+          task: { ...existing, brief: input.brief },
+          turns: turnsFromMessages(messages),
+          phase: existing.state === "completed" ? "read" : "turn",
+        };
+      }
+
+      const opportunity = await deps.database.getOpportunity(input.opportunityId);
+      if (!opportunity) return { phase: "error", error: "Opportunity not found" };
+      const sourceActor = opportunity.actors.find((a) => a.intent === input.intentId);
+      const candidateActor = opportunity.actors.find((a) => a.intent !== input.intentId);
+      if (!sourceActor || !candidateActor) return { phase: "error", error: "Opportunity does not have two actors" };
+
+      const round = await deps.database.bumpIntentNegotiationRound(input.intentId);
+      const conversation = await deps.database.createNegotiationConversation(sourceActor.userId, candidateActor.userId);
+      const task = await deps.database.createNegotiationTask({
+        conversationId: conversation.id,
+        brief: input.brief,
+        metadata: {
+          type: "negotiation",
+          opportunityId: input.opportunityId,
+          sourceUserId: sourceActor.userId,
+          candidateUserId: candidateActor.userId,
+          initiatorUserId: sourceActor.userId,
+          networkId: sourceActor.networkId,
+          intentId: input.intentId,
+          round,
+        },
+      });
+      return { task, turns: [], phase: "turn" };
+    }
+
+    // ── resume with brief, or apply a submitted/system turn ──
+    const task = await deps.database.getNegotiationTask(input.negotiationId);
+    if (!task) return { phase: "error", error: "Negotiation not found" };
+    if (task.state === "completed") return { task, turns: [], phase: "read" };
+
+    if ("brief" in input) {
+      await deps.database.setNegotiationBrief(task.id, input.brief);
+      const messages = await deps.database.getNegotiationMessages(task.id);
+      return { task: { ...task, brief: input.brief }, turns: turnsFromMessages(messages), phase: "turn" };
+    }
+
+    const messages = await deps.database.getNegotiationMessages(task.id);
+    const turns = turnsFromMessages(messages);
+    const pendingTurn: NegotiationTurn =
+      "turn" in input ? input.turn : { verb: "pause", reason: "counterparty_silent" };
+    return { task, turns, pendingTurn, authored: true, phase: "apply" };
+  } catch (err) {
+    return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ─── turn ────────────────────────────────────────────────────────────────────
+
+async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
+  const task = state.task;
+  if (!task) return { phase: "error", error: "Missing task" };
+  const meta = task.metadata;
+  try {
+    const messages = await deps.database.getNegotiationMessages(task.id);
+    const turns = turnsFromMessages(messages);
+    const speakerId = nextSpeaker(meta, messages.map((m, i) => ({ senderId: m.senderId, parts: [{ kind: "data", data: turns[i] }] })));
+    const isOpening = turns.length === 0;
+
+    const thread = turns.map((turn, i) => ({
+      speaker: (messages[i].senderId === `agent:${speakerId}` ? "own" : "counterparty") as "own" | "counterparty",
+      turn,
+    }));
+    const scope = { action: "manage:negotiations", scopeType: "network", scopeId: meta.networkId };
+    const timeoutMs = 5 * 60 * 1000;
+
+    const hasExternal = await deps.dispatcher.hasExternalAgent(speakerId, scope).catch(() => false);
+    let turn: NegotiationTurn | null = null;
+    if (hasExternal) {
+      const dispatched = await deps.dispatcher.dispatch(
+        speakerId,
+        scope,
+        { negotiationId: task.id, brief: task.brief, thread, isOpening },
+        { timeoutMs },
+      );
+      if (dispatched.handled) {
+        turn = dispatched.turn;
+      } else if (dispatched.reason === "waiting") {
+        // Yielded to an external agent; the answer arrives later via `{ negotiationId, turn }`.
+        return { task, turns, phase: "done", result: toResult(task, turns) };
+      }
+      // 'no_agent' / 'timeout' fall through to the internal author below.
+    }
+
+    if (!turn) {
+      const author = deps.author ?? new NegotiationAuthor();
+      turn = isOpening
+        ? NegotiationOpeningTurnSchema.parse(await author.invoke({ brief: task.brief, thread, isOpening: true }))
+        : await author.invoke({ brief: task.brief, thread, isOpening: false });
+    }
+
+    return { task, turns, pendingTurn: turn, authored: true, phase: "apply" };
+  } catch (err) {
+    logger.error("Turn authoring failed", { taskId: task.id, error: err });
+    return {
+      task,
+      turns: [],
+      pendingTurn: { verb: "pause", reason: "counterparty_silent" },
+      authored: true,
+      phase: "apply",
     };
   }
+}
 
-  createGraph() {
-    const deps = this.deps;
+// ─── apply ───────────────────────────────────────────────────────────────────
 
-    return new StateGraph(NegotiationGraphState)
-      .addNode("init", (state: NegotiationState) => initNode(state, deps))
-      .addNode("turn", (state: NegotiationState) => turnNode(state, deps))
-      .addNode("finalize", (state: NegotiationState) => finalizeNode(state, deps))
-      .addConditionalEdges("turn", routeAfterTurn, {
-        turn: "turn",
-        finalize: "finalize",
-      })
-      .addConditionalEdges("init", routeAfterInit, { turn: "turn", finalize: "finalize" })
-      .addEdge("__start__", "init")
-      .addEdge("finalize", "__end__")
-      .compile();
+async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
+  const task = state.task;
+  const turn = state.pendingTurn;
+  if (!task || !turn) return { phase: "error", error: "Missing task or turn" };
+  const meta = task.metadata;
+  try {
+    const messages = await deps.database.getNegotiationMessages(task.id);
+    const speakerId = nextSpeaker(meta, messages);
+
+    if (messages.length === 0 && (turn as { verb?: string }).verb !== "outreach") {
+      return { phase: "error", error: "The opening turn must be outreach" };
+    }
+    if (messages.length > 0 && (turn as { verb?: string }).verb === "outreach") {
+      return { phase: "error", error: "outreach is only legal as the opening turn" };
+    }
+
+    const capped = !isPauseTurn(turn) && messages.length + 1 >= NEGOTIATION_MAX_TURNS_AMBIENT;
+    const effectiveTurn: NegotiationTurn = capped ? { verb: "pause", reason: "counterparty_silent" } : turn;
+
+    await deps.database.createNegotiationMessage({
+      conversationId: task.conversationId,
+      taskId: task.id,
+      senderId: `agent:${speakerId}`,
+      parts: [{ kind: "data", data: effectiveTurn }],
+    });
+    const allTurns = [...turnsFromMessages(messages), effectiveTurn];
+
+    if (isPauseTurn(effectiveTurn)) {
+      const updated = await deps.database.updateNegotiationTaskState(task.id, "paused", {
+        reason: effectiveTurn.reason,
+        ...("payload" in effectiveTurn ? { payload: effectiveTurn.payload } : {}),
+      });
+      await checkAllPaused(deps, meta);
+      return { task: updated, turns: allTurns, phase: "done", result: toResult(updated, allTurns) };
+    }
+
+    // Continue: loop back for the other seat.
+    return { task, turns: allTurns, pendingTurn: null, authored: false, phase: "turn" };
+  } catch (err) {
+    return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-/** After init: fail closed, or take the first turn. */
-export function routeAfterInit(state: NegotiationState): string {
-  return state.error ? "finalize" : "turn";
+/** If no active negotiation remains for this round, enqueue exactly one reflect job. */
+async function checkAllPaused(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<void> {
+  if (!deps.reflectEnqueue) return;
+  try {
+    const active = await deps.database.countActiveNegotiationsForRound(meta.intentId, meta.round);
+    if (active === 0) {
+      await deps.reflectEnqueue({ intentId: meta.intentId, round: meta.round });
+    }
+  } catch (err) {
+    logger.warn("Failed to check all-paused / enqueue reflect", {
+      intentId: meta.intentId,
+      round: meta.round,
+      jobId: negotiationRoundReflectJobId(meta.intentId, meta.round),
+      error: err,
+    });
+  }
 }
 
-/** After a turn: keep going, or settle. */
-export function routeAfterTurn(state: NegotiationState): string {
-  if (state.status === 'waiting_for_agent') return "finalize";
-  if (state.status === 'input_required') return "finalize";
-  if (state.error) return "finalize";
-  // The copy-loop guard ended the run: an agent repeated a message already on
-  // the record and repeated it again when re-issued. Nothing was persisted and
-  // the turn count did not move, so there is nothing to route back to — and
-  // unlike a failed turn this is not retryable, because the same seat facing
-  // the same record produces the same copy.
-  if (state.repetitionStalled) return "finalize";
-  // A failed turn the turn node judged retryable: the same seat tries again on
-  // an unchanged turn count. Checked BEFORE `lastTurn`, which is either null
-  // (the opening turn failed) or a stale turn from an earlier exchange —
-  // neither says anything about the turn that just failed. This edge cannot
-  // loop: a failure the turn node will not retry — the consecutive-failure
-  // bound, or a turn that failed after its message was persisted — sets
-  // `state.error`, which the check above routes to finalize.
-  if (state.consecutiveTurnFailures > 0) return "turn";
-  if (!state.lastTurn) return "finalize";
-  // Terminal actions: accept, withdraw, or decline.
-  if (isTerminalAction(state.lastTurn.action)) return "finalize";
-  // question routes same as counter — next turn
-  if (isNegotiationTurnCapReached(state.turnCount, state.maxTurns)) return "finalize";
-  return "turn";
+// ─── resolve ─────────────────────────────────────────────────────────────────
+
+async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
+  const task = state.task;
+  const input = state.input;
+  if (!task || !("verdict" in input)) return { phase: "error", error: "Missing task or verdict" };
+  try {
+    await deps.database.createNegotiationOutcomeArtifact(task.id, { verdict: input.verdict });
+    const updated = await deps.database.updateNegotiationTaskState(task.id, "completed");
+    await deps.database.updateOpportunityStatus(
+      task.metadata.opportunityId,
+      input.verdict === "pending" ? "pending" : "rejected",
+    );
+    return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", verdict: input.verdict, turns: [] } };
+  } catch (err) {
+    return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ─── read ────────────────────────────────────────────────────────────────────
+
+function readNode(state: NegotiationState): Partial<NegotiationState> {
+  if (!state.task) return { phase: "error", error: "Missing task" };
+  return { phase: "done", result: toResult(state.task, state.turns) };
+}
+
+function errorNode(state: NegotiationState): Partial<NegotiationState> {
+  return {
+    result: {
+      negotiationId: "negotiationId" in state.input ? state.input.negotiationId : "",
+      status: "error",
+      turns: [],
+      error: state.error ?? "Unknown error",
+    },
+  };
+}
+
+// ─── Factory ─────────────────────────────────────────────────────────────────
+
+/** Typed invoke signature, for host-side and caller typing. */
+export interface NegotiationGraphLike {
+  invoke(input: NegotiationGraphInput): Promise<NegotiationGraphResult>;
+}
+
+export class NegotiationGraphFactory {
+  constructor(public readonly deps: NegotiationGraphDeps) {}
+
+  createGraph(): NegotiationGraphLike {
+    const deps = this.deps;
+    const compiled = new StateGraph(NegotiationGraphState)
+      .addNode("init", (s: NegotiationState) => initNode(s, deps))
+      .addNode("turn", (s: NegotiationState) => turnNode(s, deps))
+      .addNode("apply", (s: NegotiationState) => applyNode(s, deps))
+      .addNode("resolve", (s: NegotiationState) => resolveNode(s, deps))
+      .addNode("read", readNode)
+      .addNode("error", errorNode)
+      .addEdge("__start__", "init")
+      .addConditionalEdges("init", (s: NegotiationState) => s.phase, {
+        turn: "turn",
+        apply: "apply",
+        resolve: "resolve",
+        read: "read",
+        error: "error",
+      })
+      .addConditionalEdges("turn", (s: NegotiationState) => s.phase, { apply: "apply", done: END, error: "error" })
+      .addConditionalEdges("apply", (s: NegotiationState) => s.phase, { turn: "turn", done: END, error: "error" })
+      .addEdge("resolve", END)
+      .addEdge("read", END)
+      .addEdge("error", END)
+      .compile();
+
+    return {
+      async invoke(input: NegotiationGraphInput): Promise<NegotiationGraphResult> {
+        const final = await compiled.invoke({ input });
+        if (final.result) return final.result;
+        return {
+          negotiationId: "negotiationId" in input ? input.negotiationId : "",
+          status: "error",
+          turns: [],
+          error: final.error ?? "Unknown graph error",
+        };
+      },
+    };
+  }
 }
