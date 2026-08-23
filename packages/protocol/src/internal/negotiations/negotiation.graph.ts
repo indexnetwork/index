@@ -27,9 +27,11 @@ const logger = protocolLogger("NegotiationGraph");
 // ─── Invoke contract ─────────────────────────────────────────────────────────
 
 export type NegotiationGraphInput =
-  | { opportunityId: string; brief: string; intentId: string }
+  /** `round` is the caller's own batch counter — one bump per kickoff batch, not per opportunity. */
+  | { opportunityId: string; brief: string; intentId: string; round: number }
   | { negotiationId: string; brief: string }
-  | { negotiationId: string; turn: NegotiationTurn }
+  /** `byUserId` is the seat submitting this turn; apply rejects a turn whose byUserId isn't the computed next speaker. */
+  | { negotiationId: string; turn: NegotiationTurn; byUserId: string }
   | { negotiationId: string; pause: "counterparty_silent" }
   | { negotiationId: string; verdict: NegotiationVerdict; reasoning: string }
   | { negotiationId: string };
@@ -61,6 +63,15 @@ const NegotiationGraphState = Annotation.Root({
   turns: Annotation<NegotiationTurn[]>({ reducer: (c, n) => n ?? c, default: () => [] }),
   /** The turn to apply next — externally supplied, or produced by the turn node. */
   pendingTurn: Annotation<NegotiationTurn | null>({ reducer: (c, n) => n ?? c, default: () => null }),
+  /**
+   * Set only when pendingTurn was submitted externally via
+   * `{ negotiationId, turn, byUserId }` — apply validates it against the
+   * computed speaker. Every producer must explicitly pass `null` to clear
+   * it for an internally authored turn: unlike the other channels here,
+   * `null` is a real value this reducer keeps (`??` would treat it as "no
+   * update" and leak a stale byUserId onto the next turn).
+   */
+  pendingTurnByUserId: Annotation<string | null>({ reducer: (c, n) => (n === undefined ? c : n), default: () => null }),
   /** True once this invoke's own author/dispatch has produced `pendingTurn` — vs. one supplied on input. */
   authored: Annotation<boolean>({ reducer: (c, n) => n ?? c, default: () => false }),
   phase: Annotation<"init" | "turn" | "apply" | "resolve" | "read" | "done" | "error">({
@@ -98,10 +109,17 @@ function nextSpeaker(
   return lastSpeakerId === meta.sourceUserId ? meta.candidateUserId : meta.sourceUserId;
 }
 
+/**
+ * `invoke()` has no notion of who's asking — its result can flow straight
+ * back through an external agent's own tool call (e.g. a self-play loop that
+ * the caller's own continuing turn set off). So the payload behind a pause
+ * never appears here, only the reason: it lives in `task.metadata.pause`,
+ * readable only by a caller that separately proves it's `pausedBy`.
+ */
 function toResult(task: NegotiationTaskRow, turns: NegotiationTurn[]): NegotiationGraphResult {
   const base = { negotiationId: task.id, turns };
   if (task.state === "paused") {
-    return { ...base, status: "paused", ...(task.metadata.pause ? { pause: task.metadata.pause } : {}) };
+    return { ...base, status: "paused", ...(task.metadata.pause ? { pause: { reason: task.metadata.pause.reason } } : {}) };
   }
   if (task.state === "completed") return { ...base, status: "resolved" };
   return { ...base, status: "active" };
@@ -146,7 +164,6 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       const candidateActor = opportunity.actors.find((a) => a.intent !== input.intentId);
       if (!sourceActor || !candidateActor) return { phase: "error", error: "Opportunity does not have two actors" };
 
-      const round = await deps.database.bumpIntentNegotiationRound(input.intentId);
       const conversation = await deps.database.createNegotiationConversation(sourceActor.userId, candidateActor.userId);
       const task = await deps.database.createNegotiationTask({
         conversationId: conversation.id,
@@ -159,7 +176,7 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
           initiatorUserId: sourceActor.userId,
           networkId: sourceActor.networkId,
           intentId: input.intentId,
-          round,
+          round: input.round,
         },
       });
       await deps.database.updateOpportunityStatus(input.opportunityId, "negotiating").catch((err) => {
@@ -169,9 +186,15 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     }
 
     // ── resume with brief, or apply a submitted/system turn ──
-    const task = await deps.database.getNegotiationTask(input.negotiationId);
+    let task = await deps.database.getNegotiationTask(input.negotiationId);
     if (!task) return { phase: "error", error: "Negotiation not found" };
     if (task.state === "completed") return { task, turns: [], phase: "read" };
+
+    // A pause is one-way at rest, not a dead end: any resume (new brief, a
+    // submitted turn, or a timeout) reopens the negotiation before it's acted on.
+    if (task.state === "paused") {
+      task = await deps.database.updateNegotiationTaskState(task.id, "working");
+    }
 
     if ("brief" in input) {
       await deps.database.setNegotiationBrief(task.id, input.brief);
@@ -183,7 +206,14 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     const turns = turnsFromMessages(messages);
     const pendingTurn: NegotiationTurn =
       "turn" in input ? input.turn : { verb: "pause", reason: "counterparty_silent" };
-    return { task, turns, pendingTurn, authored: true, phase: "apply" };
+    return {
+      task,
+      turns,
+      pendingTurn,
+      pendingTurnByUserId: "turn" in input ? input.byUserId : null,
+      authored: true,
+      phase: "apply",
+    };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
@@ -233,13 +263,14 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
         : await author.invoke({ brief: task.brief, thread, isOpening: false });
     }
 
-    return { task, turns, pendingTurn: turn, authored: true, phase: "apply" };
+    return { task, turns, pendingTurn: turn, pendingTurnByUserId: null, authored: true, phase: "apply" };
   } catch (err) {
     logger.error("Turn authoring failed", { taskId: task.id, error: err });
     return {
       task,
       turns: [],
       pendingTurn: { verb: "pause", reason: "counterparty_silent" },
+      pendingTurnByUserId: null,
       authored: true,
       phase: "apply",
     };
@@ -257,27 +288,52 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
     const messages = await deps.database.getNegotiationMessages(task.id);
     const speakerId = nextSpeaker(meta, messages);
 
-    if (messages.length === 0 && (turn as { verb?: string }).verb !== "outreach") {
+    // An externally submitted turn must come from the seat the graph itself
+    // computed as next — the submitter cannot author a turn attributed to
+    // the other side.
+    if (state.pendingTurnByUserId && state.pendingTurnByUserId !== speakerId) {
+      return { phase: "error", error: "Turn submitted by the wrong seat" };
+    }
+
+    // A pause is always legal, even opening an empty thread (a system
+    // timeout or a first-turn authoring failure) — only a *continuing* verb
+    // is bound by the outreach-only-first rule.
+    if (messages.length === 0 && !isPauseTurn(turn) && turn.verb !== "outreach") {
       return { phase: "error", error: "The opening turn must be outreach" };
     }
-    if (messages.length > 0 && (turn as { verb?: string }).verb === "outreach") {
+    if (messages.length > 0 && !isPauseTurn(turn) && turn.verb === "outreach") {
       return { phase: "error", error: "outreach is only legal as the opening turn" };
     }
 
     const capped = !isPauseTurn(turn) && messages.length + 1 >= NEGOTIATION_MAX_TURNS_AMBIENT;
     const effectiveTurn: NegotiationTurn = capped ? { verb: "pause", reason: "counterparty_silent" } : turn;
 
-    await deps.database.createNegotiationMessage({
+    // The payload on needs_principal/ready_for_verdict is private to the
+    // pausing side's own principal — it is never written into the shared
+    // thread (read by the counterparty via get_negotiation, and rebuilt into
+    // the dispatch `thread` for whoever is authoring next). The full payload
+    // lives only in task.metadata.pause, scoped to `pausedBy`.
+    const threadTurn: NegotiationTurn =
+      isPauseTurn(effectiveTurn) && "payload" in effectiveTurn
+        ? { verb: "pause", reason: effectiveTurn.reason }
+        : effectiveTurn;
+
+    const message = await deps.database.createNegotiationMessage({
       conversationId: task.conversationId,
       taskId: task.id,
       senderId: `agent:${speakerId}`,
-      parts: [{ kind: "data", data: effectiveTurn }],
+      parts: [{ kind: "data", data: threadTurn }],
+      expectedMessageCount: messages.length,
     });
-    const allTurns = [...turnsFromMessages(messages), effectiveTurn];
+    if (!message) {
+      return { phase: "error", error: "Concurrent turn already applied to this negotiation" };
+    }
+    const allTurns = [...turnsFromMessages(messages), threadTurn];
 
     if (isPauseTurn(effectiveTurn)) {
       const updated = await deps.database.updateNegotiationTaskState(task.id, "paused", {
         reason: effectiveTurn.reason,
+        pausedBy: speakerId,
         ...("payload" in effectiveTurn ? { payload: effectiveTurn.payload } : {}),
       });
       await checkAllPaused(deps, meta);
@@ -285,7 +341,7 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
     }
 
     // Continue: loop back for the other seat.
-    return { task, turns: allTurns, pendingTurn: null, authored: false, phase: "turn" };
+    return { task, turns: allTurns, pendingTurn: null, pendingTurnByUserId: null, authored: false, phase: "turn" };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
@@ -325,6 +381,10 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
       task.metadata.opportunityId,
       input.verdict === "pending" ? "pending" : "rejected",
     );
+    // A round whose last active negotiation ends by direct verdict (not a
+    // pause) must still trigger the all-paused check — apply isn't the only
+    // way a round finishes.
+    await checkAllPaused(deps, task.metadata);
     return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", verdict: input.verdict, reasoning: input.reasoning, turns: [] } };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };

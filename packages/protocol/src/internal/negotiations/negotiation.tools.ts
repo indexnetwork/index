@@ -7,11 +7,19 @@ import { focusedIntentId, focusedNetworkId } from '../shared/agent/tool.scope.js
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
 import { NegotiationTurnSchema, NEGOTIATION_CONTINUE_VERBS } from './negotiation.turn.js';
-import type { NegotiationTaskRow } from '../../platform/database/negotiation.js';
+import type { NegotiationTaskMetadata, NegotiationTaskRow } from '../../platform/database/negotiation.js';
 
 export { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
 
 const logger = protocolLogger('ChatTools:Negotiation');
+
+/** The pause payload is private to `pausedBy` — every other reader sees the reason only. */
+function pauseFor(task: NegotiationTaskRow, viewerId: string): (NegotiationTaskMetadata['pause'] & { label: string }) | undefined {
+  if (task.state !== 'paused' || !task.metadata.pause) return undefined;
+  const { reason, payload, pausedBy } = task.metadata.pause;
+  const visible = pausedBy === viewerId ? { reason, payload, pausedBy } : { reason };
+  return { ...visible, label: parkLifecycleLabel(task.metadata.pause) };
+}
 
 /**
  * Creates negotiation MCP tools for external agent access.
@@ -72,15 +80,14 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           .map((task) => {
             const isSource = task.metadata.sourceUserId === context.userId;
             const counterpartyId = isSource ? task.metadata.candidateUserId : task.metadata.sourceUserId;
+            const scopedPause = pauseFor(task, context.userId);
             return {
               id: task.id,
               opportunityId: task.metadata.opportunityId,
               counterpartyId,
               role: isSource ? 'source' : 'candidate',
               status: task.state,
-              ...(task.state === 'paused' && task.metadata.pause
-                ? { pause: { ...task.metadata.pause, label: parkLifecycleLabel(task.metadata.pause) } }
-                : {}),
+              ...(scopedPause ? { pause: scopedPause } : {}),
               createdAt: task.createdAt,
               updatedAt: task.updatedAt,
             };
@@ -128,6 +135,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           negotiationDatabase.getNegotiationMessages(task.id),
           negotiationDatabase.getOpportunity(task.metadata.opportunityId).catch(() => null),
         ]);
+        const scopedPause = pauseFor(task, context.userId);
 
         return success({
           id: task.id,
@@ -139,13 +147,11 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           counterpartyId: isSource ? task.metadata.candidateUserId : task.metadata.sourceUserId,
           brief: task.brief,
           turns: turnsOf(task, messages),
-          ...(task.state === 'paused' && task.metadata.pause
-            ? { pause: { ...task.metadata.pause, label: parkLifecycleLabel(task.metadata.pause) } }
-            : {}),
+          ...(scopedPause ? { pause: scopedPause } : {}),
           lifecycle: buildLifecycleNarration(
             task.state,
             opportunity ? { status: opportunity.status, acceptedByOwner: false } : undefined,
-            task.state === 'paused' && task.metadata.pause ? task.metadata.pause : undefined,
+            scopedPause,
           ),
           createdAt: task.createdAt,
           updatedAt: task.updatedAt,
@@ -187,7 +193,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         const isSource = task.metadata.sourceUserId === context.userId;
         const isCandidate = task.metadata.candidateUserId === context.userId;
         if (!isSource && !isCandidate) return error('Access denied: you are not a party to this negotiation.');
-        if (task.state !== 'working') return error(`Negotiation is not accepting a turn right now. Current status: ${task.state}`);
+        // 'working' or 'paused' both accept a turn — apply reopens a paused negotiation
+        // itself; only a resolved one is truly done.
+        if (task.state === 'completed') return error(`Negotiation is not accepting a turn right now. Current status: ${task.state}`);
 
         const turn = query.verb
           ? { verb: query.verb, message: query.message ?? '', reasoning: query.reasoning ?? '' }
@@ -198,7 +206,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         const parsed = NegotiationTurnSchema.safeParse(turn);
         if (!parsed.success) return error(`Invalid turn: ${parsed.error.issues[0]?.message ?? 'schema validation failed'}`);
 
-        const result = await negotiationGraph.invoke({ negotiationId: task.id, turn: parsed.data });
+        const result = await negotiationGraph.invoke({ negotiationId: task.id, turn: parsed.data, byUserId: context.userId });
         if (result.status === 'error') return error(result.error ?? 'Failed to apply turn.');
 
         return success({

@@ -2,11 +2,21 @@
  * Discovery pipeline, stage 7: post-persist negotiation.
  *
  * For each persisted opportunity, kicks off (or resumes) its negotiation by
- * invoking `NegotiationGraph` with `{ opportunityId, brief, intentId }` — the
- * graph's own `open` path creates the negotiation and takes the first turn,
- * or is a no-op if one already exists for that opportunity. Nothing here
- * waits for a verdict: negotiations pause and resolve asynchronously, through
- * their own invokes, not through this node.
+ * invoking `NegotiationGraph` with `{ opportunityId, brief, intentId, round }`
+ * — the graph's own `open` path creates the negotiation and takes the first
+ * turn (writing the opportunity to `negotiating` itself), or is a no-op if
+ * one already exists for that opportunity. This node never writes opportunity
+ * status itself — the graph owns that write, including on the error path,
+ * where an unconditional write here would strand a failed-init opportunity
+ * at `negotiating` or clobber a reactivated one. Nothing here waits for a
+ * verdict: negotiations pause and resolve asynchronously, through their own
+ * invokes, not through this node.
+ *
+ * A round is this kickoff batch, not one opportunity: every opportunity
+ * sharing an intentId in this batch shares one round, bumped once per
+ * intentId before any of that intentId's opens run — otherwise every
+ * negotiation would be its own round of one, and reflect would fire at the
+ * very first pause instead of waiting for the batch.
  *
  * `brief` is a minimal deterministic string built from the trigger intent —
  * IS-A authors real briefs from the DM once it lands (step 2 of the
@@ -47,10 +57,20 @@ export async function negotiateNode(state: OpportunityState, deps: OpportunityGr
     })
     .filter((entry): entry is { opportunityId: string; intentId: string } => entry !== null);
 
+  const roundByIntentId = new Map<string, Promise<number>>();
+  const roundFor = (intentId: string): Promise<number> => {
+    let round = roundByIntentId.get(intentId);
+    if (!round) {
+      round = deps.database.bumpIntentNegotiationRound(intentId);
+      roundByIntentId.set(intentId, round);
+    }
+    return round;
+  };
+
   await Promise.all(kickoffs.map(async ({ opportunityId, intentId }) => {
     try {
-      await deps.database.updateOpportunityStatus(opportunityId, 'negotiating');
-      await deps.negotiationGraph!.invoke({ opportunityId, brief, intentId });
+      const round = await roundFor(intentId);
+      await deps.negotiationGraph!.invoke({ opportunityId, brief, intentId, round });
     } catch (err) {
       negotiateLog.error('Failed to kick off negotiation', { opportunityId, intentId, error: err });
     }

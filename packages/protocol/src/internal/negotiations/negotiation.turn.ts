@@ -52,10 +52,29 @@ export const NegotiationReadyForVerdictPauseSchema = z.object({
 });
 export type NegotiationReadyForVerdictPayload = z.infer<typeof NegotiationReadyForVerdictPauseSchema>["payload"];
 
+/**
+ * Storage-facing pause shapes: `payload` is optional here, unlike the
+ * authoring schemas above. `apply` never persists the real payload into the
+ * shared thread — it's private to `pausedBy`, stored only in
+ * `task.metadata.pause` — so what lands in a message, and what
+ * `turnsFromMessages` parses back out of history, is a redacted
+ * `{ verb: 'pause', reason }` marker. If these required `payload` the
+ * marker would fail to parse and silently vanish from history, which is
+ * worse than the leak this schema exists to prevent: `nextSpeaker` reads
+ * the last turn to decide whether to retry the same speaker, and a dropped
+ * pause breaks that read.
+ */
+const NegotiationNeedsPrincipalStoredPauseSchema = NegotiationNeedsPrincipalPauseSchema.extend({
+  payload: NegotiationNeedsPrincipalPauseSchema.shape.payload.optional(),
+});
+const NegotiationReadyForVerdictStoredPauseSchema = NegotiationReadyForVerdictPauseSchema.extend({
+  payload: NegotiationReadyForVerdictPauseSchema.shape.payload.optional(),
+});
+
 export const NegotiationPauseTurnSchema = z.discriminatedUnion("reason", [
   NegotiationCounterpartySilentPauseSchema,
-  NegotiationNeedsPrincipalPauseSchema,
-  NegotiationReadyForVerdictPauseSchema,
+  NegotiationNeedsPrincipalStoredPauseSchema,
+  NegotiationReadyForVerdictStoredPauseSchema,
 ]);
 export type NegotiationPauseTurn = z.infer<typeof NegotiationPauseTurnSchema>;
 

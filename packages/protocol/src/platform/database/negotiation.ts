@@ -27,7 +27,13 @@ export interface NegotiationTaskMetadata {
   intentId: string;
   /** Bumped by the caller at every kickoff of a fresh round for `intentId`. */
   round: number;
-  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown } | null;
+  /**
+   * `payload` is private to `pausedBy` — the seat whose turn produced this
+   * pause. It is never persisted into a shared message or returned from a
+   * generic invoke; only a read scoped to `pausedBy`'s own principal may see
+   * it. Everyone else sees the reason only.
+   */
+  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown; pausedBy?: string } | null;
 }
 
 export interface NegotiationTaskRow {
@@ -83,13 +89,20 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** Overwrites the brief at resume. */
   setNegotiationBrief(taskId: string, brief: string): Promise<void>;
 
-  /** Persists one turn. */
+  /**
+   * Persists one turn, fenced against a concurrent duplicate submission:
+   * inserts only if the task's current message count still equals
+   * `expectedMessageCount` (read by the caller immediately before deciding
+   * what to apply). Returns null when the fence fails — the caller must
+   * treat that as "someone else already applied a turn," not retry blindly.
+   */
   createNegotiationMessage(input: {
     conversationId: string;
     taskId: string;
     senderId: string;
     parts: unknown[];
-  }): Promise<NegotiationMessageRow>;
+    expectedMessageCount: number;
+  }): Promise<NegotiationMessageRow | null>;
 
   /** This negotiation's own turns, oldest first. */
   getNegotiationMessages(taskId: string): Promise<NegotiationMessageRow[]>;

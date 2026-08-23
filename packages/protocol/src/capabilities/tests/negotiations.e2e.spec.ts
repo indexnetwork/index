@@ -134,8 +134,9 @@ class FakeNegotiationHost {
       this.tasks.set(taskId, { ...task, brief, updatedAt: new Date() });
     },
     createNegotiationMessage: async (input) => {
-      const message = { id: `message-${++this.messageCounter}`, senderId: input.senderId, parts: input.parts, createdAt: new Date() };
       const list = this.messages.get(input.taskId) ?? [];
+      if (list.length !== input.expectedMessageCount) return null; // fenced: a concurrent turn already landed
+      const message = { id: `message-${++this.messageCounter}`, senderId: input.senderId, parts: input.parts, createdAt: new Date() };
       list.push(message);
       this.messages.set(input.taskId, list);
       return message;
@@ -194,7 +195,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
 
     // open: source's opening turn is authored live (via the scripted seam); the candidate
     // seat immediately yields `waiting`, so the graph returns after exactly one turn.
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "Alice wants a technical co-founder." });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "Alice wants a technical co-founder.", round: 1 });
     expect(opened.status).toBe("active");
     expect(opened.turns).toHaveLength(1);
     expect(opened.turns[0]).toMatchObject({ verb: "outreach" });
@@ -208,19 +209,35 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     const paused = await graph.invoke({
       negotiationId,
       turn: { verb: "counter", message: "Bob's agent: interested, but what equity split is Alice thinking?", reasoning: "Countering with a real question." },
+      byUserId: CANDIDATE_USER_ID,
     });
     expect(paused.status).toBe("paused");
     expect(paused.turns).toHaveLength(3);
     expect(paused.turns[1]).toMatchObject({ verb: "counter" });
-    expect(paused.pause).toMatchObject({ reason: "needs_principal", payload: { question: "What equity split are you open to?" } });
+    // The graph's own result never carries the payload — it's private to whoever paused,
+    // and this exact call could (via self-play) be returning someone else's pause.
+    expect(paused.pause).toEqual({ reason: "needs_principal" });
+    expect(paused.turns[2]).toEqual({ verb: "pause", reason: "needs_principal" }); // redacted in the shared thread too
+    // The real payload lives only on the task, scoped to whoever paused.
+    expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({
+      reason: "needs_principal",
+      pausedBy: SOURCE_USER_ID,
+      payload: { question: "What equity split are you open to?" },
+    });
     expect(host.taskFor(negotiationId).state).toBe("paused");
     // Only one negotiation this round, and it just paused: the all-paused trigger fires.
     expect(host.reflectJobs).toEqual([{ intentId: INTENT_ID, round: 1 }]);
 
-    // resume with brief: IS-A answered the equity question
+    // resume with brief: IS-A answered the equity question (read from the task directly,
+    // the same privileged path IS-A will use — never from the graph's own public result)
     const resumed = await graph.invoke({ negotiationId, brief: "Alice wants a technical co-founder; she is open to 15-20% equity." });
     expect(resumed.status).toBe("paused");
-    expect(resumed.pause).toMatchObject({ reason: "ready_for_verdict", payload: { recommendation: "pending" } });
+    expect(resumed.pause).toEqual({ reason: "ready_for_verdict" });
+    expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({
+      reason: "ready_for_verdict",
+      pausedBy: SOURCE_USER_ID,
+      payload: { recommendation: "pending" },
+    });
     expect(host.reflectJobs).toHaveLength(2);
 
     // verdict: IS-A promotes to pending — the only terminal write
@@ -246,7 +263,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     ]);
     const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief" });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
     expect(opened.status).toBe("active");
 
     // The candidate's reply, submitted externally, hands the turn straight back to the
@@ -254,8 +271,13 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     const paused = await graph.invoke({
       negotiationId: opened.negotiationId,
       turn: { verb: "counter", message: "Not interested.", reasoning: "r" },
+      byUserId: CANDIDATE_USER_ID,
     });
-    expect(paused.pause).toMatchObject({ reason: "ready_for_verdict", payload: { recommendation: "reject" } });
+    expect(paused.pause).toEqual({ reason: "ready_for_verdict" });
+    expect(host.taskFor(opened.negotiationId).metadata.pause).toMatchObject({
+      reason: "ready_for_verdict",
+      payload: { recommendation: "reject" },
+    });
 
     const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject", reasoning: "Not a fit." });
     expect(resolved.status).toBe("resolved");
@@ -268,7 +290,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
     const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief" });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
     expect(opened.status).toBe("active");
     const timedOut = await graph.invoke({ negotiationId: opened.negotiationId, pause: "counterparty_silent" });
 
@@ -286,7 +308,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     // isolating the apply guards from the authoring path this block is not testing.
     const graph = new Negotiations({ database: host.database, dispatcher: host.bothWaitingDispatcher() }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief" });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
     expect(opened.status).toBe("active");
     expect(opened.turns).toHaveLength(0); // the opening seat also yielded `waiting` — nobody has spoken yet
     const negotiationId = opened.negotiationId;
@@ -295,19 +317,30 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const rejectedNonOutreachOpen = await graph.invoke({
       negotiationId,
       turn: { verb: "counter", message: "Not the opening move.", reasoning: "r" },
+      byUserId: SOURCE_USER_ID,
     });
     expect(rejectedNonOutreachOpen.status).toBe("error");
 
     const opening = await graph.invoke({
       negotiationId,
       turn: { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
+      byUserId: SOURCE_USER_ID,
     });
     expect(opening.status).toBe("active");
     expect(opening.turns).toHaveLength(1);
 
+    // Same guard the internal author is bound by: a turn attributed to the wrong seat is rejected.
+    const wrongSeat = await graph.invoke({
+      negotiationId,
+      turn: { verb: "question", message: "Impersonating the candidate.", reasoning: "r" },
+      byUserId: SOURCE_USER_ID, // it's actually the candidate's turn next
+    });
+    expect(wrongSeat.status).toBe("error");
+
     const applied = await graph.invoke({
       negotiationId,
       turn: { verb: "question", message: "What timeline is Alice working with?", reasoning: "Need to know before committing." },
+      byUserId: CANDIDATE_USER_ID,
     });
     expect(applied.status).toBe("active");
     expect(applied.turns).toHaveLength(2);
@@ -317,6 +350,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const invalidReopen = await graph.invoke({
       negotiationId,
       turn: { verb: "outreach", message: "Trying to reopen.", reasoning: "r" },
+      byUserId: SOURCE_USER_ID,
     });
     expect(invalidReopen.status).toBe("error");
 
@@ -324,9 +358,15 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const pausedByExternal = await graph.invoke({
       negotiationId,
       turn: { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Counterparty backed out." } },
+      byUserId: SOURCE_USER_ID,
     });
     expect(pausedByExternal.status).toBe("paused");
-    expect(pausedByExternal.pause).toMatchObject({ reason: "ready_for_verdict", payload: { recommendation: "reject" } });
+    expect(pausedByExternal.pause).toEqual({ reason: "ready_for_verdict" });
+    expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({
+      reason: "ready_for_verdict",
+      pausedBy: SOURCE_USER_ID,
+      payload: { recommendation: "reject" },
+    });
     expect(host.taskFor(negotiationId).state).toBe("paused");
   });
 
@@ -335,13 +375,59 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
     const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
 
-    const first = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief" });
+    const first = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
     // A second `{ opportunityId, brief }` invoke (e.g. discovery re-running) finds the existing task and
     // updates its brief instead of creating a second negotiation for the same opportunity.
-    const second = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "updated brief" });
+    const second = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "updated brief", round: 2 });
 
     expect(second.negotiationId).toBe(first.negotiationId);
     expect(host.taskFor(first.negotiationId).brief).toBe("updated brief");
     expect([...host.tasks.values()]).toHaveLength(1);
+  });
+
+  test("a concurrent duplicate submission is fenced, not silently double-applied", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
+    const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const negotiationId = opened.negotiationId;
+
+    // Two processes race to submit the candidate's pause from the same read (a pause never
+    // loops back into self-play, so the winner's own result stays predictable). Both compute
+    // the same expectedMessageCount (1); only the first insert may win.
+    const [first, second] = await Promise.all([
+      graph.invoke({
+        negotiationId,
+        turn: { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "pending", reasoning: "First." } },
+        byUserId: CANDIDATE_USER_ID,
+      }),
+      graph.invoke({
+        negotiationId,
+        turn: { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Second." } },
+        byUserId: CANDIDATE_USER_ID,
+      }),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual(["error", "paused"]);
+    // Exactly one candidate turn landed — not two, not a fabricated composite.
+    const persisted = await host.database.getNegotiationMessages(negotiationId);
+    expect(persisted).toHaveLength(2); // the opening outreach, plus exactly one of the two races
+  });
+
+  test("a system pause on a negotiation with no turns at all is not blocked by the outreach guard", async () => {
+    // Covers a first-turn authoring failure: init created the task, but nothing was ever
+    // persisted before a timeout fired on it. The outreach-only-first rule must not trap
+    // this negotiation with no way to recover.
+    const host = new FakeNegotiationHost();
+    const graph = new Negotiations({ database: host.database, dispatcher: host.bothWaitingDispatcher() }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    expect(opened.turns).toHaveLength(0); // both seats yielded waiting — nothing was ever authored
+
+    const timedOut = await graph.invoke({ negotiationId: opened.negotiationId, pause: "counterparty_silent" });
+    expect(timedOut.status).toBe("paused");
+    expect(timedOut.pause).toEqual({ reason: "counterparty_silent" });
   });
 });
