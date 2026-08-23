@@ -447,6 +447,30 @@ describe('IntentGraph - transition and confirm actions', () => {
     expect(compensateCalls).toEqual([{ intentId: 'intent-1', userId: 'user-1', lifecycleVersionMs: 200, networkScopeId: undefined }]);
   });
 
+  it('reports enqueue_failed without compensating when the intent was already ACTIVE', async () => {
+    const compensateCalls: unknown[] = [];
+    const database = makeTransitionDatabase({
+      transitionIntentLifecycle: async () => ({
+        kind: 'success', id: 'intent-1', status: 'ACTIVE', changed: false, lifecycleVersionMs: 200,
+      }),
+      compensateFailedResume: async (input) => {
+        compensateCalls.push(input);
+        return { status: 'PAUSED', lifecycleVersionMs: 201 };
+      },
+    });
+    const factory = new IntentGraphFactory(database, undefined, {
+      addGenerateHydeJob: async () => {},
+      addDeleteHydeJob: async () => {},
+      addResumeDiscoveryJob: async () => { throw new Error('queue unavailable'); },
+    });
+    const result = await factory.createGraph().invoke({
+      userId: 'user-1', userProfile: '', targetIntentIds: ['intent-1'], status: 'ACTIVE',
+    });
+
+    expect(result.transitionResult).toEqual({ kind: 'enqueue_failed', id: 'intent-1', status: 'ACTIVE', lifecycleVersionMs: 200 });
+    expect(compensateCalls).toEqual([]);
+  });
+
   it('does not enqueue or compensate for a PAUSED transition', async () => {
     const database = makeTransitionDatabase({
       transitionIntentLifecycle: async () => ({
