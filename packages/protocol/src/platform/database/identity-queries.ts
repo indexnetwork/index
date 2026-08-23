@@ -187,9 +187,6 @@ export interface DatabaseIdentityQueries {
    */
   expireOpportunitiesByIntentActor(intentId: string): Promise<number>;
 
-  /** Whether `userId` owns `intentId`. Used to guard a destructive action's target. */
-  isOwnedByUser(intentId: string, userId: string): Promise<boolean>;
-
   /** Resolve a durable proposal without exposing records owned by another user. */
   getProposalForOwner(proposalId: string, userId: string): Promise<IntentProposalRecord | null>;
 
