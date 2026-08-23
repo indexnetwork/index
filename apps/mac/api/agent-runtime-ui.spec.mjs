@@ -23,8 +23,7 @@ test('security workflow watches the full Mac/plugin/protocol/API authority closu
   for (const test of [
     './src/internal/mcp/tests/mcp.authorization-policy.spec.ts',
     './src/internal/mcp/tests/mcp.server.spec.ts',
-    './src/internal/negotiations/tests/negotiation.hermes-contract.spec.ts',
-    './src/internal/negotiations/tests/negotiator-timeout.spec.ts',
+    './src/capabilities/tests/negotiations.e2e.spec.ts',
   ]) expect(securityWorkflow).toContain(test);
 });
 
