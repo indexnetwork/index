@@ -94,6 +94,47 @@ const plainTurn = (action: string, reasoning: string, message: string | null = n
 const outreachTurn = () => plainTurn("outreach", "in scope per Alice's answer", "Alice said adjacent depth counts, so this is worth a conversation.");
 const declineTurn = () => plainTurn("decline", "not a fit");
 
+/** The dimension the checklist-protocol Ashley-shape park asks about. */
+const CHECKLIST_ASK_DIMENSION = "Project Collaboration Location";
+
+/** A checklist-authored pre-contact park: the ask names a dimension the frozen checklist carries. */
+const preContactAskUserTurnWithChecklist = (): NegotiationTurn => ({
+  action: "ask_user",
+  assessment: {
+    reasoning: "cannot tell whether the location constraint is fixed or flexible",
+    suggestedRoles: { ownUser: "peer", otherUser: "peer" },
+  },
+  message: null,
+  askUser: {
+    reason: "unresolved_owner_constraint",
+    dimension: CHECKLIST_ASK_DIMENSION,
+    question: ASHLEY_QUESTION,
+    answerhood: { ok_when: "open to remote or flexible location", conflict_when: "must be in-person in one fixed city" },
+  },
+  checklist: [
+    { name: "Mutual Interest", kind: "mutual_want", result: "unknown", basis: "", settles: "either" },
+    { name: CHECKLIST_ASK_DIMENSION, kind: "hard_constraint", result: "unknown", basis: "", settles: "client" },
+    { name: "Domain Fit", kind: "fit", result: "unknown", basis: "", settles: "either" },
+  ],
+} as NegotiationTurn);
+
+/** The resumed turn's drafted withdraw, re-scoring the asked dimension one way or the other. */
+const withdrawTurnScoring = (result: "ok" | "conflict"): NegotiationTurn => ({
+  action: "withdraw",
+  assessment: { reasoning: "geographic mismatch; cannot be resolved through negotiation", suggestedRoles: { ownUser: "peer", otherUser: "peer" } },
+  message: null,
+  checklist: [
+    { name: "Mutual Interest", kind: "mutual_want", result: "unknown", basis: "" },
+    {
+      name: CHECKLIST_ASK_DIMENSION,
+      kind: "hard_constraint",
+      result,
+      basis: result === "ok" ? "the client said they are open to remote or flexible location" : "the client confirmed one fixed city only",
+    },
+    { name: "Domain Fit", kind: "fit", result: "unknown", basis: "" },
+  ],
+} as NegotiationTurn);
+
 /** One `input_required` task metadata shaped exactly as a pre-contact park writes it. */
 function parkedTaskRow(id: string, userId: string, intentId: string, opts?: { preContact?: boolean }) {
   return {
@@ -495,6 +536,125 @@ describe("pre-contact consultation — the initiator's turn-0 third verdict", ()
     expect(agentInputs[0].canAskUser).toBe(true);
     expect(agentInputs[0].questionsSpent).toBe(1);
     expect(agentInputs[0].history.map((t) => t.action)).toEqual(["ask_user"]);
+  }, 30_000);
+
+  // ─── The checklist protocol's post-consult rule: an answered dimension ────
+  // decides the opening, it does not merely get redrafted (broken arrow #1).
+
+  it("an answer that scores the asked dimension ok re-issues the turn — the persisted outreach is a FRESH draft, not the withdraw's own words", async () => {
+    const fixtures = resumeFixtures({
+      kind: "answer",
+      selectedOptions: ["Adjacent depth counts"],
+      freeText: "open to remote or flexible location",
+    });
+    const stubs = mkStubs({
+      priorMessages: [turnMsg("u-src", preContactAskUserTurnWithChecklist(), 0)],
+      exactTask: fixtures.exactTask,
+      successorTask: fixtures.successorTask,
+    });
+    // The agent still drafts withdraw first, citing a concern (location) it
+    // never asked the client about; re-issued, it opens instead. The
+    // counterparty then closes the negotiation cleanly (declines), so the
+    // graph does not keep drafting past what this test is about.
+    agentScript = [withdrawTurnScoring("ok"), outreachTurn(), declineTurn()];
+
+    const result = await runGraph(stubs, {
+      resumeFromTaskId: "task-paused",
+      continuationSettlementId: SETTLEMENT_ID,
+      continuationExecution: fixtures.continuationExecution,
+    });
+
+    // The outreach (re-issued) and the counterparty's decline — the
+    // negotiation actually happened, which is the whole point.
+    expect(stubs.createdMessages).toHaveLength(2);
+    const persisted = stubs.createdMessages[0].parts[0].data;
+    expect(persisted.action).toBe("outreach");
+    // The re-issued draft's OWN message — not the withdraw's `message: null`
+    // or its reasoning ("geographic mismatch; cannot be resolved…") arriving
+    // as the opening.
+    expect(persisted.message).toBe("Alice said adjacent depth counts, so this is worth a conversation.");
+    expect(result.outcome?.reason).not.toBe("screened_out");
+
+    // Three model calls: the original resumed decision, the re-issue (told
+    // exactly what settled and asked to open), then the counterparty's reply.
+    expect(agentInputs).toHaveLength(3);
+    expect(agentInputs[1].postConsultOpen?.dimension).toBe(CHECKLIST_ASK_DIMENSION);
+  }, 30_000);
+
+  it("a re-issue that drafts a malformed opening is still forced to outreach — the turn-0 force applies to the re-issue too", async () => {
+    const fixtures = resumeFixtures({
+      kind: "answer",
+      selectedOptions: ["Adjacent depth counts"],
+      freeText: "open to remote or flexible location",
+    });
+    const stubs = mkStubs({
+      priorMessages: [turnMsg("u-src", preContactAskUserTurnWithChecklist(), 0)],
+      exactTask: fixtures.exactTask,
+      successorTask: fixtures.successorTask,
+    });
+    // The turn-0 force stepped aside for the marked withdraw earlier, so a
+    // re-issue that comes back `counter` instead of taking the opening
+    // decision must be forced here — otherwise it persists as the
+    // counterparty's FIRST SIGHT of this match, mid-exchange.
+    agentScript = [withdrawTurnScoring("ok"), plainTurn("counter", "hmm", "hmm"), declineTurn()];
+
+    const result = await runGraph(stubs, {
+      resumeFromTaskId: "task-paused",
+      continuationSettlementId: SETTLEMENT_ID,
+      continuationExecution: fixtures.continuationExecution,
+    });
+
+    expect(stubs.createdMessages[0].parts[0].data.action).toBe("outreach");
+    expect(result.outcome?.reason).not.toBe("screened_out");
+  }, 30_000);
+
+  it("an answer that scores ok, whose re-issue withdraws again, still screens out quietly — no message ever persisted", async () => {
+    const fixtures = resumeFixtures({
+      kind: "answer",
+      selectedOptions: ["Adjacent depth counts"],
+      freeText: "open to remote or flexible location",
+    });
+    const stubs = mkStubs({
+      priorMessages: [turnMsg("u-src", preContactAskUserTurnWithChecklist(), 0)],
+      exactTask: fixtures.exactTask,
+      successorTask: fixtures.successorTask,
+    });
+    agentScript = [withdrawTurnScoring("ok"), withdrawTurnScoring("ok")];
+
+    const result = await runGraph(stubs, {
+      resumeFromTaskId: "task-paused",
+      continuationSettlementId: SETTLEMENT_ID,
+      continuationExecution: fixtures.continuationExecution,
+    });
+
+    expect(stubs.createdMessages).toHaveLength(0);
+    expect(result.outcome?.reason).toBe("screened_out");
+    expect(agentInputs).toHaveLength(2);
+  }, 30_000);
+
+  it("an answer that still conflicts on the asked dimension leaves the withdraw standing — no re-issue, screened_out", async () => {
+    const fixtures = resumeFixtures({
+      kind: "answer",
+      selectedOptions: ["Strictly that field"],
+      freeText: "must be in one fixed city",
+    });
+    const stubs = mkStubs({
+      priorMessages: [turnMsg("u-src", preContactAskUserTurnWithChecklist(), 0)],
+      exactTask: fixtures.exactTask,
+      successorTask: fixtures.successorTask,
+    });
+    agentScript = [withdrawTurnScoring("conflict")];
+
+    const result = await runGraph(stubs, {
+      resumeFromTaskId: "task-paused",
+      continuationSettlementId: SETTLEMENT_ID,
+      continuationExecution: fixtures.continuationExecution,
+    });
+
+    expect(stubs.createdMessages).toHaveLength(0);
+    expect(result.outcome?.reason).toBe("screened_out");
+    // A conflict never had grounds to re-issue: one model call, same as today.
+    expect(agentInputs).toHaveLength(1);
   }, 30_000);
 
   // ─── Expiry resolves to today's behaviour: pass, never contacted ──────────

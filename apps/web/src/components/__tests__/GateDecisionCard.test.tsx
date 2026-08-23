@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import GateDecisionCard from '../negotiations/GateDecisionCard';
 import { resolveGateDecision, type GateDecision } from '../negotiations/gate-decision';
+import { contactTurns, type TranscriptTurn } from '../negotiations/negotiation-turns';
 
 const screenDecision: GateDecision = {
   source: 'screen',
@@ -43,6 +44,20 @@ describe('resolveGateDecision (IND-610)', () => {
       ...screenedOut,
       screenDecision: { ...screenDecision, reasoning: '   ' },
     })).toBeNull();
+  });
+
+  it('shows the card when the only turn is the client\'s own pre-contact consult', () => {
+    // The consult is a private ask_user turn, not contact — the page computes
+    // turnCount from contactTurns(), not the raw transcript length.
+    const askUserOnly: TranscriptTurn[] = [{
+      id: 't1', sessionId: 's1', senderId: 'agent:own', createdAt: '2026-07-24T12:00:00.000Z',
+      action: 'ask_user', text: 'Does the location constraint bind?', suggestedRoles: null,
+    }];
+    expect(resolveGateDecision({
+      turnCount: contactTurns(askUserOnly).length,
+      outcomeReason: 'screened_out',
+      screenDecision,
+    })).toBe(screenDecision);
   });
 });
 

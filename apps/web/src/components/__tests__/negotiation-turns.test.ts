@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveSectionLabel, extractTurn, formatRelativeTime, formatSectionDate, groupTurnsBySession, outcomeChipVariant, roleChipLabel, roleLabel, terminalTurnAuthor, verbFor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+import { contactTurns, deriveSectionLabel, extractTurn, formatRelativeTime, formatSectionDate, groupTurnsBySession, outcomeChipVariant, roleChipLabel, roleLabel, terminalTurnAuthor, verbFor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 import type { ConversationMessage } from '@/services/conversation';
 
 function message(parts: unknown[], overrides: Partial<ConversationMessage> = {}): ConversationMessage {
@@ -75,6 +75,37 @@ describe('roleLabel', () => {
     expect(roleLabel('agent')).toBe('Helper');
     expect(roleLabel('patient')).toBe('Seeker');
     expect(roleLabel('peer')).toBe('Peer');
+  });
+});
+
+function turn(action: string | null, overrides: Partial<TranscriptTurn> = {}): TranscriptTurn {
+  return {
+    id: 't1',
+    sessionId: 's1',
+    senderId: 'agent:own',
+    createdAt: '2026-07-24T12:00:00.000Z',
+    action,
+    text: 'text',
+    suggestedRoles: null,
+    ...overrides,
+  };
+}
+
+describe('contactTurns', () => {
+  it('drops ask_user turns — a private client consult is not contact with the counterparty', () => {
+    const turns = [turn('ask_user')];
+    expect(contactTurns(turns)).toEqual([]);
+  });
+
+  it('keeps every other action', () => {
+    const turns = [turn('outreach'), turn('counter'), turn('withdraw')];
+    expect(contactTurns(turns)).toEqual(turns);
+  });
+
+  it('excludes only the ask_user turns from a mixed transcript', () => {
+    const outreach = turn('outreach');
+    const turns = [turn('ask_user'), outreach];
+    expect(contactTurns(turns)).toEqual([outreach]);
   });
 });
 

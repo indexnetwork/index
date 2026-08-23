@@ -92,6 +92,18 @@ export function extractTurn(message: ConversationMessage): TranscriptTurn | null
 }
 
 /**
+ * Turns that reflect actual contact with the counterparty. An `ask_user` turn
+ * is the client's own private consult — it settles nothing about whether the
+ * counterparty was ever reached, so it must not count as one. Without this
+ * exclusion, a screened_out negotiation whose only turn is its own
+ * pre-contact consult reads as contacted, which hides the owner-only gate
+ * card behind a generic "declined" banner that names no reasoning at all.
+ */
+export function contactTurns(turns: readonly TranscriptTurn[]): TranscriptTurn[] {
+  return turns.filter((turn) => turn.action !== 'ask_user');
+}
+
+/**
  * Actions that END a negotiation against the match. `accept` is deliberately
  * absent: an accepted negotiation renders the opportunity banner, never the
  * resolved one.

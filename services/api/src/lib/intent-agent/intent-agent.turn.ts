@@ -237,7 +237,19 @@ export function renderIntentAgentReplyStage(
   const acts = executed.length === 0
     ? 'You executed no acts this turn.'
     : `The acts you just executed for this turn:\n${executed.map(renderExecutedAct).join('\n')}`;
-  return `${renderIntentAgentTurn(context)}\n\n${acts}\n\nNow write your reply to your client.`;
+  // A client message that judged to `wait` alone executed literally nothing —
+  // no message sent, no one contacted, no negotiation moved — and the reply
+  // stage has been observed fabricating exactly that ("I've reached out to
+  // ... to get more specific details") when the client's own words read like
+  // an answer to something. Spelled out here, in context, rather than trusted
+  // to the general reply law alone: this is the one shape where the model has
+  // its own client's message right in front of it inviting that story.
+  const waitedOnClientMessage = context.event.kind === 'user_message'
+    && executed.length === 1 && executed[0]!.tool === 'wait';
+  const waitNotice = waitedOnClientMessage
+    ? `\n\nYour client just wrote to you and you decided nothing needed doing this turn. You sent NOTHING, contacted NO ONE, and moved NO negotiation forward. If their message reads as an answer to a question, it is NOT resolved — whatever it might have answered stands exactly as it did before they wrote. Tell your client the truth about what did and did not happen; never say you reached out to someone or made progress you did not make.`
+    : '';
+  return `${renderIntentAgentTurn(context)}\n\n${acts}${waitNotice}\n\nNow write your reply to your client.`;
 }
 
 export interface IntentAgentTurnConfig {

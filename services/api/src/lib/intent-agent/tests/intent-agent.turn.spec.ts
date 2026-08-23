@@ -390,6 +390,41 @@ describe('IntentAgentTurn.reply', () => {
       text: 'How soon do you want to start?',
     });
   });
+
+  /** Captures the exact prompt handed to the reply model, instead of scripting its output. */
+  class CapturingReplyTurn extends IntentAgentTurn {
+    lastUserMessage = '';
+    constructor(private readonly replyText: string) {
+      super({ model: 'test-model' });
+    }
+    protected override async callReplyModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
+      this.lastUserMessage = messages[1]!.content;
+      return { reply: this.replyText };
+    }
+  }
+
+  it('tells the reply stage the truth when the only act this turn was waiting on a client message', async () => {
+    // Seen in dev: a client's message that read as an answer, judged `wait`
+    // because it did not resolve any waiting negotiation, was then narrated
+    // by the reply stage as "I've reached out to get more specific details" —
+    // nothing was sent. The prompt must say so in plain words.
+    const turn = new CapturingReplyTurn('Noted — nothing to report yet.');
+    await turn.reply(context({ event: USER_MESSAGE }), [{ tool: 'wait', reason: 'does not resolve a waiting negotiation' }]);
+    expect(turn.lastUserMessage).toContain('You sent NOTHING, contacted NO ONE, and moved NO negotiation forward');
+  });
+
+  it('does not add the wait notice for a background event or when other acts executed', async () => {
+    const onBackground = new CapturingReplyTurn('ok');
+    await onBackground.reply(context({ event: NEEDS_INPUT }), [{ tool: 'wait' }]);
+    expect(onBackground.lastUserMessage).not.toContain('You sent NOTHING');
+
+    const withOtherAct = new CapturingReplyTurn('ok');
+    await withOtherAct.reply(context({ event: USER_MESSAGE }), [
+      { tool: 'wait' },
+      { tool: 'note_dossier', text: 'noted', entryId: 'entry-2' },
+    ]);
+    expect(withOtherAct.lastUserMessage).not.toContain('You sent NOTHING');
+  });
 });
 
 /**
