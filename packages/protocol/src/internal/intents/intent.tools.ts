@@ -238,7 +238,6 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       const graphInput: Record<string, unknown> = {
         userId: context.userId,
         userProfile: "",
-        operationMode: 'read' as const,
       };
 
       if (scopedIntentId) {
@@ -390,7 +389,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         userId: context.userId,
         userProfile,
         inputContent: query.description,
-        operationMode: 'propose' as const,
+        dryRun: true,
         ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
         ...scopeEnvelope,
       }));
@@ -479,7 +478,6 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
             userId: context.userId,
             userProfile,
             inputContent: v.description,
-            operationMode: 'create' as const,
             ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
             ...scopeEnvelope,
           }));
@@ -630,7 +628,6 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       const result = await traceGraph("intent", () => invokeWithAbortSignal(graphs.intent, {
         userId: context.userId,
         userProfile,
-        operationMode: 'update' as const,
         inputContent: query.description,
         targetIntentIds: [intentId],
         ...(scopedNetworkId && { networkId: scopedNetworkId, scopeType: 'network' as const, scopeId: scopedNetworkId }),
@@ -703,7 +700,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       const result = await traceGraph("intent", () => invokeWithAbortSignal(graphs.intent, {
         userId: context.userId,
         userProfile: "",
-        operationMode: 'delete' as const,
+        archive: true,
         targetIntentIds: [intentId],
         ...(scopedNetworkId && { networkId: scopedNetworkId, scopeType: 'network' as const, scopeId: scopedNetworkId }),
       }));

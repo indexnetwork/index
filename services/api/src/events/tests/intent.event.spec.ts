@@ -11,8 +11,6 @@ describe('IntentEvents maintenance hooks', () => {
   beforeEach(() => {
     // Reset to no-ops
     IntentEvents.onCreated = () => {};
-    IntentEvents.onPaused = () => {};
-    IntentEvents.onResumed = async () => {};
     IntentEvents.onMaterialUpdated = async () => {};
     IntentEvents.onArchived = () => {};
   });
@@ -40,19 +38,6 @@ describe('IntentEvents maintenance hooks', () => {
     expect(handler).toHaveBeenCalledWith('intent-3', 'user-3');
   });
 
-  it('pause and awaited resume hooks can be assigned', async () => {
-    const paused = mock(() => {});
-    const resumed = mock(async () => {});
-    IntentEvents.onPaused = paused;
-    IntentEvents.onResumed = resumed;
-
-    IntentEvents.onPaused('intent-2', 'user-2', 100);
-    await IntentEvents.onResumed('intent-2', 'user-2', 101);
-
-    expect(paused).toHaveBeenCalledWith('intent-2', 'user-2', 100);
-    expect(resumed).toHaveBeenCalledWith('intent-2', 'user-2', 101);
-  });
-
   it('material updates carry old and new fingerprints through an awaited hook', async () => {
     const handler = mock(async () => {});
     IntentEvents.onMaterialUpdated = handler;
@@ -75,13 +60,9 @@ describe('IntentEvents maintenance hooks', () => {
 
   it('all event hooks exist on IntentEvents', () => {
     expect(IntentEvents).toHaveProperty('onCreated');
-    expect(IntentEvents).toHaveProperty('onPaused');
-    expect(IntentEvents).toHaveProperty('onResumed');
     expect(IntentEvents).toHaveProperty('onMaterialUpdated');
     expect(IntentEvents).toHaveProperty('onArchived');
     expect(typeof IntentEvents.onCreated).toBe('function');
-    expect(typeof IntentEvents.onPaused).toBe('function');
-    expect(typeof IntentEvents.onResumed).toBe('function');
     expect(typeof IntentEvents.onMaterialUpdated).toBe('function');
     expect(typeof IntentEvents.onArchived).toBe('function');
   });

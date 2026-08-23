@@ -41,8 +41,6 @@ export function handleIntentCreatedMaintenance(
 
 export const IntentEvents = {
   onCreated: (_intentId: string, _userId: string): void => {},
-  onPaused: (_intentId: string, _userId: string, _lifecycleVersionMs: number): void => {},
-  onResumed: async (_intentId: string, _userId: string, _lifecycleVersionMs: number): Promise<void> => {},
   onMaterialUpdated: async (_event: IntentMaterialUpdateEvent): Promise<void> => {},
   onArchived: (_intentId: string, _userId: string): void => {},
 };

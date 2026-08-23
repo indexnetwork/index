@@ -18,18 +18,10 @@ const logger = protocolLogger("ExplicitIntentInferrer");
  */
 export interface InferrerOptions {
   /**
-   * Whether to fallback to profile inference when content is empty.
-   * Should be TRUE for create operations without explicit content.
-   * Should be FALSE for query operations.
-   * Default: true (for backward compatibility).
-   */
-  allowProfileFallback?: boolean;
-
-  /**
    * The operation mode for context.
    * Helps inferrer understand the user's intent.
    */
-  operationMode?: 'create' | 'update' | 'delete';
+  operationMode?: 'create' | 'update';
 
   /**
    * Conversation history for anaphoric resolution.
@@ -155,23 +147,19 @@ export class ExplicitIntentInferrer {
     options: InferrerOptions = {}
   ) {
     const {
-      allowProfileFallback = true,  // Default TRUE for backward compatibility
       operationMode = 'create',
       conversationContext = undefined
     } = options;
 
     logger.verbose("invoke: received input", {
       contentPreview: content?.substring(0, 50),
-      allowProfileFallback,
       operationMode,
       hasConversationContext: !!conversationContext,
       conversationMessageCount: conversationContext?.length || 0,
     });
 
-    // CRITICAL: Don't fallback to profile when explicitly disabled
-    // This prevents auto-generation of intents from profile during query operations
-    if (!content && !allowProfileFallback) {
-      logger.verbose("invoke: no content and fallback disabled, returning empty");
+    if (!content) {
+      logger.verbose("invoke: no content, returning empty");
       return { intents: [] };
     }
 
@@ -184,12 +172,7 @@ export class ExplicitIntentInferrer {
       ? `# Conversation History (for reference resolution)\n${formattedHistory}\n`
       : '';
 
-    // Build content section based on fallback setting
-    const contentSection = content
-      ? `## New Content\n\n${content}`
-      : allowProfileFallback
-        ? '(No content provided. Please infer intents from Profile Narrative and Aspirations)'
-        : '(No content to analyze. Return empty intents list.)';
+    const contentSection = `## New Content\n\n${content}`;
 
     // No profile means no profile section at all. Callers that deliberately run
     // profile-blind (the signal-intake propose path) must not see an empty
@@ -207,7 +190,6 @@ export class ExplicitIntentInferrer {
       This analysis is for a ${operationMode} operation.
       ${operationMode === 'create' ? 'Extract NEW intents the user wants to add.' : ''}
       ${operationMode === 'update' ? 'Extract MODIFICATIONS to existing intents. Use conversation history to resolve references like "that intent".' : ''}
-      ${operationMode === 'delete' ? 'This should not execute - delete operations skip inference.' : ''}
     `;
 
     logger.debug("invoke: prompt details", {
@@ -231,8 +213,6 @@ export class ExplicitIntentInferrer {
       logger.verbose('invoke: found intents', {
         count: output.intents.length,
         operationMode,
-        allowedFallback: allowProfileFallback,
-        usedFallback: !content && allowProfileFallback,
       });
       return output;
     } catch (error: unknown) {

@@ -19,15 +19,17 @@ mock.module("../../../intents/graph/intent.graph.js", () => ({
       return {
         invoke: async (input: {
           userId: string;
-          operationMode: string;
+          inputContent?: string;
           networkId?: string;
           queryUserId?: string;
           allUserIntents?: boolean;
           indexScope?: string[];
           targetIntentIds?: string[];
+          archive?: boolean;
         }) => {
+          const isRead = input.inputContent === undefined && !input.targetIntentIds?.length && !input.archive;
           // For read operations, replicate the real queryNode logic using the database
-          if (input.operationMode === "read") {
+          if (isRead) {
             // Scope-aware default: caller's intents across all reachable networks.
             // Triggered when the tool layer passed indexScope and did not pick a
             // specific networkId or queryUserId.
@@ -122,9 +124,12 @@ mock.module("../../../intents/graph/intent.graph.js", () => ({
             };
           }
 
+          const isUpdate = input.inputContent !== undefined && !!input.targetIntentIds?.length;
+          const isDelete = input.archive === true && !!input.targetIntentIds?.length;
+
           // For update/delete with network scope: enforce index scoping (intent must be in index)
           if (
-            (input.operationMode === "update" || input.operationMode === "delete") &&
+            (isUpdate || isDelete) &&
             input.networkId &&
             input.targetIntentIds?.length
           ) {
@@ -133,7 +138,7 @@ mock.module("../../../intents/graph/intent.graph.js", () => ({
             const inScope = intents.some((i: { id: string }) => i.id === intentId);
             if (!inScope) {
               return {
-                executionResults: [{ success: false, actionType: input.operationMode as "update" | "expire" }],
+                executionResults: [{ success: false, actionType: isDelete ? "expire" : "update" }],
                 actions: [],
                 inferredIntents: [],
               };
@@ -142,7 +147,7 @@ mock.module("../../../intents/graph/intent.graph.js", () => ({
               executionResults: [
                 {
                   success: true,
-                  actionType: input.operationMode === "delete" ? "expire" : "update",
+                  actionType: isDelete ? "expire" : "update",
                   intentId,
                 },
               ],
@@ -153,11 +158,19 @@ mock.module("../../../intents/graph/intent.graph.js", () => ({
 
           // For write operations (create/update/delete), return a deterministic
           // success result so provider-free tests pass without LLM credentials.
-          if (input.operationMode === 'update' || input.operationMode === 'create') {
+          if (input.inputContent !== undefined) {
             const targetId = Array.isArray(input.targetIntentIds) && input.targetIntentIds.length > 0
               ? input.targetIntentIds[0] : 'stub-intent-id';
             return {
               executionResults: [{ success: true, intentId: targetId, description: 'stub' }],
+              actions: [],
+              inferredIntents: [],
+            };
+          }
+          if (isDelete) {
+            const intentId = input.targetIntentIds?.[0] ?? 'stub-intent-id';
+            return {
+              executionResults: [{ success: true, actionType: 'expire', intentId }],
               actions: [],
               inferredIntents: [],
             };

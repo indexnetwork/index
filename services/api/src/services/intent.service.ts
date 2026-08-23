@@ -1,14 +1,11 @@
 import { log } from '../lib/log';
 import { Intents } from '@indexnetwork/protocol';
-import type { IntentGraphDatabase } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { IntentProposalDatabaseAdapter, intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import { intentQueue } from '../queues/intent.queue';
 import { IntentEvents } from '../events/intent.event';
-import { intentProposalAnalysisSchema, intentProposalVerifierOutputSchema } from '../lib/intent/intent-proposal';
 import { indexExistingIntentForSeed as indexSeedIntent } from '../lib/intent/seed-indexer';
-import type { IntentProposalRow } from '../schemas/database.schema';
 
 const logger = log.service.from("IntentService");
 
@@ -61,28 +58,46 @@ export class IntentAdmissionEnqueueError extends Error {
   }
 }
 
+/** Minimal shape of a compiled protocol graph, narrowed to what this service invokes. */
+export interface IntentGraphRunner {
+  invoke(input: Record<string, unknown>, options?: { recursionLimit?: number }): Promise<Record<string, unknown>>;
+}
+
+/** The `transition` action's outcome, as reported on `intentGraph`'s `transitionResult` field. */
+export type IntentTransitionOutcome =
+  | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
+  | { kind: 'not_found' }
+  | { kind: 'scope_violation' }
+  | { kind: 'stale' }
+  | { kind: 'conflict'; status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED' | null; archived: boolean }
+  | { kind: 'enqueue_failed'; id: string; status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED'; lifecycleVersionMs: number };
+
+/** The `confirm` action's outcome, as reported on `intentGraph`'s `confirmResult` field. */
+export type IntentConfirmOutcome =
+  | { kind: 'created' | 'replay'; intentId: string }
+  | { kind: 'missing' | 'expired' | 'consumed' | 'payload_mismatch' | 'analysis_missing' | 'proposal_edit_rejected' }
+  | { kind: 'membership_required'; networkId: string }
+  | { kind: 'admission_enqueue_failed'; intentId: string };
+
 /**
  * IntentService
  *
- * Manages intent processing through the Intent Graph and CRUD operations.
- * Uses IntentDatabaseAdapter for database operations.
- * Uses the Intents module for graph-based intent processing.
+ * Intent CRUD (list, get, archive, pause/resume, confirm-from-proposal) all
+ * route through the compiled Intent Graph — the single write path for intent
+ * mutations. Reads (list/get/resolve) go straight to the adapter.
  *
  * RESPONSIBILITIES:
- * - Process intents through Intent Graph
- * - Extract, verify, reconcile, and execute intent actions
- * - Intent CRUD operations (list, get, archive)
+ * - Intent reads (list, get, resolve, visit)
+ * - Route every intent mutation through the Intent Graph
+ * - Seed-only fast paths that intentionally bypass the graph (see createIntentForSeed)
  */
 export class IntentService {
-  private db: IntentGraphDatabase;
-  private intents: Intents;
+  private intentGraph: IntentGraphRunner;
   private adapter: IntentDatabaseAdapter;
   private proposalAdapter: IntentProposalDatabaseAdapter;
   private embedder: EmbedderAdapter;
-  private proposalQueue: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
   private seedIndexQueue: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
   private emitProposalCreated: (intentId: string, userId: string) => void;
-  private verifyProposalEdit: (description: string, profileContext: string) => Promise<unknown>;
 
   /**
    * @param deps - Optional dependency overrides for focused service tests.
@@ -91,21 +106,17 @@ export class IntentService {
     adapter?: IntentDatabaseAdapter;
     proposalAdapter?: IntentProposalDatabaseAdapter;
     embedder?: EmbedderAdapter;
-    proposalQueue?: Pick<typeof intentQueue, 'addGenerateHydeJob'>;
     seedIndexQueue?: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
     emitProposalCreated?: (intentId: string, userId: string) => void;
-    verifyProposalEdit?: (description: string, profileContext: string) => Promise<unknown>;
+    intentGraph?: IntentGraphRunner;
   }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.proposalAdapter = deps?.proposalAdapter ?? intentProposalDatabaseAdapter;
-    this.db = this.adapter;
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
-    this.proposalQueue = deps?.proposalQueue ?? intentQueue;
     this.seedIndexQueue = deps?.seedIndexQueue ?? intentQueue;
     this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
-    this.intents = new Intents({ database: this.db, embedder: this.embedder, queue: intentQueue });
-    this.verifyProposalEdit = deps?.verifyProposalEdit
-      ?? ((description, profileContext) => this.intents.verifyIntent(description, profileContext));
+    this.intentGraph = deps?.intentGraph
+      ?? new Intents({ database: this.adapter, embedder: this.embedder, queue: intentQueue }).createGraph();
   }
 
   /**
@@ -125,35 +136,6 @@ export class IntentService {
       logger.warn(failureMessage, { ...logContext, error: err });
       return new Array(EMBEDDING_DIMS).fill(0);
     }
-  }
-
-  /**
-   * Process user input through the Intent Graph.
-   * Extracts, verifies, reconciles, and executes intent actions.
-   *
-   * @param userId - The user ID
-   * @param userProfile - The user profile as JSON string
-   * @param content - Optional input content to process
-   * @returns Graph execution result
-   */
-  async processIntent(
-    userId: string,
-    userProfile: string,
-    content?: string
-  ): Promise<Record<string, unknown>> {
-    logger.verbose('Processing intent', { userId });
-
-    const graph = this.intents.createGraph();
-    const result = await graph.invoke(
-      {
-        userId,
-        userProfile,
-        inputContent: content,
-      },
-      { recursionLimit: 100 }
-    );
-
-    return result;
   }
 
   /**
@@ -245,97 +227,51 @@ export class IntentService {
   }
 
   /**
-   * Pause or resume an owned intent without using the generic content update
-   * path. Resume emission is awaited on every idempotent success so a caller
-   * can retry a failed enqueue; the lifecycle-version job id deduplicates
-   * successful retries.
+   * Pause or resume an owned intent via the Intent Graph's `transition` action.
+   * The graph enqueues resume discovery and compensates back to PAUSED if that
+   * enqueue fails; ownership and lifecycle rules are enforced by the adapter's
+   * atomic transition under the graph.
    *
    * @param intentId - Full intent UUID.
    * @param userId - Authenticated owner.
    * @param status - Requested lifecycle status.
    * @param networkScopeId - Optional bound-agent network constraint.
-   * @returns Atomic adapter outcome.
+   * @returns The graph's transition outcome.
    */
   async transitionStatus(
     intentId: string,
     userId: string,
     status: 'ACTIVE' | 'PAUSED',
     networkScopeId?: string | null,
-    expectedUpdatedAtMs?: number,
-  ) {
+  ): Promise<IntentTransitionOutcome> {
     logger.verbose('Transitioning intent lifecycle', { intentId, userId, status, networkScopeId });
-    const result = await this.adapter.transitionIntentLifecycle({
-      intentId,
-      userId,
-      status,
-      networkScopeId,
-      expectedUpdatedAtMs,
-    });
-    if (result.kind !== 'success') return result;
 
-    if (status === 'PAUSED') {
-      if (result.changed) IntentEvents.onPaused(intentId, userId, result.lifecycleVersionMs);
-      return result;
-    }
-
-    try {
-      await IntentEvents.onResumed(intentId, userId, result.lifecycleVersionMs);
-      return result;
-    } catch (error) {
-      logger.warn('Failed to enqueue resumed intent discovery', {
-        intentId,
+    const result = await this.intentGraph.invoke(
+      {
         userId,
-        lifecycleVersionMs: result.lifecycleVersionMs,
-        changed: result.changed,
-        error,
-      });
+        userProfile: '',
+        targetIntentIds: [intentId],
+        status,
+        ...(networkScopeId ? { scopeType: 'network' as const, scopeId: networkScopeId } : {}),
+      },
+      { recursionLimit: 100 },
+    ) as { transitionResult?: IntentTransitionOutcome };
 
-      if (!result.changed) {
-        return {
-          kind: 'enqueue_failed' as const,
-          id: result.id,
-          status: result.status,
-          lifecycleVersionMs: result.lifecycleVersionMs,
-          retryable: true as const,
-        };
-      }
-
-      let authoritative: { status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED'; lifecycleVersionMs: number } | null = null;
-      try {
-        authoritative = await this.adapter.compensateFailedResume({
-          intentId,
-          userId,
-          lifecycleVersionMs: result.lifecycleVersionMs,
-          networkScopeId,
-        });
-      } catch (compensationError) {
-        logger.error('Failed to compensate resumed intent after enqueue failure', {
-          intentId,
-          userId,
-          lifecycleVersionMs: result.lifecycleVersionMs,
-          compensationError,
-        });
-      }
-
-      return {
-        kind: 'enqueue_failed' as const,
-        id: result.id,
-        status: authoritative?.status ?? result.status,
-        lifecycleVersionMs: authoritative?.lifecycleVersionMs ?? result.lifecycleVersionMs,
-        retryable: true as const,
-      };
+    const outcome = result.transitionResult;
+    if (!outcome) {
+      throw new Error('Intent graph transition action produced no result');
     }
+    return outcome;
   }
 
   /**
-   * Create an intent directly from a confirmed chat proposal.
-   * An unchanged proposal bypasses the full intent graph. An owner-edited
-   * description is re-verified and atomically made authoritative first.
-   * Idempotent under concurrent confirmation: the adapter serializes one exact
-   * user + proposal pair and returns the transaction winner to every caller.
-   * Generates embedding, inserts into DB, optionally associates with index, and
-   * obtains observable queue admission before emitting downstream side effects.
-   * A queue failure after commit is retryable through the consumed proposal.
+   * Create an intent directly from a confirmed chat proposal, via the Intent
+   * Graph's `confirm` action. An unchanged proposal confirms as-is; an
+   * owner-edited description is re-verified and made authoritative by the
+   * graph before confirmation continues. Idempotent under concurrent
+   * confirmation: the adapter serializes one exact user + proposal pair and
+   * returns the transaction winner to every caller. A HyDE-admission failure
+   * after commit is retryable through the consumed proposal.
    *
    * @param userId - The user ID
    * @param description - The displayed description, possibly edited by the owner
@@ -343,191 +279,47 @@ export class IntentService {
    * @param networkId - Optional index to associate the intent with
    * @returns The created or existing intent record (at least { id }).
    */
-  async createFromProposal(userId: string, description: string, proposalId: string, networkId?: string) {
+  async createFromProposal(userId: string, description: string, proposalId: string, networkId?: string): Promise<{ id: string }> {
     logger.verbose('Creating intent from proposal', { userId, proposalId });
 
-    let proposal = await this.proposalAdapter.getProposalForOwner(proposalId, userId);
-    if (!proposal) throw new IntentProposalConfirmationError('proposal_not_found');
-    if (proposal.networkId !== (networkId ?? null)) {
-      throw new IntentProposalConfirmationError('proposal_payload_mismatch');
-    }
-    if (proposal.description !== description) {
-      if (proposal.status !== 'pending') {
-        throw new IntentProposalConfirmationError('proposal_consumed');
-      }
-      if (proposal.expiresAt.getTime() <= Date.now()) {
-        throw new IntentProposalConfirmationError('proposal_expired');
-      }
-      proposal = await this.reviseProposalDescription(userId, proposal, description);
-    }
-    if (proposal.status === 'consumed' && proposal.consumedIntentId) {
-      const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
-      if (!existing || existing.id !== proposal.consumedIntentId) {
-        throw new IntentProposalConfirmationError('proposal_consumed');
-      }
-      await this.enqueueProposalAdmission({
-        intentId: existing.id,
+    const result = await this.intentGraph.invoke(
+      {
         userId,
+        userProfile: '',
         proposalId,
-        networkId: proposal.networkId,
-        replay: true,
-      });
-      return existing;
-    }
-    if (proposal.status !== 'pending') {
-      throw new IntentProposalConfirmationError('proposal_consumed');
-    }
-    if (proposal.expiresAt.getTime() <= Date.now()) {
-      throw new IntentProposalConfirmationError('proposal_expired');
-    }
-    if (!intentProposalAnalysisSchema.safeParse(proposal.analysis).success) {
-      throw new IntentProposalConfirmationError('proposal_analysis_missing');
+        description,
+        ...(networkId ? { networkId } : {}),
+      },
+      { recursionLimit: 100 },
+    ) as { confirmResult?: IntentConfirmOutcome };
+
+    const outcome = result.confirmResult;
+    if (!outcome) {
+      throw new Error('Intent graph confirm action produced no result');
     }
 
-    // Cheap advisory preflight avoids embedding/transaction/queue/event work
-    // for clear denials. confirmProposalIntent still re-checks membership under
-    // its row locks and remains the final race-safe authority.
-    if (proposal.networkId && !await this.adapter.isNetworkMember(proposal.networkId, userId)) {
-      throw new IntentNetworkMembershipError(proposal.networkId);
-    }
-
-    const embedding = await this.generateEmbeddingOrZero(
-      proposal.description,
-      'Embedding generation failed (intent will be created with zero vector)',
-      { userId, proposalId },
-    );
-
-    const confirmation = await this.adapter.confirmProposalIntent({
-      proposalId,
-      userId,
-      description,
-      ...(networkId ? { networkId } : {}),
-      embedding,
-    });
-    if (confirmation.kind === 'membership_required') {
-      if (!proposal.networkId) throw new Error('Unexpected membership requirement without a network');
-      throw new IntentNetworkMembershipError(proposal.networkId);
-    }
-    if (confirmation.kind === 'replay') return confirmation.intent;
-    if (confirmation.kind !== 'created') {
-      const code = {
-        missing: 'proposal_not_found',
-        expired: 'proposal_expired',
-        consumed: 'proposal_consumed',
-        payload_mismatch: 'proposal_payload_mismatch',
-        analysis_missing: 'proposal_analysis_missing',
-      }[confirmation.kind] as IntentProposalConfirmationErrorCode;
-      throw new IntentProposalConfirmationError(code);
-    }
-
-    const created = confirmation.intent;
-    const scope = proposal.networkId
-      ? { scopeType: 'network' as const, scopeId: proposal.networkId }
-      : {};
-    await this.enqueueProposalAdmission({
-      intentId: created.id,
-      userId,
-      proposalId,
-      networkId: proposal.networkId,
-      replay: false,
-    });
-
-    this.emitProposalCreated(created.id, userId);
-
-    return created;
-  }
-
-  /**
-   * Re-verify an owner-edited confirmation-card description and make it the
-   * proposal's authoritative payload before confirmation continues.
-   */
-  private async reviseProposalDescription(
-    userId: string,
-    proposal: IntentProposalRow,
-    description: string,
-  ) {
-    const profileContext = (await this.db.getUserContext(userId, null))?.text ?? '';
-    const verifierOutput = intentProposalVerifierOutputSchema.parse(
-      await this.verifyProposalEdit(description, profileContext),
-    );
-    const validClassification = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'].includes(
-      verifierOutput.classification,
-    );
-    const vague = /\b(?:a|any|some)\s+job\b/i.test(description)
-      || verifierOutput.semantic_entropy > 0.75
-      || verifierOutput.felicity_scores.clarity < 40;
-    if (!validClassification || vague) {
-      throw new IntentProposalConfirmationError('proposal_edit_rejected');
-    }
-
-    const analysis = {
-      verifierOutput,
-      combinedScore: Math.min(
-        verifierOutput.felicity_scores.authority,
-        verifierOutput.felicity_scores.sincerity,
-        verifierOutput.felicity_scores.clarity,
-      ),
-    };
-    const revised = await this.proposalAdapter.revisePendingProposal({
-      proposalId: proposal.id,
-      userId,
-      expectedDescription: proposal.description,
-      expectedNetworkId: proposal.networkId,
-      description,
-      analysis,
-    });
-    if (revised) return revised;
-
-    // A same-text concurrent edit is harmless. Any other winner is resolved
-    // through the ordinary confirmation errors instead of being overwritten.
-    const authoritative = await this.proposalAdapter.getProposalForOwner(proposal.id, userId);
-    if (!authoritative) throw new IntentProposalConfirmationError('proposal_not_found');
-    if (authoritative.status !== 'pending') throw new IntentProposalConfirmationError('proposal_consumed');
-    if (authoritative.expiresAt.getTime() <= Date.now()) {
-      throw new IntentProposalConfirmationError('proposal_expired');
-    }
-    if (authoritative.description !== description || authoritative.networkId !== proposal.networkId) {
-      throw new IntentProposalConfirmationError('proposal_payload_mismatch');
-    }
-    return authoritative;
-  }
-
-  /**
-   * Obtain durable queue admission for a newly committed confirmation or an
-   * exact consumed-proposal retry. The queue contract is idempotent; surfacing
-   * failure lets the same authoritative confirmation repair admission.
-   */
-  private async enqueueProposalAdmission(input: {
-    intentId: string;
-    userId: string;
-    proposalId: string;
-    networkId: string | null;
-    replay: boolean;
-  }): Promise<void> {
-    const scope = input.networkId
-      ? { scopeType: 'network' as const, scopeId: input.networkId }
-      : {};
-    try {
-      await this.proposalQueue.addGenerateHydeJob({
-        intentId: input.intentId,
-        userId: input.userId,
-        ...scope,
-      });
-    } catch (error) {
-      logger.error(
-        input.replay
-          ? 'Intent admission enqueue failed during confirmation replay'
-          : 'Intent admission enqueue failed after confirmation persistence',
-        {
-          event: 'intent_admission_enqueue_failed',
-          intentId: input.intentId,
-          userId: input.userId,
-          proposalId: input.proposalId,
-          replay: input.replay,
-          error,
-        },
-      );
-      throw new IntentAdmissionEnqueueError(input.intentId, error);
+    switch (outcome.kind) {
+      case 'created':
+        this.emitProposalCreated(outcome.intentId, userId);
+        return { id: outcome.intentId };
+      case 'replay':
+        return { id: outcome.intentId };
+      case 'membership_required':
+        throw new IntentNetworkMembershipError(outcome.networkId);
+      case 'admission_enqueue_failed':
+        throw new IntentAdmissionEnqueueError(outcome.intentId, new Error('Indexing admission enqueue failed'));
+      case 'missing':
+        throw new IntentProposalConfirmationError('proposal_not_found');
+      case 'expired':
+        throw new IntentProposalConfirmationError('proposal_expired');
+      case 'consumed':
+        throw new IntentProposalConfirmationError('proposal_consumed');
+      case 'payload_mismatch':
+        throw new IntentProposalConfirmationError('proposal_payload_mismatch');
+      case 'analysis_missing':
+        throw new IntentProposalConfirmationError('proposal_analysis_missing');
+      case 'proposal_edit_rejected':
+        throw new IntentProposalConfirmationError('proposal_edit_rejected');
     }
   }
 
@@ -556,6 +348,11 @@ export class IntentService {
    * Create an intent for seed data with embedding and HyDE, without running the full intent graph
    * or enqueueing opportunity discovery. Used by db-seed to create test intents quickly without
    * LLM inference/verification or matching test users.
+   *
+   * This is a deliberate, narrow exception to "every intent write goes through
+   * the graph": db-seed creates dozens of persona intents per run, and routing
+   * them through inference/verification would make seeding slow, costly, and
+   * liable to reject synthetic descriptions the verifier wasn't tuned for.
    *
    * @param userId - The user ID
    * @param description - The intent text (payload)
@@ -623,48 +420,37 @@ export class IntentService {
   }
 
   /**
-   * Archive an intent.
+   * Archive an intent via the Intent Graph's `expire` action (archives the
+   * row, drops its network associations, expires referencing opportunities,
+   * and enqueues the HyDE delete). Ownership is checked here: the graph's
+   * expire path, like create/update, does not filter by owner — that's the
+   * caller's responsibility.
    *
    * @param intentId - The intent ID
    * @param userId - The user ID (for ownership verification)
    * @returns Result with success flag and optional error
    */
-  async archive(intentId: string, userId: string) {
+  async archive(intentId: string, userId: string): Promise<{ success: boolean; error?: string }> {
     logger.verbose('Archiving intent', { intentId, userId });
 
-    // Verify ownership
     const owned = await this.adapter.isOwnedByUser(intentId, userId);
     if (!owned) {
       return { success: false, error: 'Intent not found or unauthorized' };
     }
 
-    const result = await this.adapter.archiveIntent(intentId);
-    if (!result.success) return result;
+    const result = await this.intentGraph.invoke(
+      { userId, userProfile: '', archive: true, targetIntentIds: [intentId] },
+      { recursionLimit: 100 },
+    ) as { executionResults?: Array<{ success: boolean; error?: string }> };
 
-    try {
-      await this.adapter.deleteIntentIndexAssociations(intentId);
-    } catch (err) {
-      logger.error('Failed to delete intent-network associations', { intentId, error: err });
-    }
-
-    try {
-      const expiredCount = await this.adapter.expireOpportunitiesByIntentActor(intentId);
-      if (expiredCount > 0) {
-        logger.verbose('Expired opportunities referencing intent', { intentId, expiredCount });
-      }
-    } catch (err) {
-      logger.error('Failed to expire opportunities', { intentId, error: err });
-    }
-
-    try {
-      await intentQueue.addDeleteHydeJob({ intentId });
-    } catch (err) {
-      logger.error('Failed to enqueue HyDE deletion', { intentId, error: err });
+    const execution = result.executionResults?.[0];
+    if (!execution?.success) {
+      return { success: false, error: execution?.error ?? 'Intent not found' };
     }
 
     IntentEvents.onArchived(intentId, userId);
 
-    return result;
+    return { success: true };
   }
 }
 

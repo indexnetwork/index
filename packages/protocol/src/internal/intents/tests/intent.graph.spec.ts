@@ -156,7 +156,13 @@ const createMockDatabase = (): IntentGraphDatabase => {
     },
     async getPersonalIndexesForContact(_userId: string): Promise<{ networkId: string }[]> {
       return [];
-    }
+    },
+    async deleteIntentIndexAssociations(_intentId: string): Promise<void> {
+      // no-op for tests
+    },
+    async expireOpportunitiesByIntentActor(_intentId: string): Promise<number> {
+      return 0;
+    },
   };
 };
 
@@ -216,7 +222,7 @@ describe('IntentGraph - Basic Operations', () => {
   }, 60000);
 });
 
-describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
+describe('IntentGraph - Conditional Flow (Input Shape Routing)', () => {
   let graphRunner: any;
   let mockDatabase: IntentGraphDatabase;
 
@@ -241,49 +247,42 @@ describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
     graphRunner = factory.createGraph();
   });
 
-  it('should execute full pipeline for CREATE mode', async () => {
+  it('should execute full pipeline for a bare create (inputContent only)', async () => {
     const result = await graphRunner.invoke({
       userId: 'test-user-1',
       userProfile: mockProfile,
       inputContent: 'I want to learn Rust programming language',
-      operationMode: 'create'
     });
 
     expect(result.inferredIntents).toBeDefined();
     expect(result.verifiedIntents).toBeDefined();
     expect(result.actions).toBeDefined();
     expect(result.executionResults).toBeDefined();
-
-    // CREATE should go through full pipeline
     expect(result.inferredIntents!.length).toBeGreaterThan(0);
   }, 60000);
 
-  it('should skip verification for UPDATE mode', async () => {
+  it('should run verification for an explicit update (inputContent + targetIntentIds)', async () => {
     const result = await graphRunner.invoke({
       userId: 'test-user-1',
       userProfile: mockProfile,
       inputContent: 'Update my TypeScript goal to include design patterns',
-      operationMode: 'update',
       targetIntentIds: ['intent-1']
     });
 
     expect(result.inferredIntents).toBeDefined();
     expect(result.actions).toBeDefined();
     expect(result.executionResults).toBeDefined();
-
-    // UPDATE may skip verification if no new intents are inferred
   }, 60000);
 
-  it('should skip inference and verification for DELETE mode', async () => {
+  it('should skip inference and verification for archive: true', async () => {
     const result = await graphRunner.invoke({
       userId: 'test-user-1',
       userProfile: mockProfile,
-      inputContent: undefined,
-      operationMode: 'delete',
+      archive: true,
       targetIntentIds: ['intent-1']
     });
 
-    // DELETE should skip inference and verification
+    // Archive should skip inference and verification
     expect(!result.inferredIntents || result.inferredIntents.length === 0).toBe(true);
     expect(!result.verifiedIntents || result.verifiedIntents.length === 0).toBe(true);
 
@@ -293,15 +292,50 @@ describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
     expect(result.actions!.some((a: any) => a.type === 'expire')).toBe(true);
   }, 60000);
 
-  it('should default to CREATE mode when operationMode not specified', async () => {
+  it('rejects targetIntentIds with no content, archive, or status', async () => {
+    const result = await graphRunner.invoke({
+      userId: 'test-user-1',
+      userProfile: mockProfile,
+      targetIntentIds: ['intent-1'],
+    });
+
+    expect(result.error).toBeDefined();
+    expect(result.actions ?? []).toHaveLength(0);
+    expect(result.executionResults ?? []).toHaveLength(0);
+  }, 60000);
+
+  it('rejects more than one route selected at once', async () => {
+    const result = await graphRunner.invoke({
+      userId: 'test-user-1',
+      userProfile: mockProfile,
+      inputContent: 'I want to contribute to open source',
+      archive: true,
+      targetIntentIds: ['intent-1'],
+    });
+
+    expect(result.error).toBeDefined();
+  }, 60000);
+
+  it('dryRun stops after verification and writes nothing', async () => {
+    const result = await graphRunner.invoke({
+      userId: 'test-user-1',
+      userProfile: mockProfile,
+      inputContent: 'I want to contribute to open source',
+      dryRun: true,
+    });
+
+    expect(result.verifiedIntents!.length).toBeGreaterThan(0);
+    expect(result.actions ?? []).toHaveLength(0);
+    expect(result.executionResults ?? []).toHaveLength(0);
+  }, 60000);
+
+  it('should execute full pipeline when only inputContent is given (no other fields)', async () => {
     const result = await graphRunner.invoke({
       userId: 'test-user-1',
       userProfile: mockProfile,
       inputContent: 'I want to contribute to open source'
-      // operationMode not specified
     });
 
-    // Should execute full pipeline (defaults to create)
     expect(result.inferredIntents).toBeDefined();
     expect(result.verifiedIntents).toBeDefined();
     expect(result.actions).toBeDefined();
@@ -335,7 +369,6 @@ describe('IntentGraph - Prep always fetches from DB', () => {
       userId: 'test-user-1',
       userProfile: JSON.stringify({ identity: { name: 'Test' } }),
       inputContent: 'I want to learn Rust',
-      operationMode: 'create',
       networkId: 'idx-yc-founders'
     });
 
@@ -349,12 +382,186 @@ describe('IntentGraph - Prep always fetches from DB', () => {
     const result = await graphRunner.invoke({
       userId: 'test-user-1',
       userProfile: JSON.stringify({ identity: { name: 'Test' } }),
-      inputContent: 'I want to contribute to open source',
-      operationMode: 'create'
+      inputContent: 'I want to contribute to open source'
     });
 
     expect(getActiveIntentsCalls).toContain('test-user-1');
     expect(result.activeIntents).toBeDefined();
     expect(result.inferredIntents).toBeDefined();
   }, 60000);
+});
+
+describe('IntentGraph - transition and confirm actions', () => {
+  function makeTransitionDatabase(overrides: {
+    transitionIntentLifecycle?: IntentGraphDatabase['transitionIntentLifecycle'];
+    compensateFailedResume?: IntentGraphDatabase['compensateFailedResume'];
+  }): IntentGraphDatabase {
+    return {
+      getActiveIntents: async () => [],
+      transitionIntentLifecycle: overrides.transitionIntentLifecycle,
+      compensateFailedResume: overrides.compensateFailedResume,
+    } as unknown as IntentGraphDatabase;
+  }
+
+  it('enqueues resume discovery on a successful ACTIVE transition', async () => {
+    const resumeJobs: Array<{ intentId: string; userId: string; lifecycleVersionMs: number }> = [];
+    const database = makeTransitionDatabase({
+      transitionIntentLifecycle: async () => ({
+        kind: 'success', id: 'intent-1', status: 'ACTIVE', changed: true, lifecycleVersionMs: 100,
+      }),
+    });
+    const factory = new IntentGraphFactory(database, undefined, {
+      addGenerateHydeJob: async () => {},
+      addDeleteHydeJob: async () => {},
+      addResumeDiscoveryJob: async (data) => { resumeJobs.push(data); },
+    });
+    const result = await factory.createGraph().invoke({
+      userId: 'user-1', userProfile: '', targetIntentIds: ['intent-1'], status: 'ACTIVE',
+    });
+
+    expect(result.transitionResult).toEqual({ kind: 'success', id: 'intent-1', status: 'ACTIVE', changed: true, lifecycleVersionMs: 100 });
+    expect(resumeJobs).toEqual([{ intentId: 'intent-1', userId: 'user-1', lifecycleVersionMs: 100 }]);
+  });
+
+  it('compensates back to PAUSED when the resume enqueue fails', async () => {
+    const compensateCalls: unknown[] = [];
+    const database = makeTransitionDatabase({
+      transitionIntentLifecycle: async () => ({
+        kind: 'success', id: 'intent-1', status: 'ACTIVE', changed: true, lifecycleVersionMs: 200,
+      }),
+      compensateFailedResume: async (input) => {
+        compensateCalls.push(input);
+        return { status: 'PAUSED', lifecycleVersionMs: 201 };
+      },
+    });
+    const factory = new IntentGraphFactory(database, undefined, {
+      addGenerateHydeJob: async () => {},
+      addDeleteHydeJob: async () => {},
+      addResumeDiscoveryJob: async () => { throw new Error('queue unavailable'); },
+    });
+    const result = await factory.createGraph().invoke({
+      userId: 'user-1', userProfile: '', targetIntentIds: ['intent-1'], status: 'ACTIVE',
+    });
+
+    expect(result.transitionResult).toEqual({ kind: 'enqueue_failed', id: 'intent-1', status: 'PAUSED', lifecycleVersionMs: 201 });
+    expect(compensateCalls).toEqual([{ intentId: 'intent-1', userId: 'user-1', lifecycleVersionMs: 200, networkScopeId: undefined }]);
+  });
+
+  it('does not enqueue or compensate for a PAUSED transition', async () => {
+    const database = makeTransitionDatabase({
+      transitionIntentLifecycle: async () => ({
+        kind: 'success', id: 'intent-1', status: 'PAUSED', changed: true, lifecycleVersionMs: 50,
+      }),
+    });
+    let resumeCalled = false;
+    const factory = new IntentGraphFactory(database, undefined, {
+      addGenerateHydeJob: async () => {},
+      addDeleteHydeJob: async () => {},
+      addResumeDiscoveryJob: async () => { resumeCalled = true; },
+    });
+    const result = await factory.createGraph().invoke({
+      userId: 'user-1', userProfile: '', targetIntentIds: ['intent-1'], status: 'PAUSED',
+    });
+
+    expect(result.transitionResult).toEqual({ kind: 'success', id: 'intent-1', status: 'PAUSED', changed: true, lifecycleVersionMs: 50 });
+    expect(resumeCalled).toBe(false);
+  });
+
+  function makeConfirmDatabase(proposal: {
+    id: string; userId: string; description: string; networkId: string | null;
+    status: 'pending' | 'consumed' | 'rejected'; expiresAt: Date; consumedIntentId: string | null;
+  }): { database: IntentGraphDatabase; revised: unknown[]; confirmedWith: unknown[] } {
+    const revised: unknown[] = [];
+    const confirmedWith: unknown[] = [];
+    const database = {
+      getActiveIntents: async () => [],
+      getUserContext: async () => ({ text: '' }),
+      getProposalForOwner: async () => proposal,
+      revisePendingProposal: async (input: unknown) => {
+        revised.push(input);
+        return { ...proposal, description: (input as { description: string }).description };
+      },
+      confirmProposalIntent: async (input: unknown) => {
+        confirmedWith.push(input);
+        return {
+          kind: 'created',
+          intent: {
+            id: 'intent-1', payload: (input as { description: string }).description, summary: null,
+            isIncognito: false, createdAt: new Date(), updatedAt: new Date(), userId: proposal.userId,
+          },
+        };
+      },
+    } as unknown as IntentGraphDatabase;
+    return { database, revised, confirmedWith };
+  }
+
+  it('confirms an unchanged proposal without invoking the verifier', async () => {
+    const proposal = {
+      id: 'proposal-1', userId: 'user-1', description: 'Find a design partner',
+      networkId: null, status: 'pending' as const, expiresAt: new Date(Date.now() + 60_000), consumedIntentId: null,
+    };
+    const { database, revised, confirmedWith } = makeConfirmDatabase(proposal);
+    const hydeJobs: unknown[] = [];
+    const factory = new IntentGraphFactory(database, undefined, {
+      addGenerateHydeJob: async (data) => { hydeJobs.push(data); },
+      addDeleteHydeJob: async () => {},
+      addResumeDiscoveryJob: async () => {},
+    });
+    const result = await factory.createGraph().invoke({
+      userId: 'user-1', userProfile: '', proposalId: 'proposal-1', description: 'Find a design partner',
+    });
+
+    expect(result.confirmResult).toEqual({ kind: 'created', intentId: 'intent-1' });
+    expect(revised).toHaveLength(0);
+    expect(confirmedWith).toEqual([{ proposalId: 'proposal-1', userId: 'user-1', description: 'Find a design partner', embedding: expect.any(Array) }]);
+    expect(hydeJobs).toHaveLength(1);
+  });
+
+  it('re-verifies an owner-edited description before confirming', async () => {
+    const proposal = {
+      id: 'proposal-1', userId: 'user-1', description: 'Find a design partner',
+      networkId: null, status: 'pending' as const, expiresAt: new Date(Date.now() + 60_000), consumedIntentId: null,
+    };
+    const { database, revised, confirmedWith } = makeConfirmDatabase(proposal);
+    const factory = new IntentGraphFactory(database, undefined, {
+      addGenerateHydeJob: async () => {},
+      addDeleteHydeJob: async () => {},
+      addResumeDiscoveryJob: async () => {},
+    });
+    const result = await factory.createGraph().invoke({
+      userId: 'user-1', userProfile: '', proposalId: 'proposal-1',
+      description: 'Find a design partner with production LLM experience in Berlin this quarter',
+    });
+
+    expect(result.confirmResult).toEqual({ kind: 'created', intentId: 'intent-1' });
+    expect(revised).toHaveLength(1);
+    expect(confirmedWith).toEqual([{
+      proposalId: 'proposal-1', userId: 'user-1',
+      description: 'Find a design partner with production LLM experience in Berlin this quarter',
+      embedding: expect.any(Array),
+    }]);
+  }, 60000);
+
+  it('rejects a network mismatch before touching description or verification', async () => {
+    const proposal = {
+      id: 'proposal-1', userId: 'user-1', description: 'Find a design partner',
+      networkId: null, status: 'pending' as const, expiresAt: new Date(Date.now() + 60_000), consumedIntentId: null,
+    };
+    const { database, revised, confirmedWith } = makeConfirmDatabase(proposal);
+    const factory = new IntentGraphFactory(database, undefined, {
+      addGenerateHydeJob: async () => {},
+      addDeleteHydeJob: async () => {},
+      addResumeDiscoveryJob: async () => {},
+    });
+    const result = await factory.createGraph().invoke({
+      userId: 'user-1', userProfile: '', proposalId: 'proposal-1',
+      // Both description and networkId differ from the stored proposal.
+      description: 'Something else entirely', networkId: 'network-1',
+    });
+
+    expect(result.confirmResult).toEqual({ kind: 'payload_mismatch' });
+    // Must not have revised the stored description on the way to rejection.
+    expect(revised).toHaveLength(0);
+    expect(confirmedWith).toHaveLength(0);
+  });
 });

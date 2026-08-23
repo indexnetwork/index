@@ -20,6 +20,43 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 26.0.0 - 2026-08-22
+
+### Changed
+
+- **BREAKING: the intent graph routes on the shape of its input, not an
+  `operationMode` flag.** `operationMode` is gone from the graph's invoke
+  input. Callers now signal intent by which fields they set:
+  `inputContent` alone creates; `inputContent` + `targetIntentIds` is an
+  explicit update; `targetIntentIds` + `archive: true` expires; `targetIntentIds`
+  + `status` pauses/resumes; `proposalId` (+ `description`, `networkId`)
+  confirms a stored proposal; none of the above reads. `dryRun: true` replaces
+  the old `propose` mode. `targetIntentIds` alone, or more than one of
+  {content, archive, status, proposalId} set at once, is now a graph-level
+  input error rather than a silent no-op or an implicit default.
+- **BREAKING: `IntentGraphDatabase` gained required members.** Archive now
+  performs its full cleanup (network-association removal, referencing
+  opportunity expiry) itself, and the graph owns pause/resume and
+  proposal-confirmation persistence. Hosts implementing this interface must
+  add `deleteIntentIndexAssociations`, `expireOpportunitiesByIntentActor`,
+  `transitionIntentLifecycle`, `compensateFailedResume`, `getProposalForOwner`,
+  `revisePendingProposal`, and `confirmProposalIntent`.
+- **BREAKING: `IntentGraphQueue` gained `addResumeDiscoveryJob`.** The graph
+  enqueues resume discovery directly (and compensates back to `PAUSED` on a
+  failed enqueue) instead of leaving that to a host-side event hook.
+
+### Added
+
+- `IntentLifecycleStatus`, `TransitionLifecycleResult`, `IntentProposalRecord`,
+  `ReviseIntentProposalInput`, and `ConfirmProposalResult` are now exported
+  from the package barrel.
+
+### Removed
+
+- The inferrer's profile-fallback path (`allowProfileFallback`, content-less
+  inference) had no live caller and is gone along with the `delete` operation
+  mode it was keyed on.
+
 ## 25.0.0 - 2026-08-21
 
 ### Removed

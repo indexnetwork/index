@@ -96,50 +96,17 @@ I've been exploring AI/ML and want to transition into that space.
 - Network with AI researchers
 `;
 
-  it('should return empty array when allowProfileFallback is false and no content provided', async () => {
-    const result = await inferrer.invoke(
-      null,
-      mockProfile,
-      {
-        allowProfileFallback: false,
-        operationMode: 'create'
-      }
-    );
+  it('should return empty array when no content is provided', async () => {
+    const result = await inferrer.invoke(null, mockProfile, { operationMode: 'create' });
 
     expect(result.intents.length).toBe(0);
   }, 30000);
 
-  it('should infer from profile when allowProfileFallback is true and no content provided', async () => {
-    const result = await inferrer.invoke(
-      null,
-      mockProfile,
-      {
-        allowProfileFallback: true,
-        operationMode: 'create'
-      }
-    );
-
-    expect(result.intents.length).toBeGreaterThan(0);
-  }, 30000);
-
-  it('should infer from explicit content regardless of fallback setting', async () => {
+  it('should infer from explicit content', async () => {
     const result = await inferrer.invoke(
       'I want to learn Rust programming and build a web framework',
       mockProfile,
-      {
-        allowProfileFallback: false,
-        operationMode: 'create'
-      }
-    );
-
-    expect(result.intents.length).toBeGreaterThan(0);
-  }, 30000);
-
-  it('should default to allowProfileFallback: true for backward compatibility', async () => {
-    const result = await inferrer.invoke(
-      null,
-      mockProfile
-      // No options provided
+      { operationMode: 'create' }
     );
 
     expect(result.intents.length).toBeGreaterThan(0);
@@ -149,10 +116,7 @@ I've been exploring AI/ML and want to transition into that space.
     const result = await inferrer.invoke(
       'Change my ML goal to focus on computer vision instead',
       mockProfile,
-      {
-        allowProfileFallback: false,
-        operationMode: 'update'
-      }
+      { operationMode: 'update' }
     );
 
     expect(result.intents.length).toBeGreaterThanOrEqual(0);
@@ -162,10 +126,7 @@ I've been exploring AI/ML and want to transition into that space.
     const result = await inferrer.invoke(
       'Hello, how are you?',
       mockProfile,
-      {
-        allowProfileFallback: true,
-        operationMode: 'create'
-      }
+      { operationMode: 'create' }
     );
 
     expect(result.intents.length).toBe(0);
@@ -199,7 +160,6 @@ Interests: AI agents, decentralized systems, venture capital
       'artist',
       richProfile,
       {
-        allowProfileFallback: false,
         operationMode: 'create'
       }
     );
@@ -229,7 +189,6 @@ Interests: AI agents, decentralized systems, venture capital
       'looking for a photographer',
       richProfile,
       {
-        allowProfileFallback: false,
         operationMode: 'create'
       }
     );
@@ -245,7 +204,6 @@ Interests: AI agents, decentralized systems, venture capital
     // The signal-intake propose path runs profile-blind. An empty heading is
     // still an invitation to invent a background, so it must not be rendered.
     await inferrer.invoke('Find a design partner', '', {
-      allowProfileFallback: false,
       operationMode: 'create',
     });
 
@@ -254,7 +212,6 @@ Interests: AI agents, decentralized systems, venture capital
     expect(prompt).toContain('## New Content\n\nFind a design partner');
 
     await inferrer.invoke('Find a design partner', richProfile, {
-      allowProfileFallback: false,
       operationMode: 'create',
     });
 

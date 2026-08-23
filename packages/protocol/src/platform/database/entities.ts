@@ -289,6 +289,58 @@ export interface ArchiveResult {
   error?: string;
 }
 
+/** An intent's admission lifecycle status; null/legacy rows are ACTIVE. */
+export type IntentLifecycleStatus = 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED';
+
+/**
+ * Result of an atomic ACTIVE/PAUSED lifecycle transition.
+ */
+export type TransitionLifecycleResult =
+  | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
+  | { kind: 'not_found' }
+  | { kind: 'scope_violation' }
+  | { kind: 'stale' }
+  | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean };
+
+/**
+ * A durable, owner-scoped intent proposal record — the verified analysis
+ * produced before a user approves persistence. `analysis` is host-opaque:
+ * the graph never inspects it, only compares/replaces it wholesale.
+ */
+export interface IntentProposalRecord {
+  id: string;
+  userId: string;
+  description: string;
+  networkId: string | null;
+  status: 'pending' | 'consumed' | 'rejected';
+  expiresAt: Date;
+  consumedIntentId: string | null;
+}
+
+/** Replace a still-pending proposal's verified payload (owner-edited description). */
+export interface ReviseIntentProposalInput {
+  proposalId: string;
+  userId: string;
+  expectedDescription: string;
+  expectedNetworkId: string | null;
+  description: string;
+  /** Host-validated verifier analysis; opaque to the graph. */
+  analysis: unknown;
+}
+
+/**
+ * Result of atomically confirming a proposal into a persisted intent.
+ */
+export type ConfirmProposalResult =
+  | { kind: 'created'; intent: CreatedIntent }
+  | { kind: 'replay'; intent: { id: string; archivedAt: Date | null } }
+  | { kind: 'missing' }
+  | { kind: 'expired' }
+  | { kind: 'consumed' }
+  | { kind: 'payload_mismatch' }
+  | { kind: 'analysis_missing' }
+  | { kind: 'membership_required' };
+
 /**
  * Options for vector similarity search.
  */

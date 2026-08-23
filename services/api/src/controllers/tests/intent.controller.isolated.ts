@@ -9,7 +9,7 @@ import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { ScopeViolationError } from '../../guards/agent-scope.guard';
 import { IntentNetworkMembershipError, IntentProposalConfirmationError } from '../../services/intent.service';
 import db from '../../lib/drizzle/drizzle';
-import { IntentEvents } from '../../events/intent.event';
+import { intentQueue } from '../../queues/intent.queue';
 import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunities as opportunitiesTable } from '../../schemas/database.schema';
 import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
@@ -751,7 +751,8 @@ describe("IntentController Integration", () => {
       userId: testUserId,
       status: 'PAUSED',
     });
-    IntentEvents.onResumed = async () => {
+    const originalAddResumeDiscoveryJob = intentQueue.addResumeDiscoveryJob.bind(intentQueue);
+    intentQueue.addResumeDiscoveryJob = async () => {
       throw new Error('queue unavailable');
     };
     try {
@@ -773,7 +774,7 @@ describe("IntentController Integration", () => {
       });
       expect((await intentAdapter.getIntentById(testIntentId, testUserId))?.status).toBe('PAUSED');
     } finally {
-      IntentEvents.onResumed = async () => {};
+      intentQueue.addResumeDiscoveryJob = originalAddResumeDiscoveryJob;
     }
   });
 

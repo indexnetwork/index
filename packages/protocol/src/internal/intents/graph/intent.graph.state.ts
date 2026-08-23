@@ -2,9 +2,10 @@ import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "../intent.inferrer.js";
 import { SemanticVerifierOutput } from "../intent.verifier.js";
-import { IntentReconcilerOutput } from "../intent.reconciler.js";
+import { IntentReconcilerOutput, NormalizedIntentAction } from "../intent.reconciler.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
 import type { ToolScopeType } from '../../shared/agent/tool.scope.js';
+import type { IntentLifecycleStatus } from "../../../platform/database.js";
 
 /**
  * Extended InferredIntent that includes verification results.
@@ -35,16 +36,50 @@ export interface IntentValidationFailure {
  */
 export interface ExecutionResult {
   /** The action type that was executed */
-  actionType: 'create' | 'update' | 'expire';
+  actionType: 'create' | 'update' | 'expire' | 'transition' | 'confirm';
   /** Whether the action succeeded */
   success: boolean;
   /** The intent ID (created/updated/archived) */
   intentId?: string;
   /** Final payload (sanitized, for create/update) */
   payload?: string;
-  /** Error message if failed */
+  /** Error message if failed. For transition/confirm this is the outcome's `kind`. */
   error?: string;
 }
+
+/** A deterministic pause/resume action, bypassing the LLM reconciler. */
+export interface TransitionIntentAction {
+  type: 'transition';
+  id: string;
+  status: 'ACTIVE' | 'PAUSED';
+}
+
+/** A deterministic proposal-confirmation action, bypassing the LLM reconciler. */
+export interface ConfirmIntentAction {
+  type: 'confirm';
+  proposalId: string;
+  description: string;
+  networkId?: string;
+}
+
+/** Every action kind the executor can carry out. */
+export type IntentGraphAction = NormalizedIntentAction | TransitionIntentAction | ConfirmIntentAction;
+
+/** Outcome of a `transition` action, mirroring the adapter's discriminated result plus the enqueue-failure compensation case. */
+export type TransitionOutcome =
+  | { kind: 'success'; id: string; status: 'ACTIVE' | 'PAUSED'; changed: boolean; lifecycleVersionMs: number }
+  | { kind: 'not_found' }
+  | { kind: 'scope_violation' }
+  | { kind: 'stale' }
+  | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean }
+  | { kind: 'enqueue_failed'; id: string; status: IntentLifecycleStatus; lifecycleVersionMs: number };
+
+/** Outcome of a `confirm` action. */
+export type ConfirmOutcome =
+  | { kind: 'created' | 'replay'; intentId: string }
+  | { kind: 'missing' | 'expired' | 'consumed' | 'payload_mismatch' | 'analysis_missing' | 'proposal_edit_rejected' }
+  | { kind: 'membership_required'; networkId: string }
+  | { kind: 'admission_enqueue_failed'; intentId: string };
 
 /**
  * The Graph State using LangGraph Annotations.
@@ -82,27 +117,54 @@ export const IntentGraphState = Annotation.Root({
   }),
 
   /**
-   * Operation mode controls graph flow and determines which nodes execute.
-   * - 'create': Full pipeline (prep → inference → verification → reconciliation → execution)
-   * - 'update': Skip verification if no new intents (prep → inference → reconciliation → execution)
-   * - 'delete': Skip inference and verification (prep → reconciliation → execution)
-   * - 'read': Fast path (prep → queryNode → END) — reads intents without LLM calls
-   * - 'propose': Inference + verification only, stops before reconciliation (no DB writes)
-   *
-   * Defaults to 'create' for backward compatibility.
-   */
-  operationMode: Annotation<'create' | 'update' | 'delete' | 'read' | 'propose'>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => 'create' as const,
-  }),
-
-  /**
-   * For update/delete operations, specifies which intent IDs to target.
-   * Optional - used when modifying or removing specific intents.
+   * The graph routes on the shape of its input, not a mode flag:
+   * - `inputContent` alone → create path (infer → verify → reconcile → execute)
+   * - `inputContent` + `targetIntentIds` → explicit update, bound to that one id
+   * - `targetIntentIds` + `archive: true` → expire those ids, no LLM
+   * - `targetIntentIds` + `status` → pause/resume, no LLM
+   * - `proposalId` (+ `description`, `networkId`) → confirm a stored proposal, no LLM
+   * - none of the above → read (query fast path)
+   * Exactly one of {content, archive, status, proposalId} may be set per invoke.
    */
   targetIntentIds: Annotation<string[] | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
+  }),
+
+  /** Archive route: expire every id in `targetIntentIds`. Requires `targetIntentIds`. */
+  archive: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /** Transition route: pause/resume the single id in `targetIntentIds`. Requires `targetIntentIds`. */
+  status: Annotation<'ACTIVE' | 'PAUSED' | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Confirm route: the durable proposal to persist. */
+  proposalId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /**
+   * Confirm route: the caller's (possibly owner-edited) description, compared
+   * byte-for-byte against the stored proposal. Never run through inference.
+   */
+  description: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /**
+   * When true on the content path, stop after verification — no reconciliation,
+   * no writes. Replaces the old `propose` operation mode.
+   */
+  dryRun: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
   }),
 
   /**
@@ -181,9 +243,9 @@ export const IntentGraphState = Annotation.Root({
   // --- Output ---
 
   /**
-   * Final actions to be performed on the DB (Create, Update, Expire).
+   * Final actions to be performed on the DB (Create, Update, Expire, Transition, Confirm).
    */
-  actions: Annotation<IntentReconcilerOutput['actions']>({
+  actions: Annotation<IntentGraphAction[]>({
     reducer: (curr, next) => next,
     default: () => [],
   }),
@@ -195,6 +257,18 @@ export const IntentGraphState = Annotation.Root({
   executionResults: Annotation<ExecutionResult[]>({
     reducer: (curr, next) => next,
     default: () => [],
+  }),
+
+  /** Detailed outcome of a `transition` action, for host-side status mapping. */
+  transitionResult: Annotation<TransitionOutcome | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Detailed outcome of a `confirm` action, for host-side status mapping. */
+  confirmResult: Annotation<ConfirmOutcome | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
 
   // --- Error State ---

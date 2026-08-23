@@ -2,14 +2,19 @@
  * Intent graph, stage 4 and the read fast path.
  */
 
-import { VerifiedIntent, ExecutionResult, type IntentValidationFailure } from "./intent.graph.state.js";
+import { VerifiedIntent, ExecutionResult, ConfirmOutcome, TransitionOutcome, ConfirmIntentAction, TransitionIntentAction, type IntentValidationFailure } from "./intent.graph.state.js";
 import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription } from "../intent.proposal.js";
 import type { NormalizedIntentAction } from "../intent.reconciler.js";
 import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../../protocol/core.js";
-import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isExplicitUpdateRequest, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+
+/** Zero-vector embedding fallback, matching {@link generateIntentEmbedding}'s dimensionality. */
+const ZERO_EMBEDDING_DIMS = 2000;
+
+const VALID_PROPOSAL_EDIT_CLASSIFICATIONS = new Set(['COMMISSIVE', 'DIRECTIVE', 'DECLARATION']);
 
     /**
      * Node 4: Executor
@@ -18,7 +23,7 @@ import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntent
 export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
   return timed("IntentGraph.executor", async () => {
     const actions = enforceIntentActionBoundary(
-      state.operationMode,
+      isExplicitUpdateRequest(state),
       state.targetIntentIds,
       state.actions ?? [],
     );
@@ -28,9 +33,12 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
 
     logger.verbose('Executing actions', { count: actions.length });
     const results: ExecutionResult[] = [];
+    let transitionResult: TransitionOutcome | undefined;
+    let confirmResult: ConfirmOutcome | undefined;
     const scopeEnvelope = state.scopeType && state.scopeId
       ? { scopeType: state.scopeType, scopeId: state.scopeId }
       : {};
+    const networkScopeId = state.scopeType === 'network' ? state.scopeId : undefined;
     const verifiedIntentByPayload = new Map<string, VerifiedIntent>();
     for (const verifiedIntent of state.verifiedIntents) {
       verifiedIntentByPayload.set(verifiedIntent.description, verifiedIntent);
@@ -38,7 +46,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
     }
 
     for (const action of actions) {
-      const actionType = action.type.toLowerCase() as 'create' | 'update' | 'expire';
+      const actionType = action.type.toLowerCase() as 'create' | 'update' | 'expire' | 'transition' | 'confirm';
       try {
         if (actionType === 'create') {
           const createAction = action as {
@@ -151,10 +159,96 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
           });
           logger.verbose('Archived intent', { intentId: expireAction.id });
           if (result.success) {
+            try {
+              await deps.database.deleteIntentIndexAssociations(expireAction.id);
+            } catch (err) {
+              logger.error('Failed to delete intent-network associations', { intentId: expireAction.id, error: err });
+            }
+            try {
+              const expiredCount = await deps.database.expireOpportunitiesByIntentActor(expireAction.id);
+              if (expiredCount > 0) {
+                logger.verbose('Expired opportunities referencing intent', { intentId: expireAction.id, expiredCount });
+              }
+            } catch (err) {
+              logger.error('Failed to expire opportunities', { intentId: expireAction.id, error: err });
+            }
             deps.intentQueue?.addDeleteHydeJob({ intentId: expireAction.id }).catch((err) =>
               logger.error('Failed to enqueue intent HyDE delete job', { intentId: expireAction.id, error: err })
             );
           }
+
+        } else if (actionType === 'transition') {
+          const transitionAction = action as TransitionIntentAction;
+          const dbResult = await deps.database.transitionIntentLifecycle({
+            intentId: transitionAction.id,
+            userId: state.userId,
+            status: transitionAction.status,
+            networkScopeId,
+          });
+
+          let outcome: TransitionOutcome;
+          if (dbResult.kind !== 'success' || dbResult.status === 'PAUSED') {
+            outcome = dbResult;
+          } else {
+            try {
+              await deps.intentQueue?.addResumeDiscoveryJob({
+                intentId: dbResult.id,
+                userId: state.userId,
+                lifecycleVersionMs: dbResult.lifecycleVersionMs,
+              });
+              outcome = dbResult;
+            } catch (err) {
+              logger.warn('Failed to enqueue resumed intent discovery', {
+                intentId: dbResult.id,
+                lifecycleVersionMs: dbResult.lifecycleVersionMs,
+                changed: dbResult.changed,
+                error: err,
+              });
+              if (!dbResult.changed) {
+                outcome = { kind: 'enqueue_failed', id: dbResult.id, status: dbResult.status, lifecycleVersionMs: dbResult.lifecycleVersionMs };
+              } else {
+                let authoritative: { status: 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED'; lifecycleVersionMs: number } | null = null;
+                try {
+                  authoritative = await deps.database.compensateFailedResume({
+                    intentId: transitionAction.id,
+                    userId: state.userId,
+                    lifecycleVersionMs: dbResult.lifecycleVersionMs,
+                    networkScopeId,
+                  });
+                } catch (compensationError) {
+                  logger.error('Failed to compensate resumed intent after enqueue failure', {
+                    intentId: transitionAction.id,
+                    lifecycleVersionMs: dbResult.lifecycleVersionMs,
+                    compensationError,
+                  });
+                }
+                outcome = {
+                  kind: 'enqueue_failed',
+                  id: dbResult.id,
+                  status: (authoritative?.status ?? dbResult.status) as 'ACTIVE' | 'PAUSED' | 'FULFILLED' | 'EXPIRED',
+                  lifecycleVersionMs: authoritative?.lifecycleVersionMs ?? dbResult.lifecycleVersionMs,
+                };
+              }
+            }
+          }
+          transitionResult = outcome;
+          results.push({
+            actionType: 'transition',
+            success: outcome.kind === 'success',
+            intentId: 'id' in outcome ? outcome.id : transitionAction.id,
+            error: outcome.kind !== 'success' ? outcome.kind : undefined,
+          });
+
+        } else if (actionType === 'confirm') {
+          const confirmAction = action as ConfirmIntentAction;
+          const outcome = await executeConfirmAction(state, deps, confirmAction);
+          confirmResult = outcome;
+          results.push({
+            actionType: 'confirm',
+            success: outcome.kind === 'created' || outcome.kind === 'replay',
+            intentId: 'intentId' in outcome ? outcome.intentId : undefined,
+            error: outcome.kind !== 'created' && outcome.kind !== 'replay' ? outcome.kind : undefined,
+          });
         }
       } catch (error) {
         logger.error('Failed to execute action', { actionType: action.type, error });
@@ -167,10 +261,94 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
       }
     }
 
-    return { executionResults: results };
+    return { executionResults: results, transitionResult, confirmResult };
   });
 }
 
+/**
+ * Confirm a stored proposal into a persisted intent. An owner-edited
+ * description (differs from the stored proposal) is re-verified and made
+ * authoritative before confirmation continues; an unchanged description
+ * skips straight to the atomic confirm. HyDE admission is awaited (unlike
+ * the fire-and-forget enqueue on a plain create): a failure here means the
+ * intent was saved but is not yet indexed, which the caller must retry.
+ */
+async function executeConfirmAction(
+  state: IntentState,
+  deps: IntentGraphDeps,
+  action: ConfirmIntentAction,
+): Promise<ConfirmOutcome> {
+  const { proposalId, description, networkId } = action;
+
+  const proposal = await deps.database.getProposalForOwner(proposalId, state.userId);
+  if (!proposal) return { kind: 'missing' };
+  // Check the network scope before touching description/verification at all:
+  // a caller confirming into the wrong network must never revise the stored
+  // proposal on its way to being rejected.
+  if (proposal.networkId !== (networkId ?? null)) return { kind: 'payload_mismatch' };
+
+  let effectiveDescription = proposal.description;
+  if (proposal.description !== description) {
+    if (proposal.status !== 'pending') return { kind: 'consumed' };
+    if (proposal.expiresAt.getTime() <= Date.now()) return { kind: 'expired' };
+
+    const profileContext = (await deps.database.getUserContext(state.userId, null))?.text ?? '';
+    const verdict = await deps.verifier.invoke(description, profileContext);
+    const valid = VALID_PROPOSAL_EDIT_CLASSIFICATIONS.has(verdict.classification)
+      && !isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity);
+    if (!valid) return { kind: 'proposal_edit_rejected' };
+
+    const analysis = {
+      verifierOutput: verdict,
+      combinedScore: Math.min(
+        verdict.felicity_scores.authority,
+        verdict.felicity_scores.sincerity,
+        verdict.felicity_scores.clarity,
+      ),
+    };
+    await deps.database.revisePendingProposal({
+      proposalId: proposal.id,
+      userId: state.userId,
+      expectedDescription: proposal.description,
+      expectedNetworkId: proposal.networkId,
+      description,
+      analysis,
+    });
+    // A revision lost to a concurrent writer (null return) is resolved by the
+    // authoritative check inside confirmProposalIntent below, same as any
+    // other race on this proposal.
+    effectiveDescription = description;
+  }
+
+  const embedding = (await generateIntentEmbedding(deps, effectiveDescription)) ?? new Array(ZERO_EMBEDDING_DIMS).fill(0);
+  const confirmation = await deps.database.confirmProposalIntent({
+    proposalId,
+    userId: state.userId,
+    description: effectiveDescription,
+    ...(networkId ? { networkId } : {}),
+    embedding,
+  });
+
+  if (confirmation.kind !== 'created' && confirmation.kind !== 'replay') {
+    if (confirmation.kind === 'membership_required') {
+      return { kind: 'membership_required', networkId: proposal.networkId ?? networkId ?? '' };
+    }
+    return { kind: confirmation.kind };
+  }
+
+  const intentId = confirmation.intent.id;
+  try {
+    await deps.intentQueue?.addGenerateHydeJob({
+      intentId,
+      userId: state.userId,
+      ...(proposal.networkId ? { scopeType: 'network' as const, scopeId: proposal.networkId } : {}),
+    });
+    return { kind: confirmation.kind, intentId };
+  } catch (err) {
+    logger.error('Intent admission enqueue failed after confirmation persistence', { intentId, error: err });
+    return { kind: 'admission_enqueue_failed', intentId };
+  }
+}
 
     /**
      * Node: Query

@@ -202,28 +202,48 @@ function makeSeam(options: { runStatus?: 'pending' | 'failed' } = {}) {
     }),
   } as never);
 
+  // Mirrors the graph's `confirm` action (intent.graph.execute.ts) against the
+  // SAME in-memory proposal store the intake service wrote to: the network
+  // scope is checked before any description revision, an edited description
+  // is "re-verified" (stubbed here) and made authoritative, then the proposal
+  // is atomically consumed. This is what IntentService.createFromProposal now
+  // delegates to; the seam under test is the store contract, not the graph's
+  // own mechanics (covered at the protocol layer).
+  const intentGraph = {
+    invoke: async (input: { userId: string; proposalId: string; description: string; networkId?: string }) => {
+      const proposal = await store.getProposalForOwner(input.proposalId, input.userId);
+      if (!proposal) return { confirmResult: { kind: 'missing' } };
+      if (proposal.networkId !== (input.networkId ?? null)) {
+        return { confirmResult: { kind: 'payload_mismatch' } };
+      }
+      let effectiveDescription = proposal.description;
+      if (proposal.description !== input.description) {
+        if (proposal.status !== 'pending') return { confirmResult: { kind: 'consumed' } };
+        const revised = await store.revisePendingProposal({
+          proposalId: proposal.id,
+          userId: input.userId,
+          expectedDescription: proposal.description,
+          expectedNetworkId: proposal.networkId,
+          description: input.description,
+          analysis: { verifierOutput, combinedScore: 83 },
+        });
+        if (!revised) return { confirmResult: { kind: 'payload_mismatch' } };
+        effectiveDescription = input.description;
+      }
+      const row = store.rows.get(proposal.id);
+      if (!row || row.status !== 'pending') return { confirmResult: { kind: 'consumed' } };
+      const intentId = intentIdFor(proposal.id);
+      row.status = 'consumed';
+      row.consumedAt = new Date();
+      row.consumedIntentId = intentId;
+      row.description = effectiveDescription;
+      return { confirmResult: { kind: 'created', intentId } };
+    },
+  };
+
   const confirm = new IntentService({
-    adapter: {
-      getIntentBySourceId: async () => null,
-      isNetworkMember: async (networkId: string, userId: string) => members.has(`${networkId}:${userId}`),
-      confirmProposalIntent: async (input: { proposalId: string }) => {
-        const intentId = intentIdFor(input.proposalId);
-        const row = store.rows.get(input.proposalId);
-        if (row) {
-          row.status = 'consumed';
-          row.consumedAt = new Date();
-          row.consumedIntentId = intentId;
-        }
-        return { kind: 'created' as const, intent: { id: intentId, archivedAt: null } };
-      },
-      getUserContext: async () => ({ text: 'Ada builds tools.' }),
-    } as never,
-    proposalAdapter: store as never,
-    embedder: { generate: async () => [0.5, 0.5] } as never,
-    proposalQueue: { addGenerateHydeJob: async () => 'job-id' } as never,
-    questionerEnqueue: async () => undefined,
+    intentGraph,
     emitProposalCreated: () => {},
-    verifyProposalEdit: async () => verifierOutput,
   });
 
   return { intake, confirm, store, run };
