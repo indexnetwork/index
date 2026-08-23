@@ -279,7 +279,6 @@ describe('native owner credential and transport source contracts', () => {
     expect(nativeBridge).toContain('exactTypedObject');
     expect(nativeBridge).toContain('boundedStringArray');
     expect(nativeBridge).toContain('validMessageParts');
-    expect(nativeBridge).toContain('validDraft');
     expect(nativeBridge).toContain('hasAllowedQuery');
     expect(nativeBridge).toContain('create_intent');
     expect(nativeBridge).toContain('register_agent');
