@@ -2,7 +2,7 @@ import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
-import { createPremisesFromProfile } from '../lib/enrichment/create-premises-from-profile';
+import { premiseQueue } from '../queues/premise.queue';
 
 const logger = log.service.from("UserService");
 
@@ -16,8 +16,6 @@ export interface UserServiceDeps {
   getPremisesBySource?: (userId: string, source: string) => Promise<Array<{ id: string }>>;
   /** Retract a single premise (set status RETRACTED + retractedAt). Lifecycle events fire in the DB adapter. */
   retractPremise?: (premiseId: string) => Promise<void>;
-  /** Enqueue an enrichment job to rebuild premises from updated socials. */
-  createPremisesFromProfile?: (userId: string) => Promise<void>;
 }
 
 /**
@@ -89,11 +87,8 @@ export class UserService {
     }
 
     private enqueuePremisesFromProfile(userId: string): void {
-        const createPremises =
-            this.deps?.createPremisesFromProfile ??
-            ((uid: string) => createPremisesFromProfile(uid));
-        createPremises(userId).catch(err =>
-            logger.error('Failed to rebuild premises after profile update', { userId, error: err }),
+        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
+            logger.error('Failed to enqueue premise rebuild after profile update', { userId, error: err }),
         );
     }
 
@@ -170,10 +165,6 @@ export class UserService {
             this.deps?.retractPremise ??
             (async (id: string) => { await chatDatabaseAdapter.updatePremise(id, { status: 'RETRACTED', retractedAt: new Date() }); });
 
-        const createPremises =
-            this.deps?.createPremisesFromProfile ??
-            ((uid: string) => createPremisesFromProfile(uid));
-
         const toRetract = await getPremisesBySource(userId, 'integration');
 
         logger.verbose('Retracting integration premises before premise rebuild', {
@@ -186,8 +177,8 @@ export class UserService {
         }
 
         // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
-        createPremises(userId).catch(err =>
-            logger.error('Failed to rebuild premises after social update', {
+        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
+            logger.error('Failed to enqueue premise rebuild after social update', {
                 userId,
                 error: err,
             }),

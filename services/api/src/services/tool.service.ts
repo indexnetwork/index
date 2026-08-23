@@ -221,7 +221,7 @@ export class ToolService {
     });
     const intentGraph = intents.createGraph();
     const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
-    const profileGraph = new EnrichmentGraphFactory(database, this.scraper, undefined, premiseGraph).createGraph();
+    const profileGraph = new EnrichmentGraphFactory(database).createGraph();
     const hydeCache = new RedisCacheAdapter();
     const compiledHydeGraph = new HydeGraphFactory(
       database as unknown as HydeGraphDatabase,

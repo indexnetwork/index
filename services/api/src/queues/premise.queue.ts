@@ -1,9 +1,11 @@
 import cron from 'node-cron';
 import { Job, JobsOptions } from 'bullmq';
+import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
 export const QUEUE_NAME = 'premise-queue';
@@ -22,8 +24,14 @@ export interface PremiseCascadeData {
   event: 'retracted' | 'expired';
 }
 
+/** Payload for `premise_decompose_profile` jobs. */
+export interface PremiseDecomposeProfileData {
+  /** The user whose profile (name/location/intro) should be decomposed into premises. */
+  userId: string;
+}
+
 /** Union of all job payloads accepted by the premise queue. */
-export type PremiseJobPayload = PremiseCascadeData;
+export type PremiseJobPayload = PremiseCascadeData | PremiseDecomposeProfileData;
 
 // ---------------------------------------------------------------------------
 // Opportunity status helpers (kept local to avoid importing schema at queue layer)
@@ -147,6 +155,26 @@ export interface PremiseQueueDeps {
     intentId: string,
     verdict: IntentReverificationVerdict
   ) => Promise<void>;
+
+  /**
+   * Decompose a user's profile text (name/location/intro) into premises via
+   * the premise graph's `decompose` operation mode.
+   */
+  decomposeProfile?: (userId: string) => Promise<void>;
+}
+
+/**
+ * Builds the free-text profile blob offered to premise decomposition.
+ * Name + location + intro only — social links are scraper input, not
+ * decomposer input (as decomposer input they'd just yield noise premises
+ * like "I have a LinkedIn at …").
+ */
+function buildProfileInputFromUser(user: { name?: string | null; intro?: string | null; location?: string | null }): string {
+  const lines: string[] = [];
+  if (user.name?.trim()) lines.push(`Name: ${user.name.trim()}`);
+  if (user.location?.trim()) lines.push(`Location: ${user.location.trim()}`);
+  if (user.intro?.trim()) lines.push(user.intro.trim());
+  return lines.filter((l) => l.trim()).join('\n\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +206,7 @@ export class PremiseQueue {
   private readonly logger = log.job.from('PremiseJob');
   private readonly expiryLogger = log.job.from('PremiseJob:ExpiryCheck');
   private readonly cascadeLogger = log.job.from('PremiseJob:Cascade');
+  private readonly decomposeLogger = log.job.from('PremiseJob:DecomposeProfile');
   private readonly queueLogger = log.queue.from('PremiseQueue');
   private readonly deps: PremiseQueueDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<PremiseJobPayload>> | null = null;
@@ -202,6 +231,16 @@ export class PremiseQueue {
     });
   }
 
+  /**
+   * Enqueue a profile-decomposition job. Deduplicated by user so rapid
+   * successive profile/social saves coalesce into one run.
+   * @param userId - The user whose profile should be decomposed
+   */
+  addDecomposeProfileJob(userId: string): Promise<Job<PremiseJobPayload>> {
+    return this.addJob('premise_decompose_profile', { userId }, {
+      jobId: `premise-decompose-profile-${userId}`,
+    });
+  }
 
   // -------------------------------------------------------------------------
   // Core enqueue method
@@ -209,12 +248,12 @@ export class PremiseQueue {
 
   /**
    * Add a named job to the premise queue.
-   * @param name - Job type (`premise_cascade`)
+   * @param name - Job type (`premise_cascade` or `premise_decompose_profile`)
    * @param data - Job payload
    * @param options - Optional jobId, priority, and removeOnComplete/removeOnFail overrides
    */
   async addJob(
-    name: 'premise_cascade',
+    name: 'premise_cascade' | 'premise_decompose_profile',
     data: PremiseJobPayload,
     options?: {
       jobId?: string;
@@ -246,6 +285,9 @@ export class PremiseQueue {
     switch (name) {
       case 'premise_cascade':
         await this.handlePremiseCascade(data as PremiseCascadeData);
+        break;
+      case 'premise_decompose_profile':
+        await this.handleDecomposeProfile(data as PremiseDecomposeProfileData);
         break;
       default:
         this.queueLogger.warn('Unknown job name', { name });
@@ -424,6 +466,41 @@ export class PremiseQueue {
       expired: opportunities.length,
       intentsReverified: reverified,
     });
+  }
+
+  private async handleDecomposeProfile(data: PremiseDecomposeProfileData): Promise<void> {
+    const { userId } = data;
+    this.decomposeLogger.info('Starting profile decomposition', { userId });
+
+    const decomposeProfile =
+      this.deps?.decomposeProfile ??
+      ((uid: string) => this.defaultDecomposeProfile(uid));
+
+    await decomposeProfile(userId);
+
+    this.decomposeLogger.info('Profile decomposition complete', { userId });
+  }
+
+  /**
+   * Default production implementation: build the profile text blob from the
+   * users row and decompose it into premises via the premise graph. Imported
+   * lazily so loading this queue module (and its tests) doesn't pull the LLM
+   * stack.
+   */
+  private async defaultDecomposeProfile(userId: string): Promise<void> {
+    const db = new ChatDatabaseAdapter();
+    const user = await db.getUser(userId);
+    if (!user) return;
+
+    const input = buildProfileInputFromUser(user);
+    if (!input.trim()) return;
+
+    const { PremiseGraphFactory } = await import('@indexnetwork/protocol');
+    const graph = new PremiseGraphFactory(db as unknown as PremiseGraphDatabase, new EmbedderAdapter()).createGraph();
+    const result = await graph.invoke({ userId, input, operationMode: 'decompose' });
+    if (result.error) {
+      this.decomposeLogger.error('Profile decomposition failed', { userId, error: result.error });
+    }
   }
 
   /**

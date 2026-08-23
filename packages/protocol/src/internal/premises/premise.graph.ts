@@ -4,6 +4,8 @@ import { PremiseGraphState } from "./premise.state.js";
 import { PremiseAnalyzer } from "./premise.analyzer.js";
 import type { PremiseAnalyzerOutput } from "./premise.analyzer.js";
 import { PremiseIndexer } from "./premise.indexer.js";
+import { PremiseDecomposer } from "./premise.decomposer.js";
+import type { PremiseDecomposerOutput } from "./premise.decomposer.js";
 
 import { buildNetworkAssignmentDecision, resolveAssignmentNetworkScope } from "../shared/assignment/network-assignment.policy.js";
 import { getAbortSignalConfig } from "../shared/agent/model-signal.js";
@@ -20,6 +22,7 @@ const embedLog = protocolLogger("PremiseGraph:embed");
 const persistLog = protocolLogger("PremiseGraph:persist");
 const indexLog = protocolLogger("PremiseGraph:index");
 const dedupeLog = protocolLogger("PremiseGraph:dedupe");
+const decomposeLog = protocolLogger("PremiseGraph:decompose");
 
 /**
  * Minimum cosine similarity (0-1) at which a freshly-decomposed premise is treated
@@ -55,6 +58,14 @@ export interface PremiseGraphDeps {
   embedder: Embedder;
   premiseIndexer: PremiseIndexer;
   premiseAnalyzer: { invoke(premiseText: string, profileContext?: string): Promise<PremiseAnalyzerOutput> };
+  /** Splits free text (decompose mode) into individual premises. */
+  premiseDecomposer: {
+    invoke(
+      input: string,
+      existingPremises?: Array<{ id: string; text: string }>,
+      currentBio?: string,
+    ): Promise<PremiseDecomposerOutput>;
+  };
 }
 
 /**
@@ -69,8 +80,9 @@ export class PremiseGraphFactory {
     embedder: Embedder,
     premiseIndexer: PremiseIndexer = new PremiseIndexer(),
     premiseAnalyzer: { invoke(premiseText: string, profileContext?: string): Promise<PremiseAnalyzerOutput> } = new PremiseAnalyzer(),
+    premiseDecomposer: PremiseGraphDeps['premiseDecomposer'] = new PremiseDecomposer(),
   ) {
-    this.deps = { database, embedder, premiseIndexer, premiseAnalyzer };
+    this.deps = { database, embedder, premiseIndexer, premiseAnalyzer, premiseDecomposer };
   }
 
   /**
@@ -87,9 +99,11 @@ export class PremiseGraphFactory {
       .addNode("dedupe", (state: PremiseState) => dedupeNode(state, deps))
       .addNode("persist", (state: PremiseState) => persistNode(state, deps))
       .addNode("index", (state: PremiseState) => indexNode(state, deps))
+      .addNode("decompose", (state: PremiseState) => decomposeNode(state, deps))
       .addConditionalEdges(START, routeByMode, {
         query: "query",
         analyze: "analyze",
+        decompose: "decompose",
         end: END,
       })
       .addEdge("query", END)
@@ -101,7 +115,8 @@ export class PremiseGraphFactory {
         end: END,
       })
       .addEdge("persist", "index")
-      .addEdge("index", END);
+      .addEdge("index", END)
+      .addEdge("decompose", END);
 
     return graph.compile();
   }
@@ -323,9 +338,142 @@ export async function indexNode(state: PremiseState, deps: PremiseGraphDeps) {
   });
 }
 
+/**
+ * Decomposes free text (chat, bio, scraped content) into individual premises
+ * and creates each through the normal create pipeline (analyze → embed →
+ * dedupe → persist → index). Also applies any retractions and bio revision
+ * the decomposer detects, offering the user's ACTIVE premises and current
+ * bio (`users.intro`) so removal/denial instructions resolve to concrete
+ * retractions instead of being silently dropped.
+ */
+export async function decomposeNode(state: PremiseState, deps: PremiseGraphDeps) {
+  return timed("PremiseGraph.decompose", async () => {
+    if (!state.input) {
+      return { error: "input is required for decompose mode" };
+    }
+
+    decomposeLog.verbose('Decomposing input into premises', {
+      userId: state.userId,
+      inputLength: state.input.length,
+    });
+
+    const agentTimingsAccum: DebugMetaAgent[] = [];
+
+    const activePremises = await deps.database.getPremisesForUser(state.userId, 'ACTIVE');
+    const existingPremises = activePremises.map((p) => ({ id: p.id, text: p.assertion.text }));
+
+    const user = await deps.database.getUser(state.userId);
+    const currentBio = user?.intro ?? '';
+
+    const decomposeStart = Date.now();
+    const result = await deps.premiseDecomposer.invoke(state.input, existingPremises, currentBio);
+    agentTimingsAccum.push({ name: "premise.decomposer", durationMs: Date.now() - decomposeStart });
+
+    // Apply retractions FIRST so a premise that is simultaneously disavowed and
+    // re-asserted in corrected form does not dedupe the new create against the
+    // stale active row.
+    for (const premiseId of result.retractedPremiseIds ?? []) {
+      try {
+        await deps.database.updatePremise(premiseId, { status: 'RETRACTED', retractedAt: new Date() });
+      } catch (err) {
+        decomposeLog.warn("Premise retraction failed", {
+          premiseId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Apply the bio revision (before the no-new-premises early return: a pure
+    // removal instruction extracts zero premises but still rewrites the bio).
+    const revisedBio = result.revisedBio?.trim();
+    if (revisedBio && revisedBio !== currentBio.trim()) {
+      try {
+        await deps.database.updateUser(state.userId, { intro: revisedBio });
+      } catch (err) {
+        decomposeLog.warn("Bio revision failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    if (result.premises.length === 0) {
+      return { agentTimings: agentTimingsAccum };
+    }
+
+    decomposeLog.verbose('Creating premises', { count: result.premises.length, userId: state.userId });
+
+    for (const p of result.premises) {
+      try {
+        // Contextual premises carry an LLM-inferred validity window and are
+        // volatile (auto-retract on expiry); assertive premises do not expire.
+        const isContextual = p.tier === 'contextual';
+        const validUntil = isContextual && p.validityDays
+          ? new Date(Date.now() + p.validityDays * 24 * 60 * 60 * 1000).toISOString()
+          : undefined;
+
+        const timings = await createOne(
+          {
+            ...state,
+            assertionText: p.text,
+            tier: p.tier,
+            operationMode: 'create',
+            volatile: isContextual,
+            validFrom: undefined,
+            validUntil,
+            targetPremiseId: undefined,
+            analysis: undefined,
+            embedding: undefined,
+            premise: undefined,
+            duplicateOf: undefined,
+            networkAssignments: [],
+            error: undefined,
+          },
+          deps,
+        );
+        agentTimingsAccum.push(...timings);
+      } catch (err) {
+        decomposeLog.warn("Premise creation failed", {
+          text: p.text.substring(0, 60),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { agentTimings: agentTimingsAccum };
+  });
+}
+
+/**
+ * Runs one premise through the create pipeline (analyze → embed → dedupe →
+ * persist → index) by calling the same node functions the graph itself
+ * uses, so decompose mode never duplicates the create logic.
+ */
+async function createOne(state: PremiseState, deps: PremiseGraphDeps): Promise<DebugMetaAgent[]> {
+  const timings: DebugMetaAgent[] = [];
+
+  const analyzeResult = await analyzeNode(state, deps);
+  timings.push(...(analyzeResult.agentTimings ?? []));
+  let s = { ...state, ...analyzeResult };
+  if (s.error) return timings;
+
+  s = { ...s, ...(await embedNode(s, deps)) };
+  if (s.error) return timings;
+
+  s = { ...s, ...(await dedupeNode(s, deps)) };
+  if (s.duplicateOf) return timings;
+
+  s = { ...s, ...(await persistNode(s, deps)) };
+  if (!s.premise) return timings;
+
+  const indexResult = await indexNode(s, deps);
+  timings.push(...(indexResult.agentTimings ?? []));
+  return timings;
+}
+
 export function routeByMode(state: PremiseState) {
   if (state.error) return "end";
   if (state.operationMode === 'query') return "query";
+  if (state.operationMode === 'decompose') return "decompose";
   return "analyze";
 }
 

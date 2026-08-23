@@ -16,9 +16,7 @@ src/adapters/tests/intent-discovery-progress.write.isolated.ts
 src/controllers/tests/network.controller.isolated.ts
 src/controllers/tests/notification.controller.isolated.ts
 src/controllers/tests/opportunity.controller.isolated.ts
-src/queues/tests/enrichment.queue.jobs.isolated.ts
 src/queues/tests/expiration.queue.isolated.ts
-src/queues/tests/from-enrichment.queue.isolated.ts
 src/queues/tests/from-intent.queue.concurrency.isolated.ts
 src/queues/tests/from-intent.queue.isolated.ts
 src/queues/tests/hyde.queue.isolated.ts
@@ -26,7 +24,6 @@ src/queues/tests/intent.queue.isolated.ts
 src/queues/tests/notification.queue.isolated.ts
 src/queues/tests/premise.queue.isolated.ts
 src/queues/tests/run-existing.queue.isolated.ts
-src/queues/tests/usercontext.queue.isolated.ts
 src/services/tests/network-invitation.service.isolated.ts
 src/services/tests/notification-delivery.service.isolated.ts
 src/services/tests/notification-projection.isolated.ts
@@ -34,6 +31,7 @@ src/services/tests/notification.service.isolated.ts
 src/services/tests/network.service.master-key-rotation.isolated.ts
 src/services/tests/opportunity.service.rediscovery.isolated.ts
 src/services/tests/opportunity.service.maintenance.isolated.ts
+src/services/tests/user.service.setSocials.isolated.ts
 tests/network-invitation-resend.isolated.ts
 tests/network-scoped-import.isolated.ts
 tests/experiment-signup-lookup.isolated.ts
@@ -106,7 +104,6 @@ src/controllers/tests/opportunity.owner-approval.isolated.ts
 src/services/tests/intent.service.seed-index.isolated.ts
 src/services/tests/signal-intake.service.isolated.ts
 src/services/tests/signal-intake.confirm-seam.isolated.ts
-src/queues/tests/usercontext.intake-pack.isolated.ts
 src/lib/tests/staff.isolated.ts
 src/controllers/tests/network-request.controller.authz.isolated.ts
 src/controllers/tests/webhooks.controller.isolated.ts

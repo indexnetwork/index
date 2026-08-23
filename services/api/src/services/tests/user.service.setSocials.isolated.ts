@@ -1,5 +1,13 @@
-import { describe, it, expect, mock, beforeEach } from 'bun:test';
-import { UserService, type UserServiceDeps } from '../user.service';
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import type { UserServiceDeps } from '../user.service';
+
+const addDecomposeProfileJob = mock(async () => ({ id: 'decompose-job' }));
+
+mock.module('../../queues/premise.queue', () => ({
+  premiseQueue: { addDecomposeProfileJob },
+}));
+
+const { UserService } = await import('../user.service');
 
 type SocialRow = { id: string; userId: string; label: string; value: string };
 
@@ -16,6 +24,8 @@ describe('UserService.setSocials cascade', () => {
   let mockDb: { setSocials: ReturnType<typeof mock>; getSocials: ReturnType<typeof mock>; [key: string]: unknown };
 
   beforeEach(() => {
+    addDecomposeProfileJob.mockClear();
+
     mockDb = {
       setSocials: mock(async () => {}),
       getSocials: stubGetSocials([], [row('s1', 'github', 'https://github.com/test')]),
@@ -24,7 +34,6 @@ describe('UserService.setSocials cascade', () => {
     deps = {
       getPremisesBySource: mock(async () => []),
       retractPremise: mock(async () => {}),
-      createPremisesFromProfile: mock(async () => {}),
     };
   });
 
@@ -56,7 +65,7 @@ describe('UserService.setSocials cascade', () => {
     expect(deps.retractPremise).not.toHaveBeenCalled();
   });
 
-  it('order: read → persist → read → query → retract → rebuild premises', async () => {
+  it('order: read → persist → read → query → retract → enqueue rebuild', async () => {
     const callOrder: string[] = [];
     let reads = 0;
     mockDb.getSocials = mock(async () => {
@@ -66,7 +75,7 @@ describe('UserService.setSocials cascade', () => {
     mockDb.setSocials = mock(async () => { callOrder.push('persist'); });
     deps.getPremisesBySource = mock(async () => { callOrder.push('query'); return [{ id: 'p1' }]; });
     deps.retractPremise = mock(async () => { callOrder.push('retract'); });
-    deps.createPremisesFromProfile = mock(async () => { callOrder.push('rebuild'); });
+    addDecomposeProfileJob.mockImplementation(async () => { callOrder.push('rebuild'); return { id: 'job' } as any; });
 
     const svc = new UserService(mockDb as any, deps);
     await svc.setSocials('user-1', []);
@@ -75,24 +84,24 @@ describe('UserService.setSocials cascade', () => {
   });
 
   describe('premise rebuild', () => {
-    it('rebuilds premises after retracting integration premises', async () => {
+    it('enqueues a decompose job after retracting integration premises', async () => {
       (deps.getPremisesBySource as ReturnType<typeof mock>).mockResolvedValue([{ id: 'premise-1' }]);
       const svc = new UserService(mockDb as any, deps);
       await svc.setSocials('user-1', []);
 
-      expect(deps.createPremisesFromProfile).toHaveBeenCalledWith('user-1');
+      expect(addDecomposeProfileJob).toHaveBeenCalledWith('user-1');
     });
 
-    it('rebuilds premises even when there was nothing to retract', async () => {
+    it('enqueues a decompose job even when there was nothing to retract', async () => {
       const svc = new UserService(mockDb as any, deps);
       await svc.setSocials('user-1', []);
 
       expect(deps.retractPremise).not.toHaveBeenCalled();
-      expect(deps.createPremisesFromProfile).toHaveBeenCalledWith('user-1');
+      expect(addDecomposeProfileJob).toHaveBeenCalledWith('user-1');
     });
 
-    it('swallows premise rebuild failures so the save still succeeds', async () => {
-      deps.createPremisesFromProfile = mock(async () => { throw new Error('graph down'); });
+    it('swallows enqueue failures so the save still succeeds', async () => {
+      addDecomposeProfileJob.mockImplementation(async () => { throw new Error('queue down'); });
       const svc = new UserService(mockDb as any, deps);
 
       await expect(svc.setSocials('user-1', [])).resolves.toBeUndefined();
@@ -100,7 +109,7 @@ describe('UserService.setSocials cascade', () => {
   });
 
   describe('unchanged socials', () => {
-    it('does not retract or rebuild when the stored set is identical', async () => {
+    it('does not retract or enqueue a rebuild when the stored set is identical', async () => {
       const stored = [row('s1', 'github', 'https://github.com/test')];
       mockDb.getSocials = stubGetSocials(stored, stored);
       (deps.getPremisesBySource as ReturnType<typeof mock>).mockResolvedValue([{ id: 'premise-1' }]);
@@ -111,7 +120,7 @@ describe('UserService.setSocials cascade', () => {
       expect(mockDb.setSocials).toHaveBeenCalled();
       expect(deps.getPremisesBySource).not.toHaveBeenCalled();
       expect(deps.retractPremise).not.toHaveBeenCalled();
-      expect(deps.createPremisesFromProfile).not.toHaveBeenCalled();
+      expect(addDecomposeProfileJob).not.toHaveBeenCalled();
     });
 
     it('ignores regenerated row ids', async () => {
@@ -125,7 +134,7 @@ describe('UserService.setSocials cascade', () => {
       await svc.setSocials('user-1', [{ label: 'github', value: 'https://github.com/test' }]);
 
       expect(deps.retractPremise).not.toHaveBeenCalled();
-      expect(deps.createPremisesFromProfile).not.toHaveBeenCalled();
+      expect(addDecomposeProfileJob).not.toHaveBeenCalled();
     });
 
     it('treats a changed value on the same label as a change', async () => {
@@ -139,7 +148,7 @@ describe('UserService.setSocials cascade', () => {
       await svc.setSocials('user-1', [{ label: 'github', value: 'https://github.com/new' }]);
 
       expect(deps.retractPremise).toHaveBeenCalledWith('premise-1');
-      expect(deps.createPremisesFromProfile).toHaveBeenCalledWith('user-1');
+      expect(addDecomposeProfileJob).toHaveBeenCalledWith('user-1');
     });
   });
 });

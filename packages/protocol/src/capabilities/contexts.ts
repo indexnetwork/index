@@ -2,19 +2,15 @@ import { EnrichmentGraphFactory } from "../internal/enrichment/enrichment.graph.
 import { PremiseGraphFactory } from "../internal/premises/premise.graph.js";
 import type { EnrichmentGraphDatabase, PremiseGraphDatabase } from "../platform/database.js";
 import type { Embedder } from "../platform/discovery/embedder.js";
-import type { ProfileEnricher } from "../platform/enrichment/ports.js";
-import type { Scraper } from "../platform/discovery/scraper.js";
 
-/** Host ports for premise decomposition graphs used during profile saves. */
+/** Host ports for the profile query graph and premise lifecycle graph. */
 export interface ContextsDeps {
   enrichmentDatabase: EnrichmentGraphDatabase;
   premiseDatabase: PremiseGraphDatabase;
   embedder: Embedder;
-  scraper: Scraper;
-  enricher?: ProfileEnricher;
 }
 
-/** Premise decomposition graphs for profile text → premises. */
+/** Profile query graph and premise lifecycle (create/update/query/decompose) graph. */
 export class Contexts {
   constructor(private readonly deps: ContextsDeps) {}
 
@@ -24,7 +20,6 @@ export class Contexts {
   }
 
   public createEnrichmentGraph() {
-    const { enrichmentDatabase, scraper, enricher } = this.deps;
-    return new EnrichmentGraphFactory(enrichmentDatabase, scraper, enricher, this.createPremiseGraph()).createGraph();
+    return new EnrichmentGraphFactory(this.deps.enrichmentDatabase).createGraph();
   }
 }

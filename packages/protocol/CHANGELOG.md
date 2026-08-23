@@ -20,6 +20,35 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 28.0.0 - 2026-08-22
+
+### Removed
+
+- **BREAKING: background enrichment and `user_contexts` are gone; profile
+  saves decompose straight into premises.** `EnrichmentRunInput`,
+  `EnrichmentRunRecord`, and `UserContextGenerator` are off the barrel — the
+  enrichment MCP tools are prefill-only (`research_profile`) now, and
+  identity mutation happens through profile saves and REST onboarding
+  endpoints, not agent-driven `create_user_context`/`confirm_user_context`.
+- **BREAKING: `EnrichmentGraphFactory` is query-only.** `write`/`generate`
+  operation modes, `decompose_premises`, scraping, and Chat-API
+  auto-enrichment are gone from the graph — it now only answers "does this
+  user have an enriched profile" (`operationMode: 'query'`). The constructor
+  narrows to `(database)`; `scraper`, `enricher`, and `premiseGraph` are no
+  longer accepted. `EnrichmentGraphDatabase` narrows to
+  `getProfile | getProfileByUserId | getPremisesForUser`.
+
+### Added
+
+- **`PremiseGraphFactory` gains a `decompose` operation mode**: given
+  `{ userId, input }` (free text — chat, bio, or profile fields), it
+  extracts individual premises via `PremiseDecomposer`, applies any
+  retractions and bio revision the decomposer detects, and creates each
+  premise through the normal create pipeline (analyze → embed → dedupe →
+  persist → index). This replaces the removed enrichment-graph write path as
+  the one way host code turns free text into premises.
+  `PremiseGraphDatabase` gains `getUser` and `updateUser`.
+
 ## 27.0.0 - 2026-08-22
 
 ### Changed

@@ -175,7 +175,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, premiseGraph).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(database).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,

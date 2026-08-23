@@ -4,11 +4,12 @@ config({ path: ".env.test", override: true });
 
 import { describe, it, expect } from "bun:test";
 import { PremiseGraphFactory } from "../premise.graph.js";
-import type { PremiseGraphDatabase, PremiseRecord } from "../../../platform/database.js";
+import type { PremiseGraphDatabase, PremiseRecord, UserRecord } from "../../../platform/database.js";
 import type { Embedder } from "../../../platform/discovery/embedder.js";
 
-function createMockDatabase(): PremiseGraphDatabase {
+export function createMockDatabase(): PremiseGraphDatabase {
   const premises: PremiseRecord[] = [];
+  let user: UserRecord = { id: "user-1", name: "Test User", email: "test@example.com", intro: null, socials: [] };
 
   return {
     createPremise: async (input) => {
@@ -45,10 +46,16 @@ function createMockDatabase(): PremiseGraphDatabase {
     getUserIndexIds: async () => [],
     getNetwork: async () => null,
     getNetworkMemberContext: async () => null,
+    getUser: async (userId) => (userId === user.id ? user : null),
+    updateUser: async (userId, data) => {
+      if (userId !== user.id) return null;
+      user = { ...user, ...data };
+      return user;
+    },
   };
 }
 
-function createMockEmbedder(): Embedder {
+export function createMockEmbedder(): Embedder {
   return {
     generate: async (_text: string | string[]) => new Array(2000).fill(0.01),
     search: async () => [],
@@ -56,7 +63,7 @@ function createMockEmbedder(): Embedder {
   } as Embedder;
 }
 
-function createMockAnalyzer() {
+export function createMockAnalyzer() {
   return {
     invoke: async () => ({
       reasoning: "deterministic test analysis",

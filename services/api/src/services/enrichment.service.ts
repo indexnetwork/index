@@ -1,5 +1,4 @@
 import type { ParallelEnrichmentResult } from '../lib/parallel/parallel';
-import { createPremisesFromProfile as runCreatePremisesFromProfile } from '../lib/enrichment/create-premises-from-profile';
 
 import { log } from '../lib/log';
 import { enrichUserProfile } from '../lib/parallel/parallel';
@@ -35,18 +34,6 @@ function socialsToRequest(socials: Array<{ label: string; value: string }>) {
     else out.websites = [...(out.websites ?? []), s.value];
   }
   return out;
-}
-
-function buildProfileInputFromUser(
-  user: { name?: string | null; intro?: string | null; location?: string | null },
-  socials: Array<{ label: string; value: string }>,
-): string {
-  const lines: string[] = [];
-  if (user.name?.trim()) lines.push(`Name: ${user.name.trim()}`);
-  if (user.location?.trim()) lines.push(`Location: ${user.location.trim()}`);
-  if (user.intro?.trim()) lines.push(user.intro.trim());
-  if (socials.length) lines.push(`User-provided public links:\n${socials.map((s) => `${s.label}: ${s.value}`).join('\n')}`);
-  return lines.filter((l) => l.trim()).join('\n\n');
 }
 
 function isMeaningfulResearch(enrichment: ParallelEnrichmentResult | null): enrichment is ParallelEnrichmentResult {
@@ -106,10 +93,6 @@ export class EnrichmentService {
       enriched: true,
       profile: mapEnrichmentToPrefill(enrichment, user.name ?? null),
     };
-  }
-
-  async createPremisesFromProfile(userId: string): Promise<void> {
-    await runCreatePremisesFromProfile(userId);
   }
 }
 
