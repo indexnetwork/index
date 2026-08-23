@@ -62,12 +62,8 @@ import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
-import { RedisTimeoutUpgradeLease, TimeoutUpgradeReconciler } from './lib/negotiation/timeout-upgrade-reconciliation';
-import { getRedisClient } from './adapters/cache.adapter';
-import { negotiationReflectQueue, reflectEnqueue } from './queues/negotiations/reflect.queue';
-import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
-import { negotiatorClientDmRetrieve } from './adapters/negotiator-client-dm.retrieval.adapter';
-import { parkedQuestionEnqueue } from './queues/parked-question.enqueue';
+import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
+import { roundReflectEnqueue } from './queues/negotiations/round-reflect.queue';
 import { questionMessageQueue } from './queues/question-message.queue';
 import { intentAgentQueue } from './queues/intent-agent.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
@@ -81,7 +77,7 @@ import { premiseQueue } from './queues/premise.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { AMBIENT_PARK_WINDOW_MS, Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
+import { Intents, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
@@ -122,27 +118,19 @@ setRequestContextStore(hostRequestContext);
 // Without this, OpportunityGraph's negotiateNode short-circuits and every evaluated
 // candidate is persisted unfiltered.
 const backgroundAgentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
-const backgroundNegotiationGraph = new NegotiationGraphFactory(
-  conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
-  backgroundAgentDispatcher,
-  negotiationTimeoutQueue,
-  // Park payloads (post-stall parks, mid-flight consults) route to the
-  // question-message regeneration job for the parked side's signal DM.
-  parkedQuestionEnqueue(),
-  // Finished negotiations enqueue memory distillation for both sides (P5.2).
-  reflectEnqueue(),
-  // Screen/turn prompts read the speaker's own negotiator memories (P5.3).
-  negotiatorMemoryRetrieve(),
-  // The acting user's own negotiator DM for this signal (A2H read path).
-  // System-agent grounding only.
-  negotiatorClientDmRetrieve(),
-).createGraph();
+const negotiationGraph = new NegotiationGraphFactory({
+  database: conversationDatabaseAdapter,
+  dispatcher: backgroundAgentDispatcher,
+  // All-paused → reflect trigger for the round (stub consumer for now).
+  reflectEnqueue: roundReflectEnqueue(),
+}).createGraph();
+negotiationTimeoutQueue.setNegotiationGraph(negotiationGraph);
 fromIntentQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
+  negotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
 negotiationRunExistingQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
+  negotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
 
@@ -212,29 +200,6 @@ void frameDriftQueue.start().catch((error) => {
 notificationQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
-// Upgrade legacy park/claim rows before either timeout worker can consume an
-// old generation-less delayed payload. The database stamps a durable install
-// outbox under row lock; deterministic Bull IDs make rolling-start delivery
-// concurrent and crash-safe. Refuse to start these workers if the explicitly
-// bounded sweep did not drain, rather than processing only part of the legacy
-// cohort unsafely.
-const timeoutUpgrade = new TimeoutUpgradeReconciler(
-  conversationDatabaseAdapter,
-  {
-    enqueueOrdinary: (...args) => negotiationTimeoutQueue.enqueueTimeout(...args),
-    enqueueClaim: (...args) => negotiationClaimTimeoutQueue.enqueueTimeout(...args),
-  },
-  new RedisTimeoutUpgradeLease(getRedisClient()),
-);
-const timeoutUpgradeResult = await timeoutUpgrade.reconcile({
-  parkWindowMs: AMBIENT_PARK_WINDOW_MS,
-  batchSize: 100,
-  maxBatches: 100,
-});
-if (!timeoutUpgradeResult.exhausted) {
-  throw new Error('Negotiation timeout upgrade reconciliation exceeded its bounded startup budget');
-}
-log.queue.from('NegotiationTimeoutUpgrade').info('Timeout upgrade reconciliation complete', { ...timeoutUpgradeResult });
 negotiationTimeoutQueue.startWorker();
 negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();

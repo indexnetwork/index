@@ -57,7 +57,7 @@ function toNegotiationTaskRow(row: {
 import { projectOwnerScreenDecision } from './negotiation-lifecycle.projection';
 import { selectRepresentedNegotiationSession } from './negotiation-session-rollup.projection';
 import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
-import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
+import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, intents, isNull, lt, ne, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
@@ -2642,6 +2642,59 @@ export class ConversationDatabaseAdapter {
   // there is no continuation chain any more.
   // ─────────────────────────────────────────────────────────────────────────
 
+  /** `NegotiationGraphDatabase`'s opportunity read — mirrors `OpportunityDatabaseAdapter.getOpportunity`. */
+  async getOpportunity(id: string): Promise<OpportunityRow | null> {
+    const [row] = await db.select().from(opportunities).where(eq(opportunities.id, id)).limit(1);
+    return row ? toOpportunityRow(row) : null;
+  }
+
+  /** `NegotiationGraphDatabase`'s intent read — mirrors `ChatDatabaseAdapter.getIntent`. */
+  async getIntent(intentId: string) {
+    const rows = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        isIncognito: intents.isIncognito,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt,
+        userId: intents.userId,
+        archivedAt: intents.archivedAt,
+        embedding: intents.embedding,
+        sourceType: intents.sourceType,
+        sourceId: intents.sourceId,
+        status: intents.status,
+      })
+      .from(intents)
+      .where(eq(intents.id, intentId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const emb = row.embedding;
+    const embedding: number[] | null =
+      emb == null
+        ? null
+        : Array.isArray(emb) && emb.length > 0 && Array.isArray(emb[0])
+          ? (emb[0] as number[])
+          : Array.isArray(emb)
+            ? (emb as number[])
+            : null;
+    return {
+      id: row.id,
+      payload: row.payload,
+      summary: row.summary,
+      isIncognito: row.isIncognito,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      userId: row.userId,
+      archivedAt: row.archivedAt,
+      embedding: embedding ?? undefined,
+      sourceType: row.sourceType ?? undefined,
+      sourceId: row.sourceId ?? undefined,
+      status: row.status,
+    };
+  }
+
   /** Creates the negotiation's own conversation — never a pair-shared DM. */
   async createNegotiationConversation(sourceUserId: string, candidateUserId: string): Promise<{ id: string }> {
     const conversation = await this.createConversation([
@@ -2749,14 +2802,15 @@ export class ConversationDatabaseAdapter {
     taskId: string;
     senderId: string;
     parts: unknown[];
-  }) {
-    return this.createMessage({
+  }): Promise<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }> {
+    const message = await this.createMessage({
       conversationId: input.conversationId,
       senderId: input.senderId,
       role: 'agent',
       parts: input.parts,
       taskId: input.taskId,
     });
+    return { id: message.id, senderId: message.senderId, parts: message.parts as unknown[], createdAt: message.createdAt };
   }
 
   /** This negotiation's own turns, oldest first. */
