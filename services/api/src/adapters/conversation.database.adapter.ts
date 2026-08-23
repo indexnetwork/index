@@ -65,6 +65,7 @@ import { log } from '../lib/log';
 import { projectNegotiationActivity } from '../lib/negotiation-activity';
 import { assertContinuationExecutionEffect, completeContinuationExecutionInTransaction, parkContinuationExecutionInTransaction, readClaimedContinuationExecutionForTimeoutInTransaction, readClaimedContinuationExecutionInTransaction, rotateClaimedContinuationExecutionForTimeoutInTransaction } from './negotiation-continuation.atomic';
 import type { ContinuationExecutionFence, ContinuationReceipt } from './negotiation-continuation.atomic';
+import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
@@ -1095,13 +1096,36 @@ export class ConversationDatabaseAdapter {
       if (continuationExecution) {
         await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
       }
-      await tx.execute(sql`
-        SELECT pg_advisory_xact_lock(
-          hashtextextended(${`conversation-session:${data.conversationId}`}, 0)
-        )
-      `);
+      return this.insertMessageInTransaction(tx, data);
+    });
+  }
 
-      const now = new Date();
+  /**
+   * The session-scoped insert itself, on a caller-supplied transaction. Never
+   * opens its own `db.transaction` — a caller that already holds this
+   * conversation's advisory lock (e.g. `createNegotiationMessage`'s CAS) must
+   * reuse its own connection here, since a second `db.transaction` would pin
+   * a second pool connection and self-deadlock re-requesting the same
+   * session-scoped lock the first one is still holding.
+   */
+  private async insertMessageInTransaction(tx: DrizzleDB, data: {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    taskId: string | null;
+    metadata: Record<string, unknown> | null;
+    extensions: string[] | null;
+    referenceTaskIds: string[] | null;
+  }): Promise<Message> {
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(
+        hashtextextended(${`conversation-session:${data.conversationId}`}, 0)
+      )
+    `);
+
+    const now = new Date();
       let sessionId: string;
 
       if (data.taskId) {
@@ -1178,8 +1202,7 @@ export class ConversationDatabaseAdapter {
           eq(schema.conversationParticipants.participantId, data.senderId),
         ));
 
-      return message;
-    });
+    return message;
   }
 
   /**
@@ -2340,12 +2363,12 @@ export class ConversationDatabaseAdapter {
    * Persists one turn, fenced against a concurrent duplicate submission: the
    * insert only proceeds if the task's current message count still equals
    * `expectedMessageCount` (what `apply` read immediately before deciding
-   * what to persist). The advisory lock — same key convention as
-   * `insertMessageWithConversationSession`'s own — serializes concurrent
-   * `createNegotiationMessage` calls on this negotiation's conversation, so
-   * the count check and the eventual insert observe a consistent world even
-   * though the actual insert goes through the normal (separately
-   * transactional) `createMessage` path.
+   * what to persist). Everything — the count check and the insert itself —
+   * runs on this single transaction/connection: `insertMessageInTransaction`
+   * takes `tx` directly rather than opening its own `db.transaction`, since a
+   * second pooled connection re-requesting the advisory lock this one
+   * already holds would self-deadlock (the first connection can't release it
+   * until this call resolves).
    */
   async createNegotiationMessage(input: {
     conversationId: string;
@@ -2354,7 +2377,7 @@ export class ConversationDatabaseAdapter {
     parts: unknown[];
     expectedMessageCount: number;
   }): Promise<{ id: string; senderId: string; parts: unknown[]; createdAt: Date } | null> {
-    return db.transaction(async (tx) => {
+    const message = await db.transaction(async (tx) => {
       await tx.execute(sql`
         SELECT pg_advisory_xact_lock(
           hashtextextended(${`conversation-session:${input.conversationId}`}, 0)
@@ -2366,15 +2389,47 @@ export class ConversationDatabaseAdapter {
         .where(eq(schema.messages.taskId, input.taskId));
       if (count !== input.expectedMessageCount) return null;
 
-      const message = await this.createMessage({
+      return this.insertMessageInTransaction(tx, {
+        id: crypto.randomUUID(),
         conversationId: input.conversationId,
         senderId: input.senderId,
         role: 'agent',
         parts: input.parts,
         taskId: input.taskId,
+        metadata: null,
+        extensions: null,
+        referenceTaskIds: null,
       });
-      return { id: message.id, senderId: message.senderId, parts: message.parts as unknown[], createdAt: message.createdAt };
     });
+    if (!message) return null;
+
+    // Same SSE publish `createMessage` does for every other writer, run
+    // after commit since the negotiation graph's own transaction is done.
+    try {
+      const senderUserId = input.senderId.startsWith('agent:')
+        ? input.senderId.slice('agent:'.length)
+        : input.senderId;
+      const [sender] = await db
+        .select({ name: schema.users.name, avatar: schema.users.avatar })
+        .from(schema.users)
+        .where(eq(schema.users.id, senderUserId))
+        .limit(1);
+      await publishConversationMessageEvent(
+        {
+          ...message,
+          ...(sender?.name?.trim() ? { senderName: sender.name.trim() } : {}),
+          ...(sender?.avatar?.trim() ? { senderAvatar: sender.avatar.trim() } : {}),
+        },
+        await this.getParticipants(input.conversationId),
+      );
+    } catch (error) {
+      logger.error('Failed to publish conversation SSE event', {
+        conversationId: input.conversationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return { id: message.id, senderId: message.senderId, parts: message.parts as unknown[], createdAt: message.createdAt };
   }
 
   /** This negotiation's own turns, oldest first. */
