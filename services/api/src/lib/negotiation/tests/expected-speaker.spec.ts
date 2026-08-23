@@ -1,58 +1,44 @@
 import { describe, expect, it } from 'bun:test';
-import { expectedNegotiationSpeaker as protocolExpectedNegotiationSpeaker } from '@indexnetwork/protocol';
 
 import { expectedNegotiationSpeaker } from '../expected-speaker';
 
 const metadata = { sourceUserId: 'source', candidateUserId: 'candidate' };
-const message = (senderId: string, action: string) => ({
+const turn = (senderId: string, data: unknown) => ({
   senderId,
-  parts: [{ kind: 'data', data: { action } }],
+  parts: [{ kind: 'data', data }],
 });
+const continueTurn = { verb: 'counter', message: 'm', reasoning: 'r' };
 
-describe('expectedNegotiationSpeaker canonical role seam', () => {
-  it('delegates to the protocol capability implementation', () => {
-    expect(expectedNegotiationSpeaker).toBe(protocolExpectedNegotiationSpeaker);
+describe('expectedNegotiationSpeaker (host-side mirror of NegotiationGraph.nextSpeaker)', () => {
+  it('the initiator opens when there are no turns yet', () => {
+    expect(expectedNegotiationSpeaker({ ...metadata, initiatorUserId: 'source' }, [])).toBe('source');
   });
 
-  it('starts with source and alternates across ordinary bilateral turns', () => {
+  it('falls back to sourceUserId as the initiator when initiatorUserId is absent', () => {
     expect(expectedNegotiationSpeaker(metadata, [])).toBe('source');
-    expect(expectedNegotiationSpeaker(metadata, [message('agent:source', 'outreach')])).toBe('candidate');
+  });
+
+  it('alternates seats across ordinary continuing turns', () => {
     expect(expectedNegotiationSpeaker(metadata, [
-      message('agent:source', 'outreach'),
-      message('agent:candidate', 'counter'),
+      turn('agent:source', continueTurn),
+    ])).toBe('candidate');
+    expect(expectedNegotiationSpeaker(metadata, [
+      turn('agent:source', continueTurn),
+      turn('agent:candidate', continueTurn),
     ])).toBe('source');
   });
 
-  it.each(['source', 'candidate'] as const)(
-    'retains the %s consulting executor floor after ask_user settlement noise',
-    (speaker) => {
-      expect(expectedNegotiationSpeaker(metadata, [
-        message(speaker === 'source' ? 'agent:candidate' : 'agent:source', 'counter'),
-        message(`agent:${speaker}`, 'ask_user'),
-        { senderId: 'user:owner', parts: [{ kind: 'data', data: { action: 'answer' } }] },
-        { senderId: 'system:index', parts: [] },
-      ])).toBe(speaker);
-    },
-  );
-
-  it('alternates again after the settlement-bound successor persists a normal turn', () => {
+  it('retries the same speaker after that speaker pauses', () => {
     expect(expectedNegotiationSpeaker(metadata, [
-      message('agent:candidate', 'counter'),
-      message('agent:source', 'ask_user'),
-      message('agent:source', 'counter'),
+      turn('agent:source', continueTurn),
+      turn('agent:candidate', { verb: 'pause', reason: 'needs_principal', payload: { question: 'q' } }),
+    ])).toBe('candidate');
+    expect(expectedNegotiationSpeaker(metadata, [
+      turn('agent:candidate', { verb: 'pause', reason: 'counterparty_silent' }),
     ])).toBe('candidate');
   });
 
-  it('does not let an unrelated ask_user sender retain either participant floor', () => {
-    expect(expectedNegotiationSpeaker(metadata, [
-      message('agent:source', 'counter'),
-      message('agent:unrelated', 'ask_user'),
-    ])).toBe('candidate');
-  });
-
-  it('fails closed for malformed or duplicate participant roles', () => {
-    expect(expectedNegotiationSpeaker({}, [])).toBeNull();
-    expect(expectedNegotiationSpeaker({ sourceUserId: '   ', candidateUserId: 'candidate' }, [])).toBeNull();
-    expect(expectedNegotiationSpeaker({ sourceUserId: 'same', candidateUserId: 'same' }, [])).toBeNull();
+  it('returns undefined when neither participant id is present in metadata', () => {
+    expect(expectedNegotiationSpeaker({}, [])).toBeUndefined();
   });
 });
