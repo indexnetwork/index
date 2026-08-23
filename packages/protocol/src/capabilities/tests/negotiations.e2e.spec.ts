@@ -4,6 +4,7 @@ import type { NegotiationTaskRow, NegotiationGraphDatabase } from "../../platfor
 import type { AgentDispatcher, AgentDispatchResult } from "../../internal/shared/interfaces/agent-dispatcher.interface.js";
 import type { NegotiationAuthorInput } from "../../internal/negotiations/negotiation.author.js";
 import { NegotiationAuthor } from "../../internal/negotiations/negotiation.author.js";
+import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema } from "../../internal/negotiations/negotiation.turn.js";
 import type { NegotiationAuthoredTurn, NegotiationTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
 
@@ -12,12 +13,16 @@ import { Negotiations } from "../negotiations.js";
  * `capabilities/tests/intents.spec.ts`: a fake host implementing the real
  * `NegotiationGraphDatabase`/`AgentDispatcher` ports, driving the real
  * `graph.invoke`. Unlike `intents.spec.ts` this is deliberately
- * provider-free — `NegotiationAuthor.callModel` is the documented test seam
- * for driving schema-validated turns without a live model, which is what
+ * provider-free — no API key, no network call, no `createModel`/
+ * `createStructuredModel` construction anywhere in this file — which is what
  * lets this file run in the credential-free Hermes-security CI gate instead
- * of the excluded LIVE_MODEL_SPECS set. Every turn shape asserted here still
- * goes through the graph's own zod validation (`NegotiationAuthoredTurnSchema`
- * / `NegotiationOpeningTurnSchema`) inside the real `NegotiationAuthor.invoke`.
+ * of the excluded LIVE_MODEL_SPECS set. `ScriptedNegotiationAuthor` overrides
+ * `NegotiationAuthor.invoke` itself, not just its `callModel` seam: `invoke`
+ * constructs its model before ever calling `callModel`, and that
+ * construction throws synchronously with no API key configured, so
+ * overriding `callModel` alone still isn't provider-free. Every scripted
+ * turn is still validated through the graph's own zod schemas
+ * (`NegotiationAuthoredTurnSchema`/`NegotiationOpeningTurnSchema`).
  *
  * A `turn` node that produces a *continuing* verb loops the graph straight
  * back into itself — the graph keeps authoring/dispatching until someone
@@ -41,16 +46,19 @@ class ScriptedNegotiationAuthor extends NegotiationAuthor {
     this.script = script;
   }
 
-  protected override async callModel(): Promise<unknown> {
+  /**
+   * Overrides `invoke` itself, not just `callModel` — `NegotiationAuthor.invoke`
+   * constructs its model via `createModel`/`createStructuredModel` before ever
+   * calling `callModel`, and that construction throws synchronously when no
+   * API key is configured. Genuinely provider-free means never reaching that
+   * construction at all, not just skipping the network call.
+   */
+  override async invoke(input: NegotiationAuthorInput): Promise<NegotiationAuthoredTurn> {
+    this.calls.push(input);
     const next = this.script[this.cursor];
     if (!next) throw new Error(`ScriptedNegotiationAuthor: no scripted turn left (call ${this.cursor + 1})`);
     this.cursor += 1;
-    return next;
-  }
-
-  override async invoke(input: NegotiationAuthorInput): Promise<NegotiationAuthoredTurn> {
-    this.calls.push(input);
-    return super.invoke(input);
+    return input.isOpening ? NegotiationOpeningTurnSchema.parse(next) : NegotiationAuthoredTurnSchema.parse(next);
   }
 }
 
