@@ -70,6 +70,9 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
 
   getNegotiationTask(taskId: string): Promise<NegotiationTaskRow | null>;
 
+  /** Every negotiation task where the given user is source or candidate. */
+  getNegotiationTasksForUser(userId: string): Promise<NegotiationTaskRow[]>;
+
   /** Transitions state and, for `paused`, records the reason/payload. Merges into metadata; other keys are untouched. */
   updateNegotiationTaskState(
     taskId: string,
@@ -93,6 +96,9 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
 
   /** Persists the resolve outcome artifact. */
   createNegotiationOutcomeArtifact(taskId: string, outcome: { verdict: 'pending' | 'reject'; reasoning?: string }): Promise<void>;
+
+  /** Reads back artifacts persisted for a task (e.g. the resolve outcome). */
+  getArtifactsForTask(taskId: string): Promise<Array<{ id: string; name: string | null; parts: unknown[]; metadata: Record<string, unknown> | null }>>;
 
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<{ id: string; status: OpportunityStatus } | null>;
 

@@ -145,11 +145,10 @@ export async function createChatTools(
     hydeGenerator
   ).createGraph();
   const negotiationGraph = deps.agentDispatcher
-    ? new NegotiationGraphFactory(
-        deps.negotiationDatabase,
-        deps.agentDispatcher,
-        deps.negotiationTimeoutQueue,
-      ).createGraph()
+    ? new NegotiationGraphFactory({
+        database: deps.negotiationDatabase,
+        dispatcher: deps.agentDispatcher,
+      }).createGraph()
     : undefined;
   const opportunityGraph = new OpportunityGraphFactory(
     database,
@@ -189,9 +188,8 @@ export async function createChatTools(
     cache,
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
+    ...(negotiationGraph && { negotiationGraph }),
     negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
-    // #1472: the open-question record behind the listing's park annotations.
-    ...(deps.negotiationListingPark && { negotiationListingPark: deps.negotiationListingPark }),
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     agentDispatcher: deps.agentDispatcher,
@@ -227,8 +225,8 @@ export async function createChatTools(
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);
   const agentTools = createAgentTools(defineTool, toolDeps);
-  const negotiationTools = deps.agentDispatcher
-    ? createNegotiationTools(defineTool, toolDeps)
+  const negotiationTools = negotiationGraph
+    ? createNegotiationTools(defineTool, { negotiationDatabase: deps.negotiationDatabase, negotiationGraph })
     : [];
   const premiseTools = createPremiseTools(defineTool, toolDeps);
 

@@ -2,7 +2,7 @@ import { createChatTools, type ChatTools, type ToolContext, type ResolvedToolCon
 import { focusedIntentId, type ToolScopeEnvelope } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
 import { buildNegotiatorSystemContent, type NegotiatorPromptOptions } from "./negotiator.prompt.js";
-import { createNegotiatorAnswerTools, createNegotiatorMemoryTools, createNegotiatorVerdictTools } from "./negotiator.tools.js";
+import { createNegotiatorMemoryTools, createNegotiatorVerdictTools } from "./negotiator.tools.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NEGOTIATOR PERSONA (P4.1)
@@ -124,19 +124,7 @@ export async function createNegotiatorTools(
       ...(deps.sessionId ? { sessionId: deps.sessionId } : {}),
     }));
   }
-  // #1466: `answer_pending_question` is the long-tail lane for a reply the
-  // deterministic precedence gate declined. Registered only in an
-  // intent-pinned session — an open question lives in one signal's DM, so a
-  // question number with no signal behind it would route nowhere — and only
-  // when the composition root injected the host.
   const pinnedIntentId = focusedIntentId(toolScope);
-  if (deps.negotiatorAnswerTools && pinnedIntentId) {
-    extra.push(...createNegotiatorAnswerTools({
-      host: deps.negotiatorAnswerTools,
-      userId: deps.userId,
-      intentId: pinnedIntentId,
-    }));
-  }
   // #1471: `reject_opportunity`/`accept_opportunity` are the owner's VERDICT
   // lane. Same conditionality and same reason as the answer tool: the
   // counterparties they act on are ONE signal's, listed and numbered in the

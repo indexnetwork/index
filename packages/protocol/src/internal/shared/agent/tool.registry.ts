@@ -8,7 +8,7 @@ import { Networks } from '../../../capabilities/networks.js';import { createOppo
 import { createOpportunityVerdictTools } from "../../opportunities/opportunity.verdict.tools.js";
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
-import { createAgentTools } from '../../agents/agent.tools.js';import { createNegotiationAnswerTools } from "../../negotiations/negotiation.answer.tools.js";
+import { createAgentTools } from '../../agents/agent.tools.js';
 import { createNegotiationTools } from "../../negotiations/negotiation.tools.js";
 import { createChatTools } from '../../chat/chat.tools.js';
 import { createPremiseTools } from '../../premises/premise.tools.js';
@@ -105,15 +105,14 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   // either surface (IND-605).
   createUtilityTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
   createAgentTools(dt, deps);
-  createNegotiationTools(dt, deps);
-  // The MCP question flow: the answer lane for parked negotiations and the
-  // owner's verdict tools. MCP-only, deliberately — the chat lane is the
-  // negotiator persona's appended toolset, and the REST Tool API's API-key
-  // principals must never gain an owner-verdict lever (IND-593: the
+  if (deps.negotiationGraph) {
+    createNegotiationTools(dt, { negotiationDatabase: deps.negotiationDatabase, negotiationGraph: deps.negotiationGraph });
+  }
+  // The MCP owner-verdict tools. MCP-only, deliberately — the REST Tool API's
+  // API-key principals must never gain an owner-verdict lever (IND-593: the
   // capability matrix admits verdicts for session humans only, and the
   // verdict handler re-checks the host-bound provenance).
   if (isMcpSurface) {
-    createNegotiationAnswerTools(dt, deps);
     createOpportunityVerdictTools(dt, deps);
   }
   createPremiseTools(dt, deps);

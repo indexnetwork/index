@@ -13,7 +13,8 @@ import type { Id } from '../../platform/database.js';
 import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type CandidateMatch } from './opportunity.state.js';
 import type { CandidateProfile, EvaluatorEntity, EvaluatorInput } from "./opportunity.evaluator.js";
 import type { OpportunityGraphDatabase, Opportunity } from '../../platform/database.js';
-import type { Embedder } from '../../platform/discovery/embedder.js';import type { NegotiationGraphLike } from "../negotiations/negotiation.state.js";import { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS } from "../../protocol/core.js";
+import type { Embedder } from '../../platform/discovery/embedder.js';
+import type { NegotiationGraphLike } from "../negotiations/negotiation.graph.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
@@ -172,20 +173,12 @@ export function errorSummary(result: unknown): string | undefined {
 /** Time window for persist-node dedup. Suppresses a second opportunity with the same person while a recent one (within 30 days) is still in flight, so a person is not re-surfaced multiple times within a month (EDG-23). */
 export const DEDUP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
-const ACTIVE_NEGOTIATION_TASK_STATES = new Set([
-  'submitted',
-  'working',
-  'input_required',
-  'waiting_for_agent',
-  'claimed',
-]);
+const ACTIVE_NEGOTIATION_TASK_STATES = new Set(['working', 'paused']);
+const ACTIVE_NEGOTIATION_TASK_FRESHNESS_MS = 5 * 60 * 1000;
 
 export function isActiveNegotiationTaskFresh(task: { state: string; updatedAt: Date }): boolean {
   if (!ACTIVE_NEGOTIATION_TASK_STATES.has(task.state)) return false;
-  const freshnessMs = task.state === 'input_required'
-    ? ASK_USER_WINDOW_MS + ASK_USER_LOCK_SLACK_MS
-    : 5 * 60 * 1000;
-  return Date.now() - new Date(task.updatedAt).getTime() < freshnessMs;
+  return Date.now() - new Date(task.updatedAt).getTime() < ACTIVE_NEGOTIATION_TASK_FRESHNESS_MS;
 }
 
 export function triggerForOwner(opportunity: Opportunity, ownerUserId: string): string | undefined {

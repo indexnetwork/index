@@ -10,19 +10,17 @@
  * `readResult` / `mutationResult` exactly as before.
  */
 
-import type { Id, NegotiationContinuationReceipt, OpportunityActor } from '../../platform/database.js';
+import type { Id, OpportunityActor } from '../../platform/database.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
-import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../../protocol/core.js";
+import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
-import { safeFallbackSummary } from "./opportunity.presentation.js";import { AMBIENT_PARK_WINDOW_MS } from "../negotiations/negotiation.tools.js";
-import { negotiateCandidates } from "../negotiations/negotiation.graph.js";
+import { safeFallbackSummary } from "./opportunity.presentation.js";
 import type { OpportunityMutationResult } from "./opportunity.lifecycle.js";
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
-import { negotiateExistingOpportunity } from "./opportunity.existing-negotiation.js";
-import { buildNetworkContexts, deleteLog, introEvaluationLog, introValidationLog, negotiateExistingLog, readLog, sendLog, updateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
+import { buildNetworkContexts, deleteLog, introEvaluationLog, introValidationLog, readLog, sendLog, updateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 import { persistNode } from "./opportunity.graph.persist-node.js";
 
 /** Identifies the caller and the opportunity every mutation mode acts on. */
@@ -263,7 +261,7 @@ export async function sendOpportunity(
  * Approve-introduction mode.
  * Called by the introducer to approve a latent introducer-pattern opportunity.
  * Sets approved=true on the introducer actor (status stays latent), then
- * enqueues a negotiate_existing job so the parties negotiate normally.
+ * queues a negotiation kickoff so the parties negotiate normally.
  */
 export async function approveIntroduction(
   deps: Pick<OpportunityGraphDeps, 'database' | 'queueNegotiateExisting'>,
@@ -278,85 +276,6 @@ export async function approveIntroduction(
   };
 }
 
-/**
- * Negotiate-existing mode: load an existing opportunity by ID and run bilateral negotiation.
- * Used after introducer approval to trigger the normal negotiation flow for a latent opportunity.
- */
-export async function negotiateExisting(
-  deps: Pick<OpportunityGraphDeps, 'database' | 'negotiationGraph' | 'queueNotification'>,
-  request: OpportunityMutationRequest & { continuation?: OpportunityState['options']['negotiationContinuation'] },
-): Promise<{ negotiationContinuationReceipt?: NegotiationContinuationReceipt; error?: string }> {
-  if (!request.opportunityId) return {};
-  if (!deps.negotiationGraph) {
-    negotiateExistingLog.warn('No negotiationGraph wired; skipping', {
-      opportunityId: request.opportunityId,
-    });
-    return {};
-  }
-
-  try {
-    const continuation = request.continuation;
-    const result = await negotiateExistingOpportunity(
-      deps.database,
-      async ({ sourceUser, candidate, indexContextOverrides, continuation: execution }) => {
-        let receipt: NegotiationContinuationReceipt | undefined;
-        // Deliberately no `initiatorUserId`: re-entries inherit the prior task's
-        // stamped seat in negotiation initialization, never re-deriving it here.
-        const acceptedResults = await negotiateCandidates(
-          deps.negotiationGraph!,
-          sourceUser,
-          [candidate],
-          { networkId: '', prompt: '' },
-          {
-            maxTurns: NEGOTIATION_MAX_TURNS_AMBIENT,
-            indexContextOverrides,
-            timeoutMs: AMBIENT_PARK_WINDOW_MS,
-            ...(execution ? {
-              resumeFromTaskId: execution.taskId,
-              continuationSettlementId: execution.settlementId,
-              continuationExecution: execution,
-              onCandidateResolved: async ({ continuationReceipt }) => {
-                if (continuationReceipt?.successorTaskId === execution.successorTaskId) receipt = continuationReceipt;
-              },
-            } : {}),
-          },
-        );
-        return { accepted: acceptedResults.length > 0, ...(receipt ? { receipt } : {}) };
-      },
-      { opportunityId: request.opportunityId, actorUserId: request.userId, continuation },
-      deps.queueNotification,
-      {
-        onNotificationFailure: ({ actorId, error }) => {
-          negotiateExistingLog.warn('Failed to queue notification', { actorId, error });
-        },
-      },
-    );
-
-    if (result.kind === 'skipped') {
-      const messages = {
-        not_found: 'Opportunity not found',
-        stale_continuation: 'Exact continuation actor binding is stale',
-        no_source_actor: 'No source actor found',
-        no_candidate_actor: 'No candidate actor found',
-      } as const;
-      negotiateExistingLog.warn(messages[result.reason], {
-        opportunityId: request.opportunityId,
-        ...(result.reason === 'stale_continuation' && continuation ? { taskId: continuation.taskId } : {}),
-      });
-      return {};
-    }
-
-    negotiateExistingLog.info('Negotiation complete', {
-      opportunityId: result.opportunityId,
-      accepted: result.accepted,
-      continuationFence: result.continuationFence,
-    });
-    return result.receipt ? { negotiationContinuationReceipt: result.receipt } : {};
-  } catch (err) {
-    negotiateExistingLog.error('Failed', { opportunityId: request.opportunityId, error: err });
-    return { error: `Failed to load opportunity: ${err instanceof Error ? err.message : String(err)}` };
-  }
-}
 
 /** What the caller supplies to create an introduction. */
 export interface IntroductionRequest {

@@ -6,7 +6,7 @@
  */
 
 import type { Opportunity } from './entities.js';
-import type { NegotiationGraphDatabase, NegotiationQueries } from './negotiation.js';
+import type { NegotiationGraphDatabase } from './negotiation.js';
 import type { Database } from '../database.js';
 import type { SystemDatabase, UserDatabase } from './port.js';
 
@@ -141,7 +141,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
 > & Pick<
-  NegotiationQueries,
+  NegotiationGraphDatabase,
   // Orphan heal in OpportunityGraph persist node
   | 'getNegotiationTaskForOpportunity'
 >;
@@ -201,7 +201,7 @@ export type OpportunityGraphDatabase = Pick<
   // IND-567: Rejection cool-down (optional — adapters may omit)
   | 'getRecentlyRejectedOpportunityCounterparties'
 > & Pick<
-  NegotiationQueries,
+  NegotiationGraphDatabase,
   // Orphan heal: check if a prior negotiating opportunity has a stale task
   | 'getNegotiationTaskForOpportunity'
 >;

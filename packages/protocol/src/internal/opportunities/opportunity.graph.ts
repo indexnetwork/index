@@ -10,7 +10,7 @@
  * - Non-indexed intents cannot participate in discovery
  *
  * The graph is the discovery pipeline and nothing else. Read, update, delete,
- * send, negotiate_existing, approve_introduction and the introduction path are
+ * send, approve_introduction and the introduction path are
  * plain functions in `opportunity.graph.modes.ts` — they never needed a state
  * machine, and routing them through one hid nine single-node paths behind a
  * conditional edge. Every node below is a top-level function taking the state
@@ -23,7 +23,8 @@ import { StateGraph, START, END } from '@langchain/langgraph';
 import { OpportunityGraphState } from './opportunity.state.js';
 import { OpportunityEvaluator } from "./opportunity.evaluator.js";
 import type { OpportunityGraphDatabase } from '../../platform/database.js';
-import type { Embedder } from '../../platform/discovery/embedder.js';import type { NegotiationGraphLike } from "../negotiations/negotiation.state.js";
+import type { Embedder } from '../../platform/discovery/embedder.js';
+import type { NegotiationGraphLike } from "../negotiations/negotiation.graph.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_SIMILARITY, validateDiscoveryEvaluatorMinScore, validateDiscoveryMinSimilarity } from './discovery.env.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
@@ -37,7 +38,6 @@ import { negotiateNode } from "./opportunity.graph.negotiate.js";
 
 export type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "./opportunity.newborn-stamping.js";
-export { buildPrioritizedNegotiationIntents } from "./opportunity.existing-negotiation.js";
 export {
   buildDiscovererContext,
   safeOpportunityGraphError,
@@ -46,14 +46,13 @@ export {
   type OpportunityGraphDeps,
   type OpportunityGraphThresholdOverrides,
 } from "./opportunity.graph.shared.js";
-import { approveIntroduction, createIntroduction, deleteOpportunity, negotiateExisting, readOpportunities, sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
+import { approveIntroduction, createIntroduction, deleteOpportunity, readOpportunities, sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
 
 export {
   approveIntroduction,
   createIntroduction,
   deleteOpportunity,
   evaluateIntroduction,
-  negotiateExisting,
   readOpportunities,
   sendOpportunity,
   updateOpportunityStatus,
@@ -140,11 +139,6 @@ export class OpportunityGraphFactory {
   /** Approve an introducer-pattern opportunity. Delegates to {@link approveIntroduction}. */
   public approveIntroduction(request: Parameters<typeof approveIntroduction>[1]) {
     return approveIntroduction(this.deps, request);
-  }
-
-  /** Negotiate an existing opportunity. Delegates to {@link negotiateExisting}. */
-  public negotiateExisting(request: Parameters<typeof negotiateExisting>[1]) {
-    return negotiateExisting(this.deps, request);
   }
 
   /** Validate → evaluate → persist an introduction. Delegates to {@link createIntroduction}. */

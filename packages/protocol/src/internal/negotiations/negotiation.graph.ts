@@ -160,6 +160,9 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
           round,
         },
       });
+      await deps.database.updateOpportunityStatus(input.opportunityId, "negotiating").catch((err) => {
+        logger.warn("Failed to set opportunity status to negotiating", { opportunityId: input.opportunityId, error: err });
+      });
       return { task, turns: [], phase: "turn" };
     }
 
