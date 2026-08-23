@@ -149,6 +149,43 @@ describe('OpportunityEvaluator', () => {
       expect(scoreFiltered).toHaveLength(0);
     });
 
+    it('keeps the model\'s actors on a not_accepted rejection under returnAll, unlike a guard drop', async () => {
+      const mockEntityBundleModel = {
+        invoke: async () => ({
+          verdicts: [
+            {
+              candidateId: 'user-2', accepted: false,
+              reasoning: 'Complementary-role mismatch.',
+              score: 15,
+              actors: [
+                { userId: 'user-1', role: 'peer', intentId: null },
+                { userId: 'user-2', role: 'peer', intentId: null },
+              ],
+            },
+          ],
+        }),
+      } as unknown as Runnable;
+      const evaluatorWithMock = new OpportunityEvaluator({ entityBundleModel: mockEntityBundleModel });
+      const input: EvaluatorInput = {
+        discovererId: 'user-1',
+        entities: [
+          { userId: 'user-1', profile: { name: 'Alice' }, networkId: 'idx-1' },
+          { userId: 'user-2', profile: { name: 'Bob' }, networkId: 'idx-1' },
+        ],
+      };
+
+      const returnAll = await evaluatorWithMock.invokeEntityBundle(input, { minScore: 70, returnAll: true });
+
+      expect(returnAll).toHaveLength(1);
+      expect(returnAll[0].rejection).toEqual({ candidateId: 'user-2', reason: 'not_accepted' });
+      // Unlike a guard drop, a not_accepted rejection keeps its actors — the
+      // caller may surface it as a fill when too few candidates pass.
+      expect(returnAll[0].actors).toEqual([
+        { userId: 'user-1', role: 'peer', intentId: null, evidenceKey: undefined },
+        { userId: 'user-2', role: 'peer', intentId: null, evidenceKey: undefined },
+      ]);
+    });
+
     it('retries once then fails closed when a batch omits a candidate verdict', async () => {
       let calls = 0;
       const mockEntityBundleModel = {

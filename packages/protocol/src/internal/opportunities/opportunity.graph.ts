@@ -170,7 +170,6 @@ export class OpportunityGraphFactory {
       // Conditional routing: early exit if no indexed intents
       .addConditionalEdges('prep', shouldContinueAfterPrep, {
         scope: 'scope',
-        evaluation: 'evaluation',
         [END]: END,
       })
 
@@ -213,13 +212,6 @@ function shouldContinueAfterPrep(state: OpportunityState): string {
   if (state.error) {
     routingLog.verbose('Error in prep - ending early');
     return END;
-  }
-  // Continuation mode: skip scope/resolve/discovery, go straight to evaluation
-  if (state.operationMode === 'continue_discovery') {
-    routingLog.verbose('Continue discovery → skipping to evaluation', {
-      candidatesLoaded: state.candidates.length,
-    });
-    return 'evaluation';
   }
   routingLog.verbose('Continuing to scope');
   return 'scope';

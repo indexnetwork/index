@@ -634,7 +634,6 @@ function introductionState(request: IntroductionRequest): OpportunityState {
     suggestedIntentDescription: undefined,
     hydeEmbeddings: {},
     candidates: [],
-    remainingCandidates: [],
     discoveryId: null,
     evaluatedCandidates: [],
     evaluatedOpportunities: [],

@@ -13,14 +13,15 @@ import { timed } from '../shared/observability/performance.js';
 import { withCandidateEvidence } from './opportunity.evidence.js';
 import { buildDiscovererContext, discoveryLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 import { collectHydeResults, computeLensStats, mergeStrategyCandidates, runQueryHydeDiscovery, toLensEmbeddings, type DiscoveryStrategyContext } from "./opportunity.graph.discovery-strategies.js";
+import { DISCOVERY_MIN_MATCHES } from './discovery.env.js';
 
 /** Trace entries accumulate in the order the frontend renders them. */
 type TraceEntry = { node: string; detail?: string; data?: Record<string, unknown> };
 
 // Search limits - fixed values for candidate retrieval
 // (The options.limit controls final output, not search pool)
-const LIMIT_PER_STRATEGY = 30;
-const PER_INDEX_LIMIT = 80;
+const LIMIT_PER_STRATEGY = 80;
+const PER_INDEX_LIMIT = 160;
 
 /**
  * Node 3: Discovery
@@ -296,28 +297,47 @@ async function discoverFromIntent(
   }
 
   const lensEmbeddings = toLensEmbeddings(hydeEmbeddings, lenses);
-  const allCandidates: CandidateMatch[] = [];
-  await Promise.all(
-    state.targetNetworks.map(async (targetIndex) => {
-      const results = await deps.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
-        indexScope: [targetIndex.networkId],
-        excludeUserId: discoveryUserId,
-        limitPerStrategy: ctx.limitPerStrategy,
-        limit: ctx.perIndexLimit,
-        minScore: deps.retrievalMinSimilarity,
-      });
-      allCandidates.push(...collectHydeResults(results, targetIndex.networkId));
-    })
-  );
+
+  const searchAllNetworks = async (minScore: number): Promise<CandidateMatch[]> => {
+    const found: CandidateMatch[] = [];
+    await Promise.all(
+      state.targetNetworks.map(async (targetIndex) => {
+        const results = await deps.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
+          indexScope: [targetIndex.networkId],
+          excludeUserId: discoveryUserId,
+          limitPerStrategy: ctx.limitPerStrategy,
+          limit: ctx.perIndexLimit,
+          minScore,
+        });
+        found.push(...collectHydeResults(results, targetIndex.networkId));
+      })
+    );
+    return found;
+  };
+
   const byUserAndIndex = new Map<string, CandidateMatch>();
-  for (const c of allCandidates) {
-    const key = `${c.candidateUserId}:${c.networkId}:intent:${c.candidateIntentId}`;
-    if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
-      byUserAndIndex.set(key, c);
+  const mergeIntoPool = (found: CandidateMatch[]) => {
+    for (const c of found) {
+      const key = `${c.candidateUserId}:${c.networkId}:intent:${c.candidateIntentId}`;
+      if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
+        byUserAndIndex.set(key, c);
+      }
     }
+  };
+
+  mergeIntoPool(await searchAllNetworks(deps.retrievalMinSimilarity));
+
+  // The similarity floor can be what keeps a small network under the match
+  // floor, not a genuine lack of members. Re-run without it once when the
+  // deduped pool doesn't have enough distinct users yet.
+  const distinctUsers = new Set(Array.from(byUserAndIndex.values()).map((c) => c.candidateUserId)).size;
+  const toppedUp = distinctUsers < DISCOVERY_MIN_MATCHES;
+  if (toppedUp) {
+    mergeIntoPool(await searchAllNetworks(0));
   }
+
   const candidates = Array.from(byUserAndIndex.values());
-  discoveryLog.verbose('Intent-path discovery complete', { candidatesFound: candidates.length });
+  discoveryLog.verbose('Intent-path discovery complete', { candidatesFound: candidates.length, toppedUp });
   const usedLenses = Object.keys(hydeEmbeddings);
 
   // Build trace with individual candidate similarity scores
@@ -343,6 +363,7 @@ async function discoverFromIntent(
       lenses: usedLenses,
       candidateCount: candidates.length,
       byLens: computeLensStats(candidates),
+      toppedUp,
       durationMs: Date.now() - startTime,
       model: getModelName("hydeGenerator"),
     },

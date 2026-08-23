@@ -502,7 +502,10 @@ describe('Opportunity Graph', () => {
 
       expect(searchSpy.mock.calls[0]?.[1]?.minScore).toBe(0.42);
       expect(evaluatorCalls[0]?.minScore).toBe(63);
-      expect(result.opportunities).toEqual([]);
+      // Below the evaluator threshold, so it never "passed" — but the pool has
+      // nothing else, so it fills the match floor with its own real score.
+      expect(result.opportunities).toHaveLength(1);
+      expect(parseFloat(result.opportunities[0].confidence)).toBeCloseTo(0.62, 5);
       expect(result.trace).toContainEqual(expect.objectContaining({
         node: 'threshold_filter',
         detail: expect.stringContaining('above 0.42'),
@@ -582,6 +585,60 @@ describe('Opportunity Graph', () => {
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
     });
 
+    test('tops up retrieval with no similarity floor when the pool has fewer than the match floor of users', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const firstPass = Array.from({ length: 3 }, (_, i) => ({
+        type: 'intent' as const,
+        id: `intent-first-${i}`,
+        userId: `${String(i).padStart(8, '0')}-0000-4000-8000-000000000000`,
+        score: 0.9 - i * 0.01,
+        matchedVia: 'mirror' as const,
+        networkId: 'idx-1',
+      }));
+      const toppedUp = Array.from({ length: 12 }, (_, i) => ({
+        type: 'intent' as const,
+        id: `intent-top-${i}`,
+        userId: `${String(i + 100).padStart(8, '0')}-0000-4000-8000-000000000000`,
+        score: 0.1,
+        matchedVia: 'mirror' as const,
+        networkId: 'idx-1',
+      }));
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockImplementation(
+        async (_lensEmbeddings, opts) => (opts?.minScore === 0 ? toppedUp : firstPass),
+      );
+
+      const result = (await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(searchSpy).toHaveBeenCalledTimes(2);
+      expect(searchSpy.mock.calls[1]?.[1]?.minScore).toBe(0);
+      const distinctUsers = new Set(result.candidates.map((c) => c.candidateUserId));
+      expect(distinctUsers.size).toBeGreaterThanOrEqual(10);
+    });
+
+    test('does not top up retrieval when the first pass already has enough distinct users', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const candidates = Array.from({ length: 12 }, (_, i) => ({
+        type: 'intent' as const,
+        id: `intent-${i}`,
+        userId: `${String(i).padStart(8, '0')}-0000-4000-8000-000000000000`,
+        score: 0.9 - i * 0.01,
+        matchedVia: 'mirror' as const,
+        networkId: 'idx-1',
+      }));
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
+
+      await compiledGraph.invoke({
+        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: {},
+      } as OpportunityGraphInvokeInput);
+
+      expect(searchSpy).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('Evaluation node: userId dedup', () => {
@@ -706,41 +763,7 @@ describe('Opportunity Graph', () => {
     });
   });
 
-  describe('Evaluation node: batching and continuation', () => {
-    // Evaluation fans a batch out into one call per candidate, so the batch
-    // boundary shows up as a call COUNT (25 per batch) rather than as one call
-    // carrying 25 entities.
-
-    test('when search is query-driven and remaining candidates have no query-sourced entries, remainingCandidates is empty', async () => {
-      // 5 query candidates come through HyDE search → tagged 'query'
-      // With EVAL_BATCH_SIZE=25, all 5 fit in one batch → remaining = 0
-      const queryCandidates = Array.from({ length: 5 }, (_, i) => ({
-        type: 'intent' as const,
-        id: `intent-query-${i}`,
-        userId: `${String(i + 1).padStart(8, '0')}-0000-4000-8000-0000000000a0`,
-        score: 0.9 - i * 0.01,
-        matchedVia: 'Painters' as const,
-        networkId: 'idx-1',
-      }));
-
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluatorResult: [],
-        thresholdOverrides: { evaluatorMinScore: 50 },
-      });
-
-      // HyDE search returns query candidates (tagged 'query' in discovery node)
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(queryCandidates);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'painters',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      // All query candidates consumed in one batch → remainingCandidates is empty
-      expect(result.remainingCandidates.length).toBe(0);
-    });
-
+  describe('Evaluation node: whole-pool evaluation and the match floor', () => {
     /** Distinct HyDE candidates, ranked by descending score. */
     const rankedCandidates = (count: number) =>
       Array.from({ length: count }, (_, i) => ({
@@ -752,106 +775,172 @@ describe('Opportunity Graph', () => {
         networkId: 'idx-1',
       }));
 
-    const passingVerdict = (candidateUserId: string) => ({
+    const SOURCE_USER_ID = 'a0000000-0000-4000-8000-000000000001';
+
+    const passingVerdict = (candidateUserId: string, score = 80) => ({
       reasoning: 'The candidate funds the stage and sector the source user is raising for.',
-      score: 80,
+      score,
       actors: [
-        { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
+        { userId: SOURCE_USER_ID, role: 'patient' as const, intentId: null },
         { userId: candidateUserId, role: 'agent' as const, intentId: null },
       ],
     });
 
+    /** A `not_accepted` verdict — carries actors, same as the real evaluator now does. */
+    const rejectedVerdict = (candidateUserId: string, score: number) => ({
+      reasoning: 'Complementary-role mismatch.',
+      score,
+      actors: [
+        { userId: SOURCE_USER_ID, role: 'peer' as const, intentId: null },
+        { userId: candidateUserId, role: 'peer' as const, intentId: null },
+      ],
+      rejection: { candidateId: candidateUserId, reason: 'not_accepted' as const },
+    });
+
+    /** A guard-dropped verdict — never carries actors, never a fill candidate. */
+    const guardDroppedVerdict = (
+      candidateUserId: string,
+      score: number,
+      reason: 'incomplete_actors' | 'unsupported_claim',
+    ) => ({
+      reasoning: 'Guard dropped this verdict.',
+      score,
+      actors: [],
+      rejection: { candidateId: candidateUserId, reason },
+    });
+
     /** Records the candidate ids handed to each evaluator call. */
-    const batchRecordingEvaluator = (
-      seenBatches: string[][],
-      verdictsFor: (candidateIds: string[]) => EvaluatedOpportunityWithActors[],
+    const recordingEvaluator = (
+      seenCalls: string[][],
+      verdictFor: (candidateId: string) => EvaluatedOpportunityWithActors[],
     ): OpportunityEvaluatorLike => ({
       invokeEntityBundle: async (input) => {
         const candidateIds = input.entities.slice(1).map((e) => e.userId);
-        seenBatches.push(candidateIds);
-        return verdictsFor(candidateIds);
+        seenCalls.push(candidateIds);
+        return candidateIds.flatMap(verdictFor);
       },
     });
 
-    test('evaluates the next batch when a batch passes nothing, so tail passers are still found', async () => {
-      // 30 candidates: the top 25 (one full batch) fail, a passer sits at rank 28.
+    test('evaluates every candidate in one round — a passer deep in the tail is still found', async () => {
+      // 30 candidates, one passer at rank 27 — no batch boundary to strand it behind.
       const candidates = rankedCandidates(30);
       const passerId = candidates[27].userId;
-      const seenBatches: string[][] = [];
+      const seenCalls: string[][] = [];
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: batchRecordingEvaluator(seenBatches, (ids) =>
-          ids.includes(passerId) ? [passingVerdict(passerId)] : [],
+        evaluator: recordingEvaluator(seenCalls, (id) =>
+          id === passerId ? [passingVerdict(id)] : [rejectedVerdict(id, 20)],
         ),
         thresholdOverrides: { evaluatorMinScore: 50 },
       });
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
 
       const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        userId: SOURCE_USER_ID as Id<'users'>,
         searchQuery: 'painters',
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      // One call per candidate: 25 in the first batch, 5 in the second.
-      expect(seenBatches).toHaveLength(30);
-      expect(seenBatches.flat()).toContain(passerId);
-      expect(result.evaluatedOpportunities).toHaveLength(1);
-      expect(result.remainingCandidates).toEqual([]);
+      // One round, every candidate evaluated — no batching.
+      expect(seenCalls).toHaveLength(30);
+      expect(seenCalls.flat()).toContain(passerId);
+      const passerActor = result.opportunities.flatMap((o) => o.actors).find((a) => a.userId === passerId);
+      expect(passerActor).toBeDefined();
     });
 
-    test('stops as soon as a batch passes, leaving the rest for pagination', async () => {
-      const candidates = rankedCandidates(30);
-      const passerId = candidates[3].userId;
-      const seenBatches: string[][] = [];
+    test('surfaces every passing candidate uncapped — more than the old 20-item ranking default', async () => {
+      const candidates = rankedCandidates(25);
+      const seenCalls: string[][] = [];
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: batchRecordingEvaluator(seenBatches, (ids) =>
-          ids.includes(passerId) ? [passingVerdict(passerId)] : [],
+        evaluator: recordingEvaluator(seenCalls, (id) => [passingVerdict(id, 90)]),
+        thresholdOverrides: { evaluatorMinScore: 50 },
+      });
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
+
+      const result = (await compiledGraph.invoke({
+        userId: SOURCE_USER_ID as Id<'users'>,
+        searchQuery: 'painters',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.opportunities).toHaveLength(25);
+    });
+
+    test('fills below the match floor with the best-scored rejects, tiebroken by similarity', async () => {
+      // 15 candidates ranked by similarity; only the top 3 pass.
+      const candidates = rankedCandidates(15);
+      const passerIds = new Set(candidates.slice(0, 3).map((c) => c.userId));
+      // Rejects get varied scores so the top 7 by score are deterministic.
+      const rejectScoreByIndex = new Map(candidates.slice(3).map((c, i) => [c.userId, 49 - i]));
+      const seenCalls: string[][] = [];
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluator: recordingEvaluator(seenCalls, (id) =>
+          passerIds.has(id) ? [passingVerdict(id, 90)] : [rejectedVerdict(id, rejectScoreByIndex.get(id)!)],
         ),
         thresholdOverrides: { evaluatorMinScore: 50 },
       });
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
 
       const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        userId: SOURCE_USER_ID as Id<'users'>,
         searchQuery: 'painters',
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      // The first batch passes, so the second never runs: 25 calls, not 30.
-      expect(seenBatches).toHaveLength(25);
-      expect(result.evaluatedOpportunities).toHaveLength(1);
-      // The 5 query-sourced candidates behind the batch stay available for pagination.
-      expect(result.remainingCandidates.length).toBe(5);
+      // 3 passed + 7 fills = 10, the match floor.
+      expect(result.opportunities).toHaveLength(10);
+      const counterpartIds = result.opportunities.map(
+        (o) => o.actors.find((a) => a.userId !== SOURCE_USER_ID)!.userId,
+      );
+      // The 7 fills are the top 7 rejects by score (ranks 3..9 of the reject pool).
+      const expectedFillIds = candidates.slice(3, 10).map((c) => c.userId);
+      for (const id of expectedFillIds) expect(counterpartIds).toContain(id);
+      // A fill's persisted confidence is its real (low) score, not the passing threshold.
+      const fillOpp = result.opportunities.find(
+        (o) => o.actors.find((a) => a.userId === expectedFillIds[0]),
+      );
+      expect(parseFloat(fillOpp?.confidence ?? 'NaN')).toBeCloseTo(rejectScoreByIndex.get(expectedFillIds[0])! / 100, 5);
     });
 
-    test('stops at the batch bound and reports the stranded tail honestly', async () => {
-      // 80 candidates, every one rejected: 3 batches of 25 run, 5 are never evaluated.
-      const candidates = rankedCandidates(80);
-      const seenBatches: string[][] = [];
+    test('never pads past the pool — a small rejected pool stays small', async () => {
+      const candidates = rankedCandidates(4);
       const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: batchRecordingEvaluator(seenBatches, () => []),
+        evaluator: recordingEvaluator([], (id) => [rejectedVerdict(id, 10)]),
         thresholdOverrides: { evaluatorMinScore: 50 },
       });
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
 
       const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
+        userId: SOURCE_USER_ID as Id<'users'>,
         searchQuery: 'painters',
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(seenBatches).toHaveLength(75);
-      expect(seenBatches.every((call) => call.length === 1)).toBe(true);
-      expect(result.evaluatedOpportunities).toEqual([]);
-      expect(result.remainingCandidates.length).toBe(5);
-      expect(result.trace).toContainEqual(expect.objectContaining({
-        node: 'evaluation_bound',
-        data: expect.objectContaining({
-          unevaluatedCandidates: 5,
-          evaluatedCandidates: 75,
-          batchesRun: 3,
+      expect(result.opportunities).toHaveLength(4);
+    });
+
+    test('guard-dropped verdicts never fill, even when the floor is unmet', async () => {
+      const candidates = rankedCandidates(5);
+      const [passer, ...rest] = candidates;
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluator: recordingEvaluator([], (id) => {
+          if (id === passer.userId) return [passingVerdict(id, 90)];
+          return [guardDroppedVerdict(id, 95, 'unsupported_claim')];
         }),
-      }));
+        thresholdOverrides: { evaluatorMinScore: 50 },
+      });
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
+
+      const result = (await compiledGraph.invoke({
+        userId: SOURCE_USER_ID as Id<'users'>,
+        searchQuery: 'painters',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      // Only the single passer — guard drops (even with a higher score) never fill.
+      expect(result.opportunities).toHaveLength(1);
+      const counterpartId = result.opportunities[0].actors.find((a) => a.userId !== SOURCE_USER_ID)?.userId;
+      expect(counterpartId).toBe(passer.userId);
+      void rest;
     });
   });
 
@@ -878,7 +967,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
     };
 
-    test('reports the model\'s own rejection with its score and reasoning', async () => {
+    test('reports the model\'s own rejection with its score and reasoning, and fills the floor with it', async () => {
       const result = await runWith(diagnosticEvaluator([{
         reasoning: 'Same-side match: both are seeking investment rather than offering it.',
         score: 12,
@@ -886,13 +975,17 @@ describe('Opportunity Graph', () => {
         rejection: { candidateId: CANDIDATE_ID, reason: 'not_accepted' },
       }]));
 
-      expect(result.evaluatedOpportunities).toEqual([]);
+      // The pool has exactly one candidate; with nothing passing, it fills the
+      // match floor with its own real (low) score rather than vanishing.
+      expect(result.evaluatedOpportunities).toHaveLength(1);
+      expect(result.evaluatedOpportunities[0].score).toBe(12);
       expect(result.trace).toContainEqual(expect.objectContaining({
         node: 'candidate',
         data: expect.objectContaining({
           userId: CANDIDATE_ID,
           score: 12,
           passed: false,
+          filled: true,
           rejectionReason: 'not_accepted',
           reasoning: 'Same-side match: both are seeking investment rather than offering it.',
         }),
@@ -1009,7 +1102,6 @@ describe('Opportunity Graph', () => {
       expect(evaluatorSpy).not.toHaveBeenCalled();
       expect(result.candidates).toEqual([]);
       expect(result.evaluatedOpportunities).toEqual([]);
-      expect(result.remainingCandidates).toEqual([]);
       expect(result.opportunities).toEqual([]);
     });
 
@@ -2950,6 +3042,10 @@ async function runDirectConnectionEval(): Promise<{ opportunities: Array<{ reaso
     const durationMs = Date.now() - start;
     totalDurationMs += durationMs;
     const opportunities = raw
+      // `rejection === undefined` is the persistable signal now — a not_accepted
+      // rejection carries real actors too (for the discovery match floor), so
+      // actor presence alone no longer distinguishes an accepted verdict.
+      .filter(op => op.rejection === undefined)
       .map(op => {
         const candidate = op.actors.find(a => a.userId !== DISCOVERER_ID);
         if (!candidate?.userId) return null;
