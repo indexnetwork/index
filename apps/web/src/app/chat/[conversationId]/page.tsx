@@ -212,7 +212,7 @@ export default function NegotiationDetailPage() {
               // rejected banner below: it says the same thing with the actual
               // reasoning, and stacking them would double-report one decision.
               <GateDecisionCard decision={gateDecision} counterpartName={counterpartName} />
-            ) : conversationMessages.length === 0 ? (
+            ) : conversationMessages.length === 0 && !resolvedVariant ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
                 <p className="text-sm">No messages in this negotiation</p>
               </div>

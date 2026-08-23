@@ -172,6 +172,55 @@ describe('Intent detail lifecycle', () => {
     expect(screen.getByText('No matches here yet.')).toBeInTheDocument();
   });
 
+  test('a slow initial Radar request cannot be superseded into a permanent skeleton by the live poll', async () => {
+    vi.useFakeTimers();
+    let resolveSkeleton!: (value: { items: Array<{ opportunityId: string; status: string }> }) => void;
+    let resolveFull!: (value: { items: Array<{ opportunityId: string; status: string }> }) => void;
+    mocks.getRadarView.mockImplementation((options?: { presentation?: string }) => {
+      if (options?.presentation === 'skeleton') {
+        return new Promise((resolve) => { resolveSkeleton = resolve; });
+      }
+      return new Promise((resolve) => { resolveFull = resolve; });
+    });
+
+    renderIntentPage();
+    expect(screen.getAllByTestId('opportunity-skeleton')).toHaveLength(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    // The passive poll waits for the initial load instead of invalidating its
+    // request sequence and leaving opportunitiesLoading stuck forever.
+    expect(mocks.getRadarView).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSkeleton({ items: [{ opportunityId: 'slow-opportunity', status: 'negotiating' }] });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('radar-card-slow-opportunity')).toBeInTheDocument();
+    expect(screen.queryByTestId('opportunity-skeleton')).toBeNull();
+    expect(mocks.getRadarView).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveFull({ items: [{ opportunityId: 'slow-opportunity', status: 'negotiating' }] });
+    });
+  });
+
+  test('a failed two-phase Radar fetch exits loading and offers a retry', async () => {
+    mocks.getRadarView.mockRejectedValue(new Error('radar unavailable'));
+    renderIntentPage();
+
+    expect(await screen.findByText('Radar couldn’t load opportunities.')).toBeInTheDocument();
+    expect(screen.queryByTestId('opportunity-skeleton')).toBeNull();
+
+    mocks.getRadarView.mockResolvedValue({ items: [] });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('No matches here yet.')).toBeInTheDocument();
+    expect(screen.queryByText('Radar couldn’t load opportunities.')).toBeNull();
+  });
+
   test('PAUSED renders static paused discovery, Resume with Play, and keeps the workspace', async () => {
     mocks.intent.status = 'PAUSED';
     renderIntentPage();
@@ -438,4 +487,3 @@ describe('intent lifecycle service', () => {
     await expect(service.setIntentStatus('intent-1', 'PAUSED')).rejects.toThrow('Invalid signal status response');
   });
 });
-

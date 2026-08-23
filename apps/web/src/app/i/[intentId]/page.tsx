@@ -311,6 +311,8 @@ export default function IntentDetailPage() {
   const activeIntentIdRef = useRef(intentId);
   const [opportunities, setOpportunities] = useState<RadarCardItem[]>([]);
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
+  const opportunitiesLoadingRef = useRef(true);
+  const [opportunitiesError, setOpportunitiesError] = useState(false);
   const [negotiationActivity, setNegotiationActivity] = useState<NegotiationActivityGroup[]>([]);
   const [negotiationActivityLoading, setNegotiationActivityLoading] = useState(true);
   const [negotiationActivityError, setNegotiationActivityError] = useState(false);
@@ -415,8 +417,22 @@ export default function IntentDetailPage() {
 
   const loadOpportunities = useCallback(async (preserveExisting = false) => {
     if (!intentId) return;
+    // The live 5s refresh must not supersede the initial two-phase load. If it
+    // does, the initial request's sequence becomes stale and its finally block
+    // cannot clear the loading state; the passive request then populates badge
+    // counts behind a permanent pair of skeleton cards.
+    if (preserveExisting && opportunitiesLoadingRef.current) return;
     const seq = ++loadSeqRef.current;
-    if (!preserveExisting) setOpportunitiesLoading(true);
+    if (!preserveExisting) {
+      opportunitiesLoadingRef.current = true;
+      setOpportunitiesLoading(true);
+      setOpportunitiesError(false);
+    }
+    const settleLoading = () => {
+      if (activeIntentIdRef.current !== intentId) return;
+      opportunitiesLoadingRef.current = false;
+      setOpportunitiesLoading(false);
+    };
     const applyItems = (items: RadarCardItem[]) => {
       // Every response is an authoritative snapshot for this exact intent.
       // Passive refreshes avoid loading flicker, but must still remove rows
@@ -440,7 +456,8 @@ export default function IntentDetailPage() {
         });
         if (seq !== loadSeqRef.current) return;
         applyItems(fast.items);
-        setOpportunitiesLoading(false);
+        setOpportunitiesError(false);
+        settleLoading();
       } catch {
         // Skeleton phase is best-effort — fall through to the full fetch.
       }
@@ -450,11 +467,16 @@ export default function IntentDetailPage() {
       const res = await opportunitiesService.getRadarView(baseOptions);
       if (seq !== loadSeqRef.current) return;
       applyItems(res.items);
+      setOpportunitiesError(false);
+      settleLoading();
     } catch {
       if (seq !== loadSeqRef.current) return;
-      if (!preserveExisting) setOpportunities([]);
+      if (!preserveExisting) {
+        setOpportunities([]);
+        setOpportunitiesError(true);
+      }
     } finally {
-      if (seq === loadSeqRef.current && !preserveExisting) setOpportunitiesLoading(false);
+      if (seq === loadSeqRef.current && !preserveExisting) settleLoading();
     }
   }, [intentId, opportunitiesService]);
 
@@ -1071,6 +1093,17 @@ export default function IntentDetailPage() {
                     <div className="space-y-3" data-testid="radar-skeleton">
                       <OpportunitySkeleton />
                       <OpportunitySkeleton />
+                    </div>
+                  ) : opportunitiesError && visibleOpportunities.length === 0 ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-6 text-center">
+                      <p className="font-ibm-plex-mono text-sm text-red-700">Radar couldn’t load opportunities.</p>
+                      <button
+                        type="button"
+                        onClick={() => void loadOpportunities()}
+                        className="mt-3 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                      >
+                        Try again
+                      </button>
                     </div>
                   ) : visibleOpportunities.length === 0 ? (
                     <div className="text-sm text-gray-500 font-ibm-plex-mono py-8 text-center border border-dashed border-gray-200 rounded-lg">
