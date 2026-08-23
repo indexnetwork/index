@@ -87,7 +87,7 @@ Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled p
 
 | File | Tools |
 |------|-------|
-| `internal/enrichment/enrichment.tools.ts` | `read_user_contexts`, `preview_user_context`, `confirm_user_context`, `create_user_context`, `update_user_context`, `complete_onboarding`³, `get_enrichment_run`, `cancel_enrichment_run` |
+| `internal/enrichment/enrichment.tools.ts` | `research_profile` |
 | `internal/premises/premise.tools.ts` | `create_premise`, `read_premises`, `update_premise`, `retract_premise` |
 | `internal/intents/intent.tools.ts` | `read_intents`, `create_intent`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index` |
 | `internal/networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
@@ -99,10 +99,9 @@ Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled p
 
 ¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — it is filtered out of regular chat sessions and only reachable over MCP.
 ² Negotiation tools are only registered when an `agentDispatcher` is provided.
-³ Chat/REST-only: `scrape_url` and `complete_onboarding` are omitted from the MCP registry entirely
-  (IND-596/597), as are the deprecated `*_user_profile`/`*_profile_run`
-  aliases (IND-598) — none of these are MCP tools. MCP does not gate on
-  web/CLI onboarding. On the MCP surface, agent administration follows the IND-599 split:
+³ Chat/REST-only: `scrape_url` is omitted from the MCP registry entirely
+  (IND-596/597). MCP does not gate on web/CLI onboarding. On the MCP surface,
+  agent administration follows the IND-599 split:
   registered agents get `read_own_agent` only; session humans get the owned
   admin tools but never `read_own_agent`; enrollment-capable keys are
   `register_agent`-only; unregistered keys fail closed.
@@ -181,33 +180,27 @@ flowchart TD
     Loop --> |Iteration 12| ForceExit([Force exit])
 ```
 
-### Example: "Set up my context"
+### Example: "Set up my profile"
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Agent as ChatAgent
-    participant PT as create_user_context
-    participant PG as Enrichment Graph
+    participant RP as research_profile
+    participant PL as Parallel (enricher)
 
-    User->>Agent: "Set up my context"
-    Agent->>PT: create_user_context({})
-    PT->>PT: Check user fields (name, email, URLs)
-    alt Missing name/email
-        PT-->>Agent: "Need name and LinkedIn URL"
-        Agent-->>User: "What's your full name and LinkedIn?"
-        User->>Agent: "John Doe, linkedin.com/in/johndoe"
-        Agent->>PT: create_user_context({name, linkedinUrl})
+    User->>Agent: "Set up my profile"
+    Agent->>RP: research_profile({})
+    RP->>PL: enrichUserProfile(name, email, socials)
+    Note over PL: public profile research — a suggestion, not a write
+    PL-->>RP: enrichment result
+    alt Confident human match
+        RP-->>Agent: {enriched: true, profile: {name, intro, location, socials}}
+        Agent-->>User: "Here's what I found — does this look right?"
+    else No confident match
+        RP-->>Agent: {enriched: false, profile: null}
+        Agent-->>User: "Tell me a bit about yourself"
     end
-    PT->>PG: invoke(userId, mode: write, forceUpdate: true)
-    Note over PG: scrape web for identity (constitutive context)
-    Note over PG: EnrichmentGenerator builds structured identity
-    Note over PG: create premises and regenerate user context
-    Note over PG: LensInferrer infers search lenses; HyDE Generator creates per-lens docs
-    Note over PG: embed HyDE docs
-    PG-->>PT: context created
-    PT-->>Agent: "Your context is ready"
-    Agent-->>User: "Your context is ready..."
 ```
 
 ### Example: "I'm looking for a React co-founder"

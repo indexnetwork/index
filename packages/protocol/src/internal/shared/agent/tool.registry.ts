@@ -22,10 +22,7 @@ const logger = protocolLogger('ToolRegistry');
 export interface CreateToolRegistryOptions {
   /**
    * Tool-surface profile. The default `'rest'` profile (direct HTTP Tool API)
-   * exposes `scrape_url` and `complete_onboarding`. The restricted `'mcp'`
-   * profile omits those surfaces (IND-596/597). Retired
-   * profile/profile-run compatibility aliases are absent from both profiles
-   * (IND-373/598).
+   * exposes `scrape_url`. The restricted `'mcp'` profile omits it (IND-596/597).
    */
   surface?: ToolSurface;
   /**

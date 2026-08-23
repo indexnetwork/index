@@ -48,7 +48,7 @@ const SAMPLE_USER_CONTEXT = "Alice is an AI researcher based in Berlin, interest
 
 describe("read_networks — onboarding orderedNetworkIds", () => {
   const baseDeps = {
-    getUserContextText: async () => SAMPLE_USER_CONTEXT,
+    userDb: { getUser: async () => ({ intro: SAMPLE_USER_CONTEXT, name: "Alice" }) },
     graphs: {
       index: {
         invoke: async () => ({
@@ -73,7 +73,7 @@ describe("read_networks — onboarding orderedNetworkIds", () => {
   });
 
   test("omits orderedNetworkIds when the user context is empty", async () => {
-    const deps = { ...baseDeps, getUserContextText: async () => "" };
+    const deps = { ...baseDeps, userDb: { getUser: async () => ({ intro: "", name: "" }) } };
     const tool = captureTool("read_networks", deps);
     const result = JSON.parse(
       await tool.handler({ context: makeOnboardingContext(), query: {} })
@@ -110,6 +110,7 @@ describe("read_networks — onboarding orderedNetworkIds", () => {
 describe("read_networks — field naming", () => {
   test("memberOf entries expose prompt not description", async () => {
     const deps = {
+      userDb: { getUser: async () => null },
       graphs: {
         index: {
           invoke: async () => ({
@@ -136,6 +137,7 @@ describe("read_networks — field naming", () => {
 
   test("owns entries expose prompt not description", async () => {
     const deps = {
+      userDb: { getUser: async () => null },
       graphs: {
         index: {
           invoke: async () => ({
@@ -162,6 +164,7 @@ describe("read_networks — field naming", () => {
 
   test("publicNetworks entries expose prompt not description", async () => {
     const deps = {
+      userDb: { getUser: async () => null },
       graphs: {
         index: {
           invoke: async () => ({

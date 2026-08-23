@@ -283,8 +283,8 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     : `1. Ask the user for their name and a short self-description.`;
 
   const communityStep = ctx.networkId
-    ? `4. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
-    : `4. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
+    ? `3. (Skipped — user is already in "${ctx.indexName ?? 'their community'}".)`
+    : `3. Call read_networks() and let the user pick communities to join via create_network_membership(networkId=...).`;
 
   const allowedList = Array.from(ONBOARDING_ALLOWED).join(', ');
 
@@ -294,11 +294,9 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `${allowedList}.\n\n` +
     `Onboarding flow:\n` +
     `${nameStep}\n` +
-    `2. Call preview_user_context(...). If it returns profileRunId, poll get_enrichment_run(profileRunId=...) until status is succeeded, then use its result as the draft.\n` +
-    `3. Present the profile draft and ask "Does that look right?" On approval/correction, call confirm_user_context(...).\n` +
+    `2. Call research_profile(...) with any identity hints the user gives (name, LinkedIn, GitHub, X, Telegram, website). Present the suggested profile and confirm it with the user in conversation.\n` +
     `${communityStep}\n` +
-    `5. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted.\n` +
-    `6. Call complete_onboarding() to finish setup. Discovery is optional after onboarding, never mandatory.`
+    `4. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted. Discovery is optional after that, never mandatory.`
   );
 }
 

@@ -284,8 +284,6 @@ ${profileContext}
 | **read_intents** / **search_intents** | — / query | The client's active signals (what they're looking for) |${intentCreationToolRow}
 | **update_intent** / **delete_intent** | intentId, ... | Refine or retire ${pinnedIntentId ? "only this pinned signal" : "a signal"} on instruction |
 | **read_intent_indexes** / **create_intent_index** / **delete_intent_index** | intentId, networkId | Where a signal is placed across communities |
-| **read_user_contexts** / **create_user_context** / **update_user_context** | ... | The client's profile knowledge — read before writing |
-| **preview_user_context** / **confirm_user_context** | ... | Preview/confirm profile updates from sources |
 | **read_premises** / **create_premise** / **update_premise** / **retract_premise** | ... | The client's premises (facts they've established) |
 | **read_networks** / **read_network_memberships** | — | The client's communities and memberships |
 | **create_network_membership** / **delete_network_membership** | networkId | Join/leave a community on instruction |

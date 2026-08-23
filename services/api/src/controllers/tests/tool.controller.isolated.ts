@@ -124,7 +124,7 @@ describe("ToolController Integration", () => {
     expect(status).toBe(200);
     expect(data.success).toBe(false);
     expect(data.error).toBe("Onboarding required");
-    expect(String(data.message)).toContain("complete_onboarding");
+    expect(String(data.message)).toContain("research_profile");
   }, 60_000);
 
   test("POST /tools/unknown_tool should return 404 error", async () => {
@@ -150,11 +150,11 @@ describe("ToolController Integration", () => {
     console.log("read_networks result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
-  test("POST /tools/read_user_contexts should return profile data", async () => {
-    const { status, data } = await invokeTool("read_user_contexts", {});
+  test("POST /tools/research_profile should return a result", async () => {
+    const { status, data } = await invokeTool("research_profile", {});
     expect(status).toBe(200);
     expect(data).toBeDefined();
-    console.log("read_user_contexts result:", JSON.stringify(data).slice(0, 200));
+    console.log("research_profile result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
   test("POST /tools/list_opportunities should return opportunities", async () => {
@@ -198,20 +198,6 @@ describe("ToolController Integration", () => {
   // in TypeScript but fail silently at runtime.
 
   describe("CLI tool call contracts", () => {
-
-    // ── Profile (CLI: profile search, show, create, update) ──────
-
-    test("read_user_contexts with query (CLI: profile search)", async () => {
-      const { status, data } = await invokeTool("read_user_contexts", { query: "nonexistent-xyz" });
-      expect(status).toBe(200);
-      expect(data.success).toBe(true);
-    }, 30_000);
-
-    test("read_user_contexts with userId (CLI: profile show via tool)", async () => {
-      const { status, data } = await invokeTool("read_user_contexts", { userId: testUserId });
-      expect(status).toBe(200);
-      expect(data.success).toBe(true);
-    }, 30_000);
 
     // ── Intent (CLI: intent update, link, unlink, links) ─────────
 
@@ -318,20 +304,12 @@ describe("ToolController Integration", () => {
     // ── Sync (CLI: sync) ─────────────────────────────────────────
 
     test("all sync tools accept empty query (CLI: sync)", async () => {
-      const syncTools = ["read_user_contexts", "read_networks", "read_intents"];
+      const syncTools = ["read_networks", "read_intents"];
       for (const toolName of syncTools) {
         const { status, data } = await invokeTool(toolName, {});
         expect(status).toBe(200);
         expect(data).toBeDefined();
       }
-    }, 60_000);
-
-    // ── Onboarding (CLI: onboarding complete) ────────────────────
-
-    test("complete_onboarding with empty query (CLI: onboarding complete)", async () => {
-      const { status, data } = await invokeTool("complete_onboarding", {});
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
     openRouterTest("create_intent with description (CLI: intent create)", async () => {
@@ -359,20 +337,5 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    openRouterTest("create_user_context with confirm (CLI: profile sync - no profile)", async () => {
-      const { status, data } = await invokeTool("create_user_context", {
-        confirm: true,
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 60_000);
-
-    openRouterTest("update_user_context with action (CLI: profile sync - has profile)", async () => {
-      const { status, data } = await invokeTool("update_user_context", {
-        action: "regenerate",
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 60_000);
   });
 });

@@ -580,18 +580,6 @@ final class NativeAPIRequestBridge {
             }
         }
     }
-    private static func validDraft(_ value: NativeJSONValue?) -> Bool {
-        exactTypedObject(value, required: ["identity", "narrative", "attributes"]) { draft in
-            exactTypedObject(draft["identity"], required: ["name", "bio", "location"]) { identity in
-                optionalString(identity, "name", maximum: 256) && optionalString(identity, "bio", maximum: 65_536)
-                    && optionalString(identity, "location", maximum: 512)
-            } && exactTypedObject(draft["narrative"], required: ["context"]) { narrative in
-                optionalString(narrative, "context", maximum: 65_536)
-            } && exactTypedObject(draft["attributes"], required: ["skills", "interests"]) { attributes in
-                boundedStringArray(attributes["skills"]) && boundedStringArray(attributes["interests"])
-            }
-        }
-    }
     private static func validMessageParts(_ value: NativeJSONValue?) -> Bool {
         guard case .array(let values) = value, !values.isEmpty, values.count <= 100 else { return false }
         return values.allSatisfy { item in
@@ -699,7 +687,8 @@ final class NativeAPIRequestBridge {
             }
         case let value where value.range(of: #"^/questions/[^/?]+/dismiss$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
-        case "/enrichment/enrich": return keysAllowed(body, allowed: enrichmentEnrichKeys())
+        case "/enrichment/enrich":
+            return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
         case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
         case "/auth/onboarding/complete": return keysAllowed(body, allowed: ["intentId"])
         case let value where value.range(of: #"^/agents/[^/?]+/tokens$"#, options: .regularExpression) != nil:

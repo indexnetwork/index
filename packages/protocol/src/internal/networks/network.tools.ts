@@ -217,9 +217,8 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       "**Returns:** Member list with user details, or membership list with network details, or a membership check result.\n\n" +
       "**Shared-context pattern.** To find overlap with another user: (1) omit `userId` to read your own " +
       "memberships, (2) call this tool with the other person's actual `userId` to get the shared networks, " +
-      "(3) call read_intents for each shared network to see what each is looking for there, (4) call " +
-      "read_user_contexts for the other party. That sequence gives you enough to decide whether to propose a " +
-      "direct connection or an introduction.",
+      "(3) call read_intents for each shared network to see what each is looking for there. That gives you " +
+      "enough to decide whether to propose a direct connection or an introduction.",
     querySchema: z.object({
       networkId: z.string().optional().describe("Network UUID — lists all members of this network. Get from read_networks. In network-scoped chats, only the scoped network can be queried."),
       userId: z.string().optional().describe("User ID — lists that user's network memberships. Omit to get the current user's memberships. When combined with networkId, checks if this user is in that specific network."),
@@ -571,7 +570,7 @@ export function createNetworkTools(defineTool: DefineTool, deps: NetworkToolDeps
       "**Returns:** Confirmation that the member was added (or a note that they were already a member). " +
       "After joining, the user's existing intents with autoAssign=true may be evaluated against the new network.",
     querySchema: z.object({
-      userId: z.string().optional().describe("User ID to add as a member. Omit to join the network yourself. Get user IDs from read_user_contexts(query=name) or read_network_memberships."),
+      userId: z.string().optional().describe("User ID to add as a member. Omit to join the network yourself. Get user IDs from read_network_memberships."),
       networkId: z.string().optional().describe("Network UUID to add the member to. Get from read_networks. Defaults to the scoped network in network-scoped chats."),
     }),
     handler: async ({ context, query }) => {
