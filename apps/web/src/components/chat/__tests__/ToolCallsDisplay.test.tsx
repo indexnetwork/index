@@ -6,9 +6,7 @@ import type { TraceEvent } from "@/contexts/AIChatContext";
 import { ToolCallsDisplay } from "../ToolCallsDisplay";
 
 const PROFILE_TOOL_LABELS = [
-  ["read_user_contexts", "Read profile", "Reading your profile..."],
-  ["create_user_context", "Create profile", "Creating your profile..."],
-  ["update_user_context", "Update profile", "Updating your profile..."],
+  ["research_profile", "Research profile", "Researching your public profile..."],
 ] as const;
 
 function toolEvents(name: string, complete: boolean): TraceEvent[] {

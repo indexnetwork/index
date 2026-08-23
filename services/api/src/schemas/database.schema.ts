@@ -534,29 +534,6 @@ export const opportunityDiscoveryRuns = pgTable('opportunity_discovery_runs', {
   expiresAtIdx: index('opportunity_discovery_runs_expires_at_idx').on(table.expiresAt),
 }));
 
-export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
-  operation: text('operation').notNull(),
-  status: discoveryRunStatusEnum('status').notNull().default('queued'),
-  input: jsonb('input').$type<Record<string, unknown>>().notNull(),
-  context: jsonb('context').$type<Record<string, unknown>>().notNull(),
-  progress: jsonb('progress').$type<Record<string, unknown>>(),
-  result: jsonb('result').$type<unknown>(),
-  error: text('error'),
-  cancelRequestedAt: timestamp('cancel_requested_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-}, (table) => ({
-  userCreatedIdx: index('enrichment_tool_runs_user_created_idx').on(table.userId, table.createdAt),
-  statusCreatedIdx: index('enrichment_tool_runs_status_created_idx').on(table.status, table.createdAt),
-  operationCreatedIdx: index('enrichment_tool_runs_operation_created_idx').on(table.operation, table.createdAt),
-  expiresAtIdx: index('enrichment_tool_runs_expires_at_idx').on(table.expiresAt),
-}));
-
 export interface QuestionDetection {
   mode: 'intent' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
   /** Internal generation purpose; stripped from public API responses. */

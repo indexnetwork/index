@@ -38,7 +38,7 @@ output with `setLoggerFactory()`. The package does not implement
 |-------|------|---------|
 | Chat | `internal/chat/chat.graph.ts` | ReAct agent loop — LLM calls tools, responds to user |
 | Intent | `internal/intents/graph/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
-| Enrichment | `internal/enrichment/enrichment.graph.ts` | Generate/update user identity with scraping and embedding (decomposes into premises) |
+| Enrichment | `internal/enrichment/enrichment.graph.ts` | Query-only: reports whether ACTIVE premises exist (enriched profile gate) |
 | Premise | `internal/premises/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `internal/opportunities/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
 | HyDE | `internal/discovery/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |
@@ -65,12 +65,9 @@ output with `setLoggerFactory()`. The package does not implement
 | Intent Reconciler | `internal/intents/inference/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
 | Intent Verifier | `internal/intents/verification/intent.verifier.ts` | Intent graph — classifies speech act type; scores felicity conditions and semantic entropy |
 | Intent Indexer | `internal/intents/indexing/intent.indexer.ts` | Intent Network graph — scores intent-network fit as relevancy score |
-| Enrichment Generator | `internal/enrichment/enrichment.generator.ts` | Enrichment graph — generates structured identity from raw data |
-| Enrichment Enricher | `internal/enrichment/enrichment.enricher.ts` | Identity enrichment — display name and metadata enrichment |
 | Premise Decomposer | `internal/premises/premise.decomposer.ts` | Premise graph — decomposes free text into atomic, first-person self-descriptive premises |
 | Premise Analyzer | `internal/premises/premise.analyzer.ts` | Premise graph — classifies the premise speech act (declarative/assertive) and scores felicity |
 | Premise Indexer | `internal/premises/premise.indexer.ts` | Premise graph — embeds premises and scores network fit for assignment |
-| User Context Generator | `internal/contexts/context.generator.ts` | Enrichment / UserContextQueue — synthesizes network-scoped context paragraphs from a user's premises |
 | Network Recommender | `internal/networks/network.recommender.ts` | Network flows — ranks networks against a user's synthesized context |
 | HyDE Generator | `internal/discovery/hyde.generator.ts` | HyDE graph — generates a hypothetical match document per lens, in the target corpus voice |
 | HyDE Strategies | `internal/discovery/hyde.strategies.ts` | HyDE graph — lens type re-exports and per-corpus prompt templates |
@@ -114,7 +111,7 @@ The system models human collaboration through a linguistic and information-theor
 |---------|-------------|
 | **User** | Session-authenticated identity with many intents and network memberships. Presentation identity lives on `users`; semantic discovery uses premises and user contexts. |
 | **Premise** | A **declarative or assertive speech act** about the self — an atomic, first-person proposition a user asserts about who they are ("I am a climate-tech founder", "I hold a PhD in computational biology"). Premises are *conditions of possibility*: facts that ground discovery, as opposed to intents, which are desires/requests. They are decomposed from enrichment input or free text, classified and felicity-scored by the Premise Analyzer, embedded, and assigned to networks. The premise graph (`internal/premises/premise.graph.ts`) owns their create/update/query lifecycle, and premise changes regenerate user contexts. |
-| **User Context** | A network-scoped synthetic paragraph synthesized from a user's premises by the `UserContextGenerator`, stored with its embedding. The opportunity graph uses contexts for **context-to-intent discovery** — it loads a user's contexts and searches for matching intents, running alongside premise-to-premise discovery as a complementary strategy. Regenerated whenever the user's premises change. |
+| **Premise** | A declarative or assertive speech act about the self — an atomic proposition a user asserts ("I am a climate-tech founder"). Premises are decomposed from profile saves or free text, embedded, and assigned to networks. They are the semantic discovery corpus. |
 | **Intent** | A **commissive** or **directive speech act** — what the user is seeking or offering. Modelled as a Specific Indefinite: a future state uniquely satisfiable by a matching candidate. Each intent carries a **semantic entropy** score (constraint density), a **referential anchor** (Donnellan referential/attributive mode), and **felicity condition** scores (preparatory/authority and sincerity). |
 | **Index** | A community scoped to a purpose. Has members with roles, an optional prompt for LLM-based evaluation, and a join policy. Discovery is network-scoped — opportunities only arise between intents that share an index. |
 | **Opportunity** | A **semantic intersection**: the point where a candidate's premises, user context, or intent satisfy the propositional content of a source intent. Scored by the Opportunity Evaluator using **valency** (argument-role fit) and **constraint satisfaction**. Presented with dual descriptions per **Grice's Maxim of Relation** — one framed for the source, one for the candidate. |
@@ -300,7 +297,7 @@ Handled by the **Premise Graph**, **Enrichment Graph**, and **User Context Gener
 1. **Decomposition**: `PremiseDecomposer` splits enrichment input or free text into atomic, first-person, non-redundant premises.
 2. **Analysis**: `PremiseAnalyzer` classifies each premise's speech act (declarative vs. assertive) and scores its felicity conditions — premises are the *constitutive* facts that establish what a user has the authority to do.
 3. **Indexing & assignment**: `PremiseIndexer` embeds each premise and scores network fit; the shared network-assignment policy (`internal/shared/assignment/network-assignment.policy.ts`) decides which networks the premise is assigned to.
-4. **Context synthesis**: premise changes cascade into the `UserContextGenerator`, which regenerates the user's network-scoped context paragraph (plus embedding and HyDE docs). Cold-start mode synthesizes from all premises; incremental mode applies a single add/update/retract/expire to the existing context.
+4. **Premise indexing**: premise changes are embedded and assigned to networks for discovery.
 5. **Discovery feed**: stored context embeddings power **context-to-intent discovery** in the opportunity graph, complementing premise-to-premise matching.
 
 ### HyDE Pipeline
@@ -364,7 +361,7 @@ interfaces in `internal/shared/interfaces/`. The canonical Drizzle schema lives 
 
 Core tables the protocol interfaces read/write:
 
-- **Identity, premises, and context**: `users` (name/bio/location), `user_socials`, `premises`, `premise_networks`, `user_contexts`
+- **Identity, premises**: `users` (name/bio/location), `user_socials`, `premises`, `premise_networks`
 - **Intents & networks**: `intents`, `networks`, `network_members`, `intent_networks`
 - **Opportunities & discovery**: `opportunities`, `hyde_documents`, `opportunity_discovery_runs`, `enrichment_tool_runs`, `questions`
 - **Agents**: `agents`, `agent_transports`, `agent_permissions`, `apikey`

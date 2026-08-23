@@ -287,11 +287,8 @@ export async function resolveChatContext(params: {
     database.getUser(userId),
     database.getProfile(userId),
     database.getNetworkMemberships(userId),
-    // The premise-derived global user_context paragraph. getProfile deliberately
-    // leaves `context` empty (WS8: narrative lives in user_contexts, not users);
-    // without this read the system prompt's only narrative is the stale onboarding
-    // bio, which resurrects facts the user has since retracted. Best-effort: a
-    // missing row or a minimal test adapter degrades to the empty string.
+    // Best-effort narrative for chat context. getProfile leaves `context` empty;
+    // getUserContext synthesizes a short paragraph from users.name/intro/location.
     Promise.resolve()
       .then(() => database.getUserContext?.(userId, null))
       .catch(() => null),
