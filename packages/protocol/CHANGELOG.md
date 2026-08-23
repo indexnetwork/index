@@ -20,6 +20,24 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 28.1.0 - 2026-08-23
+
+### Changed
+
+- **A pre-contact consult that comes back `ok` now decides the opening
+  instead of merely offering the agent another draft.** Previously, once the
+  client answered the one question the initiator paused to ask, the resumed
+  turn-0 decision was entirely re-drafted: an agent that still held a
+  withdraw-worthy concern it never asked the client about (e.g. a location
+  preference read from the profile rather than the signal) could withdraw
+  anyway, seconds after the client answered the thing it did ask, with the
+  counterparty never contacted. Now, if the resumed turn drafts `withdraw`
+  and the dimension actually asked about reconciled to `ok`, the graph
+  overrides the draft to `outreach` — an unasked concern belongs in the
+  exchange with the counterparty's agent, not in a quiet screen-out the
+  client was never asked to weigh in on. A `conflict` or still-`unknown`
+  answer leaves the withdraw standing, unchanged.
+
 ## 28.0.0 - 2026-08-22
 
 ### Removed

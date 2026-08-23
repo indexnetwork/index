@@ -546,6 +546,33 @@ export async function turnNode(state: NegotiationState, deps: NegotiationGraphDe
     // to the policy.
     const agentDraftedAsk = turn.action === 'ask_user' && !!turn.askUser;
 
+    // A pre-contact resume whose answered dimension came back `ok` decides the
+    // opening — it does not merely get to redraft it. The agent declared, when
+    // it wrote `answerhood.ok_when` for that dimension, that this answer
+    // settles the opening; a concern it did not ask the client about (the
+    // withdraw's own `reasoning` may name one) is not grounds to let the match
+    // pass now — it belongs in the exchange with the counterparty's agent, not
+    // in a refusal the client was never asked to weigh in on. Only the
+    // dimension actually asked about controls this: a `conflict` or a still-
+    // `unknown` answer leaves the withdraw standing, and it flows into the
+    // guard below exactly as before.
+    if (isPreContactResume && turn.action === 'withdraw' && !contactMade) {
+      const lastAskUserTurn = [...history].reverse().find((prior) => prior.action === 'ask_user' && prior.askUser?.dimension);
+      const askedDimension = lastAskUserTurn?.askUser?.dimension;
+      const reconciledDimension = askedDimension
+        ? nextChecklist.find((item) => dimensionKey(item.name) === dimensionKey(askedDimension))
+        : undefined;
+      if (reconciledDimension?.result === 'ok') {
+        turnLog.warn('negotiation_post_consult_withdraw_overridden', {
+          taskId: state.taskId,
+          opportunityId: state.opportunityId || undefined,
+          seat,
+          dimension: askedDimension,
+        });
+        turn = { ...turn, action: 'outreach' };
+      }
+    }
+
     // IND-564 / IND-611: the opening-withdraw guard runs BEFORE the turn-0
     // opening force below. Order matters and used to be inverted: the force
     // rewrote a turn-0 `withdraw` into `outreach` first, which (a) made this

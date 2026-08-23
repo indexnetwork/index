@@ -13,7 +13,7 @@ import ResolvedBanner, { type ResolvedBannerVariant } from '@/components/negotia
 import GateDecisionCard from '@/components/negotiations/GateDecisionCard';
 import { resolveGateDecision } from '@/components/negotiations/gate-decision';
 import { useTickingNow } from '@/components/negotiations/use-ticking-now';
-import { deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySession, terminalTurnAuthor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
+import { contactTurns, deriveSectionLabel, extractTurn, formatRelativeTime, groupTurnsBySession, terminalTurnAuthor, viewerRoleLabel, type TranscriptTurn } from '@/components/negotiations/negotiation-turns';
 
 // `agent_error` joins the stall reasons rather than the reject ones: a run
 // that stopped on repeated agent failures decided nothing, so it must never
@@ -129,12 +129,14 @@ export default function NegotiationDetailPage() {
 
   const showOutcomeBanner = !resolvedVariant && effectiveOpportunityStatus === 'pending' && !!opportunityId;
 
+  const contactedTurns = useMemo(() => contactTurns(turns), [turns]);
+
   // Whether this thread shows any agent message at all — the one fact that can
   // falsify the `screened_out` banner's pre-contact copy, read from the same
   // transcript the banner renders beneath. Conversation-wide on purpose: the
   // claim is about what the reader can see above the banner, and every turn in
   // the rail is visible regardless of which session produced it.
-  const contactMade = turns.length > 0;
+  const contactMade = contactedTurns.length > 0;
 
   // Who ended it, read from the same turns the banner renders above — and from
   // the LATEST session's turns, because that is the negotiation the banner is
@@ -158,13 +160,13 @@ export default function NegotiationDetailPage() {
   // banner for one frame before the card replaces it.
   const gateDecision = useMemo(
     () => resolveGateDecision({
-      turnCount: turns.length,
+      turnCount: contactedTurns.length,
       outcomeReason,
       // Screen decisions are intentionally only projected for the latest task
       // and its owner; an explicitly selected opportunity cannot inherit one.
       screenDecision: selectedOpportunity ? null : conversation?.negotiation?.screenDecision ?? null,
     }),
-    [turns.length, outcomeReason, selectedOpportunity, conversation?.negotiation?.screenDecision],
+    [contactedTurns.length, outcomeReason, selectedOpportunity, conversation?.negotiation?.screenDecision],
   );
 
   return (

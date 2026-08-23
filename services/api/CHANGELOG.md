@@ -65,6 +65,14 @@ section before promoting to `main`).
 - Move the raw-SQL maintenance-write guidance for `src/cli/` into a nested `AGENTS.md`, so it loads whenever those files are open instead of depending on a skill description matching the prompt. No runtime change.
 
 ### Fixed
+- Stop the IntentAgent reply stage from claiming acts it never executed. Seen
+  in dev: a client message that read as an answer was judged `wait` (it did
+  not resolve any waiting negotiation), and the reply stage then told the
+  client "I've reached out to [counterparty] to get more specific details" —
+  nothing was sent. Both `INTENT_AGENT_REPLY_INSTRUCTION` and the rendered
+  turn context now say explicitly, when the only executed act on a client
+  message was `wait`, that nothing was sent, no one was contacted, and
+  whatever the message might have answered still stands unresolved.
 - Allow owners to confirm a manually edited Signal proposal by re-verifying the
   edited description and atomically replacing the pending proposal's
   authoritative payload and analysis before confirmation. Network mismatches,

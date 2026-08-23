@@ -621,7 +621,7 @@ ${input.otherUser.intents.map((i) => `- ${i.title}: ${i.description}`).join("\n"
 Why this match was suggested: ${input.seedAssessment.reasoning}${hasPriorDialogue ? priorDialogueContext : historyText}${clientDmContext}${userAnswersContext}${privateConsultationContext}${checklistContext}
 ${discoveryQueryReminder}
 ${preContactResume
-  ? `You paused this opening turn to ask ${userName} the one thing you could not decide without. Their answer is above. Take the opening decision now: "outreach" to make the case, or "withdraw" to let the match pass without ever contacting ${otherName}.`
+  ? `You paused this opening turn to ask ${userName} the one thing you could not decide without. Their answer is above. Take the opening decision now: "outreach" to make the case, or "withdraw" to let the match pass without ever contacting ${otherName}. If the answer settles what you asked about the way you said it would, reach out — a concern you did not ask ${userName} about is not grounds to withdraw now; raise it with ${otherName}'s agent instead.`
   : input.history.length === 0 && !input.isContinuation
     ? (seat === "initiator"
         ? (preContactConsult
