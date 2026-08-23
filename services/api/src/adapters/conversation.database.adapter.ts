@@ -10,7 +10,7 @@ type NegotiationCounterpartyBinding =
 import { projectOwnerScreenDecision } from './negotiation-lifecycle.projection';
 import { selectRepresentedNegotiationSession } from './negotiation-session-rollup.projection';
 import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
-import { readUserContext, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
+import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, isNull, lt, ne, opportunities, or, sql } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
@@ -500,8 +500,13 @@ export class ConversationDatabaseAdapter {
    * Retrieve a single user_context row (global when networkId is null), or null.
    * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the negotiation graph.
    */
-  async getUserContext(userId: string, networkId: string | null) {
-    return readUserContext(userId, networkId);
+  async getUserContext(userId: string, _networkId: string | null) {
+    const profile = await buildProfileFromUser(userId);
+    if (!profile) return null;
+    const text = [profile.identity.bio, profile.identity.name, profile.identity.location]
+      .map((s) => s?.trim()).filter(Boolean).join(' ');
+    if (!text) return null;
+    return { id: userId, text, embedding: [] as number[], premiseHash: '', generatedAt: new Date() };
   }
 
   // ─────────────────────────────────────────────────────────────────────────

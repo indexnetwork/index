@@ -46,9 +46,15 @@ export const PremiseGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  operationMode: Annotation<'create' | 'update' | 'query'>({
+  operationMode: Annotation<'create' | 'update' | 'query' | 'decompose'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'create',
+  }),
+
+  /** Free text to decompose into premises (decompose mode only). */
+  input: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
 
   /** Focused request scope type for assignment writes. */

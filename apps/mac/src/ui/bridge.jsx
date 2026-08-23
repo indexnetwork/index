@@ -340,29 +340,23 @@ window.IndexApp = (function () {
     return networks.map((n) => mapNetworkEntry(n, user, n.isMember === true));
   }
 
-  // ---- tools + enrichment -------------------------------------------------
+  // ---- enrichment + onboarding REST ---------------------------------------
 
-  // Exact onboarding tool wrappers. No page API accepts a tool name.
-  function readUserContexts() {
+  function confirmOnboardingProfile() {
     const c = getClient();
-    return c ? c.tools.readUserContexts() : Promise.reject(new Error("no api client"));
+    return c ? c.auth.confirmOnboardingProfile() : Promise.reject(new Error("no api client"));
   }
-  function previewUserContext(query) {
+  function completeOnboarding(intentId) {
     const c = getClient();
-    return c ? c.tools.previewUserContext(query || {}) : Promise.reject(new Error("no api client"));
-  }
-  function confirmUserContext(draft) {
-    const c = getClient();
-    return c ? c.tools.confirmUserContext(draft) : Promise.reject(new Error("no api client"));
+    const body = intentId ? { intentId } : {};
+    return c ? c.auth.completeOnboarding(body) : Promise.reject(new Error("no api client"));
   }
 
-  // Run the full public-research enrichment inline (POST /enrichment/enrich) and
-  // resolve { enriched, profile:{ name, intro, location, socials } } so callers
-  // can display discovered socials immediately. Other enrichment is automatic.
-  function triggerEnrichment() {
+  // Run public profile prefill (POST /enrichment/enrich) for the authenticated user.
+  function triggerEnrichment(hints) {
     const c = getClient();
     if (!c) return Promise.reject(new Error("no api client"));
-    return c.enrichment.trigger();
+    return c.enrichment.trigger(hints || {});
   }
 
   // ---- bounded native SSE -------------------------------------------------
@@ -638,9 +632,8 @@ window.IndexApp = (function () {
     setNotifyPrefs,
     notifyPrefs,
     startDesktopNotifications,
-    readUserContexts,
-    previewUserContext,
-    confirmUserContext,
+    confirmOnboardingProfile,
+    completeOnboarding,
     triggerEnrichment,
   };
 })();

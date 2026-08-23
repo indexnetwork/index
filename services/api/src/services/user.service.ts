@@ -2,7 +2,7 @@ import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
-import { enrichmentQueue } from '../queues/enrichment.queue';
+import { premiseQueue } from '../queues/premise.queue';
 
 const logger = log.service.from("UserService");
 
@@ -16,8 +16,6 @@ export interface UserServiceDeps {
   getPremisesBySource?: (userId: string, source: string) => Promise<Array<{ id: string }>>;
   /** Retract a single premise (set status RETRACTED + retractedAt). Lifecycle events fire in the DB adapter. */
   retractPremise?: (premiseId: string) => Promise<void>;
-  /** Enqueue an enrichment job to rebuild premises from updated socials. */
-  enqueueEnrichment?: (userId: string) => Promise<void>;
 }
 
 /**
@@ -81,7 +79,17 @@ export class UserService {
 
     async update(userId: string, data: Partial<User>) {
         logger.verbose('Updating user', { userId, fields: Object.keys(data) });
-        return this.db.update(userId, data);
+        const result = await this.db.update(userId, data);
+        if ('name' in data || 'intro' in data || 'location' in data) {
+            this.enqueuePremisesFromProfile(userId);
+        }
+        return result;
+    }
+
+    private enqueuePremisesFromProfile(userId: string): void {
+        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
+            logger.error('Failed to enqueue premise rebuild after profile update', { userId, error: err }),
+        );
     }
 
     /** Update an owned intent through the normal material-update chokepoint. */
@@ -136,8 +144,7 @@ export class UserService {
 
     /**
      * Retract all `source='integration'` premises for a user whose social URLs
-     * changed, then fire-and-forget a re-enrichment job to rebuild from the new
-     * social set.
+     * changed, then rebuild premises from the saved profile.
      *
      * Retraction and re-enrichment are a pair: retracting without re-enriching
      * leaves the user with no active premises at all, which silently strips
@@ -158,13 +165,9 @@ export class UserService {
             this.deps?.retractPremise ??
             (async (id: string) => { await chatDatabaseAdapter.updatePremise(id, { status: 'RETRACTED', retractedAt: new Date() }); });
 
-        const enqueueEnrichment =
-            this.deps?.enqueueEnrichment ??
-            (async (uid: string) => { await enrichmentQueue.addEnrichUserJob({ userId: uid, reason: 'socials_updated' }); });
-
         const toRetract = await getPremisesBySource(userId, 'integration');
 
-        logger.verbose('Retracting integration premises before re-enrich', {
+        logger.verbose('Retracting integration premises before premise rebuild', {
             userId,
             count: toRetract.length,
         });
@@ -174,8 +177,8 @@ export class UserService {
         }
 
         // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
-        enqueueEnrichment(userId).catch(err =>
-            logger.error('Failed to enqueue re-enrichment after social update', {
+        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
+            logger.error('Failed to enqueue premise rebuild after social update', {
                 userId,
                 error: err,
             }),

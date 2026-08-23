@@ -272,8 +272,9 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
         ("GET", #"^/questions(?:\?.*)?$"#),
         ("POST", #"^/questions/[^/?]+/(?:answer|dismiss)$"#),
-        ("POST", #"^/tools/(?:read_user_contexts|preview_user_context|confirm_user_context)$"#),
         ("POST", #"^/enrichment/enrich$"#),
+        ("POST", #"^/auth/onboarding/confirm-profile$"#),
+        ("POST", #"^/auth/onboarding/complete$"#),
         ("GET", #"^/notifications/snapshot$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
@@ -698,17 +699,9 @@ final class NativeAPIRequestBridge {
             }
         case let value where value.range(of: #"^/questions/[^/?]+/dismiss$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
-        case "/tools/read_user_contexts":
-            return exactTypedObject(body, required: ["query"]) { keysAllowed($0["query"], allowed: []) }
-        case "/tools/preview_user_context":
-            return exactTypedObject(body, required: ["query"]) { item in
-                exactTypedObject(item["query"], optional: ["linkedinUrl", "githubUrl", "twitterUrl", "bioOrDescription"]) { query in
-                    query.keys.allSatisfy { optionalString(query, $0, maximum: $0 == "bioOrDescription" ? 65_536 : 2_048) }
-                }
-            }
-        case "/tools/confirm_user_context":
-            return exactTypedObject(body, required: ["query"]) { item in exactTypedObject(item["query"], required: ["draft"]) { validDraft($0["draft"]) } }
-        case "/enrichment/enrich": return keysAllowed(body, allowed: [])
+        case "/enrichment/enrich": return keysAllowed(body, allowed: enrichmentEnrichKeys())
+        case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
+        case "/auth/onboarding/complete": return keysAllowed(body, allowed: ["intentId"])
         case let value where value.range(of: #"^/agents/[^/?]+/tokens$"#, options: .regularExpression) != nil:
             // Empty object or omitted name: createToken defaults the label server-side.
             if body == nil { return true }

@@ -30,12 +30,6 @@ export const SIGNAL_TOOL_NAMES = [
   "read_intent_indexes",
   "create_intent_index",
   "delete_intent_index",
-  // User/profile context.
-  "read_user_contexts",
-  "preview_user_context",
-  "confirm_user_context",
-  "create_user_context",
-  "update_user_context",
   // Premise knowledge.
   "read_premises",
   "create_premise",
@@ -161,17 +155,6 @@ export function narrowSignalTools(
           schema: z.object({
             includeRetracted: z.boolean().optional().default(false),
           }),
-        },
-      );
-    }
-
-    if (sharedTool.name === "read_user_contexts") {
-      return tool(
-        async () => sharedTool.invoke({}) as Promise<string>,
-        {
-          name: "read_user_contexts",
-          description: "Read only the current user's identity and synthesized profile context.",
-          schema: z.object({}),
         },
       );
     }

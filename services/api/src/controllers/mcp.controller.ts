@@ -7,7 +7,6 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 import { cacheAdapter, hydeCacheAdapter } from '../adapters/cache.adapter';
-import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
@@ -22,8 +21,6 @@ import { enqueueParkedQuestion } from '../queues/parked-question.enqueue';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
-import { enrichmentRunQueue } from '../queues/enrichment-run.queue';
 import db from '../lib/drizzle/drizzle';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
@@ -99,15 +96,12 @@ const protocolDeps = {
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
   // route; threaded into chat tools by the protocol chat factory.
   opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
-  enrichmentRuns: enrichmentRunAdapter,
-  enrichmentRunQueue,
   negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
-  getUserContextText: ensureGlobalUserContext,
   // Park-path payloads route to the question-message regeneration job
   // (conversational-questions delivery spine); retired families are dropped.
   questionerEnqueue: enqueueParkedQuestion,
@@ -181,7 +175,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, premiseGraph).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(database).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -699,9 +693,6 @@ function createMcpServerInstance(): McpServer {
       userId: report.userId,
     }),
     mcpRateLimiter: (input) => checkMcpRateLimit(input),
-    getUserContextText: ensureGlobalUserContext,
-    enrichmentRuns: protocolDeps.enrichmentRuns,
-    enrichmentRunQueue: protocolDeps.enrichmentRunQueue,
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     intentProposalStore: protocolDeps.intentProposalStore,

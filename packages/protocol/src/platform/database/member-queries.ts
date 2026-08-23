@@ -90,26 +90,6 @@ export interface DatabaseMemberQueries {
   }>>;
 
   /**
-   * Cosine similarity search against user_context embeddings, scoped to shared networks.
-   * Matches only per-network context rows (the global networkId-null row is never a
-   * candidate), excluding the discovering user. Optional — lightweight-mode
-   * context-to-context discovery no-ops when the adapter omits it.
-   */
-  searchUserContextsBySimilarity?(params: {
-    embedding: number[];
-    networkIds: string[];
-    excludeUserId: string;
-    limit: number;
-    minScore?: number;
-  }): Promise<Array<{
-    contextId: string;
-    userId: string;
-    networkId: string;
-    text: string;
-    similarity: number;
-  }>>;
-
-  /**
    * Batched version of premise similarity search. Executes one bounded DB call
    * for all selected source premises instead of one query per source premise.
    * Optional for older/test adapters; OpportunityGraph falls back to the
@@ -144,24 +124,10 @@ export interface DatabaseMemberQueries {
     threshold: number;
   }): Promise<{ premiseId: string; assertionText: string; similarity: number } | null>;
 
-  // ─── User Context Methods ───
+  // ─── Profile context for intent discovery ───
 
   /**
-   * Upsert a user context. Pass a concrete `networkId` for a per-network row, or
-   * `null` for the user's single global (profile-replacing) context row.
-   * Creates or updates the synthesized context paragraph + embedding.
-   */
-  upsertUserContext(params: {
-    userId: string;
-    networkId: string | null;
-    text: string;
-    embedding: number[];
-    premiseHash: string;
-  }): Promise<{ id: string }>;
-
-  /**
-   * Get the user context for a specific user+network pair, or the global row when
-   * `networkId` is `null`.
+   * Profile text for a user (sourced from the users row). Used by context-to-intent discovery.
    */
   getUserContext(userId: string, networkId: string | null): Promise<{
     id: string;
@@ -170,19 +136,6 @@ export interface DatabaseMemberQueries {
     premiseHash: string;
     generatedAt: Date;
   } | null>;
-
-  /**
-   * Get user contexts for a user across all their networks. Includes the global
-   * row (`networkId: null`) when present.
-   */
-  getUserContexts(userId: string): Promise<Array<{
-    id: string;
-    networkId: string | null;
-    text: string;
-    embedding: number[];
-    premiseHash: string;
-    generatedAt: Date;
-  }>>;
 
   /**
    * Cosine similarity search against intent embeddings using a context embedding.

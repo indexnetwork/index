@@ -160,7 +160,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, sessions, userSocials, userContexts } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -710,19 +710,6 @@ export interface ConversationSummary {
  */
 
 // ── De-duplicated query helpers (formerly copy-pasted across adapters) ──
-export async function readUserContext(userId: string, networkId: string | null) {
-  const rows = await db.select()
-    .from(userContexts)
-    .where(and(
-      eq(userContexts.userId, userId),
-      networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
-    ))
-    .limit(1);
-  if (rows.length === 0) return null;
-  const r = rows[0];
-  return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
-}
-
 export async function readPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
     id: string; userId: string;
     assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };

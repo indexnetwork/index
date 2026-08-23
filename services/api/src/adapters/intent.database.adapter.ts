@@ -1,4 +1,4 @@
-import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
+import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
 
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
@@ -16,8 +16,13 @@ export class IntentDatabaseAdapter {
    * Retrieve a single user_context row (global when networkId is null), or null.
    * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the intent graph.
    */
-  async getUserContext(userId: string, networkId: string | null) {
-    return readUserContext(userId, networkId);
+  async getUserContext(userId: string, _networkId: string | null) {
+    const profile = await buildProfileFromUser(userId);
+    if (!profile) return null;
+    const text = [profile.identity.bio, profile.identity.name, profile.identity.location]
+      .map((s) => s?.trim()).filter(Boolean).join(' ');
+    if (!text) return null;
+    return { id: userId, text, embedding: [] as number[], premiseHash: '', generatedAt: new Date() };
   }
 
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {

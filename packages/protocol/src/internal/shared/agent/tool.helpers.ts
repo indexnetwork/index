@@ -25,7 +25,6 @@ import type { NegotiatorMemoryToolsHost } from "../../../platform/negotiation/me
 import type { NegotiatorAnswerToolsHost } from "../../../platform/negotiation/answer.js";
 import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
 import type { NegotiationListingParkHost } from "../../../platform/negotiation/listing.js";
-import type { EnrichmentRunQueue, EnrichmentRunStore } from "../../../platform/enrichment/runs.js";
 import type { McpActivityCaller } from "./activity-projection.js";
 
 export type IdentityContext = UserIdentity | null;
@@ -193,12 +192,6 @@ interface ToolContextBindings {
    * side, but cannot name the question's number.
    */
   negotiationListingPark?: NegotiationListingParkHost;
-  /**
-   * Resolve a user's global user_context paragraph (profile-replacing identity
-   * text), generating it on demand when absent. Mirrors `ToolDeps.getUserContextText`
-   * so chat-path tool factories can forward it.
-   */
-  getUserContextText?: (userId: string) => Promise<string>;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
   /** Database adapter for negotiations/conversation operations. */
@@ -223,10 +216,6 @@ interface ToolContextBindings {
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
-  /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
-  enrichmentRuns?: EnrichmentRunStore;
-  /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
-  enrichmentRunQueue?: EnrichmentRunQueue;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -509,10 +498,6 @@ interface ToolDepsBindings {
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */
   deliveryLedger?: DeliveryLedger;
-  /** Persistence for async MCP profile runs (optional — absent in non-MCP/test contexts). */
-  enrichmentRuns?: EnrichmentRunStore;
-  /** Queue for async MCP profile run execution (optional — absent in non-MCP/test contexts). */
-  enrichmentRunQueue?: EnrichmentRunQueue;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -554,12 +539,6 @@ interface ToolDepsBindings {
     userContext: string;
     networks: Array<{ networkId: string; renderedContext: string }>;
   }) => Promise<{ rankedNetworkIds: string[] } | null>;
-  /**
-   * Resolve a user's global user_context paragraph (profile-replacing identity text),
-   * generating it on demand when absent. Injected by the backend composition root
-   * (`ensureGlobalUserContext`). When absent, onboarding network ranking is skipped.
-   */
-  getUserContextText?: (userId: string) => Promise<string>;
 }
 
 /**

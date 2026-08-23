@@ -51,13 +51,7 @@ export function defineMcpToolPermissionMap(
  * permission-management, agent-administration, and retired aliases.
  */
 export const HERMES_AGENT_MCP_TOOL_PERMISSIONS = defineMcpToolPermissionMap({
-  read_user_contexts: { action: 'manage:identity', reach: 'principal' },
-  preview_user_context: { action: 'manage:identity', reach: 'principal' },
-  confirm_user_context: { action: 'manage:identity', reach: 'principal' },
-  create_user_context: { action: 'manage:identity', reach: 'principal' },
-  update_user_context: { action: 'manage:identity', reach: 'principal' },
-  get_enrichment_run: { action: 'manage:identity', reach: 'principal' },
-  cancel_enrichment_run: { action: 'manage:identity', reach: 'principal' },
+  research_profile: { action: 'manage:identity', reach: 'principal' },
   read_intents: { action: 'manage:intents', reach: 'network' },
   search_intents: { action: 'manage:intents', reach: 'network' },
   create_intent: { action: 'manage:intents', reach: 'network' },
@@ -136,14 +130,8 @@ export function defineMcpToolAccessRules(
  * retain domain ownership, membership, exact-scope, and approval checks.
  */
 export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
-  // Participant identity/context.
-  read_user_contexts: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
-  preview_user_context: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
-  confirm_user_context: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
-  create_user_context: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
-  update_user_context: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
-  get_enrichment_run: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
-  cancel_enrichment_run: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
+  // Participant identity.
+  research_profile: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
 
   // Premises are meta-network; a network-scoped agent retains principal reach.
   read_premises: { access: 'permission', actions: ['manage:premises'], reach: 'principal' },
@@ -241,13 +229,7 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
 export const ONBOARDING_ALLOWED: ReadonlySet<string> = new Set([
   'register_agent',
   'read_docs',
-  'preview_user_context',
-  'get_enrichment_run',
-  'cancel_enrichment_run',
-  'confirm_user_context',
-  'create_user_context',
-  'read_user_contexts',
-  'complete_onboarding',
+  'research_profile',
   'read_networks',
   'create_network_membership',
   'create_intent',

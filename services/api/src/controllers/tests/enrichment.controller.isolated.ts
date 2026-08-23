@@ -18,7 +18,7 @@ describe("EnrichmentController /enrich (sync public research)", () => {
   test("runs the public-research lookup inline and returns the resolved profile", async () => {
     const calls: string[] = [];
     const controller = new EnrichmentController({
-      enrichNow: async (userId) => {
+      researchProfile: async (userId) => {
         calls.push(userId);
         return {
           name: "Manual Enrich User",

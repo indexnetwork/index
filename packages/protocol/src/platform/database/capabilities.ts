@@ -13,22 +13,15 @@ import type { SystemDatabase, UserDatabase } from './port.js';
 
 /**
  * Database interface narrowed for Profile Graph operations.
- * Provides full profile lifecycle: read, write, and query mode.
+ * Query mode only: reports whether the user has an enriched profile
+ * (ACTIVE premises exist) for callers that need it (e.g. intent inference).
  *
  * Access layer: Primarily UserDatabase (user's own profile)
  */
 export type EnrichmentGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getUserSocials' | 'setUserSocials' | 'getPremisesForUser' | 'getUserContext'
-> & {
-  /**
-   * Optional premise retraction support. When present, write-mode input that
-   * disavows existing premises ("remove X", "I have nothing to do with Y")
-   * retracts them during decomposition. Adapters without it (e.g. the scraped
-   * enrichment adapter) skip retraction — scraped content never disavows.
-   */
-  updatePremise?: Database['updatePremise'];
-};
+  'getProfile' | 'getProfileByUserId' | 'getPremisesForUser'
+>;
 
 /**
  * Database interface narrowed for Premise Graph operations.
@@ -38,7 +31,7 @@ export type EnrichmentGraphDatabase = Pick<
  */
 export type PremiseGraphDatabase = Pick<
   Database,
-  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext' | 'findSimilarActivePremise'
+  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext' | 'findSimilarActivePremise' | 'getUser' | 'updateUser'
 >;
 
 /**
@@ -144,12 +137,9 @@ export type ChatGraphCompositeDatabase = Pick<
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'
-  // User context methods (context-to-intent discovery) in OpportunityGraph
+  // User context text for context-to-intent discovery in OpportunityGraph
   | 'getUserContext'
-  | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
-  // Context-to-context discovery in OpportunityGraph
-  | 'searchUserContextsBySimilarity'
 > & Pick<
   NegotiationQueries,
   // Orphan heal in OpportunityGraph persist node
@@ -203,12 +193,9 @@ export type OpportunityGraphDatabase = Pick<
   | 'getPremisesForUserInNetworks'
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'
-  // User context methods (context-to-intent discovery)
+  // User context text for context-to-intent discovery
   | 'getUserContext'
-  | 'getUserContexts'
   | 'searchIntentsByContextEmbedding'
-  // Context-to-context discovery
-  | 'searchUserContextsBySimilarity'
   // HyDE documents for context-to-intent HyDE search
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)

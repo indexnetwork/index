@@ -1,23 +1,16 @@
 import { EnrichmentGraphFactory } from "../internal/enrichment/enrichment.graph.js";
 import { PremiseGraphFactory } from "../internal/premises/premise.graph.js";
-import { createEnrichmentTools } from "../internal/enrichment/enrichment.tools.js";
-import type { DefineTool } from "../internal/shared/agent/tool.helpers.js";
-import type { EnrichmentToolDeps } from "../internal/contexts/context.tools.port.js";
 import type { EnrichmentGraphDatabase, PremiseGraphDatabase } from "../platform/database.js";
 import type { Embedder } from "../platform/discovery/embedder.js";
-import type { ProfileEnricher } from "../platform/enrichment/ports.js";
-import type { Scraper } from "../platform/discovery/scraper.js";
 
-/** Host ports required for profile enrichment and premise lifecycle behavior. */
+/** Host ports for the profile query graph and premise lifecycle graph. */
 export interface ContextsDeps {
   enrichmentDatabase: EnrichmentGraphDatabase;
   premiseDatabase: PremiseGraphDatabase;
   embedder: Embedder;
-  scraper: Scraper;
-  enricher?: ProfileEnricher;
 }
 
-/** Executable user-context capability: composes premise and enrichment graphs. */
+/** Profile query graph and premise lifecycle (create/update/query/decompose) graph. */
 export class Contexts {
   constructor(private readonly deps: ContextsDeps) {}
 
@@ -27,11 +20,6 @@ export class Contexts {
   }
 
   public createEnrichmentGraph() {
-    const { enrichmentDatabase, scraper, enricher } = this.deps;
-    return new EnrichmentGraphFactory(enrichmentDatabase, scraper, enricher, this.createPremiseGraph()).createGraph();
-  }
-
-  public static createTools(defineTool: DefineTool, deps: EnrichmentToolDeps) {
-    return createEnrichmentTools(defineTool, deps);
+    return new EnrichmentGraphFactory(this.deps.enrichmentDatabase).createGraph();
   }
 }

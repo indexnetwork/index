@@ -51,8 +51,6 @@ import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
-import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue';
-import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
@@ -62,7 +60,6 @@ import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
-import { enrichmentQueue } from './queues/enrichment.queue';
 import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { RedisTimeoutUpgradeLease, TimeoutUpgradeReconciler } from './lib/negotiation/timeout-upgrade-reconciliation';
@@ -81,7 +78,6 @@ import { evaluateOpportunityTransition } from './lib/question/question-exhaustio
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
-import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
@@ -145,10 +141,6 @@ fromIntentQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
-fromEnrichmentQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
-  agentDispatcher: backgroundAgentDispatcher,
-});
 negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
@@ -171,17 +163,6 @@ OpportunityEvents.onTransition = ({ opportunity }) =>
   evaluateOpportunityTransition({ opportunityId: opportunity.id, status: opportunity.status });
 
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
-  enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, networkId, error: err });
-  });
-  // Regenerate per-network user contexts so the newly joined network gets one.
-  // Without this, a user whose premises predate the membership never gets a
-  // context for this network (regen only fired on enrichment/premise changes).
-  // No-op for users with zero active premises; the premiseHash short-circuit
-  // skips networks whose context is already fresh.
-  userContextQueue.addRegenJob({ userId, reason: 'network_membership' }).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue context regen', { userId, networkId, error: err });
-  });
   // Re-evaluate the member's pre-existing intents against the joined network.
   // Intents created before joining never get an assignment pass for this network
   // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
@@ -191,54 +172,29 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   });
 };
 
-enrichmentQueue.onEnrichmentComplete = (userId: string) => {
-  userContextQueue.addRegenJob({ userId, reason: 'enrichment_complete' })
-    .catch(err => log.job.from('UserContext').error('Failed to enqueue context regen after enrichment', { userId, error: err }));
-
-  // KNOWN RESIDUAL: profile-based discovery runs unscoped (no networkId), so for
-  // a user who belongs to more than one network it can still surface matches across
-  // all of them — the same cross-network leak fixed for intent-triggered discovery.
-  // Enrichment completion carries no network/agent context, so scoping this needs a
-  // separate design (derive scope from the user's network-scoped agent, or thread a
-  // scope through the enrichment pipeline). fromEnrichmentQueue already accepts networkId.
-  fromEnrichmentQueue.addJob(
-    { userId },
-    { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
-  ).catch((err) => log.job.from('ProfileEnrichment').error('Failed to enqueue profile-based discovery', { userId, error: err }));
-};
 
 PremiseEvents.onCreated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise created, triggering profile regen', { premiseId, userId });
-  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_created' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
+  log.job.from('PremiseEvents').verbose('Premise created', { premiseId, userId });
 };
 
 PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise updated, triggering profile regen', { premiseId, userId });
-  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_updated' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
+  log.job.from('PremiseEvents').verbose('Premise updated', { premiseId, userId });
 };
 
 PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade + regen', { premiseId, userId });
+  log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade', { premiseId, userId });
   premiseQueue.addCascadeJob({ premiseId, userId, event: 'retracted' })
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
-  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_retracted' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
 };
 
 PremiseEvents.onExpired = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade + regen', { premiseId, userId });
+  log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade', { premiseId, userId });
   premiseQueue.addCascadeJob({ premiseId, userId, event: 'expired' })
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
-  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_expired' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
 };
 
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
-fromEnrichmentQueue.startWorker();
-enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
   void negotiationWatchdogQueue.start().catch((error) => {
@@ -254,7 +210,6 @@ void frameDriftQueue.start().catch((error) => {
   });
 });
 notificationQueue.startWorker();
-enrichmentQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
 // Upgrade legacy park/claim rows before either timeout worker can consume an
@@ -287,7 +242,6 @@ negotiationReflectQueue.startCrons();
 questionMessageQueue.startWorker();
 intentAgentQueue.startWorker();
 premiseQueue.startWorker();
-userContextQueue.startWorker();
 premiseQueue.startCrons();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
@@ -717,11 +671,8 @@ logger.info('Server running', { port: PORT });
 const shutdown = async () => {
   logger.info('Shutting down workers...');
   await Promise.allSettled([
-    enrichmentQueue.close(),
     intentQueue.close(),
     fromIntentQueue.close(),
-    fromEnrichmentQueue.close(),
-    enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
@@ -731,7 +682,6 @@ const shutdown = async () => {
     questionMessageQueue.close(),
     intentAgentQueue.close(),
     premiseQueue.close(),
-    userContextQueue.close(),
     frameDriftQueue.close(),
   ]);
   logger.info('Workers closed');

@@ -269,15 +269,6 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
             AND (i.status = 'ACTIVE' OR i.status IS NULL)
             AND i.embedding IS NOT NULL
           GROUP BY ino.network_id, i.user_id
-          UNION ALL
-          SELECT uc.network_id, uc.user_id, 'user_context'::text AS corpus,
-                 avg(uc.embedding) AS user_centroid,
-                 count(*)::bigint AS source_row_count
-          FROM user_contexts uc
-          JOIN selected_networks sn ON sn.id = uc.network_id
-          JOIN users u ON u.id = uc.user_id AND u.deleted_at IS NULL
-          WHERE uc.network_id IS NOT NULL AND uc.embedding IS NOT NULL
-          GROUP BY uc.network_id, uc.user_id
         ), corpus_centroids AS (
           SELECT network_id, corpus,
                  avg(user_centroid)::text AS centroid,

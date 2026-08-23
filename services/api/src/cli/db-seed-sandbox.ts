@@ -273,19 +273,6 @@ async function main(): Promise<void> {
           set: { accountId: userId, providerId: CREDENTIAL_PROVIDER_ID, userId, password: passwordHash, updatedAt: new Date() },
         });
 
-        await tx.insert(schema.userContexts).values({
-          id: fixtureId('context', persona.email),
-          userId,
-          networkId: null,
-          text: context,
-          embedding: embeddings.get(context)!,
-          premiseHash: fixtureId('premise-hash', persona.email),
-          generatedAt: new Date('2026-01-01T00:00:00.000Z'),
-        }).onConflictDoUpdate({
-          target: schema.userContexts.id,
-          set: { text: context, embedding: embeddings.get(context)!, premiseHash: fixtureId('premise-hash', persona.email) },
-        });
-
         for (const key of networkKeys) {
           const network = networkByKey.get(key)!;
           const isOwner = ownerByNetwork.get(key) === userId;

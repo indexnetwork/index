@@ -142,19 +142,19 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('opportunities.startChatForIntent', (client) => client.opportunities.startChatForIntent('opp/1', SELECTED_INTENT_ID), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: { scopeType: 'intent', scopeId: SELECTED_INTENT_ID } });
   });
 
-  it('exposes only the three exact REST owner tool wrappers', async () => {
+  it('exposes enrichment prefill and onboarding REST helpers', async () => {
     const operations = [];
     const client = createIndexApiClient({ nativeRequest: async (operation) => {
       operations.push(operation); return { status: 200, body: {}, headers: {} };
     } });
-    await client.tools.readUserContexts();
-    await client.tools.previewUserContext({ bioOrDescription: 'builder' });
-    await client.tools.confirmUserContext({ identity: {}, narrative: {}, attributes: {} });
-    expect(Object.keys(client.tools)).toEqual(['readUserContexts', 'previewUserContext', 'confirmUserContext']);
-    expect(operations).toEqual([
-      { kind: 'http', method: 'POST', path: '/tools/read_user_contexts', body: { query: {} } },
-      { kind: 'http', method: 'POST', path: '/tools/preview_user_context', body: { query: { bioOrDescription: 'builder' } } },
-      { kind: 'http', method: 'POST', path: '/tools/confirm_user_context', body: { query: { draft: { identity: {}, narrative: {}, attributes: {} } } } },
+    await client.enrichment.trigger({ name: 'Ada' });
+    await client.auth.confirmOnboardingProfile();
+    await client.auth.completeOnboarding({ intentId: 'intent-1' });
+    expect(Object.keys(client.enrichment)).toEqual(['trigger']);
+    expect(operations.map((o) => o.path)).toEqual([
+      '/enrichment/enrich',
+      '/auth/onboarding/confirm-profile',
+      '/auth/onboarding/complete',
     ]);
   });
 

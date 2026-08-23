@@ -1,25 +1,10 @@
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 
-import { readUserContext, readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, isNull, normalizeTelegramSocialValue, not, persistProfileIdentityToUser, sql } from './database.shared';
+import { readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, isNull, normalizeTelegramSocialValue, not, persistProfileIdentityToUser, sql } from './database.shared';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
-
-export interface EnrichmentAdmissionContext {
-  userExists: boolean;
-  networkExists: boolean;
-  membershipExists: boolean;
-  hasActivePremise: boolean;
-}
 
 export class EnrichmentDatabaseAdapter {
   constructor(private readonly database: DrizzleDB = db) {}
-
-  /**
-   * Retrieve a single user_context row (global when networkId is null), or null.
-   * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the profile graph.
-   */
-  async getUserContext(userId: string, networkId: string | null) {
-    return readUserContext(userId, networkId);
-  }
 
   async getProfile(userId: string): Promise<UserIdentity | null> {
     return buildProfileFromUser(userId);
@@ -40,61 +25,6 @@ export class EnrichmentDatabaseAdapter {
     return { ...user, socials };
   }
 
-  /**
-   * Reads needed to admit enrichment at worker execution time. Every job
-   * requires a live user; network-scoped jobs additionally require a live
-   * network and active membership. "Has been enriched?" keys on ACTIVE
-   * premises — the source of truth — not a user_profiles row (WS10/IND-367).
-   * @param userId - The user being enriched
-   * @param networkId - Optional network scoping the enrichment job
-   * @returns current user, scope, membership, and enrichment-state signals
-   */
-  async getEnrichmentAdmissionContext(
-    userId: string,
-    networkId?: string,
-  ): Promise<EnrichmentAdmissionContext> {
-    const userQuery = this.database
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(and(eq(schema.users.id, userId), isNull(schema.users.deletedAt)))
-      .limit(1);
-    const premiseQuery = this.database
-      .select({ id: schema.premises.id })
-      .from(schema.premises)
-      .where(and(eq(schema.premises.userId, userId), eq(schema.premises.status, 'ACTIVE')))
-      .limit(1);
-    const networkQuery = networkId
-      ? this.database
-        .select({ id: schema.networks.id })
-        .from(schema.networks)
-        .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
-        .limit(1)
-      : Promise.resolve([]);
-    const membershipQuery = networkId
-      ? this.database
-        .select({ userId: schema.networkMembers.userId })
-        .from(schema.networkMembers)
-        .where(and(
-          eq(schema.networkMembers.userId, userId),
-          eq(schema.networkMembers.networkId, networkId),
-          isNull(schema.networkMembers.deletedAt),
-        ))
-        .limit(1)
-      : Promise.resolve([]);
-
-    const [[user], [network], [membership], [premise]] = await Promise.all([
-      userQuery,
-      networkQuery,
-      membershipQuery,
-      premiseQuery,
-    ]);
-    return {
-      userExists: !!user,
-      networkExists: networkId ? !!network : true,
-      membershipExists: networkId ? !!membership : true,
-      hasActivePremise: !!premise,
-    };
-  }
 
   /**
    * Update user account fields (name, intro, location).

@@ -133,7 +133,7 @@ export async function createChatTools(
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database, scraper, deps.enricher, premiseGraph).createGraph();
+  const profileGraph = new EnrichmentGraphFactory(database).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();
@@ -198,14 +198,11 @@ export async function createChatTools(
     stampNewbornOpportunities: deps.stampNewbornOpportunities,
     deliveryLedger: deps.deliveryLedger,
     ...(deps.opportunityOwnerApproval && { opportunityOwnerApproval: deps.opportunityOwnerApproval }),
-    enrichmentRuns: deps.enrichmentRuns,
-    enrichmentRunQueue: deps.enrichmentRunQueue,
     frontendUrl: deps.frontendUrl,
     apiBaseUrl: deps.apiBaseUrl,
     ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
     ...(deps.negotiationSummary && { negotiationSummary: deps.negotiationSummary }),
     ...(deps.chatSession && { chatSession: deps.chatSession }),
-    ...(deps.getUserContextText && { getUserContextText: deps.getUserContextText }),
     ...(deps.intentProposalStore && { intentProposalStore: deps.intentProposalStore }),
     graphs: {
       profile: profileGraph,

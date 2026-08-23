@@ -1,4 +1,4 @@
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, TelegramPrefs, User, UserWithGraph, and, db, eq, inArray, isNull, sessions, sql, userContexts, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, TelegramPrefs, User, UserWithGraph, and, db, eq, inArray, isNull, sessions, sql, userNotificationSettings, userSocials, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 
@@ -172,18 +172,12 @@ export class UserDatabaseAdapter {
       .from(userSocials)
       .where(eq(userSocials.userId, userId));
 
-    // "Has a profile" now means the user has been enriched into a global user_context
-    // row (networkId = null) -- the profile replacement. Replaces the retired
-    // user_profiles existence check that gated background auto-enrichment.
-    const globalContext = await db.select({ id: userContexts.id })
-      .from(userContexts)
-      .where(and(eq(userContexts.userId, userId), isNull(userContexts.networkId)))
-      .limit(1);
+    const hasProfile = Boolean(user.intro?.trim() || user.name?.trim());
 
     return {
       ...user,
       socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
-      hasProfile: globalContext.length > 0,
+      hasProfile,
       notificationPreferences: settings?.preferences as {
         connectionUpdates: boolean;
         weeklyNewsletter: boolean;

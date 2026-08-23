@@ -271,10 +271,7 @@ describe('native owner credential and transport source contracts', () => {
     expect(nativeBridge).toContain('/agent-runtime/reconcile-index');
     expect(nativeBridge).toContain('required: ["agentId", "installationId", "setupAttemptId"]');
     expect(nativeBridge).toContain('allowedMCPTools');
-    expect(nativeBridge).toContain('/tools/read_user_contexts');
-    expect(nativeBridge).toContain('/tools/preview_user_context');
-    expect(nativeBridge).toContain('/tools/confirm_user_context');
-    expect(nativeBridge).not.toContain('^/tools/[^/?]+$');
+        expect(nativeBridge).not.toContain('^/tools/[^/?]+$');
     expect(nativeBridge).toContain('isGloballyBoundedJSON');
     expect(nativeBridge).toContain('isAllowedBody');
     expect(nativeBridge).toContain('isAllowedSSEBody');

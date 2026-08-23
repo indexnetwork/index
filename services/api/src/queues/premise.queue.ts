@@ -1,11 +1,11 @@
 import cron from 'node-cron';
 import { Job, JobsOptions } from 'bullmq';
+import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../adapters/database.adapter';
-
-import { userContextQueue } from './usercontext.queue';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 
 /** BullMQ queue name for premise cascade and profile regeneration jobs. */
 export const QUEUE_NAME = 'premise-queue';
@@ -24,16 +24,14 @@ export interface PremiseCascadeData {
   event: 'retracted' | 'expired';
 }
 
-/** Payload for `profile_regen` jobs. */
-export interface ProfileRegenData {
-  /** User whose profile should be regenerated from active premises. */
+/** Payload for `premise_decompose_profile` jobs. */
+export interface PremiseDecomposeProfileData {
+  /** The user whose profile (name/location/intro) should be decomposed into premises. */
   userId: string;
-  /** What premise lifecycle event triggered the regen. */
-  trigger: 'premise_created' | 'premise_updated' | 'premise_retracted' | 'premise_expired';
 }
 
 /** Union of all job payloads accepted by the premise queue. */
-export type PremiseJobPayload = PremiseCascadeData | ProfileRegenData;
+export type PremiseJobPayload = PremiseCascadeData | PremiseDecomposeProfileData;
 
 // ---------------------------------------------------------------------------
 // Opportunity status helpers (kept local to avoid importing schema at queue layer)
@@ -111,13 +109,6 @@ export interface PremiseQueueDeps {
   updateOpportunityStatus?: (opportunityId: string, status: 'expired') => Promise<void>;
 
   /**
-   * Enqueue user-context regeneration (global + per-network) for the user.
-   * Called whenever the user's premises change so their context representation
-   * (the profile replacement) is rebuilt from the fresh premise set.
-   */
-  enqueueContextRegen?: (userId: string) => Promise<void>;
-
-  /**
    * Find ACTIVE premises whose validity.validUntil has passed.
    * Returns a minimal shape: id + userId.
    */
@@ -164,6 +155,26 @@ export interface PremiseQueueDeps {
     intentId: string,
     verdict: IntentReverificationVerdict
   ) => Promise<void>;
+
+  /**
+   * Decompose a user's profile text (name/location/intro) into premises via
+   * the premise graph's `decompose` operation mode.
+   */
+  decomposeProfile?: (userId: string) => Promise<void>;
+}
+
+/**
+ * Builds the free-text profile blob offered to premise decomposition.
+ * Name + location + intro only — social links are scraper input, not
+ * decomposer input (as decomposer input they'd just yield noise premises
+ * like "I have a LinkedIn at …").
+ */
+function buildProfileInputFromUser(user: { name?: string | null; intro?: string | null; location?: string | null }): string {
+  const lines: string[] = [];
+  if (user.name?.trim()) lines.push(`Name: ${user.name.trim()}`);
+  if (user.location?.trim()) lines.push(`Location: ${user.location.trim()}`);
+  if (user.intro?.trim()) lines.push(user.intro.trim());
+  return lines.filter((l) => l.trim()).join('\n\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -184,10 +195,6 @@ export interface PremiseQueueDeps {
  * lapsed premise (embedding-proximity heuristic) so their felicity scores
  * don't go stale.
  *
- * `profile_regen` — when any premise lifecycle event fires, regenerates the
- * user's profile from their current active premises via the profile graph's
- * `aggregate` operation mode.
- *
  * @remarks
  * Workers are started only by the protocol server via {@link PremiseQueue.startWorker}.
  */
@@ -199,7 +206,7 @@ export class PremiseQueue {
   private readonly logger = log.job.from('PremiseJob');
   private readonly expiryLogger = log.job.from('PremiseJob:ExpiryCheck');
   private readonly cascadeLogger = log.job.from('PremiseJob:Cascade');
-  private readonly profileRegenLogger = log.job.from('PremiseJob:ProfileRegen');
+  private readonly decomposeLogger = log.job.from('PremiseJob:DecomposeProfile');
   private readonly queueLogger = log.queue.from('PremiseQueue');
   private readonly deps: PremiseQueueDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<PremiseJobPayload>> | null = null;
@@ -225,18 +232,13 @@ export class PremiseQueue {
   }
 
   /**
-   * Enqueue a profile regeneration job.
-   * Job ID is deduplicated per user+trigger so rapid successive events coalesce.
-   * @param data - Profile regen payload
+   * Enqueue a profile-decomposition job. Deduplicated by user so rapid
+   * successive profile/social saves coalesce into one run.
+   * @param userId - The user whose profile should be decomposed
    */
-  addProfileRegenJob(data: ProfileRegenData): Promise<Job<PremiseJobPayload>> {
-    return this.addJob('profile_regen', data, {
-      jobId: `profile-regen-${data.userId}-${data.trigger}`,
-      // Free the jobId as soon as the regen settles so repeated premise changes
-      // re-run instead of being deduped against a retained completed job — the
-      // jobId only needs to coalesce concurrent bursts (jobs still waiting/active).
-      removeOnComplete: true,
-      removeOnFail: true,
+  addDecomposeProfileJob(userId: string): Promise<Job<PremiseJobPayload>> {
+    return this.addJob('premise_decompose_profile', { userId }, {
+      jobId: `premise-decompose-profile-${userId}`,
     });
   }
 
@@ -246,12 +248,12 @@ export class PremiseQueue {
 
   /**
    * Add a named job to the premise queue.
-   * @param name - Job type (`premise_cascade` or `profile_regen`)
+   * @param name - Job type (`premise_cascade` or `premise_decompose_profile`)
    * @param data - Job payload
    * @param options - Optional jobId, priority, and removeOnComplete/removeOnFail overrides
    */
   async addJob(
-    name: 'premise_cascade' | 'profile_regen',
+    name: 'premise_cascade' | 'premise_decompose_profile',
     data: PremiseJobPayload,
     options?: {
       jobId?: string;
@@ -284,8 +286,8 @@ export class PremiseQueue {
       case 'premise_cascade':
         await this.handlePremiseCascade(data as PremiseCascadeData);
         break;
-      case 'profile_regen':
-        await this.handleProfileRegen(data as ProfileRegenData);
+      case 'premise_decompose_profile':
+        await this.handleDecomposeProfile(data as PremiseDecomposeProfileData);
         break;
       default:
         this.queueLogger.warn('Unknown job name', { name });
@@ -466,6 +468,41 @@ export class PremiseQueue {
     });
   }
 
+  private async handleDecomposeProfile(data: PremiseDecomposeProfileData): Promise<void> {
+    const { userId } = data;
+    this.decomposeLogger.info('Starting profile decomposition', { userId });
+
+    const decomposeProfile =
+      this.deps?.decomposeProfile ??
+      ((uid: string) => this.defaultDecomposeProfile(uid));
+
+    await decomposeProfile(userId);
+
+    this.decomposeLogger.info('Profile decomposition complete', { userId });
+  }
+
+  /**
+   * Default production implementation: build the profile text blob from the
+   * users row and decompose it into premises via the premise graph. Imported
+   * lazily so loading this queue module (and its tests) doesn't pull the LLM
+   * stack.
+   */
+  private async defaultDecomposeProfile(userId: string): Promise<void> {
+    const db = new ChatDatabaseAdapter();
+    const user = await db.getUser(userId);
+    if (!user) return;
+
+    const input = buildProfileInputFromUser(user);
+    if (!input.trim()) return;
+
+    const { PremiseGraphFactory } = await import('@indexnetwork/protocol');
+    const graph = new PremiseGraphFactory(db as unknown as PremiseGraphDatabase, new EmbedderAdapter()).createGraph();
+    const result = await graph.invoke({ userId, input, operationMode: 'decompose' });
+    if (result.error) {
+      this.decomposeLogger.error('Profile decomposition failed', { userId, error: result.error });
+    }
+  }
+
   /**
    * Find the user's ACTIVE intents grounded on the lapsed premise (embedding
    * proximity — no explicit premise→intent edge exists in the schema) and
@@ -534,29 +571,6 @@ export class PremiseQueue {
     return reverified;
   }
 
-  private async handleProfileRegen(data: ProfileRegenData): Promise<void> {
-    const { userId, trigger } = data;
-    this.profileRegenLogger.info('Starting profile regeneration', { userId, trigger });
-
-    const enqueueContextRegen =
-      this.deps?.enqueueContextRegen ??
-      ((uid: string) => this.defaultEnqueueContextRegen(uid));
-
-    // Premises changed; rebuild the user's context representation (global + per-network),
-    // which is the profile replacement. The legacy profile-graph `aggregate` step (which
-    // synthesized the now-removed user_profiles identity document) was dropped in WS8/IND-365.
-    // Log completion only after the enqueue settles so a failed/retried job is not
-    // preceded by a misleading "complete" line.
-    await enqueueContextRegen(userId);
-    this.profileRegenLogger.info('Profile regeneration complete', { userId, trigger });
-  }
-
-  /**
-   * Default production implementation: enqueue a per-network context regeneration job.
-   */
-  private async defaultEnqueueContextRegen(userId: string): Promise<void> {
-    await userContextQueue.addRegenJob({ userId, reason: 'profile_regen' });
-  }
 
   /**
    * Default production implementation: read the premise's stored embedding.

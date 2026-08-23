@@ -1,26 +1,44 @@
 /**
- * Unit tests for PremiseQueue profile-regen chaining. Injected deps avoid Redis/DB;
- * QueueFactory and the user-context queue module are mocked.
+ * Unit tests for PremiseQueue enqueue helpers and job dispatch. Injected deps
+ * avoid Redis/DB/LLM; QueueFactory and the protocol/adapter modules are mocked.
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, expect, it, mock, afterAll } from 'bun:test';
 
-const mockAdd = mock(async () => ({ id: 'job-1', name: 'profile_regen', data: {} }));
-const mockCreateWorker = mock(() => ({}));
+const mockAdd = mock(async () => ({ id: 'job-1', name: 'premise_decompose_profile', data: {} }));
 
 mock.module('../../lib/bullmq/bullmq', () => ({
   QueueFactory: {
     createQueue: () => ({ add: mockAdd, close: async () => {} }),
-    createWorker: mockCreateWorker,
+    createWorker: () => ({}),
     createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
 
-// Prevent importing the real user-context queue (pulls adapters/Redis) when premise.queue loads.
-mock.module('../usercontext.queue', () => ({
-  userContextQueue: { addRegenJob: mock(async () => ({ id: 'uc-1' })) },
+const mockGetUser = mock(async (_userId: string) => ({
+  id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', intro: 'Engineer.', location: 'Berlin', socials: [],
+}));
+
+mock.module('../../adapters/database.adapter', () => ({
+  ChatDatabaseAdapter: class {
+    getUser = mockGetUser;
+  },
+  OpportunityDatabaseAdapter: class {},
+}));
+
+mock.module('../../adapters/embedder.adapter', () => ({
+  EmbedderAdapter: class {},
+}));
+
+const mockGraphInvoke = mock(async () => ({}));
+const mockCreateGraph = mock(() => ({ invoke: mockGraphInvoke }));
+
+mock.module('@indexnetwork/protocol', () => ({
+  PremiseGraphFactory: class {
+    createGraph = mockCreateGraph;
+  },
 }));
 
 afterAll(() => {
@@ -29,41 +47,55 @@ afterAll(() => {
 
 import { PremiseQueue } from '../premise.queue';
 
-describe('PremiseQueue — profile regen chaining', () => {
-  it('enqueues context regen for the user when premises change', async () => {
-    const calls: string[] = [];
-    const queue = new PremiseQueue({
-      enqueueContextRegen: async (uid) => { calls.push(`context:${uid}`); },
-    });
+describe('PremiseQueue — addDecomposeProfileJob', () => {
+  it('enqueues with a per-user jobId so rapid successive saves coalesce', async () => {
+    const queue = new PremiseQueue();
+    await queue.addDecomposeProfileJob('user-1');
 
-    await queue.processJob('profile_regen', { userId: 'u1', trigger: 'premise_created' });
-
-    expect(calls).toEqual(['context:u1']);
-  });
-
-  it('propagates errors when context regen enqueue fails', async () => {
-    const queue = new PremiseQueue({
-      enqueueContextRegen: async () => { throw new Error('boom'); },
-    });
-
-    await expect(
-      queue.processJob('profile_regen', { userId: 'u1', trigger: 'premise_created' }),
-    ).rejects.toThrow('boom');
+    expect(mockAdd).toHaveBeenCalledWith(
+      'premise_decompose_profile',
+      { userId: 'user-1' },
+      expect.objectContaining({ jobId: 'premise-decompose-profile-user-1' }),
+    );
   });
 });
 
-describe('PremiseQueue — profile regen enqueue options', () => {
-  it('frees the jobId on settle so repeated premise changes re-run (removeOnComplete/Fail true)', async () => {
+describe('PremiseQueue — job dispatch', () => {
+  it('routes premise_decompose_profile to the injected decomposeProfile dep', async () => {
+    const calls: string[] = [];
+    const queue = new PremiseQueue({
+      decomposeProfile: async (userId) => { calls.push(userId); },
+    });
+
+    await queue.processJob('premise_decompose_profile', { userId: 'user-2' });
+
+    expect(calls).toEqual(['user-2']);
+  });
+
+  it('falls back to the default implementation when no dep is injected', async () => {
+    mockGetUser.mockClear();
+    mockCreateGraph.mockClear();
+    mockGraphInvoke.mockClear();
+
     const queue = new PremiseQueue();
-    await queue.addProfileRegenJob({ userId: 'u1', trigger: 'premise_created' });
-    expect(mockAdd).toHaveBeenCalledWith(
-      'profile_regen',
-      { userId: 'u1', trigger: 'premise_created' },
-      expect.objectContaining({
-        jobId: 'profile-regen-u1-premise_created',
-        removeOnComplete: true,
-        removeOnFail: true,
-      }),
-    );
+    await queue.processJob('premise_decompose_profile', { userId: 'user-1' });
+
+    expect(mockGetUser).toHaveBeenCalledWith('user-1');
+    expect(mockGraphInvoke).toHaveBeenCalledWith({
+      userId: 'user-1',
+      input: 'Name: Jane Doe\n\nLocation: Berlin\n\nEngineer.',
+      operationMode: 'decompose',
+    });
+  });
+
+  it('skips decomposition when the user has no name, location, or intro', async () => {
+    mockGetUser.mockClear();
+    mockGraphInvoke.mockClear();
+    mockGetUser.mockResolvedValueOnce({ id: 'user-3', name: '', email: 'x@example.com', intro: null, location: null, socials: [] });
+
+    const queue = new PremiseQueue();
+    await queue.processJob('premise_decompose_profile', { userId: 'user-3' });
+
+    expect(mockGraphInvoke).not.toHaveBeenCalled();
   });
 });

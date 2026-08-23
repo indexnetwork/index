@@ -3,102 +3,31 @@ import type { UserIdentity } from "../../protocol/schemas/identity.schema.js";
 import type { DebugMetaAgent } from "../../protocol/core.js";
 
 /**
- * The Graph State for Profile Generation.
+ * The Graph State for Profile Query.
+ *
+ * Query-only: reports whether the user has an enriched profile (ACTIVE
+ * premises exist) and returns the users-sourced identity fields. Premise
+ * decomposition (text → premises) lives on `PremiseGraphFactory`'s
+ * `decompose` operation mode.
  */
 export const EnrichmentGraphState = Annotation.Root({
-  // --- Inputs (Required at start) ---
   /**
-   * The User ID to link the profile to.
+   * The User ID to look up.
    */
   userId: Annotation<string>,
 
-  // --- Control Fields (Operation Mode) ---
-
-  /**
-   * Operation mode controls graph flow:
-   * - 'query': Fast path - only retrieve existing profile (no generation)
-   * - 'write': Decompose provided/scraped input into premises
-   * - 'generate': Auto-enrich from user table data via enrichUserProfile Chat API,
-   *   then decompose the enrichment into premises
-   */
-  operationMode: Annotation<'query' | 'write' | 'generate'>({
+  operationMode: Annotation<'query'>({
     reducer: (curr, next) => next ?? curr,
-    default: () => 'write',
+    default: () => 'query',
   }),
 
   /**
-   * Flag to force profile regeneration even if profile exists.
-   * When true with new input, the graph will re-generate and update the profile.
-   */
-  forceUpdate: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  // --- Intermediate State ---
-
-  /**
-   * Internal objective constructed from user data.
-   */
-  objective: Annotation<string | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
-
-  /**
-   * Raw input data (either provided or scraped).
-   */
-  input: Annotation<string | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
-
-  /**
-   * IDs of the user_socials records active during the current scrape/generate run.
-   * Populated by scrapeNode and autoGenerateNode after getUserSocials is called.
-   * Empty by default; read by decomposePremisesNode to set provenanceSource:
-   * 'integration' + provenanceSourceId when premises derive from social enrichment.
-   */
-  activeSocialIds: Annotation<string[]>({
-    reducer: (_, next) => next ?? [],
-    default: () => [],
-  }),
-
-  /**
-   * The generated or loaded profile document.
+   * The loaded profile document.
    */
   profile: Annotation<UserIdentity | undefined>({
     reducer: (curr, next) => next,
     default: () => undefined,
   }),
-
-  /**
-   * Flags to track what needs to be generated.
-   */
-  needsProfileGeneration: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /**
-   * Flag indicating that user information is insufficient for accurate profile generation.
-   * When true, the graph should request additional information from the user.
-   */
-  needsUserInfo: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /**
-   * List of missing user information fields.
-   * Used to construct a helpful clarification message.
-   */
-  missingUserInfo: Annotation<string[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
-  // --- Output ---
 
   /**
    * Error message if any step fails (non-fatal).
@@ -108,22 +37,6 @@ export const EnrichmentGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  // --- Operation Tracking (for transparency) ---
-
-  /**
-   * Tracks which operations were actually performed during this graph execution.
-   * Used to provide explicit feedback to the user about what happened.
-   */
-  operationsPerformed: Annotation<{
-    scraped?: boolean;
-    decomposedPremises?: boolean;
-    generatedProfile?: boolean;
-    savedProfile?: boolean;
-  }>({
-    reducer: (curr, next) => ({ ...curr, ...next }),
-    default: () => ({}),
-  }),
-
   /** Timing records for each agent invocation within this graph run. */
   agentTimings: Annotation<DebugMetaAgent[]>({
     reducer: (acc, val) => [...acc, ...val],
@@ -131,7 +44,7 @@ export const EnrichmentGraphState = Annotation.Root({
   }),
 
   /**
-   * Output for query mode: structured result for the tool to read.
+   * Structured result for the tool to read.
    */
   readResult: Annotation<{
     hasProfile: boolean;

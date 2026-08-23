@@ -9,7 +9,6 @@ import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase, conversa
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { deriveAllowedNetworkIds, Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
@@ -66,7 +65,6 @@ export class ToolService {
       embedder: this.embedder,
       cache: this.cache,
       enricher: { enrichUserProfile },
-      getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
       // IND-593: direct authenticated-owner tool calls (REST tool controller /
       // CLI) traverse the owner-approval boundary via host attestation. Own
@@ -222,7 +220,8 @@ export class ToolService {
       queue: intentQueue,
     });
     const intentGraph = intents.createGraph();
-    const profileGraph = new EnrichmentGraphFactory(database, this.scraper).createGraph();
+    const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
+    const profileGraph = new EnrichmentGraphFactory(database).createGraph();
     const hydeCache = new RedisCacheAdapter();
     const compiledHydeGraph = new HydeGraphFactory(
       database as unknown as HydeGraphDatabase,
@@ -262,7 +261,6 @@ export class ToolService {
     const indexGraph = networks.createGraph();
     const networkMembershipGraph = networks.createMembershipGraph();
     const intentIndexGraph = networks.createAssignmentGraph();
-    const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
 
     this.compiledGraphs = {
       profile: profileGraph,
