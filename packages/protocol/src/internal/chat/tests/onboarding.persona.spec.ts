@@ -3,23 +3,18 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it } from "bun:test";
 
-import { createOnboardingPersona, ONBOARDING_PERSONA_ID, ONBOARDING_TOOL_NAMES, filterOnboardingTools, narrowOnboardingTools } from "../onboarding.persona.js";
+import { createOnboardingPersona, ONBOARDING_PERSONA_ID, ONBOARDING_TOOL_NAMES, filterOnboardingTools } from "../onboarding.persona.js";
 import { buildOnboardingSystemContent } from "../onboarding.prompt.js";
 import { SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
-import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
+import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 const EXPECTED_TOOLS = [
-  "read_user_contexts",
-  "preview_user_context",
-  "confirm_user_context",
+  "research_profile",
   "create_intent",
-  "complete_onboarding",
 ] as const;
 
 const FORBIDDEN_TOOLS = [
   "scrape_url",
-  "create_user_context",
-  "update_user_context",
   "read_premises",
   "create_premise",
   "update_premise",
@@ -107,30 +102,6 @@ describe("createOnboardingPersona", () => {
     const allowed = new Set<string>(ONBOARDING_TOOL_NAMES);
     for (const forbidden of FORBIDDEN_TOOLS) expect(allowed.has(forbidden)).toBe(false);
     expect(allowed.has("future_shared_tool")).toBe(false);
-  });
-
-  it("requires an exact completion intent ID", async () => {
-    const calls: Array<{ name: string; query: unknown }> = [];
-    const tools = narrowOnboardingTools([
-      {
-        name: "complete_onboarding",
-        invoke: async (query: unknown) => {
-          calls.push({ name: "complete", query });
-          return "ok";
-        },
-      },
-    ] as unknown as ChatTools);
-    const complete = tools.find((candidate) => candidate.name === "complete_onboarding")!;
-
-    await expect(complete.invoke({})).rejects.toThrow();
-    await complete.invoke({ intentId: "44444444-4444-4444-8444-444444444444" });
-
-    expect(calls).toEqual([
-      {
-        name: "complete",
-        query: { intentId: "44444444-4444-4444-8444-444444444444" },
-      },
-    ]);
   });
 });
 

@@ -268,13 +268,7 @@ describe('MCP capability policy principal inventory', () => {
 
 describe('dedicated Hermes agent MCP profile', () => {
   const exactToolMapping = {
-    read_user_contexts: 'manage:identity',
-    preview_user_context: 'manage:identity',
-    confirm_user_context: 'manage:identity',
-    create_user_context: 'manage:identity',
-    update_user_context: 'manage:identity',
-    get_enrichment_run: 'manage:identity',
-    cancel_enrichment_run: 'manage:identity',
+    research_profile: 'manage:identity',
     read_intents: 'manage:intents',
     search_intents: 'manage:intents',
     create_intent: 'manage:intents',
@@ -625,7 +619,7 @@ describe('rolling-data legacy permission projection (IND-607)', () => {
 
     expect(subject.permissions).toEqual(['manage:identity', 'manage:premises']);
     expect(policy.authorize(subject, 'read_premises').allowed).toBe(true);
-    expect(policy.authorize(subject, 'read_user_contexts').allowed).toBe(true);
+    expect(policy.authorize(subject, 'research_profile').allowed).toBe(true);
     // manage:contacts projected to nothing — no contact-era capability leaks.
   });
 

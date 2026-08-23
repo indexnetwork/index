@@ -1,25 +1,8 @@
-import { describe, it, expect, mock } from "bun:test";
+import { describe, it, expect } from "bun:test";
 
+import { createEnrichmentTools } from "../enrichment.tools.js";
 import type { ToolDeps, ResolvedToolContext } from "../../shared/agent/tool.helpers.js";
 import type { EnrichmentResult } from "../../../platform/enrichment/ports.js";
-
-// Replace the LLM-backed generator BEFORE profile.tools.js is imported.
-mock.module("../enrichment.generator.js", () => ({
-  EnrichmentGenerator: class {
-    async invoke() {
-      return {
-        output: {
-          identity: { name: "Drafted Name", bio: "drafted bio", location: "Remote" },
-          narrative: { context: "drafted context" },
-          attributes: { skills: [], interests: [] },
-        },
-        textToEmbed: "embed",
-      };
-    }
-  },
-}));
-
-const { createEnrichmentTools } = await import("../enrichment.tools.js");
 
 interface CapturedTool {
   name: string;
@@ -48,67 +31,74 @@ function makeEnrichment(overrides: Partial<EnrichmentResult>): EnrichmentResult 
   };
 }
 
-function getCreateUserProfile(deps: ToolDeps): CapturedTool {
-  return captureTools(deps).find((t) => t.name === "create_user_context")!;
+function getResearchProfile(deps: ToolDeps): CapturedTool {
+  return captureTools(deps).find((t) => t.name === "research_profile")!;
 }
 
-function buildOnboardingDeps(enrichment: EnrichmentResult | null): ToolDeps {
+function buildDeps(enrichment: EnrichmentResult | null): ToolDeps {
   return {
     userDb: {
-      getUser: async () => ({
-        id: "test-user",
-        name: "Test User",
-        email: "test@example.com",
-        socials: [],
-        onboarding: null,
-      }),
-      getProfile: async () => null,
-      updateUser: async () => ({}),
+      getUser: async () => ({ id: "test-user", name: "Test User", email: "test@example.com" }),
       getUserSocials: async () => [],
-      setUserSocials: async () => {},
     },
-    systemDb: {},
-    database: {},
-    graphs: { profile: { invoke: async () => ({}) } },
     enricher: { enrichUserProfile: async () => enrichment },
-    grantDefaultSystemPermissions: async () => undefined,
   } as unknown as ToolDeps;
 }
 
-const onboardingContext = {
+const context = {
   userId: "test-user",
   userName: "Test User",
   userEmail: "test@example.com",
   user: { onboarding: null },
 } as unknown as ResolvedToolContext;
 
-describe("create_user_context detectedSocials preview", () => {
-  it("includes detectedSocials in preview when enrichment finds social handles", async () => {
+describe("research_profile", () => {
+  it("returns a suggested profile with mapped socials on a confident human match", async () => {
     const enrichment = makeEnrichment({ socials: { github: "github.com/user", linkedin: "linkedin.com/in/user" } });
-    const tool = getCreateUserProfile(buildOnboardingDeps(enrichment));
-    const result = await tool.handler({ context: onboardingContext, query: {} });
+    const tool = getResearchProfile(buildDeps(enrichment));
+    const result = await tool.handler({ context, query: {} });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
-    expect(parsed.data.preview).toBe(true);
-    expect(parsed.data.detectedSocials).toEqual({ github: "github.com/user", linkedin: "linkedin.com/in/user" });
+    expect(parsed.data.enriched).toBe(true);
+    expect(parsed.data.profile).toEqual({
+      name: "Ada Lovelace",
+      intro: "Founder at Analytical Engines",
+      location: "London",
+      socials: [
+        { label: "linkedin", value: "linkedin.com/in/user" },
+        { label: "github", value: "github.com/user" },
+      ],
+      avatarUrl: null,
+    });
   });
 
-  it("includes empty detectedSocials when enrichment finds no social handles", async () => {
+  it("returns no profile when enrichment finds no social handles", async () => {
     const enrichment = makeEnrichment({ socials: {} });
-    const tool = getCreateUserProfile(buildOnboardingDeps(enrichment));
-    const result = await tool.handler({ context: onboardingContext, query: {} });
+    const tool = getResearchProfile(buildDeps(enrichment));
+    const result = await tool.handler({ context, query: {} });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
-    expect(parsed.data.preview).toBe(true);
-    expect(parsed.data.detectedSocials).toEqual({});
+    expect(parsed.data.enriched).toBe(true);
+    expect(parsed.data.profile.socials).toEqual([]);
   });
 
-  it("returns needsClarification (not a preview) when enrichment is not confident", async () => {
+  it("returns enriched:false when enrichment is not a confident match", async () => {
     const enrichment = makeEnrichment({ confidentMatch: false });
-    const tool = getCreateUserProfile(buildOnboardingDeps(enrichment));
-    const result = await tool.handler({ context: onboardingContext, query: {} });
+    const tool = getResearchProfile(buildDeps(enrichment));
+    const result = await tool.handler({ context, query: {} });
     const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(false);
-    expect(parsed.needsClarification).toBe(true);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.enriched).toBe(false);
+    expect(parsed.data.profile).toBeNull();
+  });
+
+  it("returns enriched:false when the match is not a human", async () => {
+    const enrichment = makeEnrichment({ isHuman: false });
+    const tool = getResearchProfile(buildDeps(enrichment));
+    const result = await tool.handler({ context, query: {} });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.enriched).toBe(false);
+    expect(parsed.data.profile).toBeNull();
   });
 });

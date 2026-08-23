@@ -47,7 +47,6 @@ export function createUtilityTools(
       "Returns the page's text content (up to 10,000 characters) for use in subsequent tool calls.\n\n" +
       "**When to use:**\n" +
       "- Before create_intent: when the user shares a URL and wants to create an intent from it. Scrape first, then synthesize into a description.\n" +
-      "- Before create_user_context or update_user_context: when the user shares a profile URL to update their profile from.\n" +
       "- When the user asks about content at a URL.\n\n" +
       "**URL format:** Bare domains work fine (e.g. 'github.com/user/repo') — protocol (https://) is added automatically.\n\n" +
       "**Returns:** `{ url, contentLength, content }`. Content is truncated at 10,000 chars. " +
@@ -209,8 +208,8 @@ Profiles are the user's identity on the platform, used for semantic matching in 
   - Mirror: self-description of the person
   - Reciprocal: what this person would look for in others
   - Neighborhood: related community context
-- **Onboarding flow**: create_user_context() → preview → create_user_context(confirm=true) → complete_onboarding()
-- **Updates**: Use update_user_context for targeted changes, create_user_context for full regeneration.
+- **Onboarding flow**: research_profile() suggests a profile from account/social data; the user confirms it in conversation and the client persists it.
+- **Updates**: Profile edits go through the client's profile settings; research_profile only suggests, it never persists.
 
 ### Profile Best Practices
 - Richer profiles produce better opportunity matches
@@ -239,12 +238,11 @@ Discovery is the process of finding meaningful connections between users based o
         workflows: `## Common Tool Workflows
 
 ### New User Setup
-1. create_user_context(linkedinUrl/githubUrl) → generate profile from social data
-2. complete_onboarding() → unlock full access
-3. read_networks() → see available communities
-4. create_network_membership(networkId) → join a community
-5. create_intent(description) → post what you're looking for
-6. Background matching evaluates the approved signal; list_opportunities reviews persisted results
+1. research_profile(linkedin/github/...) → suggest a profile from social data
+2. read_networks() → see available communities
+3. create_network_membership(networkId) → join a community
+4. create_intent(description) → post what you're looking for
+5. Background matching evaluates the approved signal; list_opportunities reviews persisted results
 
 ### Finding Connections
 1. read_networks() → list user's communities (get networkId)

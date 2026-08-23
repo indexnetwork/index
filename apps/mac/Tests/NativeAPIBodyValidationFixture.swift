@@ -14,11 +14,6 @@ enum NativeAPIBodyValidationFixture {
         let id = string("00000000-0000-4000-8000-000000000001")
         let empty = object()
         let rounds = array([object(["prompt": string("Who?"), "answer": object(["selectedOptions": array([string("Founders")])])])])
-        let draft = object([
-            "identity": object(["name": string("Owner"), "bio": string("Builder"), "location": string("NY")]),
-            "narrative": object(["context": string("Builds safe systems")]),
-            "attributes": object(["skills": array([string("security")]), "interests": array([string("networks")])]),
-        ])
         let admitted: [(String, String, NativeJSONValue)] = [
             ("PATCH", "/auth/profile/update", object(["name": string("Owner"), "timezone": string("America/New_York"), "socials": array([object(["label": string("github"), "value": string("https://github.com/o")])]), "notificationPreferences": object(["connectionUpdates": .bool(true), "weeklyNewsletter": .bool(false)])])),
             ("PUT", "/agent-runtime", object(["runtime": string("index")])),
@@ -41,7 +36,7 @@ enum NativeAPIBodyValidationFixture {
             ("POST", "/opportunities/o1/start-chat", empty),
             ("POST", "/questions/q1/answer", object(["selectedOptions": array([string("yes")])])),
             ("POST", "/questions/q1/dismiss", empty),
-                                                ("POST", "/enrichment/enrich", empty),
+            ("POST", "/enrichment/enrich", empty),
             ("POST", "/auth/onboarding/confirm-profile", empty),
             ("POST", "/auth/onboarding/complete", object(["intentId": string("intent-1")])),
             ("POST", "/conversations/dm", object(["peerUserId": id])),

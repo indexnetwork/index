@@ -252,7 +252,7 @@ def _call_tool(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, 
 
     This is the Mac app's tool path: it accepts the browser-login CLI credential,
     whereas the MCP surface resolves that key to the enrollment-only principal and
-    denies identity tools such as confirm_user_context / read_user_contexts.
+    denies identity tools such as research_profile.
     """
     return tools._api_request("POST", f"/tools/{quote(tool_name, safe='')}", {"query": args or {}})
 
@@ -416,19 +416,6 @@ def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "profileConfirmedAt": confirmed_at or None,
         "needsProfileConfirm": bool(row.get("id")) and not bool(confirmed_at),
-    }
-
-
-def _approved_draft_from_body(body: dict[str, Any]) -> dict[str, Any]:
-    """Build the structured draft `confirm_user_context` expects from a profile form body."""
-    name = _text(body.get("name"))
-    intro = _text(body.get("intro"))
-    location = _text(body.get("location"))
-    context = _text(body.get("context")) or intro
-    return {
-        "identity": {"name": name, "bio": intro, "location": location},
-        "narrative": {"context": context},
-        "attributes": {"skills": [], "interests": []},
     }
 
 
@@ -1852,32 +1839,26 @@ def set_intent_status(
 def profile() -> dict[str, Any]:
     """Return the current user's profile.
 
-    Identity (name, bio, location, context) comes from the MCP `read_user_contexts`
-    self-read; avatar and socials come from the public `GET /users/:id`. Email,
-    timezone, and notification preferences are sourced from the now API-key-capable
-    `GET /auth/me` (email stays read-only — see `_MOCKED_PROFILE_FIELDS`).
+    Identity (name, intro, location), avatar, and socials come from the public
+    `GET /users/:id` — identity lives on the user row, there is no separate
+    context record to overlay. Email, timezone, and notification preferences
+    are sourced from the API-key-capable `GET /auth/me` (email stays read-only
+    — see `_MOCKED_PROFILE_FIELDS`).
     """
     me = _fetch_me()
     user_id = _text(me.get("id"))
     if not user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
 
-    contexts = _data(_call_tool("read_user_contexts")) or {}
     user = _fetch_user(user_id)
-
-    name = _text(user.get("name")) or _text(contexts.get("name") if isinstance(contexts, dict) else None)
-    intro = _text(user.get("intro")) or _text(contexts.get("bio") if isinstance(contexts, dict) else None)
-    location = _text(user.get("location")) or _text(contexts.get("location") if isinstance(contexts, dict) else None)
-    context_text = _text(contexts.get("context") if isinstance(contexts, dict) else None)
 
     profile_obj: dict[str, Any] = {
         "id": user_id,
-        "name": name,
-        "intro": intro,
-        "location": location,
+        "name": _text(user.get("name")),
+        "intro": _text(user.get("intro")),
+        "location": _text(user.get("location")),
         "avatar": _avatar_url(user.get("avatar")),
         "socials": _profile_socials(user),
-        "context": context_text,
         "email": _text(me.get("email")),
         "timezone": _text(me.get("timezone")),
         "notificationPreferences": _notification_preferences(me.get("notificationPreferences")),
@@ -1894,8 +1875,9 @@ def profile() -> dict[str, Any]:
 def public_profile(user_id: str) -> dict[str, Any]:
     """Return another user's public, read-only profile (web `/u/:id` equivalent).
 
-    Backed by the public `GET /users/:id` (avatar, socials, intro, location) plus the
-    user's `context` paragraph from MCP `read_user_contexts(userId)`.
+    Backed entirely by the public `GET /users/:id` (avatar, socials, name, intro,
+    location) — identity lives on the user row, there is no separate context
+    record to overlay.
     """
     user_id = _text(user_id)
     if not user_id:
@@ -1911,9 +1893,6 @@ def public_profile(user_id: str) -> dict[str, Any]:
     if isinstance(user, dict) and user.get("success") is False:
         return user
 
-    contexts = _data(_call_tool("read_user_contexts", {"userId": user_id})) or {}
-    context_text = _text(contexts.get("context") if isinstance(contexts, dict) else None)
-
     profile_obj: dict[str, Any] = {
         "id": user_id,
         "name": _text(user.get("name")),
@@ -1921,7 +1900,6 @@ def public_profile(user_id: str) -> dict[str, Any]:
         "location": _text(user.get("location")),
         "avatar": _avatar_url(user.get("avatar")),
         "socials": _profile_socials(user),
-        "context": context_text,
     }
     return {"success": True, "profile": profile_obj, "readOnly": True}
 
@@ -2029,9 +2007,9 @@ def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict
 def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Confirm the first-run profile review (Mac settings `enrich` path).
 
-    Persists the approved draft through MCP `confirm_user_context` (sets
-    `onboarding.profileConfirmedAt`) and writes socials/name/intro/location via
-    `PATCH /auth/profile/update`.
+    Writes name/intro/location/socials via `PATCH /auth/profile/update`, then
+    confirms the profile via `POST /auth/onboarding/confirm-profile` (sets
+    `onboarding.profileConfirmedAt`).
     """
     if not isinstance(body, dict):
         return {"success": False, "error": "Confirm body must be an object."}
@@ -2041,29 +2019,14 @@ def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict
     if not update:
         return {"success": False, "error": "Name, intro, location, or socials are required."}
 
-    draft = body.get("draft") if isinstance(body.get("draft"), dict) else _approved_draft_from_body(body)
-    identity = draft.get("identity") if isinstance(draft.get("identity"), dict) else {}
-    narrative = draft.get("narrative") if isinstance(draft.get("narrative"), dict) else {}
-    attributes = draft.get("attributes") if isinstance(draft.get("attributes"), dict) else {}
-    approved = {
-        "identity": {
-            "name": _text(identity.get("name")) or _text(body.get("name")),
-            "bio": _text(identity.get("bio")) or _text(body.get("intro")),
-            "location": _text(identity.get("location")) or _text(body.get("location")),
-        },
-        "narrative": {"context": _text(narrative.get("context")) or _text(body.get("context")) or _text(body.get("intro"))},
-        "attributes": {
-            "skills": [s for s in _list(attributes.get("skills")) if isinstance(s, str) and s.strip()],
-            "interests": [s for s in _list(attributes.get("interests")) if isinstance(s, str) and s.strip()],
-        },
-    }
-    confirm = _call_tool("confirm_user_context", {"draft": approved})
-    if confirm.get("success") is False:
-        return confirm
-
     payload = tools._api_request("PATCH", "/auth/profile/update", update)
     if payload.get("success") is False:
         return payload
+
+    confirm = tools._api_request("POST", "/auth/onboarding/confirm-profile")
+    if confirm.get("success") is False:
+        return confirm
+
     return {"success": True, "onboarding": _onboarding_gate(), "applied": update}
 
 

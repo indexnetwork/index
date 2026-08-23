@@ -36,8 +36,6 @@ export interface DatabaseIdentityQueries {
   /**
    * Updates user account fields (name, location, socials).
    * Merges socials with existing values (does not overwrite the whole object).
-   * Used by create_user_context tool to persist user-provided info before
-   * invoking the Profile Graph in generate mode.
    *
    * @param userId - The unique identifier of the user
    * @param data - Partial user fields to update

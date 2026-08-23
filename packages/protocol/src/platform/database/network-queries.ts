@@ -263,7 +263,7 @@ export interface DatabaseNetworkQueries {
   deleteProfile(userId: string): Promise<void>;
 
   /**
-   * Get a user's profile including its row id (for update_user_context validation).
+   * Get a user's profile including its row id.
    *
    * @param userId - The user whose profile to fetch
    * @returns Profile with id, or null if not found

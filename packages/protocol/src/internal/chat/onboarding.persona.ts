@@ -1,6 +1,3 @@
-import { tool } from "@langchain/core/tools";
-import { z } from "zod";
-
 import { createChatTools, type ChatTools, type ResolvedToolContext, type ToolContext } from "../shared/agent/tool.factory.js";
 import { resolveChatContext } from "../shared/agent/tool.helpers.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "../shared/agent/tool.scope.js";
@@ -31,28 +28,6 @@ const ONBOARDING_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(ONBOARDING_TOOL_N
 /** Filters the shared registry through Onboarding Agent's exact allowlist. */
 export function filterOnboardingTools<T extends { name: string }>(tools: T[]): T[] {
   return tools.filter((candidate) => ONBOARDING_TOOL_ALLOWLIST.has(candidate.name));
-}
-
-/**
- * Narrows shared onboarding tools whose generic schemas exceed the web flow.
- * Chat-side completion requires an exact intent ID (the direct REST tool
- * remains the browser's normal completion path).
- */
-export function narrowOnboardingTools(allowed: ChatTools): ChatTools {
-  return allowed.map((sharedTool) => {
-    if (sharedTool.name === "complete_onboarding") {
-      return tool(
-        async (query: { intentId: string }) => sharedTool.invoke({ intentId: query.intentId }) as Promise<string>,
-        {
-          name: "complete_onboarding",
-          description: "Validate completion only for the exact active first-signal ID returned after user confirmation.",
-          schema: z.object({ intentId: z.string().uuid() }).strict(),
-        },
-      );
-    }
-
-    return sharedTool;
-  }) as ChatTools;
 }
 
 /** Creates the context-bound, allowlisted, proposal-only onboarding toolset. */
@@ -88,11 +63,8 @@ export async function createOnboardingTools(
     await createChatTools(deps, resolvedContext),
   ) as ChatTools;
 
-  // Reuse Signal's reviewed create_intent/self-read narrowing, then clamp the
-  // onboarding-specific generic schemas to the exact web flow.
-  return narrowOnboardingTools(
-    narrowSignalTools(allowed, { context: resolvedContext, userDb, systemDb }),
-  );
+  // Reuse Signal's reviewed create_intent/self-read narrowing.
+  return narrowSignalTools(allowed, { context: resolvedContext, userDb, systemDb });
 }
 
 /** Identity this persona introduces itself with. */

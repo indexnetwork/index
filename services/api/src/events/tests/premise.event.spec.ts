@@ -308,58 +308,6 @@ describe('PremiseQueue — grounded intent re-verification', () => {
 });
 
 // ---------------------------------------------------------------------------
-// PremiseQueue profile_regen tests
-// ---------------------------------------------------------------------------
-describe('PremiseQueue — profile_regen', () => {
-  it('enqueues context regen for the given userId', async () => {
-    const regenCalls: string[] = [];
-    const deps: PremiseQueueDeps = {
-      enqueueContextRegen: async (userId) => {
-        regenCalls.push(userId);
-      },
-    };
-    const queue = new PremiseQueue(deps);
-    await queue.processJob('profile_regen', { userId: 'u-1', trigger: 'premise_created' });
-    expect(regenCalls).toEqual(['u-1']);
-  });
-
-  it('enqueues context regen exactly once per job', async () => {
-    const enqueueContextRegen = mock(async (_userId: string) => {});
-    const deps: PremiseQueueDeps = { enqueueContextRegen };
-    const queue = new PremiseQueue(deps);
-    await queue.processJob('profile_regen', { userId: 'u-2', trigger: 'premise_updated' });
-    expect(enqueueContextRegen).toHaveBeenCalledTimes(1);
-    expect(enqueueContextRegen).toHaveBeenCalledWith('u-2');
-  });
-
-  it('works for all trigger types', async () => {
-    const triggers = [
-      'premise_created',
-      'premise_updated',
-      'premise_retracted',
-      'premise_expired',
-    ] as const;
-
-    for (const trigger of triggers) {
-      const enqueueContextRegen = mock(async (_userId: string) => {});
-      const deps: PremiseQueueDeps = { enqueueContextRegen };
-      const queue = new PremiseQueue(deps);
-      await queue.processJob('profile_regen', { userId: 'u-trigger', trigger });
-      expect(enqueueContextRegen).toHaveBeenCalledWith('u-trigger');
-    }
-  });
-
-  it('completes via the injected context-regen dep', async () => {
-    const enqueueContextRegen = mock(async (_userId: string) => {});
-    const queueWithDep = new PremiseQueue({ enqueueContextRegen });
-    await expect(
-      queueWithDep.processJob('profile_regen', { userId: 'u-3', trigger: 'premise_expired' })
-    ).resolves.toBeUndefined();
-    expect(enqueueContextRegen).toHaveBeenCalledWith('u-3');
-  });
-});
-
-// ---------------------------------------------------------------------------
 // PremiseQueue routing tests
 // ---------------------------------------------------------------------------
 describe('PremiseQueue — job routing', () => {

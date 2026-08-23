@@ -6,10 +6,8 @@ import type { ToolDeps } from "../tool.helpers.js";
 /**
  * Surface-aware tool registry (IND-596/597/598, IND-373).
  *
- * `scrape_url` and `complete_onboarding` remain REST/chat-only. The retired
- * profile/profile-run compatibility aliases are
- * absent from every surface; canonical identity/context and enrichment-run
- * names remain available.
+ * `scrape_url` remains REST/chat-only. Retired contact/import names never
+ * resolve on either surface.
  */
 
 // create*Tools only DEFINE tools at registration time (handlers are not invoked),
@@ -23,31 +21,8 @@ function makeDeps(): ToolDeps {
   return deep as ToolDeps;
 }
 
-const ALIASES: ReadonlyArray<readonly [string, string]> = [
-  ["read_user_profiles", "read_user_contexts"],
-  ["create_user_profile", "create_user_context"],
-  ["update_user_profile", "update_user_context"],
-  ["confirm_user_profile", "confirm_user_context"],
-  ["preview_user_profile", "preview_user_context"],
-  ["get_profile_run", "get_enrichment_run"],
-  ["cancel_profile_run", "cancel_enrichment_run"],
-];
-
 const REST_ONLY_TOOLS: readonly string[] = [
   "scrape_url",
-  "complete_onboarding",
-];
-
-// Canonical identity/context + enrichment-run replacements that MUST remain on
-// both surfaces.
-const CANONICAL_PRESERVED: readonly string[] = [
-  "read_user_contexts",
-  "create_user_context",
-  "update_user_context",
-  "confirm_user_context",
-  "preview_user_context",
-  "get_enrichment_run",
-  "cancel_enrichment_run",
 ];
 
 describe("tool registry surface profiles", () => {
@@ -66,13 +41,6 @@ describe("tool registry surface profiles", () => {
     }
   });
 
-  test("retired profile aliases are absent from every surface", () => {
-    for (const [oldName] of ALIASES) {
-      expect(restRegistry.get(oldName), `REST profile must omit ${oldName}`).toBeUndefined();
-      expect(mcpRegistry.get(oldName), `MCP profile must omit ${oldName}`).toBeUndefined();
-    }
-  });
-
   test("retired contact and import names never resolve", () => {
     for (const name of ["list_contacts", "remove_contact", "search_contacts", "import_contacts", "add_contact", "import_gmail_contacts"]) {
       expect(restRegistry.get(name), `REST must omit ${name}`).toBeUndefined();
@@ -80,11 +48,9 @@ describe("tool registry surface profiles", () => {
     }
   });
 
-  test("canonical identity/context + enrichment-run tools remain on both surfaces", () => {
-    for (const name of CANONICAL_PRESERVED) {
-      expect(restRegistry.get(name), `REST must keep ${name}`).toBeDefined();
-      expect(mcpRegistry.get(name), `MCP must keep ${name}`).toBeDefined();
-    }
+  test("research_profile remains available on both surfaces", () => {
+    expect(restRegistry.get("research_profile"), "REST must keep research_profile").toBeDefined();
+    expect(mcpRegistry.get("research_profile"), "MCP must keep research_profile").toBeDefined();
   });
 
   test("read_docs and read_activity_summary stay registered on both surfaces; report_agent_activity retains no alias", () => {

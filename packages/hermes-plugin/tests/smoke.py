@@ -225,9 +225,7 @@ def main() -> None:
     plugin.register(ctx)
     assert set(plugin.schemas.FORWARDED_MCP_TOOLS) == plugin.tools._FORWARDED_MCP_TOOLS
     canonical_mcp_tools = (
-        "read_user_contexts", "preview_user_context", "confirm_user_context",
-        "create_user_context", "update_user_context", "get_enrichment_run",
-        "cancel_enrichment_run", "read_intents", "search_intents", "create_intent",
+        "research_profile", "read_intents", "search_intents", "create_intent",
         "update_intent", "read_intent_indexes", "create_intent_index", "list_negotiations",
         "get_negotiation", "respond_to_negotiation", "read_networks",
         "read_network_memberships", "create_network", "update_network",
@@ -243,7 +241,7 @@ def main() -> None:
         "delete_network_membership", "list_conversations", "get_conversation",
     }
     plugin_mcp_tools = ("read_intents", *plugin.schemas.FORWARDED_MCP_TOOLS)
-    assert len(plugin_mcp_tools) == 30
+    assert len(plugin_mcp_tools) == 24
     assert set(plugin_mcp_tools) == set(canonical_mcp_tools)
     assert denied_wrappers.isdisjoint(plugin_mcp_tools)
 
@@ -1696,22 +1694,9 @@ def main() -> None:
                         }
                     }
                 ),
-                # read_user_contexts now goes through the REST tool surface
-                # (POST /tools/read_user_contexts), which the browser-login CLI
-                # key can call, unlike the MCP surface. Response is the REST
-                # {success, data} envelope.
-                FakeResponse(
-                    {
-                        "success": True,
-                        "data": {
-                            "hasProfile": True,
-                            "name": "Ada Lovelace",
-                            "bio": "Builds robots.",
-                            "location": "London",
-                            "context": "Ada is a robotics engineer.",
-                        },
-                    }
-                ),
+                # Identity (name/intro/location/avatar/socials) comes entirely
+                # from the public GET /users/:id row — there is no separate
+                # context record to overlay.
                 FakeResponse(
                     {
                         "user": {
@@ -1736,15 +1721,13 @@ def main() -> None:
         assert profile_obj["location"] == "London"
         assert profile_obj["avatar"] == "https://protocol.index.network/api/storage/avatars/user-1/a.png"
         assert profile_obj["socials"] == [{"label": "twitter", "value": "ada"}]
-        assert profile_obj["context"] == "Ada is a robotics engineer."
+        assert "context" not in profile_obj
         assert profile_obj["email"] == "ada@example.test"
         assert profile_obj["timezone"] == "Europe/London"
         assert profile_obj["notificationPreferences"] == {"connectionUpdates": False, "weeklyNewsletter": True}
         assert prof["mockedFields"] == ["email"]
         assert prof["onboarding"] == {"profileConfirmedAt": None, "needsProfileConfirm": True}
-        profile_tool_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is not None]
-        assert profile_tool_calls == [("POST", "https://api.example.test/api/tools/read_user_contexts")]
-        profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
+        profile_rest_calls = [(entry["method"], entry["url"]) for entry in captured]
         assert profile_rest_calls == [
             ("GET", "https://api.example.test/api/auth/me"),
             ("GET", "https://api.example.test/api/users/user-1"),
@@ -1779,13 +1762,11 @@ def main() -> None:
         captured = []
         install_fake_urlopen(
             [
-                # confirm_user_context now goes through the REST tool surface
-                # (POST /tools/confirm_user_context) so the browser-login CLI key
-                # is accepted; the MCP surface denies it as an enrollment key.
-                FakeResponse(
-                    {"success": True, "data": {"created": True, "message": "Profile saved from approved draft."}}
-                ),
+                # Profile fields are written first via PATCH /auth/profile/update...
                 FakeResponse({"success": True, "user": {"id": "user-1"}}),
+                # ...then the profile is confirmed via the REST-only
+                # POST /auth/onboarding/confirm-profile.
+                FakeResponse({"success": True, "profileConfirmedAt": "2026-06-01T00:00:00.000Z"}),
                 FakeResponse(
                     {
                         "user": {
@@ -1811,11 +1792,11 @@ def main() -> None:
             "needsProfileConfirm": False,
         }
         assert confirm_result["applied"]["name"] == "Ada L."
-        confirm_tool = [entry for entry in captured if entry["body"] and "/tools/confirm_user_context" in entry["url"]]
-        assert confirm_tool[0]["method"] == "POST"
-        assert confirm_tool[0]["body"]["query"]["draft"]["identity"]["name"] == "Ada L."
-        assert captured[-2]["method"] == "PATCH"
-        assert captured[-2]["url"] == "https://api.example.test/api/auth/profile/update"
+        assert captured[0]["method"] == "PATCH"
+        assert captured[0]["url"] == "https://api.example.test/api/auth/profile/update"
+        assert captured[0]["body"]["name"] == "Ada L."
+        assert captured[1]["method"] == "POST"
+        assert captured[1]["url"] == "https://api.example.test/api/auth/onboarding/confirm-profile"
         assert dashboard_api.onboarding_confirm("nope") == {
             "success": False,
             "error": "Confirm body must be an object.",
@@ -2080,13 +2061,6 @@ def main() -> None:
                         }
                     }
                 ),
-                # read_user_contexts(userId) via the REST tool surface.
-                FakeResponse(
-                    {
-                        "success": True,
-                        "data": {"hasProfile": True, "name": "Grace Hopper", "context": "Grace builds compilers."},
-                    }
-                ),
             ],
             captured,
         )
@@ -2100,17 +2074,13 @@ def main() -> None:
         assert other_profile["location"] == "New York"
         assert other_profile["avatar"] == "https://protocol.index.network/api/storage/avatars/other/g.png"
         assert other_profile["socials"] == [{"label": "github", "value": "grace"}]
-        assert other_profile["context"] == "Grace builds compilers."
-        public_rest = [(entry["method"], entry["url"]) for entry in captured if entry["body"] is None]
+        assert "context" not in other_profile
+        public_rest = [(entry["method"], entry["url"]) for entry in captured]
         assert public_rest == [
             ("GET", "https://api.example.test/api/auth/me"),
             ("GET", "https://api.example.test/api/opportunities"),
             ("GET", "https://api.example.test/api/opportunities?status=expired"),
             ("GET", "https://api.example.test/api/users/other"),
-        ]
-        public_tool = [(entry["method"], entry["url"], entry["body"]) for entry in captured if entry["body"]]
-        assert public_tool == [
-            ("POST", "https://api.example.test/api/tools/read_user_contexts", {"query": {"userId": "other"}}),
         ]
 
         assert dashboard_api.public_profile("") == {"success": False, "error": "A user id is required."}

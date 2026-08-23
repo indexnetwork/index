@@ -26,14 +26,13 @@ export const NEGOTIATOR_PERSONA_ID = "negotiator";
  * P4.5 (IND-413) expanded this from the read-mostly P4.1 set: with direct
  * opportunity discovery retiring alongside the orchestrator, discovery is
  * purely signal-based — so the negotiator (the surviving personal-agent chat
- * surface) manages the client's signals, profile knowledge, and memberships.
+ * surface) manages the client's signals, premises, and memberships.
  *
  * Still deliberately excluded:
  * - discovery runs (`discover_opportunities`, `get/cancel_discovery_run`) —
  *   retired capability; matching happens in the background from signals,
  * - whole-network administration (`create/update/delete_network`) — a
  *   human/UI act for now (joins/leaves are allowed),
- * - onboarding plumbing (`complete_onboarding`),
  * - agent management (`register/update/delete_agent`, permission grants),
  * - `confirm_opportunity_delivery` (OpenClaw ledger write, never chat).
  */
@@ -53,12 +52,6 @@ export const NEGOTIATOR_TOOL_NAMES = [
   "read_intent_indexes",
   "create_intent_index",
   "delete_intent_index",
-  // Profile knowledge (P4.5)
-  "read_user_contexts",
-  "create_user_context",
-  "update_user_context",
-  "confirm_user_context",
-  "preview_user_context",
   // Premises (P4.5; read was already in P4.1)
   "read_premises",
   "create_premise",

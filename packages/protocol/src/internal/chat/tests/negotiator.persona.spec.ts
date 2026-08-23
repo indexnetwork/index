@@ -304,8 +304,6 @@ describe("filterNegotiatorTools", () => {
       "update_intent",
       "delete_intent",
       "search_intents",
-      "create_user_context",
-      "update_user_context",
       "create_premise",
       "retract_premise",
       "read_networks",

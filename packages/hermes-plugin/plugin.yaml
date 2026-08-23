@@ -3,13 +3,7 @@ version: 0.24.0
 description: Index Network Hermes plugin with native tools backed by Index MCP and personal-agent APIs.
 provides_tools:
   - index_read_intents
-  - index_read_user_contexts
-  - index_preview_user_context
-  - index_confirm_user_context
-  - index_create_user_context
-  - index_update_user_context
-  - index_get_enrichment_run
-  - index_cancel_enrichment_run
+  - index_research_profile
   - index_create_intent
   - index_update_intent
   - index_create_intent_index

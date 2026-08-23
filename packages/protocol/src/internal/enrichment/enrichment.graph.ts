@@ -78,8 +78,8 @@ export async function checkStateNode(state: EnrichmentState, deps: EnrichmentGra
           ? {
               hasProfile: true,
               // Thin identity only. The structured skills/interests attributes are
-              // retired (user_profiles removal, WS6); the rich identity text now
-              // comes from the global user_context, injected by read_user_contexts.
+              // retired (user_profiles removal, WS6); premises are the source of
+              // truth for the user's richer background now.
               profile: {
                 id: profileWithId?.id,
                 name: profile?.identity?.name,

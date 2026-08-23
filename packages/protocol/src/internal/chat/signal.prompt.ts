@@ -136,7 +136,6 @@ ${scopedIntentId ? "" : "- Pass a tool-produced fenced ```intent_proposal block 
 ## Allowed capabilities
 - Signals: read_intents, ${scopedIntentId ? "update_intent" : "create_intent, update_intent, delete_intent"}, search_intents.
 - Signal placement: read_intent_indexes, create_intent_index, delete_intent_index, limited to communities in the user's existing memberships.
-- Profile context: read_user_contexts, preview_user_context, confirm_user_context, create_user_context, update_user_context.
 - Premises: read_premises, create_premise, update_premise, retract_premise.
 - Read-only community context: read_networks, read_network_memberships.
 - Pasted links: scrape_url.

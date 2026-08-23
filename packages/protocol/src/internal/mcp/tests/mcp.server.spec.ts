@@ -339,16 +339,10 @@ describe("intent-scoped MCP tool surface", () => {
 describe("ONBOARDING_ALLOWED", () => {
   test("contains all onboarding-flow tools", () => {
     const expected = [
-      "preview_user_context",
-      "get_enrichment_run",
-      "cancel_enrichment_run",
-      "confirm_user_context",
-      "create_user_context",
-      "complete_onboarding",
+      "research_profile",
       "read_networks",
       "create_network_membership",
       "create_intent",
-      "read_user_contexts",
     ];
     for (const tool of expected) {
       expect(ONBOARDING_ALLOWED.has(tool)).toBe(true);
@@ -388,21 +382,20 @@ describe("buildMcpOnboardingMessage", () => {
   test("mentions onboarding requirement", () => {
     const msg = buildMcpOnboardingMessage(minimalContext());
     expect(msg).toContain("not completed onboarding");
-    expect(msg).toContain("complete_onboarding");
+    expect(msg).toContain("research_profile");
   });
 
   test("uses name-confirmation step when user has a name", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: true, userName: "Alice" }));
     expect(msg).toContain("You're Alice, right?");
-    expect(msg).toContain("preview_user_context");
-    expect(msg).toContain("get_enrichment_run");
+    expect(msg).toContain("research_profile");
   });
 
   test("uses name-ask step when user has no name", () => {
     const msg = buildMcpOnboardingMessage(minimalContext({ hasName: false, userName: "Unknown" }));
     expect(msg).toContain("Ask the user for their name");
     expect(msg).toContain("short self-description");
-    expect(msg).toContain("confirm_user_context");
+    expect(msg).toContain("research_profile");
   });
 
   test("skips community step for network-scoped contexts", () => {

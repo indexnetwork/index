@@ -67,13 +67,7 @@ class _NegotiationRunState:
 _NEGOTIATION_RUN_STATES: OrderedDict[str, _NegotiationRunState] = OrderedDict()
 _FORWARDED_MCP_TOOLS = frozenset(
     {
-        "read_user_contexts",
-        "preview_user_context",
-        "confirm_user_context",
-        "create_user_context",
-        "update_user_context",
-        "get_enrichment_run",
-        "cancel_enrichment_run",
+        "research_profile",
         "create_intent",
         "update_intent",
         "create_intent_index",

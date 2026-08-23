@@ -4,7 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { describe, expect, it, mock, afterAll } from 'bun:test';
+import { describe, expect, it, mock, afterAll, afterEach } from 'bun:test';
 
 const mockAdd = mock(async () => ({ id: 'job-1', name: 'generate_hyde', data: {} }));
 const mockCreateWorker = mock(() => ({}));
@@ -27,6 +27,13 @@ mock.module('../../adapters/embedder.adapter', () => ({
 mock.module('../opportunity/from-intent.queue', () => ({
   fromIntentQueue: { addJob: async () => ({ id: '1' }) },
 }));
+let mockBuildProfileFromUser = async (_userId: string) => null as null | { identity: { name: string; bio: string; location: string } };
+mock.module('../../adapters/database.shared', () => ({
+  buildProfileFromUser: (userId: string) => mockBuildProfileFromUser(userId),
+}));
+afterEach(() => {
+  mockBuildProfileFromUser = async () => null;
+});
 
 afterAll(() => {
   mock.restore();
@@ -250,10 +257,12 @@ describe('IntentQueue', () => {
       expect(sequence).toEqual(['assignment', 'hyde', 'discovery']);
     });
 
-    it('generate_hyde: builds profileContext from the global user_context + active intents', async () => {
+    it('generate_hyde: builds profileContext from the users row (name/bio/location) + active intents', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => ({}));
-      const getUserContextText = mock(async () => 'Dana builds agent tooling in Berlin.');
+      mockBuildProfileFromUser = async () => ({
+        identity: { name: 'Dana', bio: 'Builds agent tooling in Berlin.', location: 'Berlin' },
+      });
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'Find collaborators', userId: 'u1', sourceType: null, sourceId: null }),
         getUserIndexIds: async () => ['idx1'],
@@ -265,14 +274,13 @@ describe('IntentQueue', () => {
         database: asIntentDb(db as Partial<IntentQueueDatabase>),
         invokeHyde,
         addOpportunityJob,
-        getUserContextText,
       });
       await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
-      expect(getUserContextText).toHaveBeenCalledWith('u1');
       const passed = invokeHyde.mock.calls[0][0] as { profileContext?: string };
-      // The global context paragraph is used verbatim (no Profile/Skills/Interests lines)...
-      expect(passed.profileContext).toContain('Dana builds agent tooling in Berlin.');
-      expect(passed.profileContext).not.toContain('Skills:');
+      // Identity lines (name/bio/location) from the users row...
+      expect(passed.profileContext).toContain('Dana');
+      expect(passed.profileContext).toContain('Builds agent tooling in Berlin.');
+      expect(passed.profileContext).toContain('Berlin');
       // ...alongside the active-intents block.
       expect(passed.profileContext).toContain('Active intents:');
       expect(passed.profileContext).toContain('Looking for a cofounder');
