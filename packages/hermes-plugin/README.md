@@ -18,20 +18,18 @@ export INDEX_API_KEY=<your Index agent API key>
 
 Optional overrides: `INDEX_API_URL` and `INDEX_MCP_URL` (default to production endpoints). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
 
-Pickup and `GET /agents/me` need the agent-bound token, not the CLI owner key. The agent token can be revoked from web settings.
+`GET /agents/me` needs the agent-bound token, not the CLI owner key. The agent token can be revoked from web settings.
 
-Full-mode wake listens to `GET /conversations/stream` (and the Discover 15s inbox tick) and POSTs pickup so Index keeps parking turns on Hermes. Empty pickup only refreshes the seat. Pending pickup claims the turn and injects one Hermes chat to reply with `index_respond_to_negotiation` (real message, not a canned stall). Gateway injection needs `plugins.entries.index-network.allow_gateway_injection: true` plus a live Hermes session.
+Full-mode wake listens to `GET /conversations/stream`. There is no more pickup/claim — a negotiation is never claimed into a distinct state, it just stays `working` until it pauses or resolves — so wake reacts only to a negotiation message it actually observes on the stream (not this owner's own agent turn), and injects one Hermes chat to reply with `index_respond_negotiation` for that specific negotiation. There is no periodic catch-up poll behind it any more.
 
 ## Modes and capability boundary
 
-`full` (the default) registers the normal Index tool/dashboard surface. `negotiator` registers exactly four handlers:
+`full` (the default) registers the normal Index tool/dashboard surface. `negotiator` registers exactly two handlers:
 
 1. `index_agent_me`
-2. `index_pickup_negotiation`
-3. `index_respond_negotiation`
-4. `index_consult_owner`
+2. `index_respond_negotiation`
 
-The negotiator is a separate server-enforced scheduled-execution boundary: pickup/respond/consult require the selected agent and native hidden one-shot run authority with closed action contracts. `INDEX_PLUGIN_MODE=negotiator` is fail-closed for unknown non-empty values. It has no dashboard, broad MCP wrappers, hook, command, or orchestrator skill.
+The negotiator is a separate server-enforced scheduled-execution boundary: respond requires the selected agent and native hidden one-shot run authority with a closed action vocabulary. `INDEX_PLUGIN_MODE=negotiator` is fail-closed for unknown non-empty values. It has no dashboard, broad MCP wrappers, hook, command, or orchestrator skill.
 
 ## Development
 

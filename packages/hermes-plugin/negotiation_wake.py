@@ -1,9 +1,19 @@
-"""Wake negotiation pickup from conversation SSE (and desktop list ticks).
+"""Wake a Hermes negotiation turn from conversation SSE.
 
-Gateway process: listen to GET /conversations/stream. Keepalive (~15s) and
-non-own negotiation messages each run one cheap pickup. Empty pickup stamps
-lastNegotiationPickupAt. Pending pickup claims the turn, then asks Hermes
-to run one model turn. No auto consult or respond from this thread.
+Gateway process: listen to GET /conversations/stream. On a negotiation
+message that is not this owner's own agent turn, start one Hermes chat turn
+for that negotiation via inject_message.
+
+Negotiation-graph rewrite (#1494): there is no more pickup/claim (a
+negotiation stays `working` until it pauses or resolves -- it is never
+claimed into a distinct state), so there is no server-side "poll for
+anything pending" endpoint any more either. This listener can only react to
+an SSE message event it actually observes; unlike the old pickup-backed
+heartbeat, there is no periodic catch-up poll behind it any more, so a
+missed SSE event (a dropped connection during reconnect backoff, for
+example) is simply missed until the next message arrives. Accepted as a
+known limitation of this rewrite; the actual response is a plain
+`index_respond_negotiation` call, not something this module makes.
 """
 
 from __future__ import annotations
@@ -11,26 +21,26 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
 import threading
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
 _WAKE_LOCK = threading.Lock()
-_INFLIGHT = False
 _LISTENER_STARTED = False
 _STOP = threading.Event()
 _TURN_STARTER: Callable[[str], None] | None = None
 _STARTED_IDS: set[str] = set()
-_RUNTIME_KEY = "_index_network_negotiation_wake_runtime"
 
 _TURN_PROMPT = (
-    "Index negotiation {negotiation_id} is already claimed on this Hermes seat. "
-    "Do not call index_pickup_negotiation. Read the claimed thread, then reply "
-    "once with index_respond_to_negotiation using a protocol action and a real "
-    "message written for this counterpart. Consult the owner only if the thread "
-    "needs Seref. Do not stall with request_time."
+    "Index negotiation {negotiation_id} has a new message on this Hermes seat. "
+    "Use get_negotiation to read its brief and turn history, then call "
+    "index_respond_negotiation with negotiationId {negotiation_id} and exactly "
+    "one closed action: outreach, counter, or question to continue; "
+    "ask_principal to pause for the owner; recommend_pending or recommend_reject "
+    "to pause with a verdict recommendation for the owner's own agent. There is "
+    "no accept, decline, withdraw, or consult -- if you would want out, submit "
+    "recommend_reject."
 )
 
 
@@ -63,7 +73,8 @@ def _parse_data_line(line: bytes) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _message_action(message: dict[str, Any]) -> str | None:
+def _message_turn_verb(message: dict[str, Any]) -> str | None:
+    """A negotiation turn's verb (outreach/counter/question/pause), if this message carries one."""
     parts = message.get("parts")
     if not isinstance(parts, list):
         return None
@@ -72,13 +83,15 @@ def _message_action(message: dict[str, Any]) -> str | None:
             continue
         data = part.get("data")
         if isinstance(data, dict):
-            action = data.get("action")
-            if isinstance(action, str) and action.strip():
-                return action.strip()
-        action = part.get("action")
-        if isinstance(action, str) and action.strip():
-            return action.strip()
+            verb = data.get("verb")
+            if isinstance(verb, str) and verb.strip():
+                return verb.strip()
     return None
+
+
+def _message_negotiation_id(message: dict[str, Any]) -> str | None:
+    task_id = message.get("taskId")
+    return task_id.strip() if isinstance(task_id, str) and task_id.strip() else None
 
 
 def should_wake_on_event(event: dict[str, Any], *, owner_user_id: str | None) -> bool:
@@ -88,7 +101,9 @@ def should_wake_on_event(event: dict[str, Any], *, owner_user_id: str | None) ->
     message = event.get("message")
     if not isinstance(message, dict):
         return False
-    if _message_action(message) is None:
+    if _message_turn_verb(message) is None:
+        return False
+    if _message_negotiation_id(message) is None:
         return False
     sender = message.get("senderId")
     if not isinstance(sender, str) or not sender:
@@ -121,7 +136,7 @@ def set_turn_starter(starter: Callable[[str], None] | None) -> None:
 
 
 def bind_plugin_context(ctx) -> None:
-    """Start one Hermes chat turn after a pending claim via inject_message."""
+    """Start one Hermes chat turn for a negotiation via inject_message."""
 
     def start(negotiation_id: str) -> None:
         if not hasattr(ctx, "inject_message"):
@@ -156,45 +171,6 @@ def _maybe_start_turn(negotiation_id: str) -> None:
         logger.debug("negotiation wake turn start failed: %s", exc)
 
 
-def run_pickup_pass(transport=None) -> dict[str, Any]:
-    """One pickup. Empty stamps the seat. Pending claims, then one Hermes turn."""
-    global _INFLIGHT
-    with _WAKE_LOCK:
-        if _INFLIGHT:
-            return {"ok": True, "skipped": "inflight"}
-        _INFLIGHT = True
-    try:
-        transport = transport or _transport()
-        agent_id, _owner_id = _resolve_me(transport)
-        if not agent_id:
-            return {"ok": False, "error": "agent_unavailable"}
-        pickup = transport.request_rest("POST", f"/agents/{agent_id}/negotiations/pickup")
-        if not isinstance(pickup, dict):
-            return {"ok": False, "error": "invalid_pickup"}
-        if pickup.get("success") is False:
-            return {"ok": False, "error": pickup.get("error") or "pickup_failed"}
-        if pickup.get("no_content") is True or pickup.get("pending") is False:
-            return {"ok": True, "pending": False}
-        if pickup.get("pending") is not True and not pickup.get("negotiationId"):
-            return {"ok": True, "pending": False}
-        negotiation_id = pickup.get("negotiationId")
-        if isinstance(negotiation_id, str) and negotiation_id.strip():
-            _maybe_start_turn(negotiation_id.strip())
-            return {"ok": True, "pending": True, "negotiationId": negotiation_id.strip()}
-        return {"ok": True, "pending": True, "negotiationId": negotiation_id}
-    except Exception as exc:  # noqa: BLE001 - wake must never break the host process
-        logger.debug("negotiation wake pickup failed: %s", exc)
-        return {"ok": False, "error": str(exc)}
-    finally:
-        with _WAKE_LOCK:
-            _INFLIGHT = False
-
-
-def tick() -> dict[str, Any]:
-    """Desktop 15s path: same cheap pickup heartbeat, no second scheduler."""
-    return run_pickup_pass()
-
-
 def _listen_loop(stream_factory: Callable[[], Any] | None = None) -> None:
     backoff = 1.0
     while not _STOP.is_set():
@@ -207,13 +183,14 @@ def _listen_loop(stream_factory: Callable[[], Any] | None = None) -> None:
                 if _STOP.is_set():
                     return
                 if _is_keepalive(line):
-                    run_pickup_pass(transport)
                     continue
                 event = _parse_data_line(line)
                 if event is None:
                     continue
                 if should_wake_on_event(event, owner_user_id=owner_id):
-                    run_pickup_pass(transport)
+                    negotiation_id = _message_negotiation_id(event["message"])
+                    if negotiation_id:
+                        _maybe_start_turn(negotiation_id)
         except Exception as exc:  # noqa: BLE001
             logger.debug("negotiation wake stream interrupted: %s", exc)
             if _STOP.wait(backoff):
@@ -243,11 +220,10 @@ def start_listener(*, stream_factory: Callable[[], Any] | None = None) -> bool:
 
 def stop_listener_for_tests() -> None:
     """Test helper: stop the wake loop and clear the started flag."""
-    global _LISTENER_STARTED, _INFLIGHT
+    global _LISTENER_STARTED
     _STOP.set()
     with _WAKE_LOCK:
         _LISTENER_STARTED = False
-        _INFLIGHT = False
 
 
 def reset_for_tests() -> None:
@@ -256,7 +232,3 @@ def reset_for_tests() -> None:
     with _WAKE_LOCK:
         _STARTED_IDS.clear()
         _TURN_STARTER = None
-
-
-if _RUNTIME_KEY not in sys.modules:
-    sys.modules[_RUNTIME_KEY] = sys.modules[__name__]

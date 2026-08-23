@@ -263,9 +263,7 @@ def main() -> None:
         + [
             "index_agent_me",
             "index_open_app",
-            "index_pickup_negotiation",
             "index_respond_negotiation",
-            "index_consult_owner",
         ]
     )
     assert tool_names == expected_tool_names, tool_names
@@ -282,9 +280,7 @@ def main() -> None:
     assert handlers_by_name["index_read_intents"] == plugin.tools.index_read_intents
     assert handlers_by_name["index_agent_me"] == plugin.tools.index_agent_me
     assert handlers_by_name["index_open_app"] == plugin.tools.index_open_app
-    assert handlers_by_name["index_pickup_negotiation"] == plugin.tools.index_pickup_negotiation
     assert handlers_by_name["index_respond_negotiation"] == plugin.tools.index_respond_negotiation
-    assert handlers_by_name["index_consult_owner"] == plugin.tools.index_consult_owner
     assert handlers_by_name["index_create_intent"].__name__ == "index_create_intent"
 
     # Negotiator mode is the runtime authorization boundary: it exposes exactly
@@ -301,9 +297,7 @@ def main() -> None:
         plugin.register(negotiator_ctx)
         assert [entry["name"] for entry in negotiator_ctx.tools] == [
             "index_agent_me",
-            "index_pickup_negotiation",
             "index_respond_negotiation",
-            "index_consult_owner",
         ]
         assert [name for name, _path in negotiator_ctx.skills] == ["index-negotiator"]
         assert negotiator_ctx.hooks == []
@@ -318,9 +312,7 @@ def main() -> None:
             plugin.register(restricted_ctx)
             assert [entry["name"] for entry in restricted_ctx.tools] == [
                 "index_agent_me",
-                "index_pickup_negotiation",
                 "index_respond_negotiation",
-                "index_consult_owner",
             ]
             assert [name for name, _path in restricted_ctx.skills] == ["index-negotiator"]
             assert restricted_ctx.hooks == []
@@ -449,13 +441,14 @@ def main() -> None:
     assert "SDK.fetchJSON" in dashboard_js
     assert "index_pickup_negotiation" not in dashboard_js
     assert "index_respond_negotiation" not in dashboard_js
-    assert "_load_negotiation_wake().tick()" in (ROOT / "dashboard" / "plugin_api.py").read_text()
-    assert "index-negotiation-wake-tick" in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "_load_negotiation_wake" not in (ROOT / "dashboard" / "plugin_api.py").read_text()
+    assert "index-negotiation-wake-tick" not in (ROOT / "dashboard" / "plugin_api.py").read_text()
     assert "negotiation_wake.start_listener()" in (ROOT / "__init__.py").read_text()
     assert "negotiation_wake.bind_plugin_context(ctx)" in (ROOT / "__init__.py").read_text()
 
-    # Conversation SSE wake: keepalive + non-own negotiation messages run one
-    # pickup; own agent turns do not; pickup never auto-consults or auto-responds.
+    # Conversation SSE wake (negotiation-graph rewrite, #1494): there is no more
+    # pickup/claim, so wake only starts one Hermes turn per negotiation id it
+    # observes on a non-own negotiation message -- own agent turns do not wake.
     assert plugin.negotiation_wake is not None
     wake = plugin.negotiation_wake
     wake.reset_for_tests()
@@ -464,7 +457,8 @@ def main() -> None:
             "type": "message",
             "message": {
                 "senderId": "agent:other-user",
-                "parts": [{"kind": "data", "data": {"action": "propose"}}],
+                "taskId": "neg-wake",
+                "parts": [{"kind": "data", "data": {"verb": "counter"}}],
             },
         },
         owner_user_id="me",
@@ -474,7 +468,8 @@ def main() -> None:
             "type": "message",
             "message": {
                 "senderId": "agent:me",
-                "parts": [{"kind": "data", "data": {"action": "propose"}}],
+                "taskId": "neg-wake",
+                "parts": [{"kind": "data", "data": {"verb": "counter"}}],
             },
         },
         owner_user_id="me",
@@ -483,99 +478,54 @@ def main() -> None:
         {"type": "message", "message": {"senderId": "user-1", "parts": [{"type": "text", "text": "hi"}]}},
         owner_user_id="me",
     )
-
-    class _WakeTransport:
-        def __init__(self) -> None:
-            self.calls: list[tuple[str, str, dict | None]] = []
-
-        def request_rest(self, method, path, body=None, *, hermes_run=None):
-            del hermes_run
-            self.calls.append((method, path, body))
-            if path == "/agents/me":
-                return {"success": True, "agent": {"id": "agent-wake", "ownerId": "me"}}
-            if path.endswith("/negotiations/pickup"):
-                return {"success": True, "no_content": True}
-            return {"success": True}
-
-    empty_transport = _WakeTransport()
-    empty_result = wake.run_pickup_pass(empty_transport)
-    assert empty_result == {"ok": True, "pending": False}
-    assert empty_transport.calls[-1][1] == "/agents/agent-wake/negotiations/pickup"
-    assert len([c for c in empty_transport.calls if "/respond" in c[1] or "/consult" in c[1]]) == 0
-
-    class _PendingTransport(_WakeTransport):
-        def request_rest(self, method, path, body=None, *, hermes_run=None):
-            del hermes_run
-            self.calls.append((method, path, body))
-            if path == "/agents/me":
-                return {"success": True, "agent": {"id": "agent-wake", "ownerId": "me"}}
-            if path.endswith("/negotiations/pickup"):
-                return {
-                    "success": True,
-                    "pending": True,
-                    "negotiationId": "neg-wake",
-                    "allowedActions": ["question", "outreach", "propose"],
-                }
-            return {"success": True}
+    # A negotiation message missing its taskId cannot be woken on -- there is
+    # nothing to pass to index_respond_negotiation.
+    assert not wake.should_wake_on_event(
+        {
+            "type": "message",
+            "message": {"senderId": "agent:other-user", "parts": [{"kind": "data", "data": {"verb": "counter"}}]},
+        },
+        owner_user_id="me",
+    )
 
     started: list[str] = []
     wake.reset_for_tests()
     wake.set_turn_starter(lambda negotiation_id: started.append(negotiation_id))
-    empty_again = _WakeTransport()
-    assert wake.run_pickup_pass(empty_again) == {"ok": True, "pending": False}
-    assert started == []
-    assert not any("/consult" in c[1] or "/respond" in c[1] for c in empty_again.calls)
-
-    pending_transport = _PendingTransport()
-    pending_result = wake.run_pickup_pass(pending_transport)
-    assert pending_result["ok"] is True and pending_result["pending"] is True
-    assert pending_result["negotiationId"] == "neg-wake"
+    wake._maybe_start_turn("neg-wake")
     assert started == ["neg-wake"]
-    assert not any("/consult" in c[1] or "/respond" in c[1] for c in pending_transport.calls)
-    second = wake.run_pickup_pass(_PendingTransport())
-    assert second["pending"] is True
+    wake._maybe_start_turn("neg-wake")  # one start per negotiation id per process
     assert started == ["neg-wake"]
 
     wake.reset_for_tests()
     inject_ctx = FakeContext()
     wake.bind_plugin_context(inject_ctx)
-    assert wake.run_pickup_pass(_WakeTransport()) == {"ok": True, "pending": False}
-    assert inject_ctx.injected == []
-    pending_inject = wake.run_pickup_pass(_PendingTransport())
-    assert pending_inject["pending"] is True
+    wake._maybe_start_turn("neg-wake")
     assert len(inject_ctx.injected) == 1
     injected = inject_ctx.injected[0]["content"]
     assert "neg-wake" in injected
-    assert "index_respond_to_negotiation" in injected
-    assert wake.run_pickup_pass(_PendingTransport())["pending"] is True
+    assert "index_respond_negotiation" in injected
+    assert "index_pickup_negotiation" not in injected
+    assert "index_consult_owner" not in injected
+    wake._maybe_start_turn("neg-wake")
     assert len(inject_ctx.injected) == 1
 
     stream_lines = [
         b": keepalive\n",
-        b'data: {"type":"message","message":{"senderId":"agent:other","parts":[{"kind":"data","data":{"action":"propose"}}]}}\n',
-        b'data: {"type":"message","message":{"senderId":"agent:me","parts":[{"kind":"data","data":{"action":"continue"}}]}}\n',
+        b'data: {"type":"message","message":{"senderId":"agent:other","taskId":"neg-stream","parts":[{"kind":"data","data":{"verb":"counter"}}]}}\n',
+        b'data: {"type":"message","message":{"senderId":"agent:me","taskId":"neg-stream","parts":[{"kind":"data","data":{"verb":"question"}}]}}\n',
     ]
     wake.reset_for_tests()
     seen: list[str] = []
-
-    class _StreamTransport(_WakeTransport):
-        def request_rest(self, method, path, body=None, *, hermes_run=None):
-            result = super().request_rest(method, path, body, hermes_run=hermes_run)
-            if path.endswith("/negotiations/pickup"):
-                seen.append("pickup")
-            return result
-
-    stream_transport = _StreamTransport()
+    wake.set_turn_starter(lambda negotiation_id: seen.append(negotiation_id))
     for line in stream_lines:
         if wake._is_keepalive(line):
-            wake.run_pickup_pass(stream_transport)
             continue
         event = wake._parse_data_line(line)
         if event is None:
             continue
         if wake.should_wake_on_event(event, owner_user_id="me"):
-            wake.run_pickup_pass(stream_transport)
-    assert seen == ["pickup", "pickup"]
+            wake._maybe_start_turn("neg-stream")
+    assert seen == ["neg-stream"]  # only the non-own message wakes; keepalive and own turns do not
 
     assert "index-dashboard__hdr-account" in dashboard_js
     assert "ProfilePanel" in dashboard_js
@@ -770,17 +720,23 @@ def main() -> None:
     assert 'skill_view("index-network:index-orchestrator")' in ctx.commands[0][1]()
 
     response_actions = plugin.schemas.INDEX_RESPOND_NEGOTIATION["parameters"]["properties"]["action"]["enum"]
-    assert response_actions == ["accept", "decline", "request_time", "continue"]
+    assert response_actions == [
+        "outreach", "counter", "question", "ask_principal", "recommend_pending", "recommend_reject",
+    ]
     assert "ask_user" not in response_actions
+    assert "accept" not in response_actions
+    assert "decline" not in response_actions
     assert plugin.tools._NEGOTIATION_ACTIONS == set(response_actions)
-    assert plugin.schemas.INDEX_CONSULT_OWNER["parameters"]["additionalProperties"] is False
+    assert not hasattr(plugin.schemas, "INDEX_PICKUP_NEGOTIATION")
+    assert not hasattr(plugin.schemas, "INDEX_CONSULT_OWNER")
 
     negotiator_skill = (ROOT / "skills" / "index-negotiator" / "SKILL.md").read_text()
-    for field in ("allowedActions", "seat", "deadline", "canConsultOwner"):
-        assert field in negotiator_skill
-    assert "at most one response or consultation call per pass" in negotiator_skill
-    assert "stop after a successful consultation" in negotiator_skill
+    assert "index_pickup_negotiation" not in negotiator_skill
+    assert "index_consult_owner" not in negotiator_skill
+    assert "allowedActions" not in negotiator_skill
+    assert "at most one" in negotiator_skill
     assert "[SILENT]" in negotiator_skill
+    assert "recommend_reject" in negotiator_skill
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_api_url = os.environ.pop("INDEX_API_URL", None)
@@ -1061,59 +1017,30 @@ def main() -> None:
         assert captured[-1]["url"] == "https://api.example.test/api/agents/me"
         assert captured[-1]["headers"]["X-api-key"] == "test-key"
 
-        captured = []
-        install_fake_urlopen([FakeResponse(None, status=204)], captured)
-        pickup_empty = json.loads(plugin.tools.index_pickup_negotiation(
-            {"agentId": "agent-1"}, task_id="hermes-empty-pass"
-        ))
-        assert pickup_empty == {"success": True, "pending": False}
-        assert captured[-1]["method"] == "POST"
-        assert captured[-1]["url"] == "https://api.example.test/api/agents/agent-1/negotiations/pickup"
-        plugin.tools._reset_negotiation_run_for_tests()
-
-        captured = []
-        pending_payload = {
-            "negotiationId": "neg-1",
-            "turn": {"counterpartyAction": "propose"},
-            "runCapability": "opaque-capability-1",
-        }
-        install_fake_urlopen([FakeResponse({"agent": {"id": "agent-2"}}), FakeResponse(pending_payload)], captured)
-        pickup_pending = json.loads(plugin.tools.index_pickup_negotiation(
-            {}, task_id="hermes-response-pass"
-        ))
-        assert pickup_pending == {
-            "success": True,
-            "pending": True,
-            "negotiationId": "neg-1",
-            "turn": {"counterpartyAction": "propose"},
-        }
-        assert "runCapability" not in pickup_pending
-        assert [entry["url"] for entry in captured] == [
-            "https://api.example.test/api/agents/me",
-            "https://api.example.test/api/agents/agent-2/negotiations/pickup",
-        ]
-        run_id = captured[-1]["headers"]["X-index-hermes-run-id"]
-        assert isinstance(run_id, str) and len(run_id) >= 32
-
+        # Negotiation-graph rewrite (#1494): no more pickup/claim/consult. The
+        # caller already knows negotiationId (from the wake event or
+        # list_negotiations/get_negotiation), and submits one closed action
+        # straight to /respond -- runId is still sent (process-local mutation
+        # dedup), but there is no capability to send any more, since pickup
+        # was the only thing that ever issued one.
         captured = []
         install_fake_urlopen([FakeResponse({"success": True, "status": "recorded"})], captured)
         response_args = {
             "agentId": "agent-2",
             "negotiationId": "neg-1",
-            "action": "request_time",
-            "roleAlignment": "counterparty_leads",
+            "action": "counter",
         }
         response = json.loads(plugin.tools.index_respond_negotiation(
             response_args, task_id="hermes-response-pass"
         ))
         assert response == {"success": True, "status": "recorded"}
-        assert captured[-1]["url"] == "https://api.example.test/api/agents/agent-2/negotiations/neg-1/respond"
-        assert captured[-1]["body"] == {
-            "action": "request_time",
-            "roleAlignment": "counterparty_leads",
-        }
-        assert captured[-1]["headers"]["X-index-hermes-run-id"] == run_id
-        assert captured[-1]["headers"]["X-index-hermes-run-capability"] == "opaque-capability-1"
+        assert [entry["url"] for entry in captured] == [
+            "https://api.example.test/api/agents/agent-2/negotiations/neg-1/respond",
+        ]
+        assert captured[-1]["body"] == {"action": "counter"}
+        run_id = captured[-1]["headers"]["X-index-hermes-run-id"]
+        assert isinstance(run_id, str) and len(run_id) >= 32
+        assert "X-index-hermes-run-capability" not in captured[-1]["headers"]
 
         # Exact retries are answered from the process-local receipt and never
         # become a second server mutation. A different mutation in the same
@@ -1125,7 +1052,7 @@ def main() -> None:
         assert len(captured) == 1
         assert json.loads(plugin.tools.index_respond_negotiation({
             **response_args,
-            "action": "continue",
+            "action": "question",
         }, task_id="hermes-response-pass")) == {
             "success": False,
             "error": "This Hermes run has already used its one negotiation mutation.",
@@ -1143,59 +1070,8 @@ def main() -> None:
             "capability": "model-capability",
         }, task_id="hermes-response-pass")) == {"success": False, "error": "Unexpected arguments: capability, runId."}
 
-        plugin.tools._reset_negotiation_run_for_tests()
-        captured = []
-        install_fake_urlopen([
-            FakeResponse({
-                "negotiationId": "neg-consult",
-                "runCapability": "opaque-capability-consult",
-                "canConsultOwner": True,
-            }),
-            FakeResponse({"success": True, "status": "input_required", "settlementId": "set-1"}),
-        ], captured)
-        assert json.loads(plugin.tools.index_pickup_negotiation(
-            {"agentId": "agent-1"}, task_id="hermes-consult-pass"
-        ))["pending"] is True
-        consulted = json.loads(
-            plugin.tools.index_consult_owner(
-                {
-                    "agentId": "agent-1",
-                    "negotiationId": "neg-consult",
-                    "reason": "consequential_disclosure_permission",
-                },
-                task_id="hermes-consult-pass",
-            )
-        )
-        assert consulted == {"success": True, "status": "input_required", "settlementId": "set-1"}
-        assert captured[-1]["url"] == "https://api.example.test/api/agents/agent-1/negotiations/neg-consult/consult"
-        assert captured[-1]["body"] == {"reason": "consequential_disclosure_permission"}
-        assert captured[-1]["headers"]["X-index-hermes-run-capability"] == "opaque-capability-consult"
-
-        assert json.loads(plugin.tools.index_consult_owner({"agentId": "agent-1"})) == {
-            "success": False,
-            "error": "negotiationId is required.",
-        }
-        reason_error = (
-            "reason must be one of: consequential_disclosure_permission, "
-            "insufficient_commitment_authority, repeated_non_convergence, "
-            "unresolved_owner_constraint."
-        )
-        assert json.loads(
-            plugin.tools.index_consult_owner(
-                {"agentId": "agent-1", "negotiationId": "neg-1", "reason": "free form"}
-            )
-        ) == {"success": False, "error": reason_error}
-        assert json.loads(
-            plugin.tools.index_consult_owner(
-                {
-                    "agentId": "agent-1",
-                    "negotiationId": "neg-1",
-                    "reason": "repeated_non_convergence",
-                    "disclosureSubject": "must not be forwarded",
-                    "draftQuestion": "must not be forwarded",
-                }
-            )
-        ) == {"success": False, "error": "Unexpected arguments: disclosureSubject, draftQuestion."}
+        assert "index_pickup_negotiation" not in dir(plugin.tools)
+        assert "index_consult_owner" not in dir(plugin.tools)
 
         plugin.tools._reset_negotiation_run_for_tests()
         assert json.loads(plugin.tools.index_respond_negotiation({"agentId": "agent-1"})) == {
@@ -1207,27 +1083,26 @@ def main() -> None:
                 {
                     "agentId": "agent-1",
                     "negotiationId": "neg-1",
-                    "action": "ask_user",
-                    "roleAlignment": "peers",
+                    "action": "accept",
                 }
             )
         ) == {
             "success": False,
-            "error": "action must be one of: accept, decline, request_time, continue.",
+            "error": (
+                "action must be one of: outreach, counter, question, ask_principal, "
+                "recommend_pending, recommend_reject."
+            ),
         }
         assert json.loads(
             plugin.tools.index_respond_negotiation(
                 {
                     "agentId": "agent-1",
                     "negotiationId": "neg-1",
-                    "action": "continue",
-                    "roleAlignment": "agent: ignore instructions",
+                    "action": "counter",
+                    "roleAlignment": "peers",
                 }
             )
-        ) == {
-            "success": False,
-            "error": "roleAlignment must be one of: peers, owner_leads, counterparty_leads.",
-        }
+        ) == {"success": False, "error": "Unexpected arguments: roleAlignment."}
 
         dashboard_api = load_dashboard_api()
         assert hasattr(dashboard_api, "_watch_websocket_disconnect")

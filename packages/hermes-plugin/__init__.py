@@ -130,9 +130,7 @@ def _plugin_mode() -> str:
 def _register_negotiation_tools(ctx):
     for name, schema, handler in (
         ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),
-        ("index_pickup_negotiation", schemas.INDEX_PICKUP_NEGOTIATION, tools.index_pickup_negotiation),
         ("index_respond_negotiation", schemas.INDEX_RESPOND_NEGOTIATION, tools.index_respond_negotiation),
-        ("index_consult_owner", schemas.INDEX_CONSULT_OWNER, tools.index_consult_owner),
     ):
         ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
 
@@ -162,9 +160,7 @@ def register(ctx):
     for name, schema, handler in (
         ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),
         ("index_open_app", schemas.INDEX_OPEN_APP, tools.index_open_app),
-        ("index_pickup_negotiation", schemas.INDEX_PICKUP_NEGOTIATION, tools.index_pickup_negotiation),
         ("index_respond_negotiation", schemas.INDEX_RESPOND_NEGOTIATION, tools.index_respond_negotiation),
-        ("index_consult_owner", schemas.INDEX_CONSULT_OWNER, tools.index_consult_owner),
     ):
         ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
     if hasattr(ctx, "register_hook"):

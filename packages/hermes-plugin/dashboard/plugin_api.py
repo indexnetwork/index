@@ -199,25 +199,6 @@ def _promote_cli_key(cli_key: str, cli_key_id: str | None) -> dict[str, Any]:
 auth_login.set_post_login(_promote_cli_key)
 
 
-def _load_negotiation_wake():
-    """Load negotiation_wake once. Prefer the plugin-package copy if register() already imported it."""
-    canonical = sys.modules.get("_index_network_negotiation_wake_runtime")
-    if canonical is not None:
-        return canonical
-    package_name = "index_network_hermes_dashboard_runtime"
-    module_name = f"{package_name}.negotiation_wake"
-    existing = sys.modules.get(module_name)
-    if existing is not None:
-        return existing
-    package = sys.modules.get(package_name)
-    if package is None:
-        package = types.ModuleType(package_name)
-        package.__path__ = [str(_PLUGIN_ROOT)]
-        package.__package__ = package_name
-        sys.modules[package_name] = package
-    return _load_module(module_name, _PLUGIN_ROOT / "negotiation_wake.py")
-
-
 def _call_read_intents() -> dict[str, Any]:
     """Fetch all of the caller's non-archived intents across pages over REST `POST /intents/list`.
 
@@ -2211,10 +2192,14 @@ def _normalize_conversation(conversation: dict[str, Any], current_user_id: str) 
 @full_router.get("/conversations")
 def list_conversations() -> dict[str, Any]:
     """List the caller's conversations (participant-gated) as counterpart summaries."""
-    # Desktop polls this every 15s because the REST bridge buffers SSE. Reuse
-    # that tick as the negotiation heartbeat instead of a second scheduler.
-    # Run the list first, then tick off-thread, so pickup never starves inbox
-    # FakeResponse queues in hermetic tests (or a slow pickup).
+    # Negotiation-graph rewrite (#1494): this used to also fire an off-thread
+    # negotiation_wake tick here (piggy-backing desktop's 15s poll as a cheap
+    # pickup heartbeat, since the REST bridge buffers SSE). Pickup is gone --
+    # there is no server-side "poll for anything pending" endpoint any more,
+    # so there is nothing left to tick. The SSE-driven wake in
+    # negotiation_wake.py (start_listener/bind_plugin_context) still reacts
+    # to messages it actually observes; see that module's docstring for the
+    # accepted gap (no periodic catch-up behind it any more).
     current_user_id = _resolve_user_id()
     if not current_user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
@@ -2226,14 +2211,6 @@ def list_conversations() -> dict[str, Any]:
         for row in _list(payload.get("conversations"))
         if isinstance(row, dict) and _is_h2h(row)
     ]
-    try:
-        threading.Thread(
-            target=lambda: _load_negotiation_wake().tick(),
-            name="index-negotiation-wake-tick",
-            daemon=True,
-        ).start()
-    except Exception:  # noqa: BLE001 - wake must never break the inbox list
-        pass
     return {"success": True, "conversations": conversations, "currentUserId": current_user_id}
 
 
