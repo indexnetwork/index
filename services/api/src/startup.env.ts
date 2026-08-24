@@ -63,7 +63,7 @@ const envSchema = z.object({
   // 3. LLM / AI (OpenRouter)
   OPENROUTER_API_KEY: requiredUnlessTest,
   CHAT_MODEL: z.string().optional(),
-  CHAT_REASONING_EFFORT: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+  CHAT_REASONING_EFFORT: z.enum(['low', 'medium', 'high']).optional(),
   // Eval-only per-agent model overrides (JSON). Ignored by the protocol in
   // production, and rejected outright above when NODE_ENV=production.
   EVAL_MODEL_OVERRIDES: z.string().optional(),

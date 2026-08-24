@@ -20,6 +20,14 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 34.0.1 - 2026-08-24
+
+### Changed
+
+- All canonical agent defaults now use Google Gemini 3.7 Flash with its
+  required low reasoning effort. Non-Gemini model overrides do not receive
+  Gemini-specific reasoning parameters.
+
 ## 34.0.0 - 2026-08-24
 
 ### Breaking
