@@ -89,8 +89,8 @@ export class ConversationService {
    * Returns the latest persisted A2A turns grouped by correspondent for one
    * intent owned by the authenticated user.
    */
-  async getNegotiationActivityForIntent(userId: string, intentId: string) {
-    return this.db.getNegotiationActivityForIntent(userId, intentId);
+  async getIntentCycleForIntent(userId: string, intentId: string) {
+    return this.db.getIntentCycleForIntent(userId, intentId);
   }
 
   /**

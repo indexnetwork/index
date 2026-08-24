@@ -106,35 +106,34 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
-export interface NegotiationActivityMessage {
-  id: string;
-  opportunityId: string;
-  sender: 'yours' | 'theirs';
-  /** The turn's verb (`outreach`, `counter`, `question`, `pause`) when it is one. */
-  verb?: string;
-  /** Set only when `verb === 'pause'`. */
-  pauseReason?: NegotiationPauseReason;
-  /** What the message renders as: a text part, or the turn's own message. */
-  text?: string;
-  parts: unknown[];
-  createdAt: string;
-}
-
-/** One scored checklist dimension (checklist plan §2), as projected for the UI. */
-export interface NegotiationChecklistItem {
-  name: string;
-  kind: string;
-  result: string;
-  basis: string;
-}
-
-export interface NegotiationActivityGroup {
-  correspondentUserId: string;
-  correspondentLabel: string;
-  correspondentAvatar: string | null;
-  /** The checklist of the negotiation this group's latest exchange belongs to. */
-  checklist?: NegotiationChecklistItem[];
-  messages: NegotiationActivityMessage[];
+/** Debug projection for the PersonalAgent's intent-scoped negotiation cycle. */
+export interface IntentCycleSnapshot {
+  round: {
+    number: number;
+    size: number | null;
+    kickoffStartedAt: string | null;
+    working: number;
+    paused: number;
+  };
+  negotiations: Array<{
+    taskId: string;
+    conversationId: string;
+    opportunityId: string;
+    opportunityStatus: NegotiationOpportunityStatus;
+    counterpartLabel: string;
+    round: number;
+    state: NegotiationTaskState;
+    /** A pause reason is state, not its private payload. */
+    pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
+    latestActivity: {
+      actor: 'yours' | 'theirs';
+      verb: string | null;
+      /** Shared A2A prose only; pause payloads are never projected here. */
+      text: string | null;
+      createdAt: string;
+    } | null;
+    updatedAt: string;
+  }>;
 }
 
 export const createConversationService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
@@ -150,11 +149,11 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
     return response.conversations;
   },
 
-  getNegotiationActivity: async (intentId: string): Promise<NegotiationActivityGroup[]> => {
-    const response = await api.get<{ groups: NegotiationActivityGroup[] }>(
-      `/conversations/negotiations/activity?intentId=${encodeURIComponent(intentId)}`,
+  getIntentCycle: async (intentId: string): Promise<IntentCycleSnapshot> => {
+    const response = await api.get<{ cycle: IntentCycleSnapshot }>(
+      `/conversations/negotiations/intent-cycle?intentId=${encodeURIComponent(intentId)}`,
     );
-    return response.groups;
+    return response.cycle;
   },
 
   /** Create a new conversation. */

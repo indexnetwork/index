@@ -36,7 +36,7 @@ const mocks = vi.hoisted(() => ({
     getRadarView: vi.fn(),
   },
   conversationsService: {
-    getNegotiationActivity: vi.fn(),
+    getIntentCycle: vi.fn(),
   },
 }));
 
@@ -132,7 +132,7 @@ function primeServices() {
   });
   mocks.intentsService.visitIntent.mockResolvedValue(undefined);
   mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
-  mocks.conversationsService.getNegotiationActivity.mockResolvedValue([]);
+  mocks.conversationsService.getIntentCycle.mockResolvedValue({ round: { number: 0, size: null, kickoffStartedAt: null, working: 0, paused: 0 }, negotiations: [] });
 }
 
 describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', () => {

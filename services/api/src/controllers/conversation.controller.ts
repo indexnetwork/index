@@ -56,20 +56,17 @@ export class ConversationController {
     }
   }
 
-  /**
-   * GET /conversations/negotiations/activity?intentId=... — latest three
-   * persisted turns per correspondent for an owned intent.
-   */
-  @Get('/negotiations/activity')
+  /** Debug state for one owned intent's PersonalAgent negotiation cycle. */
+  @Get('/negotiations/intent-cycle')
   @UseGuards(RateLimit('read'), AuthGuard)
-  async getNegotiationActivity(req: Request, user: AuthenticatedUser) {
+  async getIntentCycle(req: Request, user: AuthenticatedUser) {
     const intentId = new URL(req.url).searchParams.get('intentId');
     if (!intentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(intentId)) {
       return Response.json({ error: 'A valid intentId is required' }, { status: 400 });
     }
-    const groups = await this.conversationService.getNegotiationActivityForIntent(user.id, intentId);
-    if (groups === null) return Response.json({ error: 'Intent not found' }, { status: 404 });
-    return Response.json({ groups });
+    const cycle = await this.conversationService.getIntentCycleForIntent(user.id, intentId);
+    if (cycle === null) return Response.json({ error: 'Intent not found' }, { status: 404 });
+    return Response.json({ cycle });
   }
 
   /**

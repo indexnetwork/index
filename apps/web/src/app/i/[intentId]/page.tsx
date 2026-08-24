@@ -13,8 +13,7 @@ import { Button } from "@/components/ui/button";
 import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
-import DiscoveryWarmupLog from "@/components/DiscoveryWarmupLog";
-import NegotiationActivity from "@/components/NegotiationActivity";
+import IntentCycleInspector from "@/components/IntentCycleInspector";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversations, useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -22,14 +21,12 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
-import type { NegotiationActivityGroup } from "@/services/conversation";
+import type { IntentCycleSnapshot } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
 import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
-import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
 import { deriveLiveNegotiations, formatLatestMove, liveNegotiationsByOpportunity } from "@/lib/negotiation-presence";
-import type { WarmupConversation } from "@/lib/discovery-warmup-log";
 import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
@@ -313,9 +310,9 @@ export default function IntentDetailPage() {
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
   const opportunitiesLoadingRef = useRef(true);
   const [opportunitiesError, setOpportunitiesError] = useState(false);
-  const [negotiationActivity, setNegotiationActivity] = useState<NegotiationActivityGroup[]>([]);
-  const [negotiationActivityLoading, setNegotiationActivityLoading] = useState(true);
-  const [negotiationActivityError, setNegotiationActivityError] = useState(false);
+  const [intentCycle, setIntentCycle] = useState<IntentCycleSnapshot | null>(null);
+  const [intentCycleLoading, setIntentCycleLoading] = useState(true);
+  const [intentCycleError, setIntentCycleError] = useState(false);
   /** Bumps make the intent negotiator reload its stable session after lifecycle changes. */
   const [negotiatorRefreshVersion, setNegotiatorRefreshVersion] = useState(0);
   const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -394,21 +391,21 @@ export default function IntentDetailPage() {
   const loadSeqRef = useRef(0);
   const activityLoadSeqRef = useRef(0);
 
-  const loadNegotiationActivity = useCallback(async (showLoading = false) => {
+  const loadIntentCycle = useCallback(async (showLoading = false) => {
     if (!intentId) return;
     const seq = ++activityLoadSeqRef.current;
-    if (showLoading) setNegotiationActivityLoading(true);
+    if (showLoading) setIntentCycleLoading(true);
     try {
-      const groups = await conversationsService.getNegotiationActivity(intentId);
+      const cycle = await conversationsService.getIntentCycle(intentId);
       if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
-      setNegotiationActivity(normalizeNegotiationActivity(groups));
-      setNegotiationActivityError(false);
+      setIntentCycle(cycle);
+      setIntentCycleError(false);
     } catch {
       if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
-      setNegotiationActivityError(true);
+      setIntentCycleError(true);
     } finally {
       if (activeIntentIdRef.current === intentId && activityLoadSeqRef.current === seq) {
-        setNegotiationActivityLoading(false);
+        setIntentCycleLoading(false);
       }
     }
   }, [conversationsService, intentId]);
@@ -505,25 +502,13 @@ export default function IntentDetailPage() {
     () => liveNegotiations.filter((item) => intentId !== undefined && item.intentIds.includes(intentId)),
     [liveNegotiations, intentId],
   );
-  /** The warmup card's live lane: one entry per in-flight negotiation on this signal. */
-  const warmupConversations = useMemo<WarmupConversation[]>(() => {
-    const byId = new Map(negotiations.map((conversation) => [conversation.id, conversation]));
-    return intentLiveNegotiations.map((item) => ({
-      id: item.conversationId,
-      counterpartLabel: item.counterpart.name,
-      // The conversation's own creation time — the moment the agents started
-      // talking. `sortTimestamp` is last-activity and would misdate the line.
-      startedAt: byId.get(item.conversationId)?.createdAt ?? null,
-    }));
-  }, [intentLiveNegotiations, negotiations]);
-
   const refreshLiveRadar = useCallback(() => {
     void loadOpportunities(true);
-    void loadNegotiationActivity();
+    void loadIntentCycle();
     // The SSE feed never carries the intent snapshot, so a finished run's final
     // tallies would otherwise sit unread until the next 15s progress poll.
     if (intentId) void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
-  }, [intentId, intentsService, loadNegotiationActivity, loadOpportunities]);
+  }, [intentId, intentsService, loadIntentCycle, loadOpportunities]);
 
   // Refresh only the owner-scoped progress snapshot while work is non-terminal;
   // this intentionally leaves the negotiator chat mounted and untouched.
@@ -563,11 +548,11 @@ export default function IntentDetailPage() {
         if (active) setIntentLoading(false);
       });
     void loadOpportunities();
-    void loadNegotiationActivity(true);
+    void loadIntentCycle(true);
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadOpportunities, loadNegotiationActivity]);
+  }, [intentId, intentsService, loadOpportunities, loadIntentCycle]);
 
   const refreshWorkspaceAfterReaction = useCallback(() => {
     setNegotiatorRefreshVersion((version) => version + 1);
@@ -687,9 +672,6 @@ export default function IntentDetailPage() {
     () => opportunities.filter((item) => bucketOf(item) === selectedBucket),
     [opportunities, bucketOf, selectedBucket],
   );
-  const hasActualNegotiationActivity = negotiationActivity.length > 0
-    || opportunities.some((item) => bucketOf(item) === "negotiating");
-
   const title = (
     intent?.summary && intent.summary.trim().length > 0
       ? intent.summary
@@ -809,7 +791,7 @@ export default function IntentDetailPage() {
                         </span>
                         live
                       </span>
-                      <span>background matching on — negotiation activity appears in Radar</span>
+                      <span>background matching on — the PersonalAgent cycle is shown below</span>
                     </>
                   )}
                   {lifecycleStatus === "PAUSED" && (
@@ -1039,6 +1021,13 @@ export default function IntentDetailPage() {
                     />
                   }
                 >
+                  <div className="mb-3">
+                    <IntentCycleInspector
+                      cycle={intentCycle}
+                      loading={intentCycleLoading}
+                      error={intentCycleError}
+                    />
+                  </div>
                   {intentLiveNegotiations.length > 0 && (
                     <div className="mb-3 shrink-0 space-y-2" data-testid="radar-live-negotiations">
                       {intentLiveNegotiations.map((item) => (
@@ -1075,18 +1064,6 @@ export default function IntentDetailPage() {
                     ))}
                   </div>
                   <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
-                  {selectedBucket === "negotiating" && (
-                    <div className="mb-3">
-                      {negotiationActivity.length === 0 && !hasActualNegotiationActivity && !negotiationActivityLoading && !negotiationActivityError
-                        && (intent?.warming || intent?.discoveryProgress) ? (
-                          <DiscoveryWarmupLog
-                            progress={intent?.discoveryProgress}
-                            communities={intent?.networks ?? []}
-                            conversations={warmupConversations}
-                          />
-                        ) : <NegotiationActivity groups={negotiationActivity} loading={negotiationActivityLoading} error={negotiationActivityError} />}
-                    </div>
-                  )}
                   {opportunitiesLoading ? (
                     <div className="space-y-3" data-testid="radar-skeleton">
                       <OpportunitySkeleton />

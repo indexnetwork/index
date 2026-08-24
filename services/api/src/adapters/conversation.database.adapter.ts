@@ -68,7 +68,6 @@ import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessa
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { log } from '../lib/log';
-import { projectNegotiationActivity } from '../lib/negotiation-activity';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, rewriteEraNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
@@ -106,10 +105,27 @@ async function selectNegotiationTurnHistoryInTransaction(
     .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 }
 
-function metadataRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+/** Extracts only the public portion of the latest persisted A2A turn. */
+function intentCycleLatestActivity(
+  parts: unknown[],
+  senderId: string,
+  ownerUserId: string,
+  createdAt: Date,
+): { actor: 'yours' | 'theirs'; verb: string | null; text: string | null; createdAt: Date } {
+  let verb: string | null = null;
+  let text: string | null = null;
+  for (const part of parts) {
+    if (!part || typeof part !== 'object' || Array.isArray(part)) continue;
+    const record = part as Record<string, unknown>;
+    if (typeof record.text === 'string' && record.text.trim()) text = record.text.trim();
+    if (record.kind !== 'data' || !record.data || typeof record.data !== 'object' || Array.isArray(record.data)) continue;
+    const turn = record.data as Record<string, unknown>;
+    if (typeof turn.verb === 'string') verb = turn.verb;
+    // Pause payloads are seat-private. Their prose is deliberately absent
+    // even when a malformed historic row happened to include a message field.
+    if (verb !== 'pause' && typeof turn.message === 'string' && turn.message.trim()) text = turn.message.trim();
+  }
+  return { actor: senderId === `agent:${ownerUserId}` ? 'yours' : 'theirs', verb, text: verb === 'pause' ? null : text, createdAt };
 }
 
 /** Persona literal mirrored locally so the data layer stays protocol-agnostic. */
@@ -1873,86 +1889,121 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Builds the private Radar transcript projection for one owned intent.
-   * Messages are joined through the exact opportunity negotiation task so
-   * shared agent-pair conversations cannot leak turns across intents.
+   * The intent-scoped operator view. It deliberately projects task state and
+   * only the latest shared A2A turn: a seat's brief, intent and private pause
+   * payload never leave the graph boundary through this read.
    */
-  async getNegotiationActivityForIntent(userId: string, intentId: string): Promise<Array<{
-    correspondentUserId: string;
-    correspondentLabel: string;
-    correspondentAvatar: string | null;
-    messages: Array<{
-      id: string;
+  async getIntentCycleForIntent(userId: string, intentId: string): Promise<{
+    round: { number: number; size: number | null; kickoffStartedAt: Date | null; working: number; paused: number };
+    negotiations: Array<{
+      taskId: string;
+      conversationId: string;
       opportunityId: string;
-      sender: 'yours' | 'theirs';
-      parts: unknown[];
-      createdAt: Date;
-    }>;
-  }> | null> {
+      opportunityStatus: string;
+      counterpartLabel: string;
+      round: number;
+      state: string;
+      pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
+      latestActivity: { actor: 'yours' | 'theirs'; verb: string | null; text: string | null; createdAt: Date } | null;
+      updatedAt: Date;
+    }> } | null> {
     const [ownedIntent] = await db
-      .select({ id: schema.intents.id })
+      .select({
+        id: schema.intents.id,
+        round: schema.intents.negotiationRound,
+        roundSize: schema.intents.negotiationRoundSize,
+        kickoffStartedAt: schema.intents.negotiationKickoffStartedAt,
+      })
       .from(schema.intents)
       .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
       .limit(1);
     if (!ownedIntent) return null;
 
-    const opportunityRows = await db
-      .select({
-        id: schema.opportunities.id,
-        status: schema.opportunities.status,
-        actors: schema.opportunities.actors,
-      })
-      .from(schema.opportunities)
-      .where(and(
-        eq(schema.opportunities.status, 'negotiating'),
-        sql`${schema.opportunities.actors} @> ${JSON.stringify([{ userId, intent: intentId }])}::jsonb`,
-      ));
-    if (opportunityRows.length === 0) return [];
-
-    const opportunityIds = opportunityRows.map((row) => row.id);
     const taskRows = await db
       .select({
         id: schema.tasks.id,
-        opportunityId: sql<string>`${schema.tasks.metadata}->>'opportunityId'`,
+        conversationId: schema.tasks.conversationId,
+        state: schema.tasks.state,
+        metadata: schema.tasks.metadata,
+        updatedAt: schema.tasks.updatedAt,
       })
       .from(schema.tasks)
       .where(and(
         sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        sql`${schema.tasks.metadata}->'seats' ? ${intentId}`,
         notArchivedNegotiationTaskWhere(),
-        inArray(sql`${schema.tasks.metadata}->>'opportunityId'`, opportunityIds),
+        rewriteEraNegotiationTaskWhere(),
       ));
-    if (taskRows.length === 0) return [];
 
-    const opportunityByTask = new Map(taskRows.map((task) => [task.id, task.opportunityId]));
-    const messageRows = await db
-      .select({
-        id: schema.messages.id,
-        taskId: schema.messages.taskId,
-        senderId: schema.messages.senderId,
-        parts: schema.messages.parts,
-        createdAt: schema.messages.createdAt,
-      })
-      .from(schema.messages)
-      .where(inArray(schema.messages.taskId, taskRows.map((task) => task.id)))
-      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+    const tasks = taskRows.flatMap((row) => {
+      const metadata = row.metadata as NegotiationTaskMetadataMirror;
+      const seat = metadata?.seats?.[intentId];
+      if (!metadata?.opportunityId || !seat) return [];
+      return [{ ...row, metadata, seat }];
+    });
+    const opportunityIds = [...new Set(tasks.map((task) => task.metadata.opportunityId))];
+    const opportunityRows = opportunityIds.length === 0 ? [] : await db
+      .select({ id: schema.opportunities.id, status: schema.opportunities.status, actors: schema.opportunities.actors })
+      .from(schema.opportunities)
+      .where(inArray(schema.opportunities.id, opportunityIds));
+    const opportunityById = new Map(opportunityRows.map((row) => [row.id, row]));
 
     const counterpartIds = [...new Set(opportunityRows.flatMap((row) =>
       row.actors.filter((actor) => actor.userId !== userId).map((actor) => actor.userId),
     ))];
-    const counterpartRows = counterpartIds.length > 0
-      ? await db
-        .select({ id: schema.users.id, name: schema.users.name, avatar: schema.users.avatar })
-        .from(schema.users)
-        .where(inArray(schema.users.id, counterpartIds))
-      : [];
+    const counterpartRows = counterpartIds.length === 0 ? [] : await db
+      .select({ id: schema.users.id, name: schema.users.name })
+      .from(schema.users)
+      .where(inArray(schema.users.id, counterpartIds));
     const counterpartById = new Map(counterpartRows.map((row) => [row.id, row]));
-    return projectNegotiationActivity(
-      userId,
-      opportunityRows,
-      opportunityByTask,
-      messageRows.map((message) => ({ ...message, parts: (message.parts as unknown[]) ?? [] })),
-      counterpartById,
-    );
+
+    const messageRows = tasks.length === 0 ? [] : await db
+      .select({ taskId: schema.messages.taskId, senderId: schema.messages.senderId, parts: schema.messages.parts, createdAt: schema.messages.createdAt })
+      .from(schema.messages)
+      .where(inArray(schema.messages.taskId, tasks.map((task) => task.id)))
+      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id));
+    const latestByTask = new Map<string, typeof messageRows[number]>();
+    for (const message of messageRows) {
+      if (message.taskId && !latestByTask.has(message.taskId)) latestByTask.set(message.taskId, message);
+    }
+
+    const negotiations = tasks.flatMap((task) => {
+      const opportunity = opportunityById.get(task.metadata.opportunityId);
+      if (!opportunity) return [];
+      const counterpartId = opportunity.actors.find((actor) => actor.userId !== userId)?.userId;
+      const latest = latestByTask.get(task.id);
+      const latestTurn = latest ? intentCycleLatestActivity(latest.parts as unknown[], latest.senderId, userId, latest.createdAt) : null;
+      const pausedBy = task.metadata.pause?.pausedBy;
+      const pauseBy: 'yours' | 'theirs' | null = pausedBy
+        ? (pausedBy === `agent:${userId}` ? 'yours' : 'theirs')
+        : null;
+      return [{
+        taskId: task.id,
+        conversationId: task.conversationId,
+        opportunityId: opportunity.id,
+        opportunityStatus: opportunity.status,
+        counterpartLabel: counterpartById.get(counterpartId ?? '')?.name?.trim() || 'Unknown counterpart',
+        round: task.seat.round,
+        state: task.state,
+        pause: task.metadata.pause
+          ? { reason: task.metadata.pause.reason, by: pauseBy }
+          : null,
+        latestActivity: latestTurn,
+        updatedAt: task.updatedAt,
+      }];
+    }).sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime() || left.taskId.localeCompare(right.taskId));
+
+    const currentRound = negotiations.filter((negotiation) => negotiation.round === ownedIntent.round);
+    return {
+      round: {
+        number: ownedIntent.round,
+        size: ownedIntent.roundSize,
+        kickoffStartedAt: ownedIntent.kickoffStartedAt,
+        working: currentRound.filter((negotiation) => negotiation.state === 'working').length,
+        paused: currentRound.filter((negotiation) => negotiation.state === 'paused').length,
+      },
+      negotiations,
+    };
   }
 
   /**
