@@ -124,6 +124,49 @@ describe('radar presentation cache policy', () => {
 });
 
 describe('RadarGraph', () => {
+  test('renders a completed verdict reason only for the resolving viewer', async () => {
+    const opportunity = {
+      ...minimalOpportunity('resolver', 'counterparty'),
+      status: 'rejected' as const,
+    };
+    const task = {
+      id: 'task-resolved',
+      conversationId: 'conversation-resolved',
+      state: 'completed' as const,
+      briefs: {},
+      metadata: {
+        type: 'negotiation' as const,
+        opportunityId: opportunity.id,
+        sourceUserId: 'resolver',
+        candidateUserId: 'counterparty',
+        initiatorUserId: 'resolver',
+        networkId: 'idx-1',
+        seats: {},
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const artifact = [{
+      id: 'artifact-resolved',
+      name: 'negotiation_outcome',
+      metadata: { resolvedByUserId: 'resolver' },
+      parts: [{ kind: 'data', data: { verdict: 'reject', reasoning: 'Their timeline conflicts with your deadline.' } }],
+    }];
+    const db = {
+      ...createMockDb([opportunity]),
+      getNegotiationTaskForOpportunity: async () => task,
+      getArtifactsForTask: async () => artifact,
+    };
+
+    const resolver = await new RadarGraphFactory(db, createMockCache()).createGraph()
+      .invoke({ userId: 'resolver', statuses: ['rejected'] });
+    const counterparty = await new RadarGraphFactory(db, createMockCache()).createGraph()
+      .invoke({ userId: 'counterparty', statuses: ['rejected'] });
+
+    expect(resolver.items[0]?.mainText).toBe('Their timeline conflicts with your deadline.');
+    expect(counterparty.items[0]?.mainText).not.toContain('Their timeline conflicts with your deadline.');
+  });
+
   test('no opportunities returns empty items and meta', async () => {
     const db = createMockDb([]);
     const factory = new RadarGraphFactory(db, createMockCache());

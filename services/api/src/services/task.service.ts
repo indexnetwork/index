@@ -32,7 +32,7 @@ function matchesResult(row: NegotiationRow, result: NegotiationResult | undefine
   if (result === 'no_opportunity') {
     return outcome?.hasOpportunity === false || outcome?.consensus === false;
   }
-  return !row.artifact && ['submitted', 'working', 'input_required'].includes(row.state);
+  return !row.artifact && ['submitted', 'working', 'paused'].includes(row.state);
 }
 
 function newestFirst(a: NegotiationRow, b: NegotiationRow): number {
@@ -138,10 +138,9 @@ export class TaskService {
   /**
    * Retrieves and paginates complete negotiation threads for a user.
    *
-   * Pagination is applied after every matching task has been grouped by
-   * opportunity id (or task id when absent), so an arbitrarily long
-   * continuation chain cannot be split across pages. Filters are evaluated
-   * against the newest segment, which defines the thread's current state.
+   * Pagination is applied after matching tasks have been grouped by
+   * opportunity id (or task id when absent). Filters are evaluated against the
+   * newest task, which defines the thread's current state.
    * @param userId - User to find negotiation threads for
    * @param opts - Thread limit, offset, mutual-only filter, current result, and current-segment lower bound
    * @returns Complete threads ordered by newest segment first

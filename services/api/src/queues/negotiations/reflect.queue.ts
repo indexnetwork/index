@@ -323,8 +323,8 @@ export const negotiationReflectQueue = new NegotiationReflectQueue();
  * The reflect enqueue callback.
  *
  * Use at every negotiation-graph composition site (main.ts background graph,
- * negotiation/tool services, MCP composition root) — mirrors
- * `parkedQuestionEnqueue` so no path silently drops reflection.
+ * negotiation/tool services, MCP composition root) so no path silently drops
+ * reflection.
  */
 export function reflectEnqueue(): ReflectEnqueueFn {
   return async (job) => {

@@ -2,9 +2,10 @@
 
 **Status:** implemented 2026-08-23/24. Step 1 (NegotiationGraph rewrite) shipped in
 #1494, the one-persona collapse in #1495, step 2 (AgentGraph + IS-A) in #1496.
-Follow-ups still open: external agents rebuilt on the new auth model, the
-open-path atomic guard, step 3 host cleanup, and the questioner-substrate
-deletion (owner call). Decisions taken without the owner are in
+The listed follow-ups are implemented: external agents use the new auth and
+turn contract, negotiation opening is atomic, step 3 host cleanup is complete,
+and the retired questioner/park delivery surface is deleted. Decisions taken
+without the owner are in
 [2026-08-24-overnight-decisions](2026-08-24-overnight-decisions.md) and the
 Decisions appendix below.
 **Date:** 2026-08-23
@@ -201,7 +202,7 @@ dossier and reply stream become ports the host implements.
 | `{ negotiationId, brief, byUserId }` | resume with new context for ONE named seat |
 | `{ negotiationId, turn, byUserId }` | apply a submitted turn — from AgentGraph or an external agent, same verbs, same validation → continue or pause. `byUserId` is the submitting seat; `apply` rejects a turn whose `byUserId` is not the speaker it computed |
 | `{ negotiationId, pause: counterparty_silent \| open_failed }` | a timeout fired, or an open failed and left a live task |
-| `{ negotiationId, verdict: pending \| reject, reasoning }` | resolve — the only terminal write on the negotiation, from IS-A ACT. It also closes the negotiation behind an owner verdict on the opportunity, and never writes over an already-terminal opportunity status (D23) |
+| `{ negotiationId, verdict: pending \| reject, reasoning, byUserId }` | resolve — the only terminal write on the negotiation, from IS-A ACT. `byUserId` is the authenticated resolving seat, which scopes the private outcome reasoning. It also closes the negotiation behind an owner verdict on the opportunity, and never writes over an already-terminal opportunity status (D23) |
 | `{ negotiationId }` | read |
 
 `reasoning` is recorded on the outcome artifact and travels with the opportunity status — it is what the Radar card / closed card render. It is private to the resolving side: never persisted as a message into the A2A thread. A reject reason may contain principal-private material; the counterparty only ever sees that the negotiation closed.
@@ -854,4 +855,3 @@ the principal's next message is an ordinary turn that can ask or act.
 Alternative rejected: treating an empty list as a failure and retrying — the
 retry runs an identical prompt (D30), so it fails the same way and loses the
 wake instead of ending it honestly.
-

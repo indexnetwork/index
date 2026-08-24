@@ -923,14 +923,12 @@ The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'
   "seat": "initiator",
   "protocolVersion": "v2",
   "allowedActions": ["outreach", "counter", "question", "withdraw"],
-  "canConsultOwner": true
 }
 ```
 
 - `turn.deadline` — ISO-8601 timestamp; park start + the park-window budget (`AMBIENT_PARK_WINDOW_MS`, 5 minutes). The claim shares this same budget — it is not extended by picking up.
 - `turn.counterpartyAction` — action from the preceding turn, or `"none"` if this is the first turn.
 - `seat` / `protocolVersion` / `allowedActions` — the claiming user's seat under the task's protocol version and the exact actions that seat may submit this turn (`propose | accept | reject | counter | question` on v1 tasks; seat-scoped `outreach | counter | question | withdraw` vs `accept | decline | counter | question` on v2). Final turns expose only their final-turn vocabulary.
-- `canConsultOwner` — `true` only when this exact v2, non-opening, non-final claim can enter the server's Questioner-backed owner-consultation continuation. The server derives policy eligibility from persisted action, role, claim, and lifecycle data; clients cannot request or advertise consultation on a final turn.
 - `context.ownUser` / `context.otherUser` — the persisted absolute source/candidate context projected into the claiming user's perspective. May be `null` only for legacy tasks created before turn-context persistence landed.
 - `negotiatorMemory` — optional array of the claiming user's own negotiator-memory entries (present only when `NEGOTIATOR_MEMORY_INJECT` is on and the user's agent has relevant memories — never contains the counterparty's).
 - `opportunity` — `null` when the task has no linked opportunity.
@@ -940,36 +938,6 @@ A dedicated Hermes response is a different privacy-minimal projection: opportuni
 **Errors**:
 - `403` unless the request uses the exact currently selected agent-bound credential (including the current Hermes setup generation when explicitly Hermes-audience), and dedicated Hermes pickup includes its native run header.
 - `409` when the dedicated process run already picked up a task.
-
-### POST /api/agents/:id/negotiations/:negotiationId/consult
-
-Pause an exact externally claimed v2 turn to consult the represented owner through the existing private Questioner lifecycle. The endpoint requires the exact currently selected agent-bound credential. Dedicated Hermes requests also require their native run ID and opaque capability headers. It accepts only a closed server-owned consultation reason; unknown fields and all free-form disclosure/question text are rejected. Questioner renders fixed copy for the category and receives no agent-authored instructions. The exact task/credential/setup-generation/run capability is atomically consumed with the pause.
-
-**Request body** (strict):
-```json
-{
-  "reason": "consequential_disclosure_permission"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "status": "input_required",
-  "settlementId": "negotiation-question-settlement-v1-<task-id>"
-}
-```
-
-The server arms an attempt-specific expiry for the configured answer window (24 hours by default) before atomically writing one server-authored `ask_user` turn, its exact material binding, and `input_required`. Answer, dismissal, or expiry uses the existing exact-task continuation pipeline and resumes at most one successor. A failed Questioner enqueue remains recoverable through the durable expiry.
-
-**Errors**:
-- `400` for an unknown/mismatched reason, any extra/free-form field, v1/opening/final turns, prior same-seat consultation, missing lifecycle wiring, or policy-ineligible admission.
-- `403` unless the request uses the exact currently selected agent-bound credential and its current setup generation.
-- `404` for a missing, non-negotiation, or wrong-owner task.
-- `409` when the exact claim, claimant, continuation fence, or material binding lost a race.
-
-Every rejected consultation preserves the original `claimed` state and claim deadline. Duplicate losers cancel only their own server-only attempt expiry; they cannot cancel or settle the winning consultation.
 
 ### POST /api/agents/:id/negotiations/:negotiationId/respond
 
@@ -990,7 +958,7 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 }
 ```
 
-- `action` — must be within the seat's `allowedActions` returned by `pickup`: v1 tasks accept `propose | accept | reject | counter | question`; v2 tasks are seat-scoped (initiator `outreach | counter | question | withdraw`, counterparty `accept | decline | counter | question`). `ask_user` is never accepted here; use the dedicated consultation endpoint when `canConsultOwner` is true.
+- `action` — must be within the seat's `allowedActions` returned by `pickup`: v1 tasks accept `propose | accept | reject | counter | question`; v2 tasks are seat-scoped (initiator `outreach | counter | question | withdraw`, counterparty `accept | decline | counter | question`).
 - `message` — optional string or `null`.
 - `assessment.suggestedRoles.ownUser` / `.otherUser` — each one of `agent`, `patient`, `peer`.
 
@@ -3540,7 +3508,7 @@ List pending questions for the authenticated user.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `status` | `pending` \| `answered` \| `dismissed` | `pending` | `pending` and `answered` are supported; `dismissed` is rejected. |
-| `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `negotiation_inflight` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`chat` = in-chat ask_user_question questions; `discovery` rows are historical — the inline generator was removed) |
+| `mode` | `discovery` \| `intent` \| `enrichment` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`discovery` rows are historical — the inline generator was removed) |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
 | `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
@@ -3574,7 +3542,7 @@ Returns the canonical count split used by the two allowed surfaces. Counts requi
 
 **Auth**: Required (session or API key)
 
-Submit an answer for a pending question. For non-negotiation modes, existing actor/pending semantics apply. Negotiation-family answers additionally take the exact cohort lock, revalidate actor/provenance, owned ACTIVE fingerprint-equal intent, assignment/membership, opportunity actor visibility/state, and exact task state before any effect. When an inflight consultation was authorized by the default-off `NEGOTIATION_CONSULTATION_POLICY_MODE`, it has the identical private exact-seat/task contract; policy category is server-only telemetry and is never returned by this API. Stale rows fail closed/system-void without shared mutation or user-answer events. Uptake remains private; ordinary follow-up uses established shared metadata; inflight atomically closes only its stamped `input_required` task and writes a deterministic durable continuation request. If post-commit Redis delivery fails, the endpoint may fail after recording the answer; retrying the same answer is idempotent and reconciles the same settlement, while the armed expiry job is the process-boundary fallback.
+Submit an answer for a pending question. Actor and pending-state validation is server-authoritative; stale rows fail closed without side effects.
 
 **Body:**
 ```json

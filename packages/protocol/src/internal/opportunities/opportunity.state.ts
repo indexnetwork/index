@@ -191,8 +191,7 @@ export const OpportunityGraphState = Annotation.Root({
    * - 'update': Change opportunity status (accept, reject, etc.)
    * - 'delete': Expire/archive an opportunity
    * - 'send': Promote latent opportunity to pending + queue notification
-   * - 'approve_introduction': Mark the caller as having approved a latent introducer opportunity,
-   *   then kick off (or resume) that opportunity's negotiation directly.
+   * - 'approve_introduction': Mark the caller as having approved a latent introducer opportunity.
    *
    * Defaults to 'create' for backward compatibility.
    */

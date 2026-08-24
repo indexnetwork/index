@@ -381,33 +381,9 @@ def index_agent_me(args: dict, **kwargs) -> str:
     merged["success"] = True
     return _json(merged)
 
-
-
-_NEGOTIATION_TURNS_OFFLINE = (
-    "External-agent negotiation turns are offline. The negotiation-graph rewrite "
-    "(#1494) deleted the REST respond route this bridge submitted turns to, and "
-    "external agents stay offline until they are rebuilt on the new auth model. "
-    "There is nothing to submit this turn to: do not retry it, and do not "
-    "substitute another Index tool for it."
-)
-
-
 def index_respond_negotiation(args: dict, **kwargs) -> str:
-    """Refuse: submitting a negotiation turn from an external agent is offline.
-
-    The negotiation-graph rewrite (#1494) deleted
-    `POST /agents/{agentId}/negotiations/{negotiationId}/respond`, the only
-    route this bridge ever dispatched to, together with the pickup step that
-    issued its run-bound capability. External agents are deliberately offline
-    until they are rebuilt on the new auth model, so this tool refuses with
-    that explanation rather than calling a URL that answers 404.
-
-    It is deliberately NOT repointed at the MCP `respond_to_negotiation`
-    surface: that lane authorises a turn as the calling principal's own agent,
-    which is a different authority from the one this bridge held.
-
-    The tool stays registered so a negotiator that was woken for a turn is told
-    why it cannot take one, instead of silently reaching for another tool.
-    """
-    del args, kwargs
-    return _error(_NEGOTIATION_TURNS_OFFLINE)
+    """Submit the MCP negotiation turn shape; the server routes it through apply."""
+    del kwargs
+    if not isinstance(args, dict):
+        return _error("Arguments must be an object.")
+    return _call_index_mcp("respond_to_negotiation", args)

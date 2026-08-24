@@ -134,15 +134,25 @@ INDEX_OPEN_APP = {
 INDEX_RESPOND_NEGOTIATION = {
     "name": "index_respond_negotiation",
     "description": (
-        "OFFLINE -- always refuses. The negotiation-graph rewrite deleted the REST "
-        "respond route this bridge submitted turns to, and external agents stay "
-        "offline until they are rebuilt on the new auth model. Call it only to be "
-        "told that; there is no turn to submit and no substitute tool."
+        "Submit one non-terminal negotiation turn through Index MCP. Use exactly one "
+        "of verb or pauseReason. Continuing verbs are outreach (opening turn only), "
+        "counter, and question, each requiring message and reasoning. Pauses are "
+        "needs_principal (question required) or ready_for_verdict (recommendation "
+        "pending/reject and reasoning required). Never accept, decline, or withdraw: "
+        "to recommend rejection, pause ready_for_verdict with recommendation=reject."
     ),
     "parameters": {
         "type": "object",
         "additionalProperties": False,
-        "properties": {},
-        "required": [],
+        "properties": {
+            "negotiationId": {"type": "string", "description": "Negotiation task ID."},
+            "verb": {"type": "string", "enum": ["outreach", "counter", "question"]},
+            "message": {"type": "string", "description": "Required with verb."},
+            "reasoning": {"type": "string", "description": "Required with verb and ready_for_verdict."},
+            "pauseReason": {"type": "string", "enum": ["needs_principal", "ready_for_verdict"]},
+            "question": {"type": "string", "description": "Required for needs_principal."},
+            "recommendation": {"type": "string", "enum": ["pending", "reject"], "description": "Required for ready_for_verdict."},
+        },
+        "required": ["negotiationId"],
     },
 }

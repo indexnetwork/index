@@ -60,6 +60,35 @@ class ScriptedTurnAuthor implements NegotiationTurnAuthor {
 }
 
 describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
+  test("concurrent opens that both miss the pre-read create one task and one opening outreach", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedTurnAuthor(host, [
+      { verb: "outreach", message: "Opening.", reasoning: "r" },
+      { verb: "pause", reason: "needs_principal", payload: { question: "?" } },
+    ]);
+    let reads = 0;
+    let releasePreRead!: () => void;
+    const bothRead = new Promise<void>((resolve) => { releasePreRead = resolve; });
+    const database = {
+      ...host.database,
+      getNegotiationTaskForOpportunity: async () => {
+        reads += 1;
+        if (reads === 2) releasePreRead();
+        await bothRead;
+        return null;
+      },
+    };
+    const graph = new Negotiations({ database, author }).createGraph();
+    const input = { opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 };
+
+    await Promise.all([graph.invoke(input), graph.invoke(input)]);
+
+    expect(host.tasks.size).toBe(1);
+    expect(author.calls.filter((call) => call.isOpening)).toHaveLength(1);
+    const [task] = [...host.tasks.values()];
+    expect(host.messages.get(task!.id)).toHaveLength(2);
+  });
+
   test("open → turns → pause(needs_principal) → resume with brief → pause(ready_for_verdict) → verdict pending", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, [
@@ -116,11 +145,15 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     expect(host.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1 }]);
 
     // verdict: IS-A promotes to pending — the only terminal write
-    const resolved = await graph.invoke({ negotiationId, verdict: "pending", reasoning: "Both sides converged on terms." });
+    const resolved = await graph.invoke({ negotiationId, verdict: "pending", reasoning: "Both sides converged on terms.", byUserId: SOURCE_USER_ID });
     expect(resolved.status).toBe("resolved");
     expect(resolved.verdict).toBe("pending");
     expect(resolved.reasoning).toBe("Both sides converged on terms.");
     expect(host.taskFor(negotiationId).state).toBe("completed");
+    expect(host.outcomeArtifacts.get(negotiationId)).toMatchObject({
+      reasoning: "Both sides converged on terms.",
+      resolvedByUserId: SOURCE_USER_ID,
+    });
     expect(host.opportunityStatusUpdates.at(-1)).toEqual({ id: OPPORTUNITY_ID, status: "pending" });
 
     // The single shared author authored every turn, both seats — there is no
@@ -146,10 +179,31 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       payload: { recommendation: "reject" },
     });
 
-    const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject", reasoning: "Not a fit." });
+    const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject", reasoning: "Not a fit.", byUserId: SOURCE_USER_ID });
     expect(resolved.status).toBe("resolved");
     expect(resolved.verdict).toBe("reject");
     expect(host.opportunityStatusUpdates.at(-1)).toEqual({ id: OPPORTUNITY_ID, status: "rejected" });
+  });
+
+  test("rejects a verdict from someone who is not a negotiation seat", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedTurnAuthor(host, [
+      { verb: "outreach", message: "Opening.", reasoning: "r" },
+      { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
+    ]);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+
+    const result = await graph.invoke({
+      negotiationId: opened.negotiationId,
+      verdict: "reject",
+      reasoning: "This must stay private.",
+      byUserId: "intruder",
+    });
+
+    expect(result).toMatchObject({ status: "error", error: "Only a negotiation seat may resolve it" });
+    expect(host.outcomeArtifacts.get(opened.negotiationId)).toBeUndefined();
+    expect(host.taskFor(opened.negotiationId).state).toBe("paused");
   });
 
   test("a system pause (stale-negotiation timeout) does not invoke the author", async () => {
@@ -515,7 +569,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
       // Created directly, not via open() — open()'s own self-play would
       // consume this script and reach its own (irrelevant) pause before this
       // test's controlled 5-turn history is ever seeded.
-      const task = await host.database.createNegotiationTask({
+      const task = await host.createNegotiationTask({
         conversationId: "conversation-manual-cap",
         brief: "brief",
         metadata: {
@@ -588,7 +642,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     // persisted before a timeout fired on it. The outreach-only-first rule must not trap
     // this negotiation with no way to recover.
     const host = new FakeNegotiationHost();
-    const task = await host.database.createNegotiationTask({
+    const task = await host.createNegotiationTask({
       conversationId: "conversation-manual-1",
       brief: "brief",
       metadata: {

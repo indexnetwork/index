@@ -116,9 +116,6 @@ export function buildFallbackDigest(n: DiscoveryNegotiation): DiscoveryNegotiati
         ? ((n.outcome.reason ?? "stalled") as "turn_cap" | "timeout" | "stalled" | "screened_out")
         : null,
     keyTake: keyTakeRaw.slice(0, 180),
-    suggestedRoles:
-      lastTurn?.action === "accept" && lastTurn.suggestedRoles
-        ? lastTurn.suggestedRoles
-        : null,
+    suggestedRoles: null,
   };
 }

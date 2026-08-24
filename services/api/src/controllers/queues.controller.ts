@@ -14,9 +14,7 @@ import { Hono } from 'hono';
 import { notificationQueue } from '../queues/notification.queue';
 import { intentQueue } from '../queues/intent.queue';
 import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
-import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { emailQueue } from '../queues/email.queue';
-import { questionMessageQueue } from '../queues/question-message.queue';
 import { personalAgentQueue } from '../queues/personal-agent.queue';
 import { log } from '../lib/log';
 
@@ -34,9 +32,7 @@ createBullBoard({
     new BullMQAdapter(notificationQueue.queue),
     new BullMQAdapter(intentQueue.queue),
     new BullMQAdapter(fromIntentQueue.queue),
-    new BullMQAdapter(negotiationRunExistingQueue.queue),
     new BullMQAdapter(emailQueue.queue),
-    new BullMQAdapter(questionMessageQueue.queue),
     new BullMQAdapter(personalAgentQueue.queue),
   ],
   serverAdapter,

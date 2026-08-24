@@ -78,10 +78,10 @@ describe('NotificationController', () => {
 
   test('returns the delivery service snapshot for unscoped callers', async () => {
     const events: NotificationStreamEvent[] = [{
-      type: 'question.new',
-      id: 'question-1',
-      title: 'Your agent has a question',
-      body: 'Open Index to answer.',
+      type: 'opportunity.new',
+      id: 'opportunity-1',
+      title: 'A promising connection',
+      body: 'Open Index to review.',
     }];
     const { controller, snapshot } = controllerWith({ snapshot: async () => events });
 

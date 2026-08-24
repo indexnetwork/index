@@ -28,6 +28,23 @@ function renderCard(card: OpportunityCardData, withPresence = false) {
 }
 
 describe("OpportunityCard negotiation presence", () => {
+  it("renders resolved-card reasoning and remains usable with fallback copy", () => {
+    const { rerender } = renderCard({
+      ...baseCard,
+      status: "rejected",
+      mainText: "Their timeline conflicts with your deadline.",
+    });
+
+    expect(screen.getByText("Their timeline conflicts with your deadline.")).toBeTruthy();
+
+    rerender(
+      <MemoryRouter>
+        <OpportunityCard card={{ ...baseCard, status: "rejected", mainText: "A suggested connection." }} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("A suggested connection.")).toBeTruthy();
+  });
+
   it("renders the templated chip, latest move, and human gate for negotiating cards", () => {
     renderCard(baseCard, true);
 

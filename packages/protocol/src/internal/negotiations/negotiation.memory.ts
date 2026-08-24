@@ -21,8 +21,7 @@ export type DistilledMemoryKind = (typeof NEGOTIATOR_MEMORY_KINDS)[number];
 // Pure prompt-side counterpart of the P5.2 write path: retrieved
 // `negotiator_memories` rows shape how the negotiator screens, argues, and
 // chats. Retrieval itself lives in services/api (the protocol package has no
-// DB access) and is injected via `NegotiatorMemoryRetrieveFn` — the same
-// composition-root pattern as `questionerEnqueue`/`reflectEnqueue`.
+// DB access) and is injected via `NegotiatorMemoryRetrieveFn`.
 //
 // Contract: when the entry list is empty (memory empty, flag off, retrieval
 // failed) every renderer returns the empty string, so prompts are

@@ -797,7 +797,7 @@ export class IntentDatabaseAdapter {
 
     const [questionRows, oppRows] = await Promise.all([
       // Mirror the intent-scoped pending-questions filter used on the detail
-      // page (questioner.adapter.findPending): pending, not expired, actor-owned
+      // page: pending, not expired, actor-owned
       // by the user, attributed to the intent via intent-mode sourceId or
       // triggeredBy. (The opportunity-sourced branch is omitted — rare and
       // expensive.) Group key is the attributed intent id.

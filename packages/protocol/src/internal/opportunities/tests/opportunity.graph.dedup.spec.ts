@@ -18,7 +18,6 @@ import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../o
 import type { Id } from '../../../platform/database.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
-import type { NegotiationGraphLike } from '../../negotiations/negotiation.graph.js';
 import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 
 // ---------------------------------------------------------------------------
@@ -174,7 +173,6 @@ function buildGraph(
   overrides?: {
     embedder?: Embedder;
     evaluator?: OpportunityEvaluatorLike;
-    negotiationGraph?: NegotiationGraphLike;
   },
 ) {
   return new OpportunityGraphFactory(
@@ -183,30 +181,10 @@ function buildGraph(
     dummyHyde,
     overrides?.evaluator ?? mockEvaluator,
     async () => undefined,
-    overrides?.negotiationGraph,
     undefined,
     undefined,
     stamper,
   ).createGraph();
-}
-
-function resolvedNegotiationGraph(
-  onInvoke?: (input: Parameters<NegotiationGraphLike['invoke']>[0]) => void,
-): NegotiationGraphLike {
-  return {
-    invoke: async (input) => {
-      onInvoke?.(input);
-      return {
-        outcome: {
-          hasOpportunity: false,
-          agreedRoles: [],
-          reasoning: 'No agreement',
-          turnCount: 0,
-        },
-        messages: [],
-      };
-    },
-  };
 }
 
 const discoveryInput = {
