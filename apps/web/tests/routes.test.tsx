@@ -110,7 +110,6 @@ vi.mock('@/contexts/APIContext', () => {
   };
   const usersService = {
     getUserProfile: vi.fn().mockResolvedValue(null),
-    triggerDiscoveryNegotiation: vi.fn(),
   };
   const noopService = new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) });
   const services = {

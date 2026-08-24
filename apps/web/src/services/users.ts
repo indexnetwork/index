@@ -132,14 +132,6 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
     const response = await api.get<{ negotiations: NegotiationSummary[] }>(`/users/${userId}/negotiations${qs ? `?${qs}` : ''}`);
     return response.negotiations ?? [];
   },
-
-  /**
-   * Trigger a discovery negotiation with the target user.
-   */
-  triggerDiscoveryNegotiation: async (userId: string): Promise<NegotiationSummary> => {
-    const response = await api.post<{ negotiation: NegotiationSummary }>(`/users/${userId}/negotiations`);
-    return response.negotiation;
-  },
 });
 
 /** Fetch a user profile without authentication (public endpoint). */
