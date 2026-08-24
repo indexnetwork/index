@@ -358,6 +358,21 @@ export const PERSONAL_AGENT_NOTHING_TO_OPEN =
   "There is nothing new for me to put to anyone on this signal right now — what I have is either "
   + "waiting on your decision or has run as far as it can. Tell me if you want me to change tack.";
 
+/**
+ * Fixed, server-owned copy for a background turn that decided nothing at all.
+ *
+ * The doc's node is "look at the state, maybe ask, else act" — deciding
+ * NEITHER is not a state that contract has. It is reachable anyway (the model
+ * can return an empty act list), and on a background event there is no reply
+ * stage behind it, so the turn would end in silence: for reflect that also
+ * consumes the round's one retained job, and the signal is never heard from
+ * again. Saying this keeps the loop reachable — the principal's next message
+ * is an ordinary `user_message` turn that can ask or act.
+ */
+export const PERSONAL_AGENT_NO_NEXT_STEP =
+  "I looked at where this signal stands and I do not have a next step for it right now. "
+  + "Tell me how you would like to proceed and I will pick it up.";
+
 export const PERSONAL_AGENT_NO_MATCHES_YET =
   "Nothing has come up for this signal yet. I will pick it up as soon as it does.";
 
@@ -939,6 +954,14 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
       await executeAct(deps, context, accumulator, act);
     }
     if (kickoff) await runKickoff(deps, context, accumulator, kickoff.reasoning);
+
+    // A background event has no reply stage behind it, so a turn that decided
+    // nothing would end in silence — and for reflect, silently consume the
+    // round's one retained job. Never the empty end of a cycle.
+    if (context.event !== "user_message" && accumulator.acts.length === 0) {
+      logger.warn("A background turn decided nothing", { intentId: context.intentId, event: context.event });
+      await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_NO_NEXT_STEP);
+    }
 
     if (context.event === "user_message") {
       await runReplyStage(deps, context, accumulator);

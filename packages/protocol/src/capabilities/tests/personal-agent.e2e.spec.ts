@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
-import { PersonalAgentGraphFactory, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_STRATEGY_FALLBACK, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
+import { PersonalAgentGraphFactory, PERSONAL_AGENT_NO_NEXT_STEP, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_STRATEGY_FALLBACK, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
 import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
 import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
@@ -988,6 +988,24 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     expect(task.metadata.seats[INTENT_ID]).toEqual({ userId: SOURCE_USER_ID, round: negotiationHost.round });
     expect(await negotiationHost.database.getNegotiationTasksForIntentRound(BOB_INTENT, 7)).toHaveLength(1);
     expect(await negotiationHost.database.getNegotiationTasksForIntentRound(INTENT_ID, negotiationHost.round)).toHaveLength(1);
+  });
+
+  test("a background turn that decides nothing still says so — no silent end", async () => {
+    // The doc's node is "look, maybe ask, else act"; deciding NEITHER is not a
+    // state that contract has, but the model can return an empty act list. On
+    // a background event there is no reply stage, so silence there ends the
+    // signal — and for reflect it also consumes the round's one retained job.
+    const judgment = new ScriptedJudgment([() => [], () => []]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const reflected = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
+    expect(reflected.acts.map((act) => act.tool)).toEqual(["message_user"]);
+    expect(principal.dmMessages.at(-1)!.content).toBe(PERSONAL_AGENT_NO_NEXT_STEP);
+
+    // A principal-message turn is unaffected: its reply stage speaks anyway.
+    const replied = await agent.invoke(userMessage("What is happening?"));
+    expect(replied.acts.map((act) => act.tool)).toEqual(["message_user"]);
+    expect(replied.acts[0]).toMatchObject({ stage: "reply" });
   });
 
   test("D21: a negotiation the counterparty opened is still decidable by BOTH agents", async () => {

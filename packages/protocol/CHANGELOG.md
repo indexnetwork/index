@@ -33,6 +33,14 @@ pin a supported release, use `latest`.
   rather than the single literal. A kickoff whose open failed after `init`
   created the task compensates it into this pause, so the round's active count
   can still reach zero. Unlike `turn_cap` it stays re-kickable.
+- **A negotiation binds a signal PER SEAT.** `NegotiationTaskMetadata.intentId`
+  and `.round` are replaced by `seats: Record<string, NegotiationSeatBinding>`
+  keyed by intent id (`{ userId, round }`), and `setNegotiationRound` becomes
+  `bindNegotiationSeat(taskId, intentId, binding)`. Both sides' IS-A can now
+  see and terminate a negotiation, which the loop's
+  `ready_for_verdict(reject)` rule requires. The resume input gains a required
+  `byUserId`, and the negotiator-scope `intentId` is optional (a seat that has
+  not kicked off has no binding). New export: `NegotiationSeatBinding`.
 - **A negotiation's brief is now PER SEAT.** `NegotiationTaskRow.brief: string`
   becomes `briefs: Record<string, string>` keyed by the seat's userId,
   `createNegotiationTask` takes `briefs`, and `setNegotiationBrief` takes the

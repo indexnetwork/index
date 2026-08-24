@@ -45,8 +45,10 @@ acceptance is not owner approval.
 - **Negotiator** — the same PersonalAgent in *negotiation scope*: the agent
   for one signal, talking to another user's negotiator in a negotiation
   thread. A2A. Not a separate persona; a chat surface of IS-A.
-- **Brief** — the per-negotiation context IS-A writes at every kickoff. Not
-  memory. The only thing from the DM that reaches a negotiation thread.
+- **Brief** — the per-negotiation, **per-seat** context an IS-A writes for its
+  OWN seat. Not memory. The only thing from a DM that reaches a negotiation
+  thread. The initiator's kickoff writes its own; the counterparty's agent
+  writes its own at its first turn (D18/D51).
 - **Strategy** — IS-A's plan for a round of negotiations, written in the DM
   before kickoff, visible to and correctable by the principal.
 - **Round** — one kickoff and the negotiations it started, ending when all of
@@ -58,7 +60,8 @@ acceptance is not owner approval.
 discovery persists matches for intent I          (all of them — no cap)
         │  event: matches_ready
         ▼
-IS-A ── (may ask first) ── strategy in DM ── brief × N in parallel ── kickoff ALL
+IS-A ── (may ask first) ── strategy in DM ── brief × N in parallel ── kickoff
+                                        (up to MAX_MATCHES; the rest next round)
         ▲                                                     │
         │                                                     │  negotiator turns flow A↔B
         │                                                     │  until every negotiation of
@@ -84,11 +87,15 @@ learns of it on its next reflect turn, if one triggers.
    turn re-enters here.
 2. IS-A writes the **strategy** into the DM.
 3. IS-A derives one **brief** per match — intent, DM so far, strategy — in
-   parallel. Run-1 briefs are minimal but never absent: `open` and `resume`
-   take the same input.
-4. IS-A kicks off **all** matches. No selection at kickoff; the negotiator
-   filters by negotiating, IS-A judges at reflect where it has turns to judge
-   on.
+   parallel, a few at a time. That brief is for IS-A's OWN seat; the
+   counterparty's agent writes its own (D18/D51).
+4. IS-A kicks off **every eligible match it was shown** — the same list the
+   prompt rendered, capped at `MAX_MATCHES` (D19/D52). No per-match selection
+   by the agent: the negotiator filters by negotiating, and IS-A judges at
+   reflect where it has turns to judge on. Matches over the cap, ones awaiting
+   introducer approval, ones already the principal's to decide (`pending`) and
+   ones whose turn budget is spent are not opened; the first of those is
+   picked up by the next round.
 
 ### Negotiator turns
 
@@ -98,7 +105,8 @@ one of:
 | Verb | Effect |
 |---|---|
 | `outreach` / `counter` / `question` | message to the counterparty; negotiation stays active |
-| `pause(counterparty_silent, payload)` | the other side has not answered within the window |
+| `pause(counterparty_silent)` | the other side has not answered within the window; system-emitted, no payload |
+| `pause(turn_cap)` / `pause(open_failed)` | system-emitted: the ambient turn budget is spent, or the open itself failed |
 | `pause(needs_principal, payload)` | cannot continue without something only the principal knows; payload carries the question |
 | `pause(ready_for_verdict, payload)` | believes a decision is possible; payload carries `{ recommendation: 'pending' \| 'reject', reasoning }` |
 | `pause(turn_cap)` | the ambient turn budget ran out mid self-play; no payload. System-emitted, never authored |
@@ -114,15 +122,22 @@ Turn caps and park windows become pauses, never outcomes.
 ### The all-paused trigger
 
 Every pause is a DB transition. The NegotiationGraph's pause step ends with:
-if no active negotiation remains for `(intentId, round)` → enqueue
+for **every seat bound to the negotiation** (D21/D55), if no active
+negotiation remains for that seat's `(intentId, round)` → enqueue
 `reflect(intentId, round)` with job id `reflect:${intentId}:${round}`. Ten
 pauses produce one reflect; a late pause from an earlier round cannot
 re-trigger the current one. No cron, no Redis flag.
 
+The check is gated on the round's SIZE stamp (D2): kickoff opens a round's
+negotiations in parallel and stamps the size only once they have all settled,
+so an early first pause cannot dedupe away the round's real reflect.
+
 ### Reflect
 
-**Phase 1 — ASK.** Input: every paused negotiation of the round (reason +
-payload), the DM. IS-A composes the questions the principal must answer
+**Phase 1 — ASK.** Input: every paused negotiation **of the signal** (not just
+of the round — a negotiation a later kickoff left behind must stay decidable),
+with its reason, plus the payload of the pauses OUR OWN seat made, plus the
+DM. A counterparty's payload is theirs to hand to their own principal. IS-A composes the questions the principal must answer
 before anything is decided — `needs_principal` payloads merged and deduped
 across negotiations (one answer often serves several) plus its own gaps. If
 there are none, go to ACT. Otherwise post them in the DM and wait.
@@ -159,7 +174,7 @@ One LangGraph, one persona, one agent loop (today's persona-neutral
 | `{ userId, intentId, event: user_message }` | IS-A | DM turn; includes "are my open questions answered? → ACT" |
 | `{ userId, intentId, event: matches_ready }` | IS-A | kickoff turn (may ask → strategy → briefs → open all) |
 | `{ userId, intentId, event: all_paused }` | IS-A | reflect phase 1 (→ phase 2 when nothing to ask) |
-| `{ userId, intentId, negotiationId }` | negotiator | one turn: read thread + brief → one verb or one pause |
+| `{ userId, negotiationId, intentId? }` | negotiator | one turn: read thread + its OWN brief → one verb or one pause. `intentId` is the speaking seat's signal when it has bound one (D21) |
 
 Scope decides: which conversation is read and written (the signal DM vs the
 negotiation thread), the prompt fragment, the verb set, and who the reply
@@ -182,17 +197,18 @@ dossier and reply stream become ports the host implements.
 
 | Input | Meaning |
 |---|---|
-| `{ opportunityId, brief, intentId, round }` | open: create the negotiation and take the first turn. `intentId` resolves the source seat (its owner) and, with `round`, keys the all-paused trigger; `round` is the caller's batch counter, bumped once per kickoff batch |
-| `{ negotiationId, brief }` | resume after reflect with new context |
+| `{ opportunityId, brief, intentId, round }` | open: create the negotiation and take the first turn. `brief` and `round` are the KICKING seat's, resolved from `intentId`'s owner; `round` is the caller's batch counter, bumped once per kickoff batch, and with `intentId` keys the all-paused trigger |
+| `{ negotiationId, brief, byUserId }` | resume with new context for ONE named seat |
 | `{ negotiationId, turn, byUserId }` | apply a submitted turn — from AgentGraph or an external agent, same verbs, same validation → continue or pause. `byUserId` is the submitting seat; `apply` rejects a turn whose `byUserId` is not the speaker it computed |
-| `{ negotiationId, pause: counterparty_silent }` | a timeout fired |
+| `{ negotiationId, pause: counterparty_silent \| open_failed }` | a timeout fired, or an open failed and left a live task |
 | `{ negotiationId, verdict: pending \| reject, reasoning }` | resolve — the only terminal write on the negotiation, from IS-A ACT. It also closes the negotiation behind an owner verdict on the opportunity, and never writes over an already-terminal opportunity status (D23) |
 | `{ negotiationId }` | read |
 
 `reasoning` is recorded on the outcome artifact and travels with the opportunity status — it is what the Radar card / closed card render. It is private to the resolving side: never persisted as a message into the A2A thread. A reject reason may contain principal-private material; the counterparty only ever sees that the negotiation closed.
 
-Inside: `init` loads the opportunity, actors, profiles, intents and the brief
-through the database port (callers pass ids, not pre-built user contexts);
+Inside: `init` loads the opportunity, its actors and the kicking intent
+through the database port (callers pass ids, not pre-built user contexts;
+profiles are not loaded — the brief is the context);
 `turn` asks AgentGraph (negotiation scope) for our seat or dispatches to the
 external agent for theirs; `apply` validates the verb against the seat,
 persists, decides continue/pause, and on pause runs the all-paused check;
@@ -770,4 +786,72 @@ and a new failure mode (a lock held after a crash) for a race the bound
 already closes; (b) relying on single-worker serialization — the queue's own
 code contemplates several workers, so that assumption fails silently at the
 first replica.
+
+### D54. After the round bump, nothing throws (log D22)
+Chose: one policy for the whole kickoff region. Before the bump a failure is
+safe to retry, so it propagates. After it, the turn has done irreversible,
+principal-visible work — a strategy message and a new round — so every failure
+below is logged, ledgered and carried past: the compensation, the round read,
+the size stamp (retried three times first) and the reflect enqueue. A round
+left unsettled by one of them is recovered by the interrupted-round repair
+(D53), which exists for exactly that.
+Alternative rejected: letting the stamp or the compensation throw so a queue
+retry finishes the round — that retry re-runs the whole turn, and the second
+strategy message and second round bump are the outcome `recordKickoff` was
+already swallowing its ledger error to avoid. Rounds 4-6 oscillated between
+the two halves of that contradiction; this states one policy for the region.
+
+### D55. A negotiation binds a signal PER SEAT (log D21)
+Chose: `metadata.intentId` / `metadata.round` become `metadata.seats`, one
+binding per seat keyed by intent id (`{ userId, round }`) — the shape D18
+already established for briefs. A kickoff binds its own seat and touches no
+other's, so a re-kick from either side can neither overwrite the other's brief
+nor leave the task in neither round: both were guard-able bugs and are now
+impossible by construction. The pause-side reflect check runs for every bound
+seat.
+
+Forced, not preferred: the doc's terminator rule is that a side which wants
+out pauses `ready_for_verdict(reject)` and ITS OWN IS-A rejects, and an IS-A
+can only decide a negotiation its own signal can see. With one owning intent
+the counterparty's agent could speak here but never promote or reject, which
+deletes half the loop's terminators.
+Alternatives rejected: (a) the opening signal owns it and the counterparty
+learns via the opportunity status — simpler, and what the discarded round-6
+patch did, but it silently removes those terminators; (b) resolving the seat's
+intent by lookup at each turn — no schema change, but it re-derives on every
+read something the task should record, and the lookup is exactly the ambiguous
+premise-matched case #1494 documented as unreliable. Migration 0149 backfills
+the opener's binding losslessly.
+
+### D56. The prose gate stays on strategy copy; the retry is what changes
+Chose: `strategy()` is retried twice and falls back to fixed copy, and it
+keeps `isSafeAgentMessageProse`.
+
+The gate false-positives — ordinary scheduling language like "approach all
+three at the same time" trips the shared-event claim family — and that is
+worth the cost, because the strategy is DELIVERED to the principal and does
+discuss their matches. The claim families it rejects (attendance, membership,
+residence, co-presence) are exactly what must not be asserted about a
+counterparty in a message the principal will read as fact. What made the false
+positive harmful was the terminal throw, not the rejection: three attempts
+against an identical prompt and the wake was lost. With a retry and a fallback
+the cost of a false positive is one bland sentence.
+Alternative rejected: narrowing the gate to the identifier check for strategy
+prose only — it would let "Dana is a member of the co-op, so I'll..." through
+to the principal as fact, which is the exact leak the gate exists for. If a
+future change widens it, widen it for every delivered surface at once, not
+here.
+
+### D57. A background turn never ends in silence
+Chose: an intent-scope turn on `matches_ready` or `all_paused` that produced
+no acts at all delivers one fixed line saying so.
+The doc's node is "look at the state, maybe ask, else act" — deciding NEITHER
+is not a state that contract has, but a model can return an empty act list.
+There is no reply stage behind a background event, so the turn would end
+silently; on reflect it would also consume the round's one retained job, and
+nothing would ever wake that signal again. The line keeps the loop reachable:
+the principal's next message is an ordinary turn that can ask or act.
+Alternative rejected: treating an empty list as a failure and retrying — the
+retry runs an identical prompt (D30), so it fails the same way and loses the
+wake instead of ending it honestly.
 

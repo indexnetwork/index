@@ -309,6 +309,7 @@ export type {
   NegotiationGraphDatabase,
   NegotiationTaskRow,
   NegotiationTaskMetadata,
+  NegotiationSeatBinding,
   NegotiationTaskState,
   NegotiationMessageRow,
 } from "./platform/database/negotiation.js";
