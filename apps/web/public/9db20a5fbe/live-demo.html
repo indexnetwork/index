@@ -39625,7 +39625,8 @@ window.MainView = MainView;
 </script>
 <script type="text/babel">
 // App — orchestrates the Mac System 6 prototype.
-// Current flow: signals hub → onboarding/calibrating for new signals → main.
+// Current flow: opens on the signals hub → onboarding/calibrating for new
+// signals → main. Sign out to replay login → building → profile review.
 
 // Session. Quitting and reopening shouldn't dump you back at sign-in —
 // only an explicit "sign out" should. The flag is written when the profile
@@ -39651,9 +39652,12 @@ function writeSession(on) {
 
 function App() {
   const { PEOPLE, POOL, FIELD_EVENTS, INTENTS } = window.HALO_DATA;
-  const [screen, setScreen] = useState(() => readSession() ? "intents" : "login");
+  // Opens on the signals hub, past sign-in and profile assembly, so the demo
+  // starts where it is worth watching: "start a new signal". Signing out still
+  // returns to the login screen and replays the full first run.
+  const [screen, setScreen] = useState("intents");
   // True until the user creates their first signal — the hub opens empty.
-  const [freshUser, setFreshUser] = useState(false);
+  const [freshUser, setFreshUser] = useState(true);
   const [profile, setProfile] = useState({});
   const [people, setPeople] = useState(() => [
     ...PEOPLE.map(p => ({ ...p, hidden: false })),
