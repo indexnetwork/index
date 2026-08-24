@@ -38,6 +38,17 @@ export interface PersonalAgentTurnCompletedEvent {
   intentId: string;
 }
 
+/** A persisted message received on the authenticated conversation SSE channel. */
+export interface ConversationMessageEvent {
+  conversationId: string;
+  message: ConversationMessage;
+}
+
+/** An owner-visible discovery-progress write; fetch the intent for its data. */
+export interface IntentDiscoveryProgressEvent {
+  intentId: string;
+}
+
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: ConversationSummary[];
@@ -62,6 +73,10 @@ interface ConversationContextType {
   subscribeQuestionRegeneration: (handler: (event: QuestionRegenerationEvent) => void) => () => void;
   /** Subscribe to durable PersonalAgent completion signals from the SSE stream. */
   subscribePersonalAgentTurnCompleted: (handler: (event: PersonalAgentTurnCompletedEvent) => void) => () => void;
+  /** Subscribe to persisted conversation messages from the SSE stream. */
+  subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
+  /** Subscribe to owner-scoped discovery-progress invalidations. */
+  subscribeIntentDiscoveryProgress: (handler: (event: IntentDiscoveryProgressEvent) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -87,6 +102,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const questionRegenerationHandlersRef = useRef(new Set<(event: QuestionRegenerationEvent) => void>());
   const personalAgentTurnCompletedHandlersRef = useRef(new Set<(event: PersonalAgentTurnCompletedEvent) => void>());
+  const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
+  const intentDiscoveryProgressHandlersRef = useRef(new Set<(event: IntentDiscoveryProgressEvent) => void>());
 
   const subscribeQuestionRegeneration = useCallback(
     (handler: (event: QuestionRegenerationEvent) => void) => {
@@ -104,6 +121,22 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       return () => {
         personalAgentTurnCompletedHandlersRef.current.delete(handler);
       };
+    },
+    [],
+  );
+
+  const subscribeConversationMessage = useCallback(
+    (handler: (event: ConversationMessageEvent) => void) => {
+      conversationMessageHandlersRef.current.add(handler);
+      return () => { conversationMessageHandlersRef.current.delete(handler); };
+    },
+    [],
+  );
+
+  const subscribeIntentDiscoveryProgress = useCallback(
+    (handler: (event: IntentDiscoveryProgressEvent) => void) => {
+      intentDiscoveryProgressHandlersRef.current.add(handler);
+      return () => { intentDiscoveryProgressHandlersRef.current.delete(handler); };
     },
     [],
   );
@@ -427,6 +460,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                 negotiationsRefreshTimeoutRef.current = null;
                 void refreshNegotiationsRef.current();
               }, 500);
+              conversationMessageHandlersRef.current.forEach((handler) => handler({
+                conversationId: convId,
+                message: msg,
+              }));
               break;
             }
             case 'question_regeneration': {
@@ -440,6 +477,12 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                 pending: Boolean(data.pending),
               };
               questionRegenerationHandlersRef.current.forEach((handler) => handler(regenerationEvent));
+              break;
+            }
+            case 'intent_discovery_progress': {
+              const intentId = data.intentId as string | undefined;
+              if (!intentId) break;
+              intentDiscoveryProgressHandlersRef.current.forEach((handler) => handler({ intentId }));
               break;
             }
             case 'personal_agent_turn_completed': {
@@ -545,6 +588,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         getOrCreateDM,
         subscribeQuestionRegeneration,
         subscribePersonalAgentTurnCompleted,
+        subscribeConversationMessage,
+        subscribeIntentDiscoveryProgress,
       }}
     >
       {children}

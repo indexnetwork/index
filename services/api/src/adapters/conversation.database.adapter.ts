@@ -3773,7 +3773,7 @@ export class ConversationDatabaseAdapter {
     if (data.interrupted) msgMeta.interrupted = true;
     if (data.options?.length) msgMeta.options = data.options;
 
-    await this.insertMessageWithConversationSession({
+    const message = await this.insertMessageWithConversationSession({
       id: data.id,
       conversationId: data.sessionId,
       senderId,
@@ -3784,6 +3784,17 @@ export class ConversationDatabaseAdapter {
       extensions: null,
       referenceTaskIds: null,
     });
+
+    // Chat-session writers include background A2H replies. Publish only after
+    // their durable write, using stored participants as the privacy boundary.
+    try {
+      await publishConversationMessageEvent(message, await this.getParticipants(data.sessionId));
+    } catch (error) {
+      logger.error('Failed to publish chat-session SSE event', {
+        conversationId: data.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

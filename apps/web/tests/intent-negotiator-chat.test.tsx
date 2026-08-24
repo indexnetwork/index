@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   },
   regenerationHandlers: new Set<(event: { intentId: string; pending: boolean }) => void>(),
   turnCompletedHandlers: new Set<(event: { intentId: string }) => void>(),
+  conversationMessageHandlers: new Set<(event: { conversationId: string; message: { role: string } }) => void>(),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -57,6 +58,12 @@ vi.mock('@/contexts/ConversationContext', () => ({
         mocks.turnCompletedHandlers.delete(handler);
       };
     },
+    subscribeConversationMessage: (handler: (event: { conversationId: string; message: { role: string } }) => void) => {
+      mocks.conversationMessageHandlers.add(handler);
+      return () => {
+        mocks.conversationMessageHandlers.delete(handler);
+      };
+    },
   }),
 }));
 
@@ -70,6 +77,12 @@ function emitRegeneration(event: { intentId: string; pending: boolean }) {
 function emitTurnCompleted(event: { intentId: string }) {
   act(() => {
     mocks.turnCompletedHandlers.forEach((handler) => handler(event));
+  });
+}
+
+function emitConversationMessage(event: { conversationId: string; message: { role: string } }) {
+  act(() => {
+    mocks.conversationMessageHandlers.forEach((handler) => handler(event));
   });
 }
 
@@ -123,6 +136,7 @@ describe('IntentNegotiatorChat', () => {
     vi.clearAllMocks();
     mocks.regenerationHandlers.clear();
     mocks.turnCompletedHandlers.clear();
+    mocks.conversationMessageHandlers.clear();
     mocks.chat.messages = [];
     mocks.chat.isLoading = false;
     mocks.chat.sessionId = null;
@@ -199,6 +213,21 @@ describe('IntentNegotiatorChat', () => {
     emitTurnCompleted({ intentId: 'intent-1' });
     await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(2));
     expect(mocks.chat.loadSession).toHaveBeenLastCalledWith('neg-intent-sess-1');
+  });
+
+  test('reconciles an agent message for the current session and invalidates its workspace', async () => {
+    mocks.chat.sessionId = 'neg-intent-sess-1';
+    const onLiveInvalidation = vi.fn();
+    renderChat({ onLiveInvalidation });
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1));
+
+    emitConversationMessage({ conversationId: 'someone-elses-session', message: { role: 'agent' } });
+    expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1);
+    expect(onLiveInvalidation).not.toHaveBeenCalled();
+
+    emitConversationMessage({ conversationId: 'neg-intent-sess-1', message: { role: 'agent' } });
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(2));
+    expect(onLiveInvalidation).toHaveBeenCalledTimes(1);
   });
 
   test('releases the shared chat context on unmount', async () => {

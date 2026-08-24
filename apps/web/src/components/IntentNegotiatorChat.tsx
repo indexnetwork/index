@@ -59,6 +59,8 @@ export interface IntentNegotiatorChatProps {
    * static panel.
    */
   onUnavailable: () => void;
+  /** Revalidate the intent workspace after a durable agent message arrives. */
+  onLiveInvalidation?: () => void;
 }
 
 /**
@@ -81,6 +83,7 @@ export default function IntentNegotiatorChat({
   opportunityActionLoading,
   onOpportunityAction,
   onUnavailable,
+  onLiveInvalidation,
 }: IntentNegotiatorChatProps) {
   const {
     messages,
@@ -94,7 +97,7 @@ export default function IntentNegotiatorChat({
     clearChat,
     sessionId,
   } = useAIChat();
-  const { subscribeQuestionRegeneration, subscribePersonalAgentTurnCompleted } = useConversation();
+  const { subscribeQuestionRegeneration, subscribePersonalAgentTurnCompleted, subscribeConversationMessage } = useConversation();
 
   const [agentName, setAgentName] = useState<string | null>(null);
   const [bootstrapRegenerationPending, setBootstrapRegenerationPending] = useState(false);
@@ -142,6 +145,17 @@ export default function IntentNegotiatorChat({
       if (event.intentId === intentId) setTurnReloadToken((token) => token + 1);
     });
   }, [intentId, subscribePersonalAgentTurnCompleted]);
+
+  // A2H writes can happen outside the local POST stream. Reconcile this
+  // session on any persisted agent message, then let the parent refresh its
+  // intent-scoped server snapshots.
+  useEffect(() => {
+    return subscribeConversationMessage((event) => {
+      if (event.conversationId !== sessionId || event.message.role !== "agent") return;
+      setTurnReloadToken((token) => token + 1);
+      onLiveInvalidation?.();
+    });
+  }, [onLiveInvalidation, sessionId, subscribeConversationMessage]);
 
   // Apply the reload outside the active stream: while the negotiator is
   // streaming, the shared context owns the message list, so wait for
