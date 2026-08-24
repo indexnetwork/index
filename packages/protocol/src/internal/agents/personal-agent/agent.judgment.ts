@@ -5,8 +5,8 @@
  * dossier entries as NUMBERED lists — and returns acts referring to them
  * strictly by number. It never sees or emits an id, so it cannot mint a ref
  * that would end the wrong negotiation or retire the wrong fact; an act
- * naming a number outside the lists rejects the whole round trip. Fail-closed:
- * validate → retry once → throw, and the caller's queue retry covers a
+ * naming a number outside the lists is DROPPED. Output that does not parse at
+ * all is retried once and then throws, and the caller's queue retry covers a
  * transient model outage.
  *
  * `PersonalAgentModel` is the production implementation of the
@@ -16,12 +16,22 @@
 import { z } from "zod";
 
 import { createStructuredModel } from "../../shared/agent/model.config.js";
+import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema, type NegotiationAuthoredTurn, type NegotiationTurn } from "../../negotiations/negotiation.turn.js";
 import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_REPLY_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
 import type { PersonalAgentBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentReply, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgent:Judgment");
+
+/**
+ * A negotiator turn's own deadline. Kickoff self-plays every match in
+ * parallel and a negotiation runs several turns inside one invoke, so without
+ * a bound here the model layer's own 60s x retry budget stacks far past the
+ * chat controller's 90s wait and the principal sees a timeout for a turn that
+ * is still running.
+ */
+const NEGOTIATION_TURN_TIMEOUT_MS = 20_000;
 
 const MAX_TEXT_CHARS = 500;
 const MAX_DM_CHARS = 1000;
@@ -336,15 +346,23 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
   }
 
   protected async callOpeningTurnModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
-    return createStructuredModel("negotiator", NegotiationOpeningTurnSchema, { name: "negotiation_opening" }).invoke(messages);
+    return invokeWithAbortSignal(
+      createStructuredModel("negotiator", NegotiationOpeningTurnSchema, { name: "negotiation_opening" }),
+      messages,
+      AbortSignal.timeout(NEGOTIATION_TURN_TIMEOUT_MS),
+    );
   }
 
   protected async callTurnModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
-    return createStructuredModel(
-      "negotiator",
-      NegotiationAuthoredTurnSchema as unknown as z.ZodType<Record<string, unknown>>,
-      { name: "negotiation_turn" },
-    ).invoke(messages);
+    return invokeWithAbortSignal(
+      createStructuredModel(
+        "negotiator",
+        NegotiationAuthoredTurnSchema as unknown as z.ZodType<Record<string, unknown>>,
+        { name: "negotiation_turn" },
+      ),
+      messages,
+      AbortSignal.timeout(NEGOTIATION_TURN_TIMEOUT_MS),
+    );
   }
 }
 
@@ -436,10 +454,11 @@ export function validateDecidedActs(
     }
   }
 
-  // Nothing survived a list that asked for something: re-decide rather than
-  // execute an empty turn the model never intended. A model that genuinely
-  // decided nothing returns no acts at all, and that IS a valid answer.
-  if (decided.length === 0 && parsed.data.acts.length > 0) return null;
+  // An emptied list is still an answer. Re-deciding it would retry an
+  // identical prompt with no feedback — the model produces the same output,
+  // the turn throws, and on a client-message turn the client gets the failure
+  // copy instead of the reply the stage would have written anyway. `null` is
+  // reserved for output that did not parse at all.
   if (dropped > 0) {
     logger.warn("Personal-agent acts partially dropped", { event: context.event, dropped, kept: decided.length });
   }

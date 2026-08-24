@@ -421,35 +421,72 @@ Alternative rejected: keeping the fallbacks — a graph with no turn author
 throws on every turn, and one with no reflect enqueue loses the all-paused
 moment for good.
 
-### D29. An interrupted kickoff RESUMES its round; it does not start another
-Chose: kickoff first reads the intent's round stamp. An unstamped round that
-already has tasks is the unmistakable signature of a kickoff that died after
-opening (only kickoff bumps a round, and a bump clears the stamp), so the turn
-finishes THAT round — ledger, stamp, all-paused check — and returns. The
-ledger append is non-throwing and comes before the stamp, so the stamp is the
-last durable write and a failure there leaves exactly the resumable signature.
+### D29. An interrupted kickoff SETTLES its round — off an explicit marker
+**Restated after round-2 review; the first version inferred the marker.**
+
+Chose: the round bump — the one write that begins a kickoff — stamps
+`intents.negotiation_kickoff_started_at` in the same statement, and the size
+stamp settles the round. `startedAt` set with `roundSize` still null is the one
+signature of a kickoff that died mid-round, and a retry settles THAT round
+rather than starting another. A round with no negotiations at all is not
+settled; the turn falls through to a normal kickoff instead.
+
+The first version inferred the same thing from `roundSize === null` alone, and
+that is wrong twice over: every intent alive when the migration lands has a
+round counter and no size stamp, so the FIRST `matches_ready` per existing
+signal would have taken the resume path and silently dropped the batch that
+woke it; and a re-kick whose opens all failed looks identical, because
+`init` moves a task into the new round before any turn is authored. Migration
+0147 adds the marker as NULL for every existing row, so their next
+`matches_ready` runs a normal kickoff. Pinned by a seeded-legacy-intent test.
+
 Alternatives rejected: (a) making the whole turn transactional — the effects
 span a model call, a chat message and N negotiation graphs; (b) swallowing a
 stamp failure — the round would then never reflect, which is the failure D2
-exists to prevent.
+exists to prevent; (c) a sentinel value in `negotiation_round_size` — smaller,
+but it makes one column mean three things and reads as a magic number.
 
-### D30. One impossible act drops; only an empty result is re-decided
+### D30. One impossible act drops; an emptied list is a real empty turn
+**Amended after round-2 review.**
+
 Chose: the validator drops the offending act and keeps the rest, exactly as
-`normalizeMessageOptions` drops a malformed chip, and returns `null` only when
-a non-empty act list has nothing valid left in it.
-Alternative rejected: refusing the whole round trip (the shipped behaviour
-until review) — the retry sees an identical prompt with no feedback, usually
-repeats the mistake, and the client's actual request, a verdict they asked for
-in words, silently never happens while they get the failure copy.
+`normalizeMessageOptions` drops a malformed chip, and returns `null` — the
+retry-then-throw path — only for output that did not parse at all.
 
-### D31. `matches_ready` coalesces in two slots, never in one
+The first version also returned `null` when everything dropped, which on a
+client-message turn is the common case: a model that answers with nothing but
+an acts-stage `message_user` had every act dropped, was retried against an
+identical prompt with no feedback, produced the same output, and threw — so the
+client got the failure copy instead of the reply the reply stage writes anyway.
+An emptied list is a turn that decided nothing, and deciding nothing is a real
+answer.
+
+Alternative rejected: refusing the whole round trip on any impossible act (the
+first shipped behaviour) — it discards the client's actual request, a verdict
+they asked for in words, alongside the model's mistake.
+
+### D31. Two coalescing slots, plus an authoritative end-of-kickoff re-check
+**Amended after round-2 review.**
+
 Chose: a batch coalesces onto the primary job id while that job is still
 queued, and onto a single follow-up id while it is running; if both are
-running, it is enqueued unkeyed.
-Alternative rejected: one id with `removeOnComplete` (the shipped behaviour) —
-BullMQ silently returns the existing job for a duplicate id, so a batch landing
-during a kickoff turn, which takes minutes, vanished into a turn that had
-already read its match list.
+running, it is enqueued unkeyed. AND — because reading a job's state and then
+adding is not atomic, so a job flipping waiting→active between the two calls
+can still swallow an add — the end of a kickoff re-reads the match list and
+wakes the signal again for any undecided match that has no negotiation at all
+and was not one of this kickoff's own targets. That re-check, not the job id,
+is what makes "no silent loss" true.
+
+It cannot loop: a target whose open failed is compensated into a task (D34), so
+it is never "unopened" on the next pass, and a kickoff that opened everything
+leaves nothing for the re-check to find.
+
+Alternatives rejected: one job id with `removeOnComplete` (the first shipped
+behaviour) — BullMQ silently returns the existing job for a duplicate id, so a
+batch landing during a minutes-long kickoff turn vanished into a turn that had
+already read its match list. Closing the read-then-add race properly needs a
+Lua/atomic add BullMQ does not expose, which is more infrastructure than this
+PR should introduce.
 
 ### D32. The reflect job is retained on completion, forever
 Chose: `removeOnComplete: false` on the `all_paused` job. One retained row per
@@ -466,4 +503,33 @@ Chose: `countActiveNegotiationsForRound` applies the same archive predicate as
 Alternative rejected: leaving the count unfiltered — an archived task stuck in
 `working` holds it above zero forever, so the signal never reflects again,
 while that task is invisible in the paused set the agent reasons over.
+
+### D34. A failed open is compensated, with a pause reason of its own
+Chose: an open that failed but left a live `working` task in the round is
+paused through the graph's own sink with a new system reason, `open_failed`.
+Unlike `turn_cap` it stays re-kickable — the failure was ours, not the table's.
+The round's SIZE is then read back from the database rather than counted from
+the settled opens, because a compensated task and a re-kicked task that `init`
+had already moved into the round both belong to it.
+Alternatives rejected: (a) leaving the task `working` — the round's active
+count never reaches zero, so its reflect is a no-op until the 12-hour watchdog
+sweep; (b) reusing `counterparty_silent` — nobody went silent, and IS-A reads
+that reason at reflect and would act on a fiction.
+
+### D35. `matchesReady` is wired at every composition root, not just the queue
+Chose: thread the one host callback through `protocolDeps`, `McpToolDeps` and
+the REST/CLI `ToolDeps`, so the OpportunityGraph `tool.factory` builds gets the
+same hand-off the discovery queues use.
+Alternative rejected: leaving it to the queue path — chat- and MCP-run
+discovery build their own graph, and with the field unset the matches_ready
+edge ends at END. Matches persist, the agent is never woken, and there is no
+error to notice. Pinned statically at each root and behaviourally on the node.
+
+### D36. The negotiator turn keeps a deadline of its own
+Chose: 20s per turn at the author seam, the bound the deleted
+`NegotiationAuthor` had.
+Alternative rejected: relying on the model layer's own 60s x retry budget — a
+kickoff self-plays several turns per match in parallel, so a single slow
+provider call stacks far past the chat controller's 90s wait and the principal
+sees a timeout for a turn that is still running.
 

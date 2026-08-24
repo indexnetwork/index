@@ -17,7 +17,7 @@ import { END, StateGraph, Annotation } from "@langchain/langgraph";
 import type { NegotiationGraphDatabase, NegotiationTaskRow, NegotiationTaskMetadata } from "../../platform/database/negotiation.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../../protocol/core.js";
-import { NegotiationTurnSchema, NegotiationOpeningTurnSchema, isPauseTurn, turnsFromMessages, turnsWithSenders, type NegotiationTurn, type NegotiationVerdict, type NegotiationPauseReason } from "./negotiation.turn.js";
+import { NegotiationTurnSchema, NegotiationOpeningTurnSchema, isPauseTurn, turnsFromMessages, turnsWithSenders, type NegotiationTurn, type NegotiationVerdict, type NegotiationPauseReason, type NegotiationSystemPauseReason } from "./negotiation.turn.js";
 import { maybeEnqueueRoundReflect, type NegotiationRoundReflectEnqueueFn } from "./negotiation.round-reflect.js";
 import type { NegotiationTurnAuthor } from "./negotiation.turn-author.js";
 
@@ -38,7 +38,7 @@ export type NegotiationGraphInput =
   | { negotiationId: string; brief: string }
   /** `byUserId` is the seat submitting this turn; apply rejects a turn whose byUserId isn't the computed next speaker. */
   | { negotiationId: string; turn: NegotiationTurn; byUserId: string }
-  | { negotiationId: string; pause: "counterparty_silent" }
+  | { negotiationId: string; pause: NegotiationSystemPauseReason }
   | { negotiationId: string; verdict: NegotiationVerdict; reasoning: string }
   | { negotiationId: string };
 
@@ -227,7 +227,7 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       }
       pendingTurn = parsedTurn.data;
     } else {
-      pendingTurn = { verb: "pause", reason: "counterparty_silent" };
+      pendingTurn = { verb: "pause", reason: input.pause };
     }
 
     const messages = await deps.database.getNegotiationMessages(task.id);

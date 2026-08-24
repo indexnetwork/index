@@ -79,6 +79,10 @@ const protocolDeps = {
   // instance, or the all-paused -> reflect trigger is silently lost on
   // every negotiation opened through this surface.
   negotiationGraph,
+  // The same hand-off the discovery queues use. `tool.factory` builds its own
+  // OpportunityGraph from this field; unset, its matches_ready edge ends at
+  // END and a chat-run discovery persists matches nobody is ever woken for.
+  matchesReady,
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
@@ -623,6 +627,7 @@ function createMcpServerInstance(): McpServer {
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
     negotiationGraph,
+    matchesReady: protocolDeps.matchesReady,
     agentDispatcher: protocolDeps.agentDispatcher,
     // #1471: owner-verdict host behind reject/accept_opportunity (the Radar
     // Skip/Start-Chat path). Registered on the MCP surface only; the

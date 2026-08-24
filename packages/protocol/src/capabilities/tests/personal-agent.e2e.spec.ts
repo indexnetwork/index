@@ -152,6 +152,7 @@ class ScriptedJudgment implements PersonalAgentJudgment {
 function buildCycle(judgment: ScriptedJudgment, counterparties: string[]) {
   const negotiationHost = new FakeNegotiationHost(counterparties);
   const principal = new FakePrincipalHost(negotiationHost);
+  const wakes: Array<{ userId: string; intentId: string }> = [];
   let agent: PersonalAgentGraphLike;
   const negotiations = new Negotiations({
     database: negotiationHost.database,
@@ -174,9 +175,10 @@ function buildCycle(judgment: ScriptedJudgment, counterparties: string[]) {
     identity: principal.identity,
     replyStream: principal.replyStream,
     reflectEnqueue: async (job) => { negotiationHost.reflectJobs.push(job); },
+    wakeForMatches: async (input) => { wakes.push(input); },
     judgment,
   }).createGraph();
-  return { agent, negotiationHost, principal };
+  return { agent, negotiationHost, principal, wakes };
 }
 
 const userMessage = (text: string) => ({
@@ -305,8 +307,10 @@ describe("PersonalAgent — the whole cycle", () => {
     const { agent, negotiationHost } = buildCycle(judgment, []);
 
     const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
-    expect(result.acts).toEqual([{ tool: "kickoff", round: 0, opened: 0, reasoning: "Nothing to open." }]);
+    // The act names the round it actually looked at, not a placeholder.
+    expect(result.acts).toEqual([{ tool: "kickoff", round: negotiationHost.round, opened: 0, reasoning: "Nothing to open." }]);
     expect(negotiationHost.roundSize).toBeNull();
+    expect(negotiationHost.kickoffStartedAt).toBeNull(); // no round was ever begun
     expect(negotiationHost.reflectJobs).toEqual([]);
   });
 
@@ -365,7 +369,7 @@ describe("PersonalAgent — termination and retry safety", () => {
     const briefCallsBefore = judgment.briefCalls.length;
     const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: firstRound + 1 });
 
-    expect(acted.acts).toEqual([{ tool: "kickoff", round: 0, opened: 0, reasoning: "Send them out." }]);
+    expect(acted.acts).toEqual([{ tool: "kickoff", round: firstRound + 1, opened: 0, reasoning: "Send them out." }]);
     expect(negotiationHost.round).toBe(firstRound + 1); // no further bump
     expect(negotiationHost.tasks.size).toBe(2); // nothing re-opened
     expect(principal.dmMessages).toHaveLength(strategyMessagesBefore); // no second strategy
@@ -413,5 +417,105 @@ describe("PersonalAgent — termination and retry safety", () => {
     expect(judgment.briefCalls).toHaveLength(1); // no second brief
     expect(negotiationHost.roundSize).toBe(1); // and the round is no longer stranded
     expect(negotiationHost.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round }]);
+  });
+});
+
+describe("PersonalAgent — kickoff safety at the edges", () => {
+  test("a signal that predates round stamping runs a NORMAL kickoff, not a resume", async () => {
+    // Every intent alive when the migration lands has negotiation_round >= 1
+    // and no size stamp. Inferring "an interrupted kickoff" from that NULL
+    // would take the resume path on the first matches_ready per existing
+    // signal — no strategy, no briefs, no opens — and silently drop the batch
+    // that woke it. The marker, not the NULL-ness, is what says a kickoff began.
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "First real round." }]]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    // A signal that was mid-negotiation when the mechanism landed: a round
+    // counter, negotiations already in that round, and no stamp of any kind.
+    negotiationHost.round = 4;
+    negotiationHost.roundSize = null;
+    negotiationHost.kickoffStartedAt = null;
+    await negotiationHost.database.createNegotiationTask({
+      conversationId: "legacy-conversation",
+      brief: "written before this PR",
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: "network-1",
+        intentId: INTENT_ID,
+        round: 4,
+      },
+    });
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(result.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff"]);
+    expect(principal.dmMessages).toHaveLength(1);            // the strategy was written
+    expect(judgment.briefCalls).toHaveLength(1);             // a brief was derived
+    expect(negotiationHost.round).toBe(5);                   // a NEW round, not a stamp of the stale one
+    expect(negotiationHost.roundSize).toBe(1);
+    expect(negotiationHost.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 5 }]);
+  });
+
+  test("an open that fails leaves no live negotiation holding the round open", async () => {
+    // `init` creates the task before a turn is ever authored, so a failure
+    // after that point strands it in `working`: the round's active count never
+    // reaches zero and its reflect never fires.
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
+    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const createMessage = negotiationHost.database.createNegotiationMessage;
+    let failFirstTurn = true;
+    negotiationHost.database.createNegotiationMessage = async (input) => {
+      if (failFirstTurn) {
+        failFirstTurn = false;
+        return null; // the fence rejects it; the graph reports an error and stops
+      }
+      return createMessage.call(negotiationHost.database, input);
+    };
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    const task = [...negotiationHost.tasks.values()][0]!;
+    expect(task.state).toBe("paused");
+    expect(task.metadata.pause?.reason).toBe("open_failed");
+    expect(await negotiationHost.database.countActiveNegotiationsForRound(INTENT_ID, negotiationHost.round)).toBe(0);
+    // The round still settles, so its reflect fires instead of hanging.
+    expect(negotiationHost.roundSize).toBe(1);
+    expect(negotiationHost.reflectJobs).toHaveLength(1);
+  });
+
+  test("a match that arrived during the turn wakes the agent again", async () => {
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
+    const { agent, negotiationHost, wakes } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    // Discovery persists a second match while the turn is mid-flight: the
+    // match list this kickoff targeted was read before it existed.
+    const original = negotiationHost.database.getNegotiationTaskForOpportunity;
+    let landed = false;
+    negotiationHost.database.getNegotiationTaskForOpportunity = async (opportunityId) => {
+      if (!landed) {
+        landed = true;
+        negotiationHost.opportunities.set(SECOND_OPPORTUNITY_ID, {
+          id: SECOND_OPPORTUNITY_ID,
+          status: "latent",
+          actors: [],
+        });
+      }
+      return original.call(negotiationHost.database, opportunityId);
+    };
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(wakes).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID }]);
+  });
+
+  test("nothing new means no second wake — the re-check cannot loop", async () => {
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
+    const { agent, wakes } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(wakes).toEqual([]);
   });
 });

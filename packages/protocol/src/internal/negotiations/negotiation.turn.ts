@@ -13,7 +13,16 @@ import { z } from "zod";
 export const NEGOTIATION_CONTINUE_VERBS = ["outreach", "counter", "question"] as const;
 export type NegotiationContinueVerb = (typeof NEGOTIATION_CONTINUE_VERBS)[number];
 
-export const NEGOTIATION_PAUSE_REASONS = ["counterparty_silent", "needs_principal", "ready_for_verdict", "turn_cap"] as const;
+export const NEGOTIATION_PAUSE_REASONS = ["counterparty_silent", "needs_principal", "ready_for_verdict", "turn_cap", "open_failed"] as const;
+export type NegotiationPauseReasonName = (typeof NEGOTIATION_PAUSE_REASONS)[number];
+
+/**
+ * Pauses nobody authored: a timeout fired, or a kickoff could not get a turn
+ * out of a negotiation it had just created. Both are submitted as
+ * `{ negotiationId, pause }` and never come from an author.
+ */
+export const NEGOTIATION_SYSTEM_PAUSE_REASONS = ["counterparty_silent", "open_failed"] as const;
+export type NegotiationSystemPauseReason = (typeof NEGOTIATION_SYSTEM_PAUSE_REASONS)[number];
 export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
 
 export const NegotiationVerdictSchema = z.enum(["pending", "reject"]);
@@ -31,6 +40,17 @@ export type NegotiationContinueTurn = z.infer<typeof NegotiationContinueTurnSche
 export const NegotiationCounterpartySilentPauseSchema = z.object({
   verb: z.literal("pause"),
   reason: z.literal("counterparty_silent"),
+});
+
+/**
+ * The open that created this negotiation could not produce a turn. Not the
+ * counterparty's silence and not a spent budget — an honest third thing, and
+ * unlike `turn_cap` it stays re-kickable, because the failure was ours.
+ * System-emitted only.
+ */
+export const NegotiationOpenFailedPauseSchema = z.object({
+  verb: z.literal("pause"),
+  reason: z.literal("open_failed"),
 });
 
 /** The ambient turn cap was hit during self-play. System-emitted only. */
@@ -79,6 +99,7 @@ const NegotiationReadyForVerdictStoredPauseSchema = NegotiationReadyForVerdictPa
 
 export const NegotiationPauseTurnSchema = z.discriminatedUnion("reason", [
   NegotiationCounterpartySilentPauseSchema,
+  NegotiationOpenFailedPauseSchema,
   NegotiationTurnCapPauseSchema,
   NegotiationNeedsPrincipalStoredPauseSchema,
   NegotiationReadyForVerdictStoredPauseSchema,

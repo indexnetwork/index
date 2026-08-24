@@ -47,6 +47,8 @@ export function parkLifecycleLabel(pause: NegotiationParkNarration): string {
       return 'PAUSED — the negotiator believes a decision is possible and is waiting on its principal to act on its recommendation.';
     case 'turn_cap':
       return 'PAUSED — the negotiation reached its turn cap and cannot continue without review.';
+    case 'open_failed':
+      return 'PAUSED — the negotiation could not be started. Nothing has been said to the counterparty yet.';
   }
 }
 

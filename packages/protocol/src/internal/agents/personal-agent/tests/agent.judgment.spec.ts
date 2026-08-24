@@ -52,8 +52,17 @@ describe("validateDecidedActs", () => {
     expect(decided).toEqual([{ tool: "note_dossier", text: "Can start in three weeks." }]);
   });
 
-  test("a list where NOTHING survives is re-decided, not executed as an empty turn", () => {
-    expect(validateDecidedActs({ acts: [{ act: "message_user", text: "hi" }] }, context())).toBeNull();
+  test("a list where nothing survives is an empty turn, not a retry", () => {
+    // The client-message turn's reply stage writes the reply either way, so a
+    // model that answered with nothing but an acts-stage message has decided
+    // nothing — not failed. Re-deciding it would retry an identical prompt,
+    // get the same output, throw, and hand the client the failure copy.
+    expect(validateDecidedActs({ acts: [{ act: "message_user", text: "hi" }] }, context())).toEqual([]);
+  });
+
+  test("output that does not parse at all is still refused", () => {
+    expect(validateDecidedActs({ acts: [{ act: "not_a_tool" }] }, context())).toBeNull();
+    expect(validateDecidedActs({ nope: true }, context())).toBeNull();
   });
 
   test("an empty act list is a real answer — the turn decided nothing", () => {

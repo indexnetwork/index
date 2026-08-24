@@ -33,7 +33,7 @@ export interface NegotiationTaskMetadata {
    * generic invoke; only a read scoped to `pausedBy`'s own principal may see
    * it. Everyone else sees the reason only.
    */
-  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown; pausedBy?: string } | null;
+  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap' | 'open_failed'; payload?: unknown; pausedBy?: string } | null;
 }
 
 export interface NegotiationTaskRow {
@@ -122,15 +122,22 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRow[]>;
 
   /**
-   * Bumps `intents.negotiation_round` for `intentId` and returns the new
-   * value. Called once per kickoff, and it CLEARS `negotiation_round_size`:
-   * the new round is unstamped until its opens have all settled, and the
-   * all-paused check is a no-op while it is.
+   * Opens a new round: bumps `intents.negotiation_round`, clears
+   * `negotiation_round_size` and stamps `negotiation_kickoff_started_at`, all
+   * in one write. Only kickoff bumps a round, so the bump IS the beginning of
+   * a kickoff and there is no gap in which a crash could leave the round
+   * begun-but-unmarked. Returns the new round.
    */
   bumpIntentNegotiationRound(intentId: string): Promise<number>;
 
-  /** The intent's current round and its size stamp (null while the round is still opening). */
-  getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null }>;
+  /**
+   * The intent's round lifecycle: which round it is on, when a kickoff for
+   * that round BEGAN (null if none ever did — including every intent that
+   * predates round stamping), and the settled size (null until the kickoff
+   * finished). `kickoffStartedAt` set with `roundSize` null is the one
+   * signature of a kickoff that died mid-round.
+   */
+  getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null; kickoffStartedAt: Date | null }>;
 
   /**
    * Stamps how many negotiations this round actually opened. Written once, by

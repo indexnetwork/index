@@ -64,6 +64,10 @@ export class ToolService {
       cache: this.cache,
       enricher: { enrichUserProfile },
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
+      // Discovery run from a tool must wake the signal's agent exactly as the
+      // background queue does. Without it the tool-built opportunity graph's
+      // matches_ready edge ends at END: matches persist and nobody is woken.
+      matchesReady,
       // IND-593: direct authenticated-owner tool calls (REST tool controller /
       // CLI) traverse the owner-approval boundary via host attestation. Own
       // authority instance over the store shared with the MCP composition.

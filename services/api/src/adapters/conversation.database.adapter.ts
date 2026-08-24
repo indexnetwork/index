@@ -2515,33 +2515,47 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Bumps `intents.negotiation_round` and returns the new value. Called once
-   * per kickoff, and it CLEARS the size stamp in the same write: the new
-   * round is "still opening" until kickoff stamps it, and the all-paused
-   * check must not read the previous round's stamp as this one's.
+   * Opens a new round: bumps the counter, clears the size stamp and marks the
+   * kickoff as begun, in ONE write. Only kickoff bumps a round, so the bump is
+   * the beginning of a kickoff and there is no window in which a crash could
+   * leave a round begun-but-unmarked.
    */
   async bumpIntentNegotiationRound(intentId: string): Promise<number> {
     const [row] = await db
       .update(schema.intents)
-      .set({ negotiationRound: sql`${schema.intents.negotiationRound} + 1`, negotiationRoundSize: null })
+      .set({
+        negotiationRound: sql`${schema.intents.negotiationRound} + 1`,
+        negotiationRoundSize: null,
+        negotiationKickoffStartedAt: new Date(),
+      })
       .where(eq(schema.intents.id, intentId))
       .returning({ negotiationRound: schema.intents.negotiationRound });
     return row?.negotiationRound ?? 0;
   }
 
-  /** The intent's current round and its size stamp (null while the round is still opening). */
-  async getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null }> {
+  /**
+   * The intent's round lifecycle. `kickoffStartedAt` set with a null
+   * `roundSize` is the ONE signature of a kickoff that died mid-round; a null
+   * marker means no kickoff has ever run here, which is where every intent
+   * predating 0146/0147 sits.
+   */
+  async getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null; kickoffStartedAt: Date | null }> {
     const [row] = await db
-      .select({ round: schema.intents.negotiationRound, roundSize: schema.intents.negotiationRoundSize })
+      .select({
+        round: schema.intents.negotiationRound,
+        roundSize: schema.intents.negotiationRoundSize,
+        kickoffStartedAt: schema.intents.negotiationKickoffStartedAt,
+      })
       .from(schema.intents)
       .where(eq(schema.intents.id, intentId));
-    return { round: row?.round ?? 0, roundSize: row?.roundSize ?? null };
+    return { round: row?.round ?? 0, roundSize: row?.roundSize ?? null, kickoffStartedAt: row?.kickoffStartedAt ?? null };
   }
 
   /**
-   * Stamps how many negotiations this round opened. Guarded on the round
-   * itself: a kickoff that lost a race to a newer round must not stamp the
-   * newer one's size with its own count.
+   * Settles a round: records how many negotiations it holds. Guarded on the
+   * round itself, so a kickoff that lost a race to a newer round cannot stamp
+   * the newer one's size with its own count. The value is a record; what the
+   * all-paused check reads is that it is no longer null.
    */
   async stampIntentNegotiationRoundSize(intentId: string, round: number, size: number): Promise<void> {
     await db

@@ -421,6 +421,8 @@ interface ToolDepsBindings {
   negotiationDatabase: NegotiationGraphDatabase;
   /** The compiled negotiation graph — every negotiation write goes through it. */
   negotiationGraph?: NegotiationGraphLike;
+  /** Wakes a signal's PersonalAgent when discovery persists matches for it. */
+  matchesReady?: MatchesReadyFn;
   /**
    * Host bridge behind the MCP-surface `reject_opportunity` /
    * `accept_opportunity` owner-verdict tools (#1471, one surface over).

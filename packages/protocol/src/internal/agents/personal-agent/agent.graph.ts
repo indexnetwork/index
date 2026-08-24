@@ -266,16 +266,18 @@ async function say(
  *
  * Strategy into the DM first (the principal sees and can correct the plan),
  * then ONE BRIEF PER MATCH IN PARALLEL, then every match opened together.
- * The round is bumped before the opens and its SIZE is stamped only after
- * they all settle — until that stamp exists, the all-paused check is a no-op,
- * so an early pause cannot dedupe away the round's genuine reflect. Kickoff
- * then runs one final check itself, for the pauses that landed before it.
+ * A round is opened by the bump — which stamps `kickoffStartedAt` in the same
+ * write — and SETTLED by the size stamp once the opens are done. Until it
+ * settles, the all-paused check is a no-op, so an early pause cannot dedupe
+ * away the round's genuine reflect. Kickoff runs the final check itself.
  *
  * Retry-safe. A turn runs on a queue that retries it whole, and the durable
  * effects here — a strategy message, a round bump, N opened negotiations —
- * must never happen twice. An interrupted kickoff leaves an unmistakable
- * signature (the current round has tasks but no size stamp, and only kickoff
- * bumps a round), so a retry RESUMES that round instead of starting another.
+ * must never happen twice. A begun-but-unsettled round (`kickoffStartedAt`
+ * set, `roundSize` still null) is the one signature of a kickoff that died
+ * mid-round, so a retry SETTLES that round instead of starting another. An
+ * intent that has never kicked off — every intent that predates this
+ * mechanism included — has no marker at all and takes the normal path.
  */
 async function runKickoff(
   deps: PersonalAgentDeps,
@@ -285,15 +287,14 @@ async function runKickoff(
 ): Promise<void> {
   const judgment = deps.judgment ?? defaultJudgment();
 
-  // ── resume an interrupted kickoff ──────────────────────────────────────
-  const stamp = await deps.negotiationDatabase.getIntentNegotiationRound(context.intentId);
-  if (stamp.roundSize === null) {
-    const opened = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(context.intentId, stamp.round);
-    if (opened.length > 0) {
-      logger.warn("Resuming an unstamped kickoff round", { intentId: context.intentId, round: stamp.round, opened: opened.length });
-      await finishRound(deps, context, accumulator, stamp.round, opened.length, reasoning);
-      return;
-    }
+  // ── settle an interrupted kickoff ──────────────────────────────────────
+  const lifecycle = await deps.negotiationDatabase.getIntentNegotiationRound(context.intentId);
+  if (lifecycle.kickoffStartedAt && lifecycle.roundSize === null) {
+    logger.warn("Settling a kickoff that did not finish its round", { intentId: context.intentId, round: lifecycle.round });
+    // Falls through to a normal kickoff when that round never got a single
+    // negotiation — the bump below clears the stale marker, and stranding the
+    // signal on an empty round would be worse than one extra round number.
+    if (await settleRound(deps, context, accumulator, lifecycle.round, reasoning, [])) return;
   }
 
   // Re-read: verdicts executed earlier this turn already moved statuses, and
@@ -306,7 +307,7 @@ async function runKickoff(
   })));
   const matches = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
   if (matches.length === 0) {
-    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round: 0, opened: 0, reasoning });
+    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round: lifecycle.round, opened: 0, reasoning });
     return;
   }
 
@@ -332,54 +333,97 @@ async function runKickoff(
     return result;
   }));
 
-  // Only opens that actually produced a negotiation count toward the round's
-  // size: an open that failed before creating a task must not strand the
-  // round below its stamp forever.
-  const opened = opens.filter((open) => open.status === "fulfilled").length;
-  for (const open of opens) {
-    if (open.status === "rejected") {
-      logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, round, error: open.reason });
-    }
-  }
+  // A failed open may still have left a live negotiation behind — `init`
+  // creates (or re-rounds) the task before a turn is ever authored. Left
+  // `working`, it holds the round's active count above zero forever and the
+  // reflect never fires. Compensate it through the graph's own sink, with the
+  // honest reason: the open failed, and unlike a spent budget it can be
+  // re-kicked later.
+  await Promise.all(opens.map(async (open, index) => {
+    if (open.status === "fulfilled") return;
+    logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, round, error: open.reason });
+    const match = matches[index]!;
+    const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId).catch(() => null);
+    if (!task || task.state !== "working" || task.metadata.round !== round) return;
+    await deps.negotiations.invoke({ negotiationId: task.id, pause: "open_failed" }).catch((err: unknown) => {
+      logger.error("Failed to compensate a stranded negotiation", { negotiationId: task.id, error: err });
+    });
+  }));
 
-  if (opened === 0) {
-    // Nothing to wait for, so nothing to reflect on. Leaving the round
-    // unstamped is deliberate: a stamped empty round would immediately
-    // re-trigger reflect, and reflect would kick off again — forever. The
-    // resume branch above cannot mistake it for an interrupted kickoff
-    // either, because the round has no tasks.
-    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
-    return;
+  if (!await settleRound(deps, context, accumulator, round, reasoning, matches)) {
+    // Not one negotiation exists for this round. Nothing to wait for, so
+    // nothing to reflect on, and the round stays unsettled on purpose: a
+    // settled empty round is instantly "all paused", so reflect would fire and
+    // ACT would kick off again, forever.
+    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened: 0, reasoning });
   }
-  await finishRound(deps, context, accumulator, round, opened, reasoning);
 }
 
 /**
- * Close a round that has opened negotiations: record the act, stamp the size,
- * run the final all-paused check.
+ * Settle a round that has negotiations: record the act, stamp the size, run
+ * the final all-paused check, and pick up anything that arrived meanwhile.
+ * Returns false — settling nothing — when the round is empty.
+ *
+ * The SIZE is read back from the round itself rather than counted from the
+ * opens: a compensated open and a re-kicked task that init had already moved
+ * into this round both belong to it, and only the database knows which
+ * survived. The value is a record; what gates the reflect check is that it is
+ * no longer null.
  *
  * The ledger row is written FIRST and never throws — accountability must not
  * be able to duplicate a real effect — and the stamp is the last durable
  * write, so a failure there leaves exactly the resumable signature the top of
- * `runKickoff` looks for. That is why the stamp is allowed to throw: the
- * retry finishes this round rather than starting another, and the round
- * cannot stay unstamped just because one write failed once.
+ * `runKickoff` looks for.
  */
-async function finishRound(
+async function settleRound(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
   accumulator: TurnAccumulator,
   round: number,
-  opened: number,
   reasoning: string,
-): Promise<void> {
-  await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
-  await deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, opened);
+  targeted: PersonalAgentMatch[],
+): Promise<boolean> {
+  const tasks = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(context.intentId, round);
+  if (tasks.length === 0) return false;
+
+  await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened: tasks.length, reasoning });
+  await deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, tasks.length);
   await maybeEnqueueRoundReflect(deps.negotiationDatabase, deps.reflectEnqueue, {
     userId: context.userId,
     intentId: context.intentId,
     round,
   });
+  await wakeForNewMatches(deps, context, targeted);
+  return true;
+}
+
+/**
+ * A discovery batch that lands WHILE this turn is running is read past: the
+ * match list was assembled at the top of the turn. The inbox coalesces such a
+ * batch onto a follow-up job, but that add races the turn going active, so
+ * this is the authoritative recovery — a match that exists, is undecided and
+ * has no negotiation at all, and was not one of this kickoff's own targets,
+ * wakes the agent again. It cannot loop: a target that failed to open is
+ * compensated into a task, so it is never "unopened" on the next pass.
+ */
+async function wakeForNewMatches(
+  deps: PersonalAgentDeps,
+  context: PersonalAgentTurnContext,
+  targeted: PersonalAgentMatch[],
+): Promise<void> {
+  if (!deps.wakeForMatches) return;
+  try {
+    const targetedIds = new Set(targeted.map((match) => match.opportunityId));
+    const arrivals = (await deps.opportunities.readMatches(context.userId, context.intentId))
+      .filter((match) => !targetedIds.has(match.opportunityId) && !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
+    const unopened = await Promise.all(arrivals.map(async (match) =>
+      (await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId)) ? null : match));
+    if (!unopened.some((match) => match !== null)) return;
+    logger.info("Waking again for matches that arrived during this turn", { intentId: context.intentId });
+    await deps.wakeForMatches({ userId: context.userId, intentId: context.intentId });
+  } catch (err) {
+    logger.warn("Failed to re-check for newly arrived matches", { intentId: context.intentId, error: err });
+  }
 }
 
 /**

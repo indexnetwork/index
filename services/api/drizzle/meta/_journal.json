@@ -1009,6 +1009,13 @@
       "when": 1786886087824,
       "tag": "0146_negotiation_round_size",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1786886087825,
+      "tag": "0147_negotiation_kickoff_started_at",
+      "breakpoints": true
     }
   ]
 }

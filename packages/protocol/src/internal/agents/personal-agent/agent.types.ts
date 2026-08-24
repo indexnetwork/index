@@ -227,6 +227,12 @@ export interface PersonalAgentDeps {
    * stamping the round size, to cover pauses that landed before the stamp.
    */
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
+  /**
+   * Wakes this signal again with `matches_ready`. Kickoff calls it when a
+   * discovery batch landed after the turn had already read its match list —
+   * the authoritative recovery for a hand-off the inbox could not coalesce.
+   */
+  wakeForMatches?: (input: { userId: string; intentId: string }) => Promise<void>;
   /** Model seam. Production resolves the real judgment; tests script it. */
   judgment?: PersonalAgentJudgment;
 }

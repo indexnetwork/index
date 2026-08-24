@@ -88,6 +88,12 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
     const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
     await personalAgentQueue.addAllPausedEvent(job);
   },
+  // A discovery batch that landed while a kickoff turn was running was read
+  // past; the agent wakes itself again rather than losing it.
+  wakeForMatches: async (input) => {
+    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
+    await personalAgentQueue.addMatchesReadyEvent(input);
+  },
 }).createGraph();
 
 /**

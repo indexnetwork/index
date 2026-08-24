@@ -28,9 +28,10 @@ export interface FakeMessage {
 }
 
 export class FakeNegotiationHost {
-  /** The intent's round counter and its size stamp, exactly as the column pair behaves. */
+  /** The intent's round lifecycle, exactly as the three columns behave. */
   round = 1;
   roundSize: number | null = null;
+  kickoffStartedAt: Date | null = null;
   readonly opportunities = new Map<string, FakeOpportunity>();
   readonly tasks = new Map<string, NegotiationTaskRow>();
   readonly messages = new Map<string, FakeMessage[]>();
@@ -125,9 +126,17 @@ export class FakeNegotiationHost {
     },
     getNegotiationTasksForIntentRound: async (intentId, round) =>
       [...this.tasks.values()].filter((t) => t.metadata.intentId === intentId && t.metadata.round === round),
-    // A bump clears the stamp: the new round is unstamped until its opens settle.
-    bumpIntentNegotiationRound: async () => { this.roundSize = null; return (this.round += 1); },
-    getIntentNegotiationRound: async () => ({ round: this.round, roundSize: this.roundSize }),
+    // One write: the bump clears the stamp AND marks the kickoff as begun.
+    bumpIntentNegotiationRound: async () => {
+      this.roundSize = null;
+      this.kickoffStartedAt = new Date();
+      return (this.round += 1);
+    },
+    getIntentNegotiationRound: async () => ({
+      round: this.round,
+      roundSize: this.roundSize,
+      kickoffStartedAt: this.kickoffStartedAt,
+    }),
     stampIntentNegotiationRoundSize: async (_intentId, round, size) => {
       if (round === this.round) this.roundSize = size;
     },

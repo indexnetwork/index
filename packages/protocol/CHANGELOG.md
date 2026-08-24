@@ -24,6 +24,26 @@ pin a supported release, use `latest`.
 
 ### Breaking
 
+- **New negotiation pause reason `open_failed`.** `NEGOTIATION_PAUSE_REASONS`
+  gains it, and `{ negotiationId, pause }` now accepts
+  `NegotiationSystemPauseReason` (`'counterparty_silent' | 'open_failed'`)
+  rather than the single literal. A kickoff whose open failed after `init`
+  created the task compensates it into this pause, so the round's active count
+  can still reach zero. Unlike `turn_cap` it stays re-kickable.
+- **`NegotiationGraphDatabase.getIntentNegotiationRound` returns
+  `kickoffStartedAt`** alongside `round` and `roundSize`, and
+  `bumpIntentNegotiationRound` must stamp it in the same write. A marker set
+  with a null size is the one signature of a kickoff that died mid-round;
+  inferring that from the null size alone matched every intent that predates
+  round stamping.
+- **`ToolDeps`/`McpToolDeps` gain `matchesReady`**, which every host must set:
+  the OpportunityGraph `tool.factory` builds ends its matches_ready edge at
+  `END` without it, so a chat- or MCP-run discovery persists matches nobody is
+  woken for.
+- **`PersonalAgentDeps` gains `wakeForMatches`** — the agent wakes its own
+  signal again for a discovery batch that landed after the turn read its match
+  list.
+
 - **AgentGraph: one PersonalAgent, routed on the shape of its input.** New
   `PersonalAgentGraphFactory` — `{ userId }` is global (a graph-level input
   error, deferred), `{ userId, intentId, event: 'user_message' | 'matches_ready'

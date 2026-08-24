@@ -691,6 +691,13 @@ export const intents = pgTable('intents', {
    */
   negotiationRoundSize: integer('negotiation_round_size'),
   /**
+   * When a kickoff for the CURRENT round began — stamped by the round bump,
+   * the one write that begins one. Read with `negotiationRoundSize`: set with
+   * a null size is a kickoff that did not finish; null means no kickoff has
+   * ever run for this signal, which is where every pre-0146 intent starts.
+   */
+  negotiationKickoffStartedAt: timestamp('negotiation_kickoff_started_at', { withTimezone: true }),
+  /**
    * When the intent's first background discovery run completed successfully
    * (any path: web from-intent queue or async MCP discovery-run). Null until
    * then. Read-side "warming" derivation clears as soon as this is stamped,
