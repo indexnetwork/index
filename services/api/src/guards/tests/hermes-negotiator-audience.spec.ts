@@ -30,7 +30,7 @@ describe('Hermes negotiator audience REST boundary', () => {
     ['POST', '/api/intents/list'],
     ['GET', '/api/users/owner/negotiator/memories'],
     ['GET', '/api/integrations'],
-    ['POST', '/api/storage/files'],
+    ['POST', '/api/storage/avatars'],
     ['POST', '/api/chat/stream'],
     ['PATCH', '/api/opportunities/opportunity-1/status'],
     ['GET', '/api/agents'],

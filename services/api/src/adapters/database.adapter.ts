@@ -11,13 +11,12 @@ export { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 export { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 export { HydeDatabaseAdapter } from './hyde.database.adapter';
 export { UserDatabaseAdapter } from './user.database.adapter';
-export { FileDatabaseAdapter } from './file.database.adapter';
 export { ConversationDatabaseAdapter } from './conversation.database.adapter';
 
 // ── Public helpers + DTO types ──
 export type {
   ChatSession, ChatMessage, ChatConversationMeta, ChatMessageMeta,
-  CreateSessionInput, CreateMessageInput, CreateFileInput,
+  CreateSessionInput, CreateMessageInput,
   ResolvedParticipant, ConversationSummary,
 } from './database.shared';
 
@@ -25,14 +24,12 @@ export type {
 import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { ChatDatabaseAdapter } from './chat.database.adapter';
 import { UserDatabaseAdapter } from './user.database.adapter';
-import { FileDatabaseAdapter } from './file.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { Id, SimilarIntent, VectorStore, canActorSeeOpportunity, log } from './database.shared';
 
 // ── Singletons ──
 export const chatDatabaseAdapter = new ChatDatabaseAdapter();
 export const userDatabaseAdapter = new UserDatabaseAdapter();
-export const fileDatabaseAdapter = new FileDatabaseAdapter();
 export const intentDatabaseAdapter = new IntentDatabaseAdapter();
 export const conversationDatabaseAdapter = new ConversationDatabaseAdapter();
 

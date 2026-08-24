@@ -1044,6 +1044,13 @@
       "when": 1786886087829,
       "tag": "0151_drop_obsolete_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1786886087830,
+      "tag": "0152_drop_links_and_files",
+      "breakpoints": true
     }
   ]
 }

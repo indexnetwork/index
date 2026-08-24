@@ -7,7 +7,6 @@ import { getRequestAuthContext } from '../lib/request-auth-context';
 import { log } from "../lib/log";
 import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
 import { chatSessionService, RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, type ChatStreamSurface } from "../services/chat.service";
-import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
@@ -97,7 +96,6 @@ const streamBodySchema = z.object({
   message: z.string().nullish(),
   sessionId: z.string().nullish(),
   useCheckpointer: z.boolean().optional(),
-  fileIds: z.array(z.string().min(1)).max(20).optional(),
   /** @deprecated Use scopeType/scopeId. Retained as the REST edge alias for network-scoped sessions. */
   networkId: z.string().nullish(),
   scopeType: z.enum(['network', 'intent']).nullish(),
@@ -220,7 +218,7 @@ export class ChatController {
    * SSE streaming endpoint for chat messages with context support.
    * Streams graph events and LLM tokens in real-time, loading previous conversation context.
    *
-   * @param req - The HTTP request object (body: { message: string, sessionId?: string, useCheckpointer?: boolean, fileIds?: string[] })
+   * @param req - The HTTP request object (body: { message: string, sessionId?: string, useCheckpointer?: boolean })
    * @param user - The authenticated user from AuthGuard
    * @returns SSE Response stream
    */
@@ -276,7 +274,7 @@ export class ChatController {
         return Response.json(
           {
             error:
-              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], scopeType?: 'network' | 'intent' | null, scopeId?: string | null, networkId?: string | null }",
+              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, scopeType?: 'network' | 'intent' | null, scopeId?: string | null, networkId?: string | null }",
           },
           { status: 400 },
         );
@@ -291,11 +289,10 @@ export class ChatController {
       );
     }
 
-    let messageContent = body.message?.trim() || "";
-    const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
-    if (!messageContent && fileIds.length === 0) {
+    const messageContent = body.message?.trim() || "";
+    if (!messageContent) {
       return Response.json(
-        { error: "Message content or file attachments are required" },
+        { error: "Message content is required" },
         { status: 400 },
       );
     }
@@ -352,24 +349,6 @@ export class ChatController {
         { status: 400 },
       );
     }
-    if (fileIds.length > 0) {
-      const fileContent = await fileService.loadAttachedFileContent(
-        user.id,
-        fileIds,
-      );
-      if (fileContent) {
-        messageContent = messageContent
-          ? `${messageContent}\n\n[Attached files]\n${fileContent}`
-          : `[Attached files]\n${fileContent}`;
-      }
-    }
-    if (!messageContent) {
-      return Response.json(
-        { error: "Message content or file attachments are required" },
-        { status: 400 },
-      );
-    }
-
     // API-key clients only ever drive a signal's DM (the mac app's per-signal
     // chat); the global chat stays a web surface, exactly as when persona ids
     // encoded the split.

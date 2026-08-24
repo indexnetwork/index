@@ -44,7 +44,7 @@ export interface ActiveIntentRow {
   createdAt: Date;
   relevancyScore?: number | null;
 }
-export type SourceType = 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment';
+export type SourceType = 'integration' | 'discovery_form' | 'enrichment';
 
 export interface CreateIntentInput {
   userId: string;
@@ -161,7 +161,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, sessions, userSocials } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -309,7 +309,7 @@ export function ownIntentsListWhere(
       ? isNotNull(schema.intents.archivedAt)
       : isNull(schema.intents.archivedAt),
   ];
-  const validSourceTypes: SourceType[] = ['file', 'integration', 'link', 'discovery_form', 'enrichment'];
+  const validSourceTypes: SourceType[] = ['integration', 'discovery_form', 'enrichment'];
   if (options.sourceType && validSourceTypes.includes(options.sourceType as SourceType)) {
     conditions.push(eq(schema.intents.sourceType, options.sourceType as SourceType));
   }
@@ -546,35 +546,6 @@ export interface BasicUserInfo {
  *
  * Wraps all database operations for users table and related tables.
  */
-export interface FileRow {
-  id: string;
-  name: string;
-  type: string;
-  size: bigint;
-  createdAt: Date;
-  userId: string | null;
-}
-
-export interface FileMetadata {
-  id: string;
-  name: string;
-  type: string;
-  size: bigint;
-}
-
-export interface CreateFileInput {
-  id: string;
-  name: string;
-  size: bigint;
-  type: string;
-  userId: string;
-}
-
-export interface FileListResult {
-  files: FileRow[];
-  total: number;
-}
-
 export interface VectorStore {
   search<T>(
     queryVector: number[],

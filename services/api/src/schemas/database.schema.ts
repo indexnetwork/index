@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm/sql';
 import type { Id } from '../types/common.types';
 
 // Enums
-export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form', 'enrichment']);
+export const sourceType = pgEnum('source_type', ['integration', 'discovery_form', 'enrichment']);
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
@@ -851,17 +851,6 @@ export const networkIntegrations = pgTable('network_integrations', {
   pk: primaryKey({ columns: [table.networkId, table.toolkit] }),
 }));
 
-export const files = pgTable('files', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text('name').notNull(),
-  size: bigint('size', { mode: 'bigint' }).notNull(),
-  type: text('type').notNull(),
-  userId: text('user_id').references(() => users.id),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  deletedAt: timestamp('deleted_at'),
-});
-
 /**
  * Owner-visible, aggregate-only observability for the ordinary from-intent
  * worker. Unlike BullMQ retention this survives completed, failed and stale
@@ -896,22 +885,6 @@ export const intentNetworks = pgTable('intent_networks', {
   networkIdIdx: index('intent_networks_network_id_idx').on(t.networkId),
 }));
 
-
-// Links
-const linksTable = pgTable('links', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  url: text('url').notNull(),
-  lastSyncAt: timestamp('last_sync_at'),
-  lastStatus: text('last_status'),
-  lastError: text('last_error'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-export const links = linksTable;
-
-export type Link = typeof linksTable.$inferSelect;
-export type NewLink = typeof linksTable.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Agents
@@ -1285,16 +1258,6 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
     references: [users.id],
   }),
   networks: many(intentNetworks),
-  file: one(files, {
-    fields: [intents.sourceId],
-    references: [files.id],
-    relationName: 'intent_file',
-  }),
-  link: one(links, {
-    fields: [intents.sourceId],
-    references: [links.id],
-    relationName: 'intent_link',
-  }),
 }));
 
 export const networksRelations = relations(networks, ({ many }) => ({
@@ -1387,8 +1350,6 @@ export type Network = typeof networks.$inferSelect;
 export type NewNetwork = typeof networks.$inferInsert;
 export type NetworkMember = typeof networkMembers.$inferSelect;
 export type NewNetworkMember = typeof networkMembers.$inferInsert;
-export type File = typeof files.$inferSelect;
-export type NewFile = typeof files.$inferInsert;
 export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;
 export type NewUserNotificationSettings = typeof userNotificationSettings.$inferInsert;
 export type HydeDocument = typeof hydeDocuments.$inferSelect;

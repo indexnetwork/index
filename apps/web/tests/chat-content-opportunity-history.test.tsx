@@ -93,10 +93,6 @@ vi.mock('@/contexts/APIContext', () => {
   };
 });
 
-vi.mock('@/services/v2/upload.service', () => ({
-  useUploadServiceV2: () => new Proxy({}, { get: () => vi.fn().mockResolvedValue([]) }),
-}));
-
 vi.mock('@/contexts/NotificationContext', () => ({
   useNotifications: () => mocks.notifications,
 }));
