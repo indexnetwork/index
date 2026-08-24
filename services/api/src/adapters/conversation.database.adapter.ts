@@ -47,7 +47,7 @@ type NegotiationTaskRowMirror = {
   id: string;
   conversationId: string;
   state: 'working' | 'paused' | 'completed';
-  brief: string;
+  briefs: Record<string, string>;
   metadata: NegotiationTaskMetadataMirror;
   createdAt: Date;
   updatedAt: Date;
@@ -57,7 +57,7 @@ function toNegotiationTaskRow(row: {
   id: string;
   conversationId: string;
   state: string;
-  brief: string | null;
+  briefs: unknown;
   metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -66,7 +66,7 @@ function toNegotiationTaskRow(row: {
     id: row.id,
     conversationId: row.conversationId,
     state: row.state as NegotiationTaskRowMirror['state'],
-    brief: row.brief ?? '',
+    briefs: (row.briefs ?? {}) as Record<string, string>,
     metadata: row.metadata as NegotiationTaskMetadataMirror,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -2314,7 +2314,7 @@ export class ConversationDatabaseAdapter {
   /** Creates the negotiation task. Called once, at open. */
   async createNegotiationTask(input: {
     conversationId: string;
-    brief: string;
+    briefs: Record<string, string>;
     metadata: NegotiationTaskMetadataMirror;
   }): Promise<NegotiationTaskRowMirror> {
     const [row] = await db
@@ -2322,7 +2322,7 @@ export class ConversationDatabaseAdapter {
       .values({
         conversationId: input.conversationId,
         state: 'working',
-        brief: input.brief,
+        briefs: input.briefs,
         metadata: input.metadata,
       })
       .returning();
@@ -2422,9 +2422,16 @@ export class ConversationDatabaseAdapter {
     return toNegotiationTaskRow(row);
   }
 
-  /** Overwrites the brief at resume. */
-  async setNegotiationBrief(taskId: string, brief: string): Promise<void> {
-    await db.update(schema.tasks).set({ brief, updatedAt: new Date() }).where(eq(schema.tasks.id, taskId));
+  /**
+   * Writes ONE seat's brief. A single-statement `jsonb_set`, like
+   * `setNegotiationRound`: read-modify-write would let two seats authoring at
+   * once clobber each other's, which is the whole property this column has.
+   */
+  async setNegotiationBrief(taskId: string, userId: string, brief: string): Promise<void> {
+    await db.update(schema.tasks).set({
+      briefs: sql`jsonb_set(coalesce(${schema.tasks.briefs}, '{}'::jsonb), ARRAY[${userId}], ${JSON.stringify(brief)}::jsonb, true)`,
+      updatedAt: new Date(),
+    }).where(eq(schema.tasks.id, taskId));
   }
 
   /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. Single-statement jsonb_set — see updateNegotiationTaskState. */

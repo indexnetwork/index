@@ -299,7 +299,11 @@ Each step states its breaks in the PR and bumps the protocol major.
 Every solo design call taken while building this plan, with the alternative
 rejected. D1-D14 (the NegotiationGraph rewrite and the persona collapse) live
 in [2026-08-24-overnight-decisions.md](2026-08-24-overnight-decisions.md);
-D15+ below are the AgentGraph step's.
+D15+ below are the AgentGraph step's. D18-D20 in that log are three design
+questions review rounds 2-5 raised and I first deferred; the owner's standing
+rule is that a legitimate design question gets DECIDED with the alternatives
+written down, not handed back, so they are decided there and implemented here
+as D51-D53.
 
 ### D15. The negotiation scope AUTHORS a turn; it does not submit one
 Chose: `NegotiationGraphDeps.author` is a `NegotiationTurnAuthor` port that
@@ -719,4 +723,51 @@ Alternative rejected: the non-null assertion — it is only sound because the
 BUNDLED validator bounds the index, and `judgment` is a documented swap seam,
 so a host or fixture implementation would throw mid-turn and abandon (then
 retry) every act already executed above it.
+
+### D51. One brief per SEAT, authored by that seat's own agent (log D18)
+Chose: `brief` stops being one column read by whoever speaks. It is keyed by
+the seat's userId, the initiator's kickoff writes only its own, and a seat that
+arrives without one authors it at its first turn — `negotiationNode` already
+receives `{ userId, intentId, negotiationId }`, so no new wake is needed.
+A seat sees only its own brief, on the read tools too.
+
+The counterparty's brief is written from what THAT side can honestly see: its
+own signal only when it can be established beyond doubt (a premise-matched
+actor's `intent` names the intent it matched AGAINST, so an actor carrying
+this negotiation's own intent is treated as unknown rather than guessed at),
+why the match was made, and the thread. The prompt's law is mostly about not
+inventing the rest: "your seat will argue whatever you write here as if your
+client had said it."
+
+Alternatives rejected: (a) keep the shared brief and soften the prompt — the
+counterparty still argues the initiator's constraints, just less confidently;
+(b) give the counterparty no brief — worse than #1494's deterministic "opened
+from a signal" line; (c) have the initiator author both — it does not know the
+counterparty's principal, so it would invent them. Migration 0148 drops
+`brief` for `briefs` with no backfill: a seat without one authors it, which is
+the new mechanism recovering in-flight rows rather than a migration guessing.
+
+### D52. Kickoff opens exactly the matches the agent decided from (log D19)
+Chose: at most `MAX_MATCHES` (12) — the same cap `assembleContext` uses for
+the prompt — with the opens running three at a time. The agent decided from
+twelve, so it opens those twelve; the rest wait for the next round, which is
+what rounds are for. The end-of-turn re-check deliberately does NOT wake for
+them: it compares against everything this turn KNEW about, so only a match
+that arrived mid-turn earns another wake.
+Alternatives rejected: (a) unbounded — forty matches means forty concurrent
+briefs and forty self-playing negotiations in one job, past the chat
+controller's 90-second wait and into provider rate limits, whose failures then
+land in `compensateFailedOpen`; (b) one job per match — loses the property
+that a round settles together, which the entire reflect trigger depends on.
+
+### D53. Interrupted-vs-in-flight is resolved by a staleness bound (log D20)
+Chose: `kickoffStartedAt` marks a round as INTERRUPTED only once it is older
+than ten minutes — comfortably longer than any real kickoff, far shorter than
+a stuck one matters. Under the bound a concurrent turn leaves the in-flight
+round alone rather than settling it out from under the turn still opening it.
+Alternatives rejected: (a) a per-intent Redis lock — correct, but new infra
+and a new failure mode (a lock held after a crash) for a race the bound
+already closes; (b) relying on single-worker serialization — the queue's own
+code contemplates several workers, so that assumption fails silently at the
+first replica.
 

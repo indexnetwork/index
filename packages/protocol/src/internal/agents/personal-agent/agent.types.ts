@@ -264,6 +264,12 @@ export interface PersonalAgentJudgment {
   strategy(context: PersonalAgentTurnContext): Promise<string>;
   /** One negotiation's brief. Called once per match, in parallel. */
   brief(context: PersonalAgentTurnContext, input: PersonalAgentBriefInput): Promise<string>;
+  /**
+   * A brief for a seat that arrived at a table without one — the
+   * counterparty, whose own agent writes it at its first turn rather than
+   * inheriting the initiator's.
+   */
+  seatBrief(input: PersonalAgentSeatBriefInput): Promise<string>;
   /** One negotiator turn: brief + thread → exactly one verb. */
   negotiationTurn(input: PersonalAgentNegotiationTurnInput): Promise<NegotiationAuthoredTurn>;
 }
@@ -272,6 +278,15 @@ export interface PersonalAgentBriefInput {
   match: PersonalAgentMatch;
   strategy: string;
   /** This negotiation's turns so far — empty at first kickoff. */
+  thread: PersonalAgentThreadEntry[];
+}
+
+export interface PersonalAgentSeatBriefInput {
+  /** This seat's own signal, when it can be established beyond doubt. */
+  signalText: string | null;
+  /** Why the match was made, as discovery recorded it. */
+  matchReasoning: string | null;
+  /** What has been said at this table so far. */
   thread: PersonalAgentThreadEntry[];
 }
 

@@ -33,8 +33,14 @@ const TERMINAL_OPPORTUNITY_STATUSES = new Set(["accepted", "rejected", "expired"
 // ─── Invoke contract ─────────────────────────────────────────────────────────
 
 export type NegotiationGraphInput =
-  /** `round` is the caller's own batch counter — one bump per kickoff batch, not per opportunity. */
+  /**
+   * `round` is the caller's own batch counter — one bump per kickoff batch,
+   * not per opportunity. `brief` is the INITIATING seat's own brief — the
+   * seat that owns `intentId` — and never the counterparty's, which that
+   * seat's own agent authors at its first turn.
+   */
   | { opportunityId: string; brief: string; intentId: string; round: number }
+  /** Resume with a fresh brief for the seat that owns this negotiation's intent. */
   | { negotiationId: string; brief: string }
   /** `byUserId` is the seat submitting this turn; apply rejects a turn whose byUserId isn't the computed next speaker. */
   | { negotiationId: string; turn: NegotiationTurn; byUserId: string }
@@ -147,7 +153,10 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     if ("opportunityId" in input) {
       const existing = await deps.database.getNegotiationTaskForOpportunity(input.opportunityId);
       if (existing) {
-        await deps.database.setNegotiationBrief(existing.id, input.brief);
+        // The kickoff acts for the seat that owns `intentId`, and writes only
+        // that seat's brief. `existing.metadata.sourceUserId` IS that seat:
+        // `init` resolved it from the intent's owner when the task was made.
+        await deps.database.setNegotiationBrief(existing.id, existing.metadata.sourceUserId, input.brief);
         // A fresh kickoff batch bumped `round` before invoking; stamp it onto
         // the existing task so checkAllPaused's round-scoped count and the
         // eventual pause both reflect the current round, not a stale one.
@@ -156,7 +165,11 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
         }
         const messages = await deps.database.getNegotiationMessages(existing.id);
         return {
-          task: { ...existing, brief: input.brief, metadata: { ...existing.metadata, round: input.round } },
+          task: {
+            ...existing,
+            briefs: { ...existing.briefs, [existing.metadata.sourceUserId]: input.brief },
+            metadata: { ...existing.metadata, round: input.round },
+          },
           turns: turnsFromMessages(messages),
           phase: existing.state === "completed" ? "read" : "turn",
         };
@@ -190,7 +203,7 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       const conversation = await deps.database.createNegotiationConversation(sourceActor.userId, candidateActor.userId);
       const task = await deps.database.createNegotiationTask({
         conversationId: conversation.id,
-        brief: input.brief,
+        briefs: { [sourceActor.userId]: input.brief },
         metadata: {
           type: "negotiation",
           opportunityId: input.opportunityId,
@@ -220,9 +233,13 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     // "working" with no pause and no applied turn.
 
     if ("brief" in input) {
-      await deps.database.setNegotiationBrief(task.id, input.brief);
+      await deps.database.setNegotiationBrief(task.id, task.metadata.sourceUserId, input.brief);
       const messages = await deps.database.getNegotiationMessages(task.id);
-      return { task: { ...task, brief: input.brief }, turns: turnsFromMessages(messages), phase: "turn" };
+      return {
+        task: { ...task, briefs: { ...task.briefs, [task.metadata.sourceUserId]: input.brief } },
+        turns: turnsFromMessages(messages),
+        phase: "turn",
+      };
     }
 
     // An externally submitted turn crosses an untrusted boundary — the graph

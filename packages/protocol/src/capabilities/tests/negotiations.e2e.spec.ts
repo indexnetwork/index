@@ -378,7 +378,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const second = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "updated brief", round: 2 });
 
     expect(second.negotiationId).toBe(first.negotiationId);
-    expect(host.taskFor(first.negotiationId).brief).toBe("updated brief");
+    expect(host.taskFor(first.negotiationId).briefs[SOURCE_USER_ID]).toBe("updated brief");
     expect([...host.tasks.values()]).toHaveLength(1);
     // The second kickoff's round must land on the task, not the round it opened with —
     // checkAllPaused's round-scoped count and the eventual pause both key off this.

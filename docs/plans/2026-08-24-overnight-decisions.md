@@ -1,4 +1,9 @@
-...
+# Overnight decisions log (2026-08-23/24) — for the owner's morning review
+
+Every solo design call taken while orchestrating to completion, with the
+alternatives rejected. To be folded into docs/plans/2026-08-23-personal-agent-
+and-negotiation-graphs.md by the step-2 PR.
+
 ## D1. External-agent surface removed from step 1 (owner delegated: "you choose")
 Chose: delete dispatcher path, freshness gate, Hermes wake/respond, polling
 remnants; one stated break — external agents return in a follow-up on the new
@@ -187,3 +192,39 @@ safe. Merging would replace a known-inert state with a known-wrong one.
     kickoff opens ALL of them, each self-playing up to 6 turns. 40 matches =
     40 concurrent briefs + 40 concurrent negotiations in one job. Needs a
     concurrency policy — and it interacts with (a).
+
+## D18. One brief, two seats → the brief is PER SEAT, authored lazily by that seat's own IS-A
+Chosen: `brief` stops being one column read by whoever speaks. It becomes
+per-seat (keyed by userId). A seat with no brief has its OWN IS-A author one at
+its first turn — negotiationNode already receives {negotiationId, userId,
+intentId}, so no new wake or schema beyond the keyed column is needed. This is
+what the design doc always implied ("the per-negotiation context IS-A writes")
+given that both sides have an IS-A.
+Alternatives rejected: (a) keep the shared brief and soften the prompt — the
+counterparty would still be arguing the initiator's constraints, just less
+confidently; (b) give the counterparty no brief — worse than before this work,
+since #1494 at least gave it a deterministic "opened from a signal" line;
+(c) have the initiator's kickoff author both briefs — the initiator's agent
+does not know the counterparty's principal, so it would be inventing them.
+
+## D19. Kickoff fan-out is bounded to exactly the matches the agent decided from
+Chosen: kickoff opens at most MAX_MATCHES (12) — the same cap assembleContext
+uses for the prompt — and runs the opens with a small concurrency limit rather
+than all at once. The agent decides from 12, so it opens those 12; the rest are
+picked up by the next round, which is what rounds are for.
+Alternatives rejected: (a) unbounded fan-out (today) — 40 matches = 40
+concurrent briefs and self-playing negotiations in one job, past the 90s
+controller wait and into provider rate limits, whose failures then land in
+compensateFailedOpen; (b) one job per match — loses the property that a round
+settles together, which the whole reflect trigger depends on.
+
+## D20. Interrupted-vs-in-flight kickoff is resolved by a staleness bound
+Chosen: treat `kickoffStartedAt` as an interrupted round only once it is older
+than a bound (10 minutes — comfortably longer than any real kickoff, far
+shorter than a stuck one matters). Under that bound a concurrent turn leaves
+the in-flight round alone.
+Alternatives rejected: (a) a per-intent Redis lock — correct but adds infra and
+a new failure mode (a held lock after a crash) for a race the bound already
+closes; (b) rely on single-worker serialization — the queue's own code
+contemplates several workers, so this is an assumption that fails silently at
+the first replica.

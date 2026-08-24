@@ -33,6 +33,13 @@ pin a supported release, use `latest`.
   rather than the single literal. A kickoff whose open failed after `init`
   created the task compensates it into this pause, so the round's active count
   can still reach zero. Unlike `turn_cap` it stays re-kickable.
+- **A negotiation's brief is now PER SEAT.** `NegotiationTaskRow.brief: string`
+  becomes `briefs: Record<string, string>` keyed by the seat's userId,
+  `createNegotiationTask` takes `briefs`, and `setNegotiationBrief` takes the
+  seat's `userId`. A seat with no brief has its own agent author one at its
+  first turn (`PersonalAgentJudgment.seatBrief`), and `get_negotiation` returns
+  the caller's own brief only. The `brief` on the graph's open/resume inputs is
+  the INITIATING seat's, never the counterparty's.
 - **`NegotiationGraphDatabase` gains `getPausedNegotiationTasksForIntent`** —
   the signal-scoped read of every paused, unresolved negotiation. Reflect
   reasons over that, not over one round: a negotiation a later kickoff left

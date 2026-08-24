@@ -40,7 +40,16 @@ export interface NegotiationTaskRow {
   id: string;
   conversationId: string;
   state: NegotiationTaskState;
-  brief: string;
+  /**
+   * One brief PER SEAT, keyed by the seat's userId.
+   *
+   * Never one shared string: a brief is what a seat's own IS-A tells it about
+   * its own principal, so handing the initiator's to the counterparty makes
+   * the counterparty argue someone else's constraints as if they were its
+   * client's. A seat with no entry here has its own agent author one at its
+   * first turn.
+   */
+  briefs: Record<string, string>;
   metadata: NegotiationTaskMetadata;
   createdAt: Date;
   updatedAt: Date;
@@ -67,7 +76,8 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** Creates the negotiation task. Called once, at open. */
   createNegotiationTask(input: {
     conversationId: string;
-    brief: string;
+    /** The initiating seat's own brief; the other seat authors its own later. */
+    briefs: Record<string, string>;
     metadata: NegotiationTaskMetadata;
   }): Promise<NegotiationTaskRow>;
 
@@ -86,8 +96,8 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
     pause?: NegotiationTaskMetadata['pause'],
   ): Promise<NegotiationTaskRow>;
 
-  /** Overwrites the brief at resume. */
-  setNegotiationBrief(taskId: string, brief: string): Promise<void>;
+  /** Writes ONE seat's brief, leaving the other seat's untouched. */
+  setNegotiationBrief(taskId: string, userId: string, brief: string): Promise<void>;
 
   /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. */
   setNegotiationRound(taskId: string, round: number): Promise<void>;

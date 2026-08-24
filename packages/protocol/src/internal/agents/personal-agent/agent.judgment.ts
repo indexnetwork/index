@@ -19,8 +19,8 @@ import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema, type NegotiationAuthoredTurn, type NegotiationTurn } from "../../negotiations/negotiation.turn.js";
-import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_REPLY_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
-import type { PersonalAgentBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentReply, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
+import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_REPLY_INSTRUCTION, PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
+import type { PersonalAgentBriefInput, PersonalAgentSeatBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentReply, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgent:Judgment");
 
@@ -307,6 +307,30 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
     const text = parsed.success ? parsed.data.text.trim() : "";
     if (!text || !isSafeAgentMessageProse(text)) {
       throw new Error("PersonalAgent produced no usable brief");
+    }
+    return text;
+  }
+
+  /**
+   * A brief for a seat that has none — written from what THIS side can see,
+   * and explicitly told to say so where it cannot see anything. There is no
+   * system prompt identity here on purpose: the counterparty's own agent name
+   * is not resolvable from a negotiation, and a brief is not addressed to the
+   * principal anyway.
+   */
+  async seatBrief(input: PersonalAgentSeatBriefInput): Promise<string> {
+    const known = [
+      input.signalText ? `YOUR CLIENT'S SIGNAL:\n${truncate(input.signalText, 800)}` : "YOUR CLIENT'S SIGNAL: not established — do not guess at it.",
+      input.matchReasoning ? `WHY THIS MATCH WAS MADE:\n${truncate(input.matchReasoning, MAX_TEXT_CHARS)}` : "WHY THIS MATCH WAS MADE: not recorded.",
+      `WHAT HAS BEEN SAID SO FAR:\n${renderThread(input.thread)}`,
+    ].join("\n\n");
+    const parsed = ProseSchema.safeParse(await this.callProseModel("personal_agent_seat_brief", [
+      { role: "system", content: PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION },
+      { role: "user", content: `${known}\n\nWrite the brief.` },
+    ]));
+    const text = parsed.success ? parsed.data.text.trim() : "";
+    if (!text || !isSafeAgentMessageProse(text)) {
+      throw new Error("PersonalAgent produced no usable seat brief");
     }
     return text;
   }

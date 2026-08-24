@@ -35,8 +35,48 @@ const logger = protocolLogger("PersonalAgentGraph");
 /** How much conversation memory a turn reads. */
 const MAX_DM_MESSAGES = 20;
 const MAX_LEDGER_ACTS = 20;
-/** How many matches a turn sees, newest kept — a prolific signal must not flood the prompt. */
+/**
+ * How many matches a turn sees, newest kept — a prolific signal must not
+ * flood the prompt, and kickoff opens exactly the set the agent decided from
+ * (D19). What is over the cap waits for the next round, which is what rounds
+ * are for.
+ */
 const MAX_MATCHES = 12;
+
+/**
+ * How many opens run at once. A negotiation self-plays several model turns
+ * inside its own invoke, so twelve at once is twelve concurrent conversations
+ * plus twelve briefs — past the chat controller's wait and into provider rate
+ * limits, whose failures then land in `compensateFailedOpen`.
+ */
+const KICKOFF_CONCURRENCY = 3;
+
+/**
+ * How long a round may be "begun" before a later turn treats it as abandoned
+ * rather than in flight (D20). Comfortably longer than any real kickoff and
+ * far shorter than a stuck one matters. Under it, a concurrent turn — the
+ * inbox serializes per worker, but the queue's own code contemplates several
+ * — leaves the round alone instead of settling it out from under the turn
+ * still opening it.
+ */
+const KICKOFF_STALE_AFTER_MS = 10 * 60 * 1000;
+
+/** Runs `work` over `items` with at most `limit` in flight, settling every one. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  work: (item: T, index: number) => Promise<R>,
+): Promise<Array<PromiseSettledResult<R>>> {
+  const results = new Array<PromiseSettledResult<R>>(items.length);
+  let next = 0;
+  const runner = async (): Promise<void> => {
+    for (let index = next++; index < items.length; index = next++) {
+      results[index] = await Promise.allSettled([work(items[index]!, index)]).then(([settled]) => settled!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner));
+  return results;
+}
 
 /**
  * A match already promoted to the principal's decision queue is theirs to
@@ -289,7 +329,15 @@ async function runKickoff(
   const judgment = deps.judgment ?? defaultJudgment();
 
   const lifecycle = await deps.negotiationDatabase.getIntentNegotiationRound(context.intentId);
-  const interruptedRound = lifecycle.kickoffStartedAt && lifecycle.roundSize === null ? lifecycle.round : null;
+  // Begun-and-unsettled says a kickoff STARTED this round, not that it died.
+  // Under the staleness bound it is very likely still running — on another
+  // worker, or on this one a moment ago — and settling it would stamp a round
+  // whose opens are still landing, exactly the race the stamp exists to stop.
+  const interruptedRound = lifecycle.kickoffStartedAt
+    && lifecycle.roundSize === null
+    && Date.now() - lifecycle.kickoffStartedAt.getTime() >= KICKOFF_STALE_AFTER_MS
+    ? lifecycle.round
+    : null;
 
   // Re-read: verdicts executed earlier this turn already moved statuses, and
   // a promoted or rejected match must not be re-opened.
@@ -303,7 +351,20 @@ async function runKickoff(
     match,
     eligible: !(await spentItsTurnBudget(deps, match)),
   })));
-  const matches = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
+  const eligible = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
+  // Exactly the set the agent decided from: `assembleContext` showed it the
+  // newest MAX_MATCHES, so those are the ones it opens. The remainder is not
+  // lost — the next round picks it up, and `wakeForNewMatches` deliberately
+  // does not re-wake for it, or a signal with forty matches would kick off
+  // over and over inside one round.
+  const matches = eligible.slice(-MAX_MATCHES);
+  if (eligible.length > matches.length) {
+    logger.info("Kickoff bounded to this round's share of the matches", {
+      intentId: context.intentId,
+      eligible: eligible.length,
+      opening: matches.length,
+    });
+  }
 
   // A round a kickoff began and never finished has to be settled, and it has
   // to be settled BEFORE this turn bumps: the size stamp is guarded on the
@@ -331,7 +392,7 @@ async function runKickoff(
   const round = await deps.negotiationDatabase.bumpIntentNegotiationRound(context.intentId);
   const threadByOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.thread]));
 
-  const opens = await Promise.allSettled(matches.map(async (match) => {
+  const opens = await mapWithConcurrency(matches, KICKOFF_CONCURRENCY, async (match) => {
     const brief = await judgment.brief(context, {
       match,
       strategy,
@@ -345,7 +406,7 @@ async function runKickoff(
     });
     if (result.status === "error") throw new Error(result.error ?? "Negotiation open failed");
     return result;
-  }));
+  });
 
   await Promise.all(opens.map(async (open, index) => {
     if (open.status === "rejected") await compensateFailedOpen(deps, context, matches[index]!, round, open.reason);
@@ -356,7 +417,10 @@ async function runKickoff(
   // one: that round is still the current state and still needs its reflect.
   if (opened === 0 && repairedRound !== null) await triggerRoundReflect(deps, context, repairedRound);
   await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
-  if (opened > 0) await wakeForNewMatches(deps, context, matches);
+  // `eligible`, not `matches`: everything this turn KNEW about is accounted
+  // for, whether it opened now or waits for the next round. Only something
+  // that arrived while the turn was running deserves another wake.
+  if (opened > 0) await wakeForNewMatches(deps, context, eligible);
 }
 
 /**
@@ -454,8 +518,9 @@ async function triggerRoundReflect(
  * match list was assembled at the top of the turn. The inbox coalesces such a
  * batch onto a follow-up job, but that add races the turn going active, so
  * this is the authoritative recovery — a match that exists, is undecided and
- * has no negotiation at all, and was not one of this kickoff's own targets,
- * wakes the agent again. It cannot loop: a target that failed to open is
+ * has no negotiation at all, and was not one this turn already knew about,
+ * wakes the agent again. Matches merely held back by the round's cap are NOT
+ * new — the next round picks them up. It cannot loop: a target that failed to open is
  * compensated into a task, so it is never "unopened" on the next pass.
  *
  * Best-effort by design, and it runs last: the round is already settled, so a
@@ -761,9 +826,14 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
 
 /**
  * The negotiation scope: the same PersonalAgent at the A2A table. It reads
- * the thread and its brief — the brief is the ONLY thing from the DM that
- * reaches a negotiation — and answers with exactly one verb or one pause.
- * It never ends a negotiation; NegotiationGraph's `apply` is the sink.
+ * the thread and ITS OWN brief — the brief is the only thing from a DM that
+ * reaches a negotiation — and answers with exactly one verb or one pause. It
+ * never ends a negotiation; NegotiationGraph's `apply` is the sink.
+ *
+ * A seat with no brief yet — the counterparty, always, since only the
+ * initiator's kickoff wrote one — authors its own here, from what THIS side
+ * knows, and persists it. That is the whole of D18: the counterparty's agent
+ * arrives with its own instructions rather than the initiator's.
  */
 async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
   const input = state.input as Extract<PersonalAgentInput, { negotiationId: string }>;
@@ -772,9 +842,11 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
     if (!task) return { phase: "error", error: "Negotiation not found" };
     const messages = await deps.negotiationDatabase.getNegotiationMessages(task.id);
     const judgment = deps.judgment ?? defaultJudgment();
+    const thread = threadFromMessages(messages, input.userId);
+    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, task, input.userId, thread);
     const turn: NegotiationAuthoredTurn = await judgment.negotiationTurn({
-      brief: task.brief,
-      thread: threadFromMessages(messages, input.userId),
+      brief,
+      thread,
       // Raw message count, not parsed-turn count: the negotiation graph's
       // opening rule keys off the same number, and the two must agree on
       // "is this the opening turn" or every turn is rejected.
@@ -784,6 +856,44 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * Author and persist the brief for a seat that has none.
+ *
+ * The seat's own signal is used when it can be established BEYOND DOUBT: a
+ * premise-matched actor's `intent` field names the intent it matched AGAINST,
+ * not one it owns, so an actor carrying this negotiation's own `intentId` is
+ * ambiguous and is treated as unknown rather than guessed at. Without it the
+ * brief is written from what this side can see honestly — why the match
+ * exists, and whatever has been said so far — which is still its own
+ * instructions rather than the counterparty's.
+ */
+async function authorSeatBrief(
+  deps: PersonalAgentDeps,
+  judgment: NonNullable<PersonalAgentDeps["judgment"]>,
+  task: NegotiationTaskRow,
+  seatUserId: string,
+  thread: PersonalAgentThreadEntry[],
+): Promise<string> {
+  const opportunity = await deps.negotiationDatabase.getOpportunity(task.metadata.opportunityId).catch(() => null);
+  const seatIntentId = seatUserId === task.metadata.sourceUserId
+    ? task.metadata.intentId
+    : ((opportunity?.actors ?? []) as Array<{ userId: string; intent?: string | null; role?: string }>)
+      .find((actor) => actor.userId === seatUserId && actor.role !== "introducer" && actor.intent
+        && actor.intent !== task.metadata.intentId)?.intent ?? null;
+  const intent = seatIntentId ? await deps.negotiationDatabase.getIntent(seatIntentId).catch(() => null) : null;
+
+  const brief = await judgment.seatBrief({
+    signalText: intent ? (intent.summary ?? intent.payload ?? null) : null,
+    matchReasoning: typeof (opportunity as { reasoning?: unknown } | null)?.reasoning === "string"
+      ? (opportunity as unknown as { reasoning: string }).reasoning
+      : null,
+    thread,
+  });
+  await deps.negotiationDatabase.setNegotiationBrief(task.id, seatUserId, brief);
+  logger.info("Authored a brief for a seat that had none", { negotiationId: task.id, seatUserId });
+  return brief;
 }
 
 function errorNode(state: PersonalAgentState): Partial<PersonalAgentState> {

@@ -145,7 +145,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           status: task.state,
           role: isSource ? 'source' : 'candidate',
           counterpartyId: isSource ? task.metadata.candidateUserId : task.metadata.sourceUserId,
-          brief: task.brief,
+          // A seat sees ITS OWN brief and never the counterparty's: a brief is
+          // what that side's agent was told about its own principal.
+          brief: task.briefs[context.userId] ?? null,
           turns: turnsOf(task, messages),
           ...(scopedPause ? { pause: scopedPause } : {}),
           lifecycle: buildLifecycleNarration(

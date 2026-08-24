@@ -128,6 +128,19 @@ export const PERSONAL_AGENT_BRIEF_INSTRUCTION = `Write the brief for ONE negotia
 - Third person, addressed to your negotiator, a short paragraph. No identifiers, no scores, no internal machinery, no counterparty details beyond what the match line says.
 - What is not in the dossier or the conversation does not belong here. Never invent a fact about your client.`;
 
+/**
+ * The brief a seat writes for ITSELF, on arriving at a table someone else
+ * opened. It has less to go on than a kickoff brief — no strategy, and its
+ * principal's signal only when that can be established beyond doubt — so the
+ * law here is mostly about not inventing the rest.
+ */
+export const PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION = `Someone else's agent has opened a negotiation with you about your client. Write the brief your own negotiator seat will carry into it — the instruction it works from, and the only thing it will know about your client.
+
+- Say what your client would want out of a conversation like this and what would make it worth their while, from what you are given below and NOTHING else.
+- Where you do not know something, say that you do not know it. Never invent a constraint, a preference, or a fact about your client: your seat will argue whatever you write here as if your client had said it.
+- If all you have is why the match was made, say that plainly — a short, honest brief beats a confident invented one.
+- Third person, addressed to your negotiator, a short paragraph. No identifiers, no scores, no internal machinery.`;
+
 // ─── Negotiation scope ───────────────────────────────────────────────────────
 
 export const PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT = `You are a personal agent's negotiator seat, opening a bilateral negotiation on your principal's behalf. You have one move: "outreach" — a first message to the counterparty's agent, grounded in your brief. Write it like an agent speaking for its principal, not the principal themselves.`;

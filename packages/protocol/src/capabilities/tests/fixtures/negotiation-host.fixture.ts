@@ -71,7 +71,7 @@ export class FakeNegotiationHost {
         id: `task-${++this.taskCounter}`,
         conversationId: input.conversationId,
         state: "working",
-        brief: input.brief,
+        briefs: { ...input.briefs },
         metadata: input.metadata,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -97,10 +97,11 @@ export class FakeNegotiationHost {
       this.tasks.set(taskId, updated);
       return updated;
     },
-    setNegotiationBrief: async (taskId, brief) => {
+    // Per SEAT: writing one must never clobber the other's.
+    setNegotiationBrief: async (taskId, userId, brief) => {
       const task = this.tasks.get(taskId);
       if (!task) throw new Error(`No such task ${taskId}`);
-      this.tasks.set(taskId, { ...task, brief, updatedAt: new Date() });
+      this.tasks.set(taskId, { ...task, briefs: { ...task.briefs, [userId]: brief }, updatedAt: new Date() });
     },
     setNegotiationRound: async (taskId, round) => {
       const task = this.tasks.get(taskId);
@@ -149,6 +150,14 @@ export class FakeNegotiationHost {
       [...this.tasks.values()].filter((t) =>
         t.metadata.intentId === intentId && t.metadata.round === round && t.state === "working").length,
   };
+
+  /**
+   * Push the kickoff marker past the staleness bound, so a later turn reads
+   * the round as abandoned rather than in flight (D20).
+   */
+  ageKickoff(byMs = 11 * 60 * 1000): void {
+    if (this.kickoffStartedAt) this.kickoffStartedAt = new Date(this.kickoffStartedAt.getTime() - byMs);
+  }
 
   /** Records a reflect job the way the queue does: once per (intent, round). */
   enqueueReflect(job: { userId: string; intentId: string; round: number }): void {
