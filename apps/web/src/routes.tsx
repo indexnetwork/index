@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet, ScrollRestoration, useLocation, useParams } from "react-router";
+import { createBrowserRouter, Navigate, Outlet, ScrollRestoration } from "react-router";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
@@ -36,11 +36,9 @@ function RootLayout() {
   );
 }
 
-/** Preserve legacy negotiation deep links without treating them as Chat pages. */
-function LegacyNegotiationRedirect() {
-  const { conversationId } = useParams();
-  const { search } = useLocation();
-  return <Navigate to={`/negotiations/${conversationId ?? ''}${search}`} replace />;
+/** A conversation alone cannot identify an owner task; use the task index. */
+function NegotiationIndexRedirect() {
+  return <Navigate to="/negotiations" replace />;
 }
 
 export const router = createBrowserRouter([
@@ -107,7 +105,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "/chat/:conversationId",
-        element: <LegacyNegotiationRedirect />,
+        element: <NegotiationIndexRedirect />,
       },
       {
         path: "/negotiations",
@@ -115,7 +113,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "/negotiations/:conversationId",
-        lazy: lazyRoute("/negotiations/:conversationId", () => import("@/app/chat/[conversationId]/page")),
+        element: <NegotiationIndexRedirect />,
       },
       {
         path: "/d/:id",
