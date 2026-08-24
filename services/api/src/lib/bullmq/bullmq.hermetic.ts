@@ -1,3 +1,4 @@
+import { UnrecoverableError } from 'bullmq';
 import type { Job, JobsOptions, Processor, Queue, QueueEvents, Worker } from 'bullmq';
 
 interface ListenerMap {
@@ -335,7 +336,7 @@ function processRecord(broker: Broker, worker: WorkerRecord, record: JobRecord):
       const failure = error instanceof Error ? error : new Error(String(error));
       record.job.attemptsMade += 1;
       const attempts = Number(record.job.opts.attempts ?? 1);
-      if (record.job.attemptsMade < attempts) {
+      if (!(failure instanceof UnrecoverableError) && record.job.attemptsMade < attempts) {
         record.state = 'waiting';
       } else {
         record.state = 'failed';
