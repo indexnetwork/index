@@ -2310,6 +2310,7 @@ export class ConversationDatabaseAdapter {
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
           sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
           ne(schema.tasks.state, 'completed'),
+          notArchivedNegotiationTaskWhere(),
         ),
       )
       .orderBy(desc(schema.tasks.createdAt))

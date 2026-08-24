@@ -271,7 +271,13 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     const paired = turnsWithSenders(messages);
     const turns = paired.map((p) => p.turn);
     const speakerId = nextSpeaker(meta, messages);
-    const isOpening = turns.length === 0;
+    // Raw message count, not parsed-turn count: a legacy task with unparseable
+    // (pre-rewrite) messages has turns.length === 0 but messages.length > 0.
+    // applyNode's outreach guard keys off messages.length too — the two must
+    // agree on "is this the opening turn" or a re-kick error forever (turnNode
+    // authors 'outreach' for a legacy task's continuation, applyNode rejects
+    // it because history is non-empty).
+    const isOpening = messages.length === 0;
 
     const thread = paired.map(({ senderId, turn }) => ({
       speaker: (senderId === `agent:${speakerId}` ? "own" : "counterparty") as "own" | "counterparty",

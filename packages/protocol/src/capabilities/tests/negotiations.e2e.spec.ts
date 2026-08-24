@@ -480,6 +480,31 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
   });
 
+  test("re-kicking an existing task whose history is entirely pre-rewrite legacy messages does not error forever", async () => {
+    // A pre-rewrite task with only old {action} shaped message parts: nothing
+    // parses as a NegotiationTurn, so turnsFromMessages returns []. turnNode
+    // and applyNode must still agree this is NOT the opening turn (raw
+    // messages exist) — otherwise turnNode authors 'outreach' and applyNode's
+    // own outreach-only-first guard rejects it, forever.
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "First real turn.", reasoning: "r" }]);
+    const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    expect(opened.status).toBe("active");
+    const negotiationId = opened.negotiationId;
+
+    // Replace the real (parseable) history with a legacy-shaped message —
+    // simulating a task that predates this rewrite entirely.
+    host.messages.set(negotiationId, [
+      { id: "legacy-1", senderId: `agent:${SOURCE_USER_ID}`, parts: [{ kind: "data", data: { action: "accept" } }], createdAt: new Date() },
+    ]);
+
+    const rekicked = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 2 });
+    expect(rekicked.status).not.toBe("error");
+    expect(rekicked.negotiationId).toBe(negotiationId);
+  });
+
   test("resuming an opportunity that already has a negotiation is idempotent, not a second open", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);

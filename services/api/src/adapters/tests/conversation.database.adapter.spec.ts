@@ -701,6 +701,32 @@ describe('ConversationDatabaseAdapter', () => {
     });
   });
 
+  describe('getNegotiationTaskForOpportunity — archived filter (#1494 round-3 finding 4)', () => {
+    it('does not resolve an archived legacy task as the opportunity\'s existing negotiation', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const opportunityId = `archived-opp-filter-${run}`;
+      const userId = `archived-opp-filter-user-${run}`;
+      const counterpart = `archived-opp-filter-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+      const archivedTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId,
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        archivedAt: new Date().toISOString(),
+      });
+
+      const found = await adapter.getNegotiationTaskForOpportunity(opportunityId);
+      expect(found?.id).not.toBe(archivedTask.id);
+      expect(found).toBeNull();
+    });
+  });
+
   describe('getConversationsForUser — pause projection (#1494 round-2 finding 10)', () => {
     it('projects pause.reason to every viewer, and payload only to the seat that paused', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;
