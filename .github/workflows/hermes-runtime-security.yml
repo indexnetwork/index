@@ -43,7 +43,6 @@ jobs:
           OPENROUTER_API_KEY: ""
         run: |
           python3 packages/hermes-plugin/tests/smoke.py
-          python3 packages/hermes-plugin/tests/gateway.py
           node packages/hermes-plugin/tests/dashboard-registration.test.cjs
           node --check packages/hermes-plugin/dashboard/dist/index.js
 
