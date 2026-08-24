@@ -58,7 +58,9 @@ describe('owner-verdict wiring', () => {
     // that binds the PersonalAgent's opportunity port: the same reader feeds
     // the numbered match list, and accept executes back through this host's
     // id-keyed lane.
-    expect(agentComposition).toContain('readActionableCounterparties(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)');
+    // `readSignalMatches`, not the degrading wrapper: the agent's turns are
+    // ABOUT this list, so a read failure must fail the turn.
+    expect(agentComposition).toContain('readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)');
     expect(agentComposition).toContain("passVerdictOnOpportunity(userId, input, 'accepted'");
     expect(host).toContain('export async function readActionableCounterparties');
     expect(host).toContain('export async function passVerdictOnOpportunity');
