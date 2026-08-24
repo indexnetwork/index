@@ -73,6 +73,15 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/protocol", () => import("@/app/protocol/page")),
       },
       {
+        // Unlisted: reachable only via the token in the path, linked from nowhere.
+        path: "/9db20a5fbe/roadmap",
+        lazy: lazyRoute("/9db20a5fbe/roadmap", () => import("@/app/roadmap/page")),
+      },
+      {
+        path: "/9db20a5fbe/edge-city-metrics",
+        lazy: lazyRoute("/9db20a5fbe/edge-city-metrics", () => import("@/app/edge-city-metrics/page")),
+      },
+      {
         path: "/blog",
         lazy: lazyRoute("/blog", () => import("@/app/blog/page")),
       },

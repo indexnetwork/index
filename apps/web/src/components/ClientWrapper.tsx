@@ -17,7 +17,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c'];
   // /l is chrome-free web invite join; /index stays app-only public join.
-  const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist'];
+  const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe/roadmap', '/9db20a5fbe/edge-city-metrics'];
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.
