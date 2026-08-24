@@ -102,6 +102,50 @@ describe('PersonalAgentQueue serialization', () => {
     });
   });
 
+  it('a matches_ready batch arriving while a turn is running is queued, never swallowed', async () => {
+    // The coalescing that makes a burst of discovery batches one kickoff must
+    // not eat a batch the running turn has already read past: BullMQ silently
+    // returns the existing job for a duplicate id, so a second slot exists.
+    let release: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { release = resolve; });
+    let gate: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => { gate = resolve; });
+    const built = buildQueue(async () => {
+      release?.();
+      await held;
+      return idle;
+    });
+    built.queue.startWorker();
+    try {
+      const first = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' });
+      await started;
+      // The turn is now ACTIVE and has read its match list; this batch is new.
+      const second = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' });
+      expect(second.id).not.toBe(first.id);
+      expect(await second.getState()).not.toBe('active');
+      // A third batch in the same window coalesces onto the queued follow-up.
+      const third = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' });
+      expect(third.id).toBe(second.id);
+      gate?.();
+      await first.waitUntilFinished(undefined as never, 10_000);
+      await second.waitUntilFinished(undefined as never, 10_000);
+      expect(built.invocations()).toBe(2);
+    } finally {
+      gate?.();
+      await built.queue.close();
+    }
+  });
+
+  it('a reflect job is retained on completion so the round can never reflect twice', async () => {
+    await withQueue(buildQueue(() => idle), async ({ queue }) => {
+      const job = await queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', round: 4 });
+      // The queue default is removeOnComplete { age: 24h }, which would free
+      // the id and let a late pause on a stale negotiation re-wake the agent
+      // for a round it already closed out.
+      expect(job.opts.removeOnComplete).toBe(false);
+    });
+  });
+
   it('runUserMessageTurn returns what the agent did', async () => {
     const result: PersonalAgentResult = {
       scope: 'intent',

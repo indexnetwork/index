@@ -270,6 +270,12 @@ async function say(
  * they all settle — until that stamp exists, the all-paused check is a no-op,
  * so an early pause cannot dedupe away the round's genuine reflect. Kickoff
  * then runs one final check itself, for the pauses that landed before it.
+ *
+ * Retry-safe. A turn runs on a queue that retries it whole, and the durable
+ * effects here — a strategy message, a round bump, N opened negotiations —
+ * must never happen twice. An interrupted kickoff leaves an unmistakable
+ * signature (the current round has tasks but no size stamp, and only kickoff
+ * bumps a round), so a retry RESUMES that round instead of starting another.
  */
 async function runKickoff(
   deps: PersonalAgentDeps,
@@ -278,15 +284,29 @@ async function runKickoff(
   reasoning: string,
 ): Promise<void> {
   const judgment = deps.judgment ?? defaultJudgment();
+
+  // ── resume an interrupted kickoff ──────────────────────────────────────
+  const stamp = await deps.negotiationDatabase.getIntentNegotiationRound(context.intentId);
+  if (stamp.roundSize === null) {
+    const opened = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(context.intentId, stamp.round);
+    if (opened.length > 0) {
+      logger.warn("Resuming an unstamped kickoff round", { intentId: context.intentId, round: stamp.round, opened: opened.length });
+      await finishRound(deps, context, accumulator, stamp.round, opened.length, reasoning);
+      return;
+    }
+  }
+
   // Re-read: verdicts executed earlier this turn already moved statuses, and
   // a promoted or rejected match must not be re-opened.
-  const matches = (await deps.opportunities.readMatches(context.userId, context.intentId))
-    .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status))
-    .filter((match) => !spentItsTurnBudget(context, match));
+  const candidates = (await deps.opportunities.readMatches(context.userId, context.intentId))
+    .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
+  const eligibility = await Promise.all(candidates.map(async (match) => ({
+    match,
+    eligible: !(await spentItsTurnBudget(deps, match)),
+  })));
+  const matches = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
   if (matches.length === 0) {
-    const executed: PersonalAgentExecutedAct = { tool: "kickoff", round: 0, opened: 0, reasoning };
-    await appendLedger(deps, context, executed);
-    accumulator.acts.push(executed);
+    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round: 0, opened: 0, reasoning });
     return;
   }
 
@@ -322,16 +342,38 @@ async function runKickoff(
     }
   }
 
-  const executed: PersonalAgentExecutedAct = { tool: "kickoff", round, opened, reasoning };
-  await appendLedger(deps, context, executed);
-  accumulator.acts.push(executed);
-
   if (opened === 0) {
     // Nothing to wait for, so nothing to reflect on. Leaving the round
     // unstamped is deliberate: a stamped empty round would immediately
-    // re-trigger reflect, and reflect would kick off again — forever.
+    // re-trigger reflect, and reflect would kick off again — forever. The
+    // resume branch above cannot mistake it for an interrupted kickoff
+    // either, because the round has no tasks.
+    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
     return;
   }
+  await finishRound(deps, context, accumulator, round, opened, reasoning);
+}
+
+/**
+ * Close a round that has opened negotiations: record the act, stamp the size,
+ * run the final all-paused check.
+ *
+ * The ledger row is written FIRST and never throws — accountability must not
+ * be able to duplicate a real effect — and the stamp is the last durable
+ * write, so a failure there leaves exactly the resumable signature the top of
+ * `runKickoff` looks for. That is why the stamp is allowed to throw: the
+ * retry finishes this round rather than starting another, and the round
+ * cannot stay unstamped just because one write failed once.
+ */
+async function finishRound(
+  deps: PersonalAgentDeps,
+  context: PersonalAgentTurnContext,
+  accumulator: TurnAccumulator,
+  round: number,
+  opened: number,
+  reasoning: string,
+): Promise<void> {
+  await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
   await deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, opened);
   await maybeEnqueueRoundReflect(deps.negotiationDatabase, deps.reflectEnqueue, {
     userId: context.userId,
@@ -340,9 +382,37 @@ async function runKickoff(
   });
 }
 
-/** A table whose budget is spent cannot produce another substantive turn. */
-function spentItsTurnBudget(context: PersonalAgentTurnContext, match: PersonalAgentMatch): boolean {
-  return context.paused.some((paused) => paused.opportunityId === match.opportunityId && paused.reason === "turn_cap");
+/**
+ * Record a kickoff act. A ledger failure is logged, never thrown: the round
+ * is already open, and failing the turn over an accountability row would
+ * retry it into a second strategy message and a second round.
+ */
+async function recordKickoff(
+  deps: PersonalAgentDeps,
+  context: PersonalAgentTurnContext,
+  accumulator: TurnAccumulator,
+  executed: Extract<PersonalAgentExecutedAct, { tool: "kickoff" }>,
+): Promise<void> {
+  try {
+    await appendLedger(deps, context, executed);
+  } catch (err) {
+    logger.error("Failed to ledger a kickoff act", { intentId: context.intentId, round: executed.round, error: err });
+  }
+  accumulator.acts.push(executed);
+}
+
+/**
+ * A table whose turn budget is spent cannot produce another substantive turn:
+ * re-opening it only re-pauses on the cap, and that pause re-triggers reflect,
+ * which kicks off again. This is the cycle's termination guarantee, so it
+ * reads the negotiation's OWN state rather than this round's paused set — a
+ * negotiation that capped in an earlier round and was excluded from the last
+ * kickoff carries that earlier round in its metadata and is absent from the
+ * current round entirely.
+ */
+async function spentItsTurnBudget(deps: PersonalAgentDeps, match: PersonalAgentMatch): Promise<boolean> {
+  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId).catch(() => null);
+  return task?.state === "paused" && task.metadata.pause?.reason === "turn_cap";
 }
 
 /**

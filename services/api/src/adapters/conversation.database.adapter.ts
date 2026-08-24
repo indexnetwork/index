@@ -2582,6 +2582,11 @@ export class ConversationDatabaseAdapter {
           sql`${schema.tasks.metadata}->>'intentId' = ${intentId}`,
           sql`(${schema.tasks.metadata}->>'round')::int = ${round}`,
           eq(schema.tasks.state, 'working'),
+          // The same predicate `getNegotiationTasksForIntentRound` applies:
+          // an archived task stuck in 'working' would hold this count above
+          // zero forever, stalling the signal's cycle, while being invisible
+          // in the paused set the agent actually reasons over.
+          notArchivedNegotiationTaskWhere(),
         ),
       );
     return row?.value ?? 0;

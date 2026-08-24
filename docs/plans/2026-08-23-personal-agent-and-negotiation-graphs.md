@@ -344,9 +344,24 @@ Chose: no stamp, no reflect enqueue, `opened: 0` on the ledgered act.
 Alternative rejected: stamping zero — a stamped empty round is instantly
 "all paused", so reflect fires, ACT kicks off again, and the loop never ends.
 
-### D21. A negotiation paused with `turn_cap` is not re-kickable
-Chose: kickoff skips a match whose current-round negotiation paused on
-`turn_cap`. Its turn budget is spent, so re-opening it can only re-pause.
+### D21. A capped negotiation is never re-kickable — read from its OWN state
+**Restated after review; the first version of this decision was wrong.**
+
+Chose: kickoff skips a match whose current negotiation task is `paused` with
+reason `turn_cap`, read from the task itself
+(`getNegotiationTaskForOpportunity`) regardless of which round it belongs to.
+A spent table can only re-pause on the cap, and that pause re-triggers reflect,
+which kicks off again.
+
+The first version read the CURRENT ROUND's paused set, and that does not hold:
+a negotiation that capped in round R and was therefore excluded from R's
+kickoff keeps `metadata.round === R`, so it is absent from round R+1 entirely
+and reads as eligible again. Two matches are enough — A caps, B stalls on a
+question, the next kickoff carries only B into R+1, reflect(R+1) no longer sees
+A, and A is re-opened into R+2 forever, each round costing a strategy call, a
+brief and an author turn per match and posting another strategy message into
+the principal's DM. Pinned by a regression test with exactly that shape.
+
 Alternative rejected: no structural bound, trusting IS-A to reject a stalled
 table — a model that keeps re-kicking spends real money forever. This is the
 termination guarantee: every table eventually reaches the cap, kickoff then
@@ -377,10 +392,11 @@ workers means a reflect turn can interleave with the principal's own message
 turn on the same signal, and the whole point of the inbox is that they cannot.
 
 ### D25. `matches_ready` is keyed on the signal, not the batch
-Chose: one job id per intent, removed on completion, so a burst of discovery
-batches coalesces into one kickoff turn.
+Chose: coalesce a burst of discovery batches into one kickoff turn rather than
+one turn per batch.
 Alternative rejected: one event per persisted batch — N kickoffs, N rounds,
-and reflect firing at the first pause of a round of one.
+and reflect firing at the first pause of a round of one. (How the coalescing
+is keyed, so that it can never LOSE a batch, is D31.)
 
 ### D26. The 0145 journal entry is restored
 Chose: re-add the `_journal.json` entry that #1495's migration renumber
@@ -404,3 +420,50 @@ the host's composition there is simply no negotiation graph in that context.
 Alternative rejected: keeping the fallbacks — a graph with no turn author
 throws on every turn, and one with no reflect enqueue loses the all-paused
 moment for good.
+
+### D29. An interrupted kickoff RESUMES its round; it does not start another
+Chose: kickoff first reads the intent's round stamp. An unstamped round that
+already has tasks is the unmistakable signature of a kickoff that died after
+opening (only kickoff bumps a round, and a bump clears the stamp), so the turn
+finishes THAT round — ledger, stamp, all-paused check — and returns. The
+ledger append is non-throwing and comes before the stamp, so the stamp is the
+last durable write and a failure there leaves exactly the resumable signature.
+Alternatives rejected: (a) making the whole turn transactional — the effects
+span a model call, a chat message and N negotiation graphs; (b) swallowing a
+stamp failure — the round would then never reflect, which is the failure D2
+exists to prevent.
+
+### D30. One impossible act drops; only an empty result is re-decided
+Chose: the validator drops the offending act and keeps the rest, exactly as
+`normalizeMessageOptions` drops a malformed chip, and returns `null` only when
+a non-empty act list has nothing valid left in it.
+Alternative rejected: refusing the whole round trip (the shipped behaviour
+until review) — the retry sees an identical prompt with no feedback, usually
+repeats the mistake, and the client's actual request, a verdict they asked for
+in words, silently never happens while they get the failure copy.
+
+### D31. `matches_ready` coalesces in two slots, never in one
+Chose: a batch coalesces onto the primary job id while that job is still
+queued, and onto a single follow-up id while it is running; if both are
+running, it is enqueued unkeyed.
+Alternative rejected: one id with `removeOnComplete` (the shipped behaviour) —
+BullMQ silently returns the existing job for a duplicate id, so a batch landing
+during a kickoff turn, which takes minutes, vanished into a turn that had
+already read its match list.
+
+### D32. The reflect job is retained on completion, forever
+Chose: `removeOnComplete: false` on the `all_paused` job. One retained row per
+(signal, round) is the price of exactly-once.
+Alternative rejected: the queue default `{ age: 24h }` — after a day the id is
+free again, and a late watchdog pause on a stale negotiation of that same
+still-current round wakes the agent to re-decide a round it already closed out.
+`removeOnFail` keeps its 7-day default on purpose: a reflect lost to a
+transient outage should become reachable again.
+
+### D33. The two round-scoped reads agree on what belongs to a round
+Chose: `countActiveNegotiationsForRound` applies the same archive predicate as
+`getNegotiationTasksForIntentRound`.
+Alternative rejected: leaving the count unfiltered — an archived task stuck in
+`working` holds it above zero forever, so the signal never reflects again,
+while that task is invisible in the paused set the agent reasons over.
+

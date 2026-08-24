@@ -94,7 +94,11 @@ class ScriptedJudgment implements PersonalAgentJudgment {
   readonly briefCalls: Array<{ opportunityId: string; strategy: string }> = [];
   private cursor = 0;
 
-  constructor(private readonly plans: Array<(context: PersonalAgentTurnContext) => PersonalAgentDecidedAct[]>) {}
+  constructor(
+    private readonly plans: Array<(context: PersonalAgentTurnContext) => PersonalAgentDecidedAct[]>,
+    /** Overrides the default negotiator script; used by the termination tests. */
+    private readonly turnScript?: (input: { brief: string; thread: unknown[]; isOpening: boolean }) => NegotiationAuthoredTurn,
+  ) {}
 
   async decide(context: PersonalAgentTurnContext): Promise<PersonalAgentDecidedAct[]> {
     this.decideCalls.push(context);
@@ -121,6 +125,7 @@ class ScriptedJudgment implements PersonalAgentJudgment {
    * opens every match in parallel, so a positional script would be a race.
    */
   async negotiationTurn(input: { brief: string; thread: unknown[]; isOpening: boolean }): Promise<NegotiationAuthoredTurn> {
+    if (this.turnScript) return this.turnScript(input);
     if (input.isOpening) return { verb: "outreach", message: `Opening on ${input.brief}`, reasoning: "Kickoff." };
     const depth = input.thread.length;
     const which = input.brief.includes(THIRD_OPPORTUNITY_ID) ? 3 : input.brief.includes(SECOND_OPPORTUNITY_ID) ? 2 : 1;
@@ -310,5 +315,103 @@ describe("PersonalAgent — the whole cycle", () => {
     const result = await agent.invoke({ userId: SOURCE_USER_ID });
     expect(result.scope).toBe("global");
     expect(result.error).toContain("global scope is not implemented");
+  });
+});
+
+describe("PersonalAgent — termination and retry safety", () => {
+  /**
+   * The exact shape D21 exists to stop: A spends its turn budget in round R,
+   * B pauses on a question, so the next kickoff re-opens only B — which puts B
+   * in round R+1 and leaves A behind in R. A is then absent from R+1's paused
+   * set, and an eligibility rule that reads THAT set would call A eligible
+   * again and re-open it, forever. Eligibility must read the negotiation's own
+   * state instead.
+   */
+  test("a negotiation that capped in an earlier round is never re-kicked — the cycle terminates", async () => {
+    const kickoffPlan = (): PersonalAgentDecidedAct[] => [{ tool: "kickoff", reasoning: "Send them out." }];
+    const judgment = new ScriptedJudgment(
+      [kickoffPlan, kickoffPlan, kickoffPlan],
+      (input) => {
+        if (input.isOpening) return { verb: "outreach", message: "Opening.", reasoning: "Kickoff." };
+        // Opportunity 2 stalls on its principal at the first reply, then plays
+        // on when re-kicked — so it, too, eventually spends its budget.
+        if (input.brief.includes(SECOND_OPPORTUNITY_ID) && input.thread.length === 1) {
+          return { verb: "pause", reason: "needs_principal", payload: { question: "How soon?" } };
+        }
+        return { verb: "counter", message: "Pushing back.", reasoning: "Still talking." };
+      },
+    );
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
+
+    // ── round 2: both open; A self-plays to its turn cap, B stalls ────────
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    const firstRound = negotiationHost.round;
+    const taskFor = (opportunityId: string) =>
+      [...negotiationHost.tasks.values()].find((task) => task.metadata.opportunityId === opportunityId)!;
+    expect(taskFor(OPPORTUNITY_ID).metadata.pause?.reason).toBe("turn_cap");
+    expect(taskFor(SECOND_OPPORTUNITY_ID).metadata.pause?.reason).toBe("needs_principal");
+
+    // ── round 3: only B is re-kicked, so A stays behind in round 2 ────────
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: firstRound });
+    expect(negotiationHost.round).toBe(firstRound + 1);
+    expect(taskFor(SECOND_OPPORTUNITY_ID).metadata.round).toBe(firstRound + 1);
+    expect(taskFor(OPPORTUNITY_ID).metadata.round).toBe(firstRound); // left behind, capped
+    expect(taskFor(SECOND_OPPORTUNITY_ID).metadata.pause?.reason).toBe("turn_cap");
+
+    // ── round 3 reflect: A is invisible to this round, and must STILL be
+    //    ineligible. Nothing opens, nothing stamps, nothing re-triggers. ──
+    const strategyMessagesBefore = principal.dmMessages.length;
+    const reflectJobsBefore = negotiationHost.reflectJobs.length;
+    const briefCallsBefore = judgment.briefCalls.length;
+    const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: firstRound + 1 });
+
+    expect(acted.acts).toEqual([{ tool: "kickoff", round: 0, opened: 0, reasoning: "Send them out." }]);
+    expect(negotiationHost.round).toBe(firstRound + 1); // no further bump
+    expect(negotiationHost.tasks.size).toBe(2); // nothing re-opened
+    expect(principal.dmMessages).toHaveLength(strategyMessagesBefore); // no second strategy
+    expect(judgment.briefCalls).toHaveLength(briefCallsBefore); // no model spend
+    expect(negotiationHost.reflectJobs).toHaveLength(reflectJobsBefore); // the loop ends here
+  });
+
+  /**
+   * A turn runs on a queue that retries it whole. A crash after the opens —
+   * here, the size stamp failing — must not re-post the strategy, re-bump the
+   * round or re-open anything, and it must not leave the round unstamped.
+   */
+  test("a kickoff that crashed after opening resumes its round instead of starting another", async () => {
+    const kickoffPlan = (): PersonalAgentDecidedAct[] => [{ tool: "kickoff", reasoning: "Reaching out." }];
+    const judgment = new ScriptedJudgment([kickoffPlan, kickoffPlan]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const stamp = negotiationHost.database.stampIntentNegotiationRoundSize;
+    let failNextStamp = true;
+    negotiationHost.database.stampIntentNegotiationRoundSize = async (intentId, round, size) => {
+      if (failNextStamp) {
+        failNextStamp = false;
+        throw new Error("stamp write failed");
+      }
+      return stamp.call(negotiationHost.database, intentId, round, size);
+    };
+
+    // ── the interrupted attempt ───────────────────────────────────────────
+    const crashed = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    expect(crashed.error).toBe("stamp write failed");
+    const round = negotiationHost.round;
+    expect(negotiationHost.tasks.size).toBe(1);
+    expect(negotiationHost.roundSize).toBeNull();
+    expect(negotiationHost.reflectJobs).toEqual([]);
+    const dmMessagesAfterCrash = principal.dmMessages.length;
+    expect(judgment.briefCalls).toHaveLength(1);
+
+    // ── the retry: finish that round, do not start another ────────────────
+    const retried = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    expect(retried.error).toBeUndefined();
+    expect(retried.acts).toEqual([{ tool: "kickoff", round, opened: 1, reasoning: "Reaching out." }]);
+    expect(principal.dmMessages).toHaveLength(dmMessagesAfterCrash); // no second strategy
+    expect(negotiationHost.round).toBe(round); // no second bump
+    expect(negotiationHost.tasks.size).toBe(1); // nothing re-opened
+    expect(judgment.briefCalls).toHaveLength(1); // no second brief
+    expect(negotiationHost.roundSize).toBe(1); // and the round is no longer stranded
+    expect(negotiationHost.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round }]);
   });
 });

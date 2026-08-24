@@ -70,23 +70,55 @@ export class PersonalAgentQueue {
     });
   }
 
-  /** Discovery persisted matches for a signal; the agent decides what to do. */
-  addMatchesReadyEvent(input: { userId: string; intentId: string }): Promise<Job<PersonalAgentEvent>> {
-    return this.queue.add('matches_ready', { ...input, event: 'matches_ready' }, {
-      jobId: personalAgentMatchesReadyJobId(input.intentId),
-      removeOnComplete: true,
-      removeOnFail: true,
-    });
+  /**
+   * Discovery persisted matches for a signal; the agent decides what to do.
+   *
+   * Coalescing is deliberate — a burst of discovery batches should produce one
+   * kickoff turn, not one per batch — but it must never LOSE a batch. BullMQ
+   * silently returns the existing job for a duplicate id, so a batch that
+   * arrives while a kickoff turn is already running (turns take minutes) would
+   * vanish into a turn that had already read its match list. Two slots fix
+   * that: batches coalesce onto the primary id while it is still queued, and
+   * onto a single follow-up id while the primary is running. If both are
+   * somehow running (more than one worker process), the batch is enqueued
+   * without an id rather than dropped.
+   */
+  async addMatchesReadyEvent(input: { userId: string; intentId: string }): Promise<Job<PersonalAgentEvent>> {
+    const data: PersonalAgentEvent = { ...input, event: 'matches_ready' };
+    const options = { removeOnComplete: true, removeOnFail: true };
+    const primary = personalAgentMatchesReadyJobId(input.intentId);
+    for (const jobId of [primary, `${primary}.next`]) {
+      if (await this.isRunning(jobId)) continue;
+      return this.queue.add('matches_ready', data, { ...options, jobId });
+    }
+    this.logger.warn('Both matches_ready slots are running; enqueueing an unkeyed follow-up', { intentId: input.intentId });
+    return this.queue.add('matches_ready', data, options);
+  }
+
+  /** True when a job with this id exists and has already started — an add onto it would be lost. */
+  private async isRunning(jobId: string): Promise<boolean> {
+    const existing = await this.queue.getJob(jobId);
+    if (!existing) return false;
+    return (await existing.getState()) === 'active';
   }
 
   /**
    * Every negotiation of a round has paused. The deterministic job id is the
-   * whole dedup: ten pauses produce one reflect, and a completed job is
-   * deliberately retained so the same round cannot reflect twice.
+   * whole dedup: ten pauses produce one reflect, and the completed job is
+   * retained FOREVER so the same round can never reflect twice — the queue's
+   * default `removeOnComplete: { age: 24h }` would free the id, and a late
+   * watchdog pause on a stale negotiation of that round would then wake the
+   * agent to re-decide a round it already closed out. One retained row per
+   * (signal, round) is the price of exactly-once.
+   *
+   * `removeOnFail` keeps the default 7-day window on purpose: a reflect lost
+   * to a transient model outage should become reachable again, and a genuinely
+   * dead round is better re-run once than never.
    */
   addAllPausedEvent(job: NegotiationRoundReflectJobData): Promise<Job<PersonalAgentEvent>> {
     return this.queue.add('all_paused', { ...job, event: 'all_paused' }, {
       jobId: negotiationRoundReflectJobId(job.intentId, job.round),
+      removeOnComplete: false,
     });
   }
 

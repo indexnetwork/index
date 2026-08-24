@@ -370,30 +370,37 @@ export function validateDecidedActs(
   const judged = new Set<number>();
   const decided: PersonalAgentDecidedAct[] = [];
   let kickedOff = false;
+  let dropped = 0;
+  // One impossible act DROPS, exactly as a malformed chip drops: refusing the
+  // whole round trip over it would discard the client's real requests too, and
+  // the retry sees an identical prompt with no feedback, so it usually makes
+  // the same mistake twice and the turn dies. Only a list with nothing valid
+  // left in it is worth re-deciding.
+  const drop = (): void => { dropped += 1; };
   for (const act of parsed.data.acts) {
     switch (act.act) {
       case "message_user":
       case "ask": {
         // On a client-message turn the reply is the dedicated stage's — an
         // acts-stage message would race it and double-speak. Structural, not
-        // judgment: rejected so the retry re-decides without it.
-        if (context.event === "user_message") return null;
+        // judgment: dropped, and the reply stage says whatever it wanted to say.
+        if (context.event === "user_message") { drop(); break; }
         const text = act.text?.trim();
-        if (!text || !isSafeAgentMessageProse(text)) return null;
+        if (!text || !isSafeAgentMessageProse(text)) { drop(); break; }
         const options = normalizeMessageOptions(act.options);
         decided.push({ tool: act.act, text, ...(options ? { options } : {}) });
         break;
       }
       case "kickoff": {
-        if (kickedOff) return null;
+        if (kickedOff) { drop(); break; }
         kickedOff = true;
         decided.push({ tool: "kickoff", reasoning: act.reasoning?.trim() || "Reaching out to this signal's matches." });
         break;
       }
       case "promote":
       case "reject": {
-        if (!act.negotiation || act.negotiation > context.paused.length) return null;
-        if (judged.has(act.negotiation)) return null;
+        if (!act.negotiation || act.negotiation > context.paused.length) { drop(); break; }
+        if (judged.has(act.negotiation)) { drop(); break; }
         judged.add(act.negotiation);
         decided.push({
           tool: act.act,
@@ -406,8 +413,8 @@ export function validateDecidedActs(
         // A verdict exists only as the client's explicit word — an event with
         // no client message cannot carry one. Whether the word WAS explicit
         // is the prompt's law; this refuses only the structurally impossible.
-        if (context.event !== "user_message") return null;
-        if (!act.opportunity || act.opportunity > context.matches.length) return null;
+        if (context.event !== "user_message") { drop(); break; }
+        if (!act.opportunity || act.opportunity > context.matches.length) { drop(); break; }
         decided.push({
           tool: "accept_opportunity",
           opportunityId: context.matches[act.opportunity - 1]!.opportunityId,
@@ -417,16 +424,24 @@ export function validateDecidedActs(
       }
       case "note_dossier": {
         const text = act.text?.trim();
-        if (!text) return null;
+        if (!text) { drop(); break; }
         decided.push({ tool: "note_dossier", text });
         break;
       }
       case "retire_dossier": {
-        if (!act.entry || act.entry > context.dossier.length) return null;
+        if (!act.entry || act.entry > context.dossier.length) { drop(); break; }
         decided.push({ tool: "retire_dossier", entryId: context.dossier[act.entry - 1]!.id });
         break;
       }
     }
+  }
+
+  // Nothing survived a list that asked for something: re-decide rather than
+  // execute an empty turn the model never intended. A model that genuinely
+  // decided nothing returns no acts at all, and that IS a valid answer.
+  if (decided.length === 0 && parsed.data.acts.length > 0) return null;
+  if (dropped > 0) {
+    logger.warn("Personal-agent acts partially dropped", { event: context.event, dropped, kept: decided.length });
   }
 
   // Questions block acting. Ordering in code, not a prompt rule: an answer to
