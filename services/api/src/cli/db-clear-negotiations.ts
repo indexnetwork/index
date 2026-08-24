@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
  * Dev-only wipe of all negotiation + opportunity product data for every user.
- * Keeps intents, users, chat conversations, HyDE, and profile data.
+ * Also clears discovery-progress, pool/intent questions, intent-agent acts,
+ * dossiers, orphan orchestrator conversations, and any conversation that
+ * has an agent participant (H2A / A2A chat shells).
+ * Keeps intents, users, HyDE, and profile data.
  *
  * Usage:
  *   bun run db:clear-negotiations --confirm
@@ -42,6 +45,23 @@ async function readCounts(): Promise<Counts> {
     UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
     UNION ALL SELECT 'connect_links', count(*)::text FROM connect_links
     UNION ALL SELECT 'agents_with_neg_pickup', count(*)::text FROM agents WHERE last_negotiation_pickup_at IS NOT NULL
+    UNION ALL SELECT 'intent_discovery_progress', count(*)::text FROM intent_discovery_progress
+    UNION ALL SELECT 'questions_pool_discovery', count(*)::text FROM questions WHERE detection->>'mode' = 'pool_discovery'
+    UNION ALL SELECT 'questions_intent', count(*)::text FROM questions WHERE detection->>'mode' = 'intent'
+    UNION ALL SELECT 'questions_nego_opp', count(*)::text FROM questions
+      WHERE detection->>'mode' IN ('negotiation', 'negotiation_inflight')
+         OR detection->'negotiation' IS NOT NULL
+         OR detection->>'sourceType' = 'opportunity'
+    UNION ALL SELECT 'orchestrator_orphan_convs', count(*)::text FROM conversations c
+      WHERE c.persona = 'orchestrator'
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.conversation_id = c.id)
+    UNION ALL SELECT 'agent_participant_convs', count(*)::text FROM conversations c
+      WHERE EXISTS (
+        SELECT 1 FROM conversation_participants p
+        WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
+      )
+    UNION ALL SELECT 'intent_agent_acts', count(*)::text FROM intent_agent_acts
+    UNION ALL SELECT 'intent_dossier', count(*)::text FROM intent_dossier
   `);
   const counts: Counts = {};
   for (const row of rows) {
@@ -61,15 +81,34 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
     await tx.execute(sql`
       DELETE FROM tasks WHERE metadata->>'type' = 'negotiation'
     `);
+    // Orphan orchestrator DMs left after prior task-only deletes
+    await tx.execute(sql`
+      DELETE FROM conversations c
+      WHERE c.persona = 'orchestrator'
+        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.conversation_id = c.id)
+    `);
+    // Any conversation with an agent participant (H2A personal + leftover A2A)
+    await tx.execute(sql`
+      DELETE FROM conversations c
+      WHERE EXISTS (
+        SELECT 1 FROM conversation_participants p
+        WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
+      )
+    `);
     await tx.execute(sql`DELETE FROM opportunity_outcome_events`);
     await tx.execute(sql`DELETE FROM opportunity_discovery_runs`);
     await tx.execute(sql`DELETE FROM opportunity_deliveries`);
     await tx.execute(sql`DELETE FROM connect_links`);
     await tx.execute(sql`DELETE FROM opportunities`);
     await tx.execute(sql`DELETE FROM negotiator_memories`);
+    await tx.execute(sql`DELETE FROM intent_discovery_progress`);
+    await tx.execute(sql`DELETE FROM intent_agent_acts`);
+    await tx.execute(sql`DELETE FROM intent_dossier`);
     await tx.execute(sql`
       DELETE FROM questions
-      WHERE detection->>'mode' IN ('negotiation', 'negotiation_inflight')
+      WHERE detection->>'mode' IN (
+            'negotiation', 'negotiation_inflight', 'pool_discovery', 'intent'
+          )
          OR detection->'negotiation' IS NOT NULL
          OR detection->>'sourceType' = 'opportunity'
     `);
