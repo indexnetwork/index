@@ -320,8 +320,8 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
    */
   async seatBrief(input: PersonalAgentSeatBriefInput): Promise<string> {
     const known = [
-      input.signalText ? `YOUR CLIENT'S SIGNAL:\n${truncate(input.signalText, 800)}` : "YOUR CLIENT'S SIGNAL: not established — do not guess at it.",
-      input.matchReasoning ? `WHY THIS MATCH WAS MADE:\n${truncate(input.matchReasoning, MAX_TEXT_CHARS)}` : "WHY THIS MATCH WAS MADE: not recorded.",
+      `YOUR CLIENT'S ACTUAL INTENT:\n${input.intent.payload}`,
+      `NEGOTIATION CONTEXT:\nThis table is ${input.negotiation.state}; ${input.negotiation.metadata.initiatorUserId === input.intent.userId ? "your seat opened it" : "the counterparty opened it"}.`,
       `WHAT HAS BEEN SAID SO FAR:\n${renderThread(input.thread)}`,
     ].join("\n\n");
     const parsed = ProseSchema.safeParse(await this.callProseModel("personal_agent_seat_brief", [
@@ -336,15 +336,16 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
   }
 
   async negotiationTurn(input: PersonalAgentNegotiationTurnInput): Promise<NegotiationAuthoredTurn> {
+    const context = `YOUR CLIENT'S ACTUAL INTENT:\n${input.intent.payload}\n\nNEGOTIATION CONTEXT:\nThis table is ${input.negotiation.state}; ${input.negotiation.metadata.initiatorUserId === input.intent.userId ? "your seat opened it" : "the counterparty opened it"}.\n\nBRIEF (A COMPACT DERIVED STANCE):\n${input.brief}\n\nTHREAD SO FAR:\n${renderThread(input.thread)}`;
     if (input.isOpening) {
       return NegotiationOpeningTurnSchema.parse(await this.callOpeningTurnModel([
         { role: "system", content: PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT },
-        { role: "user", content: `BRIEF:\n${input.brief}\n\nWrite your opening outreach.` },
+        { role: "user", content: `${context}\n\nWrite your opening outreach.` },
       ]));
     }
     return NegotiationAuthoredTurnSchema.parse(await this.callTurnModel([
       { role: "system", content: PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT },
-      { role: "user", content: `BRIEF:\n${input.brief}\n\nTHREAD SO FAR:\n${renderThread(input.thread)}\n\nChoose your move.` },
+      { role: "user", content: `${context}\n\nChoose your move.` },
     ]));
   }
 

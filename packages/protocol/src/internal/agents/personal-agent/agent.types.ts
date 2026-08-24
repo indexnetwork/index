@@ -22,7 +22,8 @@
  */
 import type { NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
-import type { NegotiationGraphDatabase } from "../../../platform/database/negotiation.js";
+import type { NegotiationGraphDatabase, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
+import type { IntentRecord } from "../../../platform/database/entities.js";
 import type { NegotiationRoundReflectEnqueueFn } from "../../negotiations/negotiation.round-reflect.js";
 
 // ─── Invoke contract ─────────────────────────────────────────────────────────
@@ -270,7 +271,7 @@ export interface PersonalAgentJudgment {
    * inheriting the initiator's.
    */
   seatBrief(input: PersonalAgentSeatBriefInput): Promise<string>;
-  /** One negotiator turn: brief + thread → exactly one verb. */
+  /** One negotiator turn: own intent, task context, brief + thread → exactly one verb. */
   negotiationTurn(input: PersonalAgentNegotiationTurnInput): Promise<NegotiationAuthoredTurn>;
 }
 
@@ -282,10 +283,10 @@ export interface PersonalAgentBriefInput {
 }
 
 export interface PersonalAgentSeatBriefInput {
-  /** This seat's own signal, when it can be established beyond doubt. */
-  signalText: string | null;
-  /** Why the match was made, as discovery recorded it. */
-  matchReasoning: string | null;
+  /** The resolved intent owned by this seat; never the counterparty's. */
+  intent: IntentRecord;
+  /** The negotiation this brief prepares the seat for. */
+  negotiation: NegotiationTaskRow;
   /** What has been said at this table so far. */
   thread: PersonalAgentThreadEntry[];
 }
@@ -296,7 +297,11 @@ export interface PersonalAgentThreadEntry {
 }
 
 export interface PersonalAgentNegotiationTurnInput {
-  /** This side's brief — the only thing from the DM that reaches the thread. */
+  /** The resolved intent owned by the current seat; never the counterparty's. */
+  intent: IntentRecord;
+  /** The current negotiation task context, containing no other seat's brief. */
+  negotiation: NegotiationTaskRow;
+  /** This side's compact, derived negotiating stance. */
   brief: string;
   thread: PersonalAgentThreadEntry[];
   /** True on the negotiation's very first turn — must answer `outreach`. */
