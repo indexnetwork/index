@@ -78,6 +78,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/9db20a5fbe", () => import("@/app/dataroom/page")),
       },
       {
+        path: "/9db20a5fbe/overview",
+        lazy: lazyRoute("/9db20a5fbe/overview", () => import("@/app/dataroom-overview/page")),
+      },
+      {
         path: "/9db20a5fbe/roadmap",
         lazy: lazyRoute("/9db20a5fbe/roadmap", () => import("@/app/roadmap/page")),
       },

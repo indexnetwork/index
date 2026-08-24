@@ -1,0 +1,20 @@
+/* The narrative carries its own layout in inline styles, exactly as authored.
+   This sheet only supplies the base the bundler's <helmet> block provided. */
+.dro{
+  --ink:#111; --muted:#555;
+}
+.dro *{margin:0;padding:0;box-sizing:border-box;}
+.dro{
+  -webkit-text-size-adjust:100%;min-height:100vh;background:#fff;color:var(--ink);
+  font-family:'Public Sans','Inter',-apple-system,'Segoe UI',sans-serif;
+}
+.dro .doc{max-width:720px;margin:0 auto;padding:72px 28px 64px;}
+
+.dro a{color:var(--ink);text-decoration:underline;text-underline-offset:2px;}
+.dro a:hover{color:var(--muted);}
+
+.dro table{border-collapse:collapse;}
+.dro img,.dro svg{max-width:100%;}
+
+/* Wide blocks scroll inside themselves rather than the page. */
+.dro .doc > div{max-width:100%;}
