@@ -326,6 +326,20 @@ export class ChatSessionService {
   }
 
   /**
+   * The id of the signal's one canonical DM, straight from the
+   * ('personal-intent', intentId) registry row — the authority every guard
+   * that asks "is this session THE DM?" compares against, in one indexed
+   * select with no session rehydration.
+   *
+   * @param userId - The client user
+   * @param intentId - The pinned intent
+   * @returns The canonical conversation id, or null when no DM exists
+   */
+  async findNegotiatorIntentSessionId(userId: string, intentId: string): Promise<string | null> {
+    return this.db.getPersonalIntentConversationId(userId, intentId.trim());
+  }
+
+  /**
    * True when the error (or any error in its `cause` chain) is a Postgres
    * unique violation. Drizzle wraps driver errors in `DrizzleQueryError`
    * with the pg error on `cause`, so checking only the top level misses the
@@ -599,10 +613,14 @@ export class ChatSessionService {
    * (mcp.controller toolDeps) still registers them.
    *
    * @param agent - Identity from the user's `type='personal'` agent row
+   * @param flow - Surface markers; `onboarding` selects the restricted fragment
    * @returns A PersonalAgent sibling factory
    */
-  getPersonalAgentGraphFactory(agent?: { name?: string | null } | null): ChatGraphFactory {
-    return this.factory.withPersona(createPersonalAgentPersona(personaIdentity(agent)));
+  getPersonalAgentGraphFactory(
+    agent?: { name?: string | null } | null,
+    flow: { onboarding?: boolean } = {},
+  ): ChatGraphFactory {
+    return this.factory.withPersona(createPersonalAgentPersona(personaIdentity(agent), flow));
   }
 
   /**

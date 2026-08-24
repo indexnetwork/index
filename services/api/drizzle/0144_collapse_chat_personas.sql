@@ -17,6 +17,14 @@ UPDATE "chat_session_scopes" s SET "scope_type" = 'personal-intent'
         AND t."scope_type" = 'personal-intent'
         AND t."scope_id" = s."scope_id"
     );--> statement-breakpoint
--- Collision losers: the conversation stays readable by id; only its registry
--- claim on the intent is dropped.
+-- Collision losers (a signal that already had a DM): archive the old pinned
+-- chat — hidden from the owner's listings and, with no registry claim, held
+-- read-only by the canonical-DM guard. Still readable by id.
+UPDATE "conversation_participants" cp SET "hidden_at" = now()
+  FROM "chat_session_scopes" s
+  WHERE s."scope_type" = 'signal-intent'
+    AND cp."conversation_id" = s."conversation_id"
+    AND cp."participant_id" = s."user_id"
+    AND cp."participant_type" = 'user'
+    AND cp."hidden_at" IS NULL;--> statement-breakpoint
 DELETE FROM "chat_session_scopes" WHERE "scope_type" = 'signal-intent';

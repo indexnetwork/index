@@ -6,7 +6,7 @@ import { error, resolveChatContext, success } from "../shared/agent/tool.helpers
 import type { SystemDatabase, UserDatabase } from "../../platform/database.js";
 import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
-import { buildPersonalAgentSystemContent, isOnboardingFlow, type PersonalAgentPromptOptions } from "./personal-agent.prompt.js";
+import { buildPersonalAgentSystemContent, type PersonalAgentPromptOptions } from "./personal-agent.prompt.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PERSONAL AGENT PERSONA
@@ -56,8 +56,8 @@ export const PERSONAL_AGENT_TOOL_NAMES = [
 ] as const;
 
 /**
- * Exact positive allowlist for the onboarding flow (selected by incomplete
- * onboarding session state on an unscoped session, not by a persona id).
+ * Exact positive allowlist for the onboarding flow (selected only by the
+ * host's onboarding-surface marker, not by a persona id or user state).
  *
  * Profile confirmation performs the approved premise decomposition internally,
  * so the flow does not need arbitrary premise writes.
@@ -370,16 +370,17 @@ export function narrowPersonalAgentTools(
 /**
  * Creates the PersonalAgent's context-bound restricted toolset.
  *
- * The allowlist follows the session state: the onboarding flow (an unscoped
- * session with an incomplete onboarding record) gets the onboarding set;
- * every other turn gets the signals-and-profile set. Both pass through the
- * same schema narrowing.
+ * The allowlist follows the host's surface marker: the onboarding stream
+ * surface gets the onboarding set; every other turn gets the
+ * signals-and-profile set. Both pass through the same schema narrowing.
  *
+ * @param onboardingSurface - The host's explicit onboarding-surface marker
  * @param deps - Shared tool dependencies
  * @param preResolvedContext - Optional authoritative resolved context
  * @returns The allowlisted and schema-narrowed PersonalAgent tools
  */
 export async function createPersonalAgentTools(
+  onboardingSurface: boolean,
   deps: ToolContext,
   preResolvedContext?: ResolvedToolContext,
 ): Promise<ChatTools> {
@@ -408,7 +409,7 @@ export async function createPersonalAgentTools(
   const systemDb = deps.systemDb
     ?? deps.createSystemDatabase(deps.database, resolvedContext.userId, allowedNetworkIds, deps.embedder);
   const shared = await createChatTools(deps, resolvedContext);
-  const allowed = (isOnboardingFlow(resolvedContext)
+  const allowed = (onboardingSurface
     ? filterOnboardingTools(shared)
     : filterPersonalAgentTools(shared)) as ChatTools;
 
@@ -423,17 +424,22 @@ export type PersonalAgentPersonaOptions = PersonalAgentPromptOptions;
  *
  * A factory rather than a static singleton: the persona's identity comes from
  * the user's `type='personal'` agent row, so it can only be bound per session.
- * Prompt fragments and toolset composition follow the resolved scope context.
+ * Prompt fragments and toolset composition follow the resolved scope context,
+ * except the restricted onboarding fragment/toolset, which only the host's
+ * explicit onboarding-surface marker selects.
  *
  * @param opts - Identity from the user's `type='personal'` agent row
+ * @param flow - Surface markers; `onboarding` selects the restricted fragment
  */
 export function createPersonalAgentPersona(
   opts: PersonalAgentPersonaOptions = {},
+  flow: { onboarding?: boolean } = {},
 ): ChatPersonaConfig {
+  const onboardingSurface = flow.onboarding === true;
   return {
     id: PERSONAL_AGENT_PERSONA_ID,
-    buildSystemContent: (ctx, iterCtx) => buildPersonalAgentSystemContent(ctx, opts, iterCtx),
-    createTools: (deps, preResolvedContext) => createPersonalAgentTools(deps, preResolvedContext),
+    buildSystemContent: (ctx, iterCtx) => buildPersonalAgentSystemContent(ctx, opts, onboardingSurface, iterCtx),
+    createTools: (deps, preResolvedContext) => createPersonalAgentTools(onboardingSurface, deps, preResolvedContext),
     loopBehaviors: {
       // create_intent can legitimately return proposal cards; retain
       // recovery/stripping of unbacked fenced blocks.

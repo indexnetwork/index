@@ -25,7 +25,6 @@ const mocks = vi.hoisted(() => {
     sendMessage: vi.fn(),
     sendWebMessage: vi.fn(),
     clearChat: vi.fn(),
-    startSignalSession: vi.fn(),
     loadSession: vi.fn().mockResolvedValue(false),
     sessionLoadState: { status: 'idle', targetSessionId: null, error: null } as {
       status: 'idle' | 'loading' | 'ready' | 'error';

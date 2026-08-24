@@ -127,6 +127,22 @@ const logger = log.lib.from('conversation-database');
 const PERSONAL_INTENT_SCOPE_TYPE = 'personal-intent';
 
 /**
+ * The ONE builder for "this conversation is a signal's DM": the user's
+ * ('personal-intent', *) registry rows, as a subquery for the listing and
+ * detail reads that must exclude DMs. User-scoped so it always hits the
+ * (user_id, scope_type, scope_id) unique index.
+ */
+function intentPinnedConversationIds(userId: string) {
+  return db
+    .select({ conversationId: schema.chatSessionScopes.conversationId })
+    .from(schema.chatSessionScopes)
+    .where(and(
+      eq(schema.chatSessionScopes.userId, userId),
+      eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
+    ));
+}
+
+/**
  * The chat-visible text of a stored message: chat writes a single text part,
  * so this is the one place that flattens `parts` back to a string for every
  * chat read.
@@ -3016,20 +3032,9 @@ export class ConversationDatabaseAdapter {
           inArray(schema.conversations.id, chatSessionIds),
           inArray(schema.conversations.persona, personas),
           // Intent-pinned sessions (a signal's DM) are reached through their
-          // signal; the home history list never shows them. Scoped to the
-          // user so the subquery hits the (user_id, scope_type, scope_id)
-          // unique index instead of scanning the registry.
+          // signal; the home history list never shows them.
           ...(opts.excludeIntentPinned
-            ? [notInArray(
-                schema.conversations.id,
-                db
-                  .select({ conversationId: schema.chatSessionScopes.conversationId })
-                  .from(schema.chatSessionScopes)
-                  .where(and(
-                    eq(schema.chatSessionScopes.userId, userId),
-                    eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
-                  )),
-              )]
+            ? [notInArray(schema.conversations.id, intentPinnedConversationIds(userId))]
             : []),
         ),
       )
@@ -3100,18 +3105,9 @@ export class ConversationDatabaseAdapter {
           inArray(schema.conversations.id, chatSessionIds),
           eq(schema.conversations.persona, persona),
           // A signal's DM belongs to its signal surface, never to a generic
-          // session listing. User-scoped so the subquery hits the unique index.
+          // session listing.
           ...(opts.excludeIntentPinned
-            ? [notInArray(
-                schema.conversations.id,
-                db
-                  .select({ conversationId: schema.chatSessionScopes.conversationId })
-                  .from(schema.chatSessionScopes)
-                  .where(and(
-                    eq(schema.chatSessionScopes.userId, userId),
-                    eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
-                  )),
-              )]
+            ? [notInArray(schema.conversations.id, intentPinnedConversationIds(userId))]
             : []),
         ),
       )
@@ -3206,23 +3202,8 @@ export class ConversationDatabaseAdapter {
 
     if (!agentParticipant) return null;
 
-    // A signal's DM is read through its signal surface; generic detail
-    // readers must not expose its transcript.
-    if (opts.excludeIntentPinned) {
-      const [pinned] = await db
-        .select({ conversationId: schema.chatSessionScopes.conversationId })
-        .from(schema.chatSessionScopes)
-        .where(
-          and(
-            eq(schema.chatSessionScopes.conversationId, sessionId),
-            eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
-          ),
-        )
-        .limit(1);
-      if (pinned) return null;
-    }
-
-    // Fetch conversation row
+    // Fetch conversation row. A signal's DM is read through its signal
+    // surface; generic detail readers must not expose its transcript.
     const [conv] = await db
       .select({
         id: schema.conversations.id,
@@ -3234,6 +3215,9 @@ export class ConversationDatabaseAdapter {
       .where(and(
         eq(schema.conversations.id, sessionId),
         eq(schema.conversations.persona, persona),
+        ...(opts.excludeIntentPinned
+          ? [notInArray(schema.conversations.id, intentPinnedConversationIds(userId))]
+          : []),
       ))
       .limit(1);
 
@@ -3274,6 +3258,28 @@ export class ConversationDatabaseAdapter {
       createdAt: conv.createdAt,
       messages,
     };
+  }
+
+  /**
+   * The canonical DM's conversation id for (user, intent) — one indexed
+   * registry select, no session rehydration. The guards that ask "is this
+   * session THE DM?" compare against this.
+   */
+  async getPersonalIntentConversationId(userId: string, intentId: string): Promise<string | null> {
+    const normalizedIntentId = intentId.trim();
+    if (!normalizedIntentId) return null;
+    const [row] = await db
+      .select({ conversationId: schema.chatSessionScopes.conversationId })
+      .from(schema.chatSessionScopes)
+      .where(
+        and(
+          eq(schema.chatSessionScopes.userId, userId),
+          eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
+          eq(schema.chatSessionScopes.scopeId, normalizedIntentId),
+        ),
+      )
+      .limit(1);
+    return row?.conversationId ?? null;
   }
 
   /**

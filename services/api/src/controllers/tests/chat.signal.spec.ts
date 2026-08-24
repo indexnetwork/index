@@ -150,13 +150,14 @@ describe('PersonalAgent web chat routing', () => {
     await stream({ message: 'Draft a signal' }, 'web');
     expect(getFactorySpy).toHaveBeenLastCalledWith(
       expect.objectContaining({ name: "Signal User's Agent" }),
+      { onboarding: false },
     );
 
     // A missing row is not fatal here: the prompt falls back to a generic
     // self-description rather than failing the turn or naming a product.
     agentSpy.mockResolvedValue(null as never);
     await stream({ message: 'Draft another' }, 'web');
-    expect(getFactorySpy).toHaveBeenLastCalledWith(null);
+    expect(getFactorySpy).toHaveBeenLastCalledWith(null, { onboarding: false });
   });
 
   test('a persisted session is continued when the followup omits persona', async () => {
@@ -307,7 +308,7 @@ describe('PersonalAgent web chat routing', () => {
       'personal',
     );
     expect(getFactorySpy).toHaveBeenCalledTimes(1);
-    expect(getFactorySpy).toHaveBeenLastCalledWith(null);
+    expect(getFactorySpy).toHaveBeenLastCalledWith(null, { onboarding: true });
 
     // The restricted surface cannot be scoped or client-prefilled.
     const scoped = await controller.onboardingMessageStream(

@@ -206,7 +206,6 @@ vi.mock('@/contexts/AIChatContext', () => {
     sendMessage: vi.fn().mockResolvedValue(undefined),
     sendWebMessage: vi.fn().mockResolvedValue(undefined),
     clearChat: vi.fn(),
-    startSignalSession: vi.fn(),
     loadSession: vi.fn().mockResolvedValue(false),
     loadPreviousMessages: vi.fn().mockResolvedValue(undefined),
     hasPreviousSession: false,

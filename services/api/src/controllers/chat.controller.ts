@@ -180,10 +180,18 @@ export class ChatController {
     // Sessions with no persona column value predate personafication: they are
     // retired-orchestrator rows, readable but never continuable.
     const storedPersona = session.persona ?? RETIRED_ORCHESTRATOR_PERSONA_ID;
-    // API-key clients only ever hold a signal's DM; every other session is
-    // invisible to them, exactly as when the persona id encoded the split.
-    if (surface === 'agent' && sessionScope(session)?.scopeType !== 'intent') {
-      return Response.json({ error: "Session not found" }, { status: 404 });
+    // API-key clients only ever hold a signal's DM; every other session —
+    // pre-collapse pinned chats that lost the DM fold-in included — is
+    // invisible to them. The canonical ('personal-intent', intentId) registry
+    // row is the authority, never the metadata scope echo.
+    if (surface === 'agent') {
+      const scope = sessionScope(session);
+      const canonicalId = scope?.scopeType === 'intent'
+        ? await chatSessionService.findNegotiatorIntentSessionId(user.id, scope.scopeId)
+        : null;
+      if (canonicalId !== sessionId) {
+        return Response.json({ error: "Session not found" }, { status: 404 });
+      }
     }
 
     const policy = chatSessionService.resolveStreamPersonaPolicy({
@@ -425,12 +433,18 @@ export class ChatController {
       if (effectiveScope?.scopeType === 'intent') {
         // Only the signal's one canonical DM can drive intent-scoped turns.
         // Anything else with an intent scope (e.g. a pre-collapse pinned chat
-        // that lost the fold-in to the DM) stays readable but never streams —
-        // an agent turn here would deliver into the canonical DM instead.
-        const canonical = await chatSessionService.findNegotiatorIntentSession(user.id, effectiveScope.scopeId);
-        if (canonical?.id !== currentSessionId) {
+        // that lost the fold-in to the DM — archived by migration, this guard
+        // is the backstop) stays readable but never streams: an agent turn
+        // here would deliver into the canonical DM instead. One registry
+        // select; same typed nudge the other read-only rows answer with.
+        const canonicalId = await chatSessionService.findNegotiatorIntentSessionId(user.id, effectiveScope.scopeId);
+        if (canonicalId !== currentSessionId) {
           return Response.json(
-            { error: "This conversation is read-only. Open the signal to continue with your agent." },
+            {
+              error: "This conversation is read-only. Open the signal to continue with your agent.",
+              code: 'WEB_SIGNAL_SESSION_REQUIRED',
+              action: { type: 'start_signal_session', href: '/' },
+            },
             { status: 409 },
           );
         }
@@ -455,7 +469,7 @@ export class ChatController {
       : await resolveNegotiatorAgent(user.id).catch(() => null);
     const factory = agentOwnsTurn
       ? null
-      : chatSessionService.getPersonalAgentGraphFactory(identityAgent);
+      : chatSessionService.getPersonalAgentGraphFactory(identityAgent, { onboarding: surface === 'onboarding' });
     const useCheckpointer = body.useCheckpointer ?? true;
     const runId = crypto.randomUUID();
     const streamAbortController = new AbortController();

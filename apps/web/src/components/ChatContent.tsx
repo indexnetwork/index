@@ -64,7 +64,6 @@ export default function ChatContent({
     stopStream,
     sendWebMessage,
     clearChat,
-    startSignalSession,
     loadSession,
     loadPreviousMessages,
     hasPreviousSession,
@@ -727,8 +726,7 @@ export default function ChatContent({
           type="button"
           className="mt-3 bg-[#041729] text-white hover:bg-[#0a2d4a]"
           onClick={() => {
-            if (startsSignal) startSignalSession();
-            else clearChat();
+            clearChat();
             setChatScope(null);
             setSelectedNetworkIds([]);
             navigate("/");

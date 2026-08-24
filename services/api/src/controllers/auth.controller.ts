@@ -82,9 +82,13 @@ export class AuthController {
         ...userFields,
         notificationPreferences,
       },
-      // Ships on unconditionally. The field stays so the web app keeps
-      // working, and can be removed once the web side stops reading it.
       features: {
+        // Legacy shipped-mac-client compat: older mac builds hide the agent
+        // chat pane unless this bit is true. Hardcoded — nothing gates the
+        // surface any more; delete when a gate-free mac build ships.
+        negotiatorChat: true,
+        // Ships on unconditionally. The field stays so the web app keeps
+        // working, and can be removed once the web side stops reading it.
         fastSignalIntake: isFastSignalIntakeEnabled(),
       },
     });

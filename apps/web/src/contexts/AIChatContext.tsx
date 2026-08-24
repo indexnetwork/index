@@ -219,8 +219,6 @@ interface AIChatContextType {
   ) => Promise<void>;
   /** Clear messages and session state. */
   clearChat: (options?: { abortStream?: boolean }) => void;
-  /** Clear the current chat so the next send starts a fresh session with the agent. */
-  startSignalSession: () => void;
   /** Load a session, returning false for failed or superseded requests. */
   loadSession: (sessionId: string) => Promise<boolean>;
   /** Load exactly one earlier durable timeline session into display history. */
@@ -1268,7 +1266,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const clearChat = useCallback((options?: {
     abortStream?: boolean;
-    preserveForcedPersona?: boolean;
   }) => {
     const abortStream = options?.abortStream !== false;
     const active = activeSendRef.current;
@@ -1301,10 +1298,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setSessionScope(null); // Clear session-bound scope so new chat can use UI selection
     setSessionNetworkId(null); // Clear session-bound network so new chat can use UI selection
   }, [invalidateActiveSend]);
-
-  const startSignalSession = useCallback(() => {
-    clearChat();
-  }, [clearChat]);
 
   const loadSession = useCallback(async (id: string): Promise<boolean> => {
     invalidateActiveSend("load");
@@ -1552,7 +1545,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         sendMessage,
         sendWebMessage,
         clearChat,
-        startSignalSession,
         loadSession,
         loadPreviousMessages,
         hasPreviousSession,

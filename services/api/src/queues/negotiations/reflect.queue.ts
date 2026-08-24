@@ -63,6 +63,7 @@ export interface ReflectQueueDeps {
   };
   chat?: {
     getSession: (sessionId: string, userId: string) => Promise<{ persona: string; scopeType: string | null; scopeId: string | null } | null>;
+    findNegotiatorIntentSessionId: (userId: string, intentId: string) => Promise<string | null>;
     getSessionMessages: (sessionId: string, limit?: number) => Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>>;
   };
   reflector?: Pick<NegotiationReflector, 'reflectNegotiation' | 'reflectChat'>;
@@ -262,13 +263,17 @@ export class NegotiationReflectQueue {
 
     const chat = this.deps?.chat ?? chatSessionService;
 
-    // Ownership + scope guard: only the client's own signal DM (an
-    // intent-scoped session) is reflected — global chats teach the
-    // negotiator nothing. Re-keyed from the retired negotiator persona id to
-    // the same scope predicate that routes the DM's turns.
+    // Ownership + scope guard: only the client's own signal DM is reflected —
+    // global chats teach the negotiator nothing. Re-keyed from the retired
+    // negotiator persona id to the canonical ('personal-intent', intentId)
+    // registry row, the same authority that routes the DM's turns; a
+    // pre-collapse pinned chat that lost the DM fold-in never distils.
     const session = await chat.getSession(data.sessionId, data.userId);
-    if (!session || session.scopeType !== 'intent' || !session.scopeId) {
-      this.logger.info('Not an intent-scoped DM session; skipping chat reflection', {
+    const canonicalId = session?.scopeType === 'intent' && session.scopeId
+      ? await chat.findNegotiatorIntentSessionId(data.userId, session.scopeId)
+      : null;
+    if (!session || canonicalId !== data.sessionId) {
+      this.logger.info('Not a canonical DM session; skipping chat reflection', {
         sessionId: data.sessionId,
         persona: session?.persona ?? 'none',
       });

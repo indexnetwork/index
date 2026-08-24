@@ -1,5 +1,5 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
-import { focusedIntentId, focusedNetworkId } from "../shared/agent/tool.scope.js";
+import { focusedIntentId } from "../shared/agent/tool.scope.js";
 import { buildAgentSelfIntroduction, type AgentIdentityOptions } from "./agent-identity.prompt.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
 
@@ -7,14 +7,14 @@ import type { IterationContext } from "./chat.prompt.modules.js";
 // PERSONAL AGENT SYSTEM PROMPT
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// One persona — PersonalAgent — whose prompt is composed from fragments keyed
-// on the resolved scope context:
+// One persona — PersonalAgent — whose prompt is composed from fragments:
 // - the signals-and-profile fragment serves every session, branching into its
-//   pinned-signal variant when the context carries an intent focus;
-// - the onboarding fragment is not a scope: it is selected by durable session
-//   state (the user's onboarding record is incomplete) and only for a truly
-//   unscoped session. Onboarding is a flow the one persona passes through,
-//   not a persona.
+//   pinned-signal variant when the resolved context carries an intent focus;
+// - the onboarding fragment is not a scope and not durable user state: it is
+//   selected ONLY by the host's explicit onboarding-surface marker (the
+//   dedicated onboarding stream route). A generic chat never regresses into
+//   the restricted fragment, whatever the user's onboarding record says.
+//   Onboarding is a flow the one persona passes through, not a persona.
 
 /** Identity injected into the prompt, from the user's `type='personal'` agent row. */
 export type PersonalAgentPromptOptions = AgentIdentityOptions;
@@ -180,7 +180,7 @@ ${membershipContext}
 Only the identity, profile, and current membership context above are preloaded. Ground every claim about signals, placements, memberships, or premises in a tool result from this conversation. When calling a tool, briefly tell the user what you are checking or changing, then perform the call.${scopedIntentId ? "" : buildSignalIntakeGuidance(getSignalIntakeStage(iterCtx))}`;
 }
 
-// ─── Onboarding fragment (selected by session state, unscoped sessions only) ─
+// ─── Onboarding fragment (selected by the host's onboarding-surface marker) ──
 
 /** Stable hidden kickoff for the restricted web profile phase. */
 export const ONBOARDING_PROFILE_KICKOFF = "onboarding-profile-kickoff";
@@ -199,8 +199,9 @@ Do not start signal-intake questions during this profile phase. Do not call crea
 }
 
 /**
- * Builds the restricted onboarding-flow system prompt — selected by session
- * state (the user's onboarding record is incomplete), never by a persona id.
+ * Builds the restricted onboarding-flow system prompt — selected only by the
+ * host's onboarding-surface marker, never by a persona id or the durable
+ * onboarding record.
  *
  * @param ctx - Resolved user and scope context
  * @param opts - Identity from the user's `type='personal'` agent row
@@ -268,32 +269,24 @@ ${phaseGuidance}`;
 // ─── Composition ─────────────────────────────────────────────────────────────
 
 /**
- * True when the onboarding fragment drives this turn: only while the user's
- * durable onboarding record is incomplete, and only for a truly unscoped
- * session. A focused session never regresses into onboarding — a pinned DM
- * speaks as the signal's agent, and a network-scoped chat keeps the full
- * signals fragment (onboarding could never be scoped before the collapse
- * either).
- */
-export function isOnboardingFlow(ctx: ResolvedToolContext): boolean {
-  return ctx.isOnboarding && !focusedIntentId(ctx) && !focusedNetworkId(ctx);
-}
-
-/**
  * Builds the PersonalAgent system prompt for one iteration by composing the
- * fragments above.
+ * fragments above. The restricted onboarding fragment applies ONLY when the
+ * host marked the session as the onboarding surface — an ordinary chat with
+ * an incomplete onboarding record still gets the full signals fragment.
  *
  * @param ctx - Resolved user and scope context
  * @param opts - Identity from the user's `type='personal'` agent row
+ * @param onboardingSurface - The host's explicit onboarding-surface marker
  * @param iterCtx - Agent-loop iteration context
  * @returns The complete system prompt
  */
 export function buildPersonalAgentSystemContent(
   ctx: ResolvedToolContext,
   opts: PersonalAgentPromptOptions,
+  onboardingSurface: boolean,
   iterCtx?: IterationContext,
 ): string {
-  return isOnboardingFlow(ctx)
+  return onboardingSurface
     ? buildOnboardingSystemContent(ctx, opts, iterCtx)
     : buildSignalScopeSystemContent(ctx, opts, iterCtx);
 }

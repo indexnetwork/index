@@ -143,14 +143,16 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
 
   // ── Feature surface on the session bootstrap ───────────────────────────
 
-  test("/auth/me no longer ships a negotiatorChat flag — the surface is unconditional", async () => {
+  test("/auth/me keeps a hardcoded negotiatorChat bit for shipped mac clients", async () => {
+    // Nothing gates the surface any more; the literal survives only because
+    // older mac builds hide the agent pane without it.
     const authController = new AuthController();
     const res = await authController.me(new Request("http://localhost/auth/me"), mockUser());
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
       features: Record<string, unknown>;
     };
-    expect(data.features.negotiatorChat).toBeUndefined();
+    expect(data.features.negotiatorChat).toBe(true);
   }, 60000);
 
   // ── The intent pin is mandatory ────────────────────────────────────────────

@@ -99,14 +99,14 @@ function Probe() {
   };
   return (
     <div>
-      <button onClick={() => void chat.sendWebMessage('first', undefined, undefined, { persona: 'personal' })}>
+      <button onClick={() => void chat.sendWebMessage('first')}>
         web first
       </button>
       <button onClick={() => void chat.sendWebMessage('second')}>web second</button>
       <button onClick={() => void chat.sendMessage('compatibility')}>compatibility</button>
       <button onClick={() => chat.clearChat()}>clear</button>
       <button onClick={() => chat.clearChat({ abortStream: false })}>clear detached</button>
-      <button onClick={() => chat.startSignalSession()}>start signal</button>
+      <button onClick={() => chat.clearChat()}>start signal</button>
       <button onClick={() => void chat.loadSession('session-a')}>load a</button>
       <button onClick={() => void chat.loadSession('session-b')}>load b</button>
       <button onClick={() => void chat.loadSession('old-session')}>load old</button>
