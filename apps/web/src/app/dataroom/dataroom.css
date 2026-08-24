@@ -1,5 +1,5 @@
 .drm{
-  --paper:#FFFFFF; --ink:#1A1C20; --muted:#6E727A;
+  --paper:#FFFFFF; --ink:#1A1C20; --muted:#6E727A; --hairline:#E6E6E2;
 }
 .drm *{margin:0;padding:0;box-sizing:border-box;}
 .drm{
@@ -20,3 +20,6 @@
 
 .drm a{color:var(--ink);text-decoration:underline;text-underline-offset:3px;}
 .drm a:hover{color:var(--muted);}
+
+.drm .foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:44px;padding-top:16px;border-top:1px solid var(--hairline);color:var(--muted);}
+.drm .foot .dot{color:var(--hairline);}

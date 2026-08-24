@@ -30,3 +30,8 @@
   .rdm .doc{padding:48px 22px 56px;}
   .rdm .meta{flex-direction:column;align-items:flex-start;gap:4px;}
 }
+
+.rdm .foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:56px;padding-top:20px;border-top:1px solid var(--hairline);font-size:12.5px;color:var(--muted);}
+.rdm .foot a{color:var(--muted);text-decoration:none;}
+.rdm .foot a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:2px;}
+.rdm .foot .dot{color:var(--hairline);}
