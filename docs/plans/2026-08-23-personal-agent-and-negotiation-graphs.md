@@ -284,3 +284,114 @@ One branch per problem, each a worktree and a PR into `dev`:
    re-pointed, dead routes and personas removed.
 
 Each step states its breaks in the PR and bumps the protocol major.
+
+## Decisions
+
+Every solo design call taken while building this plan, with the alternative
+rejected. D1-D14 (the NegotiationGraph rewrite and the persona collapse) live
+in [2026-08-24-overnight-decisions.md](2026-08-24-overnight-decisions.md);
+D15+ below are the AgentGraph step's.
+
+### D15. The negotiation scope AUTHORS a turn; it does not submit one
+Chose: `NegotiationGraphDeps.author` is a `NegotiationTurnAuthor` port that
+returns one authored turn, bound in the host to
+`agentGraph.invoke({ userId, intentId, negotiationId })`. `apply` stays the
+single sink and the graph keeps driving self-play.
+Alternative rejected: the agent submitting its turn through
+`{ negotiationId, turn, byUserId }` — that shape is the EXTERNAL caller's, and
+using it internally makes the invoke re-entrant (apply → turn → agent → apply)
+with unbounded nesting. The design doc's own AgentGraph section says `turn`
+*asks* AgentGraph for our seat.
+
+### D16. The author port takes ids only
+Chose: `{ negotiationId, userId, intentId }`; the agent re-reads the brief and
+the thread itself, costing one extra pair of reads per turn.
+Alternative rejected: passing the already-loaded `{ brief, thread, isOpening }`
+— cheaper, but it puts negotiation payload into the AgentGraph's documented
+`{ userId, intentId, negotiationId }` input and gives the graph two ways to
+know a thread.
+
+### D17. `wait` is deleted; an empty act list is the answer
+Chose: a turn that decides nothing returns no acts. The ledger already records
+what woke the turn.
+Alternative rejected: keeping `wait` as an explicit ledgered non-act — one
+more verb for a state the empty list already expresses.
+
+### D18. "Questions block ACT" is enforced in the validator, for every event
+Chose: any `ask` in a decided act list drops the `kickoff`/`promote`/`reject`
+acts beside it, on user_message turns as well as reflect turns.
+Alternative rejected: leaving it to the prompt — the plan says ordering in
+code, not a prompt rule, and the case it protects (an answer that changes the
+verdict) is exactly the one a model is most likely to get wrong.
+
+### D19. Kickoff runs last in a turn and re-reads the match list
+Chose: every other act executes in the model's order, then kickoff.
+Alternative rejected: strict model order — a promote or reject moves the
+opportunity's status, and a kickoff reading the turn's stale list would
+re-open the match it had just resolved.
+
+### D20. A kickoff that opens nothing leaves the round unstamped
+Chose: no stamp, no reflect enqueue, `opened: 0` on the ledgered act.
+Alternative rejected: stamping zero — a stamped empty round is instantly
+"all paused", so reflect fires, ACT kicks off again, and the loop never ends.
+
+### D21. A negotiation paused with `turn_cap` is not re-kickable
+Chose: kickoff skips a match whose current-round negotiation paused on
+`turn_cap`. Its turn budget is spent, so re-opening it can only re-pause.
+Alternative rejected: no structural bound, trusting IS-A to reject a stalled
+table — a model that keeps re-kicking spends real money forever. This is the
+termination guarantee: every table eventually reaches the cap, kickoff then
+opens nothing, and D20 ends the cycle.
+
+### D22. A pause payload stays scoped to the seat that paused
+Chose: reflect sees the full payload of OUR seat's pauses (the
+`needs_principal` questions ASK merges) and only the reason for the
+counterparty's. The shared thread carries everything else.
+Alternative rejected: exposing every payload of the round — the counterparty's
+`needs_principal` question is for THEIR principal, and their
+`ready_for_verdict` recommendation is their agent's private reasoning about
+our client.
+
+### D23. One match list, widened
+Chose: `readActionableCounterparties` gains a `statuses` argument, and the
+PersonalAgent reads it with `latent`/`draft` included — matches discovery has
+only just persisted are exactly what kickoff reaches out to.
+Alternative rejected: a second reader for the agent — two orderings of the
+same list is the bug that reader exists to prevent.
+
+### D24. Reflect enqueues into the PersonalAgent's own inbox
+Chose: the round-reflect queue is deleted; the trigger adds an `all_paused`
+job to the agent inbox, keyed `reflect:${intentId}:${round}` and deliberately
+retained on completion.
+Alternative rejected: a separate reflect queue (as #1494 shipped it) — two
+workers means a reflect turn can interleave with the principal's own message
+turn on the same signal, and the whole point of the inbox is that they cannot.
+
+### D25. `matches_ready` is keyed on the signal, not the batch
+Chose: one job id per intent, removed on completion, so a burst of discovery
+batches coalesces into one kickoff turn.
+Alternative rejected: one event per persisted batch — N kickoffs, N rounds,
+and reflect firing at the first pause of a round of one.
+
+### D26. The 0145 journal entry is restored
+Chose: re-add the `_journal.json` entry that #1495's migration renumber
+dropped, in this PR, because `drizzle-kit migrate` reads the journal and would
+otherwise skip the persona-collapse migration entirely — and land 0146 on a
+schema that never got it.
+Alternative rejected: leaving it for a separate fix — the two migrations ship
+to the same environment in the same window.
+
+### D27. The `answer_pending_question` host is deleted
+Chose: `lib/question/negotiator-answer.host.ts` and its spec go. Its executor
+was the retired per-answer resume path, and #1495 removed its last caller with
+the negotiator persona tools. Answers are ordinary DM messages now.
+Alternative rejected: re-pointing it at the DM — a second way in for something
+the DM already does.
+
+### D28. One construction site per graph, enforced by need
+Chose: `tool.service` and `mcp.controller` stop building their own negotiation
+graphs; `ToolFactory` no longer falls back to a reflect-less instance. Without
+the host's composition there is simply no negotiation graph in that context.
+Alternative rejected: keeping the fallbacks — a graph with no turn author
+throws on every turn, and one with no reflect enqueue loses the all-paused
+moment for good.

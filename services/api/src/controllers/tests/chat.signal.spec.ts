@@ -279,7 +279,7 @@ describe('PersonalAgent web chat routing', () => {
     expect(response.status).toBe(200);
     expect(agentTurnEvents).toHaveLength(1);
     expect(agentTurnEvents[0]).toMatchObject({
-      kind: 'user_message',
+      event: 'user_message',
       userId: USER.id,
       intentId: 'intent-1',
       sessionId: 'dm-session',

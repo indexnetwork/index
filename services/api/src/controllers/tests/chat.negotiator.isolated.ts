@@ -32,7 +32,7 @@ import type { ChatGraphFactory, ChatPersonaConfig } from "@indexnetwork/protocol
 import db from "../../lib/drizzle/drizzle";
 import { agents, chatSessionScopes, conversationParticipants, conversations, intents } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
-import { INTENT_AGENT_TURN_FAILURE_REPLY } from "../chat.controller";
+import { PERSONAL_AGENT_TURN_FAILURE_REPLY } from "../chat.controller";
 import { publishPersonalAgentReplyChunk } from "../../lib/agent/personal-agent-reply.stream";
 import type { PersonalAgentResult } from "@indexnetwork/protocol";
 import type { PersonalAgentUserMessageEvent } from "../../queues/personal-agent.queue";
@@ -285,7 +285,7 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     expect(capturedStreamInputs.length).toBe(0);
     expect(agentTurnEvents).toHaveLength(1);
     expect(agentTurnEvents[0]).toMatchObject({
-      kind: 'user_message',
+      event: 'user_message',
       userId: testUserId,
       intentId: testIntentId,
       sessionId: pinned.id,
@@ -367,9 +367,9 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     const events = sseEvents(await res.text());
 
     const tokens = events.filter((e) => e.type === 'token').map((e) => e.content);
-    expect(tokens).toEqual([INTENT_AGENT_TURN_FAILURE_REPLY]);
+    expect(tokens).toEqual([PERSONAL_AGENT_TURN_FAILURE_REPLY]);
     const messages = await chatSessionService.getSessionMessages(pinned.id);
-    expect(messages.at(-1)).toMatchObject({ role: 'assistant', content: INTENT_AGENT_TURN_FAILURE_REPLY });
+    expect(messages.at(-1)).toMatchObject({ role: 'assistant', content: PERSONAL_AGENT_TURN_FAILURE_REPLY });
   }, 60000);
 
   // ── Rows that outlived the persona-collapse migration ─────────────────
