@@ -1,5 +1,5 @@
 import type { ResolvedToolContext } from "../shared/agent/tool.factory.js";
-import { focusedIntentId } from "../shared/agent/tool.scope.js";
+import { focusedIntentId, focusedNetworkId } from "../shared/agent/tool.scope.js";
 import { buildAgentSelfIntroduction, type AgentIdentityOptions } from "./agent-identity.prompt.js";
 import type { IterationContext } from "./chat.prompt.modules.js";
 
@@ -7,15 +7,14 @@ import type { IterationContext } from "./chat.prompt.modules.js";
 // PERSONAL AGENT SYSTEM PROMPT
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// One persona — PersonalAgent — whose prompt is composed from scope fragments:
-// - the signals-and-profile fragment serves both the global (no pinned intent)
-//   and intent (pinned signal) scopes, branching on the resolved scope context;
+// One persona — PersonalAgent — whose prompt is composed from fragments keyed
+// on the resolved scope context:
+// - the signals-and-profile fragment serves every session, branching into its
+//   pinned-signal variant when the context carries an intent focus;
 // - the onboarding fragment is not a scope: it is selected by durable session
-//   state (the user's onboarding record is incomplete) in global scope only.
-//   Onboarding is a flow the one persona passes through, not a persona.
-
-/** The scopes the PersonalAgent chat persona can be bound to in this runtime. */
-export type PersonalAgentScope = "global" | "intent";
+//   state (the user's onboarding record is incomplete) and only for a truly
+//   unscoped session. Onboarding is a flow the one persona passes through,
+//   not a persona.
 
 /** Identity injected into the prompt, from the user's `type='personal'` agent row. */
 export type PersonalAgentPromptOptions = AgentIdentityOptions;
@@ -181,7 +180,7 @@ ${membershipContext}
 Only the identity, profile, and current membership context above are preloaded. Ground every claim about signals, placements, memberships, or premises in a tool result from this conversation. When calling a tool, briefly tell the user what you are checking or changing, then perform the call.${scopedIntentId ? "" : buildSignalIntakeGuidance(getSignalIntakeStage(iterCtx))}`;
 }
 
-// ─── Onboarding fragment (selected by session state, global scope only) ──────
+// ─── Onboarding fragment (selected by session state, unscoped sessions only) ─
 
 /** Stable hidden kickoff for the restricted web profile phase. */
 export const ONBOARDING_PROFILE_KICKOFF = "onboarding-profile-kickoff";
@@ -269,32 +268,32 @@ ${phaseGuidance}`;
 // ─── Composition ─────────────────────────────────────────────────────────────
 
 /**
- * True when the onboarding fragment drives this turn: global scope only, and
- * only while the user's durable onboarding record is incomplete. Intent scope
- * always speaks as the signal's agent — a pinned DM never regresses into
- * onboarding.
+ * True when the onboarding fragment drives this turn: only while the user's
+ * durable onboarding record is incomplete, and only for a truly unscoped
+ * session. A focused session never regresses into onboarding — a pinned DM
+ * speaks as the signal's agent, and a network-scoped chat keeps the full
+ * signals fragment (onboarding could never be scoped before the collapse
+ * either).
  */
-export function isOnboardingFlow(ctx: ResolvedToolContext, scope: PersonalAgentScope): boolean {
-  return scope === "global" && ctx.isOnboarding;
+export function isOnboardingFlow(ctx: ResolvedToolContext): boolean {
+  return ctx.isOnboarding && !focusedIntentId(ctx) && !focusedNetworkId(ctx);
 }
 
 /**
  * Builds the PersonalAgent system prompt for one iteration by composing the
- * scope fragments above.
+ * fragments above.
  *
  * @param ctx - Resolved user and scope context
  * @param opts - Identity from the user's `type='personal'` agent row
- * @param scope - The session's derived scope
  * @param iterCtx - Agent-loop iteration context
  * @returns The complete system prompt
  */
 export function buildPersonalAgentSystemContent(
   ctx: ResolvedToolContext,
   opts: PersonalAgentPromptOptions,
-  scope: PersonalAgentScope,
   iterCtx?: IterationContext,
 ): string {
-  return isOnboardingFlow(ctx, scope)
+  return isOnboardingFlow(ctx)
     ? buildOnboardingSystemContent(ctx, opts, iterCtx)
     : buildSignalScopeSystemContent(ctx, opts, iterCtx);
 }

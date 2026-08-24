@@ -10,7 +10,6 @@ import { chatSessionService, RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIP
 import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
-import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { intentAgentQueue } from "../queues/intent-agent.queue";
 import { subscribeIntentAgentReply } from "../lib/intent-agent/intent-agent-reply.stream";
@@ -103,8 +102,6 @@ const streamBodySchema = z.object({
   scopeId: z.string().nullish(),
   /** The recipient user ID for DM-style chats. */
   recipientUserId: z.string().nullish(),
-  /** Explicit persona assertion. One persona exists; anything else is refused. */
-  persona: z.enum(['personal']).nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -458,7 +455,7 @@ export class ChatController {
       : await resolveNegotiatorAgent(user.id).catch(() => null);
     const factory = agentOwnsTurn
       ? null
-      : chatSessionService.getPersonalAgentGraphFactory('global', identityAgent);
+      : chatSessionService.getPersonalAgentGraphFactory(identityAgent);
     const useCheckpointer = body.useCheckpointer ?? true;
     const runId = crypto.randomUUID();
     const streamAbortController = new AbortController();
@@ -921,10 +918,6 @@ export class ChatController {
   @Post("/negotiator/session")
   @UseGuards(RateLimit('write'), AuthGuard)
   async negotiatorSession(req: Request, user: AuthenticatedUser) {
-    if (!isNegotiatorChatEnabled()) {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
-
     const invalidBody = Response.json(
       { error: "Invalid request body. Expected { intentId: string }" },
       { status: 400 },
@@ -964,29 +957,16 @@ export class ChatController {
   }
 
   /**
-   * Resolve or create the stable orchestrator chat session for a selected intent.
+   * Resolve or create the stable intent-scoped chat session — the signal's
+   * DM — for the main-web surface.
    *
    * @param req - The HTTP request object (body: { scopeType: 'intent', scopeId: string })
-   * @param user - The authenticated user from AuthGuard
+   * @param user - The authenticated user from SessionOnlyGuard
    * @returns JSON response with the resolved session and whether it was created
    */
-  /** Resolve an intent-scoped session for the dedicated main-web surface. */
   @Post("/web/session/resolve")
   @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async webResolveSession(req: Request, user: AuthenticatedUser) {
-    return this.resolveSessionForSurface(req, user);
-  }
-
-  @Post("/session/resolve")
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async resolveSession(req: Request, user: AuthenticatedUser) {
-    return this.resolveSessionForSurface(req, user);
-  }
-
-  private async resolveSessionForSurface(
-    req: Request,
-    user: AuthenticatedUser,
-  ) {
     let body: z.infer<typeof resolveSessionBodySchema>;
     try {
       const raw = await req.json();

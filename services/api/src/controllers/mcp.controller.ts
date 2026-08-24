@@ -107,10 +107,12 @@ const protocolDeps = {
 
 const chatSessionReader = {
   getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
+  // Intent-pinned DMs are excluded: a signal's DM transcript belongs to its
+  // signal surface, never to a generic MCP session reader.
   listSessions: (userId: string, limit?: number) =>
-    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit ?? 25, PERSONAL_AGENT_PERSONA_ID),
+    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit ?? 25, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
   getSession: (userId: string, sessionId: string, messageLimit?: number) =>
-    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit ?? 50, PERSONAL_AGENT_PERSONA_ID),
+    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit ?? 50, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
 };
 /**
  * Composition-root chat factory. Signal is the product's primary chat persona,
@@ -123,7 +125,7 @@ const chatSessionReader = {
 // Every chat surface derives a sibling factory bound to the client's own agent
 // identity (`ChatSessionService.get*GraphFactory`), so the nameless persona
 // here never drives a turn.
-export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, createPersonalAgentPersona({}, 'global'));
+export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, createPersonalAgentPersona());
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)

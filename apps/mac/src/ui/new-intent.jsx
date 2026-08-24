@@ -23,8 +23,8 @@ function NewIntent({ onDone, onBack }) {
   const client = live ? window.IndexApp.getClient() : null;
   const env = useIndexEnv();
   // The web app's deterministic intake funnel (/intents/intake/*), gated by the
-  // backend FAST_SIGNAL_INTAKE flag. When off, the chat flow below runs with
-  // persona: "signal". When on, start failure shows retry — never chat fallback.
+  // backend FAST_SIGNAL_INTAKE flag. When off, the scripted chat flow below
+  // runs. When on, start failure shows retry — never chat fallback.
   const fastEnabled = !!(client && env.features && env.features.fastSignalIntake);
 
   // Completed turns drive the progress bar and the faded history; the current
@@ -236,8 +236,8 @@ function NewIntent({ onDone, onBack }) {
   }, []);
 
   // Signal intake no longer opens a chat turn. The macOS app authenticates
-  // with an API key, and API-key callers cannot start a Signal chat — that
-  // persona is web-only, and there is no default persona to fall back on.
+  // with an API key, and API-key callers cannot start a global chat — that
+  // surface is web-only.
   // Clarification comes from the deterministic intake funnel below; without it
   // the flow finishes from the answers already collected.
 

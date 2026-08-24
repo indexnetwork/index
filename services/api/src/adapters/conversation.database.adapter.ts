@@ -3016,14 +3016,19 @@ export class ConversationDatabaseAdapter {
           inArray(schema.conversations.id, chatSessionIds),
           inArray(schema.conversations.persona, personas),
           // Intent-pinned sessions (a signal's DM) are reached through their
-          // signal; the home history list never shows them.
+          // signal; the home history list never shows them. Scoped to the
+          // user so the subquery hits the (user_id, scope_type, scope_id)
+          // unique index instead of scanning the registry.
           ...(opts.excludeIntentPinned
             ? [notInArray(
                 schema.conversations.id,
                 db
                   .select({ conversationId: schema.chatSessionScopes.conversationId })
                   .from(schema.chatSessionScopes)
-                  .where(eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE)),
+                  .where(and(
+                    eq(schema.chatSessionScopes.userId, userId),
+                    eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
+                  )),
               )]
             : []),
         ),
@@ -3052,12 +3057,14 @@ export class ConversationDatabaseAdapter {
    * @param userId - The user whose sessions to list
    * @param limit - Maximum number of sessions to return (default 25)
    * @param persona - Exact persona to expose to the generic reader
+   * @param opts - Set excludeIntentPinned to keep a signal's DM out of the listing
    * @returns Array of chat session summaries
    */
   async listChatSessionSummaries(
     userId: string,
     limit = 25,
     persona: string,
+    opts: { excludeIntentPinned?: boolean } = {},
   ): Promise<Array<{ sessionId: string; title: string | null; messageCount: number; lastMessageAt: Date | null; createdAt: Date }>> {
     // Subquery: conversation IDs that include the system agent
     const chatSessionIds = db
@@ -3091,9 +3098,21 @@ export class ConversationDatabaseAdapter {
             gt(schema.conversations.lastMessageAt, schema.conversationParticipants.hiddenAt),
           ),
           inArray(schema.conversations.id, chatSessionIds),
-          // Generic history consumers are orchestrator-only. Signal and
-          // negotiator each have dedicated product surfaces.
           eq(schema.conversations.persona, persona),
+          // A signal's DM belongs to its signal surface, never to a generic
+          // session listing. User-scoped so the subquery hits the unique index.
+          ...(opts.excludeIntentPinned
+            ? [notInArray(
+                schema.conversations.id,
+                db
+                  .select({ conversationId: schema.chatSessionScopes.conversationId })
+                  .from(schema.chatSessionScopes)
+                  .where(and(
+                    eq(schema.chatSessionScopes.userId, userId),
+                    eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
+                  )),
+              )]
+            : []),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -3139,6 +3158,8 @@ export class ConversationDatabaseAdapter {
    * @param userId - The requesting user
    * @param sessionId - The conversation ID
    * @param messageLimit - Maximum messages to return (default 50)
+   * @param persona - Exact persona the caller may read
+   * @param opts - Set excludeIntentPinned to refuse a signal's DM transcript
    * @returns Session detail or null
    */
   async getChatSessionDetail(
@@ -3146,6 +3167,7 @@ export class ConversationDatabaseAdapter {
     sessionId: string,
     messageLimit = 50,
     persona: string,
+    opts: { excludeIntentPinned?: boolean } = {},
   ): Promise<{
     sessionId: string;
     title: string | null;
@@ -3183,6 +3205,22 @@ export class ConversationDatabaseAdapter {
       .limit(1);
 
     if (!agentParticipant) return null;
+
+    // A signal's DM is read through its signal surface; generic detail
+    // readers must not expose its transcript.
+    if (opts.excludeIntentPinned) {
+      const [pinned] = await db
+        .select({ conversationId: schema.chatSessionScopes.conversationId })
+        .from(schema.chatSessionScopes)
+        .where(
+          and(
+            eq(schema.chatSessionScopes.conversationId, sessionId),
+            eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
+          ),
+        )
+        .limit(1);
+      if (pinned) return null;
+    }
 
     // Fetch conversation row
     const [conv] = await db

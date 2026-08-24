@@ -398,8 +398,7 @@ export default function ChatContent({
     if (sessionIdFromUrl) return;
     navigatingToHomeRef.current = true;
     // Don't abort in-flight stream so the new session can finish and appear in the sidebar.
-    // Preserve a continuation's one-shot forced Signal persona across route cleanup.
-    clearChat({ abortStream: false, preserveForcedPersona: true });
+    clearChat({ abortStream: false });
     setChatScope(null);
     setSelectedNetworkIds([]);
   }, [sessionIdFromUrl, clearChat, setChatScope, setSelectedNetworkIds]);
@@ -628,12 +627,7 @@ export default function ChatContent({
       const streamingMsg = messages.find((m) => m.isStreaming);
       submitMidStreamMessage(msgContent, streamingMsg?.traceEvents ?? [], fileArg, nameArg);
     } else {
-      await sendWebMessage(
-        msgContent,
-        fileArg,
-        nameArg,
-        !sessionId ? { persona: "personal" as const } : undefined,
-      );
+      await sendWebMessage(msgContent, fileArg, nameArg);
     }
     inputRef.current?.focus();
   };

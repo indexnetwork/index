@@ -137,7 +137,7 @@ const screenedOutNegotiation: ConversationSummary = {
 const mocks = vi.hoisted(() => ({
   conversations: [] as ConversationSummary[],
   negotiations: [] as ConversationSummary[],
-  features: undefined as { negotiatorChat?: boolean } | undefined,
+  features: undefined as Record<string, boolean> | undefined,
   apiGet: vi.fn(),
   apiPost: vi.fn(),
 }));

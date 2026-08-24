@@ -21,7 +21,7 @@
  *    cut, a declined pairing keeps asking its client about itself.
  */
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const read = (relative: string) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 
@@ -29,7 +29,6 @@ const composition = read('../../../controllers/mcp.controller.ts');
 const agentContext = read('../../intent-agent/intent-agent.context.ts');
 const agentHost = read('../../intent-agent/intent-agent.host.ts');
 const main = read('../../../main.ts');
-const persona = read('../../../../../../packages/protocol/src/internal/chat/negotiator.persona.ts');
 const host = read('../negotiator-verdict.host.ts');
 
 describe('owner-verdict wiring', () => {
@@ -45,9 +44,12 @@ describe('owner-verdict wiring', () => {
     // persona-side tool registration; the claude.ai connector's path is a
     // DIFFERENT registration (McpToolDeps) and must keep working.
     expect(composition).toContain('negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools');
-    // The protocol persona module still gates on a pinned intent; it simply
-    // has no chat caller any more (cleanup deferred to a protocol lane).
-    expect(persona).toContain('if (deps.negotiatorVerdictTools && pinnedIntentId) {');
+    // The persona-collapse deleted the negotiator persona module wholesale —
+    // the chat-side registration cannot come back through a file that no
+    // longer exists.
+    expect(existsSync(
+      new URL('../../../../../../packages/protocol/src/internal/chat/negotiator.persona.ts', import.meta.url),
+    )).toBe(false);
   });
 
   it('feeds the agent context from the same reader the host maps against', () => {

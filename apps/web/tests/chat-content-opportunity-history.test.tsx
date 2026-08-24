@@ -203,7 +203,7 @@ describe('persisted opportunity history hydration', () => {
 
   test('hydrates API discoveries and drafts through AIChatProvider into ChatContent without direct discovery', async () => {
     const sessionResponse = {
-      session: { id: 'history-session', title: 'History', persona: 'signal' },
+      session: { id: 'history-session', title: 'History', persona: 'personal' },
       sessionId: 'history-session', hasPreviousSession: false, previousSessionCursor: null,
       messages: [{ id: 'history-message', role: 'assistant', content: 'Stored cards', createdAt: '2026-01-01T00:00:00Z',
         discoveries: [{ candidateId: 'legacy-user', candidateName: 'Legacy Ada', score: 91, sourceDescription: 'Stored legacy opportunity' }],

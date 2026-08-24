@@ -25,11 +25,11 @@ pin a supported release, use `latest`.
 ### Changed
 
 - **One PersonalAgent persona.** The signal, onboarding, and negotiator chat
-  personas collapse into a single `createPersonalAgentPersona(identity, scope)`
-  factory with `PERSONAL_AGENT_PERSONA_ID = 'personal'`. Scope
-  (`'global' | 'intent'`) is derived by the host from the session, never from a
-  persona id; the onboarding prompt/toolset is a fragment selected by
-  incomplete-onboarding session state, not a persona. Removed exports:
+  personas collapse into a single `createPersonalAgentPersona(identity)`
+  factory with `PERSONAL_AGENT_PERSONA_ID = 'personal'`. What a turn may do is
+  derived from the session's resolved scope context, never from a persona id;
+  the onboarding prompt/toolset is a fragment selected by incomplete-onboarding
+  session state on truly unscoped sessions only. Removed exports:
   `SIGNAL_PERSONA_ID`, `createSignalPersona`, `ONBOARDING_PERSONA_ID`,
   `createOnboardingPersona`, `NEGOTIATOR_PERSONA_ID`, `PersonalAgentChat`,
   `PersonalAgentChatDeps`. The negotiator persona (prompt, chat toolset, and

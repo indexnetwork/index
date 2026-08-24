@@ -312,7 +312,7 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10, "orchestrator");
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator");
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator", {});
   });
 
   it("passes an explicit persona filter through to the adapter", async () => {
@@ -325,7 +325,7 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10, "negotiator");
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "negotiator");
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "negotiator", {});
   });
 
   it("lists read-only and global PersonalAgent sessions for web history, excluding intent-pinned DMs", async () => {

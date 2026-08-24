@@ -2,7 +2,7 @@ import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
 import { ChatGraphFactory, ChatTitleGenerator, PERSONAL_AGENT_PERSONA_ID, createPersonalAgentPersona } from '@indexnetwork/protocol';
-import type { ChatGraphCompositeDatabase, PersonalAgentScope } from '@indexnetwork/protocol';
+import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -372,9 +372,10 @@ export class ChatSessionService {
     userId: string,
     limit = 10,
     persona: string,
+    opts: { excludeIntentPinned?: boolean } = {},
   ) {
     logger.verbose('Getting user sessions', { userId, limit, persona });
-    return this.db.getUserChatSessions(userId, limit, persona);
+    return this.db.getUserChatSessions(userId, limit, persona, opts);
   }
 
   /**
@@ -583,8 +584,8 @@ export class ChatSessionService {
   }
 
   /**
-   * Derive the PersonalAgent graph factory for a scope while sharing the
-   * persona-neutral runtime and all injected dependencies.
+   * Derive the PersonalAgent graph factory while sharing the persona-neutral
+   * runtime and all injected dependencies.
    *
    * The persona introduces itself as the client's own agent, so it is bound
    * per session to their `type='personal'` agent row. A missing row leaves
@@ -597,12 +598,11 @@ export class ChatSessionService {
    * The hosts those tools called stay shared: the MCP surface
    * (mcp.controller toolDeps) still registers them.
    *
-   * @param scope - The session's derived scope
    * @param agent - Identity from the user's `type='personal'` agent row
    * @returns A PersonalAgent sibling factory
    */
-  getPersonalAgentGraphFactory(scope: PersonalAgentScope, agent?: { name?: string | null } | null): ChatGraphFactory {
-    return this.factory.withPersona(createPersonalAgentPersona(personaIdentity(agent), scope));
+  getPersonalAgentGraphFactory(agent?: { name?: string | null } | null): ChatGraphFactory {
+    return this.factory.withPersona(createPersonalAgentPersona(personaIdentity(agent)));
   }
 
   /**

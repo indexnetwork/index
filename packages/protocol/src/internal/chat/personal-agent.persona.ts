@@ -6,19 +6,17 @@ import { error, resolveChatContext, success } from "../shared/agent/tool.helpers
 import type { SystemDatabase, UserDatabase } from "../../platform/database.js";
 import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
-import { buildPersonalAgentSystemContent, isOnboardingFlow, type PersonalAgentPromptOptions, type PersonalAgentScope } from "./personal-agent.prompt.js";
+import { buildPersonalAgentSystemContent, isOnboardingFlow, type PersonalAgentPromptOptions } from "./personal-agent.prompt.js";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PERSONAL AGENT PERSONA
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // The one chat persona. Its identity comes from the user's `type='personal'`
-// agent row, bound per session; its scope is inferred by the host from what
-// the session has (an intent scope link or not), never from a persona id.
-// The negotiation scope is not a chat persona surface: intent-scoped DM turns
-// are owned by the IntentAgent host-side and never run this graph persona.
-
-export type { PersonalAgentScope } from "./personal-agent.prompt.js";
+// agent row, bound per session; what a turn may do is derived from the
+// session's resolved scope context, never from a persona id. The negotiation
+// scope is not a chat persona surface: intent-scoped DM turns are owned by
+// the IntentAgent host-side and never run this graph persona.
 
 /** Public kickoff marker used by New Signal surfaces to enter guided intake. */
 export { SIGNAL_NEW_SIGNAL_KICKOFF } from "./personal-agent.prompt.js";
@@ -59,7 +57,7 @@ export const PERSONAL_AGENT_TOOL_NAMES = [
 
 /**
  * Exact positive allowlist for the onboarding flow (selected by incomplete
- * onboarding session state in global scope, not by a persona id).
+ * onboarding session state on an unscoped session, not by a persona id).
  *
  * Profile confirmation performs the approved premise decomposition internally,
  * so the flow does not need arbitrary premise writes.
@@ -370,19 +368,18 @@ export function narrowPersonalAgentTools(
 }
 
 /**
- * Creates the PersonalAgent's context-bound restricted toolset for a scope.
+ * Creates the PersonalAgent's context-bound restricted toolset.
  *
- * The allowlist is per-scope state: the onboarding flow (global scope with an
- * incomplete onboarding record) gets the onboarding set; every other turn gets
- * the signals-and-profile set. Both pass through the same schema narrowing.
+ * The allowlist follows the session state: the onboarding flow (an unscoped
+ * session with an incomplete onboarding record) gets the onboarding set;
+ * every other turn gets the signals-and-profile set. Both pass through the
+ * same schema narrowing.
  *
- * @param scope - The session's derived scope
  * @param deps - Shared tool dependencies
  * @param preResolvedContext - Optional authoritative resolved context
  * @returns The allowlisted and schema-narrowed PersonalAgent tools
  */
 export async function createPersonalAgentTools(
-  scope: PersonalAgentScope,
   deps: ToolContext,
   preResolvedContext?: ResolvedToolContext,
 ): Promise<ChatTools> {
@@ -411,7 +408,7 @@ export async function createPersonalAgentTools(
   const systemDb = deps.systemDb
     ?? deps.createSystemDatabase(deps.database, resolvedContext.userId, allowedNetworkIds, deps.embedder);
   const shared = await createChatTools(deps, resolvedContext);
-  const allowed = (isOnboardingFlow(resolvedContext, scope)
+  const allowed = (isOnboardingFlow(resolvedContext)
     ? filterOnboardingTools(shared)
     : filterPersonalAgentTools(shared)) as ChatTools;
 
@@ -426,20 +423,17 @@ export type PersonalAgentPersonaOptions = PersonalAgentPromptOptions;
  *
  * A factory rather than a static singleton: the persona's identity comes from
  * the user's `type='personal'` agent row, so it can only be bound per session.
- * The scope is derived by the host from the session row (intent scope link or
- * not) and selects the prompt fragment and toolset composition.
+ * Prompt fragments and toolset composition follow the resolved scope context.
  *
  * @param opts - Identity from the user's `type='personal'` agent row
- * @param scope - The session's derived scope
  */
 export function createPersonalAgentPersona(
-  opts: PersonalAgentPersonaOptions,
-  scope: PersonalAgentScope,
+  opts: PersonalAgentPersonaOptions = {},
 ): ChatPersonaConfig {
   return {
     id: PERSONAL_AGENT_PERSONA_ID,
-    buildSystemContent: (ctx, iterCtx) => buildPersonalAgentSystemContent(ctx, opts, scope, iterCtx),
-    createTools: (deps, preResolvedContext) => createPersonalAgentTools(scope, deps, preResolvedContext),
+    buildSystemContent: (ctx, iterCtx) => buildPersonalAgentSystemContent(ctx, opts, iterCtx),
+    createTools: (deps, preResolvedContext) => createPersonalAgentTools(deps, preResolvedContext),
     loopBehaviors: {
       // create_intent can legitimately return proposal cards; retain
       // recovery/stripping of unbacked fenced blocks.

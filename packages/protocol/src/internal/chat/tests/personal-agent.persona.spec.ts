@@ -196,18 +196,18 @@ function parsed(result: unknown) {
 describe("createPersonalAgentPersona", () => {
   it("uses the canonical persisted persona id", () => {
     expect(PERSONAL_AGENT_PERSONA_ID).toBe("personal");
-    expect(createPersonalAgentPersona({ agentName: "Alice's Agent" }, "global").id).toBe(PERSONAL_AGENT_PERSONA_ID);
+    expect(createPersonalAgentPersona({ agentName: "Alice's Agent" }).id).toBe(PERSONAL_AGENT_PERSONA_ID);
   });
 
   it("retains proposal recovery", () => {
-    expect(createPersonalAgentPersona({}, "global").loopBehaviors).toEqual({
+    expect(createPersonalAgentPersona({}).loopBehaviors).toEqual({
       hallucinationRecovery: true,
     });
   });
 
   it("uses the signals prompt builder bound to the agent identity", () => {
     const ctx = makeContext();
-    const persona = createPersonalAgentPersona({ agentName: "Alice's Agent" }, "global");
+    const persona = createPersonalAgentPersona({ agentName: "Alice's Agent" });
     expect(persona.buildSystemContent(ctx, { iteration: 1 } as never)).toBe(
       buildSignalScopeSystemContent(ctx, { agentName: "Alice's Agent" }),
     );

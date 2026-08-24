@@ -71,7 +71,7 @@ enum NativeAPIBodyValidationFixture {
         // well-formed request the bridge will send — the API answers it with a
         // 403, because api-key chats must carry an intent scope. The app never
         // sends this shape (see mainview/core.jsx, which always scopes).
-        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello"), "persona": string("personal")])), "valid chat stream rejected")
+        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello")])), "valid chat stream rejected")
         try require(NativeAPIRequestBridge.validateMCPForFixture(arguments: object(["description": string("Meet founders"), "autoApprove": .bool(true)])), "valid create_intent rejected")
         let agentId = "00000000-0000-4000-8000-000000000001"
         try require(NativeAPIRequestBridge.validateMCPForFixture(
@@ -122,11 +122,10 @@ enum NativeAPIBodyValidationFixture {
             try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "POST", path: "/networks", body: object(["title": string("N"), "joinPolicy": string(policy)])), "network policy parity failed: \(policy)")
         }
         try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "POST", path: "/networks", body: object(["title": string("N"), "joinPolicy": string("approval")])), "unknown network policy accepted")
-        // Persona enum parity, again shape-only — see the note above on why a
-        // scopeless body is valid here but not at the API.
-        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string("personal")])), "chat persona parity failed: personal")
-        for persona in ["negotiator", "signal", "reporter", "orchestrator"] {
-            try require(!NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string(persona)])), "retired chat persona accepted: \(persona)")
+        // The persona field left the chat contract entirely: any value is an
+        // unknown key and the exact-shape check refuses it.
+        for persona in ["personal", "negotiator", "signal", "reporter", "orchestrator"] {
+            try require(!NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string(persona)])), "retired chat persona field accepted: \(persona)")
         }
         for scope in ["network", "intent"] {
             try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "scopeType": string(scope), "scopeId": id])), "chat scope parity failed: \(scope)")

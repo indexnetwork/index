@@ -117,7 +117,7 @@ describe('PersonalAgent web chat routing', () => {
 
   test('web creation persists the one PersonalAgent persona and uses its factory', async () => {
     const response = await stream(
-      { message: 'Help refine my signal', persona: 'personal' },
+      { message: 'Help refine my signal' },
       'web',
     );
 
@@ -143,21 +143,20 @@ describe('PersonalAgent web chat routing', () => {
     expect(createSessionSpy).toHaveBeenCalledTimes(1);
   });
 
-  test('the persona is named from the user own personal agent row, in global scope', async () => {
+  test('the persona is named from the user own personal agent row', async () => {
     const agentSpy = spyOn(agentService, 'getNegotiatorAgent')
       .mockResolvedValue({ id: 'agent-1', name: "Signal User's Agent" } as never);
 
-    await stream({ message: 'Draft a signal', persona: 'personal' }, 'web');
+    await stream({ message: 'Draft a signal' }, 'web');
     expect(getFactorySpy).toHaveBeenLastCalledWith(
-      'global',
       expect.objectContaining({ name: "Signal User's Agent" }),
     );
 
     // A missing row is not fatal here: the prompt falls back to a generic
     // self-description rather than failing the turn or naming a product.
     agentSpy.mockResolvedValue(null as never);
-    await stream({ message: 'Draft another', persona: 'personal' }, 'web');
-    expect(getFactorySpy).toHaveBeenLastCalledWith('global', null);
+    await stream({ message: 'Draft another' }, 'web');
+    expect(getFactorySpy).toHaveBeenLastCalledWith(null);
   });
 
   test('a persisted session is continued when the followup omits persona', async () => {
@@ -174,18 +173,18 @@ describe('PersonalAgent web chat routing', () => {
     expect(getFactorySpy).toHaveBeenCalledTimes(1);
   });
 
-  test('a retired persona id in the request body fails the schema before graph or writes', async () => {
+  test('a stale persona field in the request body is inert — stripped, never routed on', async () => {
     getSessionSpy.mockResolvedValue(session('personal-session', 'personal'));
 
-    for (const persona of ['signal', 'negotiator', 'onboarding']) {
-      const response = await stream(
-        { message: 'spoof', sessionId: 'personal-session', persona },
-        'web',
-      );
-      expect(response.status).toBe(400);
-    }
-    expect(getFactorySpy).not.toHaveBeenCalled();
-    expect(addMessageSpy).not.toHaveBeenCalled();
+    // The persona field left the schema: zod strips unknown keys, so stale
+    // clients still stream and the stored session decides everything.
+    const response = await stream(
+      { message: 'continue', sessionId: 'personal-session', persona: 'signal' },
+      'web',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-Chat-Persona')).toBe('personal');
+    expect(getFactorySpy).toHaveBeenCalledTimes(1);
   });
 
   test('legacy orchestrator session loads but a web turn is rejected without side effects', async () => {
@@ -235,32 +234,27 @@ describe('PersonalAgent web chat routing', () => {
     expect(addMessageSpy).not.toHaveBeenCalled();
   });
 
-  test('an intent scope resolves the signal DM on every resolver surface', async () => {
+  test('an intent scope resolves the signal DM on the web resolver, and the dual-auth twin is gone', async () => {
     const dm = session('dm-session', 'personal', { scopeType: 'intent', scopeId: 'intent-1' });
     const resolveSpy = spyOn(chatSessionService, 'resolveNegotiatorIntentSession').mockResolvedValue({
       session: dm,
       created: true,
       intentTitle: 'A signal',
     } as never);
-    const request = (authKind: 'session' | 'api_key') => {
-      const req = new Request('http://localhost/chat/session/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scopeType: 'intent', scopeId: 'intent-1' }),
-      });
-      recordRequestAuthContext(req, authKind === 'session'
-        ? { kind: 'session' }
-        : { kind: 'api_key', agentId: null });
-      return req;
-    };
+    const req = new Request('http://localhost/chat/web/session/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scopeType: 'intent', scopeId: 'intent-1' }),
+    });
+    recordRequestAuthContext(req, { kind: 'session' });
 
-    const webResponse = await controller.webResolveSession(request('session'), USER);
+    const webResponse = await controller.webResolveSession(req, USER);
     expect(webResponse.status).toBe(200);
     expect(resolveSpy).toHaveBeenLastCalledWith(USER.id, 'intent-1');
 
-    const apiKeyResponse = await controller.resolveSession(request('api_key'), USER);
-    expect(apiKeyResponse.status).toBe(200);
-    expect(resolveSpy).toHaveBeenCalledTimes(2);
+    // The byte-identical dual-auth route was deleted with its last caller.
+    const route = RouteRegistry.getRoutes(ChatController).find((c) => c.path === '/session/resolve');
+    expect(route).toBeUndefined();
   });
 
   test('a session-auth intent-scoped turn runs the IntentAgent, never the graph persona', async () => {
@@ -313,7 +307,7 @@ describe('PersonalAgent web chat routing', () => {
       'personal',
     );
     expect(getFactorySpy).toHaveBeenCalledTimes(1);
-    expect(getFactorySpy).toHaveBeenLastCalledWith('global', null);
+    expect(getFactorySpy).toHaveBeenLastCalledWith(null);
 
     // The restricted surface cannot be scoped or client-prefilled.
     const scoped = await controller.onboardingMessageStream(
@@ -355,7 +349,7 @@ describe('PersonalAgent web chat routing', () => {
 
   test('compatibility stream derives web policy for session auth', async () => {
     const response = await stream(
-      { message: 'web compatibility chat', persona: 'personal' },
+      { message: 'web compatibility chat' },
       'dual',
       'session',
     );

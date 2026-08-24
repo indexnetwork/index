@@ -69,7 +69,7 @@ function controlledStream(options?: { sessionId?: string; persona?: string }) {
   };
 }
 
-function sessionResponse(id: string, content = id, persona = 'signal') {
+function sessionResponse(id: string, content = id, persona = 'personal') {
   return {
     session: { id, title: `Title ${id}`, persona },
     messages: [{
@@ -93,13 +93,13 @@ function Probe() {
   const [loadResult, setLoadResult] = useState('none');
   const [resolutionTarget, setResolutionTarget] = useState('none');
   const resolveIntent = (id: string) => {
-    void chat.resolveIntentSession({ id, label: `Intent ${id}` }, 'signal').then((resolvedSessionId) => {
+    void chat.resolveIntentSession({ id, label: `Intent ${id}` }).then((resolvedSessionId) => {
       if (resolvedSessionId) setResolutionTarget(resolvedSessionId);
     });
   };
   return (
     <div>
-      <button onClick={() => void chat.sendWebMessage('first', undefined, undefined, { persona: 'signal' })}>
+      <button onClick={() => void chat.sendWebMessage('first', undefined, undefined, { persona: 'personal' })}>
         web first
       </button>
       <button onClick={() => void chat.sendWebMessage('second')}>web second</button>
@@ -161,7 +161,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
 
   test('web sends use the dedicated route while compatibility sends remain compatible', async () => {
     mocks.apiClient.stream
-      .mockResolvedValueOnce(streamResponse({ sessionId: 'signal-session-1', persona: 'signal' }))
+      .mockResolvedValueOnce(streamResponse({ sessionId: 'signal-session-1', persona: 'personal' }))
       .mockResolvedValueOnce(streamResponse());
 
     renderProvider();
@@ -196,7 +196,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      first.resolve(streamResponse({ sessionId: 'web-session', persona: 'signal' }));
+      first.resolve(streamResponse({ sessionId: 'web-session', persona: 'personal' }));
       await first.promise;
     });
 
@@ -218,7 +218,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'clear' }));
 
     await act(async () => {
-      old.resolve(streamResponse({ sessionId: 'stale-session', persona: 'signal', response: 'stale' }));
+      old.resolve(streamResponse({ sessionId: 'stale-session', persona: 'personal', response: 'stale' }));
       await old.promise;
     });
 
@@ -237,7 +237,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'clear detached' }));
 
     await act(async () => {
-      old.resolve(streamResponse({ sessionId: 'detached-session', persona: 'signal', response: 'detached' }));
+      old.resolve(streamResponse({ sessionId: 'detached-session', persona: 'personal', response: 'detached' }));
       await old.promise;
     });
 
@@ -259,7 +259,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     await waitFor(() => expect(text('ready-b')).toBe('yes'));
 
     await act(async () => {
-      old.resolve(streamResponse({ sessionId: 'stale-session', persona: 'signal', response: 'stale' }));
+      old.resolve(streamResponse({ sessionId: 'stale-session', persona: 'personal', response: 'stale' }));
       await old.promise;
     });
 
@@ -417,7 +417,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
         'untrusted detail',
         { type: 'start_signal_session', href: '/' },
       ))
-      .mockResolvedValueOnce(streamResponse({ sessionId: 'fresh-signal', persona: 'signal' }));
+      .mockResolvedValueOnce(streamResponse({ sessionId: 'fresh-signal', persona: 'personal' }));
 
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'web first' }));
@@ -429,7 +429,9 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'web second' }));
     await waitFor(() => expect(text('session')).toBe('fresh-signal'));
     expect(mocks.apiClient.stream.mock.calls[1]?.[0]).toBe('/chat/web/stream');
-    expect(mocks.apiClient.stream.mock.calls[1]?.[1]).toMatchObject({ persona: 'signal' });
+    // The persona field left the request contract: the server has one persona
+    // and needs no assertion from the client.
+    expect(mocks.apiClient.stream.mock.calls[1]?.[1]).not.toHaveProperty('persona');
   });
 
   test('rejects a valid-looking action attached to the wrong policy code', async () => {
@@ -459,10 +461,10 @@ describe('AIChatContext Signal persona transport and ownership', () => {
   });
 
   test('queued web sends retain the dedicated transport when drained', async () => {
-    const first = controlledStream({ sessionId: 'signal-session', persona: 'signal' });
+    const first = controlledStream({ sessionId: 'signal-session', persona: 'personal' });
     mocks.apiClient.stream
       .mockResolvedValueOnce(first.response)
-      .mockResolvedValueOnce(streamResponse({ sessionId: 'signal-session', persona: 'signal' }));
+      .mockResolvedValueOnce(streamResponse({ sessionId: 'signal-session', persona: 'personal' }));
 
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'web first' }));

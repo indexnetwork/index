@@ -361,17 +361,16 @@ window.IndexApp = (function () {
 
   // ---- bounded native SSE -------------------------------------------------
 
-  // POST /chat/stream. `persona` names the server persona and is required:
-  // api-key callers have no default and the server refuses an unnamed persona
-  // with CHAT_PERSONA_REQUIRED. Resolves with
+  // POST /chat/stream. There is one server persona, so the request names no
+  // persona field. Resolves with
   // the session id (from the X-Session-Id response header) once the stream ends.
   // onSession fires as soon as headers arrive, so mid-stream events (e.g.
   // user_question) can be resolved against the conversation right away.
-  async function streamChat({ message, sessionId, scopeType, scopeId, persona, onEvent, onSession, signal }) {
+  async function streamChat({ message, sessionId, scopeType, scopeId, onEvent, onSession, signal }) {
     // A half-supplied scope is a caller bug, not a request to drop the scope.
     // This used to send `if (scopeType && scopeId)`, so a null scopeId silently
-    // downgraded the turn to unscoped — which the negotiator persona no longer
-    // has a surface for (the API answers a scopeless negotiator turn with 400).
+    // downgraded the turn to unscoped — which this app has no surface for
+    // (the API answers a scopeless api-key turn with 403).
     // Fail here, where the caller is named, rather than at the server.
     if (Boolean(scopeType) !== Boolean(scopeId)) {
       throw new Error(
@@ -382,7 +381,6 @@ window.IndexApp = (function () {
     const body = { message };
     if (sessionId) body.sessionId = sessionId;
     if (scopeType) { body.scopeType = scopeType; body.scopeId = scopeId; }
-    if (persona) body.persona = persona;
 
     let immediateSession = sessionId || null;
     const receive = (event) => {

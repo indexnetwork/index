@@ -57,21 +57,14 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
-  // Agent chat is the one PersonalAgent persona in intent scope — the
-  // signal's DM. This app only ever drives that scope: api-key callers may
-  // not start global chats (those are web-only), so every stream here is
-  // intent-scoped. When the backend has the surface switched off there is
-  // nothing to fall back to and the server answers 404; detect that from the
-  // same /auth/me flag the server gates on and say so, rather than firing a
-  // request that cannot succeed.
-  const { features, patchIntentStatus, refreshIntents } = useIndexEnv();
-  const chatPersona = "personal";
-  const agentChatAvailable = !!(features && features.negotiatorChat);
-  // Agent-chat session id per intent, persisted across signal switches. Keyed
-  // by persona too: a session created under one persona cannot be continued
-  // as another (the server rejects the mismatch).
+  // Agent chat is the signal's DM — the one PersonalAgent chat in intent
+  // scope. This app only ever drives that scope: api-key callers may not
+  // start global chats (those are web-only), so every stream here is
+  // intent-scoped.
+  const { patchIntentStatus, refreshIntents } = useIndexEnv();
+  // Agent-chat session id per intent, persisted across signal switches.
   const chatSessions = (window.__indexChatSessions = window.__indexChatSessions || {});
-  const chatKey = `${chatPersona}:${intentId}`;
+  const chatKey = intentId;
   const chatSessionRef = useRef(chatSessions[chatKey] || null);
   const seenQuestionIds = useRef(new Set());   // question ids already in the feed
   const radarSeqRef = useRef(0);               // drops stale radar responses
@@ -405,16 +398,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       { kind:"user", id: Math.random().toString(36).slice(2), text, t: now() },
     ]);
 
-    if (live && !agentChatAvailable) {
-      setConversation(prev => [...prev, {
-        kind: "agent",
-        id: rid(),
-        text: "agent chat is switched off on the server right now. your signals and radar are unaffected.",
-        t: now(),
-      }]);
-      return;
-    }
-
     if (live && window.IndexApp) {
       const agentMsgId = rid();
       setConversation(prev => [...prev, { kind:"agent", id: agentMsgId, text: "", t: now() }]);
@@ -425,7 +408,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
       // with a truthy intentId, and this pane is per-signal. Passed straight
       // through rather than as `intentId ? "intent" : undefined`, whose false
       // branch is unreachable and reads as if unscoped were a supported mode
-      // for this persona — it is not. streamChat rejects a half-supplied
+      // for this app — it is not. streamChat rejects a half-supplied
       // scope, so loosening `live` surfaces as an error instead of a
       // silently-unscoped turn.
       window.IndexApp.streamChat({
@@ -433,7 +416,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
         sessionId: chatSessionRef.current,
         scopeType: "intent",
         scopeId: intentId,
-        persona: chatPersona,
         onEvent: (e) => {
           if (!e || !e.type) return;
           if (e.type === "token") { acc += e.content || ""; setAgentText(acc); }

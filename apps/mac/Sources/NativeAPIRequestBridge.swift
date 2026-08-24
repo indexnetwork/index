@@ -728,12 +728,11 @@ final class NativeAPIRequestBridge {
             return body == nil
         }
         if method == "POST" && path == "/chat/stream" {
-            return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId", "persona"]) { item in
+            return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId"]) { item in
                 boundedString(item["message"], maximum: 65_536)
                     && (item["sessionId"] == nil || identifier(item["sessionId"]))
                     && (item["scopeType"] == nil || enumString(item["scopeType"], ["network", "intent"]))
                     && (item["scopeId"] == nil || identifier(item["scopeId"]))
-                    && (item["persona"] == nil || enumString(item["persona"], ["personal"]))
                     && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
             }
         }

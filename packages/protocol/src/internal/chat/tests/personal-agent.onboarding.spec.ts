@@ -68,16 +68,29 @@ function makeContext(onboarding: Record<string, unknown> = {}): ResolvedToolCont
 }
 
 describe("onboarding flow of the PersonalAgent persona", () => {
-  it("is selected by incomplete-onboarding session state in global scope, never by a persona id", () => {
-    expect(isOnboardingFlow(makeContext(), "global")).toBe(true);
-    expect(isOnboardingFlow(makeContext(), "intent")).toBe(false);
+  it("is selected by incomplete-onboarding session state on unscoped sessions only, never by a persona id", () => {
+    expect(isOnboardingFlow(makeContext())).toBe(true);
+    // A focused session never regresses into onboarding — pinned signal or
+    // focused community both keep the full signals fragment.
+    const intentScoped = { ...makeContext(), scopeType: "intent", scopeId: "44444444-4444-4444-8444-444444444444" } as ResolvedToolContext;
+    expect(isOnboardingFlow(intentScoped)).toBe(false);
+    const networkScoped = { ...makeContext(), scopeType: "network", scopeId: "22222222-2222-4222-8222-222222222222" } as ResolvedToolContext;
+    expect(isOnboardingFlow(networkScoped)).toBe(false);
     const complete = { ...makeContext(), isOnboarding: false } as ResolvedToolContext;
-    expect(isOnboardingFlow(complete, "global")).toBe(false);
+    expect(isOnboardingFlow(complete)).toBe(false);
   });
 
-  it("composes the onboarding fragment for a mid-onboarding global session", () => {
+  it("keeps a mid-onboarding network chat on the signals fragment and toolset", () => {
+    const networkScoped = { ...makeContext(), scopeType: "network", scopeId: "22222222-2222-4222-8222-222222222222" } as ResolvedToolContext;
+    const prompt = createPersonalAgentPersona({ agentName: "Alice's Agent" })
+      .buildSystemContent(networkScoped, { iteration: 1 } as never);
+    expect(prompt).toContain("the private signals and profile assistant");
+    expect(prompt).not.toContain("restricted setup assistant");
+  });
+
+  it("composes the onboarding fragment for a mid-onboarding unscoped session", () => {
     const ctx = makeContext();
-    const persona = createPersonalAgentPersona({ agentName: "Alice's Agent" }, "global");
+    const persona = createPersonalAgentPersona({ agentName: "Alice's Agent" });
     const prompt = persona.buildSystemContent(ctx, { iteration: 1 } as never);
     expect(prompt).toContain("restricted setup assistant");
     expect(prompt).toBe(buildOnboardingSystemContent(ctx, { agentName: "Alice's Agent" }, { iteration: 1 } as never));
@@ -85,14 +98,14 @@ describe("onboarding flow of the PersonalAgent persona", () => {
 
   it("introduces itself as the user's own agent, never a product noun", () => {
     const ctx = makeContext();
-    const named = createPersonalAgentPersona({ agentName: "Alice's Agent" }, "global")
+    const named = createPersonalAgentPersona({ agentName: "Alice's Agent" })
       .buildSystemContent(ctx, { iteration: 1 } as never);
     expect(named).toContain("You are Alice's Agent, the restricted setup assistant for Alice.");
     expect(named).not.toContain("Onboarding Agent");
 
     // ensureNegotiatorAgent runs at auth, so a nameless row is the unexpected
     // case — it still must not reintroduce a product noun.
-    const nameless = createPersonalAgentPersona({}, "global")
+    const nameless = createPersonalAgentPersona({})
       .buildSystemContent(ctx, { iteration: 1 } as never);
     expect(nameless).toContain("You are Alice's personal agent, the restricted setup assistant.");
     expect(nameless).not.toContain("Onboarding Agent");

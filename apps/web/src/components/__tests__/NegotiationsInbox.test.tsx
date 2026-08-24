@@ -61,7 +61,7 @@ const answerNegotiation = negotiation('question', 'Mira Chen', {
 
 const mocks = vi.hoisted(() => ({
   negotiations: [] as ConversationSummary[],
-  features: { negotiatorChat: true } as { negotiatorChat?: boolean } | undefined,
+  features: {} as Record<string, boolean> | undefined,
   apiGet: vi.fn(),
 }));
 

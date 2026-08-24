@@ -240,6 +240,9 @@ vi.mock('@/contexts/ConversationContext', () => ({
         sessionHistory: new Map(),
         sessionOpportunityMap: new Map(),
         isConnected: false,
+        // Subscriptions must hand back an unsubscribe: an effect that
+        // returns the subscribe result crashes cleanup otherwise.
+        subscribeQuestionRegeneration: vi.fn(() => () => {}),
       },
       {
         get(target, prop) {

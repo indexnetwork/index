@@ -11,13 +11,15 @@ export class ChatSessionAdapter {
     return rows.map((m) => ({ role: m.role, content: m.content }));
   }
 
-  // Scoped to Signal, the primary chat persona. This used to read the
-  // orchestrator's sessions, which no longer exist.
+  // Scoped to the one PersonalAgent persona, excluding intent-pinned DMs:
+  // a signal's DM transcript is read through its signal surface, never
+  // through a generic session reader.
   listSessions(userId: string, limit = 25) {
     return conversationDatabaseAdapter.listChatSessionSummaries(
       userId,
       limit,
       PERSONAL_AGENT_PERSONA,
+      { excludeIntentPinned: true },
     );
   }
 
@@ -27,6 +29,7 @@ export class ChatSessionAdapter {
       sessionId,
       messageLimit,
       PERSONAL_AGENT_PERSONA,
+      { excludeIntentPinned: true },
     );
   }
 }

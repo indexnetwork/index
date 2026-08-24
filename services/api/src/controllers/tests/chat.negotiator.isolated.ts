@@ -143,17 +143,17 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
 
   // ── Feature surface on the session bootstrap ───────────────────────────
 
-  test("/auth/me still reports the negotiator surface as on", async () => {
+  test("/auth/me no longer ships a negotiatorChat flag — the surface is unconditional", async () => {
     const authController = new AuthController();
     const res = await authController.me(new Request("http://localhost/auth/me"), mockUser());
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
-      features: { negotiatorChat: boolean; fastSignalIntake: boolean };
+      features: Record<string, unknown>;
     };
-    expect(data.features.negotiatorChat).toBe(true);
+    expect(data.features.negotiatorChat).toBeUndefined();
   }, 60000);
 
-  // ── Flag on: the intent pin is mandatory ──────────────────────────────────
+  // ── The intent pin is mandatory ────────────────────────────────────────────
 
   test("get-or-create without an intentId is a 400", async () => {
 
@@ -207,12 +207,14 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     expect(data.error).toContain("intent scope");
   }, 60000);
 
-  test("a retired persona id in the stream body is rejected by the schema", async () => {
+  test("a stale persona field in the stream body is stripped, not routed on", async () => {
+    // The persona field left the schema; a stale client's value is ignored
+    // and the request proceeds on its scope (an unowned random intent → 404).
     const res = await controller.messageStream(
       streamReq({ message: "hello", persona: "negotiator", scopeType: "intent", scopeId: crypto.randomUUID() }),
       mockUser(),
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
   }, 60000);
 
   // ── Intent-pinned sessions (P4.2 / IND-403) ───────────────────────────
@@ -264,7 +266,6 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     const res = await controller.messageStream(
       streamReq({
         message: "What's happening with this signal?",
-        persona: "personal",
         scopeType: "intent",
         scopeId: testIntentId,
       }),

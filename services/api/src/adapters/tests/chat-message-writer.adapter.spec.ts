@@ -26,6 +26,7 @@ describe("ChatMessageWriterAdapter", () => {
       "user-1",
       1,
       "personal",
+      { excludeIntentPinned: true },
     );
     expect(chatSessionService.addMessage).toHaveBeenCalledWith({
       sessionId: "session-recent",
