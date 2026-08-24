@@ -3,9 +3,9 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // Persona-neutral prompt text owned by the agent loop rather than by any one
-// persona. Each persona builds its own system prompt (see signal.prompt.ts,
-// negotiator.prompt.ts, onboarding.prompt.ts); what remains
-// here is only what the loop itself injects regardless of persona.
+// persona. The persona builds its own system prompt (see
+// personal-agent.prompt.ts); what remains here is only what the loop itself
+// injects regardless of persona.
 
 /**
  * Nudge message injected after SOFT_ITERATION_LIMIT iterations.

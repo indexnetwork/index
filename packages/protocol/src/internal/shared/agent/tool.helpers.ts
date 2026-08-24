@@ -20,7 +20,6 @@ import type { Embedder } from "../../../platform/discovery/embedder.js";
 import type { AgentDatabase } from "../../agents/agent.repository.port.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../../../platform/runtime/delivery-ledger.js";
-import type { NegotiatorMemoryToolsHost } from "../../../platform/negotiation/memory.js";
 import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
 import type { McpActivityCaller } from "./activity-projection.js";
 import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
@@ -158,19 +157,10 @@ interface ToolContextBindings {
   /** Durable host persistence for verified intent proposals shown in chat. */
   intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   /**
-   * Host bridge for the negotiator persona's `remember`/`forget` memory
-   * tools (P5.4). Injected by the composition root only when negotiator
-   * memory writes are enabled; when absent the tools are not registered.
-   * Consumed exclusively by the negotiator persona toolset — the
-   * orchestrator registry never sees these tools.
-   */
-  negotiatorMemoryTools?: NegotiatorMemoryToolsHost;
-  /**
-   * Host bridge for the negotiator persona's `reject_opportunity` /
-   * `accept_opportunity` tools — the owner's VERDICT lane, which had no lever
-   * in chat at all before #1471. Injected by the composition root; consumed
-   * exclusively by the negotiator persona's toolset, and only in an
-   * intent-scoped session (the counterparties are one signal's).
+   * Host bridge for the `reject_opportunity` / `accept_opportunity` tools —
+   * the owner's VERDICT lane (#1471). Injected by the composition root;
+   * consumed by the MCP opportunity toolset, and only in an intent-scoped
+   * session (the counterparties are one signal's).
    */
   negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
   /** Profile enrichment from external data sources. */

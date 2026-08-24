@@ -3,8 +3,8 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it, mock } from "bun:test";
 
-import { createSignalPersona, SIGNAL_PERSONA_ID, SIGNAL_TOOL_NAMES, filterSignalTools, narrowSignalTools } from "../signal.persona.js";
-import { buildSignalSystemContent, getSignalIntakeStage, isSignalNewSignalFeedback, isSignalNewSignalKickoff, SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
+import { createPersonalAgentPersona, PERSONAL_AGENT_PERSONA_ID, PERSONAL_AGENT_TOOL_NAMES, filterPersonalAgentTools, narrowPersonalAgentTools } from "../personal-agent.persona.js";
+import { buildSignalScopeSystemContent, getSignalIntakeStage, isSignalNewSignalFeedback, isSignalNewSignalKickoff, SIGNAL_NEW_SIGNAL_KICKOFF } from "../personal-agent.prompt.js";
 import type { ChatTools, ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 import type { SystemDatabase, UserDatabase } from "../../../platform/database.js";
 
@@ -160,7 +160,7 @@ function makeHarness(options: {
     isIntentAssignedToIndex,
   } as unknown as UserDatabase;
   const systemDb = { isNetworkMember } as unknown as SystemDatabase;
-  const tools = narrowSignalTools(shared, {
+  const tools = narrowPersonalAgentTools(shared, {
     context: options.context ?? makeContext(),
     userDb,
     systemDb,
@@ -193,23 +193,23 @@ function parsed(result: unknown) {
   };
 }
 
-describe("createSignalPersona", () => {
+describe("createPersonalAgentPersona", () => {
   it("uses the canonical persisted persona id", () => {
-    expect(SIGNAL_PERSONA_ID).toBe("signal");
-    expect(createSignalPersona({ agentName: "Alice's Agent" }).id).toBe(SIGNAL_PERSONA_ID);
+    expect(PERSONAL_AGENT_PERSONA_ID).toBe("personal");
+    expect(createPersonalAgentPersona({ agentName: "Alice's Agent" }, "global").id).toBe(PERSONAL_AGENT_PERSONA_ID);
   });
 
   it("retains proposal recovery", () => {
-    expect(createSignalPersona().loopBehaviors).toEqual({
+    expect(createPersonalAgentPersona({}, "global").loopBehaviors).toEqual({
       hallucinationRecovery: true,
     });
   });
 
   it("uses the signals prompt builder bound to the agent identity", () => {
     const ctx = makeContext();
-    const persona = createSignalPersona({ agentName: "Alice's Agent" });
+    const persona = createPersonalAgentPersona({ agentName: "Alice's Agent" }, "global");
     expect(persona.buildSystemContent(ctx, { iteration: 1 } as never)).toBe(
-      buildSignalSystemContent(ctx, { agentName: "Alice's Agent" }),
+      buildSignalScopeSystemContent(ctx, { agentName: "Alice's Agent" }),
     );
   });
 });
@@ -244,7 +244,7 @@ describe("guided New Signal intake", () => {
   });
 
   it("instructs the live persona to interview in plain conversation", () => {
-    const prompt = buildSignalSystemContent(context, {}, iteration());
+    const prompt = buildSignalScopeSystemContent(context, {}, iteration());
     expect(prompt).toContain("NEW SIGNAL INTAKE (ACTIVE)");
     expect(prompt).toContain("plain conversation");
     expect(prompt).not.toContain("ask_user_question");
@@ -259,7 +259,7 @@ describe("guided New Signal intake", () => {
     // The profile legitimately shapes WHICH questions get asked. It may not
     // put a background into the signal the user never stated: when an answer
     // leaves the signal vague, the agent asks rather than filling the gap.
-    const prompt = buildSignalSystemContent(context, {}, iteration());
+    const prompt = buildSignalScopeSystemContent(context, {}, iteration());
 
     expect(prompt).toContain("use it to decide WHICH questions to ask");
     expect(prompt).toContain("the signal itself is written from this conversation's answers");
@@ -271,7 +271,7 @@ describe("guided New Signal intake", () => {
   });
 
   it("asks the persona to return a replacement proposal when preview feedback arrives", () => {
-    const complete = buildSignalSystemContent(context, {}, {
+    const complete = buildSignalScopeSystemContent(context, {}, {
       ...iteration(),
       currentMessage: "new-signal-preview-feedback: Make the location Berlin-specific.",
       recentTools: [],
@@ -285,19 +285,19 @@ describe("guided New Signal intake", () => {
 
 describe("signals persona tool boundary", () => {
   it("pins the exact positive allowlist", () => {
-    expect(SIGNAL_TOOL_NAMES).toEqual(EXPECTED_SIGNAL_TOOLS);
+    expect(PERSONAL_AGENT_TOOL_NAMES).toEqual(EXPECTED_SIGNAL_TOOLS);
   });
 
   it("keeps exactly allowlisted tools from a shared registry", () => {
     const registry = [...EXPECTED_SIGNAL_TOOLS, ...FORBIDDEN_TOOLS, "read_docs"]
       .map((name) => ({ name }));
-    expect(filterSignalTools(registry).map((candidate) => candidate.name)).toEqual(
+    expect(filterPersonalAgentTools(registry).map((candidate) => candidate.name)).toEqual(
       [...EXPECTED_SIGNAL_TOOLS],
     );
   });
 
   it("cannot admit forbidden capability families", () => {
-    const allowed = new Set<string>(SIGNAL_TOOL_NAMES);
+    const allowed = new Set<string>(PERSONAL_AGENT_TOOL_NAMES);
     for (const forbidden of FORBIDDEN_TOOLS) {
       expect(allowed.has(forbidden)).toBe(false);
     }
@@ -533,8 +533,8 @@ describe("signals persona tool boundary", () => {
   });
 });
 
-describe("buildSignalSystemContent", () => {
-  const prompt = buildSignalSystemContent(makeContext(), { agentName: "Alice's Agent" });
+describe("buildSignalScopeSystemContent", () => {
+  const prompt = buildSignalScopeSystemContent(makeContext(), { agentName: "Alice's Agent" });
 
   it("introduces itself as the user's own agent, never a product noun", () => {
     // The app calls this the user's Personal Agent everywhere else; a persona
@@ -544,7 +544,7 @@ describe("buildSignalSystemContent", () => {
   });
 
   it("falls back to a generic self-description when the agent row has no name", () => {
-    const nameless = buildSignalSystemContent(makeContext());
+    const nameless = buildSignalScopeSystemContent(makeContext());
     expect(nameless).toContain("You are Alice's personal agent, the private signals and profile assistant.");
     expect(nameless).not.toContain("Signal Agent");
   });
@@ -556,7 +556,7 @@ describe("buildSignalSystemContent", () => {
   });
 
   it("advertises every allowed capability and no forbidden tool", () => {
-    for (const allowed of SIGNAL_TOOL_NAMES) {
+    for (const allowed of PERSONAL_AGENT_TOOL_NAMES) {
       expect(prompt).toContain(allowed);
     }
     for (const forbidden of FORBIDDEN_TOOLS) {
@@ -571,7 +571,7 @@ describe("buildSignalSystemContent", () => {
 
   it("intent scope advertises only refinement and suppresses new-signal intake", () => {
     const intentContext = makeContext({ scopeType: "intent", scopeId: INTENT_ID });
-    const scopedPrompt = buildSignalSystemContent(intentContext, {}, {
+    const scopedPrompt = buildSignalScopeSystemContent(intentContext, {}, {
       currentMessage: SIGNAL_NEW_SIGNAL_KICKOFF,
       recentTools: [],
       ctx: intentContext,
