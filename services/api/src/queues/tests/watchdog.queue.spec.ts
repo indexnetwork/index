@@ -33,6 +33,7 @@ function makeDeps(task: ReturnType<typeof makeTask> | null = makeTask()) {
     getStaleNegotiationTasks: mock(async () => stale),
     getTask: mock(async () => task),
     transitionNegotiationTaskForWatchdog: mock(async () => task),
+    recordNegotiationWatchdogAttempt: mock(async () => task),
   };
   const opportunities = {
     getOpportunity: mock(async () => ({ id: 'opportunity-1', status: 'negotiating' })),
@@ -60,6 +61,30 @@ describe('NegotiationWatchdogQueue', () => {
       negotiationId: 'task-1',
       pause: 'counterparty_silent',
     });
+  });
+
+  it('records the attempt before invoking, so a discarded error status still counts toward the retry budget', async () => {
+    const deps = makeDeps();
+    deps.negotiationGraph.invoke.mockResolvedValue({ negotiationId: 'task-1', status: 'error', turns: [], error: 'boom' } as never);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.database.recordNegotiationWatchdogAttempt).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      expectedUpdatedAt: expect.any(Date),
+      attempts: 1,
+    });
+  });
+
+  it('does not invoke the graph when the attempt record loses a race', async () => {
+    const deps = makeDeps();
+    deps.database.recordNegotiationWatchdogAttempt.mockResolvedValue(null as never);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
   });
 
   it('pauses stale working tasks using the working-state threshold', async () => {

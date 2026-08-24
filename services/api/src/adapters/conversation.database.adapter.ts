@@ -1705,6 +1705,42 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Stamps `metadata.watchdogAttempts` on a stale task, CAS-guarded by the
+   * watchdog's own read of `updatedAt` (same fence as
+   * `transitionNegotiationTaskForWatchdog`) — the sweep only counts an
+   * attempt against the exact row it decided to act on. State is left
+   * untouched; the subsequent pause invoke (success or failure) may still
+   * change it separately.
+   */
+  async recordNegotiationWatchdogAttempt(input: {
+    taskId: string;
+    expectedUpdatedAt: Date;
+    attempts: number;
+  }): Promise<Task | null> {
+    const [current] = await db
+      .select({ metadata: schema.tasks.metadata, updatedAt: schema.tasks.updatedAt })
+      .from(schema.tasks)
+      .where(eq(schema.tasks.id, input.taskId))
+      .limit(1);
+    if (!current || current.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+    const currentMetadata = (current.metadata ?? {}) as Record<string, unknown>;
+
+    const [task] = await db
+      .update(schema.tasks)
+      .set({
+        metadata: { ...currentMetadata, watchdogAttempts: input.attempts },
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(schema.tasks.id, input.taskId),
+        eq(schema.tasks.updatedAt, input.expectedUpdatedAt),
+      ))
+      .returning();
+
+    return task ?? null;
+  }
+
+  /**
    * Transitions a task to a new state.
    * @param taskId - Task ID
    * @param state - New task state

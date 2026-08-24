@@ -27,7 +27,7 @@ interface WatchdogQueueHandle {
 type WatchdogWorkerHandle = Pick<Worker<NegotiationWatchdogJobData>, 'close'>;
 type WatchdogDatabase = Pick<
   ConversationDatabaseAdapter,
-  'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog'
+  'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog' | 'recordNegotiationWatchdogAttempt'
 >;
 type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
 
@@ -47,7 +47,7 @@ type WatchdogLogger = {
 export interface NegotiationWatchdogQueueDeps {
   database?: Pick<
     ConversationDatabaseAdapter,
-    'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog'
+    'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog' | 'recordNegotiationWatchdogAttempt'
   >;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
   negotiationGraph?: NegotiationGraphLike;
@@ -269,8 +269,30 @@ export class NegotiationWatchdogQueue {
       ageMs,
       attempt: nextAttempt,
     });
+
+    // Record the attempt before invoking: the invoke may return a discarded
+    // {status:'error'} instead of throwing, so this counter — not a caught
+    // exception — is what makes MAX_WATCHDOG_ATTEMPTS/terminalMark reachable.
+    const recorded = await database.recordNegotiationWatchdogAttempt({
+      taskId: candidate.id,
+      expectedUpdatedAt: candidate.updatedAt,
+      attempts: nextAttempt,
+    });
+    if (!recorded) {
+      this.logger.info('Negotiation watchdog skipped task changed since sweep', { taskId: candidate.id });
+      return;
+    }
+
     try {
-      await this.negotiationGraph.invoke({ negotiationId: staleTask.id, pause: 'counterparty_silent' });
+      const result = await this.negotiationGraph.invoke({ negotiationId: staleTask.id, pause: 'counterparty_silent' });
+      if (result.status === 'error') {
+        this.logger.error('Negotiation watchdog pause invoke returned an error status', {
+          taskId: candidate.id,
+          opportunityId,
+          attempt: nextAttempt,
+          error: result.error,
+        });
+      }
     } catch (error) {
       this.logger.error('Negotiation watchdog pause invoke failed', {
         taskId: candidate.id,
