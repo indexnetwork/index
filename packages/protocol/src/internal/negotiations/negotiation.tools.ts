@@ -180,7 +180,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       pauseReason: z.enum(['needs_principal', 'ready_for_verdict']).optional().describe('Set to pause instead of continuing.'),
       question: z.string().optional().describe('Required when pauseReason is needs_principal.'),
       recommendation: z.enum(['pending', 'reject']).optional().describe('Required when pauseReason is ready_for_verdict.'),
-    }).refine((v) => Boolean(v.verb) !== Boolean(v.pauseReason), { message: 'Provide exactly one of verb or pauseReason.' }),
+    }).refine((v) => Boolean(v.verb) !== Boolean(v.pauseReason), { message: 'Provide exactly one of verb or pauseReason.' })
+      .refine((v) => v.pauseReason !== 'needs_principal' || Boolean(v.question), { message: 'question is required when pauseReason is needs_principal.' })
+      .refine((v) => v.pauseReason !== 'ready_for_verdict' || Boolean(v.recommendation), { message: 'recommendation is required when pauseReason is ready_for_verdict — no default is fabricated.' }),
     handler: async ({ context, query }) => {
       try {
         const task = await negotiationDatabase.getNegotiationTask(query.negotiationId);
@@ -197,11 +199,13 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         // itself; only a resolved one is truly done.
         if (task.state === 'completed') return error(`Negotiation is not accepting a turn right now. Current status: ${task.state}`);
 
+        // question/recommendation presence for their respective pauseReason is
+        // enforced by the schema's refine above — never defaulted here.
         const turn = query.verb
           ? { verb: query.verb, message: query.message ?? '', reasoning: query.reasoning ?? '' }
           : query.pauseReason === 'needs_principal'
-            ? { verb: 'pause' as const, reason: 'needs_principal' as const, payload: { question: query.question ?? '' } }
-            : { verb: 'pause' as const, reason: 'ready_for_verdict' as const, payload: { recommendation: query.recommendation ?? 'reject', reasoning: query.reasoning ?? '' } };
+            ? { verb: 'pause' as const, reason: 'needs_principal' as const, payload: { question: query.question! } }
+            : { verb: 'pause' as const, reason: 'ready_for_verdict' as const, payload: { recommendation: query.recommendation!, reasoning: query.reasoning ?? '' } };
 
         const parsed = NegotiationTurnSchema.safeParse(turn);
         if (!parsed.success) return error(`Invalid turn: ${parsed.error.issues[0]?.message ?? 'schema validation failed'}`);
