@@ -115,11 +115,13 @@ describe('IntentNegotiatorChat option chips', () => {
         timelineEntries={[
           { id: 'act-1', event: { kind: 'matches_ready' }, act: { tool: 'message_user', text: 'I opened the conversation.' }, createdAt: '2026-08-21T10:00:00.000Z' },
           { id: 'act-2', event: { kind: 'matches_ready' }, act: { tool: 'kickoff', round: 3, attempted: 4, opened: 2, failed: 2 }, createdAt: '2026-08-21T10:01:00.000Z' },
-          { id: 'act-3', event: { kind: 'round_paused' }, act: { tool: 'promote', negotiationId: 'neg-1', opportunityId: 'opp-1', reasoning: 'Strong fit.', outcome: 'resolved' }, createdAt: '2026-08-21T10:02:00.000Z' },
-          { id: 'act-4', event: { kind: 'round_paused' }, act: { tool: 'reject', negotiationId: 'neg-2', opportunityId: 'opp-2', reasoning: 'Timing does not work.', outcome: 'error' }, createdAt: '2026-08-21T10:03:00.000Z' },
+          { id: 'act-3', event: { kind: 'all_paused' }, act: { tool: 'promote', negotiationId: 'neg-1', opportunityId: 'opp-1', reasoning: 'Strong fit.', outcome: 'resolved' }, createdAt: '2026-08-21T10:02:00.000Z' },
+          { id: 'act-4', event: { kind: 'all_paused' }, act: { tool: 'reject', negotiationId: 'neg-2', opportunityId: 'opp-2', reasoning: 'Timing does not work.', outcome: 'error' }, createdAt: '2026-08-21T10:03:00.000Z' },
           { id: 'act-5', event: { kind: 'user_message' }, act: { tool: 'note_dossier', text: 'Prefers remote work.', entryId: 'dossier-1' }, createdAt: '2026-08-21T10:04:00.000Z' },
           { id: 'act-6', event: { kind: 'user_message' }, act: { tool: 'retire_dossier', entryId: 'dossier-2', retired: false }, createdAt: '2026-08-21T10:05:00.000Z' },
           { id: 'act-7', event: { kind: 'user_message' }, act: { tool: 'accept_opportunity', opportunityId: 'opp-3', outcome: 'accepted', counterparty: 'Riley' }, createdAt: '2026-08-21T10:06:00.000Z' },
+          { id: 'act-8', event: { kind: 'matches_ready' }, act: { tool: 'kickoff', round: 4, attempted: 1, opened: 1, failed: 0 }, createdAt: '2026-08-21T10:07:00.000Z' },
+          { id: 'act-9', event: { kind: 'matches_ready' }, act: { tool: 'kickoff', round: 5, attempted: 3, opened: 0, failed: 3 }, createdAt: '2026-08-21T10:08:00.000Z' },
         ]}
         timelineLoading={false}
         timelineError={false}
@@ -132,16 +134,18 @@ describe('IntentNegotiatorChat option chips', () => {
     );
     const trace = await screen.findByTestId('personal-agent-debug-trace');
     expect(trace).toHaveTextContent('PersonalAgent debug trace');
-    expect(trace).toHaveTextContent('message_user · Delivered');
+    expect(trace).toHaveTextContent('matches_ready → message_user · Delivered');
     expect(trace).toHaveTextContent('I opened the conversation.');
-    expect(trace).toHaveTextContent('kickoff · Completed');
+    expect(trace).toHaveTextContent('matches_ready → kickoff · Partial');
     expect(trace).toHaveTextContent('round 3 · 4 attempted · 2 opened · 2 failed');
-    expect(trace).toHaveTextContent('promote · Resolved');
+    expect(trace).toHaveTextContent('matches_ready → kickoff · Completed');
+    expect(trace).toHaveTextContent('matches_ready → kickoff · Failed');
+    expect(trace).toHaveTextContent('all_paused → promote · Resolved');
     expect(trace).toHaveTextContent('negotiation neg-1 · opportunity opp-1 · Strong fit.');
-    expect(trace).toHaveTextContent('reject · Failed');
-    expect(trace).toHaveTextContent('note_dossier · Saved');
-    expect(trace).toHaveTextContent('retire_dossier · Not retired');
-    expect(trace).toHaveTextContent('accept_opportunity · accepted');
+    expect(trace).toHaveTextContent('all_paused → reject · Failed');
+    expect(trace).toHaveTextContent('user_message → note_dossier · Saved');
+    expect(trace).toHaveTextContent('user_message → retire_dossier · Not retired');
+    expect(trace).toHaveTextContent('user_message → accept_opportunity · accepted');
     expect(trace).toHaveTextContent('opportunity opp-3 · Riley');
   });
 

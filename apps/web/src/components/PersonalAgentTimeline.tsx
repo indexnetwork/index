@@ -10,13 +10,16 @@ function toolResult(act: Record<string, unknown>): { tool: string; result: strin
     case "message_user":
       return { tool, result: "Delivered", detail: typeof act.text === "string" ? act.text : null };
     case "kickoff": {
+      const opened = typeof act.opened === "number" ? act.opened : null;
+      const failed = typeof act.failed === "number" ? act.failed : null;
       const counts = [
         typeof act.round === "number" ? `round ${act.round}` : null,
         typeof act.attempted === "number" ? `${act.attempted} attempted` : null,
-        typeof act.opened === "number" ? `${act.opened} opened` : null,
-        typeof act.failed === "number" ? `${act.failed} failed` : null,
+        opened !== null ? `${opened} opened` : null,
+        failed !== null ? `${failed} failed` : null,
       ].filter((part): part is string => part !== null);
-      return { tool, result: "Completed", detail: counts.join(" · ") || null };
+      const result = failed && opened === 0 ? "Failed" : failed ? "Partial" : "Completed";
+      return { tool, result, detail: counts.join(" · ") || null };
     }
     case "promote":
     case "reject":
@@ -58,10 +61,11 @@ function toolResult(act: Record<string, unknown>): { tool: string; result: strin
 
 function PersonalAgentActRow({ entry, rawBackground }: { entry: IntentCycleTimelineEntry; rawBackground: string }) {
   const { tool, result, detail } = toolResult(entry.act);
+  const event = typeof entry.event.kind === "string" ? entry.event.kind : "unknown event";
   return (
     <li className="border-l-2 border-slate-200 pl-3">
       <p className="font-ibm-plex-mono text-[10px] uppercase tracking-[0.12em] text-slate-600">
-        {tool} · {result}
+        {event} → {tool} · {result}
       </p>
       {detail && <p className="mt-1 whitespace-pre-wrap text-xs text-gray-700">{detail}</p>}
       <time className="mt-1 block font-ibm-plex-mono text-[10px] text-gray-400">{new Date(entry.createdAt).toLocaleString()} · {entry.id}</time>
