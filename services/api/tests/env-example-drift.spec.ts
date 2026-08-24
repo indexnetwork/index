@@ -96,4 +96,8 @@ describe('root .env.example ↔ startup.env.ts schema', () => {
     expect(schemaSource).toContain('OPPORTUNITY_OWNER_APPROVAL_SECRET: z.string().optional()');
     expect(schemaSource).not.toContain('OPPORTUNITY_OWNER_APPROVAL_SECRET: requiredInProduction');
   });
+
+  it('accepts only Gemini 3.7 Flash reasoning efforts', () => {
+    expect(schemaSource).toContain("CHAT_REASONING_EFFORT: z.enum(['low', 'medium', 'high']).optional()");
+  });
 });
