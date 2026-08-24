@@ -764,6 +764,38 @@ describe('ConversationDatabaseAdapter', () => {
       expect(otherSummary?.negotiation?.pause).toEqual({ reason: 'needs_principal' });
       expect(JSON.stringify(otherSummary?.negotiation?.pause)).not.toContain('equity split');
     }, 30000);
+
+    it('never projects a stale metadata.pause once the task is no longer paused (#1494 round-3 finding 5)', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const pauser = `stale-pause-pauser-${run}`;
+      const other = `stale-pause-other-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${pauser}`, participantType: 'agent' as const },
+        { participantId: `agent:${other}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      // The task WAS paused (metadata.pause still set, as a caller that
+      // forgot to clear it on resume would leave), but state has moved on —
+      // the projection must not read a stale answered question as live.
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: pauser,
+        candidateUserId: other,
+        initiatorUserId: pauser,
+        pause: {
+          reason: 'needs_principal',
+          payload: { question: 'What equity split are you open to?' },
+          pausedBy: pauser,
+        },
+      });
+      await adapter.updateTaskState(task.id, 'working');
+
+      const pauserSummary = (await adapter.getConversationsForUser(`agent:${pauser}`, pauser, true))
+        .find((c) => c.id === conversation.id);
+      expect(pauserSummary?.negotiation?.pause).toBeNull();
+    }, 30000);
   });
 
   describe('getConversationsForUser — screenDecision privacy (IND-610)', () => {

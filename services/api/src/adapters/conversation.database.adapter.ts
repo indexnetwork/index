@@ -226,7 +226,12 @@ function readNegotiationSignalCount(metadata: unknown): number {
 function readNegotiationPause(
   metadata: unknown,
   viewerUserId: string,
+  state: string,
 ): { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown } | null {
+  // Same gate `toResult` applies graph-side: a non-paused task's
+  // metadata.pause is stale/answered, not current, even if a caller failed to
+  // clear it on resume.
+  if (state !== 'paused') return null;
   if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null;
   const pause = (metadata as Record<string, unknown>).pause;
   if (typeof pause !== 'object' || pause === null || Array.isArray(pause)) return null;
@@ -819,7 +824,7 @@ export class ConversationDatabaseAdapter {
         maxTurns,
         signalCount: readNegotiationSignalCount(metadata),
         outcome: outcome ? { hasOpportunity: outcome.hasOpportunity, reason: outcome.reason } : null,
-        pause: readNegotiationPause(metadata, viewerUserId),
+        pause: readNegotiationPause(metadata, viewerUserId, row.state),
         // IND-610: the owner-facing outreach-gate decision. The ownership
         // check lives inside the projection and is re-applied there — it is
         // not inherited from the `screened_out` skip above, which is a listing

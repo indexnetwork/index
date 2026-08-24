@@ -384,7 +384,13 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
     // persisted, so the resume is real regardless of what happens next.
     let currentTask = task;
     if (currentTask.state === "paused") {
-      currentTask = await deps.database.updateNegotiationTaskState(currentTask.id, "working");
+      // Explicit null, not omitted: updateNegotiationTaskState only merges a
+      // new pause into metadata when the argument is passed at all — omitting
+      // it here would leave the just-answered pause (question, recommendation)
+      // sitting in metadata after the state flips to "working", so a reader
+      // that doesn't gate on state (the API's lifecycle-summary projection)
+      // would keep showing "needs your input" for a question already resolved.
+      currentTask = await deps.database.updateNegotiationTaskState(currentTask.id, "working", null);
     }
 
     if (isPauseTurn(effectiveTurn)) {

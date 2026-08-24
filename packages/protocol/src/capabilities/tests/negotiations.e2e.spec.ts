@@ -557,6 +557,37 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({ reason: "needs_principal", pausedBy: SOURCE_USER_ID });
   });
 
+  test("resuming a paused negotiation clears metadata.pause, not just the state", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedNegotiationAuthor([
+      { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
+      { verb: "pause", reason: "needs_principal", payload: { question: "What equity split?" } },
+      { verb: "counter", message: "Alice says 20%.", reasoning: "r" },
+    ]);
+    const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const negotiationId = opened.negotiationId;
+    await graph.invoke({
+      negotiationId,
+      turn: { verb: "counter", message: "Interested — terms?", reasoning: "r" },
+      byUserId: CANDIDATE_USER_ID,
+    });
+    expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({ reason: "needs_principal" });
+
+    // Alice's own seat resumes, answering the question.
+    const resumed = await graph.invoke({
+      negotiationId,
+      turn: { verb: "counter", message: "20% split.", reasoning: "r" },
+      byUserId: SOURCE_USER_ID,
+    });
+    expect(resumed.status).toBe("active");
+    // Metadata itself must be cleared, not just state flipped to working — a
+    // reader that doesn't gate on state must not keep seeing the answered
+    // question.
+    expect(host.taskFor(negotiationId).metadata.pause).toBeNull();
+  });
+
   test("a concurrent duplicate submission is fenced, not silently double-applied", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
