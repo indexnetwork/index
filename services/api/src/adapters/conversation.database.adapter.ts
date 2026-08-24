@@ -66,7 +66,7 @@ import { projectOwnerScreenDecision } from './negotiation-lifecycle.projection';
 import { buildHermesResponseMetadataSql } from './conversation-hermes-metadata.sql';
 import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, intents, isNull, lt, ne, notInArray, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
-import { publishConversationMessageEvent } from '../lib/conversation-events';
+import { publishConversationMessageEvent, publishIntentInvalidationEvent } from '../lib/conversation-events';
 import { log } from '../lib/log';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
@@ -2669,6 +2669,19 @@ export class ConversationDatabaseAdapter {
     if (result?.opportunityExpired) {
       emitOpportunityLifecycleBestEffort({ id: result.task.metadata.opportunityId, status: 'expired' });
       emitOpportunityTransitionBestEffort({ id: result.task.metadata.opportunityId, status: 'expired' });
+    }
+    if (result) {
+      await Promise.all(Object.entries(result.task.metadata.seats).map(async ([intentId, seat]) => {
+        try {
+          await publishIntentInvalidationEvent({ userId: seat.userId, intentId });
+        } catch (error) {
+          logger.error('Failed to publish negotiation expiry intent invalidation', {
+            taskId: result.task.id,
+            intentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }));
     }
     return result?.task ?? null;
   }

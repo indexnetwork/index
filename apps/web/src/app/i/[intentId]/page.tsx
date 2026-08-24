@@ -288,7 +288,7 @@ export default function IntentDetailPage() {
   useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
   const { user } = useAuthContext();
-  const { subscribePersonalAgentTurnCompleted, subscribeIntentDiscoveryProgress } = useConversation();
+  const { subscribePersonalAgentTurnCompleted, subscribeIntentDiscoveryProgress, subscribeIntentInvalidation } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -517,6 +517,12 @@ export default function IntentDetailPage() {
       if (event.intentId === intentId) invalidateLiveIntent();
     });
   }, [intentId, invalidateLiveIntent, subscribeIntentDiscoveryProgress]);
+
+  useEffect(() => {
+    return subscribeIntentInvalidation((event) => {
+      if (event.intentId === intentId) invalidateLiveIntent();
+    });
+  }, [intentId, invalidateLiveIntent, subscribeIntentInvalidation]);
 
   useEffect(() => {
     if (!intentId) return;

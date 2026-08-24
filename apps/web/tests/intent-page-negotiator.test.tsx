@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   },
   chatStubBehavior: { failBootstrap: false },
   turnCompletedHandlers: new Set<(event: { intentId: string }) => void>(),
+  intentInvalidationHandlers: new Set<(event: { intentId: string }) => void>(),
 }));
 
 vi.mock('@/components/ClientLayout', () => ({
@@ -83,6 +84,11 @@ vi.mock('@/contexts/ConversationContext', () => ({
       mocks.turnCompletedHandlers.add(handler);
       return () => mocks.turnCompletedHandlers.delete(handler);
     },
+    subscribeIntentDiscoveryProgress: () => () => {},
+    subscribeIntentInvalidation: (handler: (event: { intentId: string }) => void) => {
+      mocks.intentInvalidationHandlers.add(handler);
+      return () => mocks.intentInvalidationHandlers.delete(handler);
+    },
   }),
 }));
 
@@ -120,6 +126,12 @@ function emitTurnCompleted(event: { intentId: string }) {
   });
 }
 
+function emitIntentInvalidation(event: { intentId: string }) {
+  act(() => {
+    mocks.intentInvalidationHandlers.forEach((handler) => handler(event));
+  });
+}
+
 describe('Intent page — agent chat panel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -136,6 +148,7 @@ describe('Intent page — agent chat panel', () => {
     mocks.conversationsService.getIntentCycleTimeline.mockResolvedValue([]);
     mocks.chatStubBehavior.failBootstrap = false;
     mocks.turnCompletedHandlers.clear();
+    mocks.intentInvalidationHandlers.clear();
   });
 
   test('the chat window renders unconditionally — no flag gates it', async () => {
@@ -166,6 +179,20 @@ describe('Intent page — agent chat panel', () => {
     vi.clearAllMocks();
 
     emitTurnCompleted({ intentId: 'intent-1' });
+
+    await waitFor(() => expect(mocks.intentsService.getIntent).toHaveBeenCalledWith('intent-1'));
+    expect(mocks.conversationsService.getIntentCycle).toHaveBeenCalledWith('intent-1');
+    expect(mocks.conversationsService.getIntentCycleTimeline).toHaveBeenCalledWith('intent-1');
+    expect(mocks.opportunitiesService.getRadarView).toHaveBeenCalled();
+  });
+
+  test('refreshes the entire workspace when negotiation expiry invalidates its intent', async () => {
+    renderIntentPage();
+    await screen.findByText('Looking for a technical co-founder');
+    await waitFor(() => expect(mocks.conversationsService.getIntentCycleTimeline).toHaveBeenCalledTimes(1));
+    vi.clearAllMocks();
+
+    emitIntentInvalidation({ intentId: 'intent-1' });
 
     await waitFor(() => expect(mocks.intentsService.getIntent).toHaveBeenCalledWith('intent-1'));
     expect(mocks.conversationsService.getIntentCycle).toHaveBeenCalledWith('intent-1');
