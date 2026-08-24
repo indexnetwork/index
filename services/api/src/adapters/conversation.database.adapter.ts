@@ -22,7 +22,7 @@ type NegotiationTaskMetadataMirror = {
   networkId: string;
   intentId: string;
   round: number;
-  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown } | null;
+  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown; pausedBy?: string } | null;
 };
 
 type NegotiationTaskRowMirror = {
@@ -216,6 +216,24 @@ function readNegotiationSignalCount(metadata: unknown): number {
     if (typeof intentId === 'string' && intentId) intentIds.add(intentId);
   }
   return intentIds.size;
+}
+
+/**
+ * Projects `metadata.pause` for one viewer: the payload is private to the
+ * seat that paused (`pausedBy`) — every other viewer sees the reason only.
+ * Same rule as `negotiation.tools.ts`'s `pauseFor` on the A2A side.
+ */
+function readNegotiationPause(
+  metadata: unknown,
+  viewerUserId: string,
+): { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown } | null {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null;
+  const pause = (metadata as Record<string, unknown>).pause;
+  if (typeof pause !== 'object' || pause === null || Array.isArray(pause)) return null;
+  const record = pause as { reason?: unknown; payload?: unknown; pausedBy?: unknown };
+  if (typeof record.reason !== 'string') return null;
+  const reason = record.reason as 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
+  return record.pausedBy === viewerUserId ? { reason, payload: record.payload } : { reason };
 }
 
 type PersistedOpportunity = typeof opportunities.$inferSelect;
@@ -810,6 +828,7 @@ export class ConversationDatabaseAdapter {
         maxTurns,
         signalCount: readNegotiationSignalCount(metadata),
         outcome: outcome ? { hasOpportunity: outcome.hasOpportunity, reason: outcome.reason } : null,
+        pause: readNegotiationPause(metadata, viewerUserId),
         // IND-610: the owner-facing outreach-gate decision. The ownership
         // check lives inside the projection and is re-applied there — it is
         // not inherited from the `screened_out` skip above, which is a listing

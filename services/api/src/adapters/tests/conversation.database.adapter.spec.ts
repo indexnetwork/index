@@ -664,6 +664,45 @@ describe('ConversationDatabaseAdapter', () => {
     }, 30000);
   });
 
+  describe('getConversationsForUser — pause projection (#1494 round-2 finding 10)', () => {
+    it('projects pause.reason to every viewer, and payload only to the seat that paused', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const pauser = `pause-pauser-${run}`;
+      const other = `pause-other-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${pauser}`, participantType: 'agent' as const },
+        { participantId: `agent:${other}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: pauser,
+        candidateUserId: other,
+        initiatorUserId: pauser,
+        pause: {
+          reason: 'needs_principal',
+          payload: { question: 'What equity split are you open to?' },
+          pausedBy: pauser,
+        },
+      });
+      await adapter.updateTaskState(task.id, 'paused');
+
+      const pauserSummary = (await adapter.getConversationsForUser(`agent:${pauser}`, pauser, true))
+        .find((c) => c.id === conversation.id);
+      expect(pauserSummary?.negotiation?.pause).toEqual({
+        reason: 'needs_principal',
+        payload: { question: 'What equity split are you open to?' },
+      });
+
+      const otherSummary = (await adapter.getConversationsForUser(`agent:${other}`, other, true))
+        .find((c) => c.id === conversation.id);
+      expect(otherSummary?.negotiation?.pause).toEqual({ reason: 'needs_principal' });
+      expect(JSON.stringify(otherSummary?.negotiation?.pause)).not.toContain('equity split');
+    }, 30000);
+  });
+
   describe('getConversationsForUser — screenDecision privacy (IND-610)', () => {
     it('projects named screenDecision fields to the initiator only, never to the non-owner counterparty, even for a mutually-visible negotiation', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;
