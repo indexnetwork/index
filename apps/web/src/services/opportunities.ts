@@ -37,25 +37,6 @@ export interface GetOpportunitiesOptions {
   offset?: number;
 }
 
-/**
- * The radar's pre-contact-consultation state, projected by
- * `services/api/src/lib/opportunity/asking-first.projection.ts`.
- *
- * Present only while the viewer's own agent has parked a negotiation before any
- * contact, waiting on an answer in the signal's DM (#1445). Derived from the
- * park on every fetch, so it vanishes when the park resolves.
- */
-export interface AskingFirstState {
-  /** The viewer's signal whose DM holds the question — the card's deep link. */
-  intentId: string;
-  /** Closed consultation category from the park. */
-  reason?: string;
-  /** What the agent saw in this match, from the park's seed assessment. */
-  whatFit?: string;
-  /** ISO-8601 park time. */
-  askedAt?: string;
-}
-
 /** Full lifecycle status union (see API OpportunityStatus). */
 export type OpportunityLifecycleStatus =
   | 'latent'
@@ -100,13 +81,6 @@ export interface RadarCardItem {
    * Render a shimmer body and wait for the full fetch to replace the card.
    */
   presentationPending?: boolean;
-  /**
-   * Present while this opportunity's negotiation is parked before any contact,
-   * waiting on the viewer's answer in the signal's DM. The opportunity is
-   * `negotiating` throughout, so this field is the only thing that tells the
-   * two apart — see `AskingFirstCard`.
-   */
-  askingFirst?: AskingFirstState;
 }
 
 export interface RadarViewResponse {
@@ -249,7 +223,7 @@ export const createOpportunitiesService = (
    * Atomically accept a `pending` or `draft` opportunity and resolve the h2h
    * conversation ID in one round-trip. Backs the Start Chat button on both
    * ambient (pending) and orchestrator (draft) cards so the UI can navigate
-   * directly to `/chat/${conversationId}` without a follow-up lookup.
+   * directly to the accepted human chat without a follow-up lookup.
    *
    * Wraps POST /opportunities/:id/start-chat from Plan B Task 8.
    */

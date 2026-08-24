@@ -10,11 +10,11 @@ import { FocusScope } from "@radix-ui/react-focus-scope";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
+import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
-import DiscoveryWarmupLog from "@/components/DiscoveryWarmupLog";
-import NegotiationActivity from "@/components/NegotiationActivity";
+import IntentCycleInspector from "@/components/IntentCycleInspector";
+import PersonalAgentTimeline from "@/components/PersonalAgentTimeline";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversations, useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -22,14 +22,11 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
-import type { NegotiationActivityGroup } from "@/services/conversation";
+import type { IntentCycleSnapshot, IntentCycleTimelineEntry } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
 import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
-import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
-import { deriveLiveNegotiations, formatLatestMove, liveNegotiationsByOpportunity } from "@/lib/negotiation-presence";
-import type { WarmupConversation } from "@/lib/discovery-warmup-log";
 import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
@@ -313,9 +310,12 @@ export default function IntentDetailPage() {
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
   const opportunitiesLoadingRef = useRef(true);
   const [opportunitiesError, setOpportunitiesError] = useState(false);
-  const [negotiationActivity, setNegotiationActivity] = useState<NegotiationActivityGroup[]>([]);
-  const [negotiationActivityLoading, setNegotiationActivityLoading] = useState(true);
-  const [negotiationActivityError, setNegotiationActivityError] = useState(false);
+  const [intentCycle, setIntentCycle] = useState<IntentCycleSnapshot | null>(null);
+  const [intentCycleLoading, setIntentCycleLoading] = useState(true);
+  const [intentCycleError, setIntentCycleError] = useState(false);
+  const [intentTimeline, setIntentTimeline] = useState<IntentCycleTimelineEntry[]>([]);
+  const [intentTimelineLoading, setIntentTimelineLoading] = useState(true);
+  const [intentTimelineError, setIntentTimelineError] = useState(false);
   /** Bumps make the intent negotiator reload its stable session after lifecycle changes. */
   const [negotiatorRefreshVersion, setNegotiatorRefreshVersion] = useState(0);
   const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -393,22 +393,42 @@ export default function IntentDetailPage() {
   /** Monotonic load ids guard every intent-scoped feed against stale responses. */
   const loadSeqRef = useRef(0);
   const activityLoadSeqRef = useRef(0);
+  const timelineLoadSeqRef = useRef(0);
 
-  const loadNegotiationActivity = useCallback(async (showLoading = false) => {
+  const loadIntentCycle = useCallback(async (showLoading = false) => {
     if (!intentId) return;
     const seq = ++activityLoadSeqRef.current;
-    if (showLoading) setNegotiationActivityLoading(true);
+    if (showLoading) setIntentCycleLoading(true);
     try {
-      const groups = await conversationsService.getNegotiationActivity(intentId);
+      const cycle = await conversationsService.getIntentCycle(intentId);
       if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
-      setNegotiationActivity(normalizeNegotiationActivity(groups));
-      setNegotiationActivityError(false);
+      setIntentCycle(cycle);
+      setIntentCycleError(false);
     } catch {
       if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
-      setNegotiationActivityError(true);
+      setIntentCycleError(true);
     } finally {
       if (activeIntentIdRef.current === intentId && activityLoadSeqRef.current === seq) {
-        setNegotiationActivityLoading(false);
+        setIntentCycleLoading(false);
+      }
+    }
+  }, [conversationsService, intentId]);
+
+  const loadIntentTimeline = useCallback(async (showLoading = false) => {
+    if (!intentId) return;
+    const seq = ++timelineLoadSeqRef.current;
+    if (showLoading) setIntentTimelineLoading(true);
+    try {
+      const entries = await conversationsService.getIntentCycleTimeline(intentId);
+      if (activeIntentIdRef.current !== intentId || timelineLoadSeqRef.current !== seq) return;
+      setIntentTimeline(entries);
+      setIntentTimelineError(false);
+    } catch {
+      if (activeIntentIdRef.current !== intentId || timelineLoadSeqRef.current !== seq) return;
+      setIntentTimelineError(true);
+    } finally {
+      if (activeIntentIdRef.current === intentId && timelineLoadSeqRef.current === seq) {
+        setIntentTimelineLoading(false);
       }
     }
   }, [conversationsService, intentId]);
@@ -483,47 +503,23 @@ export default function IntentDetailPage() {
     [intentId, negotiations],
   );
 
-  // Ambient negotiation presence (Option C): in-flight negotiations, indexed
-  // by opportunity for card chips and filtered to this signal for the Radar panel.
-  const liveNegotiations = useMemo(
-    () => deriveLiveNegotiations(negotiations, user?.id),
-    [negotiations, user?.id],
-  );
-  const presenceByOpportunity = useMemo(() => {
-    const map = new Map<string, NegotiationPresence>();
-    for (const [opportunityId, item] of liveNegotiationsByOpportunity(liveNegotiations)) {
-      map.set(opportunityId, {
-        conversationId: item.conversationId,
-        latestMove: formatLatestMove(item.lastAction, item.timeAgo),
-        turnCount: item.turnCount,
-        maxTurns: item.maxTurns,
-      });
+  const inspectorHrefByOpportunity = useMemo(() => {
+    const hrefs = new Map<string, string>();
+    for (const negotiation of intentCycle?.negotiations ?? []) {
+      if (!hrefs.has(negotiation.opportunityId)) {
+        hrefs.set(negotiation.opportunityId, `/i/${intentId}/negotiations/${negotiation.taskId}`);
+      }
     }
-    return map;
-  }, [liveNegotiations]);
-  const intentLiveNegotiations = useMemo(
-    () => liveNegotiations.filter((item) => intentId !== undefined && item.intentIds.includes(intentId)),
-    [liveNegotiations, intentId],
-  );
-  /** The warmup card's live lane: one entry per in-flight negotiation on this signal. */
-  const warmupConversations = useMemo<WarmupConversation[]>(() => {
-    const byId = new Map(negotiations.map((conversation) => [conversation.id, conversation]));
-    return intentLiveNegotiations.map((item) => ({
-      id: item.conversationId,
-      counterpartLabel: item.counterpart.name,
-      // The conversation's own creation time — the moment the agents started
-      // talking. `sortTimestamp` is last-activity and would misdate the line.
-      startedAt: byId.get(item.conversationId)?.createdAt ?? null,
-    }));
-  }, [intentLiveNegotiations, negotiations]);
-
+    return hrefs;
+  }, [intentCycle?.negotiations, intentId]);
   const refreshLiveRadar = useCallback(() => {
     void loadOpportunities(true);
-    void loadNegotiationActivity();
+    void loadIntentCycle();
+    void loadIntentTimeline();
     // The SSE feed never carries the intent snapshot, so a finished run's final
     // tallies would otherwise sit unread until the next 15s progress poll.
     if (intentId) void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
-  }, [intentId, intentsService, loadNegotiationActivity, loadOpportunities]);
+  }, [intentId, intentsService, loadIntentCycle, loadIntentTimeline, loadOpportunities]);
 
   // Refresh only the owner-scoped progress snapshot while work is non-terminal;
   // this intentionally leaves the negotiator chat mounted and untouched.
@@ -563,11 +559,12 @@ export default function IntentDetailPage() {
         if (active) setIntentLoading(false);
       });
     void loadOpportunities();
-    void loadNegotiationActivity(true);
+    void loadIntentCycle(true);
+    void loadIntentTimeline(true);
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadOpportunities, loadNegotiationActivity]);
+  }, [intentId, intentsService, loadOpportunities, loadIntentCycle, loadIntentTimeline]);
 
   const refreshWorkspaceAfterReaction = useCallback(() => {
     setNegotiatorRefreshVersion((version) => version + 1);
@@ -687,9 +684,6 @@ export default function IntentDetailPage() {
     () => opportunities.filter((item) => bucketOf(item) === selectedBucket),
     [opportunities, bucketOf, selectedBucket],
   );
-  const hasActualNegotiationActivity = negotiationActivity.length > 0
-    || opportunities.some((item) => bucketOf(item) === "negotiating");
-
   const title = (
     intent?.summary && intent.summary.trim().length > 0
       ? intent.summary
@@ -809,7 +803,7 @@ export default function IntentDetailPage() {
                         </span>
                         live
                       </span>
-                      <span>background matching on — negotiation activity appears in Radar</span>
+                      <span>background matching on — the PersonalAgent cycle is shown below</span>
                     </>
                   )}
                   {lifecycleStatus === "PAUSED" && (
@@ -1039,29 +1033,21 @@ export default function IntentDetailPage() {
                     />
                   }
                 >
-                  {intentLiveNegotiations.length > 0 && (
-                    <div className="mb-3 shrink-0 space-y-2" data-testid="radar-live-negotiations">
-                      {intentLiveNegotiations.map((item) => (
-                        <button
-                          key={item.conversationId}
-                          type="button"
-                          onClick={() => navigate(`/negotiations/${item.conversationId}`)}
-                          aria-label={`Watch the negotiation with ${item.counterpart.name}`}
-                          className="w-full rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5 text-left transition-colors hover:bg-amber-50"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="truncate text-xs font-semibold text-gray-900">
-                              {item.counterpart.name}
-                            </span>
-                            <NegotiationPresenceChip turnCount={item.turnCount} maxTurns={item.maxTurns} />
-                          </div>
-                          <p className="mt-1 text-[11px] text-[#3D3D3D]">
-                            {formatLatestMove(item.lastAction, item.timeAgo)}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <div className="mb-3">
+                    <IntentCycleInspector
+                      intentId={intentId ?? ""}
+                      cycle={intentCycle}
+                      loading={intentCycleLoading}
+                      error={intentCycleError}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <PersonalAgentTimeline
+                      entries={intentTimeline}
+                      loading={intentTimelineLoading}
+                      error={intentTimelineError}
+                    />
+                  </div>
                   <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
                     {RADAR_BUCKETS.map((bucket) => (
                       <StatPill
@@ -1075,18 +1061,6 @@ export default function IntentDetailPage() {
                     ))}
                   </div>
                   <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
-                  {selectedBucket === "negotiating" && (
-                    <div className="mb-3">
-                      {negotiationActivity.length === 0 && !hasActualNegotiationActivity && !negotiationActivityLoading && !negotiationActivityError
-                        && (intent?.warming || intent?.discoveryProgress) ? (
-                          <DiscoveryWarmupLog
-                            progress={intent?.discoveryProgress}
-                            communities={intent?.networks ?? []}
-                            conversations={warmupConversations}
-                          />
-                        ) : <NegotiationActivity groups={negotiationActivity} loading={negotiationActivityLoading} error={negotiationActivityError} />}
-                    </div>
-                  )}
                   {opportunitiesLoading ? (
                     <div className="space-y-3" data-testid="radar-skeleton">
                       <OpportunitySkeleton />
@@ -1116,7 +1090,7 @@ export default function IntentDetailPage() {
                           currentStatus={
                             opportunityStatusMap[item.opportunityId]
                           }
-                          negotiationPresence={presenceByOpportunity.get(item.opportunityId)}
+                          negotiationInspectorHref={inspectorHrefByOpportunity.get(item.opportunityId)}
                           onPrimaryAction={(
                             oppId,
                             userId,

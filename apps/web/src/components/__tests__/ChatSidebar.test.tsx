@@ -1,6 +1,5 @@
-import { useEffect } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import ChatSidebar from '../ChatSidebar';
@@ -40,156 +39,34 @@ const messageConversation: ConversationSummary = {
   createdAt: '2025-06-11T12:00:00.000Z',
 };
 
-function negotiation(
-  id: string,
-  counterpartName: string,
-  input: {
-    state?: NonNullable<ConversationSummary['negotiation']>['state'];
-    opportunityStatus?: NonNullable<ConversationSummary['negotiation']>['opportunityStatus'];
-    pauseReason?: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
-    senderId?: string;
-    turnCount?: number;
-  } = {},
-): ConversationSummary {
-  const data: Record<string, unknown> = input.pauseReason ? { verb: 'pause', reason: input.pauseReason } : { verb: 'counter' };
-  return {
-    id,
-    participants: [
-      { participantId: 'agent:me', participantType: 'agent', name: 'Index Negotiator', avatar: null, ownerName: 'Viewer' },
-      { participantId: `agent:${id}-peer`, participantType: 'agent', name: 'Index Negotiator', avatar: null, ownerName: counterpartName },
-    ],
-    lastMessage: {
-      parts: [{ kind: 'data', data }],
-      senderId: input.senderId ?? `agent:${id}-peer`,
-      createdAt: '2026-07-24T11:00:00.000Z',
-      taskId: `${id}-task`,
-    },
-    metadata: null,
-    via: [],
-    unreadCount: 0,
-    lastMessageAt: '2026-07-24T11:00:00.000Z',
-    createdAt: '2026-07-24T10:00:00.000Z',
-    negotiation: {
-      taskId: `${id}-task`,
-      state: input.state ?? 'working',
-      pause: input.pauseReason ? { reason: input.pauseReason } : null,
-      statusTimestamp: '2026-07-24T11:00:00.000Z',
-      opportunityId: `${id}-opportunity`,
-      opportunityStatus: input.opportunityStatus ?? 'negotiating',
-      acceptedByViewer: false,
-      turnCount: input.turnCount ?? 1,
-      signalCount: 2,
-      updatedAt: '2026-07-24T11:00:00.000Z',
-    },
-    negotiationOpportunities: [{
-      intentId: `${id}-intent`,
-      opportunityId: `${id}-opportunity`,
-      title: `${counterpartName}'s opportunity`,
-      taskId: `${id}-task`,
-      state: input.state ?? 'working',
-      pause: input.pauseReason ? { reason: input.pauseReason } : null,
-      opportunityStatus: input.opportunityStatus ?? 'negotiating',
-      acceptedByViewer: false,
-      turnCount: input.turnCount ?? 1,
-      signalCount: 2,
-      updatedAt: '2026-07-24T11:00:00.000Z',
-    }],
-  };
-}
-
-const answerNegotiation = negotiation('question', 'Mira Chen', {
-  state: 'paused',
-  pauseReason: 'needs_principal',
-  senderId: 'agent:me',
-});
-
-/**
- * The dev shape that made the badge and the list disagree after #1444: the API
- * projected no `negotiationOpportunities` (the conversation carries no match
- * provenance for this viewer) while `negotiation` still describes a pending
- * opportunity the your-move badge counts.
- */
-const ungroupableNegotiation: ConversationSummary = {
-  ...negotiation('ungrouped', 'Dana Okafor', { state: 'completed', opportunityStatus: 'pending' }),
-  via: [],
-  negotiationOpportunities: [],
-};
-
-/** A zero-message screened-out shell: owner-only, and never grouped. */
-const screenedOutNegotiation: ConversationSummary = {
-  ...negotiation('screened', 'Ilya Roth', { state: 'completed', opportunityStatus: 'rejected' }),
-  lastMessage: null,
-  lastMessageAt: null,
-  negotiationOpportunities: [],
-  negotiation: {
-    ...negotiation('screened', 'Ilya Roth', { state: 'completed', opportunityStatus: 'rejected' }).negotiation!,
-    screenDecision: {
-      source: 'screen',
-      decision: 'pass',
-      reasoning: 'not enough mutual value',
-      counterpartyPremiseFit: null,
-      intentAlignment: null,
-      screenedAt: '2026-07-24T11:00:00.000Z',
-    },
-  },
-};
-
 const mocks = vi.hoisted(() => ({
   conversations: [] as ConversationSummary[],
-  negotiations: [] as ConversationSummary[],
-  features: undefined as Record<string, boolean> | undefined,
-  apiGet: vi.fn(),
-  apiPost: vi.fn(),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuthContext: () => ({ user: viewer, features: mocks.features }),
+  useAuthContext: () => ({ user: viewer }),
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({
     conversations: mocks.conversations,
-    negotiations: mocks.negotiations,
     isConnected: true,
     refreshConversations: vi.fn(async () => {}),
-    refreshNegotiations: vi.fn(async () => {}),
     hideConversation: vi.fn(async () => {}),
   }),
 }));
 
-vi.mock('@/lib/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/api')>()),
-  apiClient: { get: mocks.apiGet, post: mocks.apiPost },
-}));
-
-const currentPath = { value: '/' };
-
-function LocationProbe() {
-  const { pathname, search } = useLocation();
-  useEffect(() => {
-    currentPath.value = `${pathname}${search}`;
-  }, [pathname, search]);
-  return null;
-}
-
-function renderSidebar(initialEntry = '/chat') {
+function renderSidebar() {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
-      <LocationProbe />
+    <MemoryRouter initialEntries={['/chat']}>
       <ChatSidebar />
     </MemoryRouter>,
   );
 }
 
-async function waitForNegotiations() {
-  // Wait for the first refresh to settle so empty-state assertions are stable.
-  await waitFor(() => expect(screen.queryByTestId('chat-sidebar-skeleton')).not.toBeInTheDocument());
-}
-
 describe('ChatSidebar conversation preview wiring (IND-504)', () => {
   it('renders the muted placeholder for a row with lastMessage: null and the excerpt for a real message', async () => {
     mocks.conversations = [emptyConversation, messageConversation];
-    mocks.negotiations = [];
     renderSidebar();
 
     // Excerpt row: real last message, standard excerpt styling, no placeholder.
@@ -220,7 +97,6 @@ describe('ChatSidebar conversation preview wiring (IND-504)', () => {
         metadata: { matchReason: 'RAW_MATCH_REASON', interpretation: { reasoning: 'RAW_REASONING' } } as unknown as ConversationSummary['metadata'],
       },
     ];
-    mocks.negotiations = [];
     renderSidebar();
 
     expect(await screen.findByTestId('conversation-preview-empty')).toHaveTextContent('No messages yet');

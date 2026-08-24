@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => ({
     getRadarView: vi.fn(),
   },
   conversationsService: {
-    getNegotiationActivity: vi.fn(),
+    getIntentCycle: vi.fn(),
   },
   chatStubBehavior: { failBootstrap: false },
 }));
@@ -120,7 +120,7 @@ describe('Intent page — agent chat panel', () => {
     });
     mocks.intentsService.visitIntent.mockResolvedValue(undefined);
     mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
-    mocks.conversationsService.getNegotiationActivity.mockResolvedValue([]);
+  mocks.conversationsService.getIntentCycle.mockResolvedValue({ round: { number: 0, size: null, kickoffStartedAt: null, working: 0, paused: 0 }, negotiations: [] });
     mocks.chatStubBehavior.failBootstrap = false;
   });
 
