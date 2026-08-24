@@ -2051,7 +2051,7 @@ export class ConversationDatabaseAdapter {
       const pausedBy = task.metadata.pause?.pausedBy;
       const pauseReason = intentCyclePauseReason(task.metadata.pause?.reason);
       const pauseBy: 'yours' | 'theirs' | null = pausedBy
-        ? (pausedBy === `agent:${userId}` ? 'yours' : 'theirs')
+        ? (pausedBy === userId ? 'yours' : 'theirs')
         : null;
       return [{
         taskId: task.id,
@@ -2159,7 +2159,7 @@ export class ConversationDatabaseAdapter {
       const pausedBy = seat.metadata.pause?.pausedBy;
       const pauseReason = intentCyclePauseReason(seat.metadata.pause?.reason);
       const pauseBy: 'yours' | 'theirs' | null = pausedBy
-        ? (pausedBy === `agent:${userId}` ? 'yours' : 'theirs')
+        ? (pausedBy === userId ? 'yours' : 'theirs')
         : null;
       const latest = latestByTask.get(seat.id);
       const latestActivity = latest ? intentCycleLatestActivity(latest.parts as unknown[], latest.senderId, userId, latest.createdAt) : null;
@@ -2288,7 +2288,7 @@ export class ConversationDatabaseAdapter {
     const pausedBy = taskPause?.pausedBy;
     const pauseReason = intentCyclePauseReason(taskPause?.reason);
     const pauseBy: 'yours' | 'theirs' | null = pausedBy
-      ? (pausedBy === `agent:${userId}` ? 'yours' : 'theirs')
+      ? (pausedBy === userId ? 'yours' : 'theirs')
       : null;
     const pause = pauseReason
       ? {

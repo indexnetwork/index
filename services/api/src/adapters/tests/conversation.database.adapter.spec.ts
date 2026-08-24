@@ -351,6 +351,82 @@ describe('ConversationDatabaseAdapter', () => {
   });
 
   describe('negotiation conversation summaries', () => {
+    it('projects raw-user-id pause ownership consistently across intent-cycle reads', async () => {
+      const suffix = `${Date.now()}-${crypto.randomUUID()}`;
+      const ownerId = `pause-owner-${suffix}`;
+      const counterpartId = `pause-counterpart-${suffix}`;
+      const ownerIntentId = `pause-owner-intent-${suffix}`;
+      const counterpartIntentId = `pause-counterpart-intent-${suffix}`;
+      const opportunityId = `pause-opportunity-${suffix}`;
+
+      await db.insert(schema.users).values([
+        { id: ownerId, email: `${ownerId}@test.local`, name: 'Pause Owner' },
+        { id: counterpartId, email: `${counterpartId}@test.local`, name: 'Pause Counterpart' },
+      ]);
+      createdUserIds.push(ownerId, counterpartId);
+      await db.insert(schema.intents).values([
+        { id: ownerIntentId, userId: ownerId, payload: 'Owner intent', negotiationRound: 1, negotiationRoundSize: 1 },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Counterpart intent', negotiationRound: 1, negotiationRoundSize: 1 },
+      ]);
+      createdIntentIds.push(ownerIntentId, counterpartIntentId);
+      await db.insert(schema.opportunities).values({
+        id: opportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'pause-network', userId: ownerId, role: 'peer', intent: ownerIntentId },
+          { networkId: 'pause-network', userId: counterpartId, role: 'peer', intent: counterpartIntentId },
+        ],
+        interpretation: { category: 'test', reasoning: 'Pause ownership projection.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status: 'negotiating',
+      });
+      createdOpportunityIds.push(opportunityId);
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${ownerId}`, participantType: 'agent' },
+        { participantId: `agent:${counterpartId}`, participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId,
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        initiatorUserId: ownerId,
+        networkId: 'pause-network',
+        seats: {
+          [ownerIntentId]: { userId: ownerId, round: 1 },
+          [counterpartIntentId]: { userId: counterpartId, round: 1 },
+        },
+        pause: {
+          reason: 'ready_for_verdict',
+          payload: { recommendation: 'pending', reasoning: 'Owner recommends proceeding.' },
+          pausedBy: ownerId,
+        },
+      });
+      await adapter.updateTaskState(task.id, 'paused');
+
+      const ownerCycle = await adapter.getIntentCycleForIntent(ownerId, ownerIntentId);
+      const counterpartCycle = await adapter.getIntentCycleForIntent(counterpartId, counterpartIntentId);
+      expect(ownerCycle?.negotiations[0]?.pause?.by).toBe('yours');
+      expect(counterpartCycle?.negotiations[0]?.pause?.by).toBe('theirs');
+
+      const ownerIndex = await adapter.getNegotiationTaskIndex(ownerId);
+      const counterpartIndex = await adapter.getNegotiationTaskIndex(counterpartId);
+      expect(ownerIndex.find((entry) => entry.taskId === task.id)?.pause?.by).toBe('yours');
+      expect(counterpartIndex.find((entry) => entry.taskId === task.id)?.pause?.by).toBe('theirs');
+
+      const ownerDetail = await adapter.getIntentCycleNegotiationForIntent(ownerId, ownerIntentId, task.id);
+      const counterpartDetail = await adapter.getIntentCycleNegotiationForIntent(counterpartId, counterpartIntentId, task.id);
+      expect(ownerDetail?.task.pause).toEqual({
+        reason: 'ready_for_verdict',
+        by: 'yours',
+        payload: { recommendation: 'pending', reasoning: 'Owner recommends proceeding.' },
+      });
+      expect(counterpartDetail?.task.pause).toEqual({ reason: 'ready_for_verdict', by: 'theirs' });
+    }, 30000);
+
     it('projects the latest task, opportunity, turn, and signal lifecycle', async () => {
       const suffix = `${Date.now()}-${crypto.randomUUID()}`;
       const ownerId = `inbox-owner-${suffix}`;
