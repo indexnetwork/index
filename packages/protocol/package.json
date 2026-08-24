@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/protocol",
-  "version": "29.0.0",
+  "version": "30.0.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
