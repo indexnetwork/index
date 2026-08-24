@@ -28,10 +28,6 @@ mock.module('../../adapters/embedder.adapter', () => ({
   embedderAdapter: {},
 }));
 
-// Stub the run-existing queue that from-intent imports
-mock.module('../negotiations/run-existing.queue', () => ({
-  negotiationRunExistingQueue: { addJob: async () => ({ id: 'neg-1' }) },
-}));
 mock.module('../pool/negotiation-evidence.shadow', () => ({
   maybeRunNegotiationEvidenceShadow: async () => {},
 }));

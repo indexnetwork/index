@@ -2,8 +2,7 @@
  * Negotiator memory write service (P5.2 / IND-406).
  *
  * The single choke point for every `negotiator_memories` write: the reflect
- * queue (post-negotiation + chat distillation) and the ask_user answer path
- * (immediate disclosure_rule) both land here. Owns the anti-poisoning policy:
+ * queue (post-negotiation + chat distillation). Owns the anti-poisoning policy:
  *
  * - **Per-kind entry caps** per negotiator: at cap, the lowest-confidence
  *   (oldest first) entry is evicted to make room.
@@ -187,41 +186,6 @@ export class NegotiatorMemoryWriteService {
       });
     }
     return { written, skipped };
-  }
-
-  /**
-   * Record an `ask_user` answer as an immediate disclosure_rule memory (the
-   * answer is already a distilled policy — no LLM pass needed). High
-   * confidence: this is the client speaking directly.
-   */
-  async recordDisclosureRuleFromAnswer(input: {
-    userId: string;
-    questionId: string;
-    questionPrompt?: string;
-    selectedOptions: string[];
-    freeText?: string;
-  }): Promise<void> {
-    if (!isNegotiatorMemoryWriteEnabled()) return;
-
-    const answerText = [input.selectedOptions.join('; '), input.freeText?.trim()]
-      .filter(Boolean)
-      .join(' — ');
-    if (!answerText) return;
-
-    const subject = input.questionPrompt?.trim() || 'a mid-negotiation disclosure decision';
-    const content = `Client guidance on "${subject}": ${answerText}`;
-
-    await this.writeDistilledMemories({
-      userId: input.userId,
-      entries: [{
-        kind: 'disclosure_rule',
-        content,
-        confidence: 0.9,
-        aboutCounterparty: false,
-        turnIndexes: [],
-      }],
-      sourceRef: { type: 'question_answer', id: input.questionId },
-    });
   }
 
   /**

@@ -2,11 +2,10 @@
  * Host bridge behind the negotiator persona's `reject_opportunity` and
  * `accept_opportunity` tools (#1471) — the owner's VERDICT lane.
  *
- * The owner makes three kinds of decision in their signal's DM. They ANSWER a
- * question a parked negotiation asked (#1466 gave that a lane). They EDIT the
+ * The owner makes two kinds of decision in their signal's DM. They EDIT the
  * signal (`update_intent` always had one). And they pass a VERDICT on a
  * counterparty — which had no lane at all. On 2026-08-20, in the DM of a
- * pairing parked on `input_required`, a client told their agent to reject the
+ * pairing still being negotiated, a client told their agent to reject the
  * counterparty. The agent could not: every verdict lever in the product was
  * the Radar card's Skip/Start-Chat and the REST endpoints behind them, and
  * `update_opportunity` — which is in the toolset — refuses a `negotiating`
@@ -18,12 +17,8 @@
  * Radar's Skip page calls through `PATCH /opportunities/:id/status`, and the
  * accept is that call with `'accepted'`. Everything that hangs off an owner
  * verdict therefore happens exactly as it already does: the outcome hooks, the
- * DM resolution on accept, the contact memberships, and — via
- * `OpportunityEvents.onTransition` (main.ts) → `evaluateOpportunityTransition`
- * — the question-message regeneration that retires a dismissed pairing's open
- * question. A rejected pairing's question dies with it because that arrow
- * already exists on every status transition; this module deliberately does not
- * reach into it.
+ * DM resolution on accept, and the contact memberships. This module
+ * deliberately does not reach into any other status-transition side effect.
  *
  * Positions, never ids. The prompt lists this signal's actionable
  * counterparties, numbered; the tool hands back a number; this module owns the
@@ -62,7 +57,7 @@ const STATE_LINE: Record<string, string> = {
   draft: 'found, not contacted yet',
   pending: 'waiting on your decision',
   negotiating: 'your agents are still negotiating',
-  stalled: 'parked, waiting on you',
+  stalled: 'paused',
 };
 
 /** One numbered counterparty, as both the prompt and the mapping see it. */

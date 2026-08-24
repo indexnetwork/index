@@ -40,33 +40,8 @@ export async function acquireNegotiationPairLock(
   `);
 }
 
-const ACTIVE_NEGOTIATION_FRESH_MS = 5 * 60 * 1000;
-/**
- * Mirrors the protocol's ASK_USER_WINDOW_MS. Adapters may not import from the
- * protocol package (see the eslint boundaries rule), so the value is restated
- * here; adapters/tests/negotiation-attempt.ask-user-window.spec.ts pins the two
- * together so they cannot drift.
- */
-export const ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
-const ASK_USER_LOCK_SLACK_MS = 60 * 60 * 1000;
-
-function askUserLockWindowMs(): number {
-  return ASK_USER_WINDOW_MS + ASK_USER_LOCK_SLACK_MS;
-}
-
 function qualifyingFreshNegotiationTaskStateWhere() {
-  return sql`
-    (
-      (
-        ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
-        AND ${schema.tasks.updatedAt} >= NOW() - (${ACTIVE_NEGOTIATION_FRESH_MS} * INTERVAL '1 millisecond')
-      )
-      OR (
-        ${schema.tasks.state} = 'input_required'
-        AND ${schema.tasks.updatedAt} >= NOW() - (${askUserLockWindowMs()} * INTERVAL '1 millisecond')
-      )
-    )
-  `;
+  return sql`${schema.tasks.state} IN ('submitted', 'working', 'paused')`;
 }
 
 /** Fresh active task for one opportunity, used by final reactivation checks. */
@@ -103,8 +78,7 @@ export function qualifyingPairNegotiationTaskWhere(
 /**
  * Reusable SQL predicate that excludes archived legacy pre-v2 negotiations.
  * Archived tasks carry `metadata->>'archivedAt'` stamped by the backfill.
- * Apply this to every user-visible SET-reader query; leave single-by-id
- * readers, debug tools, and continuation-chain recovery alone.
+ * Apply this to every user-visible SET-reader query.
  */
 export function notArchivedNegotiationTaskWhere() {
   return sql`${schema.tasks.metadata}->>'archivedAt' IS NULL`;
@@ -124,9 +98,7 @@ export function rewriteEraNegotiationTaskWhere() {
 
 /**
  * Qualifying tasks that prove an attempt is already owned or still active.
- * Historical stale non-input-required tasks deliberately do not qualify.
- * Archived tasks (metadata->>'archivedAt' IS NOT NULL) are excluded so a
- * legacy input_required task cannot block a new attempt for its opportunity.
+ * Archived tasks (metadata->>'archivedAt' IS NOT NULL) are excluded.
  */
 export function qualifyingNegotiationAttemptTaskWhere(
   opportunityId: string,
@@ -138,11 +110,7 @@ export function qualifyingNegotiationAttemptTaskWhere(
     AND ${notArchivedNegotiationTaskWhere()}
     AND (
       ${schema.tasks.createdAt} >= ${expectedUpdatedAt.toISOString()}::timestamptz
-      OR ${schema.tasks.state} = 'input_required'
-      OR (
-        ${schema.tasks.state} IN ('submitted', 'working', 'waiting_for_agent', 'claimed')
-        AND ${schema.tasks.updatedAt} >= NOW() - INTERVAL '5 minutes'
-      )
+      OR ${schema.tasks.state} IN ('submitted', 'working', 'paused')
     )
   `;
 }

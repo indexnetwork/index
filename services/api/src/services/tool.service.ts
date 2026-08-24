@@ -247,7 +247,6 @@ export class ToolService {
       undefined,
       matchesReadyBestEffort,
       noOpDispatcher,
-      undefined,
     ).createGraph();
     const networks = new Networks({ database, indexer: intents });
     const indexGraph = networks.createGraph();

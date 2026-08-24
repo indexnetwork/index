@@ -135,11 +135,6 @@ export function projectNegotiationActivity(
     if (
       !message.taskId
       || !message.senderId.startsWith('agent:')
-      // `ask_user` is a local consultation between an agent and its own
-      // principal. It is persisted in the bilateral record so the negotiation
-      // can resume deterministically, but the other principal is not its
-      // audience. In particular, never project it as "Their agent ASKED YOU".
-      || (turn?.action === 'ask_user' && !isViewerAgent)
       || text.length === 0
     ) continue;
     const opportunityId = opportunityByTask.get(message.taskId);

@@ -399,11 +399,6 @@ export interface ChatMessageMeta {
   discoveries?: unknown;
   /** Set to true when the assistant message was partially generated before a steer interrupt. */
   interrupted?: boolean;
-  /**
-   * ISO timestamp of the last in-place question-message regeneration (the
-   * conversational-questions edit rule). Absent on messages never edited.
-   */
-  regeneratedAt?: string;
   /** Canned replies offered under an agent question (2-4 short strings). */
   options?: string[];
   [key: string]: unknown;
@@ -640,7 +635,7 @@ export interface ProjectedScreenDecision {
 
 export interface NegotiationLifecycleSummary {
   taskId: string;
-  state: 'submitted' | 'working' | 'input_required' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed' | 'paused';
+  state: 'submitted' | 'working' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed' | 'paused';
   statusTimestamp: Date | null;
   opportunityId: string | null;
   opportunityStatus: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
@@ -683,8 +678,7 @@ export interface ConversationSummary {
   /**
    * Present only when negotiation lifecycle projection was requested. The one
    * task session that represents this conversation to the viewer: the most
-   * alive visible session, newest first within a liveness tier — NOT simply
-   * the newest task (negotiation-session-rollup.projection.ts).
+   * latest task for the conversation.
    */
   negotiation?: NegotiationLifecycleSummary | null;
   /**

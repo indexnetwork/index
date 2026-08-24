@@ -32,5 +32,3 @@ export interface IntentNetworkIndexer {
 
 export const NEGOTIATION_MAX_TURNS_CHAT = 4;
 export const NEGOTIATION_MAX_TURNS_AMBIENT = 6;
-export const ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
-export const ASK_USER_LOCK_SLACK_MS = 60 * 60 * 1000;

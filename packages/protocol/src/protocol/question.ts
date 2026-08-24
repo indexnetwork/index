@@ -33,8 +33,7 @@ export const QuestionSchema = StructuredQuestionSchema.extend({
    *
    * Declared `.nullable().optional()` (not bare `.optional()`) so the schema
    * survives OpenAI/OpenRouter strict structured-output conversion, which
-   * rejects optional-without-nullable fields (see createStructuredModel in the
-   * questioner agent). The `.transform()` normalizes an LLM-returned `null`
+   * rejects optional-without-nullable fields. The `.transform()` normalizes an LLM-returned `null`
    * back to `undefined` so a null is NEVER persisted or treated as
    * "evidence present": real string evidence flows through unchanged, while
    * both `null` and omitted read as absent everywhere downstream
@@ -83,127 +82,13 @@ export interface QuestionGenerationResult {
 
 // ─── Persistence types (opportunity-style composable jsonb) ──────────────────
 
-/** Internal reason a question was generated, orthogonal to mode and QUD metadata. */
-export const NegotiationQuestionPurposeSchema = z.enum([
-  "uptake",
-  "stalled_followup",
-  "inflight_consultation",
-]);
 export const QuestionPurposeSchema = z.enum([
-  "uptake",
   "recovery",
-  "stalled_followup",
-  "inflight_consultation",
 ]);
-
-/**
- * Routing fields every negotiation-family binding carries. The provenance
- * envelope extends this with freshness and ordinal fields; the candidate is
- * exactly this shape.
- */
-const negotiationQuestionBinding = {
-  purpose: NegotiationQuestionPurposeSchema,
-  recipientUserId: z.string().min(1),
-  recipientIntentId: z.string().min(1),
-  opportunityId: z.string().min(1),
-  taskId: z.string().min(1).optional(),
-  networkId: z.string().min(1),
-  /** Uptake only: exact low-authority counterparty eligibility binding. */
-  counterpartyUserId: z.string().min(1).optional(),
-  counterpartyIntentId: z.string().min(1).optional(),
-  counterpartyFelicityAuthority: z.number().min(0).max(100).optional(),
-} as const;
-
-/**
- * Counterparty eligibility is carried by uptake bindings and ONLY by uptake
- * bindings — exactly present on uptake, entirely absent otherwise. Identical on
- * the candidate and the provenance envelope, so both delegate here.
- */
-function refineCounterpartyEligibility(
-  binding: {
-    purpose: NegotiationQuestionPurpose;
-    counterpartyUserId?: string;
-    counterpartyIntentId?: string;
-    counterpartyFelicityAuthority?: number;
-  },
-  ctx: z.RefinementCtx,
-): void {
-  const path = ["counterpartyUserId"];
-  if (binding.purpose === "uptake") {
-    if (!binding.counterpartyUserId || !binding.counterpartyIntentId || binding.counterpartyFelicityAuthority === undefined) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: "uptake bindings require exact counterparty eligibility" });
-    }
-    return;
-  }
-  if (binding.counterpartyUserId || binding.counterpartyIntentId || binding.counterpartyFelicityAuthority !== undefined) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path, message: "only uptake bindings carry counterparty eligibility" });
-  }
-}
-
-/**
- * Producer-supplied candidate binding. The API re-resolves every field from
- * authoritative rows before generation; callers cannot mint provenance.
- */
-export const NegotiationQuestionCandidateSchema = z.object(negotiationQuestionBinding).superRefine((candidate, ctx) => {
-  const taskRequired = candidate.purpose !== "uptake";
-  if (taskRequired !== Boolean(candidate.taskId)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["taskId"],
-      message: taskRequired
-        ? "task-backed negotiation questions require taskId"
-        : "uptake questions must not carry a synthetic taskId",
-    });
-  }
-  refineCounterpartyEligibility(candidate, ctx);
-});
-
-/**
- * Durable server-only routing and freshness envelope for negotiation-family
- * questions. This object is stripped from every REST/MCP projection.
- */
-export const NegotiationQuestionProvenanceSchema = z.object({
-  version: z.literal(1),
-  ...negotiationQuestionBinding,
-  intentFingerprint: z.string().min(1),
-  opportunityStatus: z.enum(["latent", "draft", "negotiating", "pending", "stalled", "accepted", "rejected", "expired"]),
-  opportunityUpdatedAt: z.string().datetime(),
-  taskState: z.enum(["submitted", "working", "input_required", "completed", "canceled", "failed", "rejected", "auth_required", "waiting_for_agent", "claimed"]).optional(),
-  taskUpdatedAt: z.string().datetime().optional(),
-  /** Stable per-generation position so retries dedupe without reducing cardinality. */
-  questionOrdinal: z.number().int().min(0).max(2),
-}).superRefine((provenance, ctx) => {
-  const taskRequired = provenance.purpose !== "uptake";
-  if (taskRequired && (!provenance.taskId || !provenance.taskState || !provenance.taskUpdatedAt)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["taskId"],
-      message: "task-backed provenance requires task id, state, and updatedAt",
-    });
-  }
-  if (!taskRequired && (provenance.taskId || provenance.taskState || provenance.taskUpdatedAt)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["taskId"],
-      message: "uptake provenance must not carry task fields",
-    });
-  }
-  if (provenance.purpose === "stalled_followup" && provenance.taskState !== "completed") {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["taskState"], message: "follow-up task must be completed" });
-  }
-  if (provenance.purpose === "inflight_consultation" && provenance.taskState !== "input_required") {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["taskState"], message: "inflight task must be input_required" });
-  }
-  refineCounterpartyEligibility(provenance, ctx);
-});
 
 export const QuestionModeSchema = z.enum([
   "intent",
-  "negotiation",
-  // Negotiator-initiated mid-negotiation client questions (ask_user action, P3).
-  // Distinct from "negotiation", which covers post-stall questions only.
-  "negotiation_inflight",
-  // Orchestrator-initiated mid-conversation questions (ask_user_question tool).
+  // Chat-originated questions.
   "chat",
   // Pool-discriminator questions mined from the intent's candidate pool
   // (IND-418). Synthesized deterministically — no generator LLM call.
@@ -330,8 +215,6 @@ export const QuestionDetectionSchema = z.object({
   mode: QuestionModeSchema,
   /** Internal reason for generation; independent of mode and QUD repair metadata. */
   purpose: QuestionPurposeSchema.optional(),
-  /** Exact negotiation recipient/intent/task routing provenance. Internal only. */
-  negotiation: NegotiationQuestionProvenanceSchema.optional(),
   /** Entity type that triggered generation (e.g. "opportunity", "intent", "profile"). */
   sourceType: z.string().min(1),
   /** ID of the triggering entity. */
@@ -372,30 +255,6 @@ export const QuestionDetectionSchema = z.object({
   /** Authoritative successful-delivery ledger timestamp. Internal only. */
   pushedAt: z.string().min(1).optional(),
 }).superRefine((detection, ctx) => {
-  const negotiationFamily = detection.mode === "negotiation" || detection.mode === "negotiation_inflight";
-  if (negotiationFamily !== Boolean(detection.negotiation)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["negotiation"],
-      message: negotiationFamily
-        ? "negotiation-family detection requires exact provenance"
-        : "non-negotiation detection must not carry negotiation provenance",
-    });
-  }
-  if (detection.negotiation) {
-    if (detection.sourceType !== "opportunity" || detection.sourceId !== detection.negotiation.opportunityId) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["sourceId"], message: "negotiation sourceId must equal opportunityId" });
-    }
-    if (detection.purpose !== detection.negotiation.purpose) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "detection purpose must match negotiation provenance" });
-    }
-    if (detection.mode === "negotiation_inflight" && detection.negotiation.purpose !== "inflight_consultation") {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["negotiation", "purpose"], message: "inflight mode requires inflight purpose" });
-    }
-    if (detection.mode === "negotiation" && detection.negotiation.purpose === "inflight_consultation") {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["negotiation", "purpose"], message: "ordinary negotiation mode cannot carry inflight purpose" });
-    }
-  }
   if (
     detection.mode === "pool_discovery"
     && (!detection.triggeredBy?.trim() || detection.triggeredBy !== detection.sourceId)
@@ -479,9 +338,6 @@ export const QuestionAnswerSchema = z.object({
   answeredAt: z.string().min(1),
 });
 
-export type NegotiationQuestionPurpose = z.infer<typeof NegotiationQuestionPurposeSchema>;
-export type NegotiationQuestionCandidate = z.infer<typeof NegotiationQuestionCandidateSchema>;
-export type NegotiationQuestionProvenance = z.infer<typeof NegotiationQuestionProvenanceSchema>;
 export type QuestionPurpose = z.infer<typeof QuestionPurposeSchema>;
 export type QuestionMode = z.infer<typeof QuestionModeSchema>;
 export type QuestionDetection = z.infer<typeof QuestionDetectionSchema>;

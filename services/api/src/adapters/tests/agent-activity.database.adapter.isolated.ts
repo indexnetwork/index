@@ -4,8 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import db from '../../lib/drizzle/drizzle';
 import { ChatDatabaseAdapter } from '../database.adapter';
-import { conversations, messages, tasks } from '../../schemas/conversation.schema';
-import { NEGOTIATION_PARK_REASONING } from '../parked-negotiation.reader.adapter';
+import { conversations, tasks } from '../../schemas/conversation.schema';
 import { intents, opportunities, questions, users } from '../../schemas/database.schema';
 
 const TEST_PREFIX = `agent_activity_${Date.now()}_`;
@@ -24,15 +23,6 @@ const foreignNetworkOpportunityId = uuidv4();
 const conversationId = uuidv4();
 const questionIds = [uuidv4(), uuidv4(), uuidv4(), uuidv4(), uuidv4()];
 const taskIds = [uuidv4(), uuidv4(), uuidv4(), uuidv4(), uuidv4()];
-// Parked-negotiation fixtures (pending counts read the parks, not the retired
-// questions table). All stamped `old` so the negotiation started/completed
-// windows never see them.
-const inflightParkOpportunityId = uuidv4();
-const counterpartyParkOpportunityId = uuidv4();
-const postStallOpportunityId = uuidv4();
-const terminalStallOpportunityId = uuidv4();
-const parkTaskIds = [uuidv4(), uuidv4(), uuidv4(), uuidv4()];
-const parkMessageIds = [uuidv4(), uuidv4()];
 
 const now = new Date();
 const recent = new Date(now.getTime() - 2 * 60 * 60 * 1000);
@@ -86,10 +76,6 @@ beforeAll(async () => {
     // community — this is what proves query-layer network filtering (an
     // unrelated-user row could never distinguish it).
     opportunity(foreignNetworkOpportunityId, recent, userId, activeIntentId, foreignNetworkId),
-    // Post-stall park material: a stalled pairing whose negotiation ends in
-    // the authored gap (counts), and a terminal stall without one (does not).
-    opportunity(postStallOpportunityId, old, userId, activeIntentId, boundNetworkId, 'stalled'),
-    opportunity(terminalStallOpportunityId, old, userId, activeIntentId, boundNetworkId, 'stalled'),
   ]);
   await db.insert(questions).values([
     {
@@ -161,62 +147,14 @@ beforeAll(async () => {
       id: taskIds[4], conversationId, state: 'working',
       metadata: { type: 'negotiation', opportunityId: foreignNetworkOpportunityId }, createdAt: recent, updatedAt: recent,
     },
-    // ── Parked negotiations: the record pending question counts read. ──
-    // Mid-flight consult parked on the OWNER — counts as negotiation_inflight.
-    {
-      id: parkTaskIds[0], conversationId, state: 'input_required',
-      metadata: {
-        type: 'negotiation',
-        opportunityId: inflightParkOpportunityId,
-        turnContext: { askUserBinding: { recipientUserId: userId, recipientIntentId: activeIntentId, opportunityId: inflightParkOpportunityId, networkId: boundNetworkId } },
-      },
-      createdAt: old, updatedAt: old,
-    },
-    // Mid-flight consult parked on the COUNTERPARTY — never this owner's question.
-    {
-      id: parkTaskIds[1], conversationId, state: 'input_required',
-      metadata: {
-        type: 'negotiation',
-        opportunityId: counterpartyParkOpportunityId,
-        turnContext: { askUserBinding: { recipientUserId: otherUserId, recipientIntentId: uuidv4(), opportunityId: counterpartyParkOpportunityId, networkId: boundNetworkId } },
-      },
-      createdAt: old, updatedAt: old,
-    },
-    // Post-stall park (trailing authored gap below) and a terminal stall.
-    {
-      id: parkTaskIds[2], conversationId, state: 'completed',
-      metadata: { type: 'negotiation', opportunityId: postStallOpportunityId }, createdAt: old, updatedAt: old,
-    },
-    {
-      id: parkTaskIds[3], conversationId, state: 'completed',
-      metadata: { type: 'negotiation', opportunityId: terminalStallOpportunityId }, createdAt: old, updatedAt: old,
-    },
-  ]);
-  await db.insert(messages).values([
-    // The authored post-stall gap: newest message of the stalled pairing's
-    // negotiation, ask_user with the park reasoning, from the owner's agent.
-    {
-      id: parkMessageIds[0], conversationId, taskId: parkTaskIds[2],
-      senderId: `agent:${userId}`, role: 'agent',
-      parts: [{ kind: 'data', data: { action: 'ask_user', assessment: { reasoning: NEGOTIATION_PARK_REASONING, suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } }, message: null } }],
-      createdAt: old,
-    },
-    // A terminal stall trails an ordinary turn — not an open question.
-    {
-      id: parkMessageIds[1], conversationId, taskId: parkTaskIds[3],
-      senderId: `agent:${userId}`, role: 'agent',
-      parts: [{ kind: 'data', data: { action: 'counter', assessment: { reasoning: 'nope', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } }, message: 'counter' } }],
-      createdAt: old,
-    },
   ]);
 });
 
 afterAll(async () => {
-  await db.delete(messages).where(inArray(messages.id, parkMessageIds));
-  await db.delete(tasks).where(inArray(tasks.id, [...taskIds, ...parkTaskIds]));
+  await db.delete(tasks).where(inArray(tasks.id, taskIds));
   await db.delete(conversations).where(eq(conversations.id, conversationId));
   await db.delete(questions).where(inArray(questions.id, questionIds));
-  await db.delete(opportunities).where(inArray(opportunities.id, [recentOpportunityId, secondRecentOpportunityId, oldOpportunityId, unrelatedOpportunityId, foreignNetworkOpportunityId, postStallOpportunityId, terminalStallOpportunityId]));
+  await db.delete(opportunities).where(inArray(opportunities.id, [recentOpportunityId, secondRecentOpportunityId, oldOpportunityId, unrelatedOpportunityId, foreignNetworkOpportunityId]));
   await db.delete(intents).where(inArray(intents.id, [activeIntentId, secondActiveIntentId, pausedIntentId, archivedIntentId]));
   await db.delete(users).where(inArray(users.id, [userId, otherUserId, unrelatedUserId]));
 });
@@ -232,7 +170,7 @@ describe('ChatDatabaseAdapter.getAgentActivitySummary', () => {
       opportunitiesBySignal: [
         { intentId: activeIntentId, title: 'Climate founders', count: 3 },
       ],
-      pendingQuestionsByMode: { negotiation_inflight: 1, negotiation: 1 },
+      pendingQuestionsByMode: {},
       answeredQuestionsByMode: { negotiation: 1 },
       negotiationsStarted: 2,
       negotiationsCompleted: 1,
@@ -256,7 +194,7 @@ describe('ChatDatabaseAdapter.getAgentActivitySummary', () => {
       opportunitiesBySignal: [
         { intentId: activeIntentId, title: 'Climate founders', count: 2 },
       ],
-      pendingQuestionsByMode: { negotiation_inflight: 1, negotiation: 1 },
+      pendingQuestionsByMode: {},
       answeredQuestionsByMode: { negotiation: 1 },
       negotiationsStarted: 1,
       negotiationsCompleted: 1,
@@ -276,7 +214,7 @@ describe('ChatDatabaseAdapter.getAgentActivitySummary', () => {
       opportunitiesBySignal: [
         { intentId: activeIntentId, title: 'Climate founders', count: 1 },
       ],
-      pendingQuestionsByMode: { negotiation_inflight: 1, negotiation: 1 },
+      pendingQuestionsByMode: {},
       answeredQuestionsByMode: { negotiation: 1 },
       negotiationsStarted: 1,
       negotiationsCompleted: 0,

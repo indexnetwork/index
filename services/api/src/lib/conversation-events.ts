@@ -60,7 +60,3 @@ export async function publishConversationMessageEvent(
     publisher.publish(`conversations:user:${userId}`, event)
   )));
 }
-
-// The `question_regeneration` publisher retired with question-message
-// authoring (docs/plans/2026-08-21-holistic-intent-agent.md): the agent's
-// asks are ordinary messages with no pending state to flip.

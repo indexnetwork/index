@@ -19,9 +19,6 @@ mock.module('../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class EmbedderAdapter {},
   embedderAdapter: {},
 }));
-mock.module('../negotiations/run-existing.queue', () => ({
-  negotiationRunExistingQueue: { addJob: async () => ({ id: 'neg-1' }) },
-}));
 mock.module('../pool/negotiation-evidence.shadow', () => ({
   maybeRunNegotiationEvidenceShadow: async () => {},
 }));

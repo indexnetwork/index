@@ -10,8 +10,6 @@ import { emitOpportunityNotification, emitTelegramNotification } from '../lib/no
 import { publishNotificationStreamEvent, type NotificationStreamPublisher } from '../lib/notification-stream-events';
 import { getRedisClient } from '../adapters/cache.adapter';
 import { userDatabaseAdapter } from '../adapters/database.adapter';
-import { buildQuestionMessageStreamEvent } from '../services/notification-projection';
-import { loadNotificationIntentLabel } from '../services/notification-delivery.service';
 
 /** BullMQ queue name for opportunity notification jobs. */
 export const QUEUE_NAME = 'notification-queue';
@@ -26,25 +24,7 @@ export interface NotificationJobData {
   priority: NotificationPriority;
 }
 
-/**
- * Payload for one question-message notification (conversational questions,
- * docs/plans/2026-08-18-conversational-questions.md). The regeneration job
- * enqueues exactly one of these per delivered message that asks something
- * new — never one per question.
- */
-export interface QuestionMessageNotificationJobData {
-  /** The signal's owner: the DM's user and the notification's recipient. */
-  userId: string;
-  /** The signal whose DM carries the message; the deep link's target. */
-  intentId: string;
-  /** Persisted id of the delivered question-message; the frame's id and the job's dedup key. */
-  messageId: string;
-  /** Questions in the delivered block — copy only. */
-  questionCount: number;
-}
-
-/** Everything this queue processes. */
-export type NotificationQueueJobData = NotificationJobData | QuestionMessageNotificationJobData;
+export type NotificationQueueJobData = NotificationJobData;
 
 /** Minimal database interface for notification queue (used when deps provided in tests). */
 export type NotificationQueueDatabase = Pick<ChatDatabaseAdapter, 'getOpportunity'> & {
@@ -59,8 +39,6 @@ export interface NotificationQueueDeps {
   database?: NotificationQueueDatabase;
   /** Notification-stream publisher (Redis pub/sub → the SSE stream). */
   publishStreamEvent?: NotificationStreamPublisher;
-  /** Signal label for question-message copy; undefined when the signal has none. */
-  getIntentLabel?: (intentId: string) => Promise<string | undefined>;
 }
 
 const API_URL = process.env.API_URL || 'https://protocol.index.network';
@@ -77,10 +55,6 @@ const DIGEST_TTL_SEC = 7 * 24 * 3600;
  * (WebSocket emit), high (send email), or low (add to weekly digest). Uses email queue and Redis
  * for digest/dedupe.
  *
- * Also handles `process_question_message_notification`: one notification-stream
- * frame per delivered question-message, deep-linked to the signal's DM
- * (conversational questions — the message, not the question, is the unit).
- *
  * @remarks
  * Workers are started only by the protocol server via {@link NotificationQueue.startWorker}.
  * CLI scripts may add jobs without starting a worker.
@@ -94,7 +68,6 @@ export class NotificationQueue {
   private readonly queueLogger = log.queue.from('NotificationQueue');
   private readonly database: NotificationQueueDatabase;
   private readonly publishStreamEvent: NotificationStreamPublisher;
-  private readonly getIntentLabel: (intentId: string) => Promise<string | undefined>;
   private worker: ReturnType<typeof QueueFactory.createWorker<NotificationQueueJobData>> | null = null;
 
   /**
@@ -102,7 +75,6 @@ export class NotificationQueue {
    */
   constructor(deps?: NotificationQueueDeps) {
     this.publishStreamEvent = deps?.publishStreamEvent ?? publishNotificationStreamEvent;
-    this.getIntentLabel = deps?.getIntentLabel ?? loadNotificationIntentLabel;
     if (deps?.database) {
       this.database = deps.database;
     } else {
@@ -141,44 +113,14 @@ export class NotificationQueue {
   }
 
   /**
-   * Enqueue the notification for one delivered question-message. Called by the
-   * regeneration job only when the delivered block asks something the client
-   * has not already seen — creation, or a regeneration that added a
-   * negotiation reference (docs/plans/2026-08-18-conversational-questions.md).
-   *
-   * The job id is the message's, so a redelivered enqueue coalesces: the
-   * message is the notification unit, and one message notifies once. It is
-   * reusable across regenerations because completed jobs are removed
-   * immediately — a later regeneration of the same message that adds a new
-   * question notifies again, as the policy requires.
-   *
-   * @param data - Recipient, signal scope, delivered message, question count
-   * @returns The BullMQ job
-   */
-  async queueQuestionMessageNotification(
-    data: QuestionMessageNotificationJobData,
-  ): Promise<Job<NotificationQueueJobData>> {
-    return this.queue.add('process_question_message_notification', data, {
-      jobId: `question-message-notification.${data.messageId}`,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: true,
-      removeOnFail: true,
-    });
-  }
-
-  /**
    * Run the job handler for a given job name and payload. Used by the worker and by tests with injected deps.
-   * @param name - Job name (`process_opportunity_notification`, `process_question_message_notification`)
+   * @param name - Job name (`process_opportunity_notification`)
    * @param data - Job payload
    */
   async processJob(name: string, data: NotificationQueueJobData): Promise<void> {
     switch (name) {
       case 'process_opportunity_notification':
         await this.processOpportunityNotification(data as NotificationJobData);
-        break;
-      case 'process_question_message_notification':
-        await this.processQuestionMessageNotification(data as QuestionMessageNotificationJobData);
         break;
       default:
         this.queueLogger.warn('Unknown job name', { name });
@@ -203,43 +145,6 @@ export class NotificationQueue {
       this.worker = null;
     }
     await this.queue.close();
-  }
-
-  /**
-   * Deliver one question-message notification: a single user-scoped frame on
-   * the notification stream, deep-linked to the signal's DM — the surface
-   * that actually answers it. Copy is server-owned (headline, question count,
-   * signal label); the agent-authored question text stays in the DM.
-   *
-   * One frame per message, no email or digest tier: an unanswered question is
-   * a live conversation the client returns to, not a match to catch up on
-   * weekly.
-   */
-  private async processQuestionMessageNotification(data: QuestionMessageNotificationJobData): Promise<void> {
-    const { userId, intentId, messageId, questionCount } = data;
-    // A missing label degrades the copy, never the notification.
-    const signalLabel = await this.getIntentLabel(intentId).catch((err) => {
-      this.logger.warn('Question-message signal label lookup failed', {
-        userId,
-        intentId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return undefined;
-    });
-
-    await this.publishStreamEvent(userId, buildQuestionMessageStreamEvent({
-      messageId,
-      intentId,
-      questionCount,
-      ...(signalLabel ? { signalLabel } : {}),
-      webAppUrl: WEB_APP_URL,
-    }));
-    this.logger.info('Published question-message notification', {
-      userId,
-      intentId,
-      messageId,
-      questionCount,
-    });
   }
 
   private async processOpportunityNotification(data: NotificationJobData): Promise<void> {

@@ -93,19 +93,25 @@ export interface NegotiationMessageRow {
  * Access layer: ConversationDatabaseAdapter
  */
 export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getIntent' | 'getUserContext'> & {
-  /** Creates the negotiation's own conversation — never a pair-shared one. */
-  createNegotiationConversation(sourceUserId: string, candidateUserId: string): Promise<{ id: string }>;
+  /**
+   * Atomically opens the one live negotiation for an eligible opportunity.
+   * `knownTaskId` is the task the caller observed before this write, if any:
+   * the result distinguishes that genuine re-kick from a task another opener
+   * created after the caller's read. The write boundary revalidates eligibility.
+   */
+  openNegotiationTask(input: {
+    opportunityId: string;
+    sourceUserId: string;
+    candidateUserId: string;
+    brief: string;
+    intentId: string;
+    round: number;
+    networkId: string;
+    knownTaskId?: string;
+  }): Promise<{ task: NegotiationTaskRow; disposition: 'created' | 'existing' | 'raced' } | null>;
 
-  /** Creates the negotiation task. Called once, at open. */
-  createNegotiationTask(input: {
-    conversationId: string;
-    /** The initiating seat's own brief; the other seat authors its own later. */
-    briefs: Record<string, string>;
-    metadata: NegotiationTaskMetadata;
-  }): Promise<NegotiationTaskRow>;
-
-  /** The one open (non-completed) negotiation task for an opportunity, if any. */
-  getNegotiationTaskForOpportunity(opportunityId: string): Promise<NegotiationTaskRow | null>;
+  /** The one open negotiation task for an opportunity, or its latest completed task when requested. */
+  getNegotiationTaskForOpportunity(opportunityId: string, options?: { includeCompleted?: boolean }): Promise<NegotiationTaskRow | null>;
 
   getNegotiationTask(taskId: string): Promise<NegotiationTaskRow | null>;
 
@@ -147,7 +153,12 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   getNegotiationMessages(taskId: string): Promise<NegotiationMessageRow[]>;
 
   /** Persists the resolve outcome artifact. */
-  createNegotiationOutcomeArtifact(taskId: string, outcome: { verdict: 'pending' | 'reject'; reasoning?: string }): Promise<void>;
+  createNegotiationOutcomeArtifact(taskId: string, outcome: {
+    verdict: 'pending' | 'reject';
+    reasoning?: string;
+    /** The only user allowed to read the private verdict reasoning. */
+    resolvedByUserId: string;
+  }): Promise<void>;
 
   /** Reads back artifacts persisted for a task (e.g. the resolve outcome). */
   getArtifactsForTask(taskId: string): Promise<Array<{ id: string; name: string | null; parts: unknown[]; metadata: Record<string, unknown> | null }>>;

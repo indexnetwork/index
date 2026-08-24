@@ -104,6 +104,9 @@ collaborative iterations so the user can react while the direction is still easy
   code, run broad checks prematurely, or chase optional improvements. Mention a
   non-blocking discovery in one sentence and keep moving. Do not silently turn a working
   first slice into refactoring, polish, exhaustive tests, or PR preparation.
+- **Diagnose CI narrowly.** For a known failing CI check, run only that check and its direct
+  prerequisites; do not run broad or repository-wide suites unless asked or narrower
+  evidence is unavailable.
 - **Finish after the direction is agreed.** Once the user is happy with the solution,
   complete the necessary broader checks and open a PR into `dev`.
 - **Follow-ups stay in the same worktree and session.** If the session is no longer open,

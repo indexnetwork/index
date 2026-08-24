@@ -13,16 +13,15 @@ interface AgentLookup {
 
 /**
  * Concrete AgentDispatcher — bridges the agent registry to `hasExternalAgent`
- * checks. Negotiation turn dispatch (`dispatch()`) is deleted (#1494 round-3,
- * Option A: external agents are offline in this PR, see the PR body); what
- * remains is the opportunity graph's own, unrelated use of `hasExternalAgent`
- * for the unlimited-maxTurns rule (IND-410).
+ * checks. Negotiation turn dispatch is handled by MCP and NegotiationGraph;
+ * this availability lookup remains for the opportunity graph's
+ * unlimited-maxTurns rule (IND-410).
  */
 export class AgentDispatcherImpl implements AgentDispatcher {
   constructor(private agentService: AgentLookup) {}
 
   /**
-   * Check whether a user has an authorized external (poller) agent for the given scope.
+   * Check whether a user has an authorized external agent for the given scope.
    * Type-only by design: no heartbeat freshness (IND-410).
    *
    * @param userId - The user to check

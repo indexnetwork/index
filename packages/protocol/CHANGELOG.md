@@ -20,6 +20,22 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 33.0.0 - 2026-08-24
+
+### Breaking
+
+- **External negotiation responses use `NegotiationAuthoredTurn` directly.**
+  `respond_to_negotiation` accepts only `outreach`, `counter`, `question`,
+  `pause(needs_principal)`, and `pause(ready_for_verdict)`; it never accepts
+  terminal verbs. The retired `HermesNegotiationActionSchema` /
+  `HermesNegotiationAction` action vocabulary is removed. A counterparty that
+  wants out must pause `ready_for_verdict` with a `reject` recommendation for
+  its own PersonalAgent to decide.
+- **`NegotiationGraphDatabase` gains `openNegotiationTask`.** Graph opens now
+  require one durable atomic open-or-return-live-task write; hosts must
+  revalidate eligibility there and return `{ task, created }` so a concurrent
+  opener can stop without authoring duplicate opening outreach.
+
 ## 32.0.0 - 2026-08-24
 
 ### Breaking
@@ -66,6 +82,10 @@ pin a supported release, use `latest`.
 - **`PersonalAgentDeps` gains `wakeForMatches`** — the agent wakes its own
   signal again for a discovery batch that landed after the turn read its match
   list.
+- **The retired `queueNegotiateExisting` host callback is removed** from
+  `ToolDeps` and `OpportunityGraphFactory`. Approving the final introducer
+  gate emits `matches_ready` for the source participant's bound signal; it
+  never directly opens or resumes a negotiation.
 
 - **AgentGraph: one PersonalAgent, routed on the shape of its input.** New
   `PersonalAgentGraphFactory` — `{ userId }` is global (a graph-level input
@@ -112,13 +132,6 @@ pin a supported release, use `latest`.
 ## 31.0.0 - 2026-08-24
 
 ### Breaking
-
-- **`buildHermesNegotiationTurn` and `HermesNegotiationResponseSchema` /
-  `HermesNegotiationResponse` are removed.** The builder's only consumer was
-  the REST respond route #1494 deleted, and nothing has mapped a Hermes action
-  to a persisted turn since. `HermesNegotiationActionSchema` /
-  `HermesNegotiationAction` stay: they are the vocabulary the hermes-plugin
-  mirrors and that the eventual rebuilt external-agent lane has to honour.
 
 ### Fixed
 

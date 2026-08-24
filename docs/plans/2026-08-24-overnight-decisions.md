@@ -27,12 +27,11 @@ size forever; (b) idempotent re-enqueueable reflect (drop completed-job
 retention) — rejected: reflect must fire exactly once per round moment or IS-A
 double-acts; (c) leave as-is until step 2 — superseded, step 2 is tonight.
 
-## D3. Questioner park/settle/claim substrate NOT deleted
-captureNegotiationAskUserBinding, settleInflightNegotiationAnswerFromDm,
-claimNegotiationContinuationExecution are production-dead post-rewrite but are
-pinned as survivors by the #1474/#1475 counterparty-binding initiative's tests.
-Deleting them declares that initiative closed — an owner call. Left in place,
-flagged in PR #1494's body. Recommendation: delete in a small follow-up branch.
+## D3. Questioner park/settle/claim substrate deletion is split
+The legacy park renderer, question-message queue, parked-negotiation reader,
+question notifications, transition hooks, and stale question endpoints were
+deleted in the host-collapse follow-up. The settlement/claim continuation
+ladder remains for its own deletion slice.
 
 ## D4. Track A run by a root-session subagent in the pre-cut worktree
 The human worktree-session flow needs the owner to open Zed and paste; owner is

@@ -773,6 +773,7 @@ async function executeAct(
         negotiationId: act.negotiationId,
         verdict: act.tool === "promote" ? "pending" : "reject",
         reasoning: act.reasoning,
+        byUserId: context.userId,
       });
       const executed: PersonalAgentExecutedAct = {
         tool: act.tool,

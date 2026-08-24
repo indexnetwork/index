@@ -25,14 +25,6 @@ type IntentScopedOpportunityPersistenceResult =
   | { created: OpportunityRow; expired: OpportunityRow[] }
   | { conflict: IntentScopedOpportunityPersistenceConflict };
 
-/** Statuses a dead pairing may be reopened from — see {@link OpportunityDatabaseAdapter.reopenOpportunityForRerun}. */
-export const REOPENABLE_OPPORTUNITY_STATUSES = ['rejected', 'stalled', 'expired'] as const;
-
-export type ReopenOpportunityResult =
-  | { reopened: OpportunityRow }
-  | { conflict: 'active_negotiation'; taskId: string }
-  | { conflict: 'not_reopenable'; status: OpportunityRow['status'] };
-
 function opportunityTriggerForOwner(opportunity: OpportunityRow, ownerUserId: string): string | undefined {
   return opportunity.detection.triggeredBy
     ?? opportunity.actors.find((actor) => actor.userId === ownerUserId)?.intent;
@@ -692,69 +684,6 @@ export class OpportunityDatabaseAdapter {
       emitOpportunityTransitionBestEffort(updated);
     }
     return updated;
-  }
-
-  /**
-   * Reopen a dead pairing so the negotiation can be re-run.
-   *
-   * Terminal-only by design: `pending` (awaiting the owner's approval) and
-   * `accepted` (already connected) are live or won matches, never reopenable —
-   * reopening one would throw away a decision, not recover from a dead end.
-   *
-   * `updated_at` is written as `date_trunc('milliseconds', now())` and NOT with
-   * a bare `now()`. The attempt CAS in
-   * `createNegotiationTaskForAttemptInTransaction` compares this timestamp with
-   * a JS `Date` read back from the row, which carries milliseconds only; a
-   * microsecond-precision write makes the equality fail and the queued re-run
-   * dies as "stale or already claimed".
-   *
-   * Serializes on the shared negotiation-attempt lock, so a reopen racing a
-   * live claim observes the committed winner and reports the conflict instead
-   * of yanking a running negotiation back to `stalled`.
-   *
-   * @param id - Opportunity ID
-   * @returns The reopened row, a conflict describing why it was refused, or
-   *   `null` when no such opportunity exists
-   */
-  async reopenOpportunityForRerun(id: string): Promise<ReopenOpportunityResult | null> {
-    const result = await db.transaction(async (tx): Promise<ReopenOpportunityResult | null> => {
-      await acquireNegotiationAttemptLock(tx, id);
-
-      const [opportunity] = await tx
-        .select({ status: opportunities.status })
-        .from(opportunities)
-        .where(eq(opportunities.id, id))
-        .for('update');
-      if (!opportunity) return null;
-      if (!(REOPENABLE_OPPORTUNITY_STATUSES as readonly string[]).includes(opportunity.status)) {
-        return { conflict: 'not_reopenable', status: opportunity.status };
-      }
-
-      const [activeTask] = await tx
-        .select({ id: schema.tasks.id })
-        .from(schema.tasks)
-        .where(qualifyingActiveNegotiationTaskWhere(id))
-        .limit(1);
-      if (activeTask) return { conflict: 'active_negotiation', taskId: activeTask.id };
-
-      const [row] = await tx
-        .update(opportunities)
-        .set({
-          status: 'stalled',
-          acceptedBy: null,
-          updatedAt: sql`date_trunc('milliseconds', now())`,
-        })
-        .where(and(
-          eq(opportunities.id, id),
-          inArray(opportunities.status, [...REOPENABLE_OPPORTUNITY_STATUSES]),
-        ))
-        .returning();
-      return row ? { reopened: toOpportunityRow(row) } : null;
-    });
-    if (result && 'reopened' in result) {
-      emitOpportunityTransitionBestEffort(result.reopened);
-    }
-    return result;
   }
 
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
