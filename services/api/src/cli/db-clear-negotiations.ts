@@ -44,9 +44,7 @@ async function readCounts(): Promise<Counts> {
     UNION ALL SELECT 'artifacts', count(*)::text FROM artifacts
     UNION ALL SELECT 'negotiator_memories', count(*)::text FROM negotiator_memories
     UNION ALL SELECT 'opportunity_deliveries', count(*)::text FROM opportunity_deliveries
-    UNION ALL SELECT 'opportunity_discovery_runs', count(*)::text FROM opportunity_discovery_runs
     UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
-    UNION ALL SELECT 'connect_links', count(*)::text FROM connect_links
     UNION ALL SELECT 'agents_with_neg_pickup', count(*)::text FROM agents WHERE last_negotiation_pickup_at IS NOT NULL
     UNION ALL SELECT 'intents_with_round_state', count(*)::text FROM intents
       WHERE negotiation_round > 0 OR negotiation_round_size IS NOT NULL OR negotiation_kickoff_started_at IS NOT NULL
@@ -101,9 +99,7 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
       )
     `);
     await tx.execute(sql`DELETE FROM opportunity_outcome_events`);
-    await tx.execute(sql`DELETE FROM opportunity_discovery_runs`);
     await tx.execute(sql`DELETE FROM opportunity_deliveries`);
-    await tx.execute(sql`DELETE FROM connect_links`);
     await tx.execute(sql`DELETE FROM opportunities`);
     await tx.execute(sql`DELETE FROM negotiator_memories`);
     await tx.execute(sql`DELETE FROM intent_discovery_progress`);

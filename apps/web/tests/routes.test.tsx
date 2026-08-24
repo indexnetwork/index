@@ -326,13 +326,6 @@ vi.mock('@/services/v2/indexes.service', () => ({
     new Proxy({}, { get: () => vi.fn().mockResolvedValue({ data: [] }) }),
 }));
 
-// Mock v2 upload service (used by ChatContent)
-vi.mock('@/services/v2/upload.service', () => ({
-  useUploadServiceV2: () => ({
-    uploadFile: vi.fn().mockResolvedValue({}),
-  }),
-}));
-
 // Mock auth service hook (used by AuthContext)
 vi.mock('@/services/auth', () => ({
   createAuthService: () =>

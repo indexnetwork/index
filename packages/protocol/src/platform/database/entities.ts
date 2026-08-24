@@ -172,7 +172,7 @@ export interface CreateIntentData {
   /** Network IDs to associate with (optional, uses dynamic scoping if empty) */
   networkIds?: string[];
   /** Source type for provenance tracking */
-  sourceType?: 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment';
+  sourceType?: 'integration' | 'discovery_form' | 'enrichment';
   /** Source ID for provenance tracking */
   sourceId?: string;
   /** Confidence score from inference (0-1, required) */

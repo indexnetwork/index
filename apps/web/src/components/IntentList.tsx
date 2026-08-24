@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Calendar, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare, Handshake } from 'lucide-react';
+import { Calendar, ExternalLink, Slack, MessageSquare, Handshake } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -8,7 +8,7 @@ interface BaseIntent {
   payload: string;
   summary?: string | null;
   createdAt: string;
-  sourceType?: 'file' | 'link' | 'integration' | 'discovery_form' | 'enrichment';
+  sourceType?: 'integration' | 'discovery_form' | 'enrichment';
   sourceId?: string;
   sourceName?: string;
   sourceValue?: string | null;
@@ -91,9 +91,7 @@ export default function IntentList<T extends BaseIntent>({
 
   const getSourceIcon = (type?: string) => {
     switch (type) {
-      case 'file': return <FileText className="w-3 h-3" />;
-      case 'link': return <LinkIcon className="w-3 h-3" />;
-      case 'integration': return <Slack className="w-3 h-3" />; // Assuming mostly Slack for now
+      case 'integration': return <Slack className="w-3 h-3" />;
       default: return <MessageSquare className="w-3 h-3" />;
     }
   };
@@ -217,7 +215,7 @@ export default function IntentList<T extends BaseIntent>({
 
                   {/* Source Badge — external origins only (a user's own
                       directly-created signals carry no meaningful source tag) */}
-                  {intent.sourceType && ['file', 'link', 'integration'].includes(intent.sourceType) && (
+                  {intent.sourceType && intent.sourceType === 'integration' && (
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
                       {getSourceIcon(intent.sourceType)}
                       <span className="capitalize">{intent.sourceType}</span>
