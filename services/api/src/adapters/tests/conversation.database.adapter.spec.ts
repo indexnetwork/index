@@ -664,6 +664,43 @@ describe('ConversationDatabaseAdapter', () => {
     }, 30000);
   });
 
+  describe('getNegotiationTasksForUser — archived filter (#1494 round-2 cap-cut item)', () => {
+    it('excludes archived legacy negotiations from list_negotiations', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const userId = `archived-filter-user-${run}`;
+      const counterpart = `archived-filter-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      const liveTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+      });
+
+      const archivedConversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(archivedConversation.id);
+      const archivedTask = await adapter.createTask(archivedConversation.id, {
+        type: 'negotiation',
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        archivedAt: new Date().toISOString(),
+      });
+
+      const tasks = await adapter.getNegotiationTasksForUser(userId);
+      const ids = tasks.map((t) => t.id);
+      expect(ids).toContain(liveTask.id);
+      expect(ids).not.toContain(archivedTask.id);
+    });
+  });
+
   describe('getConversationsForUser — pause projection (#1494 round-2 finding 10)', () => {
     it('projects pause.reason to every viewer, and payload only to the seat that paused', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;

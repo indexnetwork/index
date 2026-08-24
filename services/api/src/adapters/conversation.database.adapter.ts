@@ -2374,6 +2374,7 @@ export class ConversationDatabaseAdapter {
       .where(
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          notArchivedNegotiationTaskWhere(),
           or(
             sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
             sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
