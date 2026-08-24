@@ -176,8 +176,17 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
 
       const opportunity = await deps.database.getOpportunity(input.opportunityId);
       if (!opportunity) return { phase: "error", error: "Opportunity not found" };
-      const sourceActor = opportunity.actors.find((a) => a.intent === input.intentId);
-      const candidateActor = opportunity.actors.find((a) => a.intent !== input.intentId);
+      // Actor selection cannot key off `actor.intent === input.intentId`: a
+      // premise-matched actor's `intent` field names the intent it matched
+      // AGAINST (the recipient's), not its own, so both actors can carry the
+      // same value there. `input.intentId` uniquely identifies its OWNER
+      // (intents are user-owned) — resolve the source seat from that owner
+      // and exclude any introducer actor, the same selection the old
+      // negotiateNode used.
+      const intent = await deps.database.getIntent(input.intentId);
+      if (!intent) return { phase: "error", error: "Intent not found" };
+      const sourceActor = opportunity.actors.find((a) => a.userId === intent.userId && a.role !== "introducer");
+      const candidateActor = opportunity.actors.find((a) => a.userId !== intent.userId && a.role !== "introducer");
       if (!sourceActor || !candidateActor) return { phase: "error", error: "Opportunity does not have two actors" };
 
       const conversation = await deps.database.createNegotiationConversation(sourceActor.userId, candidateActor.userId);

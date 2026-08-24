@@ -71,7 +71,7 @@ const OPPORTUNITY_ID = "opportunity-1";
 type FakeOpportunity = {
   id: string;
   status: string;
-  actors: Array<{ userId: string; intent: string; networkId: string }>;
+  actors: Array<{ userId: string; intent: string; networkId: string; role: string }>;
 };
 
 /** In-memory host implementing the exact ports `NegotiationGraph` depends on. */
@@ -81,8 +81,8 @@ class FakeNegotiationHost {
     id: OPPORTUNITY_ID,
     status: "negotiating",
     actors: [
-      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID },
-      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID },
+      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
+      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
     ],
   };
   readonly tasks = new Map<string, NegotiationTaskRow>();
@@ -94,7 +94,8 @@ class FakeNegotiationHost {
 
   readonly database: NegotiationGraphDatabase = {
     getOpportunity: async (id: string) => (id === this.opportunity.id ? (this.opportunity as never) : null),
-    getIntent: async () => null,
+    getIntent: async (intentId: string) =>
+      intentId === INTENT_ID ? ({ id: INTENT_ID, userId: SOURCE_USER_ID } as never) : null,
     getUserContext: async () => null as never,
     createNegotiationConversation: async () => ({ id: "conversation-1" }),
     createNegotiationTask: async (input) => {
@@ -438,6 +439,45 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(secondCall.thread).toHaveLength(2);
     expect(secondCall.thread[0]).toMatchObject({ speaker: "own", turn: { verb: "outreach" } });
     expect(secondCall.thread[1]).toMatchObject({ speaker: "counterparty", turn: { verb: "counter" } });
+  });
+
+  test("a premise-matched counterparty (same `intent` field as the source) still resolves to the correct seats", async () => {
+    // The real shape a premise match produces: the counterparty actor's own
+    // `intent` field names the intent it matched AGAINST (the source's), not
+    // one it owns — so both actors can carry the exact same intent value.
+    // Selecting by `actor.intent === input.intentId` would resolve BOTH
+    // seats to the source, or none at all. Selection must key off who owns
+    // `input.intentId` (via getIntent) and exclude the introducer role.
+    const host = new FakeNegotiationHost();
+    host.opportunity.actors = [
+      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
+      { userId: CANDIDATE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "agent" },
+    ];
+    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
+    const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    expect(opened.status).toBe("active");
+    const task = host.taskFor(opened.negotiationId);
+    expect(task.metadata.sourceUserId).toBe(SOURCE_USER_ID);
+    expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
+  });
+
+  test("an introducer actor is never picked as a negotiation seat", async () => {
+    const host = new FakeNegotiationHost();
+    host.opportunity.actors = [
+      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
+      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
+      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer" },
+    ];
+    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
+    const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    expect(opened.status).toBe("active");
+    const task = host.taskFor(opened.negotiationId);
+    expect(task.metadata.sourceUserId).toBe(SOURCE_USER_ID);
+    expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
   });
 
   test("resuming an opportunity that already has a negotiation is idempotent, not a second open", async () => {
