@@ -1,0 +1,29 @@
+/* The narrative carries its own layout in inline styles, exactly as authored.
+   This sheet only supplies the base the bundler's <helmet> block provided. */
+.dro{
+  --ink:#111; --muted:#555;
+}
+.dro *{margin:0;padding:0;box-sizing:border-box;}
+.dro{
+  -webkit-text-size-adjust:100%;min-height:100vh;background:#fff;color:var(--ink);
+  font-family:'Public Sans', system-ui, sans-serif;
+}
+.dro .doc{max-width:720px;margin:0 auto;padding:72px 28px 64px;}
+
+.dro a{color:var(--ink);text-decoration:underline;text-underline-offset:2px;}
+.dro a:hover{color:var(--muted);}
+
+.dro table{border-collapse:collapse;}
+.dro img,.dro svg{max-width:100%;}
+
+/* Wide blocks scroll inside themselves rather than the page. */
+.dro .doc > div{max-width:100%;}
+
+.dro .foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;margin-top:56px;padding-top:20px;border-top:1px solid #E6E6E2;font-size:12.5px;color:var(--muted);}
+.dro .foot .links{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.dro .foot .mark{display:block;flex-shrink:0;opacity:.7;transition:opacity .15s;}
+.dro .foot .mark:hover{opacity:1;}
+.dro .foot .mark img{height:14px;width:auto;display:block;}
+.dro .foot a{color:var(--muted);text-decoration:none;}
+.dro .foot a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:2px;}
+.dro .foot .dot{color:#E6E6E2;}
