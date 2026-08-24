@@ -25,31 +25,15 @@ import type { IntentCycleSnapshot, IntentCycleTimelineEntry } from "@/services/c
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
-import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
+import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone, radarBucketForOpportunity, type RadarBucket } from "@/lib/radar-buckets";
 
-/** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
-const STATUS_BUCKET: Record<string, string> = {
-  latent: "pending",
-  draft: "pending",
-  pending: "pending",
-  negotiating: "negotiating",
-  stalled: "negotiating",
-  accepted: "accepted",
-  rejected: "rejected",
-  expired: "expired",
-};
-
-const RADAR_BUCKETS: Array<{ key: string; label: string }> = [
-  { key: "pending", label: "Awaiting you" },
-  { key: "negotiating", label: "Negotiating" },
-  { key: "accepted", label: "Accepted" },
-  { key: "rejected", label: "Rejected" },
-  { key: "expired", label: "Missed" },
+const RADAR_BUCKETS: Array<{ key: RadarBucket; label: string }> = [
+  { key: "needs-you", label: "Needs you" },
+  { key: "agent-handling", label: "Agent handling" },
+  { key: "waiting", label: "Waiting" },
+  { key: "connected", label: "Connected" },
+  { key: "closed", label: "Closed" },
 ];
-
-function bucketForStatus(status?: string): string {
-  return STATUS_BUCKET[status ?? ""] ?? "pending";
-}
 
 function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus {
   if (
@@ -121,7 +105,7 @@ function StatPill({
   active,
   onSelect,
 }: {
-  bucketKey: string;
+  bucketKey: RadarBucket;
   value: number;
   label: string;
   active: boolean;
@@ -483,15 +467,22 @@ export default function IntentDetailPage() {
     }
   }, [intentId, opportunitiesService]);
 
-  const inspectorHrefByOpportunity = useMemo(() => {
-    const hrefs = new Map<string, string>();
+  const negotiationByOpportunity = useMemo(() => {
+    const negotiations = new Map<string, IntentCycleSnapshot["negotiations"][number]>();
     for (const negotiation of intentCycle?.negotiations ?? []) {
-      if (!hrefs.has(negotiation.opportunityId)) {
-        hrefs.set(negotiation.opportunityId, `/i/${intentId}/negotiations/${negotiation.taskId}`);
+      if (!negotiations.has(negotiation.opportunityId)) {
+        negotiations.set(negotiation.opportunityId, negotiation);
       }
     }
+    return negotiations;
+  }, [intentCycle?.negotiations]);
+  const inspectorHrefByOpportunity = useMemo(() => {
+    const hrefs = new Map<string, string>();
+    for (const [opportunityId, negotiation] of negotiationByOpportunity) {
+      hrefs.set(opportunityId, `/i/${intentId}/negotiations/${negotiation.taskId}`);
+    }
     return hrefs;
-  }, [intentCycle?.negotiations, intentId]);
+  }, [negotiationByOpportunity, intentId]);
   const refreshLiveRadar = useCallback(() => {
     void loadOpportunities(true);
     void loadIntentCycle();
@@ -632,12 +623,15 @@ export default function IntentDetailPage() {
   const bucketOf = useCallback(
     // Local actions (accept/reject in this session) override the fetched status.
     (item: RadarCardItem) =>
-      bucketForStatus(opportunityStatusMap[item.opportunityId] ?? item.status),
-    [opportunityStatusMap],
+      radarBucketForOpportunity(
+        (opportunityStatusMap[item.opportunityId] as OpportunityLifecycleStatus | undefined) ?? item.status,
+        negotiationByOpportunity.get(item.opportunityId),
+      ),
+    [opportunityStatusMap, negotiationByOpportunity],
   );
 
   const bucketCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
+    const counts: Partial<Record<RadarBucket, number>> = {};
     for (const item of opportunities) {
       const b = bucketOf(item);
       counts[b] = (counts[b] ?? 0) + 1;
