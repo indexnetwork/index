@@ -284,3 +284,45 @@ fix is for the tool to refuse with that message rather than call a dead URL.
 Alternative rejected: repointing it at the MCP respond_to_negotiation surface —
 that would quietly re-enable external turns before the auth model they need
 exists, which is exactly what D1 deferred.
+
+---
+
+## The finding: check the code against the doc, not only against itself
+
+The worst defect in this arc was not found by review. It was found by reading the
+design doc one claim at a time and asking, for each sentence, "does the code do
+this?"
+
+Six rounds of adversarial code review ran over the step-2 PR. They found 6, 7, 6,
+8, 7 and 8 issues respectively — real ones, all fixed. What they did not find,
+across every round, was this: **an owner rejecting a match wrote the opportunity
+status without closing the negotiation task, so that signal's round never reached
+zero and never reflected again.** An ordinary user action silently stopped the
+loop the whole design is built around.
+
+It was invisible to review because it is not a bug in any function. Every function
+involved is correct on its own. What is wrong is that the doc says *"every write
+to their tables goes through them"* and *"`resolve` … the only terminal write"*,
+and the shipped code had a second terminal writer. Reviewers sample a diff looking
+for broken code; nothing in the diff was broken.
+
+The same pass found four more of the same kind in an hour: the hermes-plugin
+calling a route the rewrite had deleted; the questioner/park spine still wired but
+keying off states the new graph never writes, so a `needs_principal` pause reached
+no principal surface at all; `reasoning` written by `resolve` with no reader; and
+`negotiate_existing` surviving as a stub that callers still enqueued into.
+
+Two decisions this argues for, next time:
+
+1. **When a PR implements a written design, conformance-check it before merging** —
+   walk the doc's claims, cite the file:line that implements each one, and report
+   the ones you cannot cite. It is cheaper than one review round and it catches a
+   class review cannot.
+2. **Treat "reported implemented" as unverified.** Twice in this arc a decision
+   (per-seat briefs, bounded kickoff) was implemented, tested, CI-green, and still
+   did not do what the decision said. Both holes were found by re-reading the
+   decision against the code, not by testing harder.
+
+The corollary is about review loops: rounds that keep finding roughly the same
+number of issues are sampling a population, not converging on zero. That is a
+signal to change method or split the change — not to run another round.
