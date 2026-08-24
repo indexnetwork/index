@@ -733,7 +733,7 @@ final class NativeAPIRequestBridge {
                     && (item["sessionId"] == nil || identifier(item["sessionId"]))
                     && (item["scopeType"] == nil || enumString(item["scopeType"], ["network", "intent"]))
                     && (item["scopeId"] == nil || identifier(item["scopeId"]))
-                    && (item["persona"] == nil || enumString(item["persona"], ["negotiator", "signal", "reporter"]))
+                    && (item["persona"] == nil || enumString(item["persona"], ["personal"]))
                     && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
             }
         }

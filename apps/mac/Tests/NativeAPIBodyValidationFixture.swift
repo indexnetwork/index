@@ -67,12 +67,11 @@ enum NativeAPIBodyValidationFixture {
         try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?status=pending", body: nil), "radar singular status accepted")
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "GET", path: "/notifications/stream", body: nil), "valid notification stream rejected")
         // Shape validation only: the bridge allowlists fields and enum values,
-        // it does not model server-side routing rules. A scopeless negotiator
-        // body is a well-formed request the bridge will send — the API answers
-        // it with a 400, because the negotiator has no unscoped surface and
-        // every negotiator chat must carry an intent scope. The app never
+        // it does not model server-side routing rules. A scopeless body is a
+        // well-formed request the bridge will send — the API answers it with a
+        // 403, because api-key chats must carry an intent scope. The app never
         // sends this shape (see mainview/core.jsx, which always scopes).
-        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello"), "persona": string("negotiator")])), "valid chat stream rejected")
+        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello"), "persona": string("personal")])), "valid chat stream rejected")
         try require(NativeAPIRequestBridge.validateMCPForFixture(arguments: object(["description": string("Meet founders"), "autoApprove": .bool(true)])), "valid create_intent rejected")
         let agentId = "00000000-0000-4000-8000-000000000001"
         try require(NativeAPIRequestBridge.validateMCPForFixture(
@@ -124,11 +123,11 @@ enum NativeAPIBodyValidationFixture {
         }
         try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "POST", path: "/networks", body: object(["title": string("N"), "joinPolicy": string("approval")])), "unknown network policy accepted")
         // Persona enum parity, again shape-only — see the note above on why a
-        // scopeless negotiator body is valid here but not at the API.
-        for persona in ["negotiator", "signal", "reporter"] {
-            try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string(persona)])), "chat persona parity failed: \(persona)")
+        // scopeless body is valid here but not at the API.
+        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string("personal")])), "chat persona parity failed: personal")
+        for persona in ["negotiator", "signal", "reporter", "orchestrator"] {
+            try require(!NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string(persona)])), "retired chat persona accepted: \(persona)")
         }
-        try require(!NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string("orchestrator")])), "unknown chat persona accepted")
         for scope in ["network", "intent"] {
             try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "scopeType": string(scope), "scopeId": id])), "chat scope parity failed: \(scope)")
         }
