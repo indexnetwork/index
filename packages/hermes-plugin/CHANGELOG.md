@@ -10,6 +10,13 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ### Removed
 - Remove the retired `read_pending_questions` MCP wrapper from the standalone
   Hermes surface, matching Protocol 22.0.0.
+- Remove `negotiation_wake.py` (the conversation-SSE listener that
+  auto-started one Hermes turn per negotiation id, forever). External-agent
+  negotiation dispatch is offline (protocol #1494 round-3, Option A): there
+  is no server-side signal left to wake on, and the listener's own
+  one-start-per-id-per-process design meant a negotiation could get exactly
+  one Hermes turn before getting stuck paused. `index_respond_negotiation`
+  is submitted on explicit instruction only now.
 
 ## [0.25.0] - 2026-08-23
 

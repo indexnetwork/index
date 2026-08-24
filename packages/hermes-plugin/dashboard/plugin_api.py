@@ -2194,12 +2194,10 @@ def list_conversations() -> dict[str, Any]:
     """List the caller's conversations (participant-gated) as counterpart summaries."""
     # Negotiation-graph rewrite (#1494): this used to also fire an off-thread
     # negotiation_wake tick here (piggy-backing desktop's 15s poll as a cheap
-    # pickup heartbeat, since the REST bridge buffers SSE). Pickup is gone --
-    # there is no server-side "poll for anything pending" endpoint any more,
-    # so there is nothing left to tick. The SSE-driven wake in
-    # negotiation_wake.py (start_listener/bind_plugin_context) still reacts
-    # to messages it actually observes; see that module's docstring for the
-    # accepted gap (no periodic catch-up behind it any more).
+    # pickup heartbeat, since the REST bridge buffers SSE). Pickup is gone,
+    # and so is negotiation_wake.py itself (#1494 round-3, Option A) --
+    # external-agent negotiation dispatch is offline, so there is no
+    # server-side signal left to tick or wake on at all.
     current_user_id = _resolve_user_id()
     if not current_user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}

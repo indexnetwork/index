@@ -17,7 +17,6 @@
     "tools.py",
     "transport.py",
     "env_transport.py",
-    "negotiation_wake.py",
     "skills/",
     "dashboard/",
     "desktop/dist/",

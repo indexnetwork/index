@@ -27,7 +27,6 @@ PYTHON_FILES = [
     "env_transport.py",
     "schemas.py",
     "tools.py",
-    "negotiation_wake.py",
     "dashboard/plugin_api.py",
     "dashboard/auth_login.py",
     "dashboard/agent_bootstrap.py",
@@ -443,89 +442,20 @@ def main() -> None:
     assert "index_respond_negotiation" not in dashboard_js
     assert "_load_negotiation_wake" not in (ROOT / "dashboard" / "plugin_api.py").read_text()
     assert "index-negotiation-wake-tick" not in (ROOT / "dashboard" / "plugin_api.py").read_text()
-    assert "negotiation_wake.start_listener()" in (ROOT / "__init__.py").read_text()
-    assert "negotiation_wake.bind_plugin_context(ctx)" in (ROOT / "__init__.py").read_text()
 
-    # Conversation SSE wake (negotiation-graph rewrite, #1494): there is no more
-    # pickup/claim, so wake only starts one Hermes turn per negotiation id it
-    # observes on a non-own negotiation message -- own agent turns do not wake.
-    assert plugin.negotiation_wake is not None
-    wake = plugin.negotiation_wake
-    wake.reset_for_tests()
-    assert wake.should_wake_on_event(
-        {
-            "type": "message",
-            "message": {
-                "senderId": "agent:other-user",
-                "taskId": "neg-wake",
-                "parts": [{"kind": "data", "data": {"verb": "counter"}}],
-            },
-        },
-        owner_user_id="me",
-    )
-    assert not wake.should_wake_on_event(
-        {
-            "type": "message",
-            "message": {
-                "senderId": "agent:me",
-                "taskId": "neg-wake",
-                "parts": [{"kind": "data", "data": {"verb": "counter"}}],
-            },
-        },
-        owner_user_id="me",
-    )
-    assert not wake.should_wake_on_event(
-        {"type": "message", "message": {"senderId": "user-1", "parts": [{"type": "text", "text": "hi"}]}},
-        owner_user_id="me",
-    )
-    # A negotiation message missing its taskId cannot be woken on -- there is
-    # nothing to pass to index_respond_negotiation.
-    assert not wake.should_wake_on_event(
-        {
-            "type": "message",
-            "message": {"senderId": "agent:other-user", "parts": [{"kind": "data", "data": {"verb": "counter"}}]},
-        },
-        owner_user_id="me",
-    )
-
-    started: list[str] = []
-    wake.reset_for_tests()
-    wake.set_turn_starter(lambda negotiation_id: started.append(negotiation_id))
-    wake._maybe_start_turn("neg-wake")
-    assert started == ["neg-wake"]
-    wake._maybe_start_turn("neg-wake")  # one start per negotiation id per process
-    assert started == ["neg-wake"]
-
-    wake.reset_for_tests()
-    inject_ctx = FakeContext()
-    wake.bind_plugin_context(inject_ctx)
-    wake._maybe_start_turn("neg-wake")
-    assert len(inject_ctx.injected) == 1
-    injected = inject_ctx.injected[0]["content"]
-    assert "neg-wake" in injected
-    assert "index_respond_negotiation" in injected
-    assert "index_pickup_negotiation" not in injected
-    assert "index_consult_owner" not in injected
-    wake._maybe_start_turn("neg-wake")
-    assert len(inject_ctx.injected) == 1
-
-    stream_lines = [
-        b": keepalive\n",
-        b'data: {"type":"message","message":{"senderId":"agent:other","taskId":"neg-stream","parts":[{"kind":"data","data":{"verb":"counter"}}]}}\n',
-        b'data: {"type":"message","message":{"senderId":"agent:me","taskId":"neg-stream","parts":[{"kind":"data","data":{"verb":"question"}}]}}\n',
-    ]
-    wake.reset_for_tests()
-    seen: list[str] = []
-    wake.set_turn_starter(lambda negotiation_id: seen.append(negotiation_id))
-    for line in stream_lines:
-        if wake._is_keepalive(line):
-            continue
-        event = wake._parse_data_line(line)
-        if event is None:
-            continue
-        if wake.should_wake_on_event(event, owner_user_id="me"):
-            wake._maybe_start_turn("neg-stream")
-    assert seen == ["neg-stream"]  # only the non-own message wakes; keepalive and own turns do not
+    # negotiation_wake.py (the conversation-SSE listener that auto-started one
+    # Hermes turn per negotiation id, forever — #1494 round-3 finding 8: it
+    # could speak at most once per negotiation before getting stuck paused) is
+    # deleted along with the rest of external-agent dispatch (Option A — see
+    # the PR body). There is no wake module, no start_listener/
+    # bind_plugin_context call, and no per-process one-wake-per-id state left
+    # to pin.
+    assert not (ROOT / "negotiation_wake.py").exists()
+    assert not hasattr(plugin, "negotiation_wake")
+    init_source = (ROOT / "__init__.py").read_text()
+    assert "negotiation_wake.start_listener()" not in init_source
+    assert "negotiation_wake.bind_plugin_context(ctx)" not in init_source
+    assert "import negotiation_wake" not in init_source
 
     assert "index-dashboard__hdr-account" in dashboard_js
     assert "ProfilePanel" in dashboard_js

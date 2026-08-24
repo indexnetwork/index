@@ -14,11 +14,6 @@ from typing import Any
 from . import schemas, tools, transport
 from ._mode import resolve_plugin_mode
 
-try:
-    from . import negotiation_wake as negotiation_wake
-except Exception:  # noqa: BLE001 - optional at import time for incomplete installs
-    negotiation_wake = None  # type: ignore[assignment]
-
 _INDEX_HINT = (
     'For Index Network signals/intents/opportunities/discovery requests, load '
     'skill_view("index-network:index-orchestrator") before answering or using Index tools.'
@@ -172,12 +167,8 @@ def register(ctx):
             description="Load Index Network orchestrator guidance",
         )
     _register_skills(ctx)
-    # Ordinary agent keys: keep lastNegotiationPickupAt fresh via conversation
-    # SSE keepalive (~15s) so Index parks turns for Hermes instead of taking
-    # them inline. Pickup is a seat heartbeat only — no auto consult/respond.
-    if negotiation_wake is not None:
-        try:
-            negotiation_wake.bind_plugin_context(ctx)
-            negotiation_wake.start_listener()
-        except Exception:  # noqa: BLE001
-            pass
+    # negotiation_wake.py (the conversation-SSE listener that auto-started a
+    # Hermes turn on a negotiation message) is deleted: external-agent
+    # negotiation dispatch is offline (#1494 round-3, Option A — see the PR
+    # body). There is no server-side signal left to wake on; a Hermes turn is
+    # submitted on explicit instruction only, via index_respond_negotiation.
