@@ -1,0 +1,314 @@
+import { describe, expect, test } from "bun:test";
+
+import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
+import { PersonalAgentGraphFactory, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
+import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
+import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
+import { Negotiations } from "../negotiations.js";
+
+/**
+ * The whole cycle, end to end: matches_ready → kickoff (strategy + a brief per
+ * match, in parallel) → negotiator turns → all paused → reflect ASK → the
+ * principal's answers → reflect ACT (promote / reject / re-kick).
+ *
+ * Both real graphs run: the PersonalAgent's negotiation scope IS the
+ * NegotiationGraph's turn author, so a kickoff genuinely self-plays every
+ * negotiation through `apply` until it pauses. Only the model seam
+ * (`PersonalAgentJudgment`) is scripted, so this file constructs no model and
+ * runs in the credential-free CI gate.
+ */
+
+const SECOND_OPPORTUNITY_ID = "opportunity-2";
+const THIRD_OPPORTUNITY_ID = "opportunity-3";
+const TERMINAL_STATUSES = new Set(["accepted", "rejected", "expired"]);
+
+/** The DM, the dossier and the ledger, in memory. */
+class FakePrincipalHost {
+  readonly dmMessages: Array<{ role: string; content: string; options?: string[] }> = [];
+  readonly dossierEntries: Array<{ id: string; text: string; source: string; createdAt: Date }> = [];
+  readonly ledgerRows: Array<{ event: Record<string, unknown>; act: Record<string, unknown> }> = [];
+  readonly publishedChunks: Array<{ messageId: string; seq: number; content: string }> = [];
+  readonly accepted: Array<{ opportunityId: string; reason?: string }> = [];
+  private messageCounter = 0;
+
+  constructor(private readonly negotiations: FakeNegotiationHost) {}
+
+  readonly conversation: PersonalAgentDeps["conversation"] = {
+    findSession: async () => ({ id: "dm-1" }),
+    resolveSession: async () => ({ session: { id: "dm-1" } }),
+    getMessages: async () => this.dmMessages.map(({ role, content }) => ({ role, content })),
+    addMessage: async ({ role, content, options }) => {
+      this.dmMessages.push({ role, content, ...(options ? { options } : {}) });
+      return `dm-message-${++this.messageCounter}`;
+    },
+  };
+
+  readonly dossier: PersonalAgentDeps["dossier"] = {
+    readActiveEntries: async () => [...this.dossierEntries],
+    addEntry: async ({ text, source }) => {
+      const id = `dossier-${this.dossierEntries.length + 1}`;
+      this.dossierEntries.push({ id, text, source, createdAt: new Date() });
+      return id;
+    },
+    retireEntry: async ({ entryId }) => {
+      const index = this.dossierEntries.findIndex((entry) => entry.id === entryId);
+      if (index < 0) return false;
+      this.dossierEntries.splice(index, 1);
+      return true;
+    },
+  };
+
+  readonly ledger: PersonalAgentDeps["ledger"] = {
+    append: async ({ event, act }) => {
+      this.ledgerRows.push({ event, act });
+      return `ledger-${this.ledgerRows.length}`;
+    },
+    readRecent: async () => this.ledgerRows.map((row) => ({ createdAt: new Date(), act: row.act })),
+  };
+
+  /** Undecided matches only — the same list a verdict could land on. */
+  readonly opportunities: PersonalAgentDeps["opportunities"] = {
+    readMatches: async () => [...this.negotiations.opportunities.values()]
+      .filter((opportunity) => !TERMINAL_STATUSES.has(opportunity.status))
+      .map((opportunity): PersonalAgentMatch => ({
+        opportunityId: opportunity.id,
+        label: `Match on ${opportunity.id}`,
+        status: opportunity.status,
+      })),
+    accept: async (_userId, input) => {
+      this.accepted.push({ opportunityId: input.opportunityId, ...(input.reason ? { reason: input.reason } : {}) });
+      return { status: "executed", counterparty: "the match" };
+    },
+  };
+
+  readonly identity: PersonalAgentDeps["identity"] = { readAgentName: async () => "Ada" };
+
+  readonly replyStream: PersonalAgentDeps["replyStream"] = {
+    publish: async (messageId, chunk) => { this.publishedChunks.push({ messageId, ...chunk }); },
+  };
+}
+
+/** Scripted judgment: the ONE model seam, driven by the turn's own shape. */
+class ScriptedJudgment implements PersonalAgentJudgment {
+  readonly decideCalls: PersonalAgentTurnContext[] = [];
+  readonly briefCalls: Array<{ opportunityId: string; strategy: string }> = [];
+  private cursor = 0;
+
+  constructor(private readonly plans: Array<(context: PersonalAgentTurnContext) => PersonalAgentDecidedAct[]>) {}
+
+  async decide(context: PersonalAgentTurnContext): Promise<PersonalAgentDecidedAct[]> {
+    this.decideCalls.push(context);
+    const plan = this.plans[this.cursor];
+    this.cursor += 1;
+    return plan ? plan(context) : [];
+  }
+
+  async reply(_context: PersonalAgentTurnContext, executed: PersonalAgentExecutedAct[]): Promise<{ text: string }> {
+    return { text: `Here is where things stand after ${executed.length} act(s).` };
+  }
+
+  async strategy(): Promise<string> {
+    return "I will put your constraints to each of them and find out who can actually move.";
+  }
+
+  async brief(_context: PersonalAgentTurnContext, input: { match: PersonalAgentMatch; strategy: string }): Promise<string> {
+    this.briefCalls.push({ opportunityId: input.match.opportunityId, strategy: input.strategy });
+    return `Brief for ${input.match.opportunityId}: ${input.strategy}`;
+  }
+
+  /**
+   * Deterministic by thread depth and brief, not by call order: a kickoff
+   * opens every match in parallel, so a positional script would be a race.
+   */
+  async negotiationTurn(input: { brief: string; thread: unknown[]; isOpening: boolean }): Promise<NegotiationAuthoredTurn> {
+    if (input.isOpening) return { verb: "outreach", message: `Opening on ${input.brief}`, reasoning: "Kickoff." };
+    const depth = input.thread.length;
+    const which = input.brief.includes(THIRD_OPPORTUNITY_ID) ? 3 : input.brief.includes(SECOND_OPPORTUNITY_ID) ? 2 : 1;
+    if (depth === 1) {
+      // The counterparty's seat answering our outreach.
+      return which === 3
+        ? { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not what they need." } }
+        : { verb: "counter", message: "Interested — what are the constraints?", reasoning: "Probing." };
+    }
+    if (depth === 2) {
+      // Our own seat, which is why these payloads are ours to read at reflect.
+      return which === 2
+        ? { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "pending", reasoning: "They can move now." } }
+        : { verb: "pause", reason: "needs_principal", payload: { question: "What is the earliest you could start?" } };
+    }
+    return { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "pending", reasoning: "Converged after the answer." } };
+  }
+}
+
+/**
+ * Wires the two real graphs into each other exactly as the host does: the
+ * negotiation graph's turn author is the PersonalAgent in negotiation scope.
+ */
+function buildCycle(judgment: ScriptedJudgment, counterparties: string[]) {
+  const negotiationHost = new FakeNegotiationHost(counterparties);
+  const principal = new FakePrincipalHost(negotiationHost);
+  let agent: PersonalAgentGraphLike;
+  const negotiations = new Negotiations({
+    database: negotiationHost.database,
+    reflectEnqueue: async (job) => { negotiationHost.reflectJobs.push(job); },
+    author: {
+      authorTurn: async ({ negotiationId, userId, intentId }) => {
+        const result = await agent.invoke({ userId, intentId, negotiationId });
+        if (!result.turn) throw new Error(result.error ?? "PersonalAgent produced no negotiation turn");
+        return result.turn;
+      },
+    },
+  }).createGraph();
+  agent = new PersonalAgentGraphFactory({
+    negotiations,
+    negotiationDatabase: negotiationHost.database,
+    conversation: principal.conversation,
+    dossier: principal.dossier,
+    ledger: principal.ledger,
+    opportunities: principal.opportunities,
+    identity: principal.identity,
+    replyStream: principal.replyStream,
+    reflectEnqueue: async (job) => { negotiationHost.reflectJobs.push(job); },
+    judgment,
+  }).createGraph();
+  return { agent, negotiationHost, principal };
+}
+
+const userMessage = (text: string) => ({
+  userId: SOURCE_USER_ID,
+  intentId: INTENT_ID,
+  event: "user_message" as const,
+  sessionId: "dm-1",
+  messageId: `client-message-${text.length}`,
+  text,
+});
+
+describe("PersonalAgent — the whole cycle", () => {
+  test("matches_ready → ask → kickoff → all paused → reflect ASK → answers → ACT", async () => {
+    const judgment = new ScriptedJudgment([
+      // 1. matches_ready: ask before speaking on the principal's behalf.
+      () => [{ tool: "ask", text: "Before I reach out — what is your timeline?" }],
+      // 2. their answer: note it, then kick every match off.
+      () => [
+        { tool: "note_dossier", text: "Wants to start within a month." },
+        { tool: "kickoff", reasoning: "Timeline is settled; reaching out to all three." },
+      ],
+      // 3. all_paused (reflect phase 1): merge what the tables need into one ask.
+      (context) => {
+        expect(context.paused).toHaveLength(3);
+        return [{ tool: "ask", text: "One of them needs your earliest start date — what should I say?" }];
+      },
+      // 4. their answer (reflect phase 2 ACT): promote, reject, re-kick the rest.
+      (context) => {
+        const byOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.negotiationId]));
+        return [
+          { tool: "promote", negotiationId: byOpportunity.get(SECOND_OPPORTUNITY_ID)!, reasoning: "They can move now." },
+          { tool: "reject", negotiationId: byOpportunity.get(THIRD_OPPORTUNITY_ID)!, reasoning: "Not a fit." },
+          { tool: "kickoff", reasoning: "Sending the rest back out with the start date." },
+        ];
+      },
+    ]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol", "dave"]);
+
+    // ── 1. matches_ready: it asks, and reaches out to no one ──────────────
+    const asked = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    expect(asked.acts.map((act) => act.tool)).toEqual(["ask"]);
+    expect(negotiationHost.tasks.size).toBe(0);
+    expect(principal.dmMessages.at(-1)?.content).toContain("what is your timeline");
+
+    // ── 2. the answer kicks the round off ─────────────────────────────────
+    const kicked = await agent.invoke(userMessage("Within a month, ideally sooner."));
+    expect(kicked.acts.map((act) => act.tool)).toEqual([
+      "note_dossier",
+      "message_user", // the strategy, written into the DM before anyone is contacted
+      "kickoff",
+      "message_user", // the reply stage
+    ]);
+    // One brief per match, all derived from the same strategy.
+    expect(judgment.briefCalls.map((call) => call.opportunityId).sort())
+      .toEqual([OPPORTUNITY_ID, SECOND_OPPORTUNITY_ID, THIRD_OPPORTUNITY_ID]);
+    expect(new Set(judgment.briefCalls.map((call) => call.strategy)).size).toBe(1);
+    expect(negotiationHost.tasks.size).toBe(3);
+    for (const task of negotiationHost.tasks.values()) {
+      expect(task.state).toBe("paused");
+      expect(task.brief).toBe(`Brief for ${task.metadata.opportunityId}: ${judgment.briefCalls[0]!.strategy}`);
+    }
+    // The round is stamped only after every open settled, and the all-paused
+    // check then fires exactly once for it.
+    const round = negotiationHost.round;
+    expect(negotiationHost.roundSize).toBe(3);
+    expect(negotiationHost.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round }]);
+    // The principal's reply streamed back as ordered chunks.
+    expect(principal.publishedChunks.map((chunk) => chunk.seq)).toEqual([1, 2, 3]);
+
+    // ── 3. reflect phase 1: it asks, and decides nothing ──────────────────
+    const reflectAsk = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round });
+    expect(reflectAsk.acts.map((act) => act.tool)).toEqual(["ask"]);
+    expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "pending")).toHaveLength(0);
+    expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "rejected")).toHaveLength(0);
+
+    // ── 4. reflect phase 2: promote, reject, re-kick ──────────────────────
+    const acted = await agent.invoke(userMessage("I could start in three weeks."));
+    expect(acted.acts.map((act) => act.tool)).toEqual([
+      "promote",
+      "reject",
+      "message_user", // the new round's strategy
+      "kickoff",
+      "message_user", // the reply stage
+    ]);
+    expect(negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.status).toBe("pending");
+    expect(negotiationHost.opportunities.get(THIRD_OPPORTUNITY_ID)!.status).toBe("rejected");
+    // Only the undecided one was sent back out, with a brief of its own.
+    const rekick = acted.acts.find((act) => act.tool === "kickoff")!;
+    expect(rekick).toMatchObject({ tool: "kickoff", opened: 1 });
+    expect(judgment.briefCalls.at(-1)!.opportunityId).toBe(OPPORTUNITY_ID);
+    expect(negotiationHost.tasks.size).toBe(3); // re-kick resumed, never duplicated
+    expect(negotiationHost.round).toBe(round + 1);
+    expect(negotiationHost.reflectJobs.at(-1)).toEqual({ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: round + 1 });
+  });
+
+  test("a pause payload is readable only by the seat that paused", async () => {
+    const judgment = new ScriptedJudgment([
+      () => [{ tool: "kickoff", reasoning: "Straight out." }],
+      (context) => {
+        const ours = context.paused.find((paused) => paused.opportunityId === OPPORTUNITY_ID)!;
+        const theirs = context.paused.find((paused) => paused.opportunityId === THIRD_OPPORTUNITY_ID)!;
+        // Our own seat's needs_principal question is exactly what reflect
+        // merges into its ASK.
+        expect(ours.pausedByUs).toBe(true);
+        expect(ours.payload).toEqual({ question: "What is the earliest you could start?" });
+        // Their agent's recommendation is theirs to hand to their principal.
+        expect(theirs.pausedByUs).toBe(false);
+        expect(theirs.payload).toBeUndefined();
+        expect(theirs.reason).toBe("ready_for_verdict");
+        return [];
+      },
+    ]);
+    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol", "dave"]);
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    const round = negotiationHost.round;
+    const reflected = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round });
+    expect(reflected.error).toBeUndefined();
+    expect(judgment.decideCalls).toHaveLength(2);
+  });
+
+  test("a kickoff that opens nothing leaves the round unstamped, so reflect cannot loop", async () => {
+    const judgment = new ScriptedJudgment([
+      () => [{ tool: "kickoff", reasoning: "Nothing to open." }],
+    ]);
+    const { agent, negotiationHost } = buildCycle(judgment, []);
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    expect(result.acts).toEqual([{ tool: "kickoff", round: 0, opened: 0, reasoning: "Nothing to open." }]);
+    expect(negotiationHost.roundSize).toBeNull();
+    expect(negotiationHost.reflectJobs).toEqual([]);
+  });
+
+  test("global scope is a graph-level input error", async () => {
+    const { agent } = buildCycle(new ScriptedJudgment([]), []);
+    const result = await agent.invoke({ userId: SOURCE_USER_ID });
+    expect(result.scope).toBe("global");
+    expect(result.error).toContain("global scope is not implemented");
+  });
+});

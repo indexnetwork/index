@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { NegotiationTaskRow, NegotiationGraphDatabase } from "../../platform/database/negotiation.js";
+import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, NETWORK_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
 import type { NegotiationTurnAuthor, NegotiationTurnAuthorInput } from "../../internal/negotiations/negotiation.turn-author.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema } from "../../internal/negotiations/negotiation.turn.js";
 import type { NegotiationAuthoredTurn, NegotiationTurn } from "../../internal/negotiations/negotiation.turn.js";
@@ -56,120 +56,6 @@ class ScriptedTurnAuthor implements NegotiationTurnAuthor {
       ? { verb: "outreach", message: "(unscripted opening)", reasoning: "(unscripted)" }
       : { verb: "pause", reason: "needs_principal", payload: { question: "Nothing scripted — awaiting external input." } });
     return isOpening ? NegotiationOpeningTurnSchema.parse(turn) : NegotiationAuthoredTurnSchema.parse(turn);
-  }
-}
-
-const NETWORK_ID = "network-1";
-const SOURCE_USER_ID = "alice";
-const CANDIDATE_USER_ID = "bob";
-const INTENT_ID = "intent-alice-1";
-const OPPORTUNITY_ID = "opportunity-1";
-
-type FakeOpportunity = {
-  id: string;
-  status: string;
-  actors: Array<{ userId: string; intent: string; networkId: string; role: string }>;
-};
-
-/** In-memory host implementing the exact ports `NegotiationGraph` depends on. */
-class FakeNegotiationHost {
-  round = 1;
-  roundSize: number | null = null;
-  readonly opportunity: FakeOpportunity = {
-    id: OPPORTUNITY_ID,
-    status: "negotiating",
-    actors: [
-      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
-      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
-    ],
-  };
-  readonly tasks = new Map<string, NegotiationTaskRow>();
-  readonly messages = new Map<string, Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }>>();
-  readonly opportunityStatusUpdates: Array<{ id: string; status: string }> = [];
-  readonly reflectJobs: Array<{ intentId: string; round: number }> = [];
-  private taskCounter = 0;
-  private messageCounter = 0;
-
-  readonly database: NegotiationGraphDatabase = {
-    getOpportunity: async (id: string) => (id === this.opportunity.id ? (this.opportunity as never) : null),
-    getIntent: async (intentId: string) =>
-      intentId === INTENT_ID ? ({ id: INTENT_ID, userId: SOURCE_USER_ID } as never) : null,
-    getUserContext: async () => null as never,
-    createNegotiationConversation: async () => ({ id: "conversation-1" }),
-    createNegotiationTask: async (input) => {
-      const task: NegotiationTaskRow = {
-        id: `task-${++this.taskCounter}`,
-        conversationId: input.conversationId,
-        state: "working",
-        brief: input.brief,
-        metadata: input.metadata,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      this.tasks.set(task.id, task);
-      this.messages.set(task.id, []);
-      return task;
-    },
-    getNegotiationTaskForOpportunity: async (opportunityId) =>
-      [...this.tasks.values()].find((t) => t.metadata.opportunityId === opportunityId && t.state !== "completed") ?? null,
-    getNegotiationTask: async (taskId) => this.tasks.get(taskId) ?? null,
-    getNegotiationTasksForUser: async (userId) =>
-      [...this.tasks.values()].filter((t) => t.metadata.sourceUserId === userId || t.metadata.candidateUserId === userId),
-    updateNegotiationTaskState: async (taskId, state, pause) => {
-      const task = this.tasks.get(taskId);
-      if (!task) throw new Error(`No such task ${taskId}`);
-      const updated: NegotiationTaskRow = {
-        ...task,
-        state,
-        metadata: { ...task.metadata, pause: pause ?? null },
-        updatedAt: new Date(),
-      };
-      this.tasks.set(taskId, updated);
-      return updated;
-    },
-    setNegotiationBrief: async (taskId, brief) => {
-      const task = this.tasks.get(taskId);
-      if (!task) throw new Error(`No such task ${taskId}`);
-      this.tasks.set(taskId, { ...task, brief, updatedAt: new Date() });
-    },
-    setNegotiationRound: async (taskId, round) => {
-      const task = this.tasks.get(taskId);
-      if (!task) throw new Error(`No such task ${taskId}`);
-      this.tasks.set(taskId, { ...task, metadata: { ...task.metadata, round }, updatedAt: new Date() });
-    },
-    createNegotiationMessage: async (input) => {
-      const list = this.messages.get(input.taskId) ?? [];
-      if (list.length !== input.expectedMessageCount) return null; // fenced: a concurrent turn already landed
-      const message = { id: `message-${++this.messageCounter}`, senderId: input.senderId, parts: input.parts, createdAt: new Date() };
-      list.push(message);
-      this.messages.set(input.taskId, list);
-      return message;
-    },
-    // A snapshot, not the live array — a real DB read would never see a later write reflected back.
-    getNegotiationMessages: async (taskId) => [...(this.messages.get(taskId) ?? [])],
-    createNegotiationOutcomeArtifact: async () => {},
-    getArtifactsForTask: async () => [],
-    updateOpportunityStatus: async (id, status) => {
-      this.opportunityStatusUpdates.push({ id, status });
-      this.opportunity.status = status;
-      return { id, status };
-    },
-    getNegotiationTasksForIntentRound: async (intentId, round) =>
-      [...this.tasks.values()].filter((t) => t.metadata.intentId === intentId && t.metadata.round === round),
-    // A bump clears the stamp: the new round is unstamped until its opens settle.
-    bumpIntentNegotiationRound: async () => { this.roundSize = null; return (this.round += 1); },
-    getIntentNegotiationRound: async () => ({ round: this.round, roundSize: this.roundSize }),
-    stampIntentNegotiationRoundSize: async (_intentId, round, size) => {
-      if (round === this.round) this.roundSize = size;
-    },
-    countActiveNegotiationsForRound: async () =>
-      [...this.tasks.values()].filter((t) => t.state === "working").length,
-  };
-
-  taskFor(negotiationId: string): NegotiationTaskRow {
-    const task = this.tasks.get(negotiationId);
-    if (!task) throw new Error(`No such task ${negotiationId}`);
-    return task;
   }
 }
 

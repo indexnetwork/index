@@ -20,6 +20,52 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 32.0.0 - 2026-08-24
+
+### Breaking
+
+- **AgentGraph: one PersonalAgent, routed on the shape of its input.** New
+  `PersonalAgentGraphFactory` — `{ userId }` is global (a graph-level input
+  error, deferred), `{ userId, intentId, event: 'user_message' | 'matches_ready'
+  | 'all_paused' }` is the intent scope (IS-A), `{ userId, intentId,
+  negotiationId }` is one negotiator turn. `matches_ready` and `all_paused`
+  are ONE node — look at the state, maybe ask, else act — differing only in
+  what ACT does. IS-A's verbs are `message_user`, `ask`, `kickoff`, `promote`,
+  `reject`, `note_dossier`, `retire_dossier`, `accept_opportunity`; there is
+  no `wait`. Asking BLOCKS acting: a turn that asks executes no verdicts and
+  starts no negotiations. The host implements the ports (signal DM, dossier,
+  act ledger, reply transport, the owner's accept path, matches list).
+- **The interim `NegotiationAuthor` is deleted.** `NegotiationGraphDeps.author`
+  is now a required `NegotiationTurnAuthor` port taking ids only
+  (`{ negotiationId, userId, intentId }`); production binds it to the
+  PersonalAgent in negotiation scope, which reads the brief and thread itself.
+  Removed exports: `NegotiationAuthor`, `NegotiationAuthorInput`.
+- **Discovery no longer opens negotiations.** The opportunity graph's
+  `negotiate` node is replaced by a `matches_ready` node that emits ONE event
+  per signal per persisted batch through the new `MatchesReadyFn` host
+  callback; the signal's PersonalAgent decides whether to reach out at all.
+  `OpportunityGraphFactory`'s sixth constructor argument changes from
+  `negotiationGraph` to `matchesReady`, and `ToolFactory`/`ToolDeps` gain
+  `matchesReady`. The tool factory no longer builds a second, reflect-less
+  negotiation graph: without the host's own composition there is no
+  negotiation graph in that context at all.
+- **The all-paused → reflect trigger is gated on a round-size stamp.**
+  `NegotiationRoundReflectJobData` gains `userId` (the signal's owner, so the
+  consumer can invoke the PersonalAgent). `NegotiationGraphDatabase` gains
+  `getNegotiationTasksForIntentRound`, `getIntentNegotiationRound` and
+  `stampIntentNegotiationRoundSize`, and `bumpIntentNegotiationRound` must now
+  CLEAR the size stamp. Until kickoff stamps the size — after every parallel
+  open has settled — the check is a no-op, so an early first pause can no
+  longer dedupe away the round's genuine reflect. New export:
+  `maybeEnqueueRoundReflect`.
+
+### Added
+
+- `isSafeAgentMessageProse`, the identifier-leak gate every piece of
+  agent-authored prose passes before it is persisted or streamed.
+- `chunkReplyText` and `PERSONAL_AGENT_REPLY_FALLBACK`, moved from the host
+  with the reply stage.
+
 ## 31.0.0 - 2026-08-24
 
 ### Breaking
