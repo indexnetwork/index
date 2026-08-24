@@ -27,6 +27,11 @@ describe("EVAL_MODEL_OVERRIDES", () => {
     expect(getModelName("premiseAnalyzer")).toBe("google/gemini-3.7-flash");
   });
 
+  it("does not pass Gemini reasoning to a non-Gemini override", () => {
+    process.env.EVAL_MODEL_OVERRIDES = JSON.stringify({ opportunityEvaluator: "anthropic/claude-sonnet-4" });
+    expect(createModel("opportunityEvaluator").modelKwargs?.reasoning).toBeUndefined();
+  });
+
   it("is ignored entirely in production", () => {
     process.env.NODE_ENV = "production";
     process.env.EVAL_MODEL_OVERRIDES = JSON.stringify({ opportunityEvaluator: "anthropic/claude-sonnet-4" });

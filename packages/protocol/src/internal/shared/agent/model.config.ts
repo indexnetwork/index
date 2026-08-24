@@ -6,6 +6,8 @@ import type { InteropZodType } from "@langchain/core/utils/types";
 
 import { resolveCanonicalAllAgentModels } from "./model.resolver.js";
 
+const GEMINI_3_7_FLASH_MODEL = "google/gemini-3.7-flash";
+
 /** Settings that can be configured per agent. */
 export interface ModelSettings {
   model: string;
@@ -80,11 +82,16 @@ function getBaseModelConfig(config?: ModelConfig) {
     EVAL_MODEL_OVERRIDES: process.env.EVAL_MODEL_OVERRIDES,
   }, { applyEvalOverrides: process.env.NODE_ENV !== "production" });
   return Object.fromEntries(
-    Object.entries(settings).map(([agent, value]) => [agent, {
-      ...value,
-      model: assignments[agent as keyof typeof assignments],
-      reasoning: "reasoning" in value ? value.reasoning : { effort: "low" },
-    }]),
+    Object.entries(settings).map(([agent, value]) => {
+      const model = assignments[agent as keyof typeof assignments];
+      return [agent, {
+        ...value,
+        model,
+        reasoning: model === GEMINI_3_7_FLASH_MODEL
+          ? ("reasoning" in value ? value.reasoning : { effort: "low" })
+          : undefined,
+      }];
+    }),
   ) as unknown as { [Agent in keyof typeof settings]: Omit<(typeof settings)[Agent], "model"> & { model: string } };
 }
 
