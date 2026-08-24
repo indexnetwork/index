@@ -118,8 +118,19 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
 
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<{ id: string; status: OpportunityStatus } | null>;
 
-  /** Every negotiation task of one intent's round, whatever its state. Reflect's own read. */
+  /** Every negotiation task of one intent's round, whatever its state. The round-settling read. */
   getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRow[]>;
+
+  /**
+   * Every PAUSED, unresolved negotiation of one signal, whatever round it
+   * belongs to — what IS-A reasons over.
+   *
+   * Deliberately not round-scoped. A negotiation a later kickoff left behind
+   * (a spent turn budget, most often) keeps its old round and would vanish
+   * from a round-scoped read forever: never promoted, never rejected, its
+   * opportunity negotiating for good and its principal never told.
+   */
+  getPausedNegotiationTasksForIntent(intentId: string): Promise<NegotiationTaskRow[]>;
 
   /**
    * Opens a new round: bumps `intents.negotiation_round`, clears

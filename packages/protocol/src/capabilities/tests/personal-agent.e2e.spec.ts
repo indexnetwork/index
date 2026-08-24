@@ -617,7 +617,7 @@ describe("PersonalAgent — what a turn may open, and what it may claim", () => 
     // consume the round's one chance to reflect and stall the cycle for good.
     const judgment = new ScriptedJudgment([() => []]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
-    negotiationHost.database.getNegotiationTasksForIntentRound = async () => {
+    negotiationHost.database.getPausedNegotiationTasksForIntent = async () => {
       throw new Error("connection reset");
     };
 
@@ -713,5 +713,94 @@ describe("PersonalAgent — round-4 regressions", () => {
       && match.awaitingIntroducerApproval === true)).toBe(true);
     expect(judgment.briefCalls.map((call) => call.opportunityId)).toEqual([OPPORTUNITY_ID]);
     expect(negotiationHost.tasks.size).toBe(1);
+  });
+});
+
+describe("PersonalAgent — round-5 regressions", () => {
+  test("a capped negotiation a later round left behind is still listed, and still rejectable", async () => {
+    // Being spent makes a negotiation ineligible for RE-KICK. It must not also
+    // make it invisible: conflating the two meant a table a later round left
+    // behind could never be promoted or rejected, so its opportunity sat
+    // `negotiating` forever and its principal never heard an outcome.
+    const kickoff = (): PersonalAgentDecidedAct[] => [{ tool: "kickoff", reasoning: "Send them out." }];
+    const judgment = new ScriptedJudgment(
+      [kickoff, kickoff, (context) => {
+        const capped = context.paused.find((paused) => paused.opportunityId === OPPORTUNITY_ID);
+        expect(capped).toBeDefined();
+        return [{ tool: "reject", negotiationId: capped!.negotiationId, reasoning: "Went nowhere." }];
+      }],
+      (input) => {
+        if (input.isOpening) return { verb: "outreach", message: "Opening.", reasoning: "Kickoff." };
+        if (input.brief.includes(SECOND_OPPORTUNITY_ID) && input.thread.length === 1) {
+          return { verb: "pause", reason: "needs_principal", payload: { question: "How soon?" } };
+        }
+        return { verb: "counter", message: "Pushing back.", reasoning: "Still talking." };
+      },
+    );
+    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
+
+    // Round 2 caps opportunity-1; opportunity-2 only stalls on a question.
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    const capped = [...negotiationHost.tasks.values()].find((task) => task.metadata.opportunityId === OPPORTUNITY_ID)!;
+    expect(capped.metadata.pause?.reason).toBe("turn_cap");
+    const cappedRound = capped.metadata.round;
+
+    // Round 3 re-kicks only opportunity-2, leaving the capped one behind.
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: cappedRound });
+    expect(negotiationHost.taskFor(capped.id).metadata.round).toBe(cappedRound);
+    expect(negotiationHost.round).toBe(cappedRound + 1);
+
+    // Reflecting on the LATER round must still see the one left behind.
+    const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: cappedRound + 1 });
+
+    expect(acted.acts).toEqual([{
+      tool: "reject",
+      negotiationId: capped.id,
+      opportunityId: OPPORTUNITY_ID,
+      reasoning: "Went nowhere.",
+      outcome: "resolved",
+    }]);
+    expect(negotiationHost.opportunities.get(OPPORTUNITY_ID)!.status).toBe("rejected");
+  });
+
+  test("a negotiation that pauses between the count and the stamp still gets its reflect", async () => {
+    // The stamp opens a window: a pause landing inside it sees a null stamp
+    // and bails, while kickoff's own check has already counted. Checked on one
+    // side only, that round is waited on forever.
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
+    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const count = negotiationHost.database.countActiveNegotiationsForRound;
+    let pretendStillWorking = true;
+    negotiationHost.database.countActiveNegotiationsForRound = async (intentId, round) => {
+      // The pre-stamp check sees the negotiation as still going; it pauses in
+      // the window, so only the post-stamp check can catch it.
+      if (pretendStillWorking) { pretendStillWorking = false; return 1; }
+      return count.call(negotiationHost.database, intentId, round);
+    };
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(negotiationHost.roundSize).toBe(1);
+    expect(negotiationHost.reflectJobs).toEqual([
+      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: negotiationHost.round },
+    ]);
+  });
+
+  test("a verdict naming a negotiation this turn cannot see is ledgered, not thrown", async () => {
+    // `judgment` is a documented swap seam, so the id is only as bounded as
+    // whatever produced it. Throwing here would abandon the acts already
+    // executed above and retry every one of them.
+    const judgment = new ScriptedJudgment([() => [
+      { tool: "note_dossier", text: "Prefers remote." },
+      { tool: "reject", negotiationId: "task-that-does-not-exist", reasoning: "No." },
+    ]]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
+
+    expect(result.error).toBeUndefined();
+    expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier", "reject"]);
+    expect(result.acts.at(-1)).toMatchObject({ outcome: "error" });
+    expect(principal.dossierEntries).toHaveLength(1); // the earlier act stands
   });
 });

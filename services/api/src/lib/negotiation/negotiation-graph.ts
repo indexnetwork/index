@@ -23,6 +23,7 @@ import { NegotiationGraphFactory, PersonalAgentGraphFactory } from '@indexnetwor
 import type { MatchesReadyFn, PersonalAgentGraphLike } from '@indexnetwork/protocol';
 
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
+import { log } from '../log';
 import { intentAgentLedgerAdapter } from '../../adapters/intent-agent-ledger.adapter';
 import { intentDossierAdapter } from '../../adapters/intent-dossier.adapter';
 import { agentService } from '../../services/agent.service';
@@ -109,8 +110,48 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
 /**
  * Discovery's post-persist hand-off: one event per signal that got matches.
  * Discovery never opens a negotiation — the signal's agent decides.
+ *
+ * THROWS on failure, which is the point: the discovery queues retry, and a
+ * batch that persisted with nobody woken for it is not a successful
+ * discovery. Only wire this where a retry actually exists.
  */
 export const matchesReady: MatchesReadyFn = async ({ userId, intentId }) => {
   const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
   await personalAgentQueue.addMatchesReadyEvent({ userId, intentId });
+};
+
+/** How many times a tool-path wake is retried before the loss is recorded. */
+const TOOL_PATH_WAKE_ATTEMPTS = 3;
+const TOOL_PATH_WAKE_RETRY_MS = 100;
+
+/**
+ * The same hand-off for the surfaces with NOTHING behind them to retry: the
+ * chat and MCP tool graphs, where the caller is a user waiting on a
+ * `discover_opportunities` answer.
+ *
+ * Throwing there would turn a discovery that genuinely persisted matches into
+ * a failed tool call, losing the user's results over a transport blip. So it
+ * retries, and if the wake is still lost it RECORDS that at error level with
+ * the ids needed to replay it, and lets the matches through. Not silent, and
+ * not at the user's expense.
+ */
+export const matchesReadyBestEffort: MatchesReadyFn = async ({ userId, intentId }) => {
+  const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
+  for (let attempt = 0; attempt < TOOL_PATH_WAKE_ATTEMPTS; attempt++) {
+    try {
+      await personalAgentQueue.addMatchesReadyEvent({ userId, intentId });
+      return;
+    } catch (err) {
+      if (attempt === TOOL_PATH_WAKE_ATTEMPTS - 1) {
+        log.lib.from('negotiation-graph').error('matches_ready_wake_lost', {
+          userId,
+          intentId,
+          note: 'Matches persisted but the signal\'s agent was not woken; replay by re-running discovery for this signal.',
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, TOOL_PATH_WAKE_RETRY_MS * (attempt + 1)));
+    }
+  }
 };

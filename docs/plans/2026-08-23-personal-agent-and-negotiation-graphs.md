@@ -367,6 +367,15 @@ table — a model that keeps re-kicking spends real money forever. This is the
 termination guarantee: every table eventually reaches the cap, kickoff then
 opens nothing, and D20 ends the cycle.
 
+**Amended in round 5.** Ineligible for re-kick is not the same as invisible,
+and the first version conflated them: `context.paused` was round-scoped, so a
+capped negotiation a later kickoff left behind vanished from every future
+reflect and could never be promoted or rejected — its opportunity sat
+`negotiating` for good and its principal never heard an outcome. The paused
+list is now SIGNAL-scoped (`getPausedNegotiationTasksForIntent`), so a spent
+table stays decidable while staying un-re-kickable. Two properties, two
+mechanisms.
+
 ### D22. A pause payload stays scoped to the seat that paused
 Chose: reflect sees the full payload of OUR seat's pauses (the
 `needs_principal` questions ASK merges) and only the reason for the
@@ -588,15 +597,23 @@ Alternative rejected: making the verdict tools' list throw as well — an
 unreadable options list there honestly means "no verdicts to offer", and
 losing a chat turn over it is worse.
 
-### D40. The reflect enqueue runs BEFORE the size stamp
-Chose: in kickoff's own settle step, run the all-paused check and enqueue
-first, then stamp. While the round is unstamped the repair path can still find
-it, so a failed enqueue is retryable.
-Alternative rejected: stamping first (the shipped order) — a failed enqueue
-then leaves a settled round that nothing will ever reflect on, and the turn
-reports success for the one thing it did not do. The pause-driven check keeps
-its swallow (a pause is already persisted and must not fail behind it) but now
-retries three times and gives up at ERROR.
+### D40. The all-paused check runs on BOTH sides of the size stamp
+**Amended in round 5.**
+
+Chose: in kickoff's own settle step, check-and-enqueue, stamp, then check
+again. Before the stamp so a failed enqueue leaves the round unstamped and
+therefore still findable by the repair path — retryable rather than a settled
+round nothing will ever reflect on. After the stamp because a negotiation that
+pauses in the window between the count and the write gets nothing otherwise:
+its own pause-side check bailed on the still-null stamp, and this side had
+already counted. The enqueue is keyed by (signal, round), so running it twice
+is one job either way.
+
+Alternatives rejected: stamping first (the original) — a failed enqueue leaves
+a settled round nothing reflects on; checking only before the stamp (round 4's
+fix) — it opens the window above, reachable from the watchdog and
+run-existing queues. The pause-driven check keeps its swallow, retries three
+times and gives up at ERROR.
 
 ### D41. The pause-reason union is defined once per codebase, and pinned
 Chose: one `NEGOTIATION_PAUSE_REASONS` in the protocol, one mirror in the API
@@ -654,4 +671,52 @@ Alternative rejected: the narrower verdict set (the shipped shape) — the
 agent's context numbers `latent`/`draft` matches, so "accept the first one"
 before kickoff always answered `unknown_counterparty` for a match
 `opportunityService` accepts perfectly well.
+
+### D47. The two verdict lanes list different status sets, on purpose
+Chose: the POSITION lane (`passVerdict`, behind the persona/MCP verdict tools)
+lists the narrow `ACTIONABLE_VERDICT_STATUSES`; the ID lane
+(`passVerdictOnOpportunity`, the PersonalAgent's) lists the wide
+`PERSONAL_AGENT_MATCH_STATUSES`.
+
+The difference is the ref, not the taste. A position is an index into a list
+the caller was shown, so widening the set renumbers every entry and the
+verdict lands on a different person — the exact failure that module's header
+exists to prevent. An opportunity id cannot be renumbered, so the id lane can
+list everything the agent's context numbered, which it must: re-listing the
+narrow set made "accept the first one" before kickoff always answer
+`unknown_counterparty` for a `latent` match the service accepts.
+
+Round 4 fixed this at the reported symptom and put the wide set on the WRONG
+lane — the position one — turning a failed accept into a possible wrong-person
+decline. There is now a test per lane, and one asserting the wide set is a
+strict superset of the narrow one, so the pair cannot drift again.
+
+### D48. A wake fails where a retry exists, and never at a waiting user's expense
+Chose: two host callbacks over one protocol behaviour. `matchesReady` throws —
+the discovery queues retry, and a batch that persisted with nobody woken is not
+a successful discovery (D42). `matchesReadyBestEffort` retries, then RECORDS
+the loss at error level with the ids needed to replay it, and lets the matches
+through; it is wired to the chat and MCP tool graphs, where the caller is a
+user waiting on `discover_opportunities` and nothing retries behind them.
+Alternative rejected: one throwing callback everywhere (round 3's shape) — a
+transport blip turned a discovery that genuinely persisted matches into a
+failed tool call, losing the user's results.
+
+### D49. A failed wake holds its slot only until the next batch
+Chose: a terminally failed `matches_ready` job is kept as the record that a
+batch never reached its agent, but a NEW batch for the same signal reclaims
+the slot — a fresh wake for the same work supersedes the record, and the
+replacement is logged.
+Alternative rejected: holding the slot for the seven days BullMQ retains a
+failure (round 4's shape) — both slots go dead, coalescing stops entirely, and
+every subsequent batch becomes its own kickoff: N strategy messages and N
+round bumps into the principal's conversation.
+
+### D50. A ref the judgment seam supplies is checked, not asserted
+Chose: a `promote`/`reject` naming a negotiation this turn cannot see is
+skipped and ledgered with outcome `error`.
+Alternative rejected: the non-null assertion — it is only sound because the
+BUNDLED validator bounds the index, and `judgment` is a documented swap seam,
+so a host or fixture implementation would throw mid-turn and abandon (then
+retry) every act already executed above it.
 

@@ -33,6 +33,11 @@ pin a supported release, use `latest`.
   rather than the single literal. A kickoff whose open failed after `init`
   created the task compensates it into this pause, so the round's active count
   can still reach zero. Unlike `turn_cap` it stays re-kickable.
+- **`NegotiationGraphDatabase` gains `getPausedNegotiationTasksForIntent`** —
+  the signal-scoped read of every paused, unresolved negotiation. Reflect
+  reasons over that, not over one round: a negotiation a later kickoff left
+  behind keeps its old round, and a round-scoped read hid it from every future
+  verdict.
 - **`NegotiationGraphDatabase.getIntentNegotiationRound` returns
   `kickoffStartedAt`** alongside `round` and `roundSize`, and
   `bumpIntentNegotiationRound` must stamp it in the same write. A marker set

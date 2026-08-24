@@ -156,8 +156,12 @@ describe('PersonalAgentQueue serialization', () => {
       expect(state).toBe('failed');
       expect(await built.queue.queue.getJob(first.id!)).not.toBeNull();
 
+      // A NEW batch for the same signal is a fresh wake for the same work, so
+      // it reclaims the slot rather than being pushed onto the follow-up. Held
+      // instead, both slots stay dead for the seven days BullMQ retains a
+      // failure: coalescing stops and every batch becomes its own kickoff.
       const second = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-fail' });
-      expect(second.id).not.toBe(first.id);
+      expect(second.id).toBe(first.id);
     } finally {
       await built.queue.close();
     }

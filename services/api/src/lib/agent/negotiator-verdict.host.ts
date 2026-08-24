@@ -305,12 +305,13 @@ async function passVerdict(
   deps?: NegotiatorVerdictHostDeps,
 ): Promise<NegotiatorVerdictResult> {
   try {
-    // The SAME status set the agent's context numbered. Listing the narrower
-    // verdict set here made "accept the first one" before kickoff always
-    // answer `unknown_counterparty`, for a match `opportunityService` accepts
-    // perfectly well — the agent numbered a latent row this re-list could not
-    // see.
-    const actionable = await readActionableCounterparties(userId, input.intentId, deps, PERSONAL_AGENT_MATCH_STATUSES);
+    // NARROW, deliberately. This lane resolves a 1-BASED POSITION the caller
+    // was shown, and the tool's own contract calls it "the signal's actionable
+    // list". Widening the set here renumbers every entry, so the position the
+    // client's agent read would land on a different person — the exact failure
+    // this module's header exists to prevent. Widening is safe only on the id
+    // lane below, which resolves by opportunity id and cannot be renumbered.
+    const actionable = await readActionableCounterparties(userId, input.intentId, deps, ACTIONABLE_VERDICT_STATUSES);
     if (actionable.length === 0) return { status: 'none_actionable' };
 
     const relist = () => ({
@@ -361,7 +362,12 @@ export async function passVerdictOnOpportunity(
   deps?: NegotiatorVerdictHostDeps,
 ): Promise<NegotiatorVerdictResult> {
   try {
-    const actionable = await readActionableCounterparties(userId, input.intentId, deps);
+    // WIDE, deliberately: the SAME set the PersonalAgent's context numbered.
+    // Re-listing the narrower verdict set made "accept the first one" before
+    // kickoff always answer `unknown_counterparty`, for a `latent` match
+    // `opportunityService` accepts perfectly well. Safe here and only here,
+    // because this lane resolves by opportunity id — no position to shift.
+    const actionable = await readActionableCounterparties(userId, input.intentId, deps, PERSONAL_AGENT_MATCH_STATUSES);
     if (actionable.length === 0) return { status: 'none_actionable' };
 
     const relist = () => ({

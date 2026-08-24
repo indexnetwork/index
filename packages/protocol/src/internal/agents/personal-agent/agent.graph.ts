@@ -104,7 +104,14 @@ async function loadThread(
 }
 
 /**
- * The paused negotiations of one round, as IS-A reads them.
+ * Every paused negotiation of this signal, as IS-A reads them.
+ *
+ * Signal-scoped, not round-scoped. Being spent (`turn_cap`) makes a
+ * negotiation ineligible for RE-KICK; it must not also make it invisible.
+ * Those are two different properties, and conflating them meant a table a
+ * later round left behind could never be promoted or rejected — its
+ * opportunity sat `negotiating` forever and its principal never heard an
+ * outcome.
  *
  * The pause PAYLOAD is private to the seat that paused: a counterparty's
  * question or recommendation is theirs to hand to their own principal, not
@@ -114,11 +121,9 @@ async function loadPaused(
   deps: PersonalAgentDeps,
   userId: string,
   intentId: string,
-  round: number,
 ): Promise<PersonalAgentPausedNegotiation[]> {
-  const tasks = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(intentId, round);
-  const paused = tasks.filter((task: NegotiationTaskRow) => task.state === "paused");
-  return Promise.all(paused.map(async (task) => {
+  const paused = await deps.negotiationDatabase.getPausedNegotiationTasksForIntent(intentId);
+  return Promise.all(paused.map(async (task: NegotiationTaskRow) => {
     const pausedByUs = task.metadata.pause?.pausedBy === userId;
     return {
       negotiationId: task.id,
@@ -136,9 +141,6 @@ async function assembleContext(
   input: Extract<PersonalAgentInput, { event: PersonalAgentIntentEventKind }>,
 ): Promise<PersonalAgentTurnContext> {
   const { userId, intentId } = input;
-  const round = input.event === "all_paused"
-    ? input.round
-    : (await deps.negotiationDatabase.getIntentNegotiationRound(intentId)).round;
 
   // Only ONE read here degrades, and only because a display name is not what
   // any of these turns is about. Every other read IS the subject of the turn:
@@ -150,7 +152,7 @@ async function assembleContext(
     deps.identity.readAgentName(userId).catch(() => null),
     deps.negotiationDatabase.getIntent(intentId),
     deps.opportunities.readMatches(userId, intentId),
-    loadPaused(deps, userId, intentId, round),
+    loadPaused(deps, userId, intentId),
     deps.dossier.readActiveEntries(userId, intentId),
     deps.ledger.readRecent(userId, intentId, MAX_LEDGER_ACTS),
   ]);
@@ -409,11 +411,14 @@ async function compensateFailedOpen(
  * The value is a record; what gates a pause-driven check is that it is no
  * longer null.
  *
- * The reflect enqueue runs BEFORE the stamp and is allowed to throw. That
- * ordering is the point: while the round is unstamped the repair path above
- * can still find it, so a failed enqueue is retryable. Stamp first and a
- * failed enqueue would leave a settled round that nothing will ever reflect
- * on — a turn reporting success for the one thing it did not do.
+ * The all-paused check runs on BOTH sides of the stamp, and the enqueue is
+ * allowed to throw. Before, so that a failed enqueue leaves the round
+ * unstamped and therefore still findable by the repair path above — retryable
+ * rather than a settled round nothing will ever reflect on. After, because a
+ * negotiation that pauses in between gets nothing otherwise: its own
+ * pause-side check bailed on the still-null stamp, and this one had already
+ * counted. The enqueue is keyed by (signal, round), so running it twice is
+ * one job either way.
  */
 async function settleRound(
   deps: PersonalAgentDeps,
@@ -426,6 +431,9 @@ async function settleRound(
 
   if (options.triggerReflect) await triggerRoundReflect(deps, context, round);
   await deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, tasks.length);
+  // The window the stamp opens: anything that paused since the count above saw
+  // a null stamp and bailed, and would be waited on forever.
+  if (options.triggerReflect) await triggerRoundReflect(deps, context, round);
   return tasks.length;
 }
 
@@ -526,7 +534,27 @@ async function executeAct(
       return;
     case "promote":
     case "reject": {
-      const paused = context.paused.find((entry) => entry.negotiationId === act.negotiationId)!;
+      // `judgment` is a documented swap seam, so this id is only as bounded as
+      // whatever produced it. A ref that names nothing skips with a ledgered
+      // failure rather than throwing mid-turn, which would abandon the acts
+      // already executed above it and retry them all.
+      const paused = context.paused.find((entry) => entry.negotiationId === act.negotiationId);
+      if (!paused) {
+        logger.warn("Decided a verdict on a negotiation this turn cannot see", {
+          intentId: context.intentId,
+          negotiationId: act.negotiationId,
+        });
+        const missing: PersonalAgentExecutedAct = {
+          tool: act.tool,
+          negotiationId: act.negotiationId,
+          opportunityId: "",
+          reasoning: act.reasoning,
+          outcome: "error",
+        };
+        await appendLedger(deps, context, missing);
+        accumulator.acts.push(missing);
+        return;
+      }
       const result = await deps.negotiations.invoke({
         negotiationId: act.negotiationId,
         verdict: act.tool === "promote" ? "pending" : "reject",

@@ -127,6 +127,10 @@ export class FakeNegotiationHost {
     },
     getNegotiationTasksForIntentRound: async (intentId, round) =>
       [...this.tasks.values()].filter((t) => t.metadata.intentId === intentId && t.metadata.round === round),
+    // Signal-scoped on purpose: a negotiation a later round left behind must
+    // stay visible, or it can never be promoted or rejected.
+    getPausedNegotiationTasksForIntent: async (intentId) =>
+      [...this.tasks.values()].filter((t) => t.metadata.intentId === intentId && t.state === "paused"),
     // One write: the bump clears the stamp AND marks the kickoff as begun.
     bumpIntentNegotiationRound: async () => {
       this.roundSize = null;

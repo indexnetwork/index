@@ -2538,6 +2538,29 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Every PAUSED, unresolved negotiation of one signal, whatever round it
+   * belongs to. Deliberately not round-scoped: a negotiation a later kickoff
+   * left behind keeps its old round, and a round-scoped read would hide it
+   * from every future verdict.
+   */
+  async getPausedNegotiationTasksForIntent(intentId: string): Promise<NegotiationTaskRowMirror[]> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'intentId' = ${intentId}`,
+          eq(schema.tasks.state, 'paused'),
+          notArchivedNegotiationTaskWhere(),
+          rewriteEraNegotiationTaskWhere(),
+        ),
+      )
+      .orderBy(asc(schema.tasks.createdAt), asc(schema.tasks.id));
+    return rows.map((row) => toNegotiationTaskRow(row));
+  }
+
+  /**
    * Opens a new round: bumps the counter, clears the size stamp and marks the
    * kickoff as begun, in ONE write. Only kickoff bumps a round, so the bump is
    * the beginning of a kickoff and there is no window in which a crash could

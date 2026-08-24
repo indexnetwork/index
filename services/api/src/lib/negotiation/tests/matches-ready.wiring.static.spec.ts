@@ -16,6 +16,7 @@ const read = (relative: string) => readFileSync(new URL(relative, import.meta.ur
 const composition = read('../negotiation-graph.ts');
 const mcp = read('../../../controllers/mcp.controller.ts');
 const toolService = read('../../../services/tool.service.ts');
+const main = read('../../../main.ts');
 
 describe('matches_ready wiring', () => {
   it('is exported from the one composition site, alongside the graphs it feeds', () => {
@@ -26,13 +27,29 @@ describe('matches_ready wiring', () => {
   it('reaches the chat/MCP tool factory through protocolDeps and toolDeps', () => {
     // protocolDeps feeds `createChatTools`; toolDeps feeds the MCP surface.
     // Both build an OpportunityGraph, and both were missing this field.
-    expect(mcp).toMatch(/protocolDeps = \{[\s\S]*?\n {2}matchesReady,/);
+    expect(mcp).toMatch(/protocolDeps = \{[\s\S]*?\n {2}matchesReady:/);
     expect(mcp).toContain('matchesReady: protocolDeps.matchesReady');
   });
 
   it('reaches the REST/CLI tool service the same way', () => {
-    expect(toolService).toContain("import { matchesReady } from '../lib/negotiation/negotiation-graph'");
-    expect(toolService).toMatch(/negotiationDatabase: conversationDatabaseAdapter[\s\S]*?matchesReady,/);
+    expect(toolService).toContain("import { matchesReadyBestEffort } from '../lib/negotiation/negotiation-graph'");
+    expect(toolService).toMatch(/negotiationDatabase: conversationDatabaseAdapter[\s\S]*?matchesReady:/);
+  });
+
+  it('fails the wake where a retry exists, and never at a waiting user\'s expense', () => {
+    // The from-intent/enrichment queues retry, so `matchesReady` throws: a
+    // batch that persisted with nobody woken is not a successful discovery.
+    // The chat/MCP tool graphs have NOTHING behind them — the caller is a user
+    // waiting on discover_opportunities — so they take the best-effort wake,
+    // which retries and then RECORDS the loss rather than failing the call.
+    expect(composition).toContain('export const matchesReady: MatchesReadyFn');
+    expect(composition).toContain('export const matchesReadyBestEffort: MatchesReadyFn');
+    expect(composition).toContain('matches_ready_wake_lost');
+    expect(main).toMatch(/setRuntimeDeps\(\{\s*\n\s*matchesReady,/);
+    expect(mcp).not.toMatch(/\n {2,4}matchesReady,\n/);
+    expect(mcp).toContain('matchesReady: matchesReadyBestEffort');
+    expect(toolService).toContain('matchesReadyBestEffort');
+    expect(toolService).not.toMatch(/\n {6}matchesReady,\n/);
   });
 
   it("binds the agent's match list to the read that PROPAGATES a failure", () => {
@@ -53,8 +70,7 @@ describe('matches_ready wiring', () => {
     expect(composition).toMatch(/PersonalAgentGraphFactory\(\{[\s\S]*?wakeForMatches:/);
   });
 
-  it('is what the discovery queues pass, so one callback serves every path', () => {
-    const main = read('../../../main.ts');
+  it('is what the discovery queues pass', () => {
     expect(main).toContain('matchesReady,');
   });
 });

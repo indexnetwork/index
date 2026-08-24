@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { PERSONAL_AGENT_MATCH_STATUSES, readActionableCounterparties, readSignalMatches } from '../negotiator-verdict.host';
+import { ACTIONABLE_VERDICT_STATUSES, PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readActionableCounterparties, readSignalMatches, rejectOpportunity } from '../negotiator-verdict.host';
 
 /**
  * The PersonalAgent's every turn reasons over this list, so a read that failed
@@ -53,5 +53,68 @@ describe('readSignalMatches', () => {
 describe('readActionableCounterparties', () => {
   it('still degrades to an empty list — the tool surfaces would rather offer nothing', async () => {
     expect(await readActionableCounterparties('alice', 'intent-1', listThrows)).toEqual([]);
+  });
+});
+
+/**
+ * The two verdict lanes list DIFFERENT status sets, and must keep doing so.
+ *
+ * The position lane resolves a 1-based number the caller was shown, so
+ * widening its list renumbers every entry and the verdict lands on a
+ * different person. The id lane resolves an opportunity id, so it can — and
+ * must — list everything the PersonalAgent's context numbered, or "accept the
+ * first one" before kickoff answers `unknown_counterparty` for a match the
+ * service accepts. One test per lane, so the pair cannot drift again.
+ */
+function twoMatches() {
+  const rows = [
+    { id: 'latent-1', status: 'latent', createdAt: new Date('2026-08-01'), counterpartName: 'Nia', actors: [{ userId: 'alice', role: 'peer' }] },
+    { id: 'pending-1', status: 'pending', createdAt: new Date('2026-08-02'), counterpartName: 'Omar', actors: [{ userId: 'alice', role: 'peer' }] },
+  ];
+  const listed: Array<{ statuses: string[] }> = [];
+  return {
+    listed,
+    deps: {
+      listOpportunities: async (_userId: string, options: { statuses: string[] }) => {
+        listed.push({ statuses: [...options.statuses] });
+        return rows.filter((row) => options.statuses.includes(row.status));
+      },
+      updateStatus: async () => ({}),
+    },
+  };
+}
+
+describe('the two verdict lanes list what their own refs mean', () => {
+  it('the POSITION lane stays narrow — widening it would renumber what the caller read', async () => {
+    const { listed, deps } = twoMatches();
+
+    // Position 1 of the ACTIONABLE list is the pending row. Widen the set and
+    // the latent one sorts in ahead of it, so this call would decline a
+    // different person than the number the caller was shown.
+    const outcome = await rejectOpportunity('alice', { intentId: 'intent-1', counterparty: 1 }, deps);
+
+    expect(listed[0]!.statuses).toEqual([...ACTIONABLE_VERDICT_STATUSES]);
+    expect(outcome).toMatchObject({ status: 'executed', counterparty: 'Omar' });
+  });
+
+  it('the ID lane lists the wide set, so a latent match the agent numbered resolves', async () => {
+    const { listed, deps } = twoMatches();
+
+    const outcome = await passVerdictOnOpportunity(
+      'alice',
+      { intentId: 'intent-1', opportunityId: 'latent-1' },
+      'accepted',
+      deps,
+    );
+
+    expect(listed[0]!.statuses).toEqual([...PERSONAL_AGENT_MATCH_STATUSES]);
+    // It resolved rather than answering `unknown_counterparty`.
+    expect(outcome.status).not.toBe('unknown_counterparty');
+  });
+
+  it('the wide set is a strict superset of the narrow one, so the id lane can never see less', () => {
+    for (const status of ACTIONABLE_VERDICT_STATUSES) {
+      expect(PERSONAL_AGENT_MATCH_STATUSES).toContain(status);
+    }
   });
 });

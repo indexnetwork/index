@@ -29,7 +29,7 @@ import { NegotiationSummaryService } from '../services/negotiation-summary.servi
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
-import { matchesReady, negotiationGraph } from '../lib/negotiation/negotiation-graph';
+import { matchesReadyBestEffort, negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
@@ -82,7 +82,7 @@ const protocolDeps = {
   // The same hand-off the discovery queues use. `tool.factory` builds its own
   // OpportunityGraph from this field; unset, its matches_ready edge ends at
   // END and a chat-run discovery persists matches nobody is ever woken for.
-  matchesReady,
+  matchesReady: matchesReadyBestEffort,
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
@@ -161,7 +161,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
-    undefined, undefined, matchesReady,
+    undefined, undefined, matchesReadyBestEffort,
     protocolDeps.agentDispatcher,
     protocolDeps.queueNegotiateExisting,
   ).createGraph();

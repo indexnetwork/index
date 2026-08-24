@@ -111,7 +111,19 @@ export class PersonalAgentQueue {
     const existing = await this.queue.getJob(jobId);
     if (!existing) return true;
     const state = await existing.getState();
-    return state === 'waiting' || state === 'delayed' || state === 'waiting-children' || state === 'prioritized';
+    if (state === 'waiting' || state === 'delayed' || state === 'waiting-children' || state === 'prioritized') return true;
+    // A terminally failed wake is kept as the record that a batch never
+    // reached its agent — but only until a new batch arrives for the same
+    // signal, which is a fresh wake for the same work. Held past that, both
+    // slots stay dead for the seven days BullMQ retains a failure, coalescing
+    // stops entirely, and every batch becomes its own kickoff: N strategy
+    // messages and N rounds into the principal's conversation.
+    if (state === 'failed') {
+      this.logger.warn('Replacing a failed matches_ready slot', { jobId, failedReason: existing.failedReason });
+      await existing.remove();
+      return true;
+    }
+    return false;
   }
 
   /**
