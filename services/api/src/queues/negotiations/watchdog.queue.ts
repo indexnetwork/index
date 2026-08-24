@@ -27,7 +27,7 @@ interface WatchdogQueueHandle {
 type WatchdogWorkerHandle = Pick<Worker<NegotiationWatchdogJobData>, 'close'>;
 type WatchdogDatabase = Pick<
   ConversationDatabaseAdapter,
-  'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog' | 'recordNegotiationWatchdogAttempt'
+  'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
 >;
 type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
 
@@ -47,7 +47,7 @@ type WatchdogLogger = {
 export interface NegotiationWatchdogQueueDeps {
   database?: Pick<
     ConversationDatabaseAdapter,
-    'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog' | 'recordNegotiationWatchdogAttempt'
+    'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
   >;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
   negotiationGraph?: NegotiationGraphLike;
@@ -175,33 +175,41 @@ export class NegotiationWatchdogQueue {
     }
   }
 
+  /**
+   * A task the watchdog has given up retrying (no opportunity id, or the
+   * retry budget is exhausted) is paused through the graph's own system-pause
+   * input — the same path a routine stale timeout uses — never marked with a
+   * state ('failed') outside the working|paused|completed union. That state
+   * bypassed checkAllPaused entirely (no round reflect) and could never read
+   * back through anything that expects the real union. A paused task drops
+   * out of getStaleNegotiationTasks on its own, so this still stops the sweep
+   * from retrying it — no second state writer needed to get that effect.
+   */
   private async terminalMark(
-    database: WatchdogDatabase,
     task: StaleTaskForWatchdog,
     reason: string,
   ): Promise<void> {
-    const now = this.clock();
-    const metadata = {
-      ...asRecord(task.metadata),
-      watchdogTerminalReason: reason,
-      watchdogTerminalAt: now.toISOString(),
-    };
-    const updated = await database.transitionNegotiationTaskForWatchdog({
-      taskId: task.id,
-      expectedState: task.state,
-      expectedUpdatedAt: task.updatedAt,
-      nextState: 'failed',
-      metadata,
-      statusMessage: { reason: 'negotiation_watchdog_terminal', detail: reason },
-    });
-    if (!updated) {
-      this.logger.info('Negotiation watchdog terminal mark lost a state race', { taskId: task.id, reason });
+    if (!this.negotiationGraph) {
+      this.logger.error('Negotiation watchdog fired before the graph was wired', { taskId: task.id });
       return;
     }
-    this.logger.warn('Negotiation watchdog terminal-marked stale task', {
-      taskId: task.id,
-      reason,
-    });
+    this.logger.warn('Negotiation watchdog pausing a task it will not retry', { taskId: task.id, reason });
+    try {
+      const result = await this.negotiationGraph.invoke({ negotiationId: task.id, pause: 'counterparty_silent' });
+      if (result.status === 'error') {
+        this.logger.error('Negotiation watchdog terminal pause invoke returned an error status', {
+          taskId: task.id,
+          reason,
+          error: result.error,
+        });
+      }
+    } catch (error) {
+      this.logger.error('Negotiation watchdog terminal pause invoke failed', {
+        taskId: task.id,
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async reconcileCandidate(
@@ -235,7 +243,7 @@ export class NegotiationWatchdogQueue {
       ? metadata.opportunityId
       : null;
     if (!opportunityId) {
-      await this.terminalMark(database, staleTask, 'missing_opportunity_id');
+      await this.terminalMark(staleTask, 'missing_opportunity_id');
       return;
     }
 
@@ -251,7 +259,7 @@ export class NegotiationWatchdogQueue {
 
     const attempts = watchdogAttempts(metadata);
     if (attempts >= MAX_WATCHDOG_ATTEMPTS) {
-      await this.terminalMark(database, staleTask, 'watchdog_attempts_exhausted');
+      await this.terminalMark(staleTask, 'watchdog_attempts_exhausted');
       return;
     }
 

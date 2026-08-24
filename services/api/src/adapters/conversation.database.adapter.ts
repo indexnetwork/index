@@ -275,15 +275,6 @@ export interface StaleNegotiationTask {
   metadata: Record<string, unknown> | null;
 }
 
-export interface WatchdogTaskTransitionInput {
-  taskId: string;
-  expectedState: 'submitted' | 'working';
-  expectedUpdatedAt: Date;
-  nextState: 'canceled' | 'failed';
-  metadata: Record<string, unknown>;
-  statusMessage: Record<string, unknown>;
-}
-
 /**
  * Claim an exact eligible opportunity state, promote it to negotiating, and
  * insert its task while the shared attempt, row, and pair locks are held.
@@ -1692,41 +1683,8 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Transitions a stale negotiation task only if its state and timestamp still
-   * match the watchdog's read. This is the duplicate-prevention CAS: the stale
-   * row is canceled before the new run-existing job can create its replacement.
-   */
-  async transitionNegotiationTaskForWatchdog({
-    taskId,
-    expectedState,
-    expectedUpdatedAt,
-    nextState,
-    metadata,
-    statusMessage,
-  }: WatchdogTaskTransitionInput): Promise<Task | null> {
-    const [task] = await db
-      .update(schema.tasks)
-      .set({
-        state: nextState,
-        metadata,
-        statusMessage,
-        statusTimestamp: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(schema.tasks.id, taskId),
-        eq(schema.tasks.state, expectedState),
-        eq(schema.tasks.updatedAt, expectedUpdatedAt),
-      ))
-      .returning();
-
-    return task ?? null;
-  }
-
-  /**
    * Stamps `metadata.watchdogAttempts` on a stale task, CAS-guarded by the
-   * watchdog's own read of `updatedAt` (same fence as
-   * `transitionNegotiationTaskForWatchdog`) — the sweep only counts an
+   * watchdog's own read of `updatedAt` — the sweep only counts an
    * attempt against the exact row it decided to act on. State is left
    * untouched; the subsequent pause invoke (success or failure) may still
    * change it separately.
