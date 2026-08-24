@@ -20,13 +20,14 @@ import type { NegotiationReflectionInput, ChatReflectionInput, DistilledMemory }
 import { NegotiationReflectQueue, type ReflectJobData } from '../negotiations/reflect.queue';
 
 
-function turnMessage(senderUserId: string, action: string, message?: string): {
+/** #1494: persisted turn shape is {verb, message, reasoning} — not the pre-rewrite {action, assessment}. */
+function turnMessage(senderUserId: string, verb: string, message?: string): {
   id: string; senderId: string; parts: unknown[]; createdAt: Date;
 } {
   return {
-    id: `msg-${action}-${senderUserId}`,
+    id: `msg-${verb}-${senderUserId}`,
     senderId: `agent:${senderUserId}`,
-    parts: [{ kind: 'data', data: { action, ...(message && { message }), assessment: { reasoning: `${action} reasoning` } } }],
+    parts: [{ kind: 'data', data: { verb, ...(message && { message }), reasoning: `${verb} reasoning` } }],
     createdAt: new Date(),
   };
 }
@@ -54,6 +55,7 @@ function mkQueue(opts?: {
   reflectChat?: (input: ChatReflectionInput) => Promise<DistilledMemory[]>;
   session?: { persona: string } | null;
   chatMessages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  negotiationMessages?: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }>;
 }) {
   const reflectCalls: NegotiationReflectionInput[] = [];
   const chatCalls: ChatReflectionInput[] = [];
@@ -64,7 +66,7 @@ function mkQueue(opts?: {
       // #1494: a negotiation is its own conversation now, not a pair-shared
       // one — the worker reads the negotiation's own conversation directly,
       // no negotiation-scoped/conversation-scoped distinction left to make.
-      getMessagesForConversation: async () => [
+      getMessagesForConversation: async () => opts?.negotiationMessages ?? [
         turnMessage('u-alice', 'outreach', 'hello'),
         turnMessage('u-bob', 'accept', 'deal'),
       ],
@@ -155,6 +157,26 @@ describe('NegotiationReflectQueue', () => {
 
       expect(writes.length).toBe(1);
       expect(writes[0]).toMatchObject({ userId: 'u-bob' });
+    });
+
+    it('projects a pause turn as pause:<reason>, not the pre-rewrite {action,assessment} shape (#1494 round-3 cap-cut d)', async () => {
+      const { queue, reflectCalls } = mkQueue({
+        negotiationMessages: [
+          turnMessage('u-alice', 'outreach', 'hello'),
+          {
+            id: 'msg-pause',
+            senderId: 'agent:u-bob',
+            parts: [{ kind: 'data', data: { verb: 'pause', reason: 'needs_principal' } }],
+            createdAt: new Date(),
+          },
+        ],
+      });
+      queues.push(queue);
+
+      await queue.processJob('reflect', reflectJob);
+
+      const alicePass = reflectCalls.find((c) => c.clientUser.id === 'u-alice')!;
+      expect(alicePass.transcript[1]).toMatchObject({ action: 'pause:needs_principal', speaker: 'counterparty' });
     });
   });
 

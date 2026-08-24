@@ -183,10 +183,15 @@ export class NegotiationReflectQueue {
     // scope out of.
     const messages = await conversations.getMessagesForConversation(data.conversationId);
 
-    // Extract turn data parts (same projection the graph uses).
+    // Extract turn data parts. #1494: the persisted shape is
+    // {verb, message, reasoning} for a continuing turn, or {verb:'pause',
+    // reason} for a pause (redacted — payload is never in the shared
+    // thread). This is dormant until step 2 rewires reflectEnqueue at this
+    // queue, but the shape must be current now, not the pre-rewrite
+    // {action, assessment} one.
     const turns = messages
       .map((m: { senderId: string; parts: unknown[] }) => {
-        const dataPart = (m.parts as Array<{ kind?: string; data?: { action?: string; message?: string; assessment?: { reasoning?: string } } }>)
+        const dataPart = (m.parts as Array<{ kind?: string; data?: { verb?: string; message?: string; reasoning?: string; reason?: string } }>)
           .find((p) => p.kind === 'data');
         return dataPart?.data ? { senderId: m.senderId, turn: dataPart.data } : null;
       })
@@ -210,9 +215,9 @@ export class NegotiationReflectQueue {
         const transcript: ReflectionTranscriptEntry[] = turns.map((t, index) => ({
           index,
           speaker: t.senderId === `agent:${user.id}` ? 'client' as const : 'counterparty' as const,
-          action: t.turn.action ?? 'unknown',
+          action: t.turn.verb === 'pause' ? `pause:${t.turn.reason ?? 'unknown'}` : (t.turn.verb ?? 'unknown'),
           ...(t.turn.message && { message: t.turn.message }),
-          ...(t.turn.assessment?.reasoning && { reasoning: t.turn.assessment.reasoning }),
+          ...(t.turn.reasoning && { reasoning: t.turn.reasoning }),
         }));
 
         const entries = await this.getReflector().reflectNegotiation({
