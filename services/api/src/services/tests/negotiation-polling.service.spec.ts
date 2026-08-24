@@ -8,10 +8,13 @@
  */
 import { describe, expect, it, mock } from 'bun:test';
 
-import { NegotiationPollingService } from '../negotiation-polling.service';
+import { ConflictError, NegotiationPollingService } from '../negotiation-polling.service';
 import { NegotiationPollingAuthorization } from '../../lib/agent/negotiation-polling-authorization';
 
-function mkService(overrides?: { touchPickup?: (agentId: string) => Promise<void> }) {
+function mkService(overrides?: {
+  touchPickup?: (agentId: string) => Promise<void>;
+  invoke?: (input: unknown) => Promise<{ status: string; error?: string }>;
+}) {
   const touchPickup = overrides?.touchPickup ?? mock(async () => {});
   const authorization = new NegotiationPollingAuthorization({
     getAgentWithRelations: async () => ({
@@ -30,7 +33,7 @@ function mkService(overrides?: { touchPickup?: (agentId: string) => Promise<void
     }),
     getNegotiationMessages: async () => [],
   } as never;
-  const graph = { invoke: async () => ({ status: 'ok' }) } as never;
+  const graph = { invoke: overrides?.invoke ?? (async () => ({ status: 'active' })) } as never;
   const service = new NegotiationPollingService(authorization, database, graph, touchPickup);
   return { service, touchPickup };
 }
@@ -62,5 +65,26 @@ describe('NegotiationPollingService heartbeat', () => {
     await expect(service.respond('agent-1', 'user-1', 'neg-1', { verb: 'outreach', message: 'hi' } as never, {} as never))
       .rejects.toThrow();
     expect(touchPickup).not.toHaveBeenCalled();
+  });
+});
+
+describe('NegotiationPollingService — finding 8: a resolved-not-applied turn is not reported as success', () => {
+  it('throws ConflictError when the graph routes the turn to read (already completed) instead of applying it', async () => {
+    const { service } = mkService({ invoke: async () => ({ status: 'resolved' }) });
+    await expect(
+      service.respond('agent-1', 'user-1', 'neg-1', { verb: 'outreach', message: 'hi' } as never, {} as never),
+    ).rejects.toThrow(ConflictError);
+  });
+
+  it('still succeeds for active/paused — the only statuses that mean the turn was actually persisted', async () => {
+    const { service: activeService } = mkService({ invoke: async () => ({ status: 'active' }) });
+    await expect(
+      activeService.respond('agent-1', 'user-1', 'neg-1', { verb: 'outreach', message: 'hi' } as never, {} as never),
+    ).resolves.toEqual({ success: true });
+
+    const { service: pausedService } = mkService({ invoke: async () => ({ status: 'paused' }) });
+    await expect(
+      pausedService.respond('agent-1', 'user-1', 'neg-1', { verb: 'outreach', message: 'hi' } as never, {} as never),
+    ).resolves.toEqual({ success: true });
   });
 });

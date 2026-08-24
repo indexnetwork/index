@@ -102,3 +102,16 @@ describe("respond_to_negotiation — ready_for_verdict requires a real recommend
     });
   });
 });
+
+describe("respond_to_negotiation — finding 8: a resolved-not-applied turn is not reported as success", () => {
+  it("a graph result of 'resolved' (the pre-check's race lost to a concurrent resolve) returns an error, not success", async () => {
+    const { tool } = getRespondTool({
+      negotiationGraph: {
+        invoke: async () => ({ negotiationId: NEGOTIATION_ID, status: "resolved", turns: [] }),
+      } as never,
+    });
+    const query = tool.querySchema.parse({ negotiationId: NEGOTIATION_ID, verb: "counter", message: "hi", reasoning: "r" });
+    const result = parseResult(await tool.handler({ context: { userId: USER_ID }, query }));
+    expect(result.success).toBe(false);
+  });
+});

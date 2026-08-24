@@ -212,6 +212,14 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
 
         const result = await negotiationGraph.invoke({ negotiationId: task.id, turn: parsed.data, byUserId: context.userId });
         if (result.status === 'error') return error(result.error ?? 'Failed to apply turn.');
+        // The pre-check above reads task.state before this invoke — a concurrent
+        // resolve can still land the negotiation between the two. `result.status`
+        // is the graph's own definitive outcome: 'resolved' here means this turn
+        // was silently discarded (routed to read), not applied — must not report
+        // success for it.
+        if (result.status === 'resolved') {
+          return error(`Negotiation is not accepting a turn right now. Current status: ${result.status}`);
+        }
 
         return success({
           negotiationId: task.id,

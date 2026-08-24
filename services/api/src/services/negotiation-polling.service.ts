@@ -152,6 +152,12 @@ export class NegotiationPollingService {
     if (result.status === 'error') {
       throw new ConflictError(result.error ?? `Negotiation ${negotiationId} turn could not be applied`);
     }
+    // 'resolved' means init routed this to the read node (the negotiation was
+    // already completed) — the turn was silently discarded, not applied. Only
+    // 'active'/'paused' mean the graph actually persisted it.
+    if (result.status !== 'active' && result.status !== 'paused') {
+      throw new ConflictError(`Negotiation ${negotiationId} is not accepting a turn right now (status: ${result.status})`);
+    }
     logger.info('Negotiation turn applied', { negotiationId, status: result.status });
   }
 }
