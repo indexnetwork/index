@@ -141,17 +141,26 @@ interface ChatMessage {
   decisionQuestions?: Question[];
   /** True once the user has submitted answers; disables/mutes the renderer. */
   decisionQuestionsSubmitted?: boolean;
+  /** Current user-facing activity for an empty streaming assistant placeholder. */
+  agentActivityLabel?: string;
   isPending?: boolean;
   isQueued?: boolean;
   wasInterrupted?: boolean;
   /** Durable timeline session that supplied this persisted message. */
   conversationSessionId?: string | null;
-  /**
-   * Canned replies the agent offered under a question — tap one and its exact
-   * text is sent as an ordinary user message. Nothing else reads them, so a
-   * chip is a shortcut for typing and never a separate answer channel.
-   */
-  options?: string[];
+}
+
+function safeAgentActivityLabel(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const withoutControls = Array.from(value, (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint < 32 || codePoint === 127 ? " " : character;
+  }).join("");
+  const label = withoutControls
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return label || undefined;
 }
 
 export type ChatScope =
@@ -737,11 +746,27 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     setMessages((prev) =>
                       prev.map((msg) =>
                         msg.id === assistantMessageId
-                          ? { ...msg, content: msg.content + event.content }
+                          ? {
+                              ...msg,
+                              content: msg.content + event.content,
+                              agentActivityLabel: undefined,
+                            }
                           : msg,
                       ),
                     );
                     break;
+                  case "agent_activity": {
+                    const label = safeAgentActivityLabel(event.label);
+                    if (!label) break;
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === assistantMessageId && !msg.content.trim()
+                          ? { ...msg, agentActivityLabel: label }
+                          : msg,
+                      ),
+                    );
+                    break;
+                  }
                   case "response_reset":
                     // Discard all previously streamed tokens — the agent detected
                     // hallucinated code blocks and is forcing a correction iteration.
@@ -1030,18 +1055,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                           msg.decisionQuestions && msg.decisionQuestions.length > 0
                             ? msg.decisionQuestions
                             : fromDone;
-                        // Chips ride the done event only so this turn shows
-                        // them without a reload; the persisted message carries
-                        // the same list for every later read.
-                        const options = Array.isArray(event.options)
-                          ? (event.options as string[])
-                          : undefined;
                         return {
                           ...msg,
                           content: finalContent,
                           isStreaming: false,
+                          agentActivityLabel: undefined,
                           ...(decisionQuestions ? { decisionQuestions } : {}),
-                          ...(options && options.length > 0 ? { options } : {}),
                         };
                       }),
                     );
@@ -1143,7 +1162,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, isStreaming: false }
+              ? { ...msg, isStreaming: false, agentActivityLabel: undefined }
               : msg,
           ),
         );
@@ -1315,7 +1334,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
           interrupted?: boolean | null;
-          options?: string[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1361,7 +1379,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(m.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(m.interrupted ? { wasInterrupted: true } : {}),
-        ...(Array.isArray(m.options) && m.options.length > 0 ? { options: m.options } : {}),
         conversationSessionId: data.sessionId,
       }));
 
@@ -1406,7 +1423,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
           interrupted?: boolean | null;
-          options?: string[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1439,7 +1455,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(message.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(message.interrupted ? { wasInterrupted: true } : {}),
-        ...(Array.isArray(message.options) && message.options.length > 0 ? { options: message.options } : {}),
         conversationSessionId: data.sessionId,
       }));
       setMessages((current) => {

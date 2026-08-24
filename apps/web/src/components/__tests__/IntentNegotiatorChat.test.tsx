@@ -50,10 +50,30 @@ function agentMessage(overrides: Record<string, unknown> = {}) {
     role: 'assistant',
     content: 'What should I push hardest on?',
     timestamp: new Date('2026-08-21T10:00:00.000Z'),
-    options: ['Hiring speed', 'Comp banding'],
     ...overrides,
   };
 }
+
+const decisionQuestions = [
+  {
+    title: 'Sofia',
+    prompt: 'Does your design-partner experience include a scalable SaaS transition?',
+    options: [
+      { label: 'Yes, directly', description: 'I led that transition.' },
+      { label: 'Not yet', description: 'My experience is still services-led.' },
+    ],
+    multiSelect: false,
+  },
+  {
+    title: 'Aisha',
+    prompt: 'What product domain are you building in?',
+    options: [
+      { label: 'AI', description: 'AI product or infrastructure.' },
+      { label: 'Dev tools', description: 'Developer tooling.' },
+    ],
+    multiSelect: false,
+  },
+];
 
 function renderChat() {
   return render(
@@ -71,12 +91,7 @@ function renderChat() {
   );
 }
 
-/**
- * Option chips are canned replies: they render under an unanswered agent
- * question and, when tapped, go out through the ordinary send path — the same
- * one typing uses. Nothing about them is a separate answer channel.
- */
-describe('IntentNegotiatorChat option chips', () => {
+describe('IntentNegotiatorChat', () => {
   beforeEach(() => {
     sendMessage.mockClear();
     chatState.isLoading = false;
@@ -84,28 +99,75 @@ describe('IntentNegotiatorChat option chips', () => {
     conversationMessageHandler = undefined;
   });
 
-  it('sends the tapped chip as an ordinary user message', async () => {
+  it('renders numbered decision choices and submits flattened answers through chat', async () => {
+    chatState.messages = [agentMessage({ decisionQuestions })];
     renderChat();
-    const chip = await screen.findByRole('button', { name: 'Hiring speed' });
-    await userEvent.click(chip);
-    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('Hiring speed'));
+    await userEvent.click(await screen.findByRole('radio', { name: /Yes, directly/i }));
+    await userEvent.click(screen.getByRole('radio', { name: /AI/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith(
+      'Sofia (Does your design-partner experience include a scalable SaaS transition?): Yes, directly\n' +
+      'Aisha (What product domain are you building in?): AI',
+    ));
+    expect(screen.getByText('Submitted.')).toBeInTheDocument();
   });
 
-  it('drops the chips once anything answers the question', async () => {
+  it('disables a historical question form once a later message exists', async () => {
     chatState.messages = [
-      agentMessage(),
-      { id: 'msg-user', role: 'user', content: 'Hiring speed', timestamp: new Date('2026-08-21T10:01:00.000Z') },
+      agentMessage({ decisionQuestions }),
+      {
+        id: 'msg-user',
+        role: 'user',
+        content: 'I have already answered these.',
+        timestamp: new Date('2026-08-21T10:01:00.000Z'),
+      },
     ];
     renderChat();
-    await screen.findByText('Hiring speed');
-    expect(screen.queryByRole('button', { name: 'Hiring speed' })).toBeNull();
+
+    expect(await screen.findByText('Submitted.')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Yes, directly/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it('renders nothing extra for a message that offered no chips', async () => {
-    chatState.messages = [agentMessage({ options: undefined })];
-    renderChat();
-    await screen.findByText('What should I push hardest on?');
-    expect(screen.queryByTestId('negotiator-chat-options')).toBeNull();
+  it('shows the latest agent activity until response text arrives', async () => {
+    chatState.messages = [agentMessage({ content: '', isStreaming: true, agentActivityLabel: 'Reviewing your signal' })];
+    const view = renderChat();
+    expect(await screen.findByRole('status')).toHaveTextContent('Reviewing your signal');
+
+    chatState.messages = [agentMessage({ content: '', isStreaming: true, agentActivityLabel: 'Checking Sofia and Aisha' })];
+    view.rerender(
+      <IntentNegotiatorChat
+        intentId="intent-1"
+        timelineEntries={[]}
+        timelineLoading={false}
+        timelineError={false}
+        opportunityStatusMap={{}}
+        opportunityActionLoading={{}}
+        onOpportunityAction={() => {}}
+        onUnavailable={() => {}}
+        onLiveInvalidation={() => {}}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('Checking Sofia and Aisha');
+
+    chatState.messages = [agentMessage({ content: 'Here is what I found.', isStreaming: true })];
+    view.rerender(
+      <IntentNegotiatorChat
+        intentId="intent-1"
+        timelineEntries={[]}
+        timelineLoading={false}
+        timelineError={false}
+        opportunityStatusMap={{}}
+        opportunityActionLoading={{}}
+        onOpportunityAction={() => {}}
+        onUnavailable={() => {}}
+        onLiveInvalidation={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('negotiator-agent-activity')).toBeNull();
+    expect(screen.getByText('Here is what I found.')).toBeInTheDocument();
   });
 
   it('shows the owner-scoped PersonalAgent trace inside the DM', async () => {

@@ -361,12 +361,8 @@ export interface ChatMessage {
   subgraphResults: Record<string, unknown> | null;
   tokenCount: number | null;
   interrupted?: boolean | null;
-  /**
-   * Canned replies the client may tap instead of typing. Present only on an
-   * agent question that offered them; tapping one sends its text as an
-   * ordinary user message, so nothing else reads this.
-   */
-  options?: string[] | null;
+  /** Structured questions rendered by the chat question widget. */
+  decisionQuestions?: unknown[] | null;
   createdAt: Date;
 }
 
@@ -399,8 +395,8 @@ export interface ChatMessageMeta {
   discoveries?: unknown;
   /** Set to true when the assistant message was partially generated before a steer interrupt. */
   interrupted?: boolean;
-  /** Canned replies offered under an agent question (2-4 short strings). */
-  options?: string[];
+  /** Structured questions rendered by the chat question widget. */
+  decisionQuestions?: unknown[];
   [key: string]: unknown;
 }
 
@@ -425,8 +421,8 @@ export interface CreateMessageInput {
   subgraphResults?: Record<string, unknown>;
   tokenCount?: number;
   interrupted?: boolean;
-  /** Canned replies for an agent question; stored in messages.metadata. */
-  options?: string[];
+  /** Structured questions for an agent message; stored in messages.metadata. */
+  questions?: unknown[];
 }
 
 /**

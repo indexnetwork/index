@@ -119,6 +119,9 @@ function Probe() {
       <span data-testid="session">{chat.sessionId ?? 'none'}</span>
       <span data-testid="persona">{chat.sessionPersona ?? 'none'}</span>
       <span data-testid="messages">{chat.messages.map((message) => message.content).join('|')}</span>
+      <span data-testid="agent-activity">
+        {chat.messages.map((message) => message.agentActivityLabel).filter(Boolean).join('|') || 'none'}
+      </span>
       <span data-testid="message-count">{chat.messages.length}</span>
       <span data-testid="streaming-count">{chat.messages.filter((message) => message.isStreaming).length}</span>
       <span data-testid="block">{chat.turnBlock?.code ?? 'none'}</span>
@@ -179,6 +182,43 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'compatibility' }));
     await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(3));
     expect(mocks.apiClient.stream.mock.calls[2]?.[0]).toBe('/chat/stream');
+  });
+
+  test('tracks the latest safe agent activity until response content or completion arrives', async () => {
+    const textStream = controlledStream({ sessionId: 'signal-session-1', persona: 'personal' });
+    const doneStream = controlledStream();
+    mocks.apiClient.stream
+      .mockResolvedValueOnce(textStream.response)
+      .mockResolvedValueOnce(doneStream.response);
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'web first' }));
+    await waitFor(() => expect(text('loading')).toBe('yes'));
+
+    act(() => textStream.event({ type: 'agent_activity', label: '  Reviewing\n your signal  ' }));
+    await waitFor(() => expect(text('agent-activity')).toBe('Reviewing your signal'));
+
+    act(() => textStream.event({ type: 'agent_activity', label: 'Checking Sofia and Aisha' }));
+    await waitFor(() => expect(text('agent-activity')).toBe('Checking Sofia and Aisha'));
+
+    act(() => {
+      textStream.event({ type: 'token', content: 'I found the relevant context.' });
+      textStream.close();
+    });
+    await waitFor(() => expect(text('agent-activity')).toBe('none'));
+    await waitFor(() => expect(text('loading')).toBe('no'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'web second' }));
+    await waitFor(() => expect(text('loading')).toBe('yes'));
+    act(() => doneStream.event({ type: 'agent_activity', label: 'Preparing the response' }));
+    await waitFor(() => expect(text('agent-activity')).toBe('Preparing the response'));
+
+    act(() => {
+      doneStream.event({ type: 'done', response: 'done' });
+      doneStream.close();
+    });
+    await waitFor(() => expect(text('loading')).toBe('no'));
+    expect(text('agent-activity')).toBe('none');
   });
 
   test('preserves a message submitted before the first web session id arrives', async () => {

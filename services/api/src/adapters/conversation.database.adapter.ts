@@ -3830,7 +3830,7 @@ export class ConversationDatabaseAdapter {
     if (data.subgraphResults) msgMeta.subgraphResults = data.subgraphResults;
     if (data.tokenCount !== undefined) msgMeta.tokenCount = data.tokenCount;
     if (data.interrupted) msgMeta.interrupted = true;
-    if (data.options?.length) msgMeta.options = data.options;
+    if (data.questions?.length) msgMeta.decisionQuestions = data.questions;
 
     const message = await this.insertMessageWithConversationSession({
       id: data.id,
@@ -3955,7 +3955,7 @@ export class ConversationDatabaseAdapter {
         subgraphResults: (meta.subgraphResults as Record<string, unknown>) ?? null,
         tokenCount: typeof meta.tokenCount === 'number' ? meta.tokenCount : null,
         interrupted: meta.interrupted ?? null,
-        options: Array.isArray(meta.options) ? meta.options.filter((o): o is string => typeof o === 'string') : null,
+        decisionQuestions: Array.isArray(meta.decisionQuestions) ? meta.decisionQuestions : null,
         createdAt: msg.createdAt,
       };
     });

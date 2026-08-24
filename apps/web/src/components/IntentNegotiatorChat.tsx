@@ -4,6 +4,7 @@ import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
+import { DecisionQuestions } from "@/components/DecisionQuestions";
 import { QuestionRegenerationIndicator } from "@/components/chat/QuestionSteps";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { PersonalAgentDebugTrace } from "@/components/PersonalAgentTimeline";
@@ -109,6 +110,9 @@ export default function IntentNegotiatorChat({
   const [ready, setReady] = useState(false);
   const [restoredHistoryLoaded, setRestoredHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
+  const [decisionQuestionsSubmittedIds, setDecisionQuestionsSubmittedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const clearChatRef = useRef(clearChat);
@@ -228,15 +232,6 @@ export default function IntentNegotiatorChat({
     inputRef.current?.focus();
   }, []);
 
-  // A chip is a canned reply, not a new answer channel: its text is sent
-  // through the ordinary send path, so the agent's next turn cannot tell it
-  // from something the user typed.
-  const handleOptionSelect = useCallback(async (option: string) => {
-    if (isLoading || !ready) return;
-    setInput("");
-    await sendMessage(option);
-  }, [isLoading, ready, sendMessage]);
-
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading || !ready) return;
@@ -339,13 +334,6 @@ export default function IntentNegotiatorChat({
 
             {messages.map((msg, messageIndex) => {
               const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined;
-              // Chips belong to an unanswered question only. Any later message
-              // — the user's typed answer, their tapped chip, the agent's next
-              // word — is that answer, so message order is the whole rule and
-              // there is no "answered" state to keep.
-              const options = messageIndex === messages.length - 1 && !msg.isStreaming
-                ? msg.options ?? []
-                : [];
               const startsSession = previousMessage !== undefined
                 && previousMessage.conversationSessionId !== msg.conversationSessionId;
               return (
@@ -373,37 +361,52 @@ export default function IntentNegotiatorChat({
                           stoppedAt={msg.stoppedAt}
                         />
                       )}
-                      <AssistantMessageContent
-                        content={msg.content}
-                        isStreaming={msg.isStreaming ?? false}
-                        onOpportunityPrimaryAction={(id, userId, role, name) =>
-                          onOpportunityAction(id, "accepted", userId, role, name)
-                        }
-                        onOpportunitySecondaryAction={(id, userId, role, name) =>
-                          onOpportunityAction(id, "rejected", userId, role, name)
-                        }
-                        opportunityLoadingMap={opportunityActionLoading}
-                        currentStatusMap={opportunityStatusMap}
-                        onIntentProposalApprove={handleProposalApprove}
-                        onIntentProposalReject={handleProposalReject}
-                        onIntentProposalUndo={handleProposalUndo}
-                        intentProposalStatusMap={proposalStatusMap}
-                        onQuestionQuote={handleQuestionQuote}
-                      />
-                      {options.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5" data-testid="negotiator-chat-options">
-                          {options.map((option) => (
-                            <button
-                              key={option}
-                              type="button"
-                              onClick={() => void handleOptionSelect(option)}
-                              disabled={isLoading || !ready}
-                              className="rounded-full border border-[#E9E9E9] bg-[#FCFCFC] px-3 py-1 text-xs font-ibm-plex-mono text-gray-700 transition-colors hover:border-[#4091BB] hover:text-[#041729] disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {option}
-                            </button>
-                          ))}
+                      {msg.isStreaming && msg.agentActivityLabel && !msg.content.trim() ? (
+                        <div
+                          className="flex items-center gap-2 py-1 text-xs font-ibm-plex-mono text-gray-500"
+                          role="status"
+                          aria-live="polite"
+                          data-testid="negotiator-agent-activity"
+                        >
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#4091BB]" />
+                          <span>{msg.agentActivityLabel}</span>
                         </div>
+                      ) : (
+                        <AssistantMessageContent
+                          content={msg.content}
+                          isStreaming={msg.isStreaming ?? false}
+                          onOpportunityPrimaryAction={(id, userId, role, name) =>
+                            onOpportunityAction(id, "accepted", userId, role, name)
+                          }
+                          onOpportunitySecondaryAction={(id, userId, role, name) =>
+                            onOpportunityAction(id, "rejected", userId, role, name)
+                          }
+                          opportunityLoadingMap={opportunityActionLoading}
+                          currentStatusMap={opportunityStatusMap}
+                          onIntentProposalApprove={handleProposalApprove}
+                          onIntentProposalReject={handleProposalReject}
+                          onIntentProposalUndo={handleProposalUndo}
+                          intentProposalStatusMap={proposalStatusMap}
+                          onQuestionQuote={handleQuestionQuote}
+                        />
+                      )}
+                      {msg.decisionQuestions && msg.decisionQuestions.length > 0 && (
+                        <DecisionQuestions
+                          questions={msg.decisionQuestions}
+                          submitted={
+                            messageIndex < messages.length - 1 ||
+                            (msg.decisionQuestionsSubmitted ??
+                              decisionQuestionsSubmittedIds.has(msg.id))
+                          }
+                          onSubmit={(flattened) => {
+                            setDecisionQuestionsSubmittedIds((previous) => {
+                              const next = new Set(previous);
+                              next.add(msg.id);
+                              return next;
+                            });
+                            void sendMessage(flattened);
+                          }}
+                        />
                       )}
                     </div>
                   )}

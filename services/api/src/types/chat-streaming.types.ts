@@ -48,6 +48,7 @@ export type ChatStreamEventType =
   | "chat_summarizer_start"
   | "chat_summarizer_end"
   | "decision_questions"
+  | "agent_activity"
   | "steer_or_queue";
 
 /**
@@ -198,12 +199,6 @@ export interface DoneEvent extends ChatStreamEventBase {
   opportunityCards?: OpportunityCardPayload[];
   /** Decision questions to render, harvested from any tool result carrying `questions`. */
   decisionQuestions?: Question[];
-  /**
-   * Canned replies offered under this reply, when the agent asked something.
-   * The persisted message carries the same list; this only saves the client a
-   * reload to see the chips on the turn that produced them.
-   */
-  options?: string[];
 }
 
 /**
@@ -536,6 +531,11 @@ export interface DecisionQuestionsEvent extends ChatStreamEventBase {
   questions: Question[];
 }
 
+export interface AgentActivityEvent extends ChatStreamEventBase {
+  type: "agent_activity";
+  label: string;
+}
+
 /**
  * Steer-or-queue event — injected by /chat/interrupt onto the active SSE stream.
  */
@@ -587,6 +587,7 @@ export type ChatStreamEvent =
   | ChatSummarizerStartEvent
   | ChatSummarizerEndEvent
   | DecisionQuestionsEvent
+  | AgentActivityEvent
   | SteerOrQueueEvent;
 
 /**
@@ -723,7 +724,6 @@ export interface CreateDoneEventOptions {
   suggestions?: ChatSuggestion[];
   opportunityCards?: OpportunityCardPayload[];
   decisionQuestions?: Question[];
-  options?: string[];
 }
 
 /**
@@ -1039,6 +1039,13 @@ export function createDecisionQuestionsEvent(
   payload: { questions: Question[] },
 ): DecisionQuestionsEvent {
   return createStreamEvent<DecisionQuestionsEvent>("decision_questions", sessionId, payload);
+}
+
+export function createAgentActivityEvent(
+  sessionId: string,
+  label: string,
+): AgentActivityEvent {
+  return createStreamEvent<AgentActivityEvent>("agent_activity", sessionId, { label });
 }
 
 export function createSteerOrQueueEvent(
