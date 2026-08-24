@@ -12,18 +12,6 @@ import type { SystemDatabase, UserDatabase } from './port.js';
 
 
 /**
- * Database interface narrowed for Profile Graph operations.
- * Query mode only: reports whether the user has an enriched profile
- * (ACTIVE premises exist) for callers that need it (e.g. intent inference).
- *
- * Access layer: Primarily UserDatabase (user's own profile)
- */
-export type EnrichmentGraphDatabase = Pick<
-  Database,
-  'getProfile' | 'getProfileByUserId' | 'getPremisesForUser'
->;
-
-/**
  * Database interface narrowed for Premise Graph operations.
  * Provides premise lifecycle: create, read, update, and network assignment.
  *

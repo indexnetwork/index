@@ -38,7 +38,6 @@ output with `setLoggerFactory()`. The package does not implement
 |-------|------|---------|
 | Chat | `internal/chat/chat.graph.ts` | ReAct agent loop — LLM calls tools, responds to user |
 | Intent | `internal/intents/graph/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
-| Enrichment | `internal/enrichment/enrichment.graph.ts` | Query-only: reports whether ACTIVE premises exist (enriched profile gate) |
 | Premise | `internal/premises/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `internal/opportunities/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
 | HyDE | `internal/discovery/hyde.graph.ts` | Infer search lenses, generate hypothetical documents per lens/corpus, and embed them (cache-aware) |

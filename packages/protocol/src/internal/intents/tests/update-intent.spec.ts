@@ -129,7 +129,7 @@ describe("create_intent", () => {
     expect(capturedActiveIntents).toContain("Find ML mentors");
   });
 
-  test("falls back to approved user intro when structured profile is still pending", async () => {
+  test("passes the approved user identity to intent inference", async () => {
     const capturedProfiles: string[] = [];
     const tools = captureTools({
       userDb: {

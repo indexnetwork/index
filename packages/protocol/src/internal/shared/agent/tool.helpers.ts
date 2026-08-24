@@ -481,7 +481,6 @@ interface ToolDepsBindings {
    */
   opportunityOperations?: OpportunityOperations;
   graphs: {
-    profile: CompiledGraph;
     intent: CompiledGraph;
     index: CompiledGraph;
     networkMembership: CompiledGraph;

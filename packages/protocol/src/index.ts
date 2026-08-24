@@ -47,7 +47,6 @@ export type {
   RadarGraphDatabase,
   IntentGraphDatabase,
   HydeGraphDatabase,
-  EnrichmentGraphDatabase,
   PremiseGraphDatabase,
   Opportunity,
   OpportunityActor,
@@ -134,8 +133,6 @@ export type {
   NetworksDeps,
   NetworkToolDeps,
 } from "./capabilities/networks.js";
-export { Contexts } from "./capabilities/contexts.js";
-export type { ContextsDeps } from "./capabilities/contexts.js";
 export { Opportunities } from "./capabilities/opportunities.js";
 export type { OpportunitiesDeps } from "./capabilities/opportunities.js";
 export { Negotiations } from "./capabilities/negotiations.js";
@@ -164,7 +161,6 @@ export type {
 
 export { MaintenanceGraphFactory } from "./internal/maintenance/maintenance.graph.js";
 export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./internal/maintenance/maintenance.graph.js";
-export { EnrichmentGraphFactory } from "./internal/enrichment/enrichment.graph.js";
 export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────

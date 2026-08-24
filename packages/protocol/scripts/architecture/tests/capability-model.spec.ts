@@ -7,7 +7,6 @@ describe("protocol capability model", () => {
     expect(capabilityForSourcePath("intents/graph/intent.graph.ts")).toBe("intents");
     expect(capabilityForSourcePath("intents/intake/intake.orchestrator.ts")).toBe("intents");
     expect(capabilityForSourcePath("contexts/context.generator.ts")).toBe("contexts");
-    expect(capabilityForSourcePath("enrichment/enrichment.graph.ts")).toBe("contexts");
     expect(capabilityForSourcePath("networks/network.graph.ts")).toBe("networks");
     expect(capabilityForSourcePath("networks/indexer.state.ts")).toBe("networks");
     expect(capabilityForSourcePath("agents/agent.tools.ts")).toBe("agents");
@@ -27,7 +26,6 @@ describe("protocol capability model", () => {
     expect(barrelCapabilityForSourcePath("capabilities/intents.ts")).toBe("intents");
     expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("capabilities/agents.ts")).toBe("agents");
-    expect(barrelCapabilityForSourcePath("capabilities/contexts.ts")).toBe("contexts");
     expect(barrelCapabilityForSourcePath("intents/index.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("intents/graph/intent.graph.ts")).toBeUndefined();
     expect(barrelCapabilityForSourcePath("capabilities/networks.ts")).toBe("networks");

@@ -418,7 +418,6 @@ export interface SystemDatabase {
 // They are used by graph factories to enforce interface segregation at compile time.
 //
 // Access control relationship to UserDatabase/SystemDatabase:
-// - EnrichmentGraphDatabase → maps to UserDatabase (user's own profile operations)
 // - IntentGraphDatabase → maps to UserDatabase (mutations) + SystemDatabase (reads)
 // - OpportunityGraphDatabase → maps to SystemDatabase (cross-user operations)
 // - NetworkGraphDatabase → maps to UserDatabase (own indexes)

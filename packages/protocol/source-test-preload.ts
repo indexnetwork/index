@@ -28,7 +28,6 @@ const modelConfigSpecs = [
 const localModelMockSpecs = [
   "/chat/tests/chat.agent.persona.spec.ts",
   "/chat/tests/chat.agent.spec.ts",
-  "/enrichment/tests/enrichment.graph.spec.ts",
   "/intents/tests/intent.clarifier.spec.ts",
   "/intents/tests/intent.graph.spec.ts",
   "/intents/tests/intent.inferrer.spec.ts",

@@ -151,7 +151,6 @@ For direct graph invocation (bypassing the tool layer), a `*GraphFactory` class 
 import {
   ChatGraphFactory,
   OpportunityGraphFactory,
-  EnrichmentGraphFactory,
   PremiseGraphFactory,
   NegotiationGraphFactory,
   HydeGraphFactory,
@@ -171,7 +170,6 @@ The intent and community graphs are the exceptions: they are reached through the
 |---|---|
 | `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
 | `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, persist |
-| `EnrichmentGraphFactory` | Enrich users (scrape + embed) and decompose into premises |
 | `PremiseGraphFactory` | Decompose and index a user's premises |
 | `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |

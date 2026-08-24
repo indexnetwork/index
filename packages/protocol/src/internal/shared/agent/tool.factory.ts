@@ -2,7 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { HydeGraphDatabase } from "../../../platform/database.js";
 import { Intents } from "../../../capabilities/intents.js";
-import { EnrichmentGraphFactory } from "../../enrichment/enrichment.graph.js";import { OpportunityGraphFactory } from "../../opportunities/opportunity.graph.js";
+import { OpportunityGraphFactory } from "../../opportunities/opportunity.graph.js";
 import { HydeGraphFactory } from "../../discovery/hyde.graph.js";
 import { HydeGenerator } from "../../discovery/hyde.generator.js";
 import { LensInferrer } from "../../discovery/lens.inferrer.js";
@@ -133,7 +133,6 @@ export async function createChatTools(
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database).createGraph();
   const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();
@@ -201,7 +200,6 @@ export async function createChatTools(
     ...(deps.chatSession && { chatSession: deps.chatSession }),
     ...(deps.intentProposalStore && { intentProposalStore: deps.intentProposalStore }),
     graphs: {
-      profile: profileGraph,
       intent: intentGraph,
       index: networkGraph,
       networkMembership: networkMembershipGraph,

@@ -127,7 +127,6 @@ export function barrelCapabilityForSourcePath(
   if (pathFromSource === "capabilities/networks.ts") return "networks";
   if (pathFromSource === "capabilities/agents.ts") return "agents";
   if (pathFromSource === "capabilities/discovery.ts") return "discovery";
-  if (pathFromSource === "capabilities/contexts.ts") return "contexts";
   const normalized = implementationPath(pathFromSource);
   const match = /^([a-z-]+)\/([a-z0-9.-]+\.ts)$/.exec(normalized);
   if (!match) return undefined;

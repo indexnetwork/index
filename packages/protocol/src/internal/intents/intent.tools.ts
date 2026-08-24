@@ -15,7 +15,7 @@ import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetw
 /** Host capabilities consumed by signal and intent tools. */
 export type IntentToolDeps = Pick<ToolRegistryCompositionDeps, "userDb" | "systemDb">
   & Pick<ToolRegistryCompositionDeps, "intentProposalStore">
-  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentIndex" | "profile"> };
+  & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentIndex"> };
 
 const logger = protocolLogger("ChatTools:Intent");
 
@@ -79,16 +79,23 @@ async function ensureScopedMembership(
   return null;
 }
 
-function buildApprovedProfileFallback(user: UserRecord | null | undefined): string {
+/**
+ * Build the approved identity context used to infer an intent. This deliberately
+ * reads the current user record directly: public-profile research is only a
+ * prefill mechanism and ACTIVE-premise presence is not a profile-readiness gate.
+ */
+function buildApprovedIdentitySnapshot(user: UserRecord | null | undefined): string {
+  const name = user?.name?.trim() ?? "";
   const bio = user?.intro?.trim();
-  if (!user || !bio) return "";
+  const location = user?.location?.trim() ?? "";
+  if (!user || (!name && !bio && !location)) return "";
 
   return JSON.stringify({
     userId: user.id,
     identity: {
-      name: user.name ?? "",
-      bio,
-      location: user.location?.trim() ?? "",
+      name,
+      bio: bio ?? "",
+      location,
     },
     narrative: { context: bio },
     attributes: { skills: [], interests: [] },
@@ -375,13 +382,8 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         ? { scopeType: 'network' as const, scopeId: scopedNetworkId }
         : {};
 
-      // Fetch profile (the intent graph needs it for inference)
-      const _profileGraphStart1 = Date.now();
-      const profileResult = await traceGraph("profile", () => invokeWithAbortSignal(graphs.profile, { userId: context.userId, operationMode: 'query' as const }));
-      const _profileGraphMs1 = Date.now() - _profileGraphStart1;
-      const latestUser = profileResult.profile ? undefined : typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
-      const approvedProfileFallback = profileResult.profile ? "" : buildApprovedProfileFallback(latestUser);
-      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : approvedProfileFallback;
+      const latestUser = typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
+      const userProfile = buildApprovedIdentitySnapshot(latestUser);
 
       // Run inference + verification only (propose mode — no DB persistence)
       const _intentGraphStart1 = Date.now();
@@ -504,7 +506,6 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
             : 'Intent creation failed — the intents could not be persisted.',
           debugSteps,
           _graphTimings: [
-            { name: 'enrichment', durationMs: _profileGraphMs1, agents: profileResult.agentTimings ?? [] },
             { name: 'intent-propose', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
             ...createTimings,
           ],
@@ -562,7 +563,6 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         message: `IMPORTANT: Include the following \`\`\`intent_proposal code blocks EXACTLY as-is in your response (they render as interactive cards for the user to approve or skip):\n\n${blocksText}`,
         debugSteps,
         _graphTimings: [
-          { name: 'enrichment', durationMs: _profileGraphMs1, agents: profileResult.agentTimings ?? [] },
           { name: 'intent', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
         ],
       });
@@ -617,12 +617,8 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         }
       }
 
-      const _profileGraphStart2 = Date.now();
-      const profileResult = await traceGraph("profile", () => invokeWithAbortSignal(graphs.profile, { userId: context.userId, operationMode: 'query' as const }));
-      const _profileGraphMs2 = Date.now() - _profileGraphStart2;
-      const latestUser = profileResult.profile ? undefined : typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
-      const approvedProfileFallback = profileResult.profile ? "" : buildApprovedProfileFallback(latestUser);
-      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : approvedProfileFallback;
+      const latestUser = typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
+      const userProfile = buildApprovedIdentitySnapshot(latestUser);
 
       const _intentGraphStart2 = Date.now();
       const result = await traceGraph("intent", () => invokeWithAbortSignal(graphs.intent, {
@@ -645,7 +641,6 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         intentId,
         description: query.description,
         _graphTimings: [
-          { name: 'enrichment', durationMs: _profileGraphMs2, agents: profileResult.agentTimings ?? [] },
           { name: 'intent', durationMs: _intentGraphMs2, agents: result.agentTimings ?? [] },
         ],
       });
