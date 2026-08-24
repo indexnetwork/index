@@ -984,10 +984,11 @@ export default function IntentDetailPage() {
                 </DismissableLayer>
                 </FocusScope>
 
-                <div data-testid="radar-column" inert={sheetOverlayActive} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-1">
+                <div data-testid="radar-column" inert={sheetOverlayActive} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
                 <Panel
                   title="Radar"
                   description="Opportunities the network surfaced for this signal."
+                  className="flex-1"
                   media={
                     <img
                       src="/eye.webp"
@@ -998,15 +999,13 @@ export default function IntentDetailPage() {
                     />
                   }
                 >
-                  <div className="mb-3">
+                  <div className="mb-3 shrink-0 space-y-3 lg:max-h-64 lg:overflow-y-auto lg:pr-1">
                     <IntentCycleInspector
                       intentId={intentId ?? ""}
                       cycle={intentCycle}
                       loading={intentCycleLoading}
                       error={intentCycleError}
                     />
-                  </div>
-                  <div className="mb-3">
                     <PersonalAgentTimeline
                       entries={intentTimeline}
                       loading={intentTimelineLoading}
