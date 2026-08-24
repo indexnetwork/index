@@ -173,12 +173,14 @@ function buildCycle(judgment: ScriptedJudgment, counterparties: string[]) {
   const negotiationHost = new FakeNegotiationHost(counterparties);
   const principal = new FakePrincipalHost(negotiationHost);
   const wakes: Array<{ userId: string; intentId: string }> = [];
+  const negotiationInputs: Array<{ userId: string; intentId: string; negotiationId: string }> = [];
   let agent: PersonalAgentGraphLike;
   const negotiations = new Negotiations({
     database: negotiationHost.database,
     reflectEnqueue: async (job) => { negotiationHost.enqueueReflect(job); },
     author: {
       authorTurn: async ({ negotiationId, userId, intentId }) => {
+        negotiationInputs.push({ negotiationId, userId, intentId });
         const result = await agent.invoke({ userId, intentId, negotiationId });
         if (!result.turn) throw new Error(result.error ?? "PersonalAgent produced no negotiation turn");
         return result.turn;
@@ -199,7 +201,7 @@ function buildCycle(judgment: ScriptedJudgment, counterparties: string[]) {
     judgment,
   }).createGraph();
   const judgmentMatches = () => judgment.decideCalls.at(-1)?.matches ?? [];
-  return { agent, negotiationHost, principal, wakes, judgmentMatches };
+  return { agent, negotiationHost, principal, wakes, judgmentMatches, negotiationInputs };
 }
 
 const userMessage = (text: string) => ({
@@ -847,7 +849,7 @@ describe("PersonalAgent — round-5 regressions", () => {
 describe("PersonalAgent — the three decided design questions", () => {
   test("D18: each seat negotiates from its OWN brief, authored by its own agent", async () => {
     const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
-    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const { agent, negotiationHost, negotiationInputs } = buildCycle(judgment, [CANDIDATE_USER_ID]);
 
     await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
@@ -861,6 +863,13 @@ describe("PersonalAgent — the three decided design questions", () => {
     expect(theirs).toBeDefined();
     expect(theirs).not.toBe(ours);
     expect(judgment.seatBriefCalls).toHaveLength(1);
+    expect(judgment.seatBriefCalls[0]!.signalText).toBe("bob wants a suitable match.");
+    expect(task.metadata.seats).toEqual({ [INTENT_ID]: { userId: SOURCE_USER_ID, round: negotiationHost.round } });
+    expect(negotiationInputs.find((input) => input.userId === CANDIDATE_USER_ID)).toEqual({
+      userId: CANDIDATE_USER_ID,
+      intentId: "intent-bob-1",
+      negotiationId: task.id,
+    });
     // It was authored from what THAT side could see, not handed the other's.
     expect(judgment.seatBriefCalls[0]!.thread.length).toBeGreaterThan(0);
     // And a re-kick rewrites only the initiator's half.

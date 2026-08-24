@@ -997,7 +997,7 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
     const messages = await deps.negotiationDatabase.getNegotiationMessages(task.id);
     const judgment = deps.judgment ?? defaultJudgment();
     const thread = threadFromMessages(messages, input.userId);
-    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, task, input.userId, thread);
+    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, task, input.userId, input.intentId, thread);
     const turn: NegotiationAuthoredTurn = await judgment.negotiationTurn({
       brief,
       thread,
@@ -1015,36 +1015,22 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
 /**
  * Author and persist the brief for a seat that has none.
  *
- * The seat's own signal is used when it can be established BEYOND DOUBT: a
- * premise-matched actor's `intent` field names the intent it matched AGAINST,
- * not one it owns, so an actor carrying this negotiation's own `intentId` is
- * ambiguous and is treated as unknown rather than guessed at. Without it the
- * brief is written from what this side can see honestly — why the match
- * exists, and whatever has been said so far — which is still its own
- * instructions rather than the counterparty's.
+ * The negotiation-scope input carries this seat's own signal, resolved by the
+ * NegotiationGraph from the persisted opportunity actor.
  */
 async function authorSeatBrief(
   deps: PersonalAgentDeps,
   judgment: NonNullable<PersonalAgentDeps["judgment"]>,
   task: NegotiationTaskRow,
   seatUserId: string,
+  intentId: string,
   thread: PersonalAgentThreadEntry[],
 ): Promise<string> {
-  const opportunity = await deps.negotiationDatabase.getOpportunity(task.metadata.opportunityId).catch(() => null);
-  // The seat's OWN binding, recorded when its own kickoff opened or re-kicked
-  // this negotiation. Never inferred from the opportunity's actor rows: a
-  // premise-matched actor's `intent` names the intent it matched AGAINST, so
-  // it cannot be trusted to name the seat's own signal. A seat that has not
-  // kicked off here yet simply has no signal to show, and the brief says so.
-  const seatIntentId = Object.entries(task.metadata.seats)
-    .find(([, binding]) => binding.userId === seatUserId)?.[0] ?? null;
-  const intent = seatIntentId ? await deps.negotiationDatabase.getIntent(seatIntentId).catch(() => null) : null;
+  const intent = await deps.negotiationDatabase.getIntent(intentId).catch(() => null);
 
   const brief = await judgment.seatBrief({
     signalText: intent ? (intent.summary ?? intent.payload ?? null) : null,
-    matchReasoning: typeof (opportunity as { reasoning?: unknown } | null)?.reasoning === "string"
-      ? (opportunity as unknown as { reasoning: string }).reasoning
-      : null,
+    matchReasoning: null,
     thread,
   });
   await deps.negotiationDatabase.setNegotiationBrief(task.id, seatUserId, brief);
