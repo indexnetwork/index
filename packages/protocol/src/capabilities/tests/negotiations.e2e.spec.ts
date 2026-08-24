@@ -375,6 +375,71 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(host.taskFor(negotiationId).state).toBe("paused");
   });
 
+  test("an externally submitted turn is re-validated at the graph's own boundary, not trusted verbatim", async () => {
+    const host = new FakeNegotiationHost();
+    const graph = new Negotiations({ database: host.database, dispatcher: host.bothWaitingDispatcher() }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const negotiationId = opened.negotiationId;
+    await graph.invoke({
+      negotiationId,
+      turn: { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
+      byUserId: SOURCE_USER_ID,
+    });
+
+    // A malformed turn (unknown verb) reaches invoke() with the static
+    // NegotiationTurn type satisfied by an `as never` cast — exactly what an
+    // external caller that skipped its own validation could send. The graph
+    // must reject it itself, not trust the type and persist garbage.
+    const malformed = await graph.invoke({
+      negotiationId,
+      turn: { verb: "bogus_verb", message: "x", reasoning: "r" } as never,
+      byUserId: CANDIDATE_USER_ID,
+    });
+    expect(malformed.status).toBe("error");
+    expect(host.messages.get(negotiationId)).toHaveLength(1); // nothing persisted
+  });
+
+  test("an unparseable historical message does not shift a later turn's speaker attribution", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedNegotiationAuthor([
+      { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
+      { verb: "pause", reason: "counterparty_silent" },
+    ]);
+    const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const negotiationId = opened.negotiationId;
+
+    // A message that fails NegotiationTurnSchema — simulating drift/corruption,
+    // not something either apply guard would ever itself produce — inserted
+    // between the opening turn and the candidate's real one. Sender matches
+    // the opening turn's (alice) so nextSpeaker's own last-message read still
+    // resolves to the candidate next, isolating the zip bug this test targets
+    // from nextSpeaker's separate (and correct) unparseable-tail handling.
+    const list = host.messages.get(negotiationId)!;
+    list.push({ id: "garbage-1", senderId: `agent:${SOURCE_USER_ID}`, parts: [{ kind: "data", data: { not: "a turn" } }], createdAt: new Date() });
+
+    // The candidate's real counter, submitted externally — self-play loops
+    // straight back into turnNode for the source's next (scripted) move,
+    // which is what actually exercises the buggy zip.
+    await graph.invoke({
+      negotiationId,
+      turn: { verb: "counter", message: "Interested — terms?", reasoning: "r" },
+      byUserId: CANDIDATE_USER_ID,
+    });
+
+    // author.calls[1] is the source's second turn, authored with the thread
+    // built from [outreach, garbage(dropped), counter] — exactly two real
+    // turns. Before the fix, zipping by index against the raw (unfiltered)
+    // message list would attribute the counter turn to the garbage message's
+    // sender instead of the candidate's.
+    const secondCall = author.calls[1];
+    expect(secondCall.thread).toHaveLength(2);
+    expect(secondCall.thread[0]).toMatchObject({ speaker: "own", turn: { verb: "outreach" } });
+    expect(secondCall.thread[1]).toMatchObject({ speaker: "counterparty", turn: { verb: "counter" } });
+  });
+
   test("resuming an opportunity that already has a negotiation is idempotent, not a second open", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);

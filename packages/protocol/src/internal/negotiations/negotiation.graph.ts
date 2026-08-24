@@ -86,14 +86,24 @@ type NegotiationState = typeof NegotiationGraphState.State;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Pairs each message with its parsed turn, dropping unparseable ones — never
+ * separately, since `turnsFromMessages(messages).length` can be less than
+ * `messages.length` and zipping the two by index afterward would shift every
+ * later turn onto the wrong message (and therefore the wrong speaker).
+ */
+function turnsWithSenders(messages: Array<{ senderId: string; parts: unknown[] }>): Array<{ senderId: string; turn: NegotiationTurn }> {
+  const paired: Array<{ senderId: string; turn: NegotiationTurn }> = [];
+  for (const m of messages) {
+    const part = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
+    const parsed = part ? NegotiationTurnSchema.safeParse(part.data) : undefined;
+    if (parsed?.success) paired.push({ senderId: m.senderId, turn: parsed.data });
+  }
+  return paired;
+}
+
 function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
-  return messages
-    .map((m) => {
-      const part = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
-      const parsed = part ? NegotiationTurnSchema.safeParse(part.data) : undefined;
-      return parsed?.success ? parsed.data : undefined;
-    })
-    .filter((t): t is NegotiationTurn => Boolean(t));
+  return turnsWithSenders(messages.map((m) => ({ senderId: "", ...m }))).map((p) => p.turn);
 }
 
 /** Whose turn is next: retry the last speaker after a pause, else the other seat; the initiator opens. */
@@ -208,10 +218,23 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       return { task: { ...task, brief: input.brief }, turns: turnsFromMessages(messages), phase: "turn" };
     }
 
+    // An externally submitted turn crosses an untrusted boundary — the graph
+    // is the single write path and cannot rely on every caller having
+    // validated it upstream. Re-parse here rather than trusting the static
+    // type, the same way `respond_to_negotiation` validates before invoking.
+    let pendingTurn: NegotiationTurn;
+    if ("turn" in input) {
+      const parsedTurn = NegotiationTurnSchema.safeParse(input.turn);
+      if (!parsedTurn.success) {
+        return { phase: "error", error: `Invalid turn: ${parsedTurn.error.issues[0]?.message ?? "schema validation failed"}` };
+      }
+      pendingTurn = parsedTurn.data;
+    } else {
+      pendingTurn = { verb: "pause", reason: "counterparty_silent" };
+    }
+
     const messages = await deps.database.getNegotiationMessages(task.id);
     const turns = turnsFromMessages(messages);
-    const pendingTurn: NegotiationTurn =
-      "turn" in input ? input.turn : { verb: "pause", reason: "counterparty_silent" };
     return {
       task,
       turns,
@@ -233,12 +256,16 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
   const meta = task.metadata;
   try {
     const messages = await deps.database.getNegotiationMessages(task.id);
-    const turns = turnsFromMessages(messages);
-    const speakerId = nextSpeaker(meta, messages.map((m, i) => ({ senderId: m.senderId, parts: [{ kind: "data", data: turns[i] }] })));
+    // Paired, not two separately-filtered arrays zipped by index: an
+    // unparseable message must drop with its own turn, never shift every
+    // later turn onto the wrong message's sender.
+    const paired = turnsWithSenders(messages);
+    const turns = paired.map((p) => p.turn);
+    const speakerId = nextSpeaker(meta, messages);
     const isOpening = turns.length === 0;
 
-    const thread = turns.map((turn, i) => ({
-      speaker: (messages[i].senderId === `agent:${speakerId}` ? "own" : "counterparty") as "own" | "counterparty",
+    const thread = paired.map(({ senderId, turn }) => ({
+      speaker: (senderId === `agent:${speakerId}` ? "own" : "counterparty") as "own" | "counterparty",
       turn,
     }));
     const scope = { action: "manage:negotiations", scopeType: "network", scopeId: meta.networkId };
