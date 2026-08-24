@@ -38,6 +38,10 @@ export function radarBucketForOpportunity(
   const terminalBucket = status ? TERMINAL_BUCKETS[status] : undefined;
   if (terminalBucket) return terminalBucket;
 
+  if (status !== "negotiating") {
+    return status ? STATUS_BUCKETS[status] : "agent-handling";
+  }
+
   if (negotiation?.state === "paused") {
     if (negotiation.pause?.reason === "needs_principal") {
       return negotiation.pause.by === "yours" ? "needs-you" : "waiting";
@@ -47,8 +51,7 @@ export function radarBucketForOpportunity(
   }
 
   if (negotiation?.state === "working") return "agent-handling";
-
-  return status ? STATUS_BUCKETS[status] : "agent-handling";
+  return "agent-handling";
 }
 
 /** Only a non-zero Needs you count calls for visual attention. */

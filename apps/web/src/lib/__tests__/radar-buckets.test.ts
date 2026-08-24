@@ -19,7 +19,7 @@ describe("Radar responsibility buckets", () => {
     ["latent", undefined, "agent-handling"],
     ["draft", undefined, "agent-handling"],
     ["negotiating", undefined, "agent-handling"],
-    ["pending", negotiation({ state: "working" }), "agent-handling"],
+    ["pending", negotiation({ state: "working" }), "needs-you"],
   ] as const)("maps %s without a blocking pause to %s", (status, task, bucket) => {
     expect(radarBucketForOpportunity(status, task)).toBe(bucket);
   });
