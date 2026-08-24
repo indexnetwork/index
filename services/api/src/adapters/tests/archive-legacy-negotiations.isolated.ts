@@ -4,7 +4,7 @@
  * Proves:
  *  1. Archived tasks are excluded from: getNegotiationsByUser,
  *     getConversationsForUser (lifecycle join), getStaleNegotiationTasks,
- *     negotiation-polling pickup, and qualifyingNegotiationAttemptTaskWhere.
+ *     and qualifyingNegotiationAttemptTaskWhere.
  *  2. Non-archived tasks and v2 tasks (protocolVersion set) remain fully
  *     visible to every reader.
  *  3. The backfill query stamps exactly the pre-v2 rows (archivedAt IS NULL
@@ -21,14 +21,6 @@ import { sql } from 'drizzle-orm/sql';
 import { eq } from 'drizzle-orm';
 
 import { withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
-
-// ─── Mock queues before any service imports ──────────────────────────────────
-mock.module('../../queues/negotiations/timeout.queue', () => ({
-  negotiationTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
-}));
-mock.module('../../queues/negotiations/claim-timeout.queue', () => ({
-  negotiationClaimTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
-}));
 
 const { conversationDatabaseAdapter } = await import('../database.adapter');
 const { agentDatabaseAdapter } = await import('../agent.database.adapter');

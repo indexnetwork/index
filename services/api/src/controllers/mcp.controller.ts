@@ -29,7 +29,6 @@ import { NegotiationSummaryService } from '../services/negotiation-summary.servi
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
-import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
@@ -60,7 +59,7 @@ type McpToolDeps = ToolDeps & {
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
 const negotiationSummaryService = new NegotiationSummaryService();
-const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
+const agentDispatcher = new AgentDispatcherImpl(agentService);
 
 const apiBaseUrl = resolveProtocolBaseUrl();
 
@@ -96,7 +95,6 @@ const protocolDeps = {
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
   // route; threaded into chat tools by the protocol chat factory.
   opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
-  negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
@@ -638,7 +636,6 @@ function createMcpServerInstance(): McpServer {
     negotiationDatabase: protocolDeps.negotiationDatabase,
     negotiationGraph,
     agentDispatcher: protocolDeps.agentDispatcher,
-    negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
     // #1471: owner-verdict host behind reject/accept_opportunity (the Radar
     // Skip/Start-Chat path). Registered on the MCP surface only; the
     // capability matrix confines verdicts to session-authenticated owners.

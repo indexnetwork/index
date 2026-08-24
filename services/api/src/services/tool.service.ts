@@ -229,14 +229,15 @@ export class ToolService {
       new HydeGenerator(),
     ).createGraph();
     // No-op dispatcher: ToolService is used for non-chat tool invocations.
-    // External agent yield is handled via the ProtocolDeps flow in tool.factory.ts and mcp.controller.ts.
+    // Only the opportunity graph below still needs one (hasExternalAgent,
+    // the unlimited-maxTurns rule) — the negotiation graph no longer takes a
+    // dispatcher at all (external-agent turn dispatch is offline, #1494
+    // round-3 Option A).
     const noOpDispatcher: AgentDispatcher = {
-      dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
       hasExternalAgent: async () => false,
     };
     const negotiationGraph = new NegotiationGraphFactory({
       database: conversationDatabaseAdapter,
-      dispatcher: noOpDispatcher,
       reflectEnqueue: roundReflectEnqueue(),
     }).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(

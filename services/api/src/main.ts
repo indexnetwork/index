@@ -60,8 +60,6 @@ import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
-import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
-import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
 import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
 import { negotiationRoundReflectQueue } from './queues/negotiations/round-reflect.queue';
 import { negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
@@ -193,8 +191,6 @@ void frameDriftQueue.start().catch((error) => {
 notificationQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
-negotiationTimeoutQueue.startWorker();
-negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationRoundReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
@@ -636,8 +632,6 @@ const shutdown = async () => {
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
-    negotiationTimeoutQueue.close(),
-    negotiationClaimTimeoutQueue.close(),
     negotiationRoundReflectQueue.close(),
     questionMessageQueue.close(),
     intentAgentQueue.close(),

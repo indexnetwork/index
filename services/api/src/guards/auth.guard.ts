@@ -199,24 +199,6 @@ export function assertApiKeyAudienceRoute(
   throw new HermesNegotiatorRouteDeniedError();
 }
 
-/** Read the exact authenticated principal required by negotiation mutations. */
-export function requireNegotiationCredentialPrincipal(req: Request): NegotiationCredentialPrincipal {
-  const context = getRequestAuthContext(req);
-  if (
-    context?.kind !== 'api_key'
-    || !context.agentId
-    || !context.credentialId
-  ) {
-    throw new OwnerControlRequiredError('Negotiation polling requires an exact agent-bound API key');
-  }
-  return {
-    credentialId: context.credentialId,
-    agentId: context.agentId,
-    audience: context.audience ?? null,
-    setupAttemptId: context.setupAttemptId ?? null,
-  };
-}
-
 /**
  * True iff the request is authenticated by a genuine Better Auth session JWT
  * (`Authorization: Bearer` header or `?token=`), i.e. a human acting in the
@@ -261,32 +243,6 @@ export const resolveApiKeyAgentId = async (req: Request): Promise<string | null>
 
   return parseApiKeyAgentId(row?.metadata ?? null);
 };
-
-async function hasExactAgentPrincipal(
-  request: Request,
-  agentId: string,
-  resolvePrincipal: AgentPrincipalResolver,
-): Promise<boolean> {
-  return await resolvePrincipal(request) === agentId;
-}
-
-/** Exact agent-bound principal check used by negotiation pickup. */
-export async function authorizeNegotiationPickupPrincipal(
-  request: Request,
-  agentId: string,
-  resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
-): Promise<boolean> {
-  return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
-}
-
-/** Exact agent-bound principal check used by negotiation respond. */
-export async function authorizeNegotiationRespondPrincipal(
-  request: Request,
-  agentId: string,
-  resolvePrincipal: AgentPrincipalResolver = resolveApiKeyAgentId,
-): Promise<boolean> {
-  return hasExactAgentPrincipal(request, agentId, resolvePrincipal);
-}
 
 export async function authenticateApiKey(
   req: Request,
