@@ -204,34 +204,61 @@ export class PersonalAgentQueue {
 
   /** Apply the queue-time/user deadline or a fresh, retryable background budget to one invocation. */
   async processJob(job: Job<PersonalAgentEvent>): Promise<PersonalAgentResult> {
+    const startedAt = Date.now();
+    const queueWaitMs = Math.max(0, startedAt - job.timestamp);
     const isUserMessage = job.data.event === 'user_message';
-    const remaining = isUserMessage
-      ? job.timestamp + PERSONAL_AGENT_EXECUTION_BUDGET_MS - Date.now()
-      : PERSONAL_AGENT_EXECUTION_BUDGET_MS;
-    if (remaining <= 0) {
-      throw new UnrecoverableError('PersonalAgent user-message execution deadline expired before pickup');
-    }
-
-    const deadlineSignal = AbortSignal.timeout(remaining);
-    const existing = requestContext.getStore() ?? {};
-    const abortSignal = existing.abortSignal
-      ? AbortSignal.any([existing.abortSignal, deadlineSignal])
-      : deadlineSignal;
+    let deadlineSignal: AbortSignal | undefined;
     try {
-      return await requestContext.run(
+      const remaining = isUserMessage
+        ? job.timestamp + PERSONAL_AGENT_EXECUTION_BUDGET_MS - Date.now()
+        : PERSONAL_AGENT_EXECUTION_BUDGET_MS;
+      if (remaining <= 0) {
+        throw new UnrecoverableError('PersonalAgent user-message execution deadline expired before pickup');
+      }
+
+      deadlineSignal = AbortSignal.timeout(remaining);
+      const existing = requestContext.getStore() ?? {};
+      const abortSignal = existing.abortSignal
+        ? AbortSignal.any([existing.abortSignal, deadlineSignal])
+        : deadlineSignal;
+      const result = await requestContext.run(
         { ...existing, abortSignal },
         () => this.processEvent(job.data),
       );
+      const finishedAt = Date.now();
+      this.logger.info('PersonalAgent turn completed', {
+        jobId: job.id,
+        event: job.data.event,
+        userId: job.data.userId,
+        intentId: job.data.intentId,
+        queueWaitMs,
+        executionDurationMs: finishedAt - startedAt,
+        totalDurationMs: finishedAt - job.timestamp,
+        actCount: result.acts.length,
+        messageCount: result.messages.length,
+      });
+      return result;
     } catch (error) {
       // A user-message retry could mutate state after the controller has
       // already returned its timeout response, so its deadline is terminal.
       // Background wakes have no waiting caller and are the only path back to
       // persisted matches/paused rounds; their pre-effect expiry must retain
       // the queue's ordinary retry policy instead of stranding that work.
-      if (isUserMessage && deadlineSignal.aborted) {
-        throw new UnrecoverableError('PersonalAgent execution deadline expired');
-      }
-      throw error;
+      const failure = isUserMessage && deadlineSignal?.aborted
+        ? new UnrecoverableError('PersonalAgent execution deadline expired')
+        : error;
+      const finishedAt = Date.now();
+      this.logger.error('PersonalAgent turn failed', {
+        jobId: job.id,
+        event: job.data.event,
+        userId: job.data.userId,
+        intentId: job.data.intentId,
+        queueWaitMs,
+        executionDurationMs: finishedAt - startedAt,
+        totalDurationMs: finishedAt - job.timestamp,
+        error: failure instanceof Error ? failure.message : String(failure),
+      });
+      throw failure;
     }
   }
 

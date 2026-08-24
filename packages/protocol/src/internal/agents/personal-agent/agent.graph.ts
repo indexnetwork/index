@@ -999,13 +999,41 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
   let context: PersonalAgentTurnContext | null = null;
   let accumulator: TurnAccumulator | null = null;
   try {
+    const contextStartedAt = Date.now();
     context = await assembleContext(deps, input);
+    logger.info("PersonalAgent context assembled", {
+      intentId: context.intentId,
+      event: context.event,
+      durationMs: Date.now() - contextStartedAt,
+      matchCount: context.matches.length,
+      kickoffTargetCount: context.kickoffTargets.length,
+      pausedCount: context.paused.length,
+    });
     const judgment = deps.judgment ?? defaultJudgment();
     accumulator = { acts: [], nonDurable: [], messages: [], finalMessageChosen: false };
     for (let step = 0; step < MAX_INTENT_TOOL_STEPS; step++) {
-      const act = await judgment.next(context, accumulator.acts, accumulator.nonDurable);
+      const judgmentStartedAt = Date.now();
+      let act: PersonalAgentDecidedAct;
+      try {
+        act = await judgment.next(context, accumulator.acts, accumulator.nonDurable);
+      } catch (err) {
+        logger.error("PersonalAgent judgment failed", {
+          intentId: context.intentId,
+          event: context.event,
+          step,
+          durationMs: Date.now() - judgmentStartedAt,
+          error: err,
+        });
+        throw err;
+      }
       throwIfIntentAborted();
-      logger.info("PersonalAgent chose tool", { intentId: context.intentId, event: context.event, step, tool: act.tool });
+      logger.info("PersonalAgent chose tool", {
+        intentId: context.intentId,
+        event: context.event,
+        step,
+        tool: act.tool,
+        judgmentDurationMs: Date.now() - judgmentStartedAt,
+      });
       if (act.tool === "accept_opportunity" && context.event !== "user_message") {
         logger.warn("PersonalAgent refused acceptance without a client message", {
           intentId: context.intentId,
@@ -1028,21 +1056,41 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
         accumulator.nonDurable.push(refusedIrreversibleObservation(act));
         continue;
       }
-      if (act.tool === "message_user") {
-        accumulator.finalMessageChosen = true;
-        await executeAct(deps, context, accumulator, act);
-        break;
-      }
-      if (act.tool === "kickoff") await runKickoff(deps, context, accumulator, act.reasoning);
-      else {
-        await executeAct(deps, context, accumulator, act);
-        if (act.tool === "note_dossier" || act.tool === "retire_dossier") {
-          context = {
-            ...context,
-            dossier: await deps.dossier.readActiveEntries(context.userId, context.intentId),
-          };
+      const toolStartedAt = Date.now();
+      try {
+        if (act.tool === "message_user") {
+          accumulator.finalMessageChosen = true;
+          await executeAct(deps, context, accumulator, act);
+        } else if (act.tool === "kickoff") {
+          await runKickoff(deps, context, accumulator, act.reasoning);
+        } else {
+          await executeAct(deps, context, accumulator, act);
+          if (act.tool === "note_dossier" || act.tool === "retire_dossier") {
+            context = {
+              ...context,
+              dossier: await deps.dossier.readActiveEntries(context.userId, context.intentId),
+            };
+          }
         }
+      } catch (err) {
+        logger.error("PersonalAgent tool failed", {
+          intentId: context.intentId,
+          event: context.event,
+          step,
+          tool: act.tool,
+          durationMs: Date.now() - toolStartedAt,
+          error: err,
+        });
+        throw err;
       }
+      logger.info("PersonalAgent tool completed", {
+        intentId: context.intentId,
+        event: context.event,
+        step,
+        tool: act.tool,
+        durationMs: Date.now() - toolStartedAt,
+      });
+      if (act.tool === "message_user") break;
     }
     if (!accumulator.finalMessageChosen) {
       if (accumulator.acts.length === 0) throwIfIntentAborted();
