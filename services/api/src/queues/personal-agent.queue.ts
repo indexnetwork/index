@@ -16,23 +16,27 @@
  *   completion: reflect must fire exactly once per round, or the agent acts
  *   twice on the same moment.
  */
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import type { QueueEvents } from 'bullmq';
-import { negotiationRoundReflectJobId } from '@indexnetwork/protocol';
+import { negotiationRoundReflectJobId, requestContext } from '@indexnetwork/protocol';
 import type { NegotiationRoundReflectJobData, PersonalAgentInput, PersonalAgentResult } from '@indexnetwork/protocol';
 
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { personalAgentGraph } from '../lib/negotiation/negotiation-graph';
 import { log } from '../lib/log';
+import { publishPersonalAgentTurnCompletedEvent } from '../lib/conversation-events';
 
 export const QUEUE_NAME = 'personal-agent-queue';
 
 /**
  * How long the chat controller waits for an awaited `user_message` turn
- * before answering with fixed copy and leaving the event to retry in the
- * background. Covers one queued turn ahead plus one model call.
+ * before answering with fixed copy. The worker's 70-second enqueue-relative
+ * deadline leaves twenty seconds inside this response boundary.
  */
 export const PERSONAL_AGENT_TURN_WAIT_MS = 90_000;
+
+/** Leave the controller twenty seconds to finish its own 90-second response path. */
+export const PERSONAL_AGENT_EXECUTION_BUDGET_MS = 70_000;
 
 /** What the agent is woken with — the graph's own intent-scope input shapes. */
 export type PersonalAgentEvent = Extract<PersonalAgentInput, { event: string }>;
@@ -54,11 +58,16 @@ export class PersonalAgentQueue {
 
   private readonly logger = log.queue.from('PersonalAgentQueue');
   private readonly invoke: (input: PersonalAgentInput) => Promise<PersonalAgentResult>;
+  private readonly publishTurnCompleted: (input: { userId: string; intentId: string }) => Promise<void>;
   private worker: ReturnType<typeof QueueFactory.createWorker<PersonalAgentEvent>> | null = null;
   private queueEvents: QueueEvents | null = null;
 
-  constructor(invoke?: (input: PersonalAgentInput) => Promise<PersonalAgentResult>) {
+  constructor(
+    invoke?: (input: PersonalAgentInput) => Promise<PersonalAgentResult>,
+    publishTurnCompleted = publishPersonalAgentTurnCompletedEvent,
+  ) {
     this.invoke = invoke ?? ((input) => personalAgentGraph.invoke(input));
+    this.publishTurnCompleted = publishTurnCompleted;
   }
 
   /** Wake the agent with the principal's message. */
@@ -157,9 +166,9 @@ export class PersonalAgentQueue {
   /**
    * The chat controller's lane: enqueue the principal's message and wait for
    * the serialized turn, returning what the agent did so the controller can
-   * emit its messages as the turn's response. Throws on turn failure or
-   * timeout — the caller answers with fixed copy while the event retries in
-   * the background, so the message is durably heard either way.
+   * emit its messages as the turn's response. Throws on turn failure or wait
+   * timeout; the worker's enqueue-relative deadline prevents a stale user
+   * turn from mutating state after the controller has already answered.
    */
   async runUserMessageTurn(
     event: PersonalAgentUserMessageEvent,
@@ -179,7 +188,51 @@ export class PersonalAgentQueue {
     // A graph-level error is the turn FAILING, not a turn that decided
     // nothing: surface it so BullMQ retries and the controller falls back.
     if (result.error) throw new Error(result.error);
+    try {
+      await this.publishTurnCompleted({ userId: event.userId, intentId: event.intentId });
+    } catch (error) {
+      // The completed turn is already durable. A transient live-update failure
+      // must not retry it into duplicate agent effects.
+      this.logger.warn('Failed to publish completed PersonalAgent turn', {
+        userId: event.userId,
+        intentId: event.intentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     return result;
+  }
+
+  /** Apply the queue-time/user deadline or a fresh, retryable background budget to one invocation. */
+  async processJob(job: Job<PersonalAgentEvent>): Promise<PersonalAgentResult> {
+    const isUserMessage = job.data.event === 'user_message';
+    const remaining = isUserMessage
+      ? job.timestamp + PERSONAL_AGENT_EXECUTION_BUDGET_MS - Date.now()
+      : PERSONAL_AGENT_EXECUTION_BUDGET_MS;
+    if (remaining <= 0) {
+      throw new UnrecoverableError('PersonalAgent user-message execution deadline expired before pickup');
+    }
+
+    const deadlineSignal = AbortSignal.timeout(remaining);
+    const existing = requestContext.getStore() ?? {};
+    const abortSignal = existing.abortSignal
+      ? AbortSignal.any([existing.abortSignal, deadlineSignal])
+      : deadlineSignal;
+    try {
+      return await requestContext.run(
+        { ...existing, abortSignal },
+        () => this.processEvent(job.data),
+      );
+    } catch (error) {
+      // A user-message retry could mutate state after the controller has
+      // already returned its timeout response, so its deadline is terminal.
+      // Background wakes have no waiting caller and are the only path back to
+      // persisted matches/paused rounds; their pre-effect expiry must retain
+      // the queue's ordinary retry policy instead of stranding that work.
+      if (isUserMessage && deadlineSignal.aborted) {
+        throw new UnrecoverableError('PersonalAgent execution deadline expired');
+      }
+      throw error;
+    }
   }
 
   /** Start the BullMQ worker. Idempotent; call from the protocol server only. */
@@ -187,7 +240,7 @@ export class PersonalAgentQueue {
     if (this.worker) return;
     const processor = async (job: Job<PersonalAgentEvent>) => {
       this.logger.info('Processing event', { jobId: job.id, jobName: job.name });
-      return this.processEvent(job.data);
+      return this.processJob(job);
     };
     this.worker = QueueFactory.createWorker<PersonalAgentEvent>(QUEUE_NAME, processor);
   }

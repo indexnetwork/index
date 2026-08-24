@@ -99,7 +99,7 @@ vi.mock('@/contexts/APIContext', () => {
     }),
   };
   const conversationsService = {
-    getNegotiationActivity: vi.fn().mockResolvedValue([]),
+    getIntentCycle: vi.fn().mockResolvedValue({ round: { number: 0, size: null, kickoffStartedAt: null, working: 0, paused: 0 }, negotiations: [] }),
   };
   const questionsService = {
     getPending: vi.fn().mockResolvedValue([]),

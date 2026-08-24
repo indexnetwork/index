@@ -9,7 +9,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 import { describe, expect, it, mock, test } from 'bun:test';
-import { DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_ACTION, DEFAULT_FALLBACK_HEADLINE, OPPORTUNITY_PRESENTATION_CACHE_VERSION, OpportunityPresenter, presentOpportunity, SAFE_FALLBACK_MAX_CHARS, truncateAtBoundary, buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey, getSafePresentationOrSkip, safeFallbackSummary, summarizeSignalsForPresenter, type CardPresenterInput } from "../opportunity.presentation.js";
+import { DEFAULT_EMPTY_FALLBACK_TEXT, DEFAULT_FALLBACK_ACTION, DEFAULT_FALLBACK_HEADLINE, OPPORTUNITY_PRESENTATION_CACHE_VERSION, OpportunityPresenter, presentOpportunity, SAFE_FALLBACK_MAX_CHARS, truncateAtBoundary, buildApiChatCardPresentationCacheKey, buildDeliveryCardPresentationCacheKey, buildRadarCardPresentationCacheKey, gatherPresenterContext, getSafePresentationOrSkip, safeFallbackSummary, summarizeSignalsForPresenter, type CardPresenterInput, type PresenterDatabase } from "../opportunity.presentation.js";
 import type { Opportunity } from '../../../platform/database.js';
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { NegotiationContext } from "../negotiation-context.loader.js";
@@ -159,10 +159,48 @@ describe("opportunity presentation cache namespace", () => {
     expect(OPPORTUNITY_PRESENTATION_CACHE_VERSION).toBe("v2");
     expect(buildRadarCardPresentationCacheKey("opp", "pending", "viewer"))
       .toBe("radar:v2:card:opp:pending:viewer");
+    expect(buildRadarCardPresentationCacheKey("opp", "pending", "viewer", "intent-1"))
+      .toBe("radar:v2:card:opp:pending:viewer:intent:intent-1");
     expect(buildDeliveryCardPresentationCacheKey("opp", "pending", "viewer"))
       .toBe("delivery:v2:card:opp:pending:viewer");
     expect(buildApiChatCardPresentationCacheKey("opp", "viewer"))
       .toBe("chat:v2:card:opp:viewer");
+  });
+});
+
+describe("gatherPresenterContext", () => {
+  const opportunity = {
+    id: "opp-1",
+    actors: [
+      { userId: "viewer", role: "party" },
+      { userId: "other", role: "party" },
+    ],
+    interpretation: { reasoning: "A relevant match.", category: "connection", confidence: 0.8 },
+    detection: { source: "discovery" },
+    context: {},
+  } as Opportunity;
+  const database = {
+    getProfile: async (userId: string) => ({ identity: { name: userId, bio: "", location: "" }, context: "" }),
+    getNetwork: async () => null,
+    getPremisesForUser: async () => [],
+    getActiveIntents: async () => [
+      { id: "helicopter", payload: "Buy a helicopter", summary: null, createdAt: new Date() },
+      { id: "investment", payload: "I am in SF, looking for investment", summary: null, createdAt: new Date() },
+    ],
+  } as PresenterDatabase;
+
+  it("includes only the focused active intent for a non-introducer viewer", async () => {
+    const context = await gatherPresenterContext(database, opportunity, "viewer", undefined, "helicopter");
+
+    expect(context.viewerContext).toContain("Buy a helicopter");
+    expect(context.viewerContext).not.toContain("looking for investment");
+  });
+
+  it("keeps all active intents when no focused intent is supplied", async () => {
+    const context = await gatherPresenterContext(database, opportunity, "viewer");
+
+    expect(context.viewerContext).toContain("Buy a helicopter");
+    expect(context.viewerContext).toContain("looking for investment");
   });
 });
 

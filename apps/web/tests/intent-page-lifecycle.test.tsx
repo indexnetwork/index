@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
   const archiveIntent = vi.fn();
   const refineIntent = vi.fn();
   const getRadarView = vi.fn();
-  const getNegotiationActivity = vi.fn();
+  const getIntentCycle = vi.fn();
 
   return {
     intent,
@@ -34,11 +34,11 @@ const mocks = vi.hoisted(() => {
     archiveIntent,
     refineIntent,
     getRadarView,
-    getNegotiationActivity,
+    getIntentCycle,
     notificationError: vi.fn(),
     intentsService: { getIntent, setIntentStatus, archiveIntent, refineIntent, visitIntent: vi.fn(async () => {}) },
     opportunitiesService: { getRadarView },
-    conversationsService: { getNegotiationActivity },
+    conversationsService: { getIntentCycle },
   };
 });
 
@@ -135,7 +135,7 @@ describe('Intent detail lifecycle', () => {
     mocks.getRadarView.mockResolvedValue({
       items: [{ opportunityId: 'opportunity-1', status: 'negotiating' }],
     });
-    mocks.getNegotiationActivity.mockResolvedValue([]);
+    mocks.getIntentCycle.mockResolvedValue({ round: { number: 0, size: null, kickoffStartedAt: null, working: 0, paused: 0 }, negotiations: [] });
     mocks.setIntentStatus.mockResolvedValue({
       id: 'intent-1',
       status: 'PAUSED',
@@ -153,7 +153,7 @@ describe('Intent detail lifecycle', () => {
     renderIntentPage();
 
     expect(await screen.findByText('live')).toBeInTheDocument();
-    expect(screen.getByText('background matching on — negotiation activity appears in Radar')).toBeInTheDocument();
+    expect(screen.getByText('background matching on — the PersonalAgent cycle is shown below')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull();
     await expectWorkspacePreserved();

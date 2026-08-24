@@ -16,14 +16,14 @@ const judgeOutputSchema = z.object({
 /**
  * Assert that `output` satisfies the given `criteria` according to an LLM judge.
  * Throws an error (with reasoning embedded) if the assertion fails.
- * Uses google/gemini-2.5-flash.
+ * Uses google/gemini-3.7-flash.
  *
  * @param output - The value produced by the system under test.
  * @param criteria - Natural language description of what the output must satisfy.
  * @throws {Error} If the LLM judge determines the output does not meet the criteria.
  */
 export async function assertLLM(output: unknown, criteria: string): Promise<void> {
-  const modelId = "google/gemini-2.5-flash";
+  const modelId = "google/gemini-3.7-flash";
 
   const model = new ChatOpenAI({
     model: modelId,

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
@@ -6,9 +6,11 @@ import { useConversation } from "@/contexts/ConversationContext";
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
 import { QuestionRegenerationIndicator } from "@/components/chat/QuestionSteps";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
+import { PersonalAgentDebugTrace } from "@/components/PersonalAgentTimeline";
 import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/logger";
+import type { IntentCycleTimelineEntry } from "@/services/conversation";
 
 const logger = log.ui.from("IntentNegotiatorChat");
 
@@ -37,8 +39,10 @@ export interface IntentNegotiatorChatProps {
    * override both with an even fresher signal.
    */
   questionRegenerationPending?: boolean;
-  /** Monotonic signal to reload server-appended Beat narration. */
-  refreshVersion?: number;
+  /** Owner-scoped append-only IS-A ledger, loaded by the intent workspace. */
+  timelineEntries: IntentCycleTimelineEntry[];
+  timelineLoading: boolean;
+  timelineError: boolean;
   /** Opportunity card plumbing shared with the page's Radar panel. */
   opportunityStatusMap: Record<string, string>;
   opportunityActionLoading: Record<string, boolean>;
@@ -70,7 +74,9 @@ export interface IntentNegotiatorChatProps {
 export default function IntentNegotiatorChat({
   intentId,
   questionRegenerationPending,
-  refreshVersion = 0,
+  timelineEntries,
+  timelineLoading,
+  timelineError,
   opportunityStatusMap,
   opportunityActionLoading,
   onOpportunityAction,
@@ -88,20 +94,21 @@ export default function IntentNegotiatorChat({
     clearChat,
     sessionId,
   } = useAIChat();
-  const { subscribeQuestionRegeneration } = useConversation();
+  const { subscribeQuestionRegeneration, subscribePersonalAgentTurnCompleted } = useConversation();
 
   const [agentName, setAgentName] = useState<string | null>(null);
   const [bootstrapRegenerationPending, setBootstrapRegenerationPending] = useState(false);
   const [liveRegenerationPending, setLiveRegenerationPending] = useState<boolean | null>(null);
   const [regenerationReloadToken, setRegenerationReloadToken] = useState(0);
   const appliedRegenerationReloadRef = useRef(0);
+  const [turnReloadToken, setTurnReloadToken] = useState(0);
+  const appliedTurnReloadRef = useRef(0);
   const [ready, setReady] = useState(false);
   const [restoredHistoryLoaded, setRestoredHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const clearChatRef = useRef(clearChat);
-  const appliedRefreshVersionRef = useRef(0);
   useEffect(() => {
     clearChatRef.current = clearChat;
   }, [clearChat]);
@@ -127,6 +134,15 @@ export default function IntentNegotiatorChat({
     });
   }, [intentId, subscribeQuestionRegeneration]);
 
+  // Background IS-A work appends durable DM messages outside this component's
+  // POST/SSE stream. Reconcile from the session only when no user reply is
+  // streaming, preserving the original stream as the primary response path.
+  useEffect(() => {
+    return subscribePersonalAgentTurnCompleted((event) => {
+      if (event.intentId === intentId) setTurnReloadToken((token) => token + 1);
+    });
+  }, [intentId, subscribePersonalAgentTurnCompleted]);
+
   // Apply the reload outside the active stream: while the negotiator is
   // streaming, the shared context owns the message list, so wait for
   // isLoading to settle (the effect re-runs) before pulling fresh history.
@@ -138,6 +154,15 @@ export default function IntentNegotiatorChat({
       logger.warn("Failed to reload after question-message regeneration", { error, intentId });
     });
   }, [intentId, isLoading, loadSession, ready, regenerationReloadToken, sessionId]);
+
+  useEffect(() => {
+    if (!ready || !sessionId || turnReloadToken === appliedTurnReloadRef.current) return;
+    if (isLoading) return;
+    appliedTurnReloadRef.current = turnReloadToken;
+    void loadSession(sessionId).catch((error) => {
+      logger.warn("Failed to reconcile completed PersonalAgent turn", { error, intentId });
+    });
+  }, [intentId, isLoading, loadSession, ready, sessionId, turnReloadToken]);
 
   // Bootstrap: get-or-create the per-intent negotiator session, then load it
   // into the shared chat context. One session per (user, intent, persona) —
@@ -174,16 +199,6 @@ export default function IntentNegotiatorChat({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intentId]);
-
-  // Server-side pool reactions append template messages outside the active
-  // stream. Reload only when the parent emits one of its bounded checkpoints.
-  useEffect(() => {
-    if (!ready || !sessionId || refreshVersion <= appliedRefreshVersionRef.current) return;
-    appliedRefreshVersionRef.current = refreshVersion;
-    void loadSession(sessionId).catch((error) => {
-      logger.warn("Failed to refresh intent negotiator session", { error, intentId });
-    });
-  }, [intentId, loadSession, ready, refreshVersion, sessionId]);
 
   // Follow the stream.
   useEffect(() => {
@@ -381,6 +396,12 @@ export default function IntentNegotiatorChat({
                 </Fragment>
               );
             })}
+
+            <PersonalAgentDebugTrace
+              entries={timelineEntries}
+              loading={timelineLoading}
+              error={timelineError}
+            />
 
             {regenerationPending && <QuestionRegenerationIndicator />}
           </>

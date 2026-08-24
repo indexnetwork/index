@@ -9,6 +9,15 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Fixed
+- Give PersonalAgent user-message jobs an enqueue-relative 70-second execution
+  deadline inside the controller's 90-second wait, with the same fresh budget
+  for background turns. A user-message deadline failure before durable work
+  lands is unrecoverable, so BullMQ cannot hide post-timeout work behind a
+  retry; a background deadline failure remains retryable so a persisted wake
+  cannot be stranded. Once durable work has started, the graph finishes
+  through its existing honest terminal response or kickoff compensation path.
+
 ### Removed
 - **Breaking:** remove the retired `negotiation-run-existing` queue and
   `POST /api/opportunities/:id/reopen`. The old endpoint only enqueued that

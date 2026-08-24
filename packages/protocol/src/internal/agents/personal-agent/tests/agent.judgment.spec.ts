@@ -1,86 +1,158 @@
 import { describe, expect, test } from "bun:test";
 
-import { validateDecidedActs } from "../agent.judgment.js";
-import type { PersonalAgentTurnContext } from "../agent.types.js";
+import { PersonalAgentModel, PERSONAL_AGENT_MODEL_TIMEOUT_MS, validateDecidedAct } from "../agent.judgment.js";
+import type { PersonalAgentExecutedAct, PersonalAgentNonDurableObservation, PersonalAgentTurnContext } from "../agent.types.js";
 
-/**
- * The validator refuses the impossible and re-decides nothing. What it must
- * NOT do is throw away a whole round trip over one impossible act: the retry
- * sees an identical prompt with no feedback, usually repeats the mistake, and
- * the client's real request — a verdict they asked for in words — silently
- * never happens. One bad act drops, exactly as a malformed chip drops.
- */
+class CapturingPersonalAgentModel extends PersonalAgentModel {
+  lastMessages: Array<{ role: string; content: string }> = [];
+
+  protected override async callActsModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
+    this.lastMessages = messages;
+    return { act: "message_user", text: "I chose a different next step." };
+  }
+}
+
+class SignalCapturingPersonalAgentModel extends PersonalAgentModel {
+  choiceSignal?: AbortSignal;
+  proseSignal?: AbortSignal;
+
+  protected override createChoiceModel() {
+    return {
+      invoke: async (_input: unknown, config?: { signal?: AbortSignal }) => {
+        this.choiceSignal = config?.signal;
+        return { act: "message_user", text: "Done." };
+      },
+    } as never;
+  }
+
+  protected override createProseModel() {
+    return {
+      invoke: async (_input: unknown, config?: { signal?: AbortSignal }) => {
+        this.proseSignal = config?.signal;
+        return { text: "A concise strategy." };
+      },
+    } as never;
+  }
+}
+
 function context(overrides: Partial<PersonalAgentTurnContext> = {}): PersonalAgentTurnContext {
   return {
-    userId: "alice",
-    intentId: "intent-1",
-    event: "user_message",
-    message: { text: "reject the second one", sessionId: "dm-1", messageId: "m-1" },
+    userId: "alice", intentId: "intent-1", event: "user_message",
+    message: { text: "hello", sessionId: "dm-1", messageId: "m-1" },
     signalText: "Looking for a technical co-founder.",
     matches: [{ opportunityId: "opportunity-1", label: "A match", status: "negotiating" }],
-    paused: [
-      { negotiationId: "task-1", opportunityId: "opportunity-1", reason: "ready_for_verdict", pausedByUs: true, thread: [] },
-      { negotiationId: "task-2", opportunityId: "opportunity-2", reason: "needs_principal", pausedByUs: true, thread: [] },
-    ],
-    dossier: [],
-    recentDm: [],
-    recentActs: [],
-    ...overrides,
+    kickoffTargets: [], knownMatchIds: [],
+    paused: [{ negotiationId: "task-1", opportunityId: "opportunity-1", reason: "ready_for_verdict", pausedByUs: true, thread: [] }],
+    dossier: [], recentDm: [], recentActs: [], ...overrides,
   };
 }
 
-describe("validateDecidedActs", () => {
-  test("an acts-stage message on a client-message turn drops; the client's verdict still executes", () => {
-    const decided = validateDecidedActs({
-      acts: [
-        { act: "message_user", text: "On it." },
-        { act: "reject", negotiation: 2, reasoning: "They asked me to." },
-      ],
-    }, context());
-
-    expect(decided).toEqual([{ tool: "reject", negotiationId: "task-2", reasoning: "They asked me to." }]);
+describe("validateDecidedAct", () => {
+  test("allows a normal conversational response on a client-message turn", () => {
+    expect(validateDecidedAct({ act: "message_user", text: "What timing works for you?" }, context()))
+      .toEqual({ tool: "message_user", text: "What timing works for you?" });
   });
 
-  test("a number outside the list drops, and its siblings survive", () => {
-    const decided = validateDecidedActs({
-      acts: [
-        { act: "promote", negotiation: 9, reasoning: "Out of range." },
-        { act: "note_dossier", text: "Can start in three weeks." },
-      ],
-    }, context({ event: "all_paused", round: 2 }));
-
-    expect(decided).toEqual([{ tool: "note_dossier", text: "Can start in three weeks." }]);
+  test("keeps references bounded to the state the model was shown", () => {
+    expect(validateDecidedAct({ act: "reject", negotiation: 2 }, context())).toBeNull();
   });
 
-  test("a list where nothing survives is an empty turn, not a retry", () => {
-    // The client-message turn's reply stage writes the reply either way, so a
-    // model that answered with nothing but an acts-stage message has decided
-    // nothing — not failed. Re-deciding it would retry an identical prompt,
-    // get the same output, throw, and hand the client the failure copy.
-    expect(validateDecidedActs({ acts: [{ act: "message_user", text: "hi" }] }, context())).toEqual([]);
+  test("accepts only a bounded user-message verdict and rejects background acceptance", () => {
+    expect(validateDecidedAct({ act: "accept_opportunity", opportunity: 1 }, context()))
+      .toEqual({ tool: "accept_opportunity", opportunityId: "opportunity-1" });
+    expect(validateDecidedAct(
+      { act: "accept_opportunity", opportunity: 1 },
+      context({ event: "matches_ready", message: undefined }),
+    )).toBeNull();
+  });
+});
+
+describe("PersonalAgentModel", () => {
+  test("renders refused irreversible calls as non-durable observations", async () => {
+    const model = new CapturingPersonalAgentModel();
+    const observation: PersonalAgentNonDurableObservation = {
+      kind: "irreversible_tool_refused",
+      tool: "kickoff",
+      reason: "A kickoff already executed against this turn's snapshot. Choose a different next step.",
+    };
+
+    await model.next(context(), [], [observation]);
+
+    const prompt = model.lastMessages.find((message) => message.role === "user")?.content;
+    expect(prompt).toContain("NON-DURABLE REFUSALS (these calls did not execute and changed no state)");
+    expect(prompt).toContain("Refused kickoff: A kickoff already executed against this turn's snapshot.");
   });
 
-  test("output that does not parse at all is still refused", () => {
-    expect(validateDecidedActs({ acts: [{ act: "not_a_tool" }] }, context())).toBeNull();
-    expect(validateDecidedActs({ nope: true }, context())).toBeNull();
+  test("renders a refused verdict by bounded list position, never raw negotiation id", async () => {
+    const model = new CapturingPersonalAgentModel();
+    const negotiationId = "aeb2e65d-0c7b-4a0d-909c-d3868d1cb091";
+    const turn = context({
+      paused: [{
+        negotiationId,
+        opportunityId: "opportunity-1",
+        reason: "ready_for_verdict",
+        pausedByUs: true,
+        thread: [],
+      }],
+    });
+    const observation: PersonalAgentNonDurableObservation = {
+      kind: "irreversible_tool_refused",
+      tool: "promote",
+      negotiationId,
+      reason: "A terminal verdict already executed for this negotiation against this turn's snapshot.",
+    };
+
+    await model.next(turn, [], [observation]);
+
+    const prompt = model.lastMessages.find((message) => message.role === "user")?.content;
+    expect(prompt).toContain("Refused promote for negotiation 1");
+    expect(prompt).not.toContain(negotiationId);
   });
 
-  test("an empty act list is a real answer — the turn decided nothing", () => {
-    expect(validateDecidedActs({ acts: [] }, context())).toEqual([]);
+  test("renders a refused acceptance by bounded match position, never raw opportunity id", async () => {
+    const model = new CapturingPersonalAgentModel();
+    const opportunityId = "5d8e06ce-6d99-4212-a8ec-3a5451950127";
+    const turn = context({ matches: [{ opportunityId, label: "First match", status: "pending" }] });
+    const observation: PersonalAgentNonDurableObservation = {
+      kind: "irreversible_tool_refused",
+      tool: "accept_opportunity",
+      opportunityId,
+      reason: "An acceptance already executed for this match against this turn's snapshot.",
+    };
+
+    await model.next(turn, [], [observation]);
+
+    const prompt = model.lastMessages.find((message) => message.role === "user")?.content;
+    expect(prompt).toContain("Refused accept_opportunity for match 1");
+    expect(prompt).not.toContain(opportunityId);
   });
 
-  test("asking still blocks acting, after the drops", () => {
-    const decided = validateDecidedActs({
-      acts: [
-        { act: "ask", text: "How soon could you start?" },
-        { act: "promote", negotiation: 1, reasoning: "Converged." },
-        { act: "note_dossier", text: "Prefers remote." },
-      ],
-    }, context({ event: "all_paused", round: 2 }));
+  test("renders partial kickoff failures explicitly for the next choice", async () => {
+    const model = new CapturingPersonalAgentModel();
+    const kickoff: PersonalAgentExecutedAct = {
+      tool: "kickoff",
+      round: 2,
+      opened: 2,
+      attempted: 2,
+      failed: 1,
+      reasoning: "Reaching out.",
+    };
 
-    expect(decided).toEqual([
-      { tool: "ask", text: "How soon could you start?" },
-      { tool: "note_dossier", text: "Prefers remote." },
-    ]);
+    await model.next(context(), [kickoff]);
+
+    const prompt = model.lastMessages.find((message) => message.role === "user")?.content;
+    expect(prompt).toContain("attempted to open or re-open 2 match(es); 1 failed to open");
+    expect(prompt).toContain("round settled with 2 negotiation task(s)");
+  });
+
+  test("passes a 15-second abort signal to choice and prose model calls", async () => {
+    const model = new SignalCapturingPersonalAgentModel();
+
+    await model.next(context(), []);
+    await model.strategy(context());
+
+    expect(PERSONAL_AGENT_MODEL_TIMEOUT_MS).toBe(15_000);
+    expect(model.choiceSignal).toBeInstanceOf(AbortSignal);
+    expect(model.proseSignal).toBeInstanceOf(AbortSignal);
   });
 });

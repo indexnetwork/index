@@ -389,7 +389,7 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
 
 export async function checkPresenterCacheNode(state: RadarState, deps: RadarGraphDeps) {
   return timed("RadarGraph.checkPresenterCache", async () => {
-    const { opportunities, userId } = state;
+    const { opportunities, userId, scopeId } = state;
     const poolRankingProvenance = getPoolRankingProvenance(state);
     if (opportunities.length === 0) {
       return { cachedCards: new Map(), uncachedOpportunities: [] };
@@ -412,7 +412,7 @@ export async function checkPresenterCacheNode(state: RadarState, deps: RadarGrap
       const liveNegotiating = opportunities.filter((opp) => opp.status === 'negotiating');
 
       const keys = cacheable.map((opp) =>
-        buildRadarCardPresentationCacheKey(opp.id, opp.status, userId)
+        buildRadarCardPresentationCacheKey(opp.id, opp.status, userId, scopeId)
       );
       const results = keys.length > 0 ? await deps.cache.mget<RadarCardItem>(keys) : [];
 
@@ -642,6 +642,7 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
               opportunity,
               state.userId,
               otherActor?.userId,
+              state.scopeId,
             ),
             loadNegotiationContext(db, opportunity.id, opportunity.status, state.userId),
           ]);
@@ -718,7 +719,7 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
 
 export async function cachePresenterResultsNode(state: RadarState, deps: RadarGraphDeps) {
   return timed("RadarGraph.cachePresenterResults", async () => {
-    const { cards, cachedCards, userId, opportunities } = state;
+    const { cards, cachedCards, userId, opportunities, scopeId } = state;
     const poolRankingProvenance = getPoolRankingProvenance(state);
     const liveById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
     const cardsWithAdjustments = cards.map((card) => {
@@ -744,7 +745,7 @@ export async function cachePresenterResultsNode(state: RadarState, deps: RadarGr
           // safe for the current response but must not become 24h entries.
           if (!status || !isRadarPresentationCacheable(card, status)) return Promise.resolve();
           return deps.cache.set(
-            buildRadarCardPresentationCacheKey(card.opportunityId, status, userId),
+            buildRadarCardPresentationCacheKey(card.opportunityId, status, userId, scopeId),
             card,
             { ttl: RADAR_CACHE_TTL }
           );

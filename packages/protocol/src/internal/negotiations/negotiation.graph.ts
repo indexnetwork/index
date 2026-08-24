@@ -295,17 +295,17 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     // it because history is non-empty).
     const isOpening = messages.length === 0;
 
+    const opportunity = await deps.database.getOpportunity(task.metadata.opportunityId);
+    const actor = opportunity?.actors.find((candidate) => candidate.userId === speakerId && candidate.role !== "introducer");
+    if (!actor?.intent) return { task, turns, phase: "error", error: "Speaking opportunity actor has no intent" };
+
     // Every turn is authored in-process, synchronously, within this invoke:
     // the author is the speaking seat's own PersonalAgent in negotiation
     // scope, which reads the thread and the brief and answers with one verb.
     const authored = await deps.author.authorTurn({
       negotiationId: task.id,
       userId: speakerId,
-      // The SPEAKING seat's own signal, when it has bound one. A seat that has
-      // not kicked this negotiation off yet has no binding, and guessing one
-      // from the opportunity's actor rows is exactly the premise-matched
-      // ambiguity that field cannot be trusted for.
-      ...(seatIntentOf(meta, speakerId) ? { intentId: seatIntentOf(meta, speakerId)! } : {}),
+      intentId: actor.intent,
     });
     const turn: NegotiationTurn = isOpening ? NegotiationOpeningTurnSchema.parse(authored) : authored;
 
@@ -423,11 +423,6 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
-}
-
-/** The signal a seat has bound to this negotiation, if it has bound one. */
-export function seatIntentOf(meta: NegotiationTaskMetadata, userId: string): string | undefined {
-  return Object.entries(meta.seats).find(([, binding]) => binding.userId === userId)?.[0];
 }
 
 /**

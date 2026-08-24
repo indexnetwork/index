@@ -173,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Preserve the destination so the user returns to it after authenticating,
       // instead of being stranded on the home page. This makes protected deep
       // links work when opened while logged out — e.g. the negotiation-trace
-      // link (`/chat/:conversationId`) surfaced in the daily digest. The
+      // negotiation task-index link surfaced in the daily digest. The
       // captured URL is forwarded to Better Auth as `callbackURL`, mirroring the
       // public `/u/:id/chat` page's `openLoginModal(window.location.href)` flow.
       if (typeof window !== 'undefined') {

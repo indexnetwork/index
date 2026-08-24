@@ -4,14 +4,15 @@ process.env.OPENROUTER_API_KEY ??= "test-key-unused";
 import { describe, it, expect } from "bun:test";
 import { RunnableWithFallbacks } from "@langchain/core/runnables";
 import { z } from "zod";
-import { createFallbackModel, createResilientModel, createStructuredModel, getModelName } from "../model.config.js";
+import { CANONICAL_MODEL_AGENTS } from "../model.resolver.js";
+import { createFallbackModel, createModel, createResilientModel, createStructuredModel, getModelName } from "../model.config.js";
 
 describe("getModelName", () => {
   it("returns the hardcoded default when CHAT_MODEL env var is unset", () => {
     const saved = process.env.CHAT_MODEL;
     delete process.env.CHAT_MODEL;
     try {
-      expect(getModelName("chat")).toBe("google/gemini-3-pro-preview");
+      expect(getModelName("chat")).toBe("google/gemini-3.7-flash");
     } finally {
       if (saved !== undefined) process.env.CHAT_MODEL = saved;
     }
@@ -35,7 +36,16 @@ describe("getModelName", () => {
 
   it("returns the hardcoded model for non-chat agents regardless of config", () => {
     const model = getModelName("opportunityEvaluator", { chatModel: "test/override-model" });
-    expect(model).toBe("google/gemini-2.5-flash");
+    expect(model).toBe("google/gemini-3.7-flash");
+  });
+});
+
+describe("Gemini 3.7 Flash configuration", () => {
+  it("uses low mandatory reasoning for every primary by default", () => {
+    for (const agent of CANONICAL_MODEL_AGENTS) {
+      const config = agent === "chat" ? { chatReasoningEffort: "low" as const } : undefined;
+      expect(createModel(agent, config).modelKwargs?.reasoning).toMatchObject({ effort: "low" });
+    }
   });
 });
 

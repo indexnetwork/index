@@ -22,7 +22,8 @@
  */
 import type { NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
-import type { NegotiationGraphDatabase } from "../../../platform/database/negotiation.js";
+import type { NegotiationGraphDatabase, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
+import type { IntentRecord } from "../../../platform/database/entities.js";
 import type { NegotiationRoundReflectEnqueueFn } from "../../negotiations/negotiation.round-reflect.js";
 
 // ─── Invoke contract ─────────────────────────────────────────────────────────
@@ -48,14 +49,8 @@ export type PersonalAgentInput =
   | { userId: string; intentId: string; event: "matches_ready" }
   /** Every negotiation of `(intentId, round)` has paused. */
   | { userId: string; intentId: string; event: "all_paused"; round: number }
-  /**
-   * One negotiator turn for the given seat. `intentId` is the SPEAKING seat's
-   * own signal and is absent when that seat has not bound one — it appears
-   * only once that seat's own kickoff has opened or re-kicked this
-   * negotiation (D21), and it is never guessed from the opportunity's actor
-   * rows. The routing key is `negotiationId`.
-   */
-  | { userId: string; intentId?: string; negotiationId: string };
+  /** One negotiator turn for the given seat and its own signal. */
+  | { userId: string; intentId: string; negotiationId: string };
 
 export type PersonalAgentScope = "global" | "intent" | "negotiation";
 
@@ -73,14 +68,11 @@ export interface PersonalAgentResult {
 // ─── Decided acts (model output, positions already resolved to ids) ──────────
 
 /**
- * `wait` is gone: a turn that decides nothing simply decides nothing, and
- * reflect is ask-or-act rather than ask-or-act-or-wait. `ask` is the verb
- * that BLOCKS acting — a turn that asks does not also execute verdicts, so
- * an answer to a knowledge question can still change them.
+ * One model choice is one tool call. `message_user` is the natural terminal
+ * response, including a question when more information is needed.
  */
 export type PersonalAgentDecidedAct =
   | { tool: "message_user"; text: string; options?: string[] }
-  | { tool: "ask"; text: string; options?: string[] }
   /** Open (or re-open) every undecided match of this signal with fresh briefs. */
   | { tool: "kickoff"; reasoning: string }
   /** Terminal writes IS-A owns: opportunity → `pending` / `rejected`. */
@@ -93,25 +85,23 @@ export type PersonalAgentDecidedAct =
 
 // ─── Executed acts (decision + durable effects) ──────────────────────────────
 
-/** Why a reply-stage delivery fell back to the fixed server-owned copy. */
-export type PersonalAgentReplyFallbackReason = "safety_check_failed" | "model_error";
-
 export type PersonalAgentExecutedAct =
   | {
-    tool: "message_user" | "ask";
+    tool: "message_user";
     text: string;
     options?: string[];
     sessionId: string;
     messageId: string;
-    /** 'reply' marks the streaming reply stage's delivery. */
-    stage?: "reply";
-    fallback?: PersonalAgentReplyFallbackReason;
   }
   | {
     tool: "kickoff";
     round: number;
-    /** How many negotiations this kickoff actually opened or resumed. */
+    /** How many negotiation tasks the round settled with; preserves the round-size semantics. */
     opened: number;
+    /** How many matches this kickoff tried to open or resume. */
+    attempted: number;
+    /** How many of those attempts failed before or during negotiation opening. */
+    failed: number;
     reasoning: string;
   }
   | {
@@ -129,6 +119,30 @@ export type PersonalAgentExecutedAct =
     outcome: string;
     counterparty?: string;
     reason?: string;
+  };
+
+/**
+ * Feedback from the turn runner about a tool choice it refused before any
+ * write. This helps the next choice recover without pretending that the call
+ * executed or recording it in the act ledger.
+ */
+export type PersonalAgentNonDurableObservation =
+  | {
+    kind: "irreversible_tool_refused";
+    tool: "kickoff";
+    reason: string;
+  }
+  | {
+    kind: "irreversible_tool_refused";
+    tool: "promote" | "reject";
+    negotiationId: string;
+    reason: string;
+  }
+  | {
+    kind: "irreversible_tool_refused";
+    tool: "accept_opportunity";
+    opportunityId: string;
+    reason: string;
   };
 
 // ─── Host ports ──────────────────────────────────────────────────────────────
@@ -183,7 +197,7 @@ export interface PersonalAgentConversationPort {
   }): Promise<string>;
 }
 
-/** Token transport for the streaming reply stage. */
+/** Token transport for completed conversational messages. */
 export interface PersonalAgentReplyStreamPort {
   publish(messageId: string, chunk: { seq: number; content: string }): Promise<void>;
 }
@@ -251,21 +265,17 @@ export interface PersonalAgentDeps {
 
 // ─── Judgment seam ───────────────────────────────────────────────────────────
 
-/** A composed reply: the prose the principal reads, plus optional chips. */
-export interface PersonalAgentReply {
-  text: string;
-  options?: string[];
-}
-
 /**
  * Everything the agent asks a model for. One interface so a host, a test or
  * an eval can drive the whole cycle without a provider.
  */
 export interface PersonalAgentJudgment {
-  /** One intent-scope turn: context in, decided acts out. */
-  decide(context: PersonalAgentTurnContext): Promise<PersonalAgentDecidedAct[]>;
-  /** The conversational reply for a principal-message turn, after the acts ran. */
-  reply(context: PersonalAgentTurnContext, executed: PersonalAgentExecutedAct[]): Promise<PersonalAgentReply | null>;
+  /** One intent-scope choice. Durable results and refused calls inform the next choice. */
+  next(
+    context: PersonalAgentTurnContext,
+    executed: PersonalAgentExecutedAct[],
+    nonDurable?: PersonalAgentNonDurableObservation[],
+  ): Promise<PersonalAgentDecidedAct>;
   /** The plan for a round, written into the DM before any negotiation opens. */
   strategy(context: PersonalAgentTurnContext): Promise<string>;
   /** One negotiation's brief. Called once per match, in parallel. */
@@ -276,7 +286,7 @@ export interface PersonalAgentJudgment {
    * inheriting the initiator's.
    */
   seatBrief(input: PersonalAgentSeatBriefInput): Promise<string>;
-  /** One negotiator turn: brief + thread → exactly one verb. */
+  /** One negotiator turn: own intent, task context, brief + thread → exactly one verb. */
   negotiationTurn(input: PersonalAgentNegotiationTurnInput): Promise<NegotiationAuthoredTurn>;
 }
 
@@ -288,10 +298,10 @@ export interface PersonalAgentBriefInput {
 }
 
 export interface PersonalAgentSeatBriefInput {
-  /** This seat's own signal, when it can be established beyond doubt. */
-  signalText: string | null;
-  /** Why the match was made, as discovery recorded it. */
-  matchReasoning: string | null;
+  /** The resolved intent owned by this seat; never the counterparty's. */
+  intent: IntentRecord;
+  /** The negotiation this brief prepares the seat for. */
+  negotiation: NegotiationTaskRow;
   /** What has been said at this table so far. */
   thread: PersonalAgentThreadEntry[];
 }
@@ -302,7 +312,11 @@ export interface PersonalAgentThreadEntry {
 }
 
 export interface PersonalAgentNegotiationTurnInput {
-  /** This side's brief — the only thing from the DM that reaches the thread. */
+  /** The resolved intent owned by the current seat; never the counterparty's. */
+  intent: IntentRecord;
+  /** The current negotiation task context, containing no other seat's brief. */
+  negotiation: NegotiationTaskRow;
+  /** This side's compact, derived negotiating stance. */
   brief: string;
   thread: PersonalAgentThreadEntry[];
   /** True on the negotiation's very first turn — must answer `outreach`. */

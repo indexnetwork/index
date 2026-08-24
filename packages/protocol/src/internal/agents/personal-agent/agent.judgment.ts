@@ -19,8 +19,8 @@ import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema, type NegotiationAuthoredTurn, type NegotiationTurn } from "../../negotiations/negotiation.turn.js";
-import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_REPLY_INSTRUCTION, PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
-import type { PersonalAgentBriefInput, PersonalAgentSeatBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentReply, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
+import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
+import type { PersonalAgentBriefInput, PersonalAgentSeatBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgent:Judgment");
 
@@ -32,6 +32,7 @@ const logger = protocolLogger("PersonalAgent:Judgment");
  * is still running.
  */
 const NEGOTIATION_TURN_TIMEOUT_MS = 20_000;
+export const PERSONAL_AGENT_MODEL_TIMEOUT_MS = 15_000;
 
 const MAX_TEXT_CHARS = 500;
 const MAX_DM_CHARS = 1000;
@@ -155,14 +156,15 @@ export function renderPersonalAgentTurn(context: PersonalAgentTurnContext): stri
   ].join("\n");
 }
 
-/** Compact prose record of the acts the turn just executed, for the reply. */
+/** Compact prose record of the acts the agent just executed, for its next choice. */
 function renderExecutedAct(act: PersonalAgentExecutedAct): string {
   switch (act.tool) {
     case "message_user":
-    case "ask":
       return `- You wrote to your client: ${act.text}`;
     case "kickoff":
-      return `- You opened or re-opened ${act.opened} negotiation(s) for this signal: ${act.reasoning}`;
+      return act.failed > 0
+        ? `- You attempted to open or re-open ${act.attempted} match(es); ${act.failed} failed to open. The round settled with ${act.opened} negotiation task(s): ${act.reasoning}`
+        : `- You attempted to open or re-open ${act.attempted} match(es); none failed to open. The round settled with ${act.opened} negotiation task(s): ${act.reasoning}`;
     case "promote":
       return act.outcome === "resolved"
         ? `- You ended a negotiation and put the match in your client's decision queue: ${act.reasoning}`
@@ -174,7 +176,9 @@ function renderExecutedAct(act: PersonalAgentExecutedAct): string {
     case "note_dossier":
       return `- You noted a fact for the negotiation table: ${act.text}`;
     case "retire_dossier":
-      return act.retired ? "- You retired an outdated dossier entry." : "- You tried to retire a dossier entry that was already gone.";
+      return act.retired
+        ? "- You retired an outdated dossier entry."
+        : "- You tried to retire a dossier entry, but it was not available in this turn and no entry changed.";
     case "accept_opportunity":
       return act.outcome === "executed"
         ? `- You executed your client's verdict: ACCEPTED ${act.counterparty ?? "the match"}.`
@@ -182,22 +186,40 @@ function renderExecutedAct(act: PersonalAgentExecutedAct): string {
   }
 }
 
-/** What the reply stage sees, rendered; exported for the live eval's transparency. */
-export function renderPersonalAgentReplyStage(
+function renderNonDurableObservations(
+  context: PersonalAgentTurnContext,
+  observations: PersonalAgentNonDurableObservation[],
+): string {
+  if (observations.length === 0) return "";
+  const lines = observations.map((observation) => {
+    if (observation.tool === "kickoff") return `- Refused kickoff: ${observation.reason}`;
+    if (observation.tool === "accept_opportunity") {
+      const position = context.matches.findIndex((match) => match.opportunityId === observation.opportunityId);
+      const match = position >= 0 ? `match ${position + 1}` : "a match";
+      return `- Refused accept_opportunity for ${match}: ${observation.reason}`;
+    }
+    const position = context.paused.findIndex((paused) => paused.negotiationId === observation.negotiationId);
+    const negotiation = position >= 0 ? `negotiation ${position + 1}` : "a negotiation";
+    return `- Refused ${observation.tool} for ${negotiation}: ${observation.reason}`;
+  });
+  return `\n\nNON-DURABLE REFUSALS (these calls did not execute and changed no state):\n${lines.join("\n")}`;
+}
+
+function renderExecutedResults(
   context: PersonalAgentTurnContext,
   executed: PersonalAgentExecutedAct[],
+  nonDurable: PersonalAgentNonDurableObservation[],
 ): string {
   const acts = executed.length === 0
     ? "You executed no acts this turn."
     : `The acts you just executed for this turn:\n${executed.map(renderExecutedAct).join("\n")}`;
-  // The reply stage has been observed fabricating outreach ("I've reached out
-  // to ...") on a turn that executed nothing, when the client's own words read
-  // like an answer. Spelled out in context rather than trusted to the general
-  // reply law alone: this is the one shape that invites that story.
-  const nothingHappened = executed.length === 0
+  // A client message that caused no action can invite fabricated outreach.
+  // State the constraint only for that event: a background wake has no client
+  // message, so claiming one would give the model false context.
+  const nothingHappened = executed.length === 0 && context.event === "user_message"
     ? "\n\nYour client just wrote to you and you decided nothing needed doing this turn. You sent NOTHING, contacted NO ONE, and moved NO negotiation forward. If their message reads as an answer to a question, it is NOT resolved — whatever it might have answered stands exactly as it did before they wrote. Tell your client the truth about what did and did not happen."
     : "";
-  return `${renderPersonalAgentTurn(context)}\n\n${acts}${nothingHappened}\n\nNow write your reply to your client.`;
+  return `${renderPersonalAgentTurn(context)}\n\n${acts}${nothingHappened}${renderNonDurableObservations(context, nonDurable)}\n\nChoose the next single tool call. If the conversation is complete for now, use message_user for your natural reply.`;
 }
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -205,12 +227,11 @@ export function renderPersonalAgentReplyStage(
 // Optional fields are `.nullable().optional()`: the structured-output schema
 // translation refuses optional-without-nullable, and the validator below
 // treats null and absent alike.
-const DecidedActsSchema = z.object({
-  acts: z.array(z.object({
-    act: z.enum(["message_user", "ask", "kickoff", "promote", "reject", "note_dossier", "retire_dossier", "accept_opportunity"]),
-    /** message_user / ask: the prose. note_dossier: the fact. */
+const DecidedActSchema = z.object({
+    act: z.enum(["message_user", "kickoff", "promote", "reject", "note_dossier", "retire_dossier", "accept_opportunity"]),
+    /** message_user: the prose. note_dossier: the fact. */
     text: z.string().max(4000).nullable().optional(),
-    /** message_user / ask: 2-4 short canned replies. */
+    /** message_user: 2-4 short canned replies. */
     options: z.array(z.string().max(MAX_OPTION_CHARS)).max(8).nullable().optional(),
     /** promote / reject: 1-based number from the paused list. */
     negotiation: z.number().int().min(1).nullable().optional(),
@@ -222,12 +243,6 @@ const DecidedActsSchema = z.object({
     reasoning: z.string().max(2000).nullable().optional(),
     /** accept_opportunity: the client's own words. */
     reason: z.string().max(500).nullable().optional(),
-  })).max(8),
-});
-
-const ReplySchema = z.object({
-  reply: z.string().max(4000),
-  options: z.array(z.string().max(MAX_OPTION_CHARS)).max(8).nullable().optional(),
 });
 
 const ProseSchema = z.object({ text: z.string().min(1).max(4000) });
@@ -235,50 +250,23 @@ const ProseSchema = z.object({ text: z.string().min(1).max(4000) });
 // ─── Production judgment ─────────────────────────────────────────────────────
 
 export class PersonalAgentModel implements PersonalAgentJudgment {
-  /**
-   * One judgment: context in, decided acts out (numbers already resolved to
-   * ids). Validate → retry once → throw; a turn that cannot be judged must
-   * not be guessed.
-   */
-  async decide(context: PersonalAgentTurnContext): Promise<PersonalAgentDecidedAct[]> {
-    const userMessage = renderPersonalAgentTurn(context);
+  /** One ReAct-style choice: results and refused calls are visible before the next call. */
+  async next(
+    context: PersonalAgentTurnContext,
+    executed: PersonalAgentExecutedAct[],
+    nonDurable: PersonalAgentNonDurableObservation[] = [],
+  ): Promise<PersonalAgentDecidedAct> {
+    const userMessage = renderExecutedResults(context, executed, nonDurable);
     for (let attempt = 0; attempt < 2; attempt++) {
       const raw = await this.callActsModel([
         { role: "system", content: this.systemPrompt(context) },
         { role: "user", content: userMessage },
       ]);
-      const decided = validateDecidedActs(raw, context);
+      const decided = validateDecidedAct(raw, context);
       if (decided) return decided;
-      logger.warn("Personal-agent acts rejected", { attempt: attempt + 1, event: context.event });
+      logger.warn("Personal-agent choice rejected", { attempt: attempt + 1, event: context.event });
     }
-    throw new Error("PersonalAgent turn produced no valid act list");
-  }
-
-  /**
-   * The reply stage: the conversational reply for a client-message turn,
-   * composed AFTER the acts executed. The returned prose must pass the
-   * identifier-leak gate before anyone sees it — fail → one retry → null, and
-   * the caller delivers the fixed fallback copy. Check-then-stream: the
-   * transport only sees a completed, checked reply.
-   */
-  async reply(context: PersonalAgentTurnContext, executed: PersonalAgentExecutedAct[]): Promise<PersonalAgentReply | null> {
-    const userMessage = renderPersonalAgentReplyStage(context, executed);
-    const system = `${this.systemPrompt(context)}\n\n${PERSONAL_AGENT_REPLY_INSTRUCTION}`;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const parsed = ReplySchema.safeParse(await this.callReplyModel([
-        { role: "system", content: system },
-        { role: "user", content: userMessage },
-      ]));
-      if (parsed.success) {
-        const text = parsed.data.reply.trim();
-        if (text && isSafeAgentMessageProse(text)) {
-          const options = normalizeMessageOptions(parsed.data.options);
-          return { text, ...(options ? { options } : {}) };
-        }
-      }
-      logger.warn("Personal-agent reply rejected", { attempt: attempt + 1, malformed: !parsed.success });
-    }
-    return null;
+    throw new Error("PersonalAgent turn produced no valid tool choice");
   }
 
   async strategy(context: PersonalAgentTurnContext): Promise<string> {
@@ -320,8 +308,8 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
    */
   async seatBrief(input: PersonalAgentSeatBriefInput): Promise<string> {
     const known = [
-      input.signalText ? `YOUR CLIENT'S SIGNAL:\n${truncate(input.signalText, 800)}` : "YOUR CLIENT'S SIGNAL: not established — do not guess at it.",
-      input.matchReasoning ? `WHY THIS MATCH WAS MADE:\n${truncate(input.matchReasoning, MAX_TEXT_CHARS)}` : "WHY THIS MATCH WAS MADE: not recorded.",
+      `YOUR CLIENT'S ACTUAL INTENT:\n${input.intent.payload}`,
+      `NEGOTIATION CONTEXT:\nThis table is ${input.negotiation.state}; ${input.negotiation.metadata.initiatorUserId === input.intent.userId ? "your seat opened it" : "the counterparty opened it"}.`,
       `WHAT HAS BEEN SAID SO FAR:\n${renderThread(input.thread)}`,
     ].join("\n\n");
     const parsed = ProseSchema.safeParse(await this.callProseModel("personal_agent_seat_brief", [
@@ -336,15 +324,16 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
   }
 
   async negotiationTurn(input: PersonalAgentNegotiationTurnInput): Promise<NegotiationAuthoredTurn> {
+    const context = `YOUR CLIENT'S ACTUAL INTENT:\n${input.intent.payload}\n\nNEGOTIATION CONTEXT:\nThis table is ${input.negotiation.state}; ${input.negotiation.metadata.initiatorUserId === input.intent.userId ? "your seat opened it" : "the counterparty opened it"}.\n\nBRIEF (A COMPACT DERIVED STANCE):\n${input.brief}\n\nTHREAD SO FAR:\n${renderThread(input.thread)}`;
     if (input.isOpening) {
       return NegotiationOpeningTurnSchema.parse(await this.callOpeningTurnModel([
         { role: "system", content: PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT },
-        { role: "user", content: `BRIEF:\n${input.brief}\n\nWrite your opening outreach.` },
+        { role: "user", content: `${context}\n\nWrite your opening outreach.` },
       ]));
     }
     return NegotiationAuthoredTurnSchema.parse(await this.callTurnModel([
       { role: "system", content: PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT },
-      { role: "user", content: `BRIEF:\n${input.brief}\n\nTHREAD SO FAR:\n${renderThread(input.thread)}\n\nChoose your move.` },
+      { role: "user", content: `${context}\n\nChoose your move.` },
     ]));
   }
 
@@ -358,15 +347,27 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
    * needs a provider key.
    */
   protected async callActsModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
-    return createStructuredModel("chat", DecidedActsSchema, { name: "personal_agent_acts" }).invoke(messages);
-  }
-
-  protected async callReplyModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
-    return createStructuredModel("chat", ReplySchema, { name: "personal_agent_reply" }).invoke(messages);
+    return invokeWithAbortSignal(
+      this.createChoiceModel(),
+      messages,
+      AbortSignal.timeout(PERSONAL_AGENT_MODEL_TIMEOUT_MS),
+    );
   }
 
   protected async callProseModel(name: string, messages: Array<{ role: string; content: string }>): Promise<unknown> {
-    return createStructuredModel("chat", ProseSchema, { name }).invoke(messages);
+    return invokeWithAbortSignal(
+      this.createProseModel(name),
+      messages,
+      AbortSignal.timeout(PERSONAL_AGENT_MODEL_TIMEOUT_MS),
+    );
+  }
+
+  protected createChoiceModel(): ReturnType<typeof createStructuredModel> {
+    return createStructuredModel("chat", DecidedActSchema, { name: "personal_agent_choice" });
+  }
+
+  protected createProseModel(name: string): ReturnType<typeof createStructuredModel> {
+    return createStructuredModel("chat", ProseSchema, { name });
   }
 
   protected async callOpeningTurnModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
@@ -398,101 +399,60 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
  * identifier-leak gate, a verdict on a turn that cannot carry one — and
  * nothing here re-decides.
  *
- * The ONE ordering rule the design demands lives here rather than in the
- * prompt: a turn that asks executes nothing, because the answer may change
- * what the right decision is.
+ * Sequencing is conversational: the graph supplies each executed result to
+ * the next model choice, while this validator keeps references bounded.
  */
-export function validateDecidedActs(
+export function validateDecidedAct(
   raw: unknown,
   context: PersonalAgentTurnContext,
-): PersonalAgentDecidedAct[] | null {
-  const parsed = DecidedActsSchema.safeParse(raw);
+): PersonalAgentDecidedAct | null {
+  const parsed = DecidedActSchema.safeParse(raw);
   if (!parsed.success) return null;
-
-  const judged = new Set<number>();
-  const decided: PersonalAgentDecidedAct[] = [];
-  let kickedOff = false;
-  let dropped = 0;
-  // One impossible act DROPS, exactly as a malformed chip drops: refusing the
-  // whole round trip over it would discard the client's real requests too, and
-  // the retry sees an identical prompt with no feedback, so it usually makes
-  // the same mistake twice and the turn dies. Only a list with nothing valid
-  // left in it is worth re-deciding.
-  const drop = (): void => { dropped += 1; };
-  for (const act of parsed.data.acts) {
+  const act = parsed.data;
+  // This is a single-choice loop: an impossible choice returns null and gets
+  // one model retry; valid choices pass through without being re-decided.
     switch (act.act) {
       case "message_user":
-      case "ask": {
-        // On a client-message turn the reply is the dedicated stage's — an
-        // acts-stage message would race it and double-speak. Structural, not
-        // judgment: dropped, and the reply stage says whatever it wanted to say.
-        if (context.event === "user_message") { drop(); break; }
+      {
         const text = act.text?.trim();
-        if (!text || !isSafeAgentMessageProse(text)) { drop(); break; }
+        if (!text || !isSafeAgentMessageProse(text)) return null;
         const options = normalizeMessageOptions(act.options);
-        decided.push({ tool: act.act, text, ...(options ? { options } : {}) });
-        break;
+        return { tool: "message_user", text, ...(options ? { options } : {}) };
       }
       case "kickoff": {
-        if (kickedOff) { drop(); break; }
-        kickedOff = true;
-        decided.push({ tool: "kickoff", reasoning: act.reasoning?.trim() || "Reaching out to this signal's matches." });
-        break;
+        return { tool: "kickoff", reasoning: act.reasoning?.trim() || "Reaching out to this signal's matches." };
       }
       case "promote":
       case "reject": {
-        if (!act.negotiation || act.negotiation > context.paused.length) { drop(); break; }
-        if (judged.has(act.negotiation)) { drop(); break; }
-        judged.add(act.negotiation);
-        decided.push({
+        if (!act.negotiation || act.negotiation > context.paused.length) return null;
+        return {
           tool: act.act,
           negotiationId: context.paused[act.negotiation - 1]!.negotiationId,
           reasoning: act.reasoning?.trim() || (act.act === "promote" ? "Worth surfacing." : "Not a match."),
-        });
-        break;
+        };
       }
       case "accept_opportunity": {
         // A verdict exists only as the client's explicit word — an event with
         // no client message cannot carry one. Whether the word WAS explicit
         // is the prompt's law; this refuses only the structurally impossible.
-        if (context.event !== "user_message") { drop(); break; }
-        if (!act.opportunity || act.opportunity > context.matches.length) { drop(); break; }
-        decided.push({
+        if (context.event !== "user_message") return null;
+        if (!act.opportunity || act.opportunity > context.matches.length) return null;
+        return {
           tool: "accept_opportunity",
           opportunityId: context.matches[act.opportunity - 1]!.opportunityId,
           ...(act.reason?.trim() ? { reason: act.reason.trim() } : {}),
-        });
-        break;
+        };
       }
       case "note_dossier": {
         const text = act.text?.trim();
-        if (!text) { drop(); break; }
-        decided.push({ tool: "note_dossier", text });
-        break;
+        if (!text) return null;
+        return { tool: "note_dossier", text };
       }
       case "retire_dossier": {
-        if (!act.entry || act.entry > context.dossier.length) { drop(); break; }
-        decided.push({ tool: "retire_dossier", entryId: context.dossier[act.entry - 1]!.id });
-        break;
+        if (!act.entry || act.entry > context.dossier.length) return null;
+        return { tool: "retire_dossier", entryId: context.dossier[act.entry - 1]!.id };
       }
     }
-  }
-
-  // An emptied list is still an answer. Re-deciding it would retry an
-  // identical prompt with no feedback — the model produces the same output,
-  // the turn throws, and on a client-message turn the client gets the failure
-  // copy instead of the reply the stage would have written anyway. `null` is
-  // reserved for output that did not parse at all.
-  if (dropped > 0) {
-    logger.warn("Personal-agent acts partially dropped", { event: context.event, dropped, kept: decided.length });
-  }
-
-  // Questions block acting. Ordering in code, not a prompt rule: an answer to
-  // a knowledge question may change every verdict below it.
-  if (decided.some((act) => act.tool === "ask")) {
-    return decided.filter((act) => act.tool !== "kickoff" && act.tool !== "promote" && act.tool !== "reject");
-  }
-  return decided;
 }
 
 /** Re-exported for the graph's own thread rendering of a negotiator turn. */

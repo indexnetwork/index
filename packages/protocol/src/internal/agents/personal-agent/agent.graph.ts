@@ -5,30 +5,30 @@
  * The cycle this graph runs:
  *
  *   discovery persists matches ──► matches_ready ──► kickoff
- *     (may ask first) → strategy into the DM → one brief per match in
+ *     → strategy into the DM → one brief per match in
  *     parallel → open ALL of them. No selection at kickoff: the negotiator
  *     filters by negotiating, IS-A judges at reflect where it has turns to
  *     judge on.
  *
- *   every negotiation of the round paused ──► all_paused ──► reflect
- *     phase 1 ASK: the questions the principal must answer, merged across
- *     negotiations. If there are none, phase 2 ACT: reject / promote /
- *     re-kick the rest with fresh briefs. Verdicts NEVER execute in phase 1.
+ *   every negotiation of the round paused ──► all_paused ──► reflect,
+ *     where the agent can continue the conversation and take any supported
+ *     action in the order the current context warrants.
  *
- *   the principal wrote ──► user_message ──► a DM turn that can also ACT,
+ *   the principal wrote ──► user_message ──► a conversational tool turn,
  *     because answers to the reflect questions arrive as ordinary messages.
  *
- * `matches_ready` and `all_paused` are ONE node — "look at the state, maybe
- * ask, else act" — differing only in what ACT does. Judgment lives in the
+ * All intent events share one conversation loop. Judgment lives in the
  * prompt; this file is effects, and every effect leaves a ledger row.
  */
 import { END, StateGraph, Annotation } from "@langchain/langgraph";
 
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
+import { requestContext } from "../../shared/observability/request-context.js";
 import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
+import type { IntentRecord } from "../../../platform/database/entities.js";
 import { PersonalAgentModel } from "./agent.judgment.js";
-import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentPausedNegotiation, PersonalAgentReply, PersonalAgentReplyFallbackReason, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
+import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgentGraph");
 
@@ -38,7 +38,7 @@ const MAX_LEDGER_ACTS = 20;
 /**
  * How many matches a turn sees, newest kept — a prolific signal must not
  * flood the prompt, and kickoff opens exactly the set the agent decided from
- * (D19). What is over the cap waits for the next round, which is what rounds
+ * (D52). What is over the cap waits for the next round, which is what rounds
  * are for.
  */
 const MAX_MATCHES = 12;
@@ -90,15 +90,8 @@ async function mapWithConcurrency<T, R>(
  */
 const NOT_KICKOFF_ELIGIBLE_STATUSES = new Set(["pending"]);
 
-/**
- * Fixed honest copy delivered when the reply stage could not produce prose
- * that passes the safety gate, or the reply model call itself failed.
- * Server-owned, never model text: the acts the turn executed are durable
- * either way, so the copy says that instead of pretending nothing happened.
- */
-export const PERSONAL_AGENT_REPLY_FALLBACK =
-  "I acted on your message and everything I did is recorded, but I could not compose a clean reply just now. "
-  + "Ask me where things stand and I will lay it out.";
+/** Bounded tool steps keep a faulty model from holding a serialized inbox forever. */
+const MAX_INTENT_TOOL_STEPS = 8;
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -145,6 +138,12 @@ async function loadThread(
   seatUserId: string,
 ): Promise<PersonalAgentThreadEntry[]> {
   return threadFromMessages(await deps.negotiationDatabase.getNegotiationMessages(taskId), seatUserId);
+}
+
+/** The task context a seat may show its model: never the other seat's brief. */
+function taskForSeat(task: NegotiationTaskRow, seatUserId: string): NegotiationTaskRow {
+  const brief = task.briefs[seatUserId];
+  return { ...task, briefs: brief === undefined ? {} : { [seatUserId]: brief } };
 }
 
 /**
@@ -303,14 +302,70 @@ async function deliverMessage(
 
 interface TurnAccumulator {
   acts: PersonalAgentExecutedAct[];
+  nonDurable: PersonalAgentNonDurableObservation[];
   messages: string[];
+  /** The model explicitly selected the natural terminal response. */
+  finalMessageChosen: boolean;
+}
+
+/**
+ * The model sees completed tool results, but context remains a snapshot for
+ * one serialized turn. Do not let that snapshot turn one kickoff into several
+ * rounds or call an irreversible target twice. Even an error outcome can be
+ * uncertain, so it still consumes that target's one call for this snapshot.
+ */
+function isRepeatedIrreversibleAct(
+  act: PersonalAgentDecidedAct,
+  executed: PersonalAgentExecutedAct[],
+): boolean {
+  if (act.tool === "kickoff") return executed.some((entry) => entry.tool === "kickoff");
+  if (act.tool === "promote" || act.tool === "reject") {
+    return executed.some((entry) =>
+      (entry.tool === "promote" || entry.tool === "reject")
+      && entry.negotiationId === act.negotiationId);
+  }
+  if (act.tool === "accept_opportunity") {
+    return executed.some((entry) => entry.tool === "accept_opportunity" && entry.opportunityId === act.opportunityId);
+  }
+  return false;
+}
+
+function refusedIrreversibleObservation(act: PersonalAgentDecidedAct): PersonalAgentNonDurableObservation {
+  if (act.tool === "kickoff") {
+    return {
+      kind: "irreversible_tool_refused",
+      tool: "kickoff",
+      reason: "A kickoff already executed against this turn's snapshot. Choose a different next step.",
+    };
+  }
+  if (act.tool === "promote" || act.tool === "reject") {
+    return {
+      kind: "irreversible_tool_refused",
+      tool: act.tool,
+      negotiationId: act.negotiationId,
+      reason: "A terminal verdict already executed for this negotiation against this turn's snapshot. Choose a different next step.",
+    };
+  }
+  if (act.tool === "accept_opportunity") {
+    return {
+      kind: "irreversible_tool_refused",
+      tool: "accept_opportunity",
+      opportunityId: act.opportunityId,
+      reason: "An acceptance already executed for this match against this turn's snapshot. Choose a different next step.",
+    };
+  }
+  throw new Error("Only repeated irreversible acts can be refused here");
+}
+
+function throwIfIntentAborted(): void {
+  requestContext.getStore()?.abortSignal?.throwIfAborted();
 }
 
 async function say(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
   accumulator: TurnAccumulator,
-  tool: "message_user" | "ask",
+  tool: "message_user",
   text: string,
   options?: string[],
 ): Promise<void> {
@@ -347,10 +402,32 @@ async function ledgerOrLog(
   }
 }
 
+/** Record a terminal recovery even if its DM delivery itself is unavailable. */
+async function ledgerTerminalFallback(
+  deps: PersonalAgentDeps,
+  context: PersonalAgentTurnContext,
+  text: string,
+  cause: unknown,
+): Promise<void> {
+  try {
+    await deps.ledger.append({
+      userId: context.userId,
+      intentId: context.intentId,
+      event: { kind: context.event, ...(context.round !== undefined ? { round: context.round } : {}) },
+      act: {
+        tool: "terminal_fallback",
+        text,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      },
+    });
+  } catch (ledgerError) {
+    logger.error("Failed to ledger terminal fallback", { intentId: context.intentId, error: ledgerError });
+  }
+}
+
 /**
  * Fixed, server-owned copy for a kickoff that has no one to reach out to.
- * A background turn has no reply stage behind it, so without this the
- * principal is told nothing at all and — with no negotiation left active and
+ * Without this, the principal is told nothing at all and — with no negotiation left active and
  * the round's reflect job retained forever — nothing can wake the agent for
  * this signal again.
  */
@@ -358,20 +435,15 @@ export const PERSONAL_AGENT_NOTHING_TO_OPEN =
   "There is nothing new for me to put to anyone on this signal right now — what I have is either "
   + "waiting on your decision or has run as far as it can. Tell me if you want me to change tack.";
 
-/**
- * Fixed, server-owned copy for a background turn that decided nothing at all.
- *
- * The doc's node is "look at the state, maybe ask, else act" — deciding
- * NEITHER is not a state that contract has. It is reachable anyway (the model
- * can return an empty act list), and on a background event there is no reply
- * stage behind it, so the turn would end in silence: for reflect that also
- * consumes the round's one retained job, and the signal is never heard from
- * again. Saying this keeps the loop reachable — the principal's next message
- * is an ordinary `user_message` turn that can ask or act.
- */
-export const PERSONAL_AGENT_NO_NEXT_STEP =
-  "I looked at where this signal stands and I do not have a next step for it right now. "
-  + "Tell me how you would like to proceed and I will pick it up.";
+/** Honest terminal response when the bounded loop has already done work. */
+export const PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED =
+  "I reached my turn limit before I could safely choose another step. "
+  + "I have recorded what happened; please tell me how you want to continue.";
+
+/** Honest terminal response when a later model choice fails after durable work. */
+export const PERSONAL_AGENT_POST_ACTION_FAILURE =
+  "I completed some work, but I could not safely continue this turn after that. "
+  + "I have recorded what happened; please tell me how you want to proceed.";
 
 export const PERSONAL_AGENT_NO_MATCHES_YET =
   "Nothing has come up for this signal yet. I will pick it up as soon as it does.";
@@ -386,7 +458,7 @@ export const PERSONAL_AGENT_STRATEGY_FALLBACK =
   + "this once — ask me what I am putting to them and I will lay it out.";
 
 /**
- * Kickoff / re-kick: the ACT both event turns can reach.
+ * Kickoff / re-kick: one tool available in every intent event.
  *
  * Strategy into the DM first (the principal sees and can correct the plan),
  * then ONE BRIEF PER MATCH IN PARALLEL, then every match opened together.
@@ -441,14 +513,17 @@ async function runKickoff(
   }
 
   if (matches.length === 0) {
-    // Say so. A background turn has no reply stage, and with nothing active
+    throwIfIntentAborted();
+    // Say so. With nothing active
     // and the reflect job retained forever, silence here ends the cycle for
     // this signal with the principal never told.
     if (context.event !== "user_message") {
       await say(deps, context, accumulator, "message_user",
         context.matches.length === 0 ? PERSONAL_AGENT_NO_MATCHES_YET : PERSONAL_AGENT_NOTHING_TO_OPEN);
     }
-    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round: lifecycle.round, opened: 0, reasoning });
+    await recordKickoff(deps, context, accumulator, {
+      tool: "kickoff", round: lifecycle.round, opened: 0, attempted: 0, failed: 0, reasoning,
+    });
     // Runs on this path too: it is the authoritative recovery for a batch the
     // inbox could not coalesce, and a turn with nothing to open is exactly
     // when a batch that landed mid-turn would otherwise be waited on forever.
@@ -460,15 +535,24 @@ async function runKickoff(
   // retry and propagates. The strategy itself falls back rather than throwing
   // — losing a whole wake because the prose gate disliked one sentence, three
   // times over an identical prompt, is not a trade worth making.
-  const strategy = await strategyOrFallback(judgment, context);
+  const kickoffContext: PersonalAgentTurnContext = {
+    ...context,
+    dossier: await deps.dossier.readActiveEntries(context.userId, context.intentId),
+  };
+  const strategy = await strategyOrFallback(judgment, kickoffContext);
+  throwIfIntentAborted();
   await say(deps, context, accumulator, "message_user", strategy);
 
+  throwIfIntentAborted();
   const round = await deps.negotiationDatabase.bumpIntentNegotiationRound(context.intentId);
   // ─── from here down, nothing throws (D54) ───────────────────────────────
+  // There are deliberately no cancellation gates below the bump. This
+  // kickoff is already underway: abort-aware brief/open calls reject into the
+  // settled results so compensation and round settlement can still finish.
   const threadByOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.thread]));
 
   const opens = await mapWithConcurrency(matches, KICKOFF_CONCURRENCY, async (match) => {
-    const brief = await judgment.brief(context, {
+    const brief = await judgment.brief(kickoffContext, {
       match,
       strategy,
       thread: threadByOpportunity.get(match.opportunityId) ?? [],
@@ -499,13 +583,17 @@ async function runKickoff(
       tool: "kickoff",
       round,
       opened: 0,
+      attempted: matches.length,
+      failed: failed.length,
       reasoning: `Could not open ${failed.length} of ${matches.length} match(es) this round.`,
     });
   }
 
   const opened = await settleRound(deps, context, round, { triggerReflect: true });
   if (opened === 0 && repairedRound !== null) await triggerRoundReflect(deps, context, repairedRound);
-  await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
+  await recordKickoff(deps, context, accumulator, {
+    tool: "kickoff", round, opened, attempted: matches.length, failed: failed.length, reasoning,
+  });
   if (opened > 0) await wakeForNewMatches(deps, context);
 }
 
@@ -732,8 +820,7 @@ async function spentItsTurnBudget(deps: PersonalAgentDeps, match: PersonalAgentM
 }
 
 /**
- * Execute one decided act. Kickoff is not handled here — it runs last, after
- * every verdict, so it reads statuses the verdicts already moved.
+ * Execute one decided act. Kickoff uses its own multi-stage runner.
  */
 async function executeAct(
   deps: PersonalAgentDeps,
@@ -743,7 +830,6 @@ async function executeAct(
 ): Promise<void> {
   switch (act.tool) {
     case "message_user":
-    case "ask":
       await say(deps, context, accumulator, act.tool, act.text, act.options);
       return;
     case "promote":
@@ -787,6 +873,25 @@ async function executeAct(
       return;
     }
     case "accept_opportunity": {
+      // `judgment` is injectable, so production's numbered-reference
+      // validator is not the effects boundary. The host may read the signal's
+      // wider match set; never let an injected id reach a hidden match that
+      // was outside this turn's bounded snapshot.
+      if (!context.matches.some((match) => match.opportunityId === act.opportunityId)) {
+        logger.warn("Decided acceptance on a match this turn cannot see", {
+          intentId: context.intentId,
+          opportunityId: act.opportunityId,
+        });
+        const missing: PersonalAgentExecutedAct = {
+          tool: "accept_opportunity",
+          opportunityId: act.opportunityId,
+          outcome: "not_available",
+          ...(act.reason ? { reason: act.reason } : {}),
+        };
+        await ledgerOrLog(deps, context, missing);
+        accumulator.acts.push(missing);
+        return;
+      }
       // The principal's own explicit word, executing through the host's
       // untouched owner path. Nothing here re-decides explicitness: that law
       // is the prompt's.
@@ -819,6 +924,23 @@ async function executeAct(
       return;
     }
     case "retire_dossier": {
+      // As with verdict and acceptance ids, the documented judgment seam can
+      // bypass the numbered-reference validator. Retire only an entry in the
+      // active dossier snapshot the model was given.
+      if (!context.dossier.some((entry) => entry.id === act.entryId)) {
+        logger.warn("Decided retirement of a dossier entry this turn cannot see", {
+          intentId: context.intentId,
+          entryId: act.entryId,
+        });
+        const missing: PersonalAgentExecutedAct = {
+          tool: "retire_dossier",
+          entryId: act.entryId,
+          retired: false,
+        };
+        await ledgerOrLog(deps, context, missing);
+        accumulator.acts.push(missing);
+        return;
+      }
       const retired = await deps.dossier.retireEntry({ userId: context.userId, entryId: act.entryId });
       const executed: PersonalAgentExecutedAct = { tool: "retire_dossier", entryId: act.entryId, retired };
       await ledgerOrLog(deps, context, executed);
@@ -826,67 +948,6 @@ async function executeAct(
       return;
     }
   }
-}
-
-/**
- * The reply stage: a principal-message turn always ends with the agent's
- * conversational reply — a second model call over the same context plus the
- * just-executed acts, checked BEFORE it is persisted or a chunk leaves the
- * host. A reply the model could not produce safely becomes the fixed
- * fallback copy, and the failure is ledgered on the act — never a thrown
- * error: the acts already executed, and re-running them to retry prose would
- * trade a wording problem for duplicate effects.
- */
-async function runReplyStage(
-  deps: PersonalAgentDeps,
-  context: PersonalAgentTurnContext,
-  accumulator: TurnAccumulator,
-): Promise<void> {
-  const judgment = deps.judgment ?? defaultJudgment();
-  let composed: PersonalAgentReply | null = null;
-  let fallback: PersonalAgentReplyFallbackReason | undefined;
-  try {
-    composed = await judgment.reply(context, accumulator.acts);
-    if (composed === null) fallback = "safety_check_failed";
-  } catch (err) {
-    logger.error("PersonalAgent reply stage failed", {
-      userId: context.userId,
-      intentId: context.intentId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    fallback = "model_error";
-  }
-
-  const content = composed?.text ?? PERSONAL_AGENT_REPLY_FALLBACK;
-  const options = composed?.options;
-  // Everything below is guarded, because the file's contract for this stage —
-  // "never a thrown error" — has to be true of the whole stage, not just the
-  // model call. The turn's acts are already executed and durable; letting a
-  // delivery or ledger blip out of here fails the job, and the retry
-  // re-decides and re-executes every verdict and kickoff on top of a reply
-  // the principal may already be reading.
-  let delivered: { sessionId: string; messageId: string } | null = null;
-  try {
-    delivered = await deliverMessage(deps, context, content, options);
-  } catch (err) {
-    logger.error("Failed to deliver a turn's reply", {
-      userId: context.userId,
-      intentId: context.intentId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-  if (!delivered) return;
-  const executed: PersonalAgentExecutedAct = {
-    tool: "message_user",
-    text: content,
-    ...(options ? { options } : {}),
-    ...delivered,
-    stage: "reply",
-    ...(fallback ? { fallback } : {}),
-  };
-  await ledgerOrLog(deps, context, executed);
-  accumulator.acts.push(executed);
-  accumulator.messages.push(content);
 }
 
 /**
@@ -935,58 +996,105 @@ async function publishTurnMessages(
 
 async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
   const input = state.input as Extract<PersonalAgentInput, { event: PersonalAgentIntentEventKind }>;
+  let context: PersonalAgentTurnContext | null = null;
+  let accumulator: TurnAccumulator | null = null;
   try {
-    const context = await assembleContext(deps, input);
+    context = await assembleContext(deps, input);
     const judgment = deps.judgment ?? defaultJudgment();
-    const decided = await judgment.decide(context);
-    logger.info("PersonalAgent turn decided", {
-      userId: context.userId,
-      intentId: context.intentId,
-      event: context.event,
-      acts: decided.map((act) => act.tool),
-    });
-
-    const accumulator: TurnAccumulator = { acts: [], messages: [] };
-    // Kickoff runs last, after every verdict — it re-reads the match list, and
-    // a match this turn promoted or rejected must not be re-opened.
-    const kickoff = decided.find((act): act is Extract<PersonalAgentDecidedAct, { tool: "kickoff" }> => act.tool === "kickoff");
-    for (const act of decided) {
-      if (act.tool === "kickoff") continue;
-      await executeAct(deps, context, accumulator, act);
+    accumulator = { acts: [], nonDurable: [], messages: [], finalMessageChosen: false };
+    for (let step = 0; step < MAX_INTENT_TOOL_STEPS; step++) {
+      const act = await judgment.next(context, accumulator.acts, accumulator.nonDurable);
+      throwIfIntentAborted();
+      logger.info("PersonalAgent chose tool", { intentId: context.intentId, event: context.event, step, tool: act.tool });
+      if (act.tool === "accept_opportunity" && context.event !== "user_message") {
+        logger.warn("PersonalAgent refused acceptance without a client message", {
+          intentId: context.intentId,
+          event: context.event,
+        });
+        accumulator.nonDurable.push({
+          kind: "irreversible_tool_refused",
+          tool: "accept_opportunity",
+          opportunityId: act.opportunityId,
+          reason: "Acceptance requires an explicit verdict in a client message. Choose a different next step.",
+        });
+        continue;
+      }
+      if (isRepeatedIrreversibleAct(act, accumulator.acts)) {
+        logger.warn("PersonalAgent repeated an irreversible tool in one turn", {
+          intentId: context.intentId,
+          event: context.event,
+          tool: act.tool,
+        });
+        accumulator.nonDurable.push(refusedIrreversibleObservation(act));
+        continue;
+      }
+      if (act.tool === "message_user") {
+        accumulator.finalMessageChosen = true;
+        await executeAct(deps, context, accumulator, act);
+        break;
+      }
+      if (act.tool === "kickoff") await runKickoff(deps, context, accumulator, act.reasoning);
+      else {
+        await executeAct(deps, context, accumulator, act);
+        if (act.tool === "note_dossier" || act.tool === "retire_dossier") {
+          context = {
+            ...context,
+            dossier: await deps.dossier.readActiveEntries(context.userId, context.intentId),
+          };
+        }
+      }
     }
-    if (kickoff) await runKickoff(deps, context, accumulator, kickoff.reasoning);
-
-    // A background event has no reply stage behind it, so a turn that decided
-    // nothing would end in silence — and for reflect, silently consume the
-    // round's one retained job. Never the empty end of a cycle.
-    if (context.event !== "user_message" && accumulator.acts.length === 0) {
-      logger.warn("A background turn decided nothing", { intentId: context.intentId, event: context.event });
-      await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_NO_NEXT_STEP);
+    if (!accumulator.finalMessageChosen) {
+      if (accumulator.acts.length === 0) throwIfIntentAborted();
+      logger.warn("PersonalAgent exhausted its intent tool budget", { intentId: context.intentId, event: context.event });
+      await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
     }
-
-    if (context.event === "user_message") {
-      await runReplyStage(deps, context, accumulator);
-      await publishTurnMessages(deps, input.event === "user_message" ? input.messageId : "", accumulator.messages);
-    }
+    if (input.event === "user_message") await publishTurnMessages(deps, input.messageId, accumulator.messages);
 
     return {
       phase: "done",
       result: { scope: "intent", acts: accumulator.acts, messages: accumulator.messages },
     };
   } catch (err) {
+    // An outer queue retry repeats the entire turn. Once a durable tool has
+    // completed, a later invalid model choice must therefore terminate this
+    // turn rather than replaying its earlier effects.
+    const durableEffectExecuted = (accumulator?.acts.length ?? 0) > 0;
+    if (context && accumulator && durableEffectExecuted) {
+      logger.error("PersonalAgent failed after a durable effect; ending turn without retry", {
+        intentId: context.intentId,
+        event: context.event,
+        error: err,
+      });
+      try {
+        await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_POST_ACTION_FAILURE);
+      } catch (fallbackError) {
+        logger.error("PersonalAgent terminal fallback could not be delivered", {
+          intentId: context.intentId,
+          error: fallbackError,
+        });
+        await ledgerTerminalFallback(deps, context, PERSONAL_AGENT_POST_ACTION_FAILURE, err);
+      }
+      if (input.event === "user_message") await publishTurnMessages(deps, input.messageId, accumulator.messages);
+      return {
+        phase: "done",
+        result: { scope: "intent", acts: accumulator.acts, messages: accumulator.messages },
+      };
+    }
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 /**
  * The negotiation scope: the same PersonalAgent at the A2A table. It reads
- * the thread and ITS OWN brief — the brief is the only thing from a DM that
- * reaches a negotiation — and answers with exactly one verb or one pause. It
- * never ends a negotiation; NegotiationGraph's `apply` is the sink.
+ * the resolved intent of its own seat, task context, thread, and ITS OWN
+ * brief — a compact derived stance, not the source of truth — and answers
+ * with exactly one verb or one pause. It never ends a negotiation;
+ * NegotiationGraph's `apply` is the sink.
  *
  * A seat with no brief yet — the counterparty, always, since only the
  * initiator's kickoff wrote one — authors its own here, from what THIS side
- * knows, and persists it. That is the whole of D18: the counterparty's agent
+ * knows, and persists it. That is the whole of D51: the counterparty's agent
  * arrives with its own instructions rather than the initiator's.
  */
 async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
@@ -994,11 +1102,16 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
   try {
     const task = await deps.negotiationDatabase.getNegotiationTask(input.negotiationId);
     if (!task) return { phase: "error", error: "Negotiation not found" };
+    const intent = await deps.negotiationDatabase.getIntent(input.intentId);
+    if (!intent) return { phase: "error", error: "Intent not found" };
     const messages = await deps.negotiationDatabase.getNegotiationMessages(task.id);
     const judgment = deps.judgment ?? defaultJudgment();
     const thread = threadFromMessages(messages, input.userId);
-    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, task, input.userId, thread);
+    const negotiation = taskForSeat(task, input.userId);
+    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, negotiation, input.userId, intent, thread);
     const turn: NegotiationAuthoredTurn = await judgment.negotiationTurn({
+      intent,
+      negotiation,
       brief,
       thread,
       // Raw message count, not parsed-turn count: the negotiation graph's
@@ -1015,36 +1128,21 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
 /**
  * Author and persist the brief for a seat that has none.
  *
- * The seat's own signal is used when it can be established BEYOND DOUBT: a
- * premise-matched actor's `intent` field names the intent it matched AGAINST,
- * not one it owns, so an actor carrying this negotiation's own `intentId` is
- * ambiguous and is treated as unknown rather than guessed at. Without it the
- * brief is written from what this side can see honestly — why the match
- * exists, and whatever has been said so far — which is still its own
- * instructions rather than the counterparty's.
+ * The negotiation node resolves this seat's own intent once from the
+ * persisted opportunity actor and provides the same intent plus the actual
+ * task history to both brief authoring and the negotiation turn.
  */
 async function authorSeatBrief(
   deps: PersonalAgentDeps,
   judgment: NonNullable<PersonalAgentDeps["judgment"]>,
   task: NegotiationTaskRow,
   seatUserId: string,
+  intent: IntentRecord,
   thread: PersonalAgentThreadEntry[],
 ): Promise<string> {
-  const opportunity = await deps.negotiationDatabase.getOpportunity(task.metadata.opportunityId).catch(() => null);
-  // The seat's OWN binding, recorded when its own kickoff opened or re-kicked
-  // this negotiation. Never inferred from the opportunity's actor rows: a
-  // premise-matched actor's `intent` names the intent it matched AGAINST, so
-  // it cannot be trusted to name the seat's own signal. A seat that has not
-  // kicked off here yet simply has no signal to show, and the brief says so.
-  const seatIntentId = Object.entries(task.metadata.seats)
-    .find(([, binding]) => binding.userId === seatUserId)?.[0] ?? null;
-  const intent = seatIntentId ? await deps.negotiationDatabase.getIntent(seatIntentId).catch(() => null) : null;
-
   const brief = await judgment.seatBrief({
-    signalText: intent ? (intent.summary ?? intent.payload ?? null) : null,
-    matchReasoning: typeof (opportunity as { reasoning?: unknown } | null)?.reasoning === "string"
-      ? (opportunity as unknown as { reasoning: string }).reasoning
-      : null,
+    intent,
+    negotiation: task,
     thread,
   });
   await deps.negotiationDatabase.setNegotiationBrief(task.id, seatUserId, brief);
