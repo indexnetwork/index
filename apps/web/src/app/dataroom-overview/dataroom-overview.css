@@ -19,7 +19,11 @@
 /* Wide blocks scroll inside themselves rather than the page. */
 .dro .doc > div{max-width:100%;}
 
-.dro .foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:56px;padding-top:20px;border-top:1px solid #E6E6E2;font-size:12.5px;color:var(--muted);}
+.dro .foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;margin-top:56px;padding-top:20px;border-top:1px solid #E6E6E2;font-size:12.5px;color:var(--muted);}
+.dro .foot .links{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.dro .foot .mark{display:block;flex-shrink:0;opacity:.7;transition:opacity .15s;}
+.dro .foot .mark:hover{opacity:1;}
+.dro .foot .mark img{height:14px;width:auto;display:block;}
 .dro .foot a{color:var(--muted);text-decoration:none;}
 .dro .foot a:hover{color:var(--ink);text-decoration:underline;text-underline-offset:2px;}
 .dro .foot .dot{color:#E6E6E2;}

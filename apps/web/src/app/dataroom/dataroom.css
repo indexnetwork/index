@@ -21,5 +21,9 @@
 .drm a{color:var(--ink);text-decoration:underline;text-underline-offset:3px;}
 .drm a:hover{color:var(--muted);}
 
-.drm .foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:44px;padding-top:16px;border-top:1px solid var(--hairline);color:var(--muted);}
+.drm .foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;margin-top:44px;padding-top:16px;border-top:1px solid var(--hairline);color:var(--muted);}
+.drm .foot .links{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.drm .foot .mark{display:block;flex-shrink:0;opacity:.7;transition:opacity .15s;}
+.drm .foot .mark:hover{opacity:1;}
+.drm .foot .mark img{height:14px;width:auto;display:block;}
 .drm .foot .dot{color:var(--hairline);}
