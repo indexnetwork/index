@@ -287,10 +287,7 @@ async function runKickoff(
   const judgment = deps.judgment ?? defaultJudgment();
 
   const lifecycle = await deps.negotiationDatabase.getIntentNegotiationRound(context.intentId);
-  if (lifecycle.kickoffStartedAt && lifecycle.roundSize === null) {
-    logger.warn("Repairing a kickoff that did not finish its round", { intentId: context.intentId, round: lifecycle.round });
-    await settleRound(deps, context, lifecycle.round);
-  }
+  const interruptedRound = lifecycle.kickoffStartedAt && lifecycle.roundSize === null ? lifecycle.round : null;
 
   // Re-read: verdicts executed earlier this turn already moved statuses, and
   // a promoted or rejected match must not be re-opened.
@@ -305,6 +302,22 @@ async function runKickoff(
     eligible: !(await spentItsTurnBudget(deps, match)),
   })));
   const matches = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
+
+  // A round a kickoff began and never finished has to be settled, and it has
+  // to be settled BEFORE this turn bumps: the size stamp is guarded on the
+  // intent's current round, so once the counter moves that round can never be
+  // stamped again. Whether it also gets its reflect depends on what happens
+  // next — with matches to open, this turn is about to carry its negotiations
+  // into the next round, and a reflect queued for a round whose tasks then
+  // move away wakes the agent with "every negotiation of this round has
+  // paused" and nothing listed.
+  let repairedRound: number | null = null;
+  if (interruptedRound !== null) {
+    logger.warn("Repairing a kickoff that did not finish its round", { intentId: context.intentId, round: interruptedRound });
+    const settled = await settleRound(deps, context, interruptedRound, { triggerReflect: matches.length === 0 });
+    if (settled > 0 && matches.length > 0) repairedRound = interruptedRound;
+  }
+
   if (matches.length === 0) {
     await recordKickoff(deps, context, accumulator, { tool: "kickoff", round: lifecycle.round, opened: 0, reasoning });
     return;
@@ -336,7 +349,10 @@ async function runKickoff(
     if (open.status === "rejected") await compensateFailedOpen(deps, context, matches[index]!, round, open.reason);
   }));
 
-  const opened = await settleRound(deps, context, round);
+  const opened = await settleRound(deps, context, round, { triggerReflect: true });
+  // The new round opened nothing, so it carried nothing away from the repaired
+  // one: that round is still the current state and still needs its reflect.
+  if (opened === 0 && repairedRound !== null) await triggerRoundReflect(deps, context, repairedRound);
   await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
   if (opened > 0) await wakeForNewMatches(deps, context, matches);
 }
@@ -403,18 +419,26 @@ async function settleRound(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
   round: number,
+  options: { triggerReflect: boolean },
 ): Promise<number> {
   const tasks = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(context.intentId, round);
   if (tasks.length === 0) return 0;
 
-  if (deps.reflectEnqueue) {
-    const active = await deps.negotiationDatabase.countActiveNegotiationsForRound(context.intentId, round);
-    if (active === 0) {
-      await deps.reflectEnqueue({ userId: context.userId, intentId: context.intentId, round });
-    }
-  }
+  if (options.triggerReflect) await triggerRoundReflect(deps, context, round);
   await deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, tasks.length);
   return tasks.length;
+}
+
+/** Enqueue this round's reflect if every negotiation in it has stopped. */
+async function triggerRoundReflect(
+  deps: PersonalAgentDeps,
+  context: PersonalAgentTurnContext,
+  round: number,
+): Promise<void> {
+  if (!deps.reflectEnqueue) return;
+  const active = await deps.negotiationDatabase.countActiveNegotiationsForRound(context.intentId, round);
+  if (active !== 0) return;
+  await deps.reflectEnqueue({ userId: context.userId, intentId: context.intentId, round });
 }
 
 /**
@@ -592,7 +616,22 @@ async function runReplyStage(
 
   const content = composed?.text ?? PERSONAL_AGENT_REPLY_FALLBACK;
   const options = composed?.options;
-  const delivered = await deliverMessage(deps, context, content, options);
+  // Everything below is guarded, because the file's contract for this stage —
+  // "never a thrown error" — has to be true of the whole stage, not just the
+  // model call. The turn's acts are already executed and durable; letting a
+  // delivery or ledger blip out of here fails the job, and the retry
+  // re-decides and re-executes every verdict and kickoff on top of a reply
+  // the principal may already be reading.
+  let delivered: { sessionId: string; messageId: string } | null = null;
+  try {
+    delivered = await deliverMessage(deps, context, content, options);
+  } catch (err) {
+    logger.error("Failed to deliver a turn's reply", {
+      userId: context.userId,
+      intentId: context.intentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
   if (!delivered) return;
   const executed: PersonalAgentExecutedAct = {
     tool: "message_user",
@@ -602,7 +641,11 @@ async function runReplyStage(
     stage: "reply",
     ...(fallback ? { fallback } : {}),
   };
-  await appendLedger(deps, context, executed);
+  try {
+    await appendLedger(deps, context, executed);
+  } catch (err) {
+    logger.error("Failed to ledger a turn's reply", { intentId: context.intentId, error: err });
+  }
   accumulator.acts.push(executed);
   accumulator.messages.push(content);
 }

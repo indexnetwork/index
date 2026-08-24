@@ -184,7 +184,8 @@ function buildCycle(judgment: ScriptedJudgment, counterparties: string[]) {
     wakeForMatches: async (input) => { wakes.push(input); },
     judgment,
   }).createGraph();
-  return { agent, negotiationHost, principal, wakes };
+  const judgmentMatches = () => judgment.decideCalls.at(-1)?.matches ?? [];
+  return { agent, negotiationHost, principal, wakes, judgmentMatches };
 }
 
 const userMessage = (text: string) => ({
@@ -624,5 +625,93 @@ describe("PersonalAgent — what a turn may open, and what it may claim", () => 
 
     expect(result.error).toBe("connection reset");
     expect(judgment.decideCalls).toHaveLength(0);
+  });
+});
+
+describe("PersonalAgent — round-4 regressions", () => {
+  test("the interrupted-round repair does not queue a reflect for a round this turn supersedes", async () => {
+    // Settling the old round and firing its reflect, then bumping past it and
+    // carrying its negotiations into the new round, wakes the agent with
+    // "every negotiation of this round has paused" and nothing listed — which
+    // invites a kickoff that strands the round that actually holds the work.
+    const judgment = new ScriptedJudgment([
+      () => [{ tool: "kickoff", reasoning: "Reaching out." }],
+      () => [{ tool: "kickoff", reasoning: "Again." }],
+    ]);
+    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const stamp = negotiationHost.database.stampIntentNegotiationRoundSize;
+    let failNextStamp = true;
+    negotiationHost.database.stampIntentNegotiationRoundSize = async (intentId, round, size) => {
+      if (failNextStamp) { failNextStamp = false; throw new Error("stamp write failed"); }
+      return stamp.call(negotiationHost.database, intentId, round, size);
+    };
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    const stranded = negotiationHost.round;
+    negotiationHost.reflectJobs.length = 0;
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    // Only the round that actually holds the negotiations is reflected on.
+    expect(negotiationHost.reflectJobs.map((job) => job.round)).toEqual([stranded + 1]);
+    expect([...negotiationHost.tasks.values()][0]!.metadata.round).toBe(stranded + 1);
+  });
+
+  test("an interrupted round that nothing supersedes still gets its reflect", async () => {
+    const judgment = new ScriptedJudgment([
+      () => [{ tool: "kickoff", reasoning: "Reaching out." }],
+      () => [{ tool: "kickoff", reasoning: "Nothing left to open." }],
+    ]);
+    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const stamp = negotiationHost.database.stampIntentNegotiationRoundSize;
+    let failNextStamp = true;
+    negotiationHost.database.stampIntentNegotiationRoundSize = async (intentId, round, size) => {
+      if (failNextStamp) { failNextStamp = false; throw new Error("stamp write failed"); }
+      return stamp.call(negotiationHost.database, intentId, round, size);
+    };
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    const stranded = negotiationHost.round;
+    negotiationHost.reflectJobs.length = 0;
+    // The match is decided in the meantime, so the next turn opens nothing.
+    negotiationHost.opportunities.get(OPPORTUNITY_ID)!.status = "rejected";
+
+    const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(acted.acts).toEqual([{ tool: "kickoff", round: stranded, opened: 0, reasoning: "Nothing left to open." }]);
+    expect(negotiationHost.round).toBe(stranded);              // no bump
+    expect(negotiationHost.roundSize).toBe(1);                 // settled all the same
+    expect(negotiationHost.reflectJobs.map((job) => job.round)).toEqual([stranded]);
+  });
+
+  test("a reply-stage failure never retries the turn's already-executed acts", async () => {
+    // The acts are durable and the reply may already be on the principal's
+    // screen; a thrown error here fails the job, and the retry re-decides and
+    // re-executes every verdict and kickoff on top of it.
+    const judgment = new ScriptedJudgment([() => [{ tool: "note_dossier", text: "Can start in a week." }]]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    principal.conversation.addMessage = async () => { throw new Error("write failed"); };
+
+    const result = await agent.invoke(userMessage("I can start in a week."));
+
+    expect(result.error).toBeUndefined();
+    expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier"]);
+    expect(principal.dossierEntries).toHaveLength(1);
+  });
+
+  test("an unapproved introduction is filtered before a brief is spent on it", async () => {
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
+    const { agent, negotiationHost, judgmentMatches } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
+    negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.actors.push({
+      userId: "dave-introducer", intent: INTENT_ID, networkId: "network-1", role: "introducer",
+    });
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    // The host reader flags it, so the kickoff never reaches the open at all.
+    expect(judgmentMatches().some((match) => match.opportunityId === SECOND_OPPORTUNITY_ID
+      && match.awaitingIntroducerApproval === true)).toBe(true);
+    expect(judgment.briefCalls.map((call) => call.opportunityId)).toEqual([OPPORTUNITY_ID]);
+    expect(negotiationHost.tasks.size).toBe(1);
   });
 });

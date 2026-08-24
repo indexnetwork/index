@@ -85,21 +85,33 @@ export class PersonalAgentQueue {
    */
   async addMatchesReadyEvent(input: { userId: string; intentId: string }): Promise<Job<PersonalAgentEvent>> {
     const data: PersonalAgentEvent = { ...input, event: 'matches_ready' };
-    const options = { removeOnComplete: true, removeOnFail: true };
+    // Failed jobs are RETAINED. A terminally failed wake is the record that a
+    // persisted batch never reached its agent — deleted, the batch is lost
+    // with no trace and no other path back, which is exactly what
+    // `matchesReadyNode` throws to prevent, one hop downstream.
+    const options = { removeOnComplete: true };
     const primary = personalAgentMatchesReadyJobId(input.intentId);
     for (const jobId of [primary, `${primary}.next`]) {
-      if (await this.isRunning(jobId)) continue;
+      if (!(await this.slotWouldRun(jobId))) continue;
       return this.queue.add('matches_ready', data, { ...options, jobId });
     }
-    this.logger.warn('Both matches_ready slots are running; enqueueing an unkeyed follow-up', { intentId: input.intentId });
+    this.logger.warn('Both matches_ready slots are occupied; enqueueing an unkeyed follow-up', { intentId: input.intentId });
     return this.queue.add('matches_ready', data, options);
   }
 
-  /** True when a job with this id exists and has already started — an add onto it would be lost. */
-  private async isRunning(jobId: string): Promise<boolean> {
+  /**
+   * Whether adding onto this id would actually cause a run.
+   *
+   * BullMQ silently returns the existing job for a duplicate id, so a slot is
+   * only reusable while its job is still waiting to start — one that is
+   * already running has read its match list, and one that has failed will
+   * never read anything again. Either way the batch would vanish into it.
+   */
+  private async slotWouldRun(jobId: string): Promise<boolean> {
     const existing = await this.queue.getJob(jobId);
-    if (!existing) return false;
-    return (await existing.getState()) === 'active';
+    if (!existing) return true;
+    const state = await existing.getState();
+    return state === 'waiting' || state === 'delayed' || state === 'waiting-children' || state === 'prioritized';
   }
 
   /**

@@ -75,6 +75,13 @@ export interface ActionableCounterparty {
   status: string;
   /** The prompt line: name + one-line state. */
   label: string;
+  /**
+   * An introduction whose introducer has not approved it yet. The negotiation
+   * graph refuses to open one; this flag is what keeps a kickoff from
+   * spending a brief on it and the prompt from offering it as a verdict
+   * target.
+   */
+  awaitingIntroducerApproval: boolean;
 }
 
 /** Structural slice of what the opportunity list returns for this purpose. */
@@ -83,7 +90,7 @@ interface ListedOpportunity {
   status: string;
   createdAt: Date | string;
   counterpartName?: string;
-  actors?: Array<{ userId: string; role?: string }>;
+  actors?: Array<{ userId: string; role?: string; approved?: boolean }>;
 }
 
 /** Injectable seams; production resolves the real service. */
@@ -143,17 +150,19 @@ const asTime = (value: Date | string): number => {
  * Introducer rows are excluded: an introducer is not a party to the pairing,
  * and accept/reject is the parties' decision.
  *
- * Never throws — the prompt path treats an unreadable list as "no verdicts to
- * offer", which is strictly better than losing the turn.
+ * THROWS. Every caller that reasons over this list — the PersonalAgent's
+ * every turn — must see a read failure as a failure, not as an empty signal.
+ * {@link readActionableCounterparties} is the degrading wrapper, for the tool
+ * surfaces that would rather offer nothing than lose a turn.
  */
-export async function readActionableCounterparties(
+export async function readSignalMatches(
   userId: string,
   intentId: string,
   deps?: NegotiatorVerdictHostDeps,
   /** Widened by the PersonalAgent, which also reaches out to undecided matches. */
   statuses: OpportunityStatus[] = ACTIONABLE_VERDICT_STATUSES,
 ): Promise<ActionableCounterparty[]> {
-  try {
+  {
     const list = deps?.listOpportunities
       ?? ((uid: string, options: { statuses: OpportunityStatus[]; scopeType: 'intent'; scopeId: string }) =>
         opportunityService.getOpportunitiesForUser(uid, options));
@@ -173,14 +182,37 @@ export async function readActionableCounterparties(
       .map((row, index) => {
         const name = row.counterpartName?.trim() || 'An unnamed match';
         const state = STATE_LINE[row.status] ?? row.status;
+        const introducers = (row.actors ?? []).filter((actor) => actor.role === 'introducer');
         return {
           position: index + 1,
           opportunityId: row.id,
           name,
           status: row.status,
           label: `${name} — ${state}`,
+          awaitingIntroducerApproval: introducers.length > 0 && !introducers.every((actor) => actor.approved === true),
         };
       });
+  }
+}
+
+/**
+ * The same list, for a surface that would rather show nothing than lose a
+ * turn: the persona/MCP verdict tools render it as the options a tool call may
+ * name, and an unreadable list there honestly means "no verdicts to offer".
+ *
+ * This swallow is NOT for the PersonalAgent. Its turns are ABOUT this list —
+ * a reflect that reads `[]` from a transient database error decides nothing,
+ * succeeds, and permanently consumes the round's one retained reflect job.
+ * That lane calls {@link readSignalMatches} and lets the error propagate.
+ */
+export async function readActionableCounterparties(
+  userId: string,
+  intentId: string,
+  deps?: NegotiatorVerdictHostDeps,
+  statuses: OpportunityStatus[] = ACTIONABLE_VERDICT_STATUSES,
+): Promise<ActionableCounterparty[]> {
+  try {
+    return await readSignalMatches(userId, intentId, deps, statuses);
   } catch (err) {
     logger.error('negotiator_verdict_enumeration_failed', {
       userId,
@@ -273,7 +305,12 @@ async function passVerdict(
   deps?: NegotiatorVerdictHostDeps,
 ): Promise<NegotiatorVerdictResult> {
   try {
-    const actionable = await readActionableCounterparties(userId, input.intentId, deps);
+    // The SAME status set the agent's context numbered. Listing the narrower
+    // verdict set here made "accept the first one" before kickoff always
+    // answer `unknown_counterparty`, for a match `opportunityService` accepts
+    // perfectly well — the agent numbered a latent row this re-list could not
+    // see.
+    const actionable = await readActionableCounterparties(userId, input.intentId, deps, PERSONAL_AGENT_MATCH_STATUSES);
     if (actionable.length === 0) return { status: 'none_actionable' };
 
     const relist = () => ({

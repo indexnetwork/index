@@ -35,6 +35,15 @@ describe('matches_ready wiring', () => {
     expect(toolService).toMatch(/negotiationDatabase: conversationDatabaseAdapter[\s\S]*?matchesReady,/);
   });
 
+  it("binds the agent's match list to the read that PROPAGATES a failure", () => {
+    // `readActionableCounterparties` swallows to `[]` for the tool surfaces.
+    // Bound here it would undo the protocol-side throw entirely: a transient
+    // read error becomes a reflect that saw nothing and burned the round.
+    expect(composition).toContain('readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)');
+    expect(composition).not.toContain('readActionableCounterparties(');
+    expect(composition).toContain('awaitingIntroducerApproval');
+  });
+
   it('gives BOTH graphs the reflect enqueue and the agent its re-wake', () => {
     // A composition missing either is silent: rounds settle and never reflect,
     // and a batch that lands mid-turn is never picked up. Same class as the

@@ -28,7 +28,7 @@ import { intentDossierAdapter } from '../../adapters/intent-dossier.adapter';
 import { agentService } from '../../services/agent.service';
 import { AgentDispatcherImpl } from '../../services/agent-dispatcher.service';
 import { chatSessionService } from '../../services/chat.service';
-import { PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readActionableCounterparties } from '../agent/negotiator-verdict.host';
+import { PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readSignalMatches } from '../agent/negotiator-verdict.host';
 import { publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
 
 /**
@@ -70,9 +70,19 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
   dossier: intentDossierAdapter,
   ledger: intentAgentLedgerAdapter,
   opportunities: {
+    // `readSignalMatches`, NOT the degrading `readActionableCounterparties`:
+    // every one of the agent's turns is about this list, and a read that
+    // failed must fail the turn. Swallowed to `[]` it becomes a reflect that
+    // saw no negotiations, decided nothing, succeeded — and burned the round's
+    // one retained reflect job.
     readMatches: async (userId, intentId) => (
-      await readActionableCounterparties(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)
-    ).map((match) => ({ opportunityId: match.opportunityId, label: match.label, status: match.status })),
+      await readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)
+    ).map((match) => ({
+      opportunityId: match.opportunityId,
+      label: match.label,
+      status: match.status,
+      ...(match.awaitingIntroducerApproval ? { awaitingIntroducerApproval: true } : {}),
+    })),
     // The owner's own verdict, through the untouched owner path — the SAME
     // `updateOpportunityStatus` the Radar's accept calls.
     accept: async (userId, input) => {

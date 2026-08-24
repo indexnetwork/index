@@ -136,6 +136,33 @@ describe('PersonalAgentQueue serialization', () => {
     }
   });
 
+  it('a failed matches_ready is retained, and its slot is not silently reused', async () => {
+    // Deleting a terminally failed wake loses the persisted batch with no
+    // trace and no other path back — the same silent loss `matchesReadyNode`
+    // throws to prevent, one hop downstream. Retained, the slot is occupied,
+    // so the next batch must take the follow-up slot instead of vanishing
+    // into a job that will never run again.
+    const built = buildQueue(() => { throw new Error('wake failed'); });
+    built.queue.startWorker();
+    try {
+      const first = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-fail' });
+      expect(first.opts.removeOnFail).not.toBe(true);
+      const deadline = Date.now() + 15_000;
+      let state = await first.getState();
+      while (state !== 'failed' && Date.now() < deadline) {
+        await sleep(100);
+        state = await first.getState();
+      }
+      expect(state).toBe('failed');
+      expect(await built.queue.queue.getJob(first.id!)).not.toBeNull();
+
+      const second = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-fail' });
+      expect(second.id).not.toBe(first.id);
+    } finally {
+      await built.queue.close();
+    }
+  });
+
   it('a reflect job is retained on completion so the round can never reflect twice', async () => {
     await withQueue(buildQueue(() => idle), async ({ queue }) => {
       const job = await queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', round: 4 });

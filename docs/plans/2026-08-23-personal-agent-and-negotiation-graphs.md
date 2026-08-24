@@ -563,15 +563,30 @@ nothing had been said with the outreach sitting in the thread, and `apply`
 stamps `pausedBy` as the seat that owed the next turn, so the principal would
 read "paused by their agent" for our own failure.
 
-### D39. A turn fails on the reads it is ABOUT
+### D39. A turn fails on the reads it is ABOUT — at the HOST binding
+**Restated after round 4: the first version changed nothing in production.**
+
 Chose: only the agent's display name degrades. A `matches_ready` that cannot
 read its matches, an `all_paused` that cannot read its paused negotiations, a
-DM read that errors, the turn-cap eligibility read — all now throw, so the
-queue retries.
-Alternative rejected: `.catch(() => [])` (the shipped behaviour) — it turns a
-transient database error into a SUCCESSFUL turn that saw nothing and decided
-nothing. On reflect that is terminal: the job id is retained forever (D32), so
-the round's one chance to reflect is consumed by a turn that never saw it.
+DM read that errors, the turn-cap eligibility read — all throw, so the queue
+retries. And the throw is real at the OUTERMOST implementation:
+`readSignalMatches` propagates, and `readActionableCounterparties` is now a
+thin swallowing wrapper kept for the tool surfaces that would rather offer
+nothing than lose a turn.
+
+Version 1 made the protocol seam throw and stopped there. The only host
+binding behind it still caught everything and returned `[]`, so nothing
+changed where it mattered: a transient database error on a reflect still
+produced a turn that saw no negotiations, decided nothing, succeeded — and
+consumed the round's one retained reflect job. The lesson generalises: when a
+fix is "make this propagate", verify it at the outermost real implementation,
+not at the seam you edited. Every other read the same change touched was
+audited at its host binding; `readActionableCounterparties` was the only
+swallow in any of those chains.
+
+Alternative rejected: making the verdict tools' list throw as well — an
+unreadable options list there honestly means "no verdicts to offer", and
+losing a chat turn over it is worse.
 
 ### D40. The reflect enqueue runs BEFORE the size stamp
 Chose: in kickoff's own settle step, run the all-paused check and enqueue
@@ -601,4 +616,42 @@ is idempotent.
 Alternative rejected: logging and continuing — the batch persists and nobody
 is ever woken, which is precisely the silent loss the whole hand-off exists to
 prevent.
+
+### D43. The interrupted-round repair defers that round's reflect
+Chose: the repair settles and stamps the interrupted round — it must, because
+the size stamp is guarded on the intent's current round and cannot be written
+once the counter moves — but fires its reflect only when this turn is NOT
+about to supersede it. Eligibility is computed first, so the common case (no
+matches to open, so the repaired round stands) takes the enqueue-then-stamp
+ordering of D40.
+Alternative rejected: settling with the reflect unconditionally — the same
+turn then bumps and carries those negotiations into the next round, so the
+queued reflect runs against an empty round and wakes the agent with "every
+negotiation of this round has paused" and nothing listed, inviting a kickoff
+that strands the round holding the actual work.
+
+### D44. The reply stage never throws — the whole stage, not just the model call
+Chose: the delivery and the ledger append inside the reply stage are guarded
+too, the way `recordKickoff` already guards its ledger.
+Alternative rejected: guarding only the model call (the shipped shape) — the
+acts are already executed and the reply may already be on the principal's
+screen, so a database blip after delivery failed the job and the retry
+re-decided and re-executed every verdict and kickoff on top of it.
+
+### D45. A failed wake is kept, and its slot is not reused
+Chose: `matches_ready` jobs keep failed records, and a slot only accepts a new
+batch while its job is still waiting to start — a running job has already read
+its match list, and a failed one will never read anything again.
+Alternative rejected: `removeOnFail: true` (the shipped shape) — a terminally
+failed wake deleted the only record that a persisted batch never reached its
+agent, which is the silent loss D42 makes `matchesReadyNode` throw to prevent,
+moved one hop downstream.
+
+### D46. The owner-verdict id lane lists the statuses the agent numbered
+Chose: `passVerdictOnOpportunity` re-lists with
+`PERSONAL_AGENT_MATCH_STATUSES` on the agent's id lane.
+Alternative rejected: the narrower verdict set (the shipped shape) — the
+agent's context numbers `latent`/`draft` matches, so "accept the first one"
+before kickoff always answered `unknown_counterparty` for a match
+`opportunityService` accepts perfectly well.
 
