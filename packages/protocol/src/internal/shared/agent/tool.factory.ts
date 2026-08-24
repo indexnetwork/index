@@ -6,7 +6,7 @@ import { EnrichmentGraphFactory } from "../../enrichment/enrichment.graph.js";im
 import { HydeGraphFactory } from "../../discovery/hyde.graph.js";
 import { HydeGenerator } from "../../discovery/hyde.generator.js";
 import { LensInferrer } from "../../discovery/lens.inferrer.js";
-import { Networks } from "../../../capabilities/networks.js";import { NegotiationGraphFactory } from "../../negotiations/negotiation.graph.js";
+import { Networks } from "../../../capabilities/networks.js";
 import { PremiseGraphFactory } from "../../premises/premise.graph.js";
 import { protocolLogger } from "../observability/protocol.logger.js";
 
@@ -144,20 +144,18 @@ export async function createChatTools(
     lensInferrer,
     hydeGenerator
   ).createGraph();
-  // Prefer the host's one fully-wired composition (reflectEnqueue included —
-  // the all-paused trigger is lost for good otherwise, since BullMQ's jobId
-  // dedup means that moment doesn't come again) over building a second,
-  // reflect-less instance here.
-  const negotiationGraph = deps.negotiationGraph ?? new NegotiationGraphFactory({
-    database: deps.negotiationDatabase,
-  }).createGraph();
+  // The host's one fully-wired composition or nothing. A second instance
+  // built here would have no reflect enqueue and no turn author: the
+  // all-paused trigger would be lost for good (BullMQ's jobId dedup means
+  // that moment doesn't come again) and every turn would throw.
+  const negotiationGraph = deps.negotiationGraph;
   const opportunityGraph = new OpportunityGraphFactory(
     database,
     embedder,
     compiledHydeGraph,
     undefined, // evaluator (default)
     undefined, // queueNotification
-    negotiationGraph,
+    deps.matchesReady,
     deps.agentDispatcher,
     deps.queueNegotiateExisting,
     deps.stampNewbornOpportunities,

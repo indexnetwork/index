@@ -17,9 +17,9 @@ import { END, StateGraph, Annotation } from "@langchain/langgraph";
 import type { NegotiationGraphDatabase, NegotiationTaskRow, NegotiationTaskMetadata } from "../../platform/database/negotiation.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../../protocol/core.js";
-import { NegotiationAuthor } from "./negotiation.author.js";
-import { NegotiationTurnSchema, NegotiationOpeningTurnSchema, isPauseTurn, type NegotiationTurn, type NegotiationVerdict, type NegotiationPauseReason } from "./negotiation.turn.js";
-import { negotiationRoundReflectJobId, type NegotiationRoundReflectEnqueueFn } from "./negotiation.round-reflect.js";
+import { NegotiationTurnSchema, NegotiationOpeningTurnSchema, isPauseTurn, turnsFromMessages, turnsWithSenders, type NegotiationTurn, type NegotiationVerdict, type NegotiationPauseReason } from "./negotiation.turn.js";
+import { maybeEnqueueRoundReflect, type NegotiationRoundReflectEnqueueFn } from "./negotiation.round-reflect.js";
+import type { NegotiationTurnAuthor } from "./negotiation.turn-author.js";
 
 const logger = protocolLogger("NegotiationGraph");
 
@@ -56,8 +56,11 @@ export interface NegotiationGraphResult {
 export interface NegotiationGraphDeps {
   database: NegotiationGraphDatabase;
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
-  /** Interim internal turn author, standing in for AgentGraph (step 2). */
-  author?: NegotiationAuthor;
+  /**
+   * Who plays a seat's turn. Production binds this to the PersonalAgent in
+   * negotiation scope; the graph itself never knows a model exists.
+   */
+  author: NegotiationTurnAuthor;
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -90,26 +93,6 @@ const NegotiationGraphState = Annotation.Root({
 type NegotiationState = typeof NegotiationGraphState.State;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Pairs each message with its parsed turn, dropping unparseable ones — never
- * separately, since `turnsFromMessages(messages).length` can be less than
- * `messages.length` and zipping the two by index afterward would shift every
- * later turn onto the wrong message (and therefore the wrong speaker).
- */
-function turnsWithSenders(messages: Array<{ senderId: string; parts: unknown[] }>): Array<{ senderId: string; turn: NegotiationTurn }> {
-  const paired: Array<{ senderId: string; turn: NegotiationTurn }> = [];
-  for (const m of messages) {
-    const part = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
-    const parsed = part ? NegotiationTurnSchema.safeParse(part.data) : undefined;
-    if (parsed?.success) paired.push({ senderId: m.senderId, turn: parsed.data });
-  }
-  return paired;
-}
-
-function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
-  return turnsWithSenders(messages.map((m) => ({ senderId: "", ...m }))).map((p) => p.turn);
-}
 
 /** Whose turn is next: retry the last speaker after a pause, else the other seat; the initiator opens. */
 function nextSpeaker(
@@ -284,17 +267,15 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     // it because history is non-empty).
     const isOpening = messages.length === 0;
 
-    const thread = paired.map(({ senderId, turn }) => ({
-      speaker: (senderId === `agent:${speakerId}` ? "own" : "counterparty") as "own" | "counterparty",
-      turn,
-    }));
-
-    // External-agent dispatch is offline in this PR (see the PR body) — every
-    // turn is authored internally now, synchronously, within this invoke.
-    const author = deps.author ?? new NegotiationAuthor();
-    const turn: NegotiationTurn = isOpening
-      ? NegotiationOpeningTurnSchema.parse(await author.invoke({ brief: task.brief, thread, isOpening: true }))
-      : await author.invoke({ brief: task.brief, thread, isOpening: false });
+    // Every turn is authored in-process, synchronously, within this invoke:
+    // the author is the speaking seat's own PersonalAgent in negotiation
+    // scope, which reads the thread and the brief and answers with one verb.
+    const authored = await deps.author.authorTurn({
+      negotiationId: task.id,
+      userId: speakerId,
+      intentId: meta.intentId,
+    });
+    const turn: NegotiationTurn = isOpening ? NegotiationOpeningTurnSchema.parse(authored) : authored;
 
     return { task, turns, pendingTurn: turn, pendingTurnByUserId: null, authored: true, phase: "apply" };
   } catch (err) {
@@ -399,7 +380,11 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
         pausedBy: speakerId,
         ...("payload" in effectiveTurn ? { payload: effectiveTurn.payload } : {}),
       });
-      await checkAllPaused(deps, meta);
+      await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
+        userId: meta.sourceUserId,
+        intentId: meta.intentId,
+        round: meta.round,
+      });
       return { task: updated, turns: allTurns, phase: "done", result: toResult(updated, allTurns) };
     }
 
@@ -407,24 +392,6 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
     return { task: currentTask, turns: allTurns, pendingTurn: null, pendingTurnByUserId: null, authored: false, phase: "turn" };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-/** If no active negotiation remains for this round, enqueue exactly one reflect job. */
-async function checkAllPaused(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<void> {
-  if (!deps.reflectEnqueue) return;
-  try {
-    const active = await deps.database.countActiveNegotiationsForRound(meta.intentId, meta.round);
-    if (active === 0) {
-      await deps.reflectEnqueue({ intentId: meta.intentId, round: meta.round });
-    }
-  } catch (err) {
-    logger.warn("Failed to check all-paused / enqueue reflect", {
-      intentId: meta.intentId,
-      round: meta.round,
-      jobId: negotiationRoundReflectJobId(meta.intentId, meta.round),
-      error: err,
-    });
   }
 }
 
@@ -460,7 +427,11 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
     // A round whose last active negotiation ends by direct verdict (not a
     // pause) must still trigger the all-paused check — apply isn't the only
     // way a round finishes.
-    await checkAllPaused(deps, task.metadata);
+    await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
+      userId: task.metadata.sourceUserId,
+      intentId: task.metadata.intentId,
+      round: task.metadata.round,
+    });
     return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", verdict: input.verdict, reasoning: input.reasoning, turns: [] } };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };

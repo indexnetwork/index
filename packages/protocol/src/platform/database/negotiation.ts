@@ -118,8 +118,26 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
 
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<{ id: string; status: OpportunityStatus } | null>;
 
-  /** Bumps `intents.negotiation_round` for `intentId` and returns the new value. Called once per kickoff. */
+  /** Every negotiation task of one intent's round, whatever its state. Reflect's own read. */
+  getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRow[]>;
+
+  /**
+   * Bumps `intents.negotiation_round` for `intentId` and returns the new
+   * value. Called once per kickoff, and it CLEARS `negotiation_round_size`:
+   * the new round is unstamped until its opens have all settled, and the
+   * all-paused check is a no-op while it is.
+   */
   bumpIntentNegotiationRound(intentId: string): Promise<number>;
+
+  /** The intent's current round and its size stamp (null while the round is still opening). */
+  getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null }>;
+
+  /**
+   * Stamps how many negotiations this round actually opened. Written once, by
+   * kickoff, after every open has settled — the gate the all-paused check
+   * waits on. A no-op if the intent has already moved to a later round.
+   */
+  stampIntentNegotiationRoundSize(intentId: string, round: number, size: number): Promise<void>;
 
   /** Count of this intent's round-`round` negotiations not yet `paused` or `completed`. Drives the all-paused → reflect trigger. */
   countActiveNegotiationsForRound(intentId: string, round: number): Promise<number>;

@@ -13,7 +13,7 @@
  */
 import { buildAgentSelfIntroduction, type AgentIdentityOptions } from "../../chat/agent-identity.prompt.js";
 import { hasUnsupportedOpportunityClaim } from "../../shared/utils/claim-safety.js";
-import type { PersonalAgentIntentEventKind } from "./personal-agent.types.js";
+import type { PersonalAgentIntentEventKind } from "./agent.types.js";
 
 export const PERSONAL_AGENT_SYSTEM_PROMPT_VERSION = 5;
 

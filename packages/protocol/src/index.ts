@@ -217,8 +217,7 @@ export type {
   NegotiationGraphDeps,
   NegotiationGraphLike,
 } from "./internal/negotiations/negotiation.graph.js";
-export { NegotiationAuthor } from "./internal/negotiations/negotiation.author.js";
-export type { NegotiationAuthorInput } from "./internal/negotiations/negotiation.author.js";
+export type { NegotiationTurnAuthor, NegotiationTurnAuthorInput } from "./internal/negotiations/negotiation.turn-author.js";
 export {
   NEGOTIATION_CONTINUE_VERBS,
   NEGOTIATION_PAUSE_REASONS,
@@ -242,11 +241,47 @@ export type {
   NegotiationNeedsPrincipalPayload,
   NegotiationReadyForVerdictPayload,
 } from "./internal/negotiations/negotiation.turn.js";
-export { negotiationRoundReflectJobId } from "./internal/negotiations/negotiation.round-reflect.js";
+export { negotiationRoundReflectJobId, maybeEnqueueRoundReflect } from "./internal/negotiations/negotiation.round-reflect.js";
 export type {
   NegotiationRoundReflectJobData,
   NegotiationRoundReflectEnqueueFn,
 } from "./internal/negotiations/negotiation.round-reflect.js";
+// ─── PersonalAgent (AgentGraph) ─────────────────────────────────────────────
+/**
+ * One persona, three scopes, routed on the shape of the invoke input. The
+ * host implements the ports (signal DM, dossier, act ledger, reply
+ * transport, the owner's accept path) and wires ONE graph.
+ */
+export { PersonalAgentGraphFactory, PERSONAL_AGENT_REPLY_FALLBACK, chunkReplyText } from "./internal/agents/personal-agent/agent.graph.js";
+export type { PersonalAgentGraphLike } from "./internal/agents/personal-agent/agent.graph.js";
+export { PersonalAgentModel, renderPersonalAgentTurn, renderPersonalAgentReplyStage, normalizeMessageOptions, validateDecidedActs } from "./internal/agents/personal-agent/agent.judgment.js";
+export { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, PERSONAL_AGENT_SYSTEM_PROMPT_VERSION } from "./internal/agents/personal-agent/agent.prompt.js";
+export type {
+  PersonalAgentInput,
+  PersonalAgentResult,
+  PersonalAgentScope,
+  PersonalAgentIntentEventKind,
+  PersonalAgentDeps,
+  PersonalAgentDecidedAct,
+  PersonalAgentExecutedAct,
+  PersonalAgentReply,
+  PersonalAgentReplyFallbackReason,
+  PersonalAgentJudgment,
+  PersonalAgentTurnContext,
+  PersonalAgentThreadEntry,
+  PersonalAgentPausedNegotiation,
+  PersonalAgentBriefInput,
+  PersonalAgentNegotiationTurnInput,
+  PersonalAgentMatch,
+  PersonalAgentDossierEntry,
+  PersonalAgentDossierPort,
+  PersonalAgentLedgerPort,
+  PersonalAgentConversationPort,
+  PersonalAgentReplyStreamPort,
+  PersonalAgentOpportunityPort,
+  PersonalAgentIdentityPort,
+} from "./internal/agents/personal-agent/agent.types.js";
+
 export { NegotiationInsightsGenerator } from "./internal/negotiations/insight.generator.js";
 export type { NegotiationDigest } from "./internal/negotiations/insight.generator.js";
 export { NegotiationReflector } from "./internal/negotiations/negotiation.reflect.js";
@@ -301,6 +336,7 @@ export {
 export type {
   OpportunityGraphThresholdOverrides,
 } from "./internal/opportunities/opportunity.graph.js";
+export type { MatchesReadyFn } from "./internal/opportunities/opportunity.graph.shared.js";
 export type {
   StampNewbornOpportunitiesFn,
   StampNewbornOpportunitiesInput,

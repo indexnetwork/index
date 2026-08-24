@@ -28,8 +28,8 @@ import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { maybeEnqueueRoundReflect } from "../../negotiations/negotiation.round-reflect.js";
 import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
-import { PersonalAgentModel } from "./personal-agent.judgment.js";
-import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentPausedNegotiation, PersonalAgentReply, PersonalAgentReplyFallbackReason, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./personal-agent.types.js";
+import { PersonalAgentModel } from "./agent.judgment.js";
+import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentPausedNegotiation, PersonalAgentReply, PersonalAgentReplyFallbackReason, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgentGraph");
 
@@ -84,17 +84,24 @@ function routeNode(state: PersonalAgentState): Partial<PersonalAgentState> {
 
 // ─── Context assembly ────────────────────────────────────────────────────────
 
+/** One negotiation's messages, as a thread relative to the reading seat. */
+function threadFromMessages(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+  seatUserId: string,
+): PersonalAgentThreadEntry[] {
+  return turnsWithSenders(messages).map(({ senderId, turn }) => ({
+    speaker: (senderId === `agent:${seatUserId}` ? "own" : "counterparty") as "own" | "counterparty",
+    turn,
+  }));
+}
+
 /** Turn one negotiation task's messages into a speaker-relative thread. */
 async function loadThread(
   deps: PersonalAgentDeps,
   taskId: string,
   seatUserId: string,
 ): Promise<PersonalAgentThreadEntry[]> {
-  const messages = await deps.negotiationDatabase.getNegotiationMessages(taskId);
-  return turnsWithSenders(messages).map(({ senderId, turn }) => ({
-    speaker: (senderId === `agent:${seatUserId}` ? "own" : "counterparty") as "own" | "counterparty",
-    turn,
-  }));
+  return threadFromMessages(await deps.negotiationDatabase.getNegotiationMessages(taskId), seatUserId);
 }
 
 /**
@@ -543,12 +550,15 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
   try {
     const task = await deps.negotiationDatabase.getNegotiationTask(input.negotiationId);
     if (!task) return { phase: "error", error: "Negotiation not found" };
-    const thread = await loadThread(deps, task.id, input.userId);
+    const messages = await deps.negotiationDatabase.getNegotiationMessages(task.id);
     const judgment = deps.judgment ?? defaultJudgment();
     const turn: NegotiationAuthoredTurn = await judgment.negotiationTurn({
       brief: task.brief,
-      thread,
-      isOpening: thread.length === 0,
+      thread: threadFromMessages(messages, input.userId),
+      // Raw message count, not parsed-turn count: the negotiation graph's
+      // opening rule keys off the same number, and the two must agree on
+      // "is this the opening turn" or every turn is rejected.
+      isOpening: messages.length === 0,
     });
     return { phase: "done", result: { scope: "negotiation", acts: [], messages: [], turn } };
   } catch (err) {

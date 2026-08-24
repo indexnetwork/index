@@ -18,8 +18,8 @@ import { z } from "zod";
 import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema, type NegotiationAuthoredTurn, type NegotiationTurn } from "../../negotiations/negotiation.turn.js";
-import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_REPLY_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./personal-agent.prompt.js";
-import type { PersonalAgentBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentReply, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./personal-agent.types.js";
+import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_REPLY_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
+import type { PersonalAgentBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentReply, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgent:Judgment");
 

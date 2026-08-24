@@ -111,3 +111,26 @@ export function isPauseTurn(turn: NegotiationTurn): turn is NegotiationPauseTurn
 export function isContinueTurn(turn: NegotiationTurn): turn is NegotiationContinueTurn {
   return !isPauseTurn(turn);
 }
+
+/**
+ * Pairs each persisted message with its parsed turn, dropping unparseable
+ * ones — never as two separately-filtered arrays zipped by index, since a
+ * dropped turn would shift every later one onto the wrong message (and
+ * therefore the wrong speaker).
+ */
+export function turnsWithSenders(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+): Array<{ senderId: string; turn: NegotiationTurn }> {
+  const paired: Array<{ senderId: string; turn: NegotiationTurn }> = [];
+  for (const message of messages) {
+    const part = (message.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === "data");
+    const parsed = part ? NegotiationTurnSchema.safeParse(part.data) : undefined;
+    if (parsed?.success) paired.push({ senderId: message.senderId, turn: parsed.data });
+  }
+  return paired;
+}
+
+/** Just the turns, in order. */
+export function turnsFromMessages(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
+  return turnsWithSenders(messages.map((m) => ({ senderId: "", ...m }))).map((p) => p.turn);
+}

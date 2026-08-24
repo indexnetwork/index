@@ -1,6 +1,7 @@
 import type { Id } from '../../../platform/database.js';
 import { ChatContextAccessError } from '../../../platform/runtime/errors.js';
 import type { OpportunityGraphDeps } from '../../opportunities/opportunity.graph.shared.js';
+import type { MatchesReadyFn } from '../../opportunities/opportunity.graph.shared.js';
 import type { OpportunityMutationOutcome } from '../../opportunities/opportunity.graph.modes.js';
 import { z } from "zod";
 import type { ModelConfig } from "./model.config.js";
@@ -169,6 +170,8 @@ interface ToolContextBindings {
   negotiationDatabase: NegotiationGraphDatabase;
   /** The compiled negotiation graph — every negotiation write goes through it. */
   negotiationGraph?: NegotiationGraphLike;
+  /** Wakes a signal's PersonalAgent when discovery persists matches for it. */
+  matchesReady?: MatchesReadyFn;
   /** Factory for user-scoped database access. */
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
