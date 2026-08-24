@@ -3,7 +3,7 @@
   --hairline:#E6E6E2; --done:#1F4D3A;
 }
 .rdm *{margin:0;padding:0;box-sizing:border-box;}
-.rdm{-webkit-text-size-adjust:100%;min-height:100vh;background:var(--paper);color:var(--ink);font-family:'Public Sans','Inter',-apple-system,'Segoe UI',sans-serif;}
+.rdm{-webkit-text-size-adjust:100%;min-height:100vh;background:var(--paper);color:var(--ink);font-family:'Public Sans', system-ui, sans-serif;}
 .rdm .doc{max-width:720px;margin:0 auto;padding:72px 28px 64px;}
 
 .rdm .eyebrow{font-size:12px;color:var(--muted);}

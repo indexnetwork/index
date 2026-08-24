@@ -6,7 +6,7 @@
 .dro *{margin:0;padding:0;box-sizing:border-box;}
 .dro{
   -webkit-text-size-adjust:100%;min-height:100vh;background:#fff;color:var(--ink);
-  font-family:'Public Sans','Inter',-apple-system,'Segoe UI',sans-serif;
+  font-family:'Public Sans', system-ui, sans-serif;
 }
 .dro .doc{max-width:720px;margin:0 auto;padding:72px 28px 64px;}
 

@@ -5,7 +5,7 @@
 .drm{
   -webkit-text-size-adjust:100%;min-height:100vh;
   background:var(--paper);color:var(--ink);
-  font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size:13.5px;line-height:1.7;
 }
 .drm .doc{max-width:74ch;margin:0 auto;padding:64px 24px 72px;}

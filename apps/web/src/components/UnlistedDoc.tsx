@@ -1,6 +1,8 @@
 'use client';
 import { useEffect } from 'react';
 
+import { ensureLandingFonts } from '@/app/landing/Nav';
+
 // ── Unlisted document page ─────────────────────────────────────────
 // Renders a finished HTML artifact authored outside the app: the markup is
 // imported raw and injected inline, and its stylesheet is scoped under a
@@ -25,6 +27,8 @@ export function UnlistedDoc({
   bodyHtml: string;
 }) {
   useEffect(() => {
+    ensureLandingFonts();
+
     const prevTitle = document.title;
     document.title = title;
 
