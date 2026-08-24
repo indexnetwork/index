@@ -15,6 +15,14 @@ import type { Database } from '../database.js';
 /** Negotiation task lifecycle. `paused` carries a reason in `metadata.pause`. */
 export type NegotiationTaskState = 'working' | 'paused' | 'completed';
 
+/** One seat's binding to a signal, and that signal's kickoff round. */
+export interface NegotiationSeatBinding {
+  /** The seat that owns the signal this entry is keyed by. */
+  userId: string;
+  /** The round of that signal's kickoff which last targeted this negotiation. */
+  round: number;
+}
+
 export interface NegotiationTaskMetadata {
   type: 'negotiation';
   opportunityId: string;
@@ -23,24 +31,48 @@ export interface NegotiationTaskMetadata {
   /** The seat that opened this negotiation; only its opening turn may be `outreach`. */
   initiatorUserId: string;
   networkId: string;
-  /** The intent that drove kickoff — the reflect trigger's key, alongside `round`. */
-  intentId: string;
-  /** Bumped by the caller at every kickoff of a fresh round for `intentId`. */
-  round: number;
+  /**
+   * The signals this negotiation belongs to — ONE ENTRY PER SEAT, keyed by
+   * intent id.
+   *
+   * Never a single value. A negotiation genuinely belongs to two signals, one
+   * per seat, exactly as `briefs` does: the design doc's terminator rule is
+   * that a side which wants out pauses `ready_for_verdict(reject)` and ITS
+   * OWN IS-A rejects, and an IS-A can only decide a negotiation its own
+   * signal can see. With one owning intent the counterparty's agent could
+   * speak here but never promote or reject, which deletes half the loop's
+   * terminators — and a re-kick from that side would either overwrite the
+   * opener's round or be refused.
+   *
+   * A seat appears here when its own kickoff opens or re-kicks this
+   * negotiation, never by guessing: an actor's `intent` field names the
+   * intent it matched AGAINST for a premise match, so it cannot be trusted to
+   * name the seat's own signal.
+   */
+  seats: Record<string, NegotiationSeatBinding>;
   /**
    * `payload` is private to `pausedBy` — the seat whose turn produced this
    * pause. It is never persisted into a shared message or returned from a
    * generic invoke; only a read scoped to `pausedBy`'s own principal may see
    * it. Everyone else sees the reason only.
    */
-  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown; pausedBy?: string } | null;
+  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap' | 'open_failed'; payload?: unknown; pausedBy?: string } | null;
 }
 
 export interface NegotiationTaskRow {
   id: string;
   conversationId: string;
   state: NegotiationTaskState;
-  brief: string;
+  /**
+   * One brief PER SEAT, keyed by the seat's userId.
+   *
+   * Never one shared string: a brief is what a seat's own IS-A tells it about
+   * its own principal, so handing the initiator's to the counterparty makes
+   * the counterparty argue someone else's constraints as if they were its
+   * client's. A seat with no entry here has its own agent author one at its
+   * first turn.
+   */
+  briefs: Record<string, string>;
   metadata: NegotiationTaskMetadata;
   createdAt: Date;
   updatedAt: Date;
@@ -67,7 +99,8 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** Creates the negotiation task. Called once, at open. */
   createNegotiationTask(input: {
     conversationId: string;
-    brief: string;
+    /** The initiating seat's own brief; the other seat authors its own later. */
+    briefs: Record<string, string>;
     metadata: NegotiationTaskMetadata;
   }): Promise<NegotiationTaskRow>;
 
@@ -86,11 +119,14 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
     pause?: NegotiationTaskMetadata['pause'],
   ): Promise<NegotiationTaskRow>;
 
-  /** Overwrites the brief at resume. */
-  setNegotiationBrief(taskId: string, brief: string): Promise<void>;
+  /** Writes ONE seat's brief, leaving the other seat's untouched. */
+  setNegotiationBrief(taskId: string, userId: string, brief: string): Promise<void>;
 
-  /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. */
-  setNegotiationRound(taskId: string, round: number): Promise<void>;
+  /**
+   * Binds ONE seat's signal and round to this negotiation, leaving every other
+   * seat's binding untouched. Written at open and at every re-kick.
+   */
+  bindNegotiationSeat(taskId: string, intentId: string, binding: NegotiationSeatBinding): Promise<void>;
 
   /**
    * Persists one turn, fenced against a concurrent duplicate submission:
@@ -118,8 +154,44 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
 
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<{ id: string; status: OpportunityStatus } | null>;
 
-  /** Bumps `intents.negotiation_round` for `intentId` and returns the new value. Called once per kickoff. */
+  /** Every negotiation task bound to one intent's given round, whatever its state. The round-settling read. */
+  getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRow[]>;
+
+  /**
+   * Every PAUSED, unresolved negotiation of one signal, whatever round it
+   * belongs to — what IS-A reasons over.
+   *
+   * Deliberately not round-scoped. A negotiation a later kickoff left behind
+   * (a spent turn budget, most often) keeps its old round and would vanish
+   * from a round-scoped read forever: never promoted, never rejected, its
+   * opportunity negotiating for good and its principal never told.
+   */
+  getPausedNegotiationTasksForIntent(intentId: string): Promise<NegotiationTaskRow[]>;
+
+  /**
+   * Opens a new round: bumps `intents.negotiation_round`, clears
+   * `negotiation_round_size` and stamps `negotiation_kickoff_started_at`, all
+   * in one write. Only kickoff bumps a round, so the bump IS the beginning of
+   * a kickoff and there is no gap in which a crash could leave the round
+   * begun-but-unmarked. Returns the new round.
+   */
   bumpIntentNegotiationRound(intentId: string): Promise<number>;
+
+  /**
+   * The intent's round lifecycle: which round it is on, when a kickoff for
+   * that round BEGAN (null if none ever did — including every intent that
+   * predates round stamping), and the settled size (null until the kickoff
+   * finished). `kickoffStartedAt` set with `roundSize` null is the one
+   * signature of a kickoff that died mid-round.
+   */
+  getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null; kickoffStartedAt: Date | null }>;
+
+  /**
+   * Stamps how many negotiations this round actually opened. Written once, by
+   * kickoff, after every open has settled — the gate the all-paused check
+   * waits on. A no-op if the intent has already moved to a later round.
+   */
+  stampIntentNegotiationRoundSize(intentId: string, round: number, size: number): Promise<void>;
 
   /** Count of this intent's round-`round` negotiations not yet `paused` or `completed`. Drives the all-paused → reflect trigger. */
   countActiveNegotiationsForRound(intentId: string, round: number): Promise<number>;

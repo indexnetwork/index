@@ -13,7 +13,8 @@ import { agentService } from '../../services/agent.service';
 import { chatSessionService } from '../../services/chat.service';
 import { fileService } from '../../services/file.service';
 import { userService } from '../../services/user.service';
-import type { IntentAgentUserMessageEvent, IntentAgentTurnResult } from '../../lib/intent-agent/intent-agent.types';
+import type { PersonalAgentResult } from '@indexnetwork/protocol';
+import type { PersonalAgentUserMessageEvent } from '../../queues/personal-agent.queue';
 
 const USER: AuthenticatedUser = {
   id: 'signal-user-1',
@@ -56,9 +57,9 @@ describe('PersonalAgent web chat routing', () => {
   let addMessageSpy: ReturnType<typeof spyOn>;
   let getFactorySpy: ReturnType<typeof spyOn>;
   let loadFilesSpy: ReturnType<typeof spyOn>;
-  /** Events the controller handed to the IntentAgent seam. */
-  const agentTurnEvents: IntentAgentUserMessageEvent[] = [];
-  let scriptedAgentTurn: (event: IntentAgentUserMessageEvent) => Promise<IntentAgentTurnResult>;
+  /** Events the controller handed to the PersonalAgent seam. */
+  const agentTurnEvents: PersonalAgentUserMessageEvent[] = [];
+  let scriptedAgentTurn: (event: PersonalAgentUserMessageEvent) => Promise<PersonalAgentResult>;
 
   async function stream(
     body: Record<string, unknown>,
@@ -258,7 +259,7 @@ describe('PersonalAgent web chat routing', () => {
     expect(route).toBeUndefined();
   });
 
-  test('a session-auth intent-scoped turn runs the IntentAgent, never the graph persona', async () => {
+  test('a session-auth intent-scoped turn runs the PersonalAgent, never the graph persona', async () => {
     spyOn(agentService, 'getNegotiatorAgent').mockResolvedValue({ id: 'agent-1', name: 'Agent' } as never);
     spyOn(chatSessionService, 'validateIntentScope').mockResolvedValue({ ok: true, title: 'A signal' });
     const dm = session('dm-session', 'personal', { scopeType: 'intent', scopeId: 'intent-1' });
@@ -278,7 +279,7 @@ describe('PersonalAgent web chat routing', () => {
     expect(response.status).toBe(200);
     expect(agentTurnEvents).toHaveLength(1);
     expect(agentTurnEvents[0]).toMatchObject({
-      kind: 'user_message',
+      event: 'user_message',
       userId: USER.id,
       intentId: 'intent-1',
       sessionId: 'dm-session',

@@ -5,7 +5,20 @@
 /** A negotiation task's lifecycle is now exactly these three states (negotiation-graph rewrite, #1494). */
 export type NegotiationTaskState = 'working' | 'paused' | 'completed';
 
-export type NegotiationPauseReason = 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
+/**
+ * Every reason the protocol may pause a negotiation on — the wire vocabulary,
+ * defined once for the whole app. A member missing here is not a type error
+ * anywhere: the value still arrives, and each consumer renders it as whatever
+ * its own default branch happens to say.
+ */
+export const NEGOTIATION_PAUSE_REASONS = [
+  'counterparty_silent',
+  'needs_principal',
+  'ready_for_verdict',
+  'turn_cap',
+  'open_failed',
+] as const;
+export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
 
 export type NegotiationOpportunityStatus =
   | 'latent'

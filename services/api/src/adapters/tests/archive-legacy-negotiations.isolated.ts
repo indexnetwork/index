@@ -104,6 +104,8 @@ interface SeedTaskOpts {
   createdAt?: Date;
   /** Rewrite-era round stamp; omitted means a pre-rewrite row. */
   round?: number;
+  /** The signal the round belongs to; required by the round-scoped reads. */
+  intentId?: string;
 }
 
 async function seedNegotiationTask(opts: SeedTaskOpts = {}): Promise<{
@@ -123,7 +125,11 @@ async function seedNegotiationTask(opts: SeedTaskOpts = {}): Promise<{
     ...(opts.opportunityId && { opportunityId: opts.opportunityId }),
     ...(opts.protocolVersion && { protocolVersion: opts.protocolVersion }),
     ...(opts.archivedAt && { archivedAt: opts.archivedAt }),
-    ...(opts.round !== undefined && { round: opts.round }),
+    // Per-seat binding (D21): the round and the signal live together, one
+    // entry per seat, so a rewrite-era row is one that HAS `seats`.
+    ...(opts.round !== undefined && {
+      seats: { [opts.intentId ?? 'intent-seed']: { userId: userA, round: opts.round } },
+    }),
   };
 
   const task = await conversationDatabaseAdapter.createTask(conv.id, metadata);
@@ -274,6 +280,33 @@ describe('archive legacy negotiations — getStaleNegotiationTasks', () => {
 // block used to provide no longer applies. Archive-exclusion for every other
 // reader (getNegotiationsByUser, the lifecycle join, getStaleNegotiationTasks,
 // qualifyingNegotiationAttemptTaskWhere) is still covered above/below.
+
+describe('archive legacy negotiations — the round-scoped reads agree', () => {
+  it('an archived working task is excluded from BOTH the round count and the round listing', async () => {
+    // The PersonalAgent reflects on `getNegotiationTasksForIntentRound` and
+    // waits on `countActiveNegotiationsForRound`. If only the listing excludes
+    // archived rows, an archived task stuck in 'working' holds the count above
+    // zero forever: the signal never reflects again, and the task the cycle is
+    // waiting on is invisible in the state the agent reasons over.
+    const intentId = `intent-round-${crypto.randomUUID()}`;
+    const { taskId: activeId } = await seedNegotiationTask({ state: 'working', round: 5, intentId });
+    const { taskId: archivedId } = await seedNegotiationTask({ state: 'working', round: 5, intentId });
+    await stampArchivedAt(archivedId, new Date().toISOString());
+
+    const listed = (await conversationDatabaseAdapter.getNegotiationTasksForIntentRound(intentId, 5)).map((t) => t.id);
+    expect(listed).toContain(activeId);
+    expect(listed).not.toContain(archivedId);
+    expect(await conversationDatabaseAdapter.countActiveNegotiationsForRound(intentId, 5)).toBe(1);
+
+    // With the only non-archived task gone, the round is all-paused — the
+    // archived one must not keep the cycle open.
+    await db
+      .update(convSchema.tasks)
+      .set({ state: 'completed', updatedAt: new Date() })
+      .where(eq(convSchema.tasks.id, activeId));
+    expect(await conversationDatabaseAdapter.countActiveNegotiationsForRound(intentId, 5)).toBe(0);
+  });
+});
 
 describe('archive legacy negotiations — qualifyingNegotiationAttemptTaskWhere', () => {
   it('archived input_required task does not block new attempt for its opportunity', async () => {

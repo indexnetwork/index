@@ -112,14 +112,14 @@ export function notArchivedNegotiationTaskWhere() {
 
 /**
  * Reusable SQL predicate that keeps only rewrite-era negotiation tasks.
- * Every task the negotiation graph opens stamps `metadata.round` (the
- * kickoff batch counter); pre-rewrite rows have no such key. Anything the
- * working|paused|completed lifecycle acts on must carry it, so a legacy row
- * can never be swept, resumed, or acted on while staying invisible to the
- * round-scoped active count.
+ * Every task the negotiation graph opens records `metadata.seats` (one
+ * binding per seat: its signal and that signal's kickoff round); pre-rewrite
+ * rows have no such key. Anything the working|paused|completed lifecycle acts
+ * on must carry it, so a legacy row can never be swept, resumed, or acted on
+ * while staying invisible to the round-scoped active count.
  */
 export function rewriteEraNegotiationTaskWhere() {
-  return sql`${schema.tasks.metadata}->>'round' IS NOT NULL`;
+  return sql`${schema.tasks.metadata} ? 'seats'`;
 }
 
 /**

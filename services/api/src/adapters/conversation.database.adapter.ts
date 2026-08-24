@@ -1,4 +1,22 @@
 /**
+ * Locally aligned mirror of the protocol's `NEGOTIATION_PAUSE_REASONS`.
+ *
+ * Adapters may not import from `@indexnetwork/protocol` (see the lint rule),
+ * so this list is a copy — and a copy that silently loses a member is how a
+ * real pause reason reached the web rendered as its opposite. The drift is
+ * pinned by `tests/negotiation-pause-reason.mirror.spec.ts`, which compares
+ * this array against the protocol's own.
+ */
+export const NEGOTIATION_PAUSE_REASONS = [
+  'counterparty_silent',
+  'needs_principal',
+  'ready_for_verdict',
+  'turn_cap',
+  'open_failed',
+] as const;
+export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
+
+/**
  * Locally aligned mirror of the protocol's `NegotiationCounterpartyBinding`.
  * Adapters must not import from `@indexnetwork/protocol` (see the lint rule);
  * structural compatibility is verified at the composition root via duck
@@ -20,16 +38,16 @@ type NegotiationTaskMetadataMirror = {
   candidateUserId: string;
   initiatorUserId: string;
   networkId: string;
-  intentId: string;
-  round: number;
-  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown; pausedBy?: string } | null;
+  /** One binding per seat, keyed by intent id — the protocol's `seats`. */
+  seats: Record<string, { userId: string; round: number }>;
+  pause?: { reason: NegotiationPauseReason; payload?: unknown; pausedBy?: string } | null;
 };
 
 type NegotiationTaskRowMirror = {
   id: string;
   conversationId: string;
   state: 'working' | 'paused' | 'completed';
-  brief: string;
+  briefs: Record<string, string>;
   metadata: NegotiationTaskMetadataMirror;
   createdAt: Date;
   updatedAt: Date;
@@ -39,7 +57,7 @@ function toNegotiationTaskRow(row: {
   id: string;
   conversationId: string;
   state: string;
-  brief: string | null;
+  briefs: unknown;
   metadata: unknown;
   createdAt: Date;
   updatedAt: Date;
@@ -48,7 +66,7 @@ function toNegotiationTaskRow(row: {
     id: row.id,
     conversationId: row.conversationId,
     state: row.state as NegotiationTaskRowMirror['state'],
-    brief: row.brief ?? '',
+    briefs: (row.briefs ?? {}) as Record<string, string>,
     metadata: row.metadata as NegotiationTaskMetadataMirror,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -229,7 +247,7 @@ function readNegotiationPause(
   metadata: unknown,
   viewerUserId: string,
   state: string,
-): { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown } | null {
+): { reason: NegotiationPauseReason; payload?: unknown } | null {
   // Same gate `toResult` applies graph-side: a non-paused task's
   // metadata.pause is stale/answered, not current, even if a caller failed to
   // clear it on resume.
@@ -239,7 +257,12 @@ function readNegotiationPause(
   if (typeof pause !== 'object' || pause === null || Array.isArray(pause)) return null;
   const record = pause as { reason?: unknown; payload?: unknown; pausedBy?: unknown };
   if (typeof record.reason !== 'string') return null;
-  const reason = record.reason as 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap';
+  // Validated, not cast: an unknown reason coming back from the database is
+  // a value every downstream union would mis-render, and silently narrowing
+  // it to a member of this union is how `open_failed` reached the web as
+  // "the negotiator recommends a decision".
+  if (!(NEGOTIATION_PAUSE_REASONS as readonly string[]).includes(record.reason)) return null;
+  const reason = record.reason as NegotiationPauseReason;
   return record.pausedBy === viewerUserId ? { reason, payload: record.payload } : { reason };
 }
 
@@ -2291,7 +2314,7 @@ export class ConversationDatabaseAdapter {
   /** Creates the negotiation task. Called once, at open. */
   async createNegotiationTask(input: {
     conversationId: string;
-    brief: string;
+    briefs: Record<string, string>;
     metadata: NegotiationTaskMetadataMirror;
   }): Promise<NegotiationTaskRowMirror> {
     const [row] = await db
@@ -2299,7 +2322,7 @@ export class ConversationDatabaseAdapter {
       .values({
         conversationId: input.conversationId,
         state: 'working',
-        brief: input.brief,
+        briefs: input.briefs,
         metadata: input.metadata,
       })
       .returning();
@@ -2399,15 +2422,33 @@ export class ConversationDatabaseAdapter {
     return toNegotiationTaskRow(row);
   }
 
-  /** Overwrites the brief at resume. */
-  async setNegotiationBrief(taskId: string, brief: string): Promise<void> {
-    await db.update(schema.tasks).set({ brief, updatedAt: new Date() }).where(eq(schema.tasks.id, taskId));
+  /**
+   * Writes ONE seat's brief. A single-statement `jsonb_set`, like
+   * `setNegotiationRound`: read-modify-write would let two seats authoring at
+   * once clobber each other's, which is the whole property this column has.
+   */
+  async setNegotiationBrief(taskId: string, userId: string, brief: string): Promise<void> {
+    await db.update(schema.tasks).set({
+      briefs: sql`jsonb_set(coalesce(${schema.tasks.briefs}, '{}'::jsonb), ARRAY[${userId}], ${JSON.stringify(brief)}::jsonb, true)`,
+      updatedAt: new Date(),
+    }).where(eq(schema.tasks.id, taskId));
   }
 
-  /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. Single-statement jsonb_set — see updateNegotiationTaskState. */
-  async setNegotiationRound(taskId: string, round: number): Promise<void> {
+  /**
+   * Binds ONE seat's signal and round, leaving every other seat's untouched.
+   * Single-statement `jsonb_set` for the same reason `setNegotiationBrief` is:
+   * both sides write here, and a read-modify-write would let one seat's
+   * kickoff clobber the other's binding — the very thing per-seat exists to
+   * make impossible.
+   */
+  async bindNegotiationSeat(taskId: string, intentId: string, binding: { userId: string; round: number }): Promise<void> {
     await db.update(schema.tasks).set({
-      metadata: sql`jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{round}', ${JSON.stringify(round)}::jsonb, true)`,
+      metadata: sql`jsonb_set(
+        jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{seats}', coalesce(${schema.tasks.metadata}->'seats', '{}'::jsonb), true),
+        ARRAY['seats', ${intentId}],
+        ${JSON.stringify(binding)}::jsonb,
+        true
+      )`,
       updatedAt: new Date(),
     }).where(eq(schema.tasks.id, taskId));
   }
@@ -2514,14 +2555,97 @@ export class ConversationDatabaseAdapter {
     });
   }
 
-  /** Bumps `intents.negotiation_round` for `intentId` and returns the new value. Called once per kickoff. */
+  /**
+   * Every PAUSED, unresolved negotiation of one signal, whatever round it
+   * belongs to. Deliberately not round-scoped: a negotiation a later kickoff
+   * left behind keeps its old round, and a round-scoped read would hide it
+   * from every future verdict.
+   */
+  async getPausedNegotiationTasksForIntent(intentId: string): Promise<NegotiationTaskRowMirror[]> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->'seats' ? ${intentId}`,
+          eq(schema.tasks.state, 'paused'),
+          notArchivedNegotiationTaskWhere(),
+          rewriteEraNegotiationTaskWhere(),
+        ),
+      )
+      .orderBy(asc(schema.tasks.createdAt), asc(schema.tasks.id));
+    return rows.map((row) => toNegotiationTaskRow(row));
+  }
+
+  /**
+   * Opens a new round: bumps the counter, clears the size stamp and marks the
+   * kickoff as begun, in ONE write. Only kickoff bumps a round, so the bump is
+   * the beginning of a kickoff and there is no window in which a crash could
+   * leave a round begun-but-unmarked.
+   */
   async bumpIntentNegotiationRound(intentId: string): Promise<number> {
     const [row] = await db
       .update(schema.intents)
-      .set({ negotiationRound: sql`${schema.intents.negotiationRound} + 1` })
+      .set({
+        negotiationRound: sql`${schema.intents.negotiationRound} + 1`,
+        negotiationRoundSize: null,
+        negotiationKickoffStartedAt: new Date(),
+      })
       .where(eq(schema.intents.id, intentId))
       .returning({ negotiationRound: schema.intents.negotiationRound });
     return row?.negotiationRound ?? 0;
+  }
+
+  /**
+   * The intent's round lifecycle. `kickoffStartedAt` set with a null
+   * `roundSize` is the ONE signature of a kickoff that died mid-round; a null
+   * marker means no kickoff has ever run here, which is where every intent
+   * predating 0146/0147 sits.
+   */
+  async getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null; kickoffStartedAt: Date | null }> {
+    const [row] = await db
+      .select({
+        round: schema.intents.negotiationRound,
+        roundSize: schema.intents.negotiationRoundSize,
+        kickoffStartedAt: schema.intents.negotiationKickoffStartedAt,
+      })
+      .from(schema.intents)
+      .where(eq(schema.intents.id, intentId));
+    return { round: row?.round ?? 0, roundSize: row?.roundSize ?? null, kickoffStartedAt: row?.kickoffStartedAt ?? null };
+  }
+
+  /**
+   * Settles a round: records how many negotiations it holds. Guarded on the
+   * round itself, so a kickoff that lost a race to a newer round cannot stamp
+   * the newer one's size with its own count. The value is a record; what the
+   * all-paused check reads is that it is no longer null.
+   */
+  async stampIntentNegotiationRoundSize(intentId: string, round: number, size: number): Promise<void> {
+    await db
+      .update(schema.intents)
+      .set({ negotiationRoundSize: size })
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.negotiationRound, round)));
+  }
+
+  /**
+   * Every negotiation task of one intent's round, whatever its state — what
+   * reflect reads. The `round` key is also the rewrite-era predicate: a
+   * pre-rewrite task has no `round` in its metadata and can never match.
+   */
+  async getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRowMirror[]> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`(${schema.tasks.metadata}->'seats'->${intentId}->>'round')::int = ${round}`,
+          notArchivedNegotiationTaskWhere(),
+        ),
+      )
+      .orderBy(asc(schema.tasks.createdAt), asc(schema.tasks.id));
+    return rows.map((row) => toNegotiationTaskRow(row));
   }
 
   /** Count of this intent's round-`round` negotiations not yet `paused` or `completed`. */
@@ -2532,9 +2656,13 @@ export class ConversationDatabaseAdapter {
       .where(
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-          sql`${schema.tasks.metadata}->>'intentId' = ${intentId}`,
-          sql`(${schema.tasks.metadata}->>'round')::int = ${round}`,
+          sql`(${schema.tasks.metadata}->'seats'->${intentId}->>'round')::int = ${round}`,
           eq(schema.tasks.state, 'working'),
+          // The same predicate `getNegotiationTasksForIntentRound` applies:
+          // an archived task stuck in 'working' would hold this count above
+          // zero forever, stalling the signal's cycle, while being invisible
+          // in the paused set the agent actually reasons over.
+          notArchivedNegotiationTaskWhere(),
         ),
       );
     return row?.value ?? 0;

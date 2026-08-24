@@ -17,6 +17,7 @@ type NegotiationConnectionState =
   | 'paused_needs_principal'
   | 'paused_ready_for_verdict'
   | 'paused_turn_cap'
+  | 'paused_open_failed'
   | 'unknown';
 
 /** How a negotiation task reads when it is currently paused. */
@@ -47,6 +48,8 @@ export function parkLifecycleLabel(pause: NegotiationParkNarration): string {
       return 'PAUSED — the negotiator believes a decision is possible and is waiting on its principal to act on its recommendation.';
     case 'turn_cap':
       return 'PAUSED — the negotiation reached its turn cap and cannot continue without review.';
+    case 'open_failed':
+      return 'PAUSED — the negotiation could not be started. Nothing has been said to the counterparty yet.';
   }
 }
 
@@ -68,11 +71,17 @@ export function buildLifecycleNarration(
   };
 
   if (pause) {
-    const connectionState: NegotiationConnectionState =
-      pause.reason === 'counterparty_silent' ? 'paused_counterparty_silent'
-      : pause.reason === 'needs_principal' ? 'paused_needs_principal'
-      : pause.reason === 'turn_cap' ? 'paused_turn_cap'
-      : 'paused_ready_for_verdict';
+    // Exhaustive by construction: a new pause reason that fell through to a
+    // default would report "the negotiator recommends a decision" beside a
+    // label saying the opposite, in the same object.
+    const CONNECTION_STATE: Record<NegotiationParkNarration['reason'], NegotiationConnectionState> = {
+      counterparty_silent: 'paused_counterparty_silent',
+      needs_principal: 'paused_needs_principal',
+      ready_for_verdict: 'paused_ready_for_verdict',
+      turn_cap: 'paused_turn_cap',
+      open_failed: 'paused_open_failed',
+    };
+    const connectionState = CONNECTION_STATE[pause.reason];
     return { ...common, connectionState, lifecycleLabel: parkLifecycleLabel(pause), pause };
   }
 

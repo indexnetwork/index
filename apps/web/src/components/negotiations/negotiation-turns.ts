@@ -1,4 +1,4 @@
-import type { ConversationMessage } from '@/services/conversation';
+import { NEGOTIATION_PAUSE_REASONS, type ConversationMessage, type NegotiationPauseReason } from '@/services/conversation';
 
 /** User-facing role vocabulary — internal agent/patient labels never surface. */
 export const ROLE_LABELS: Record<string, string> = {
@@ -33,6 +33,8 @@ export const ACTION_VERBS: Record<string, ActionVerb> = {
   counterparty_silent: { label: 'WAITING', color: 'text-gray-500' },
   needs_principal: { label: 'ASKED YOU', color: 'text-[#35799C]' },
   ready_for_verdict: { label: 'READY FOR REVIEW', color: 'text-amber-600' },
+  turn_cap: { label: 'PAUSED', color: 'text-gray-500' },
+  open_failed: { label: 'COULD NOT START', color: 'text-gray-500' },
 };
 
 export function verbFor(action: string | null): ActionVerb | null {
@@ -45,7 +47,7 @@ export interface SuggestedRoles {
   otherUser?: string;
 }
 
-export type NegotiationPauseReason = 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
+export type { NegotiationPauseReason };
 
 export interface TranscriptTurn {
   id: string;
@@ -68,7 +70,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-const PAUSE_REASONS = new Set<NegotiationPauseReason>(['counterparty_silent', 'needs_principal', 'ready_for_verdict']);
+const PAUSE_REASONS = new Set<NegotiationPauseReason>(NEGOTIATION_PAUSE_REASONS);
 
 function isPauseReason(value: unknown): value is NegotiationPauseReason {
   return typeof value === 'string' && PAUSE_REASONS.has(value as NegotiationPauseReason);
@@ -86,6 +88,8 @@ function pauseText(reason: NegotiationPauseReason, payload: Record<string, unkno
     if (reasoning) return reasoning;
     return recommendation ? `Recommending ${recommendation}.` : 'Ready for a verdict.';
   }
+  if (reason === 'turn_cap') return 'This negotiation reached its limit and is waiting on review.';
+  if (reason === 'open_failed') return 'This negotiation could not be started; nothing has been said yet.';
   return 'Waiting on the other side to respond.';
 }
 

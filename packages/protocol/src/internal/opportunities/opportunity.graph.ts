@@ -24,7 +24,7 @@ import { OpportunityGraphState } from './opportunity.state.js';
 import { OpportunityEvaluator } from "./opportunity.evaluator.js";
 import type { OpportunityGraphDatabase } from '../../platform/database.js';
 import type { Embedder } from '../../platform/discovery/embedder.js';
-import type { NegotiationGraphLike } from "../negotiations/negotiation.graph.js";
+import type { MatchesReadyFn } from "./opportunity.graph.shared.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_SIMILARITY, validateDiscoveryEvaluatorMinScore, validateDiscoveryMinSimilarity } from './discovery.env.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
@@ -34,7 +34,7 @@ import { prepNode, prepTraceSummary, resolveNode, resolveTraceSummary, scopeNode
 import { discoveryNode, discoveryTraceSummary } from "./opportunity.graph.discovery.js";
 import { evaluationNode, rankingNode, rankingTraceSummary } from "./opportunity.graph.evaluation.js";
 import { persistNode, persistTraceSummary } from "./opportunity.graph.persist-node.js";
-import { negotiateNode } from "./opportunity.graph.negotiate.js";
+import { matchesReadyNode } from "./opportunity.graph.matches-ready.js";
 
 export type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "./opportunity.newborn-stamping.js";
@@ -79,7 +79,7 @@ export class OpportunityGraphFactory {
     hydeGenerator: OpportunityHydeGenerator,
     optionalEvaluator?: OpportunityEvaluatorLike,
     queueNotification?: QueueOpportunityNotificationFn,
-    negotiationGraph?: NegotiationGraphLike,
+    matchesReady?: MatchesReadyFn,
     /**
      * Used on the chat path to decide whether to wait for the user's personal
      * agent (long timeout) or fall back to the system agent immediately
@@ -103,7 +103,7 @@ export class OpportunityGraphFactory {
       hydeGenerator,
       evaluatorAgent: optionalEvaluator ?? new OpportunityEvaluator(),
       queueNotification,
-      negotiationGraph,
+      matchesReady,
       agentDispatcher,
       queueNegotiateExisting,
       stampNewbornOpportunities,
@@ -157,7 +157,7 @@ export class OpportunityGraphFactory {
       .addNode('evaluation', (s: OpportunityState) => evaluationNode(s, deps))
       .addNode('ranking', withNodeTrace("opportunity-ranking", (s: OpportunityState) => rankingNode(s), rankingTraceSummary))
       .addNode('persist', withNodeTrace("opportunity-persist", (s: OpportunityState) => persistNode(s, deps), persistTraceSummary))
-      .addNode('negotiate', (s: OpportunityState) => negotiateNode(s, deps))
+      .addNode('matchesReady', (s: OpportunityState) => matchesReadyNode(s, deps))
 
       .addEdge(START, 'prep')
 
@@ -179,21 +179,20 @@ export class OpportunityGraphFactory {
         [END]: END,
       })
 
-      // Discovery → Ranking → Persist → Negotiate (post-persist).
-      // Fresh and continuation discovery both negotiate newly created/reactivated
-      // opportunities. The stage is skipped only when no negotiation graph is wired or
-      // persistence produced no negotiation targets (negotiateNode also guards both cases).
+      // Discovery → Ranking → Persist → matches_ready (post-persist). The
+      // stage is skipped only when no host callback is wired or persistence
+      // produced nothing (matchesReadyNode guards both cases too).
       .addEdge('evaluation', 'ranking')
       .addEdge('ranking', 'persist')
       .addConditionalEdges('persist', (state: OpportunityState) => {
-        if (!deps.negotiationGraph) return END;
+        if (!deps.matchesReady) return END;
         if (!state.opportunities || state.opportunities.length === 0) return END;
-        return 'negotiate';
+        return 'matchesReady';
       }, {
-        negotiate: 'negotiate',
+        matchesReady: 'matchesReady',
         [END]: END,
       })
-      .addEdge('negotiate', END)
+      .addEdge('matchesReady', END)
       .compile();
   }
 }

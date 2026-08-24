@@ -365,7 +365,7 @@ export interface NegotiationTurnRow {
   actor: "source" | "candidate";
   /** `pause` carries its reason in `pauseReason`, not here. */
   verb: "outreach" | "counter" | "question" | "pause";
-  pauseReason?: "counterparty_silent" | "needs_principal" | "ready_for_verdict";
+  pauseReason?: "counterparty_silent" | "needs_principal" | "ready_for_verdict" | "turn_cap" | "open_failed";
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };

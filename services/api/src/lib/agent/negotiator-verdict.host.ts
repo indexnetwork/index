@@ -47,8 +47,19 @@ const logger = log.lib.from('negotiator-verdict.host');
  */
 export const ACTIONABLE_VERDICT_STATUSES: OpportunityStatus[] = ['pending', 'negotiating', 'stalled'];
 
+/**
+ * What the PersonalAgent sees as "this signal's matches": everything not yet
+ * decided. Wider than the verdict set because kickoff reaches out to matches
+ * discovery has only just persisted (`latent`), which no verdict could land
+ * on yet. A verdict named against one of those resolves to
+ * `unknown_counterparty` and is reported honestly.
+ */
+export const PERSONAL_AGENT_MATCH_STATUSES: OpportunityStatus[] = ['latent', 'draft', 'negotiating', 'stalled', 'pending'];
+
 /** How each actionable status reads to the client, in one clause. */
 const STATE_LINE: Record<string, string> = {
+  latent: 'found, not contacted yet',
+  draft: 'found, not contacted yet',
   pending: 'waiting on your decision',
   negotiating: 'your agents are still negotiating',
   stalled: 'parked, waiting on you',
@@ -64,6 +75,13 @@ export interface ActionableCounterparty {
   status: string;
   /** The prompt line: name + one-line state. */
   label: string;
+  /**
+   * An introduction whose introducer has not approved it yet. The negotiation
+   * graph refuses to open one; this flag is what keeps a kickoff from
+   * spending a brief on it and the prompt from offering it as a verdict
+   * target.
+   */
+  awaitingIntroducerApproval: boolean;
 }
 
 /** Structural slice of what the opportunity list returns for this purpose. */
@@ -72,7 +90,7 @@ interface ListedOpportunity {
   status: string;
   createdAt: Date | string;
   counterpartName?: string;
-  actors?: Array<{ userId: string; role?: string }>;
+  actors?: Array<{ userId: string; role?: string; approved?: boolean }>;
 }
 
 /** Injectable seams; production resolves the real service. */
@@ -132,27 +150,31 @@ const asTime = (value: Date | string): number => {
  * Introducer rows are excluded: an introducer is not a party to the pairing,
  * and accept/reject is the parties' decision.
  *
- * Never throws — the prompt path treats an unreadable list as "no verdicts to
- * offer", which is strictly better than losing the turn.
+ * THROWS. Every caller that reasons over this list — the PersonalAgent's
+ * every turn — must see a read failure as a failure, not as an empty signal.
+ * {@link readActionableCounterparties} is the degrading wrapper, for the tool
+ * surfaces that would rather offer nothing than lose a turn.
  */
-export async function readActionableCounterparties(
+export async function readSignalMatches(
   userId: string,
   intentId: string,
   deps?: NegotiatorVerdictHostDeps,
+  /** Widened by the PersonalAgent, which also reaches out to undecided matches. */
+  statuses: OpportunityStatus[] = ACTIONABLE_VERDICT_STATUSES,
 ): Promise<ActionableCounterparty[]> {
-  try {
+  {
     const list = deps?.listOpportunities
       ?? ((uid: string, options: { statuses: OpportunityStatus[]; scopeType: 'intent'; scopeId: string }) =>
         opportunityService.getOpportunitiesForUser(uid, options));
     const rows = (await list(userId, {
-      statuses: ACTIONABLE_VERDICT_STATUSES,
+      statuses,
       scopeType: 'intent',
       scopeId: intentId,
     })) as ListedOpportunity[];
 
     return rows
       .filter((row) => {
-        if (!row?.id || !ACTIONABLE_VERDICT_STATUSES.includes(row.status as OpportunityStatus)) return false;
+        if (!row?.id || !statuses.includes(row.status as OpportunityStatus)) return false;
         const own = row.actors?.find((actor) => actor.userId === userId);
         return !own || own.role !== 'introducer';
       })
@@ -160,14 +182,37 @@ export async function readActionableCounterparties(
       .map((row, index) => {
         const name = row.counterpartName?.trim() || 'An unnamed match';
         const state = STATE_LINE[row.status] ?? row.status;
+        const introducers = (row.actors ?? []).filter((actor) => actor.role === 'introducer');
         return {
           position: index + 1,
           opportunityId: row.id,
           name,
           status: row.status,
           label: `${name} — ${state}`,
+          awaitingIntroducerApproval: introducers.length > 0 && !introducers.every((actor) => actor.approved === true),
         };
       });
+  }
+}
+
+/**
+ * The same list, for a surface that would rather show nothing than lose a
+ * turn: the persona/MCP verdict tools render it as the options a tool call may
+ * name, and an unreadable list there honestly means "no verdicts to offer".
+ *
+ * This swallow is NOT for the PersonalAgent. Its turns are ABOUT this list —
+ * a reflect that reads `[]` from a transient database error decides nothing,
+ * succeeds, and permanently consumes the round's one retained reflect job.
+ * That lane calls {@link readSignalMatches} and lets the error propagate.
+ */
+export async function readActionableCounterparties(
+  userId: string,
+  intentId: string,
+  deps?: NegotiatorVerdictHostDeps,
+  statuses: OpportunityStatus[] = ACTIONABLE_VERDICT_STATUSES,
+): Promise<ActionableCounterparty[]> {
+  try {
+    return await readSignalMatches(userId, intentId, deps, statuses);
   } catch (err) {
     logger.error('negotiator_verdict_enumeration_failed', {
       userId,
@@ -260,7 +305,13 @@ async function passVerdict(
   deps?: NegotiatorVerdictHostDeps,
 ): Promise<NegotiatorVerdictResult> {
   try {
-    const actionable = await readActionableCounterparties(userId, input.intentId, deps);
+    // NARROW, deliberately. This lane resolves a 1-BASED POSITION the caller
+    // was shown, and the tool's own contract calls it "the signal's actionable
+    // list". Widening the set here renumbers every entry, so the position the
+    // client's agent read would land on a different person — the exact failure
+    // this module's header exists to prevent. Widening is safe only on the id
+    // lane below, which resolves by opportunity id and cannot be renumbered.
+    const actionable = await readActionableCounterparties(userId, input.intentId, deps, ACTIONABLE_VERDICT_STATUSES);
     if (actionable.length === 0) return { status: 'none_actionable' };
 
     const relist = () => ({
@@ -311,7 +362,12 @@ export async function passVerdictOnOpportunity(
   deps?: NegotiatorVerdictHostDeps,
 ): Promise<NegotiatorVerdictResult> {
   try {
-    const actionable = await readActionableCounterparties(userId, input.intentId, deps);
+    // WIDE, deliberately: the SAME set the PersonalAgent's context numbered.
+    // Re-listing the narrower verdict set made "accept the first one" before
+    // kickoff always answer `unknown_counterparty`, for a `latent` match
+    // `opportunityService` accepts perfectly well. Safe here and only here,
+    // because this lane resolves by opportunity id — no position to shift.
+    const actionable = await readActionableCounterparties(userId, input.intentId, deps, PERSONAL_AGENT_MATCH_STATUSES);
     if (actionable.length === 0) return { status: 'none_actionable' };
 
     const relist = () => ({

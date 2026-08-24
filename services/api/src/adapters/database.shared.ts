@@ -3,6 +3,7 @@
  * tables, operators, DTO types, and cross-adapter helper functions.
  * No dependency on lib/protocol. Imported by every database/*.adapter.ts file.
  */
+import type { NegotiationPauseReason } from './conversation.database.adapter';
 import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm/sql';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
@@ -654,7 +655,7 @@ export interface NegotiationLifecycleSummary {
    * paused (`pausedBy`) — every other viewer sees `reason` only, the same
    * privacy rule `negotiation.tools.ts`'s `pauseFor` applies A2A-side.
    */
-  pause: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown } | null;
+  pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
   updatedAt: Date;
   /**
    * IND-610: the owner-facing "did not reach out" decision, named-field

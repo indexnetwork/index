@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { NegotiationTaskRow, NegotiationGraphDatabase } from "../../platform/database/negotiation.js";
-import type { NegotiationAuthorInput } from "../../internal/negotiations/negotiation.author.js";
-import { NegotiationAuthor } from "../../internal/negotiations/negotiation.author.js";
+import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, NETWORK_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
+import type { NegotiationTurnAuthor, NegotiationTurnAuthorInput } from "../../internal/negotiations/negotiation.turn-author.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema } from "../../internal/negotiations/negotiation.turn.js";
 import type { NegotiationAuthoredTurn, NegotiationTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
@@ -15,171 +14,55 @@ import { Negotiations } from "../negotiations.js";
  * network call, no `createModel`/`createStructuredModel` construction
  * anywhere in this file — which is what lets this file run in the
  * credential-free Hermes-security CI gate instead of the excluded
- * LIVE_MODEL_SPECS set. `ScriptedNegotiationAuthor` overrides
- * `NegotiationAuthor.invoke` itself, not just its `callModel` seam: `invoke`
- * constructs its model before ever calling `callModel`, and that
- * construction throws synchronously with no API key configured, so
- * overriding `callModel` alone still isn't provider-free. Every scripted
- * turn is still validated through the graph's own zod schemas
+ * LIVE_MODEL_SPECS set. Every scripted turn is still validated through the
+ * graph's own zod schemas
  * (`NegotiationAuthoredTurnSchema`/`NegotiationOpeningTurnSchema`).
  *
- * External-agent dispatch is offline in this PR (see the PR body) — there is
- * no more per-seat "this side has its own live agent" distinction. One
- * shared author speaks for BOTH seats now: a `turn` node that produces a
+ * One shared author speaks for BOTH seats: a `turn` node that produces a
  * *continuing* verb loops the graph straight back into itself, self-playing
- * the whole negotiation within one `invoke()` call until someone pauses.
- * The only way to hand control back to a test (or a real external caller,
- * e.g. `respond_to_negotiation`) is a pause — `ScriptedNegotiationAuthor`
- * falls back to `pause(needs_principal)` once its script is exhausted so a
- * short, deliberate script naturally stops self-play exactly where a test
- * wants to take over with an explicit `{ negotiationId, turn, byUserId }`
- * invoke, the same shape `respond_to_negotiation` uses.
+ * the whole negotiation within one `invoke()` call until someone pauses. The
+ * only way to hand control back to a test (or a real external caller, e.g.
+ * `respond_to_negotiation`) is a pause — `ScriptedTurnAuthor` falls back to
+ * `pause(needs_principal)` once its script is exhausted, so a short script
+ * naturally stops self-play exactly where a test wants to take over with an
+ * explicit `{ negotiationId, turn, byUserId }` invoke.
+ *
+ * In production the author is the speaking seat's own PersonalAgent in
+ * negotiation scope; the port takes ids only, so a scripted author reads the
+ * fake host directly to decide whether it is opening.
  */
 
-/** Overrides only the live-model call; `invoke` itself is the real author. */
-class ScriptedNegotiationAuthor extends NegotiationAuthor {
+/** A provider-free stand-in for the PersonalAgent's negotiation scope. */
+class ScriptedTurnAuthor implements NegotiationTurnAuthor {
   private readonly script: NegotiationAuthoredTurn[];
   private cursor = 0;
-  readonly calls: NegotiationAuthorInput[] = [];
+  readonly calls: Array<NegotiationTurnAuthorInput & { isOpening: boolean }> = [];
 
-  constructor(script: NegotiationAuthoredTurn[]) {
-    super();
+  constructor(private readonly host: FakeNegotiationHost, script: NegotiationAuthoredTurn[]) {
     this.script = script;
   }
 
-  /**
-   * Overrides `invoke` itself, not just `callModel` — `NegotiationAuthor.invoke`
-   * constructs its model via `createModel`/`createStructuredModel` before ever
-   * calling `callModel`, and that construction throws synchronously when no
-   * API key is configured. Genuinely provider-free means never reaching that
-   * construction at all, not just skipping the network call.
-   */
-  override async invoke(input: NegotiationAuthorInput): Promise<NegotiationAuthoredTurn> {
-    this.calls.push(input);
+  async authorTurn(input: NegotiationTurnAuthorInput): Promise<NegotiationAuthoredTurn> {
+    // The real author reads the thread itself; so does this one. Raw message
+    // count, not parsed turns — the graph's opening rule keys off the same.
+    const isOpening = (this.host.messages.get(input.negotiationId) ?? []).length === 0;
+    this.calls.push({ ...input, isOpening });
     const next = this.script[this.cursor];
     this.cursor += 1;
-    // Once the script is exhausted, pause rather than throw: this hands
-    // control back to the caller (the old dispatcher's "waiting" stop),
-    // instead of every scenario needing an exact-length script. An opening
-    // turn can never be a pause (NegotiationOpeningTurnSchema requires
-    // outreach), so the unscripted-opening fallback is outreach instead.
-    const turn: NegotiationAuthoredTurn = next ?? (input.isOpening
+    // Once the script is exhausted, pause rather than throw: control returns
+    // to the caller instead of every scenario needing an exact-length script.
+    // An opening turn can never be a pause, so its fallback is outreach.
+    const turn: NegotiationAuthoredTurn = next ?? (isOpening
       ? { verb: "outreach", message: "(unscripted opening)", reasoning: "(unscripted)" }
       : { verb: "pause", reason: "needs_principal", payload: { question: "Nothing scripted — awaiting external input." } });
-    return input.isOpening ? NegotiationOpeningTurnSchema.parse(turn) : NegotiationAuthoredTurnSchema.parse(turn);
-  }
-}
-
-const NETWORK_ID = "network-1";
-const SOURCE_USER_ID = "alice";
-const CANDIDATE_USER_ID = "bob";
-const INTENT_ID = "intent-alice-1";
-const OPPORTUNITY_ID = "opportunity-1";
-
-type FakeOpportunity = {
-  id: string;
-  status: string;
-  actors: Array<{ userId: string; intent: string; networkId: string; role: string }>;
-};
-
-/** In-memory host implementing the exact ports `NegotiationGraph` depends on. */
-class FakeNegotiationHost {
-  round = 0;
-  readonly opportunity: FakeOpportunity = {
-    id: OPPORTUNITY_ID,
-    status: "negotiating",
-    actors: [
-      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
-      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
-    ],
-  };
-  readonly tasks = new Map<string, NegotiationTaskRow>();
-  readonly messages = new Map<string, Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }>>();
-  readonly opportunityStatusUpdates: Array<{ id: string; status: string }> = [];
-  readonly reflectJobs: Array<{ intentId: string; round: number }> = [];
-  private taskCounter = 0;
-  private messageCounter = 0;
-
-  readonly database: NegotiationGraphDatabase = {
-    getOpportunity: async (id: string) => (id === this.opportunity.id ? (this.opportunity as never) : null),
-    getIntent: async (intentId: string) =>
-      intentId === INTENT_ID ? ({ id: INTENT_ID, userId: SOURCE_USER_ID } as never) : null,
-    getUserContext: async () => null as never,
-    createNegotiationConversation: async () => ({ id: "conversation-1" }),
-    createNegotiationTask: async (input) => {
-      const task: NegotiationTaskRow = {
-        id: `task-${++this.taskCounter}`,
-        conversationId: input.conversationId,
-        state: "working",
-        brief: input.brief,
-        metadata: input.metadata,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      this.tasks.set(task.id, task);
-      this.messages.set(task.id, []);
-      return task;
-    },
-    getNegotiationTaskForOpportunity: async (opportunityId) =>
-      [...this.tasks.values()].find((t) => t.metadata.opportunityId === opportunityId && t.state !== "completed") ?? null,
-    getNegotiationTask: async (taskId) => this.tasks.get(taskId) ?? null,
-    getNegotiationTasksForUser: async (userId) =>
-      [...this.tasks.values()].filter((t) => t.metadata.sourceUserId === userId || t.metadata.candidateUserId === userId),
-    updateNegotiationTaskState: async (taskId, state, pause) => {
-      const task = this.tasks.get(taskId);
-      if (!task) throw new Error(`No such task ${taskId}`);
-      const updated: NegotiationTaskRow = {
-        ...task,
-        state,
-        metadata: { ...task.metadata, pause: pause ?? null },
-        updatedAt: new Date(),
-      };
-      this.tasks.set(taskId, updated);
-      return updated;
-    },
-    setNegotiationBrief: async (taskId, brief) => {
-      const task = this.tasks.get(taskId);
-      if (!task) throw new Error(`No such task ${taskId}`);
-      this.tasks.set(taskId, { ...task, brief, updatedAt: new Date() });
-    },
-    setNegotiationRound: async (taskId, round) => {
-      const task = this.tasks.get(taskId);
-      if (!task) throw new Error(`No such task ${taskId}`);
-      this.tasks.set(taskId, { ...task, metadata: { ...task.metadata, round }, updatedAt: new Date() });
-    },
-    createNegotiationMessage: async (input) => {
-      const list = this.messages.get(input.taskId) ?? [];
-      if (list.length !== input.expectedMessageCount) return null; // fenced: a concurrent turn already landed
-      const message = { id: `message-${++this.messageCounter}`, senderId: input.senderId, parts: input.parts, createdAt: new Date() };
-      list.push(message);
-      this.messages.set(input.taskId, list);
-      return message;
-    },
-    // A snapshot, not the live array — a real DB read would never see a later write reflected back.
-    getNegotiationMessages: async (taskId) => [...(this.messages.get(taskId) ?? [])],
-    createNegotiationOutcomeArtifact: async () => {},
-    getArtifactsForTask: async () => [],
-    updateOpportunityStatus: async (id, status) => {
-      this.opportunityStatusUpdates.push({ id, status });
-      this.opportunity.status = status;
-      return { id, status };
-    },
-    bumpIntentNegotiationRound: async () => (this.round += 1),
-    countActiveNegotiationsForRound: async () =>
-      [...this.tasks.values()].filter((t) => t.state === "working").length,
-  };
-
-  taskFor(negotiationId: string): NegotiationTaskRow {
-    const task = this.tasks.get(negotiationId);
-    if (!task) throw new Error(`No such task ${negotiationId}`);
-    return task;
+    return isOpening ? NegotiationOpeningTurnSchema.parse(turn) : NegotiationAuthoredTurnSchema.parse(turn);
   }
 }
 
 describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
   test("open → turns → pause(needs_principal) → resume with brief → pause(ready_for_verdict) → verdict pending", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([
+    const author = new ScriptedTurnAuthor(host, [
       { verb: "outreach", message: "Hi Bob, I'm reaching out on Alice's behalf about a co-founder match.", reasoning: "Opening the negotiation." },
       { verb: "pause", reason: "needs_principal", payload: { question: "What equity split are you open to?" } },
       { verb: "counter", message: "Bob's agent: 15-20% equity works.", reasoning: "Principal answered." },
@@ -188,7 +71,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     const graph = new Negotiations({
       database: host.database,
       author,
-      reflectEnqueue: async (job) => { host.reflectJobs.push(job); },
+      reflectEnqueue: async (job) => { host.enqueueReflect(job); },
     }).createGraph();
 
     // open: self-play authors the opening turn (alice), loops straight into
@@ -208,14 +91,19 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       payload: { question: "What equity split are you open to?" },
     });
     expect(host.taskFor(negotiationId).state).toBe("paused");
-    // Only one negotiation this round, and it just paused: the all-paused trigger fires.
-    expect(host.reflectJobs).toEqual([{ intentId: INTENT_ID, round: 1 }]);
+    // The round is not stamped yet, so the all-paused trigger is deliberately
+    // silent: kickoff opens a round's negotiations in parallel and stamps its
+    // size only once they have all settled, and an early first pause seeing
+    // zero working tasks would otherwise dedupe away the round's real reflect.
+    expect(host.reflectJobs).toEqual([]);
+    // Kickoff's own post-settle stamp, replayed here by hand.
+    await host.database.stampIntentNegotiationRoundSize(INTENT_ID, 1, 1);
 
     // resume with brief: IS-A answered the equity question (read from the task directly,
     // the same privileged path IS-A will use — never from the graph's own public result).
     // Bob's own seat resumes (retry-same-speaker-after-pause), then self-play
     // continues straight to alice's next (scripted) pause.
-    const resumed = await graph.invoke({ negotiationId, brief: "Alice wants a technical co-founder; she is open to 15-20% equity." });
+    const resumed = await graph.invoke({ negotiationId, brief: "Alice wants a technical co-founder; she is open to 15-20% equity.", byUserId: SOURCE_USER_ID });
     expect(resumed.status).toBe("paused");
     expect(resumed.pause).toEqual({ reason: "ready_for_verdict" });
     expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({
@@ -223,7 +111,9 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       pausedBy: SOURCE_USER_ID,
       payload: { recommendation: "pending" },
     });
-    expect(host.reflectJobs).toHaveLength(2);
+    // Stamped now, and every negotiation of round 1 has stopped: exactly one
+    // reflect job, carrying the signal's owner.
+    expect(host.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1 }]);
 
     // verdict: IS-A promotes to pending — the only terminal write
     const resolved = await graph.invoke({ negotiationId, verdict: "pending", reasoning: "Both sides converged on terms." });
@@ -242,7 +132,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
 
   test("verdict reject writes the opportunity as rejected, not pending", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([
+    const author = new ScriptedTurnAuthor(host, [
       { verb: "outreach", message: "Opening.", reasoning: "r" },
       { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
     ]);
@@ -264,7 +154,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
 
   test("a system pause (stale-negotiation timeout) does not invoke the author", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([
+    const author = new ScriptedTurnAuthor(host, [
       { verb: "outreach", message: "Opening.", reasoning: "r" },
       { verb: "pause", reason: "needs_principal", payload: { question: "?" } },
     ]);
@@ -291,7 +181,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     // Empty script: the opening turn falls back to outreach, then the reply
     // seat immediately falls back to pause(needs_principal) — self-play stops
     // after exactly one real turn, handing control to explicit test invokes.
-    const author = new ScriptedNegotiationAuthor([]);
+    const author = new ScriptedTurnAuthor(host, []);
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
@@ -332,7 +222,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
   test("an externally submitted turn is re-validated at the graph's own boundary, not trusted verbatim", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([]);
+    const author = new ScriptedTurnAuthor(host, []);
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
@@ -355,7 +245,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
   test("an unparseable historical message does not shift a later turn's speaker attribution", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([
+    const author = new ScriptedTurnAuthor(host, [
       { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
       { verb: "pause", reason: "needs_principal", payload: { question: "?" } },
     ]);
@@ -386,14 +276,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
     // author.calls[0] is alice's opening; calls[1] is bob's pause (both
     // consumed inside open()); calls[2] is alice's turn authored after the
-    // garbage-message resume above — authored with the thread built from
-    // [outreach, pause(bob's, dropped-as-payload but kept as marker),
-    // garbage(dropped), counter]. Before the fix, zipping by index against
-    // the raw (unfiltered) message list would misattribute later turns.
-    const thirdCall = author.calls[2];
-    const lastTwo = thirdCall.thread.slice(-2);
-    expect(lastTwo[0]).toMatchObject({ speaker: "counterparty", turn: { verb: "pause", reason: "needs_principal" } });
-    expect(lastTwo[1]).toMatchObject({ speaker: "counterparty", turn: { verb: "counter" } });
+    // garbage-message resume above. `nextSpeaker` must still resolve alice
+    // even with an unparseable message in the middle of the history.
+    expect(author.calls[2]).toMatchObject({ userId: SOURCE_USER_ID, isOpening: false });
   });
 
   test("a premise-matched counterparty (same `intent` field as the source) still resolves to the correct seats", async () => {
@@ -408,7 +293,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
       { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
       { userId: CANDIDATE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "agent" },
     ];
-    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
+    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
@@ -423,9 +308,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     host.opportunity.actors = [
       { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
       { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
-      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer" },
+      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer", approved: true },
     ];
-    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
+    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
@@ -435,6 +320,29 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
   });
 
+  test("an introduction its introducer has not approved is refused at the OPEN", async () => {
+    // The gate cannot live only where discovery decides whom to WAKE: a
+    // kickoff woken by one plain match re-reads the whole match list, and
+    // without a check here the unapproved introduction is opened too — flipped
+    // to `negotiating` with A2A outreach sent on the introducer's behalf.
+    const host = new FakeNegotiationHost();
+    host.opportunity.actors = [
+      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
+      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
+      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer" },
+    ];
+    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+
+    expect(opened.status).toBe("error");
+    expect(opened.error).toContain("introducer approval");
+    expect([...host.tasks.values()]).toHaveLength(0);
+    expect(host.opportunityStatusUpdates).toEqual([]);
+    expect(author.calls).toHaveLength(0);
+  });
+
   test("re-kicking an existing task whose history is entirely pre-rewrite legacy messages does not error forever", async () => {
     // A pre-rewrite task with only old {action} shaped message parts: nothing
     // parses as a NegotiationTurn, so turnsFromMessages returns []. turnNode
@@ -442,7 +350,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     // messages exist) — otherwise turnNode authors 'outreach' and applyNode's
     // own outreach-only-first guard rejects it, forever.
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "First real turn.", reasoning: "r" }]);
+    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "First real turn.", reasoning: "r" }]);
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
@@ -461,7 +369,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
   test("resuming an opportunity that already has a negotiation is idempotent, not a second open", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
+    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const first = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
@@ -470,16 +378,16 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const second = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "updated brief", round: 2 });
 
     expect(second.negotiationId).toBe(first.negotiationId);
-    expect(host.taskFor(first.negotiationId).brief).toBe("updated brief");
+    expect(host.taskFor(first.negotiationId).briefs[SOURCE_USER_ID]).toBe("updated brief");
     expect([...host.tasks.values()]).toHaveLength(1);
     // The second kickoff's round must land on the task, not the round it opened with —
     // checkAllPaused's round-scoped count and the eventual pause both key off this.
-    expect(host.taskFor(first.negotiationId).metadata.round).toBe(2);
+    expect(host.taskFor(first.negotiationId).metadata.seats[INTENT_ID]!.round).toBe(2);
   });
 
   test("a turn rejected for the wrong seat does not resume a paused negotiation", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([
+    const author = new ScriptedTurnAuthor(host, [
       { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
       { verb: "pause", reason: "needs_principal", payload: { question: "What equity split?" } },
     ]);
@@ -509,7 +417,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
   test("resuming a paused negotiation clears metadata.pause, not just the state", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([
+    const author = new ScriptedTurnAuthor(host, [
       { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
       { verb: "pause", reason: "needs_principal", payload: { question: "What equity split?" } },
     ]);
@@ -551,7 +459,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
     test("pause markers mixed into history do not trip the cap early", async () => {
       const host = new FakeNegotiationHost();
-      const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
+      const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
       const graph = new Negotiations({ database: host.database, author }).createGraph();
       const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
       const negotiationId = opened.negotiationId;
@@ -579,7 +487,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
     test("an externally submitted turn that hits the cap is rejected, not silently swapped for a pause", async () => {
       const host = new FakeNegotiationHost();
-      const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
+      const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
       const graph = new Negotiations({ database: host.database, author }).createGraph();
       const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
       const negotiationId = opened.negotiationId;
@@ -617,12 +525,11 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
           candidateUserId: CANDIDATE_USER_ID,
           initiatorUserId: SOURCE_USER_ID,
           networkId: NETWORK_ID,
-          intentId: INTENT_ID,
-          round: 1,
+          seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
         },
       });
       const negotiationId = task.id;
-      const author = new ScriptedNegotiationAuthor([{ verb: "counter", message: "one more thing", reasoning: "r" }]);
+      const author = new ScriptedTurnAuthor(host, [{ verb: "counter", message: "one more thing", reasoning: "r" }]);
       const graph = new Negotiations({ database: host.database, author }).createGraph();
 
       // 5 turns ending on bob (candidate) — alice is next, authored internally
@@ -637,7 +544,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
       // A system resume (no byUserId) re-enters turn authoring internally —
       // the internal author has no caller to reject to, so it auto-pauses.
-      const result = await graph.invoke({ negotiationId, brief: "still brief" });
+      const result = await graph.invoke({ negotiationId, brief: "still brief", byUserId: SOURCE_USER_ID });
       expect(result.status).toBe("paused");
       expect(result.pause).toEqual({ reason: "turn_cap" });
       expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({ reason: "turn_cap" });
@@ -646,7 +553,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
   test("a concurrent duplicate submission is fenced, not silently double-applied", async () => {
     const host = new FakeNegotiationHost();
-    const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
+    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
@@ -691,11 +598,10 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
         candidateUserId: CANDIDATE_USER_ID,
         initiatorUserId: SOURCE_USER_ID,
         networkId: NETWORK_ID,
-        intentId: INTENT_ID,
-        round: 1,
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
       },
     });
-    const graph = new Negotiations({ database: host.database }).createGraph();
+    const graph = new Negotiations({ database: host.database, author: new ScriptedTurnAuthor(host, []) }).createGraph();
 
     const timedOut = await graph.invoke({ negotiationId: task.id, pause: "counterparty_silent" });
     expect(timedOut.status).toBe("paused");

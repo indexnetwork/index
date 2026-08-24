@@ -90,11 +90,13 @@ export const tasks = pgTable(
     statusTimestamp: timestamp('status_timestamp', { withTimezone: true }),
     metadata: jsonb('metadata'),
     /**
-     * NegotiationGraph's per-negotiation brief — the one thing IS-A writes at
-     * kickoff and resume (design doc 2026-08-23). Unused by non-negotiation
-     * task rows.
+     * NegotiationGraph's briefs, ONE PER SEAT, keyed by the seat's user id
+     * (design doc 2026-08-23, D18). A brief is what a seat's own IS-A tells
+     * it about its own client, so it is never shared: the initiator's kickoff
+     * writes its own, and the counterparty's agent authors its own at its
+     * first turn. Unused by non-negotiation task rows.
      */
-    brief: text('brief'),
+    briefs: jsonb('briefs').$type<Record<string, string>>().notNull().default({}),
     extensions: jsonb('extensions'),
     claimedByAgentId: text('claimed_by_agent_id'),
     claimedAt: timestamp('claimed_at', { withTimezone: true }),

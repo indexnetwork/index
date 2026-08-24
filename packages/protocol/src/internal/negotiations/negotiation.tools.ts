@@ -76,7 +76,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
 
         const negotiations = tasks
           .filter((task) => !scopedNetworkId || task.metadata.networkId === scopedNetworkId)
-          .filter((task) => effectiveScope !== 'signal' || task.metadata.intentId === pinnedIntentId)
+          .filter((task) => effectiveScope !== 'signal' || (pinnedIntentId !== undefined && pinnedIntentId in task.metadata.seats))
           .map((task) => {
             const isSource = task.metadata.sourceUserId === context.userId;
             const counterpartyId = isSource ? task.metadata.candidateUserId : task.metadata.sourceUserId;
@@ -145,7 +145,9 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           status: task.state,
           role: isSource ? 'source' : 'candidate',
           counterpartyId: isSource ? task.metadata.candidateUserId : task.metadata.sourceUserId,
-          brief: task.brief,
+          // A seat sees ITS OWN brief and never the counterparty's: a brief is
+          // what that side's agent was told about its own principal.
+          brief: task.briefs[context.userId] ?? null,
           turns: turnsOf(task, messages),
           ...(scopedPause ? { pause: scopedPause } : {}),
           lifecycle: buildLifecycleNarration(

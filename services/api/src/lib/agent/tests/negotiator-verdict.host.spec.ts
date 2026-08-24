@@ -91,6 +91,8 @@ describe('readActionableCounterparties', () => {
         name: 'Camille Dubois',
         status: 'stalled',
         label: 'Camille Dubois — parked, waiting on you',
+        // Neither is an introduction, so neither is gated.
+        awaitingIntroducerApproval: false,
       },
       {
         position: 2,
@@ -98,6 +100,7 @@ describe('readActionableCounterparties', () => {
         name: 'Ilya Roth',
         status: 'pending',
         label: 'Ilya Roth — waiting on your decision',
+        awaitingIntroducerApproval: false,
       },
     ]);
   });

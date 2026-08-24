@@ -52,7 +52,7 @@ function negotiationTask(): NegotiationTaskRow {
     id: NEGOTIATION_ID,
     conversationId: 'conv-negotiation-001',
     state: 'working',
-    brief: 'Reach out about the collaboration.',
+    briefs: { [USER_A]: 'Reach out about the collaboration.' },
     metadata: {
       type: 'negotiation',
       opportunityId: OPP_ID,
@@ -60,8 +60,7 @@ function negotiationTask(): NegotiationTaskRow {
       candidateUserId: USER_B,
       initiatorUserId: USER_A,
       networkId: 'idx-1',
-      intentId: INTENT_ID,
-      round: ROUND,
+      seats: { [INTENT_ID]: { userId: USER_A, round: ROUND } },
     },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -96,7 +95,12 @@ function createWorld() {
       return { id, status };
     },
     countActiveNegotiationsForRound: async (intentId: string, round: number) =>
-      task.metadata.intentId === intentId && task.metadata.round === round && task.state === 'working' ? 1 : 0,
+      task.metadata.seats[intentId]?.round === round && task.state === 'working' ? 1 : 0,
+    getIntentNegotiationRound: async (intentId: string) => ({
+      round: task.metadata.seats[intentId]?.round ?? 0,
+      roundSize: 1,
+      kickoffStartedAt: null,
+    }),
   } as unknown as NegotiationGraphDatabase;
 
   const graph = new NegotiationGraphFactory({
@@ -149,7 +153,7 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
     expect(world.opportunity.status).toBe('rejected');
     expect(world.task.state).toBe('completed');
     expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);
-    expect(world.reflectJobs).toEqual([{ intentId: INTENT_ID, round: ROUND }]);
+    expect(world.reflectJobs).toEqual([{ userId: USER_A, intentId: INTENT_ID, round: ROUND }]);
     expect(world.artifacts).toEqual([
       { verdict: 'reject', reasoning: 'Closed by the owner declining this match.' },
     ]);
@@ -165,7 +169,7 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
     expect(world.opportunity.status).toBe('accepted');
     expect(world.task.state).toBe('completed');
     expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);
-    expect(world.reflectJobs).toEqual([{ intentId: INTENT_ID, round: ROUND }]);
+    expect(world.reflectJobs).toEqual([{ userId: USER_A, intentId: INTENT_ID, round: ROUND }]);
   });
 
   it('a match that never negotiated is unaffected', async () => {

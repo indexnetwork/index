@@ -1,6 +1,5 @@
 /**
- * Token transport for the IntentAgent's streaming reply stage (phase 2 of
- * docs/plans/2026-08-21-holistic-intent-agent.md).
+ * Token transport for the PersonalAgent's streaming reply stage.
  *
  * The turn runs on the inbox worker — serialization stays THE inbox — so the
  * reply's chunks cross back to the waiting chat controller over Redis
@@ -14,7 +13,7 @@
  * is the truth.
  *
  * Chunks are published only AFTER the reply passed the prose-safety check
- * and was persisted (check-then-stream — see intent-agent.turn.ts `reply`):
+ * and was persisted (check-then-stream — see the protocol reply stage):
  * nothing unchecked ever crosses this transport.
  *
  * In hermetic test mode (the same `useHermeticRedis()` guard the queue
@@ -26,16 +25,16 @@ import { EventEmitter } from 'events';
 import { useHermeticRedis } from '../bullmq/bullmq';
 import { log } from '../log';
 
-const logger = log.lib.from('intent-agent-reply.stream');
+const logger = log.lib.from('personal-agent-reply.stream');
 
 /** One ordered slice of the checked reply. `seq` starts at 1 per turn. */
-export interface IntentAgentReplyChunk {
+export interface PersonalAgentReplyChunk {
   seq: number;
   content: string;
 }
 
-export function intentAgentReplyChannel(messageId: string): string {
-  return `intent-agent:reply:${messageId}`;
+export function personalAgentReplyChannel(messageId: string): string {
+  return `personal-agent:reply:${messageId}`;
 }
 
 const hermeticBus = new EventEmitter();
@@ -46,11 +45,11 @@ hermeticBus.setMaxListeners(200);
  * Never throws — the job result is the durable truth and a publish failure
  * must not fail the turn; the controller's fallback covers the gap.
  */
-export async function publishIntentAgentReplyChunk(
+export async function publishPersonalAgentReplyChunk(
   messageId: string,
-  chunk: IntentAgentReplyChunk,
+  chunk: PersonalAgentReplyChunk,
 ): Promise<void> {
-  const channel = intentAgentReplyChannel(messageId);
+  const channel = personalAgentReplyChannel(messageId);
   try {
     if (useHermeticRedis()) {
       hermeticBus.emit(channel, JSON.stringify(chunk));
@@ -59,7 +58,7 @@ export async function publishIntentAgentReplyChunk(
     const { getRedisClient } = await import('../../adapters/cache.adapter');
     await getRedisClient().publish(channel, JSON.stringify(chunk));
   } catch (err) {
-    logger.warn('intent_agent_reply_publish_failed', {
+    logger.warn('personal_agent_reply_publish_failed', {
       messageId,
       seq: chunk.seq,
       error: err instanceof Error ? err.message : String(err),
@@ -73,14 +72,14 @@ export async function publishIntentAgentReplyChunk(
  * is idempotent and must run in the stream's finally. Malformed payloads are
  * dropped — the fallback path owns completeness, this path owns latency.
  */
-export async function subscribeIntentAgentReply(
+export async function subscribePersonalAgentReply(
   messageId: string,
-  onChunk: (chunk: IntentAgentReplyChunk) => void,
+  onChunk: (chunk: PersonalAgentReplyChunk) => void,
 ): Promise<() => void> {
-  const channel = intentAgentReplyChannel(messageId);
+  const channel = personalAgentReplyChannel(messageId);
   const handle = (data: string) => {
     try {
-      const parsed = JSON.parse(data) as IntentAgentReplyChunk;
+      const parsed = JSON.parse(data) as PersonalAgentReplyChunk;
       if (typeof parsed?.seq === 'number' && typeof parsed?.content === 'string') onChunk(parsed);
     } catch {
       // Malformed chunk: drop; the job-result fallback delivers the reply.
@@ -103,7 +102,7 @@ export async function subscribeIntentAgentReply(
   } catch (err) {
     // A failed subscribe is a degraded turn, not a lost one: the caller's
     // fallback emits the completed reply from the job result.
-    logger.warn('intent_agent_reply_subscribe_failed', {
+    logger.warn('personal_agent_reply_subscribe_failed', {
       messageId,
       error: err instanceof Error ? err.message : String(err),
     });
@@ -113,15 +112,4 @@ export async function subscribeIntentAgentReply(
     cancelled = true;
     subscriber.unsubscribe(channel).then(() => subscriber.disconnect()).catch(() => subscriber.disconnect());
   };
-}
-
-/**
- * Split a checked reply into sentence-sized chunks for progressive rendering.
- * Purely presentational: the text is already complete, checked, and
- * persisted when this runs (check-then-stream), so the split can never
- * change what the client ultimately reads.
- */
-export function chunkReplyText(text: string): string[] {
-  const chunks = text.match(/[^.!?\n]*[.!?\n]+[)"'”’]*\s*|[^.!?\n]+$/g);
-  return chunks && chunks.length > 0 ? chunks : [text];
 }

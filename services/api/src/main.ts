@@ -61,10 +61,9 @@ import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
-import { negotiationRoundReflectQueue } from './queues/negotiations/round-reflect.queue';
-import { negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
+import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
 import { questionMessageQueue } from './queues/question-message.queue';
-import { intentAgentQueue } from './queues/intent-agent.queue';
+import { personalAgentQueue } from './queues/personal-agent.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { handleIntentCreatedMaintenance, IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
@@ -110,13 +109,12 @@ setTimingWrapper((name, fn) => traceAppOperation(
 
 setRequestContextStore(hostRequestContext);
 
-// Wire the single NegotiationGraph (lib/negotiation/negotiation-graph.ts)
-// into background discovery so the post-assignment HyDE path negotiates
-// latent opportunities consistently with chat/MCP discovery. Without this,
-// OpportunityGraph's negotiateNode short-circuits and every evaluated
-// candidate is persisted unfiltered.
+// Wire the matches_ready hand-off into background discovery, so the
+// post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
+// discovery does. Without this, the graph's matches_ready node
+// short-circuits and a persisted batch never reaches its agent.
 fromIntentQueue.setRuntimeDeps({
-  negotiationGraph,
+  matchesReady,
   agentDispatcher: backgroundAgentDispatcher,
 });
 negotiationRunExistingQueue.setRuntimeDeps({
@@ -192,10 +190,9 @@ notificationQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
 negotiationReflectQueue.startWorker();
-negotiationRoundReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
 questionMessageQueue.startWorker();
-intentAgentQueue.startWorker();
+personalAgentQueue.startWorker();
 premiseQueue.startWorker();
 premiseQueue.startCrons();
 
@@ -632,9 +629,8 @@ const shutdown = async () => {
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
-    negotiationRoundReflectQueue.close(),
     questionMessageQueue.close(),
-    intentAgentQueue.close(),
+    personalAgentQueue.close(),
     premiseQueue.close(),
     frameDriftQueue.close(),
   ]);

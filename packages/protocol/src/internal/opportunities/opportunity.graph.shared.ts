@@ -14,13 +14,15 @@ import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type
 import type { CandidateProfile, EvaluatorEntity, EvaluatorInput } from "./opportunity.evaluator.js";
 import type { OpportunityGraphDatabase, Opportunity } from '../../platform/database.js';
 import type { Embedder } from '../../platform/discovery/embedder.js';
-import type { NegotiationGraphLike } from "../negotiations/negotiation.graph.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 import type { StampNewbornOpportunitiesFn } from "./opportunity.newborn-stamping.js";
+
+/** Host callback that wakes a signal's PersonalAgent with `matches_ready`. */
+export type MatchesReadyFn = (input: { userId: string; intentId: string }) => Promise<void>;
 
 /** The graph's channel state, as every node sees it. */
 export type OpportunityState = typeof OpportunityGraphState.State;
@@ -85,7 +87,11 @@ export interface OpportunityGraphDeps {
   /** Resolved evaluator: the injected test double, or a real `OpportunityEvaluator`. */
   evaluatorAgent: OpportunityEvaluatorLike;
   queueNotification?: QueueOpportunityNotificationFn;
-  negotiationGraph?: NegotiationGraphLike;
+  /**
+   * Emits `matches_ready` for a signal that just got matches. Discovery never
+   * opens a negotiation itself; the signal's PersonalAgent decides.
+   */
+  matchesReady?: MatchesReadyFn;
   /**
    * Used on the chat path to decide whether to wait for the user's personal
    * agent (long timeout) or fall back to the system agent immediately
@@ -110,7 +116,7 @@ export const scopeLog = protocolLogger('OpportunityGraph:Scope');
 export const resolveLog = protocolLogger('OpportunityGraph:Resolve');
 export const discoveryLog = protocolLogger('OpportunityGraph:Discovery');
 export const evaluationLog = protocolLogger('OpportunityGraph:Evaluation');
-export const negotiateLog = protocolLogger('OpportunityGraph:Negotiate');
+export const matchesReadyLog = protocolLogger('OpportunityGraph:MatchesReady');
 export const rankingLog = protocolLogger('OpportunityGraph:Ranking');
 export const introValidationLog = protocolLogger('OpportunityGraph:IntroValidation');
 export const introEvaluationLog = protocolLogger('OpportunityGraph:IntroEvaluation');

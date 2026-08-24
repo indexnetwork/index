@@ -8,7 +8,7 @@
  *   persona='personal', title = the signal); scope-resolve returns the SAME
  *   session — one DM per (user, intent), no per-persona twins
  * - DM sessions are excluded from the default /chat/sessions listing
- * - streaming an intent-scoped session runs the signal's IntentAgent on its
+ * - streaming an intent-scoped session runs the signal's PersonalAgent on its
  *   serialized inbox (phase 2 full chat ownership) — the persona graph is
  *   never derived for this scope — relays the turn's streamed reply chunks
  *   as token events, falls back to the completed text on a silent channel,
@@ -32,9 +32,10 @@ import type { ChatGraphFactory, ChatPersonaConfig } from "@indexnetwork/protocol
 import db from "../../lib/drizzle/drizzle";
 import { agents, chatSessionScopes, conversationParticipants, conversations, intents } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
-import { INTENT_AGENT_TURN_FAILURE_REPLY } from "../chat.controller";
-import { publishIntentAgentReplyChunk } from "../../lib/intent-agent/intent-agent-reply.stream";
-import type { IntentAgentTurnResult, IntentAgentUserMessageEvent } from "../../lib/intent-agent/intent-agent.types";
+import { PERSONAL_AGENT_TURN_FAILURE_REPLY } from "../chat.controller";
+import { publishPersonalAgentReplyChunk } from "../../lib/agent/personal-agent-reply.stream";
+import type { PersonalAgentResult } from "@indexnetwork/protocol";
+import type { PersonalAgentUserMessageEvent } from "../../queues/personal-agent.queue";
 
 const EMAIL = "test-chat-negotiator@example.com";
 
@@ -65,10 +66,10 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     },
   } as unknown as ChatGraphFactory;
 
-  /** Events the controller handed to the IntentAgent seam. */
-  const agentTurnEvents: IntentAgentUserMessageEvent[] = [];
+  /** Events the controller handed to the PersonalAgent seam. */
+  const agentTurnEvents: PersonalAgentUserMessageEvent[] = [];
   /** Scripted per test; the default echoes an empty turn. */
-  let scriptedAgentTurn: (event: IntentAgentUserMessageEvent) => Promise<IntentAgentTurnResult> =
+  let scriptedAgentTurn: (event: PersonalAgentUserMessageEvent) => Promise<PersonalAgentResult> =
     async () => ({ acts: [], messages: [] });
 
   /** Parse the SSE body into its JSON events. */
@@ -254,9 +255,9 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
   }, 120_000);
 
   // Phase 2 (full chat ownership): every intent-scoped negotiator turn runs
-  // the IntentAgent on its serialized inbox; the persona graph — and with it
+  // the PersonalAgent on its serialized inbox; the persona graph — and with it
   // the persona's chat tool registrations — is never derived for this scope.
-  test("streaming with intent scope runs the IntentAgent, never the persona factory", async () => {
+  test("streaming with intent scope runs the PersonalAgent, never the persona factory", async () => {
     capturedPersonas.length = 0;
     capturedStreamInputs.length = 0;
     agentTurnEvents.length = 0;
@@ -284,7 +285,7 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     expect(capturedStreamInputs.length).toBe(0);
     expect(agentTurnEvents).toHaveLength(1);
     expect(agentTurnEvents[0]).toMatchObject({
-      kind: 'user_message',
+      event: 'user_message',
       userId: testUserId,
       intentId: testIntentId,
       sessionId: pinned.id,
@@ -330,8 +331,8 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     scriptedAgentTurn = async (event) => {
       // The host's shape: chunks published (post-check, post-persist) before
       // the job resolves, concatenating to exactly the joined messages.
-      await publishIntentAgentReplyChunk(event.messageId, { seq: 1, content: 'Declined that match. ' });
-      await publishIntentAgentReplyChunk(event.messageId, { seq: 2, content: 'Nothing else needs you.' });
+      await publishPersonalAgentReplyChunk(event.messageId, { seq: 1, content: 'Declined that match. ' });
+      await publishPersonalAgentReplyChunk(event.messageId, { seq: 2, content: 'Nothing else needs you.' });
       return {
         acts: [{ tool: 'message_user', text: 'Declined that match. Nothing else needs you.', sessionId: event.sessionId, messageId: 'assistant-3', stage: 'reply' }],
         messages: ['Declined that match. Nothing else needs you.'],
@@ -366,9 +367,9 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     const events = sseEvents(await res.text());
 
     const tokens = events.filter((e) => e.type === 'token').map((e) => e.content);
-    expect(tokens).toEqual([INTENT_AGENT_TURN_FAILURE_REPLY]);
+    expect(tokens).toEqual([PERSONAL_AGENT_TURN_FAILURE_REPLY]);
     const messages = await chatSessionService.getSessionMessages(pinned.id);
-    expect(messages.at(-1)).toMatchObject({ role: 'assistant', content: INTENT_AGENT_TURN_FAILURE_REPLY });
+    expect(messages.at(-1)).toMatchObject({ role: 'assistant', content: PERSONAL_AGENT_TURN_FAILURE_REPLY });
   }, 60000);
 
   // ── Rows that outlived the persona-collapse migration ─────────────────
