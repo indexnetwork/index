@@ -667,8 +667,10 @@ export function buildRadarCardPresentationCacheKey(
   opportunityId: string,
   status: string,
   viewerId: string,
+  focusedViewerIntentId?: string,
 ): string {
-  return `radar:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}`;
+  const scope = focusedViewerIntentId ? `:intent:${focusedViewerIntentId}` : "";
+  return `radar:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}${scope}`;
 }
 
 export function buildDeliveryCardPresentationCacheKey(
@@ -1557,12 +1559,14 @@ export function summarizeSignalsForPresenter(
  * Fetches viewer profile, viewer intents, other party profile(s), and index in parallel.
  *
  * @param displayCounterpartUserId - When set (e.g. for a radar card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card. Omitted for introducer view (card shows both parties).
+ * @param focusedViewerIntentId - When set for a non-introducer viewer, include only that active intent in viewer context.
  */
 export async function gatherPresenterContext(
   database: PresenterDatabase,
   opportunity: Opportunity,
   viewerId: string,
   displayCounterpartUserId?: string,
+  focusedViewerIntentId?: string,
 ): Promise<PresenterInput> {
   const myActor = opportunity.actors.find((a) => a.userId === viewerId);
   if (!myActor) {
@@ -1610,6 +1614,9 @@ export async function gatherPresenterContext(
     );
   } else {
     viewerIntents = await database.getActiveIntents(viewerId);
+    if (focusedViewerIntentId) {
+      viewerIntents = viewerIntents.filter((intent) => intent.id === focusedViewerIntentId);
+    }
   }
 
   // Fetch premises when any actor is premise-grounded

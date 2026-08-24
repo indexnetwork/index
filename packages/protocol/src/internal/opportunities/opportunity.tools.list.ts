@@ -273,6 +273,7 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                       opp,
                       context.userId,
                       counterpartUserId,
+                      effectiveIntentScope.scopeId,
                     ),
                     loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status, context.userId),
                   ]);
@@ -451,6 +452,7 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                     opp,
                     context.userId,
                     counterpartUserId,
+                    effectiveIntentScope.scopeId,
                   ),
                   loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status, context.userId),
                 ]);

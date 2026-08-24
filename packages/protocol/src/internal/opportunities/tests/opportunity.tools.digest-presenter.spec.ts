@@ -32,6 +32,8 @@ const gatherPresenterContextMock = mock(async (
   _presenterDb: PresenterDatabase,
   opp: { status: string },
   _viewerId: string,
+  _displayCounterpartUserId?: string,
+  _focusedViewerIntentId?: string,
 ) => ({
   opportunityStatus: opp.status,
 }));
@@ -153,8 +155,8 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
     } as unknown as ToolDeps["graphs"],
     opportunityPresentation: {
       createPresenter: () => ({ presentCard: (input: unknown) => presentCardMock(input) }),
-      gatherPresenterContext: (database: PresenterDatabase, opportunity: Opportunity, viewerId: string) =>
-        gatherPresenterContextMock(database, opportunity, viewerId),
+      gatherPresenterContext: (database: PresenterDatabase, opportunity: Opportunity, viewerId: string, displayCounterpartUserId?: string, focusedViewerIntentId?: string) =>
+        gatherPresenterContextMock(database, opportunity, viewerId, displayCounterpartUserId, focusedViewerIntentId),
     },
     ...overrides,
   } as ToolDeps;
@@ -163,6 +165,21 @@ function makeDeps(overrides: Partial<Parameters<typeof createOpportunityTools>[1
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('list_opportunities digest presenter path', () => {
+  it('passes its effective intent scope to presenter context generation', async () => {
+    const intentId = '123e4567-e89b-12d3-a456-426614174000';
+    candidateOpps = [makeOpp('opp-scoped', 'c-scoped')];
+    const deps = makeDeps();
+    const tools = createOpportunityTools(defineTool as unknown as DefineTool, deps);
+    const listTool = tools.find((t: { name: string }) => t.name === 'list_opportunities')!;
+
+    await listTool.handler({
+      context: { userId: testUserId, isMcp: true, userName: 'Viewer', userNetworks: [] },
+      query: { scopeType: 'intent', scopeId: intentId },
+    });
+
+    expect(gatherPresenterContextMock.mock.calls.at(-1)?.[4]).toBe(intentId);
+  });
+
   it('uses LLM presenter text when includeDigestMarkers=true and isMcp=true', async () => {
     candidateOpps = [makeOpp('opp-1', 'c-1')];
     getUser = mock(async () => ({ id: testUserId, name: 'Viewer' }) as UserRecord | null);

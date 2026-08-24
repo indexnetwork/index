@@ -8,9 +8,12 @@ import { afterAll, describe, test, expect, mock } from 'bun:test';
 
 // This spec exercises uncached full-card presentation. Keep its model boundary
 // deterministic so the provider-free source suite cannot open a network request.
+const presenterMessages: unknown[] = [];
 mock.module('../../shared/agent/model.config', () => ({
   createStructuredModel: (agent: string) => ({
-    invoke: async () => ({
+    invoke: async (messages: unknown) => {
+      presenterMessages.push(messages);
+      return {
             presentation: {
               headline: 'A relevant connection',
               personalizedSummary: 'Their current goals may be relevant to yours.',
@@ -20,7 +23,8 @@ mock.module('../../shared/agent/model.config', () => ({
               mutualIntentsLabel: 'Shared interests',
               greeting: '',
             },
-    }),
+      };
+    },
   }),
 }));
 
@@ -124,6 +128,42 @@ describe('radar presentation cache policy', () => {
 });
 
 describe('RadarGraph', () => {
+  test('uses the intent scope for presenter context and a distinct presentation cache key', async () => {
+    const viewerId = 'viewer-scoped';
+    const intentId = 'intent-helicopter';
+    const opp = minimalOpportunityAgentViewer(viewerId, 'other-scoped', 'opp-scoped');
+    const db = createMockDb([opp]);
+    db.getActiveIntents = async () => [
+      { id: intentId, payload: 'Buy a helicopter', summary: null, createdAt: new Date() },
+      { id: 'intent-investment', payload: 'I am in SF, looking for investment', summary: null, createdAt: new Date() },
+    ];
+    const cacheKeys: string[] = [];
+    const cache: OpportunityCache = {
+      get: async () => null,
+      mget: async (keys) => {
+        cacheKeys.push(...keys);
+        return keys.map(() => null);
+      },
+      set: async (key) => { cacheKeys.push(key); },
+    };
+
+    presenterMessages.length = 0;
+    await new RadarGraphFactory(db, cache).createGraph().invoke({
+      userId: viewerId,
+      scopeType: 'intent',
+      scopeId: intentId,
+    });
+
+    const prompt = String((presenterMessages.at(-1) as Array<{ content?: unknown }> | undefined)?.at(-1)?.content);
+    expect(prompt).toContain('Buy a helicopter');
+    expect(prompt).not.toContain('looking for investment');
+    expect(cacheKeys).toContain(`radar:v2:card:opp-scoped:pending:${viewerId}:intent:${intentId}`);
+
+    cacheKeys.length = 0;
+    await new RadarGraphFactory(db, cache).createGraph().invoke({ userId: viewerId });
+    expect(cacheKeys).toContain(`radar:v2:card:opp-scoped:pending:${viewerId}`);
+  }, 30000);
+
   test('renders a completed verdict reason only for the resolving viewer', async () => {
     const opportunity = {
       ...minimalOpportunity('resolver', 'counterparty'),
