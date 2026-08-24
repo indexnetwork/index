@@ -4,16 +4,13 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, describe, test, expect, mock } from 'bun:test';
+import { afterAll, describe, test, expect, mock, spyOn } from 'bun:test';
 
 // This spec exercises uncached full-card presentation. Keep its model boundary
 // deterministic so the provider-free source suite cannot open a network request.
-const presenterMessages: unknown[] = [];
 mock.module('../../shared/agent/model.config', () => ({
   createStructuredModel: (agent: string) => ({
-    invoke: async (messages: unknown) => {
-      presenterMessages.push(messages);
-      return {
+    invoke: async () => ({
             presentation: {
               headline: 'A relevant connection',
               personalizedSummary: 'Their current goals may be relevant to yours.',
@@ -23,8 +20,7 @@ mock.module('../../shared/agent/model.config', () => ({
               mutualIntentsLabel: 'Shared interests',
               greeting: '',
             },
-      };
-    },
+    }),
   }),
 }));
 
@@ -36,6 +32,7 @@ import { selectByComposition, classifyOpportunity, RADAR_SOFT_TARGETS } from '..
 import type { RadarGraphDatabase } from '../../../platform/database.js';
 import type { Opportunity } from '../../../platform/database.js';
 import type { OpportunityCache } from '../../../platform/discovery/cache.js';
+import { OpportunityPresenter } from '../opportunity.presentation.js';
 
 function createMockCache(): OpportunityCache {
   const store = new Map<string, unknown>();
@@ -147,17 +144,18 @@ describe('RadarGraph', () => {
       set: async (key) => { cacheKeys.push(key); },
     };
 
-    presenterMessages.length = 0;
+    const presentCardSpy = spyOn(OpportunityPresenter.prototype, 'presentCard');
     await new RadarGraphFactory(db, cache).createGraph().invoke({
       userId: viewerId,
       scopeType: 'intent',
       scopeId: intentId,
     });
 
-    const prompt = String((presenterMessages.at(-1) as Array<{ content?: unknown }> | undefined)?.at(-1)?.content);
-    expect(prompt).toContain('Buy a helicopter');
-    expect(prompt).not.toContain('looking for investment');
+    const presenterInput = presentCardSpy.mock.calls.at(-1)?.[0];
+    expect(presenterInput?.viewerContext).toContain('Buy a helicopter');
+    expect(presenterInput?.viewerContext).not.toContain('looking for investment');
     expect(cacheKeys).toContain(`radar:v2:card:opp-scoped:pending:${viewerId}:intent:${intentId}`);
+    presentCardSpy.mockRestore();
 
     cacheKeys.length = 0;
     await new RadarGraphFactory(db, cache).createGraph().invoke({ userId: viewerId });
