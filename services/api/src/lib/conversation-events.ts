@@ -90,3 +90,14 @@ export async function publishIntentDiscoveryProgressEvent(input: {
     JSON.stringify({ type: 'intent_discovery_progress', intentId: input.intentId }),
   );
 }
+
+/** Publishes an owner-scoped invalidation after another intent-owned view changes. */
+export async function publishIntentInvalidationEvent(input: {
+  userId: string;
+  intentId: string;
+}): Promise<void> {
+  await getRedisClient().publish(
+    `conversations:user:${input.userId}`,
+    JSON.stringify({ type: 'intent_invalidated', intentId: input.intentId }),
+  );
+}

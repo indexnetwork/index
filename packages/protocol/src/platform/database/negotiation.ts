@@ -125,6 +125,13 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
     pause?: NegotiationTaskMetadata['pause'],
   ): Promise<NegotiationTaskRow>;
 
+  /** Completes a still-paused task and expires its opportunity atomically. */
+  expirePausedNegotiation(input: {
+    taskId: string;
+    expectedUpdatedAt: Date;
+    reason: 'counterparty_silent' | 'needs_principal';
+  }): Promise<NegotiationTaskRow | null>;
+
   /** Writes ONE seat's brief, leaving the other seat's untouched. */
   setNegotiationBrief(taskId: string, userId: string, brief: string): Promise<void>;
 

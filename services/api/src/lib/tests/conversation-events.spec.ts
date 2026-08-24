@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { conversationEventRecipientUserIds, publishConversationMessageEvent, publishIntentDiscoveryProgressEvent, publishPersonalAgentTurnCompletedEvent } from '../conversation-events';
+import { conversationEventRecipientUserIds, publishConversationMessageEvent, publishIntentDiscoveryProgressEvent, publishIntentInvalidationEvent, publishPersonalAgentTurnCompletedEvent } from '../conversation-events';
 import { getRedisClient } from '../../adapters/cache.adapter';
 
 describe('conversationEventRecipientUserIds', () => {
@@ -75,6 +75,25 @@ test('publishes discovery-progress invalidation without progress data', async ()
     expect(published).toEqual([{
       channel: 'conversations:user:owner-a',
       payload: JSON.stringify({ type: 'intent_discovery_progress', intentId: 'intent-a' }),
+    }]);
+  } finally {
+    redis.publish = originalPublish;
+  }
+});
+
+test('publishes an intent invalidation only to its owner', async () => {
+  const redis = getRedisClient();
+  const published: Array<{ channel: string; payload: string }> = [];
+  const originalPublish = redis.publish.bind(redis);
+  redis.publish = (async (channel: string, payload: string) => {
+    published.push({ channel, payload });
+    return 1;
+  }) as typeof redis.publish;
+  try {
+    await publishIntentInvalidationEvent({ userId: 'owner-a', intentId: 'intent-a' });
+    expect(published).toEqual([{
+      channel: 'conversations:user:owner-a',
+      payload: JSON.stringify({ type: 'intent_invalidated', intentId: 'intent-a' }),
     }]);
   } finally {
     redis.publish = originalPublish;

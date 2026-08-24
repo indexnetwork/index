@@ -100,6 +100,40 @@ describe('NegotiationWatchdogQueue', () => {
     expect(deps.negotiationGraph.invoke).toHaveBeenCalledTimes(1);
   });
 
+  it('expires a stale principal-needed pause through the graph', async () => {
+    const task = makeTask({
+      state: 'paused',
+      updatedAt: new Date(now.getTime() - WORKING_STALE_AFTER_MS - 1),
+      metadata: { type: 'negotiation', opportunityId: 'opportunity-1', pause: { reason: 'needs_principal' } },
+    });
+    const deps = makeDeps(task);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.database.recordNegotiationWatchdogAttempt).not.toHaveBeenCalled();
+    expect(deps.opportunities.getOpportunity).not.toHaveBeenCalled();
+    expect(deps.negotiationGraph.invoke).toHaveBeenCalledWith({
+      negotiationId: task.id,
+      expire: { expectedUpdatedAt: task.updatedAt, reason: 'needs_principal' },
+    });
+  });
+
+  it('does not expire a paused task changed after the stale-list read', async () => {
+    const task = makeTask({
+      state: 'paused',
+      updatedAt: new Date(now.getTime() - WORKING_STALE_AFTER_MS - 1),
+      metadata: { type: 'negotiation', opportunityId: 'opportunity-1', pause: { reason: 'counterparty_silent' } },
+    });
+    const deps = makeDeps(task);
+    deps.database.getTask.mockResolvedValue({ ...task, updatedAt: now } as never);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
+  });
+
   it('does nothing when the task changed state after the stale-list read', async () => {
     const deps = makeDeps();
     deps.database.getTask.mockResolvedValue(makeTask({ state: 'completed' }) as never);

@@ -145,6 +145,7 @@ export interface IntentCycleNegotiationDetail {
     opportunityId: string;
     round: number;
     state: NegotiationTaskState;
+    updatedAt: string;
     brief: string | null;
     pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null; payload?: unknown } | null;
   };

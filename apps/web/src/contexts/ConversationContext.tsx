@@ -49,6 +49,11 @@ export interface IntentDiscoveryProgressEvent {
   intentId: string;
 }
 
+/** An owner-scoped invalidation for an intent-owned view. */
+export interface IntentInvalidationEvent {
+  intentId: string;
+}
+
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: ConversationSummary[];
@@ -77,6 +82,8 @@ interface ConversationContextType {
   subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
   /** Subscribe to owner-scoped discovery-progress invalidations. */
   subscribeIntentDiscoveryProgress: (handler: (event: IntentDiscoveryProgressEvent) => void) => () => void;
+  /** Subscribe to owner-scoped intent invalidations. */
+  subscribeIntentInvalidation: (handler: (event: IntentInvalidationEvent) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -104,6 +111,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const personalAgentTurnCompletedHandlersRef = useRef(new Set<(event: PersonalAgentTurnCompletedEvent) => void>());
   const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
   const intentDiscoveryProgressHandlersRef = useRef(new Set<(event: IntentDiscoveryProgressEvent) => void>());
+  const intentInvalidationHandlersRef = useRef(new Set<(event: IntentInvalidationEvent) => void>());
 
   const subscribeQuestionRegeneration = useCallback(
     (handler: (event: QuestionRegenerationEvent) => void) => {
@@ -137,6 +145,14 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     (handler: (event: IntentDiscoveryProgressEvent) => void) => {
       intentDiscoveryProgressHandlersRef.current.add(handler);
       return () => { intentDiscoveryProgressHandlersRef.current.delete(handler); };
+    },
+    [],
+  );
+
+  const subscribeIntentInvalidation = useCallback(
+    (handler: (event: IntentInvalidationEvent) => void) => {
+      intentInvalidationHandlersRef.current.add(handler);
+      return () => { intentInvalidationHandlersRef.current.delete(handler); };
     },
     [],
   );
@@ -485,6 +501,12 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               intentDiscoveryProgressHandlersRef.current.forEach((handler) => handler({ intentId }));
               break;
             }
+            case 'intent_invalidated': {
+              const intentId = data.intentId as string | undefined;
+              if (!intentId) break;
+              intentInvalidationHandlersRef.current.forEach((handler) => handler({ intentId }));
+              break;
+            }
             case 'personal_agent_turn_completed': {
               const intentId = data.intentId as string | undefined;
               if (!intentId) break;
@@ -590,6 +612,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         subscribePersonalAgentTurnCompleted,
         subscribeConversationMessage,
         subscribeIntentDiscoveryProgress,
+        subscribeIntentInvalidation,
       }}
     >
       {children}

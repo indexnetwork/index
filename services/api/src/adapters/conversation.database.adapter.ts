@@ -66,7 +66,7 @@ import { projectOwnerScreenDecision } from './negotiation-lifecycle.projection';
 import { buildHermesResponseMetadataSql } from './conversation-hermes-metadata.sql';
 import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, intents, isNull, lt, ne, notInArray, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
-import { publishConversationMessageEvent } from '../lib/conversation-events';
+import { publishConversationMessageEvent, publishIntentInvalidationEvent } from '../lib/conversation-events';
 import { log } from '../lib/log';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
@@ -377,7 +377,7 @@ export interface StaleNegotiationTasksInput {
 export interface StaleNegotiationTask {
   id: string;
   conversationId: string;
-  state: 'submitted' | 'working';
+  state: 'submitted' | 'working' | 'paused';
   createdAt: Date;
   updatedAt: Date;
   metadata: Record<string, unknown> | null;
@@ -1768,6 +1768,11 @@ export class ConversationDatabaseAdapter {
         or(
           and(eq(schema.tasks.state, 'submitted'), lt(schema.tasks.createdAt, submittedCutoff)),
           and(eq(schema.tasks.state, 'working'), lt(schema.tasks.updatedAt, workingCutoff)),
+          and(
+            eq(schema.tasks.state, 'paused'),
+            inArray(sql`${schema.tasks.metadata}->'pause'->>'reason'`, ['needs_principal', 'counterparty_silent']),
+            lt(schema.tasks.updatedAt, workingCutoff),
+          ),
         ),
       ))
       .orderBy(asc(schema.tasks.createdAt))
@@ -1775,7 +1780,7 @@ export class ConversationDatabaseAdapter {
 
     return rows.map((row) => ({
       ...row,
-      state: row.state as 'submitted' | 'working',
+      state: row.state as 'submitted' | 'working' | 'paused',
       metadata: (row.metadata as Record<string, unknown> | null) ?? null,
     }));
   }
@@ -2226,6 +2231,7 @@ export class ConversationDatabaseAdapter {
       round: number;
       state: string;
       brief: string | null;
+      updatedAt: Date;
       pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null; payload?: unknown } | null;
     };
     transcript: Array<{
@@ -2252,6 +2258,7 @@ export class ConversationDatabaseAdapter {
         state: schema.tasks.state,
         briefs: schema.tasks.briefs,
         metadata: schema.tasks.metadata,
+        updatedAt: schema.tasks.updatedAt,
       })
       .from(schema.tasks)
       .where(and(
@@ -2299,6 +2306,7 @@ export class ConversationDatabaseAdapter {
         opportunityId: metadata.opportunityId,
         round: seat.round,
         state: task.state,
+        updatedAt: task.updatedAt,
         brief: typeof (task.briefs as Record<string, unknown> | null)?.[userId] === 'string'
           ? (task.briefs as Record<string, string>)[userId]
           : null,
@@ -2625,6 +2633,57 @@ export class ConversationDatabaseAdapter {
       .returning();
     if (!row) throw new Error(`Negotiation task ${taskId} not found`);
     return toNegotiationTaskRow(row);
+  }
+
+  async expirePausedNegotiation(input: {
+    taskId: string;
+    expectedUpdatedAt: Date;
+    reason: 'counterparty_silent' | 'needs_principal';
+  }): Promise<NegotiationTaskRowMirror | null> {
+    const result = await db.transaction(async (tx) => {
+      const [task] = await tx.select().from(schema.tasks)
+        .where(eq(schema.tasks.id, input.taskId)).for('update');
+      if (
+        !task
+        || task.state !== 'paused'
+        || task.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+        || (task.metadata as NegotiationTaskMetadataMirror | null)?.pause?.reason !== input.reason
+      ) return null;
+
+      const metadata = task.metadata as NegotiationTaskMetadataMirror;
+      const [opportunity] = await tx.select({ status: opportunities.status }).from(opportunities)
+        .where(eq(opportunities.id, metadata.opportunityId)).for('update');
+      if (!opportunity) return null;
+
+      const now = new Date();
+      const [completed] = await tx.update(schema.tasks).set({ state: 'completed', updatedAt: now })
+        .where(eq(schema.tasks.id, task.id)).returning();
+      if (!completed) throw new Error(`Negotiation task ${task.id} not found`);
+      const opportunityExpired = !['accepted', 'rejected', 'expired'].includes(opportunity.status);
+      if (opportunityExpired) {
+        await tx.update(opportunities).set({ status: 'expired', updatedAt: now })
+          .where(eq(opportunities.id, metadata.opportunityId));
+      }
+      return { task: toNegotiationTaskRow(completed), opportunityExpired };
+    });
+    if (result?.opportunityExpired) {
+      emitOpportunityLifecycleBestEffort({ id: result.task.metadata.opportunityId, status: 'expired' });
+      emitOpportunityTransitionBestEffort({ id: result.task.metadata.opportunityId, status: 'expired' });
+    }
+    if (result) {
+      await Promise.all(Object.entries(result.task.metadata.seats).map(async ([intentId, seat]) => {
+        try {
+          await publishIntentInvalidationEvent({ userId: seat.userId, intentId });
+        } catch (error) {
+          logger.error('Failed to publish negotiation expiry intent invalidation', {
+            taskId: result.task.id,
+            intentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }));
+    }
+    return result?.task ?? null;
   }
 
   /**
