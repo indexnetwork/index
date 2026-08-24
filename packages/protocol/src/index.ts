@@ -261,13 +261,10 @@ export type {
 export {
   HERMES_OWNER_DIRECTIVE,
   HermesNegotiationActionSchema,
-  HermesNegotiationResponseSchema,
   HermesOwnerDirectiveSchema,
-  buildHermesNegotiationTurn,
 } from "./internal/negotiations/negotiation.hermes-contract.js";
 export type {
   HermesNegotiationAction,
-  HermesNegotiationResponse,
   HermesOwnerDirective,
 } from "./internal/negotiations/negotiation.hermes-contract.js";
 export { renderNegotiatorChatMemorySection } from "./internal/negotiations/negotiation.memory.js";

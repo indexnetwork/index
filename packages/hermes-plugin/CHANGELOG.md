@@ -7,7 +7,27 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Breaking
+- **`index_respond_negotiation` refuses (D24).** It POSTed
+  `/agents/{agentId}/negotiations/{negotiationId}/respond`, a route protocol
+  #1494 deleted, so every call answered 404. It now refuses with that
+  explanation instead of dispatching, and takes no arguments. It is
+  deliberately NOT repointed at the MCP `respond_to_negotiation` surface:
+  that lane authorises a turn as the calling principal's own agent, a
+  different authority from the one this bridge held. External agents stay
+  offline until they are rebuilt on the new auth model.
+
 ### Removed
+- The dispatch path that tool was the only caller of: the per-pass mutation
+  fencing and hidden run authority (`_NegotiationRunState` and its helpers,
+  `_begin`/`_finish_negotiation_mutation`, `_dispatch_negotiation_request`,
+  the ambiguous-replay retry), the `_NEGOTIATION_ACTIONS` vocabulary, agent-id
+  resolution for it, and the `hermes_run` plumbing through `request_rest` with
+  its `x-index-hermes-run-id` / `-capability` headers. `tests/gateway.py`
+  tested that fencing end to end and goes with it.
+- The `index-negotiator` skill's action vocabulary and submit contract: a
+  scheduled pass now outputs `[SILENT]`, and the skill reads and explains
+  rather than pretending it can submit.
 - Remove the retired `read_pending_questions` MCP wrapper from the standalone
   Hermes surface, matching Protocol 22.0.0.
 - Remove `negotiation_wake.py` (the conversation-SSE listener that

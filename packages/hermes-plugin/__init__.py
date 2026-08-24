@@ -170,5 +170,7 @@ def register(ctx):
     # negotiation_wake.py (the conversation-SSE listener that auto-started a
     # Hermes turn on a negotiation message) is deleted: external-agent
     # negotiation dispatch is offline (#1494 round-3, Option A — see the PR
-    # body). There is no server-side signal left to wake on; a Hermes turn is
-    # submitted on explicit instruction only, via index_respond_negotiation.
+    # body). There is no server-side signal left to wake on, and no route left
+    # to submit to either — `index_respond_negotiation` stays registered only
+    # to say so, so a negotiator asked for a turn learns why it cannot take one
+    # instead of reaching for some other tool.

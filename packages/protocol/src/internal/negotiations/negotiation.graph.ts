@@ -23,6 +23,13 @@ import { negotiationRoundReflectJobId, type NegotiationRoundReflectEnqueueFn } f
 
 const logger = protocolLogger("NegotiationGraph");
 
+/**
+ * Opportunity statuses that are already decided. `resolve` never writes over
+ * one: the decision behind them is the owner's, and this graph's verdict is
+ * only ever the negotiation's own.
+ */
+const TERMINAL_OPPORTUNITY_STATUSES = new Set(["accepted", "rejected", "expired"]);
+
 // ─── Invoke contract ─────────────────────────────────────────────────────────
 
 export type NegotiationGraphInput =
@@ -433,10 +440,23 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
     // counterparty sees only that the negotiation closed.
     await deps.database.createNegotiationOutcomeArtifact(task.id, { verdict: input.verdict, reasoning: input.reasoning });
     const updated = await deps.database.updateNegotiationTaskState(task.id, "completed");
-    await deps.database.updateOpportunityStatus(
-      task.metadata.opportunityId,
-      input.verdict === "pending" ? "pending" : "rejected",
-    );
+    // The opportunity status is resolve's to write UNLESS the owner has
+    // already written a terminal one. An owner verdict (Radar skip/accept,
+    // `PATCH /opportunities/:id/status`, the DM's accept/reject tools) is a
+    // user action outside this loop by design — it writes `accepted` /
+    // `rejected` itself and then calls resolve to CLOSE the negotiation,
+    // because a terminal opportunity whose task stays `working` holds its
+    // round open forever and the round's reflect job never fires. Rewriting
+    // the status here would downgrade that owner's `accepted` back to
+    // `pending` and re-fire the actionable notification for a match they
+    // have already accepted.
+    const opportunity = await deps.database.getOpportunity(task.metadata.opportunityId);
+    if (!opportunity || !TERMINAL_OPPORTUNITY_STATUSES.has(opportunity.status)) {
+      await deps.database.updateOpportunityStatus(
+        task.metadata.opportunityId,
+        input.verdict === "pending" ? "pending" : "rejected",
+      );
+    }
     // A round whose last active negotiation ends by direct verdict (not a
     // pause) must still trigger the all-paused check — apply isn't the only
     // way a round finishes.
