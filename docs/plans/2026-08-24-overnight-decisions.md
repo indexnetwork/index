@@ -1,10 +1,4 @@
-# Overnight orchestration decisions — 2026-08-23/24
-
-Written by the root session while implementing the design doc
-(2026-08-23-personal-agent-and-negotiation-graphs.md) end to end while the
-owner was asleep. Every entry is a call taken WITHOUT the owner, with the
-alternative that was rejected. These are for the owner to revisit.
-
+...
 ## D1. External-agent surface removed from step 1 (owner delegated: "you choose")
 Chose: delete dispatcher path, freshness gate, Hermes wake/respond, polling
 remnants; one stated break — external agents return in a follow-up on the new
@@ -134,3 +128,62 @@ findings were all recovered before the review died). #1495 merges on: CI green
 + its two completed review rounds, with a lighter final pass.
 Alternative rejected: waiting for morning to re-run full reviews — the standing
 instruction is to finish overnight; the risk is documented here instead.
+
+## D15. Migration journal bug found and hotfixed (#1497) — NEEDS OWNER ATTENTION
+#1495 merged `0145_collapse_chat_personas.sql` with NO `_journal.json` entry.
+`drizzle-kit migrate` (Railway preDeployCommand) reads the journal, so the
+persona collapse never ran: dev deployed the one-persona code against rows
+still carrying 'signal'/'negotiator'/'onboarding' and the old registry keys.
+Root cause of the miss: during the #1495 rebase the agent deliberately left it
+unjournaled "matching the existing 0142/0143 pattern", and I accepted that —
+but 0142/0143 are themselves unjournaled by accident (added by the
+enrichment-removal commits edc996c05 / 7de70d2a6), not a convention.
+Fixed by #1497 (journal entry only; the migration is re-runnable by
+construction). 0142/0143 left alone — separate question for their authors.
+
+TWO THINGS FOR THE OWNER:
+(a) Railway SKIPPED the #1497 deploy even though the changed file
+    (services/api/drizzle/meta/_journal.json) matches watchPatterns
+    "/services/api/**". So a migration-only or journal-only fix does NOT
+    deploy on its own. The migration applies on the next deploy that Railway
+    does pick up (#1496 will, it touches many services/api files). Worth
+    checking the watchPattern semantics — this will bite again.
+(b) The step-2 agent applied `bun run db:migrate:test` (0145 + 0146) to the
+    shared Neon TEST branch. 0145 archives fold-loser conversations there.
+    Test DB only; no production/dev-DB writes were made by any agent.
+
+## D16. Step-2 merge stop-rule (set 2026-08-24, round 3)
+PR #1496 has had three adversarial review rounds, each surfacing blockers
+(6, 7, 6 findings). Every finding was fixed with a regression test the author
+verified actually catches the bug. Rule set now, before the outcome is known:
+if the round-4 review still returns blockers, step 2 does NOT merge tonight —
+the owner gets the PR implemented, reviewed four times, with the open findings
+listed, rather than a merge neither the reviewer nor I trust.
+Rationale: dev is in a documented, safe interim (negotiations open/turn/pause
+correctly; nothing reflects; external agents offline). That interim is strictly
+better than a merged reflect loop with a known permission bypass or a
+false-confirmation path. Alternative rejected: merging on "close enough"
+because the goal said implement everything overnight — the goal also said not
+to stray from what was asked, and what was asked was a working system.
+
+## D17. Stop-rule executed: step 2 (#1496) is NOT merged
+Round 4 returned eight findings including three blockers, so D16's rule fired.
+#1494, #1495, #1497 are merged (each cleared a review with all findings fixed).
+#1496 stays open for the owner: implemented, four adversarial review rounds,
+every reported finding fixed except two deliberately deferred design questions.
+Why not merge anyway: the round-4 blockers are silent-failure paths in the
+reflect loop (a transient DB error permanently consuming a round's only
+reflect; a retry duplicating verdicts and strategy messages; a repair that
+reflects a round it then supersedes). dev's current interim — negotiations
+open/turn/pause, nothing reflects, external agents offline — is documented and
+safe. Merging would replace a known-inert state with a known-wrong one.
+
+### Two open design questions for the owner (deferred, not bugs to fix blind)
+(a) Interrupted-kickoff detection is indistinguishable from a kickoff in
+    flight; it is only safe while exactly one worker processes a signal, but
+    the queue already contemplates several. Needs a per-intent lock or a
+    staleness bound on the kickoff marker.
+(b) Kickoff fan-out is unbounded: the prompt caps context at 12 matches but
+    kickoff opens ALL of them, each self-playing up to 6 turns. 40 matches =
+    40 concurrent briefs + 40 concurrent negotiations in one job. Needs a
+    concurrency policy — and it interacts with (a).
