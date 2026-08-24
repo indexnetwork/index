@@ -2077,6 +2077,108 @@ export class ConversationDatabaseAdapter {
     };
   }
 
+  /** Every negotiation seat bound to this owner, one row per intent/task. */
+  async getNegotiationTaskIndex(userId: string): Promise<Array<{
+    intentId: string;
+    intentLabel: string;
+    taskId: string;
+    conversationId: string;
+    opportunityId: string;
+    opportunityStatus: string;
+    counterpartLabel: string;
+    round: number;
+    state: string;
+    pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
+    latestActivity: { actor: 'yours' | 'theirs'; verb: string | null; createdAt: Date | null };
+    updatedAt: Date;
+  }>> {
+    const taskRows = await db
+      .select({
+        id: schema.tasks.id,
+        conversationId: schema.tasks.conversationId,
+        state: schema.tasks.state,
+        metadata: schema.tasks.metadata,
+        updatedAt: schema.tasks.updatedAt,
+      })
+      .from(schema.tasks)
+      .where(and(
+        sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        sql`exists (select 1 from jsonb_each(${schema.tasks.metadata}->'seats') as seat where seat.value->>'userId' = ${userId})`,
+        notArchivedNegotiationTaskWhere(),
+        rewriteEraNegotiationTaskWhere(),
+      ));
+    const seats = taskRows.flatMap((task) => {
+      const metadata = task.metadata as NegotiationTaskMetadataMirror;
+      if (!metadata?.opportunityId) return [];
+      return Object.entries(metadata.seats ?? {})
+        .filter(([, seat]) => seat.userId === userId)
+        .map(([intentId, seat]) => ({ ...task, metadata, intentId, seat }));
+    });
+    const intentIds = [...new Set(seats.map((seat) => seat.intentId))];
+    const intentRows = intentIds.length === 0 ? [] : await db
+      .select({ id: schema.intents.id, payload: schema.intents.payload, summary: schema.intents.summary })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.userId, userId), inArray(schema.intents.id, intentIds)));
+    const intentById = new Map(intentRows.map((intent) => [intent.id, intent]));
+
+    const opportunityIds = [...new Set(seats.map((seat) => seat.metadata.opportunityId))];
+    const opportunityRows = opportunityIds.length === 0 ? [] : await db
+      .select({ id: schema.opportunities.id, status: schema.opportunities.status, actors: schema.opportunities.actors })
+      .from(schema.opportunities)
+      .where(inArray(schema.opportunities.id, opportunityIds));
+    const opportunityById = new Map(opportunityRows.map((opportunity) => [opportunity.id, opportunity]));
+    const counterpartIds = [...new Set(opportunityRows.flatMap((opportunity) =>
+      opportunity.actors.filter((actor) => actor.userId !== userId).map((actor) => actor.userId),
+    ))];
+    const counterpartRows = counterpartIds.length === 0 ? [] : await db
+      .select({ id: schema.users.id, name: schema.users.name })
+      .from(schema.users)
+      .where(inArray(schema.users.id, counterpartIds));
+    const counterpartById = new Map(counterpartRows.map((counterpart) => [counterpart.id, counterpart]));
+
+    const messageRows = seats.length === 0 ? [] : await db
+      .select({ taskId: schema.messages.taskId, senderId: schema.messages.senderId, parts: schema.messages.parts, createdAt: schema.messages.createdAt })
+      .from(schema.messages)
+      .where(inArray(schema.messages.taskId, [...new Set(seats.map((seat) => seat.id))]))
+      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id));
+    const latestByTask = new Map<string, typeof messageRows[number]>();
+    for (const message of messageRows) {
+      if (message.taskId && !latestByTask.has(message.taskId)) latestByTask.set(message.taskId, message);
+    }
+
+    return seats.flatMap((seat) => {
+      const intent = intentById.get(seat.intentId);
+      const opportunity = opportunityById.get(seat.metadata.opportunityId);
+      if (!intent || !opportunity) return [];
+      const counterpartId = opportunity.actors.find((actor) => actor.userId !== userId)?.userId;
+      const pausedBy = seat.metadata.pause?.pausedBy;
+      const pauseReason = intentCyclePauseReason(seat.metadata.pause?.reason);
+      const pauseBy: 'yours' | 'theirs' | null = pausedBy
+        ? (pausedBy === `agent:${userId}` ? 'yours' : 'theirs')
+        : null;
+      const latest = latestByTask.get(seat.id);
+      const latestActivity = latest ? intentCycleLatestActivity(latest.parts as unknown[], latest.senderId, userId, latest.createdAt) : null;
+      return [{
+        intentId: intent.id,
+        intentLabel: intent.summary?.trim() || intent.payload,
+        taskId: seat.id,
+        conversationId: seat.conversationId,
+        opportunityId: opportunity.id,
+        opportunityStatus: opportunity.status,
+        counterpartLabel: counterpartById.get(counterpartId ?? '')?.name?.trim() || 'Unknown counterpart',
+        round: seat.seat.round,
+        state: seat.state,
+        pause: pauseReason
+          ? { reason: pauseReason, by: pauseBy }
+          : null,
+        latestActivity: latestActivity
+          ? { actor: latestActivity.actor, verb: latestActivity.verb, createdAt: latestActivity.createdAt }
+          : { actor: 'yours' as const, verb: null, createdAt: null },
+        updatedAt: seat.updatedAt,
+      }];
+    }).sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime() || left.taskId.localeCompare(right.taskId));
+  }
+
   /**
    * Recent durable IS-A effects. The ledger is append-only and records the
    * event that woke the agent with each effect it actually executed; it does

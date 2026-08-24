@@ -73,4 +73,20 @@ describe('ConversationController intent cycle', () => {
       entries: [{ ...entries[0], createdAt: entries[0]!.createdAt.toJSON() }],
     });
   });
+
+  it('returns the task-first negotiation index for the authenticated owner', async () => {
+    const entries = [{ taskId: 'task-1', intentId: INTENT_ID }];
+    const read = mock(async () => entries);
+    const controller = new ConversationController(
+      { getNegotiationTaskIndex: read } as unknown as ConversationService,
+      {} as TaskService,
+    );
+    const response = await controller.getNegotiationTaskIndex(
+      new Request('http://localhost/conversations/negotiations/task-index'),
+      { id: 'owner', email: null, name: 'Owner' },
+    );
+    expect(response.status).toBe(200);
+    expect(read).toHaveBeenCalledWith('owner');
+    expect(await response.json()).toEqual({ entries });
+  });
 });

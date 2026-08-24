@@ -85,6 +85,10 @@ export class ConversationService {
     return this.db.getConversationsForUser(`agent:${userId}`, userId, true);
   }
 
+  async getNegotiationTaskIndex(userId: string) {
+    return this.db.getNegotiationTaskIndex(userId);
+  }
+
   /**
    * Returns the latest persisted A2A turns grouped by correspondent for one
    * intent owned by the authenticated user.

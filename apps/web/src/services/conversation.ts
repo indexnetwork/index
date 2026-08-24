@@ -168,6 +168,22 @@ export interface IntentCycleTimelineEntry {
   createdAt: string;
 }
 
+/** One authenticated owner's bound seat, regardless of intent or task state. */
+export interface NegotiationTaskIndexEntry {
+  intentId: string;
+  intentLabel: string;
+  taskId: string;
+  conversationId: string;
+  opportunityId: string;
+  opportunityStatus: NegotiationOpportunityStatus;
+  counterpartLabel: string;
+  round: number;
+  state: NegotiationTaskState;
+  pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
+  latestActivity: { actor: 'yours' | 'theirs'; verb: string | null; createdAt: string | null };
+  updatedAt: string;
+}
+
 export const createConversationService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   /** List all conversations for the authenticated user. */
   getConversations: async (): Promise<ConversationSummary[]> => {
@@ -179,6 +195,11 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   getNegotiations: async (): Promise<ConversationSummary[]> => {
     const response = await api.get<{ conversations: ConversationSummary[] }>('/conversations/negotiations');
     return response.conversations;
+  },
+
+  getNegotiationTaskIndex: async (): Promise<NegotiationTaskIndexEntry[]> => {
+    const response = await api.get<{ entries: NegotiationTaskIndexEntry[] }>('/conversations/negotiations/task-index');
+    return response.entries;
   },
 
   getIntentCycle: async (intentId: string): Promise<IntentCycleSnapshot> => {

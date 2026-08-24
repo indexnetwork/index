@@ -56,6 +56,14 @@ export class ConversationController {
     }
   }
 
+  /** Owner-seat index for the debug negotiation console. */
+  @Get('/negotiations/task-index')
+  @UseGuards(RateLimit('read'), AuthGuard)
+  async getNegotiationTaskIndex(_req: Request, user: AuthenticatedUser) {
+    const entries = await this.conversationService.getNegotiationTaskIndex(user.id);
+    return Response.json({ entries });
+  }
+
   /** Debug state for one owned intent's PersonalAgent negotiation cycle. */
   @Get('/negotiations/intent-cycle')
   @UseGuards(RateLimit('read'), AuthGuard)
