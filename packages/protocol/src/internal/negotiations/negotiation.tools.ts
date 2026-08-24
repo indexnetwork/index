@@ -182,7 +182,13 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
       recommendation: z.enum(['pending', 'reject']).optional().describe('Required when pauseReason is ready_for_verdict.'),
     }).refine((v) => Boolean(v.verb) !== Boolean(v.pauseReason), { message: 'Provide exactly one of verb or pauseReason.' })
       .refine((v) => v.pauseReason !== 'needs_principal' || Boolean(v.question), { message: 'question is required when pauseReason is needs_principal.' })
-      .refine((v) => v.pauseReason !== 'ready_for_verdict' || Boolean(v.recommendation), { message: 'recommendation is required when pauseReason is ready_for_verdict — no default is fabricated.' }),
+      .refine((v) => v.pauseReason !== 'ready_for_verdict' || Boolean(v.recommendation), { message: 'recommendation is required when pauseReason is ready_for_verdict — no default is fabricated.' })
+      // Without this, an omitted reasoning silently became '' (query.reasoning
+      // ?? '') and failed the pause schema's own min(1) downstream — an
+      // opaque parse error instead of a clear one, and ready_for_verdict was
+      // unsatisfiable for any caller that didn't already know reasoning was
+      // required for the pause path too, not just continuing verbs.
+      .refine((v) => v.pauseReason !== 'ready_for_verdict' || Boolean(v.reasoning), { message: 'reasoning is required when pauseReason is ready_for_verdict.' }),
     handler: async ({ context, query }) => {
       try {
         const task = await negotiationDatabase.getNegotiationTask(query.negotiationId);
@@ -199,13 +205,14 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         // itself; only a resolved one is truly done.
         if (task.state === 'completed') return error(`Negotiation is not accepting a turn right now. Current status: ${task.state}`);
 
-        // question/recommendation presence for their respective pauseReason is
-        // enforced by the schema's refine above — never defaulted here.
+        // question/recommendation/reasoning presence for their respective
+        // pauseReason is enforced by the schema's refine above — never
+        // defaulted here.
         const turn = query.verb
           ? { verb: query.verb, message: query.message ?? '', reasoning: query.reasoning ?? '' }
           : query.pauseReason === 'needs_principal'
             ? { verb: 'pause' as const, reason: 'needs_principal' as const, payload: { question: query.question! } }
-            : { verb: 'pause' as const, reason: 'ready_for_verdict' as const, payload: { recommendation: query.recommendation!, reasoning: query.reasoning ?? '' } };
+            : { verb: 'pause' as const, reason: 'ready_for_verdict' as const, payload: { recommendation: query.recommendation!, reasoning: query.reasoning! } };
 
         const parsed = NegotiationTurnSchema.safeParse(turn);
         if (!parsed.success) return error(`Invalid turn: ${parsed.error.issues[0]?.message ?? 'schema validation failed'}`);

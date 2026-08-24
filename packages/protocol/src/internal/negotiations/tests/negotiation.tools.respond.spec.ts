@@ -78,6 +78,16 @@ describe("respond_to_negotiation — ready_for_verdict requires a real recommend
     expect(parsed.success).toBe(false);
   });
 
+  it("schema rejects ready_for_verdict with no reasoning — was previously unsatisfiable (round-3 finding 7): reasoning silently became '' and failed the pause schema's own min(1) downstream", () => {
+    const { tool } = getRespondTool();
+    const parsed = tool.querySchema.safeParse({
+      negotiationId: NEGOTIATION_ID,
+      pauseReason: "ready_for_verdict",
+      recommendation: "pending",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("schema rejects needs_principal with no question", () => {
     const { tool } = getRespondTool();
     const parsed = tool.querySchema.safeParse({
