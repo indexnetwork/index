@@ -6,12 +6,6 @@ export interface CanonicalEmbeddingIdentityFields {
   dimensions: number;
 }
 
-export const HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY = Object.freeze({
-  provider: 'openrouter',
-  model: 'openai/text-embedding-3-large',
-  dimensions: 2000,
-} as const);
-
 /** Fingerprints only the canonical provider/model/dimensions identity fields. */
 export function embeddingConfigurationFingerprint(identity: CanonicalEmbeddingIdentityFields): string {
   const canonical = {

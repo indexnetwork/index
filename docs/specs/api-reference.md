@@ -68,7 +68,6 @@ Session-only endpoints:
 - `POST /api/agents/:id/tokens`, `DELETE /api/agents/:id/tokens/:tokenId`
 - `POST /api/agents/:id/permissions`, `DELETE /api/agents/:id/permissions/:permissionId`
 - `POST /api/agents/:id/transports`, `DELETE /api/agents/:id/transports/:transportId`
-- `POST /api/agent/actions/confirm`
 
 ### DebugGuard
 
@@ -100,20 +99,6 @@ All error responses follow a consistent JSON format:
 ```
 
 ---
-
-## Agent reporter opening briefings
-
-`POST /api/chat/reporter/session` is session-authenticated and available only while `WEB_AGENT_SURFACE_ENABLED=true`. It accepts the strict body `{ "forceNew"?: boolean }` and returns `{ session, created }`. The server serializes each user's claim, reuses the newest reporter session whose creation time is within `REPORTER_BRIEFING_TTL_MS` (24 hours by default), and creates a successor otherwise. Only `created: true` authorizes the client to send the hidden opening-briefing marker. `forceNew: true` is used by the explicit Reporter **New conversation** action; callers cannot select another persona through this route.
-
-Expiry is lazy: stale reporter sessions and their user follow-ups remain readable in ordinary session-only web history, but follow-up activity does not extend freshness because the resolver uses `createdAt`, not `updatedAt`.
-
-## Agent reporter cleanup actions
-
-The dark-shipped reporter action path is gated by `WEB_AGENT_ACTIONS_ENABLED=true` and the reporter surface flag. The proposal tool persists owner-scoped, full-UUID action plans; chat never mutates domain rows. The endpoint below is session-only and returns `404` while the action flag is off.
-
-### POST /api/agent/actions/confirm
-
-Confirm one persisted proposal with `{ "proposalId": "<uuid>" }`. The server re-reads each owner premise or signal immediately before the sequential mutation, skips stale/non-owner/terminal entries, treats already-retracted or already-paused entries as idempotent success, and stores the result for replay. Supported operations are premise retraction, signal description narrowing, and signal pause. A second confirmation returns the stored result with `status: "replayed"`.
 
 ## Non-Controller Routes
 
@@ -329,7 +314,6 @@ Returns the current authenticated user with their full profile.
     "location": "...",
     "timezone": "...",
     "socials": { ... },
-    "isGhost": false,
     "notificationPreferences": { ... },
     "createdAt": "...",
     "updatedAt": "..."
@@ -427,30 +411,9 @@ Soft-deletes the authenticated user's account.
 
 **Controller prefix**: `/chat`
 
-### POST /api/chat/message
-
-Send a message to the chat graph for synchronous processing.
-
-**Auth**: AuthGuard
-
-**Request body**:
-```json
-{
-  "message": "string (required)"
-}
-```
-
-**Response**:
-```json
-{
-  "response": "...",
-  "error": "... (if any)"
-}
-```
-
 ### POST /api/chat/stream
 
-Compatibility SSE endpoint for chat messages with context support. API-key principals retain the orchestrator default for CLI and other non-web consumers. Session-authenticated callers are classified as the web surface from authenticated credential provenance and receive the same Signal policy (or typed refusal) as the dedicated route, preventing a browser from bypassing the cutover by selecting this endpoint. The main web composer uses `/api/chat/web/stream` below.
+Dual-auth SSE endpoint for chat messages with context support. There is one persona (`personal`); requests never name it, and what a turn may do is derived from the session's scope. Session-authenticated callers are classified as the web surface from authenticated credential provenance and receive the same policy (or typed refusal) as the dedicated route, preventing a browser from bypassing the policy by selecting this endpoint. API-key principals are classified as the agent surface and may only drive intent-scoped turns (a signal's DM); anything else returns HTTP 403. The main web composer uses `/api/chat/web/stream` below.
 
 **Auth**: AuthGuard
 
@@ -464,8 +427,7 @@ Compatibility SSE endpoint for chat messages with context support. API-key princ
   "scopeType": "network | intent | null (optional — mutually-exclusive focused scope)",
   "scopeId": "string | null (required when scopeType is provided)",
   "networkId": "string | null (deprecated alias for scopeType=network)",
-  "recipientUserId": "string | null (optional — DM recipient for ghost invites)",
-  "persona": "signal | negotiator | null (optional persona assertion; stored session persona is authoritative)",
+  "recipientUserId": "string | null (optional — DM recipient)",
   "prefillMessages": [
     { "role": "assistant | user", "content": "string (max 10000 chars)" }
   ]
@@ -490,19 +452,19 @@ API-key Signal assertions are rejected on this compatibility route. A session-au
 
 ### POST /api/chat/web/stream
 
-Main-web SSE endpoint. It accepts the same request and returns the same SSE events/headers as `/api/chat/stream`, but is protected by `SessionOnlyGuard` and applies the server-selected Signal cutover policy.
+Main-web SSE endpoint. It accepts the same request and returns the same SSE events/headers as `/api/chat/stream`, but is protected by `SessionOnlyGuard`.
 
-When `WEB_SIGNAL_AGENT_ENABLED=true`, a new ordinary web chat must explicitly request `persona: "signal"`. Signal follow-ups may omit the assertion and inherit the persisted persona. Existing `orchestrator` web sessions remain readable through `POST /api/chat/session`, but a new web turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Explicit persona mismatch and unknown persisted personas also fail closed. Session-authenticated compatibility-route calls receive this same policy; API-key, Telegram, MCP, CLI, and direct-tool orchestrator behavior is unchanged.
+New web chats persist the one `personal` persona; no request field selects it. Retired `orchestrator` sessions remain readable through `POST /api/chat/session`, but a new turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Unknown or unmigrated persisted personas fail closed with `code: "CHAT_PERSONA_UNSUPPORTED"`.
 
 ### POST /api/chat/onboarding/stream
 
-Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. With `WEB_SIGNAL_AGENT_ENABLED=true`, new sessions are server-selected and persisted as `persona="onboarding"`; follow-ups inherit that stored persona, while spoofed/mismatched/unknown personas fail closed. The restricted persona exposes only approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration. With the flag off, the route preserves the legacy `orchestrator` onboarding flow. API-key, Telegram, MCP, CLI, and other non-web consumers are unchanged.
+Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. Sessions persist the one `personal` persona; the restricted onboarding fragment is selected by the user's incomplete onboarding record on a truly unscoped session — not by a persona id — and requests on this route may not be scoped or client-prefilled. The fragment exposes only approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration.
 
 **Auth**: SessionOnlyGuard
 
 ### GET /api/chat/sessions
 
-Compatibility history for the authenticated user. The default and all unrecognized persona filters are clamped to `orchestrator`; the explicit `persona=negotiator` lookup remains for the pinned Personal Agent surface. Signal sessions are never returned to CLI/MCP/legacy history consumers.
+Compatibility history for the authenticated user. Every request is clamped to the retired `orchestrator` persona, whose sessions stay readable; the `persona` query parameter is inert. A signal's DM is reached through its intent, and `personal` sessions are never returned here.
 
 **Auth**: AuthGuard
 
@@ -515,17 +477,15 @@ Compatibility history for the authenticated user. The default and all unrecogniz
 
 ### GET /api/chat/web/sessions
 
-Session-only main-web history. Returns readable legacy `orchestrator` sessions plus `signal` sessions and excludes the pinned negotiator conversation.
+Session-only main-web history. Returns global `personal` sessions plus the read-only rows (retired `orchestrator`, `telegram` notification transcripts), and excludes intent-pinned sessions (a signal's DM is reached through its signal).
 
 **Auth**: SessionOnlyGuard
 
 **Response**: same shape as `GET /api/chat/sessions`.
 
-### POST /api/chat/session/resolve
+### POST /api/chat/web/session/resolve
 
-Resolve or create a stable selected-intent chat session. API-key callers retain the compatibility orchestrator behavior. Session-authenticated callers are classified as web and receive Signal policy or a typed refusal before scope validation/session creation. Repeated calls by the same user, intent, and persona return the same session. The main web composer uses `/api/chat/web/session/resolve`.
-
-**Auth**: AuthGuard
+Session-only resolver for the stable intent-scoped chat session — the signal's DM. An intent scope names exactly one session per (user, intent), keyed in the registry as `personal-intent`; repeated calls return the same session. (The former dual-auth `/api/chat/session/resolve` twin is deleted.)
 
 **Request body**:
 ```json
@@ -548,21 +508,9 @@ Resolve or create a stable selected-intent chat session. API-key callers retain 
 }
 ```
 
-### POST /api/chat/web/session/resolve
-
-Session-only main-web variant of `/api/chat/session/resolve`. While the Signal cutover is enabled, add `persona: "signal"`; the returned stable intent-scoped session uses the Signal persona-distinct registry key, so it never rewrites or reuses legacy orchestrator history.
-
-```json
-{
-  "scopeType": "intent",
-  "scopeId": "intent UUID",
-  "persona": "signal"
-}
-```
-
 ### POST /api/chat/session
 
-Compatibility detail for a specific orchestrator session with its messages (including assistant metadata). Signal and other non-orchestrator personas return 404 so CLI/MCP/legacy clients cannot retrieve web-only history by UUID.
+Compatibility detail for a specific retired-`orchestrator` session with its messages (including assistant metadata). Every other persona returns 404, so legacy clients cannot retrieve web-only history by UUID.
 
 **Auth**: AuthGuard
 
@@ -598,7 +546,7 @@ Compatibility detail for a specific orchestrator session with its messages (incl
 
 ### POST /api/chat/web/session
 
-Session-only main-web detail endpoint. It permits the readable web personas (`orchestrator`, `signal`) plus the pinned negotiator conversation and fails closed for unknown personas.
+Session-only main-web detail endpoint. It permits the one live persona (`personal`, intent-pinned DMs included) and the read-only rows (`orchestrator`, `telegram`), and fails closed for unknown personas.
 
 Both chat detail endpoints now hydrate one durable timeline session only. The first request sends `{ "sessionId": "..." }`; to reveal exactly one older section, send `{ "sessionId": "...", "beforeSessionId": "<oldest loaded durable session id>" }`. Responses retain `{ session, messages }` and add `sessionId` (the loaded durable session), `hasPreviousSession`, and `previousSessionCursor`. The cursor is opaque; callers must not infer ordering from IDs.
 
@@ -606,7 +554,7 @@ Both chat detail endpoints now hydrate one durable timeline session only. The fi
 
 ### POST /api/chat/session/delete
 
-Delete a chat session. Delete, title, share, and unshare mutations all load the owned session first and enforce its persisted persona: API-key callers may mutate only orchestrator sessions; session-authenticated Signal sessions follow the web feature policy; flag-on legacy orchestrator web sessions are read-only and return the typed separate-session action.
+Delete a chat session. Delete, title, share, and unshare mutations all load the owned session first: API-key callers may mutate only intent-scoped sessions (a signal's DM); session-authenticated callers follow the web policy; retired orchestrator sessions are read-only and return the typed separate-session action.
 
 **Auth**: AuthGuard
 
@@ -1332,8 +1280,8 @@ List A2A agent-to-agent negotiation conversations for the authenticated user.
 Each conversation may carry a `negotiation` lifecycle object. Its optional
 `screenDecision` field (IND-610) is **owner-only**: it is projected solely when
 the authenticated viewer is the negotiation's initiator, and is `null` for every
-other viewer, so a counterparty never learns that an outreach gate ran or what
-it concluded. The ownership check is applied inside the projection itself
+other viewer, so a counterparty never learns that the initiator's agent decided
+against reaching out, or why. The ownership check is applied inside the projection itself
 (`services/api/src/adapters/negotiation-lifecycle.projection.ts`), independently
 of the separate listing rule that hides `screened_out` rows from non-initiators.
 
@@ -1343,7 +1291,7 @@ returned.
 ```json
 {
   "screenDecision": {
-    "source": "screen",
+    "source": "outcome",
     "decision": "pass",
     "reasoning": "...",
     "counterpartyPremiseFit": "... | null",
@@ -1353,14 +1301,14 @@ returned.
 }
 ```
 
-`source` records where the decision came from, because two different refusals
-collapse into the same `screened_out` outcome:
+`source` records where the decision came from:
 
-- `screen` — the outreach gate declined before any contact
-  (`tasks.metadata.screenDecision`); structured evidence fields are present.
-- `outcome` — the agent refused on its opening turn, so no screen record
-  blocked and only the negotiation-outcome `reasoning` exists; the evidence
-  fields are `null`.
+- `outcome` — the live route. The agent refused on its opening turn, so only
+  the negotiation-outcome `reasoning` exists; the evidence fields are `null`.
+- `screen` — **read-only history.** The pre-first-turn outreach gate that wrote
+  `tasks.metadata.screenDecision` has been removed, but negotiations that ran
+  before its removal still carry a record, with structured evidence fields
+  populated.
 
 Reasoning is only ever taken from a `screened_out` outcome. Ordinary declines
 and turn-cap stalls do not populate this field.
@@ -1775,11 +1723,11 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 
 **Controller prefix**: `/networks`
 
-**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `isPersonal`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
+**Network object**: Network responses include `id`, `title`, `key`, `prompt`, `imageUrl`, `metadata`, `permissions`, `hasMasterKey`, `createdAt`, `updatedAt`, owner `user`, and `_count.members`. `hasMasterKey` is `true` when master-key signup has been enabled on the network (only the key hash is stored server-side).
 
 ### GET /api/networks
 
-List networks the authenticated user is a member of, including their personal network.
+List networks the authenticated user is a member of.
 
 **Auth**: AuthGuard
 
@@ -1890,7 +1838,7 @@ Get a public network by ID. Only works for indexes with `joinPolicy: 'anyone'`.
 
 ### GET /api/networks/shared/:userId
 
-Get non-personal networks shared between the authenticated user and a target user.
+Get networks shared between the authenticated user and a target user.
 
 **Auth**: AuthGuard
 
@@ -2359,7 +2307,7 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, any n
 
 ### POST /api/networks/:id/members/invite
 
-Invite a single member to a network by email. Owner-only, any network. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network — e.g. a ghost contact created via personal-import — is provisioned and emailed the same way a brand-new user is.
+Invite a single member to a network by email. Owner-only, any network. Idempotent on the (user, network) pair: re-inviting a user who already has a network-scoped agent is a no-op (no key minted, no email re-sent). A user who exists but lacks a scoped agent for this network is provisioned and emailed the same way a brand-new user is.
 
 **Auth**: `AuthGuard`; caller must own the network.
 
@@ -2383,7 +2331,7 @@ Invite a single member to a network by email. Owner-only, any network. Idempoten
 
 **Response 200** (user already exists): Status code is 200 regardless of whether a scoped agent had to be provisioned. Examples:
 
-- Pre-existing user without a scoped agent (e.g. ghost contact) — agent + key minted, invitation email sent:
+- Pre-existing user without a scoped agent — agent + key minted, invitation email sent:
   ```json
   {
     "user": { "id": "user-uuid", "email": "attendee@example.com" },
@@ -2458,7 +2406,7 @@ When `rotated: true`, the member's previous API keys are no longer valid and the
 
 Supported toolkits: `gmail`, `slack`, `telegram`
 
-> **Telegram** is a bot-based orchestrator connection (not a Composio OAuth toolkit). It doesn't use `/link` or `/import`; connection is established via a deep link returned by `POST /connect/telegram`, and disconnection is via `DELETE /:id` with `id = telegram:<userId>`.
+> **Telegram** is a bot-based notification connection (not a Composio OAuth toolkit). It doesn't use `/link` or `/import`; connection is established via a deep link returned by `POST /connect/telegram`, and disconnection is via `DELETE /:id` with `id = telegram:<userId>`.
 
 ### GET /api/integrations
 
@@ -2526,26 +2474,6 @@ Unlink a toolkit from an index. Does not revoke the OAuth connection.
 ```json
 { "success": true }
 ```
-
-### POST /api/integrations/:toolkit/import
-
-Import contacts from a connected toolkit into an index.
-
-**Auth**: AuthGuard
-
-**Path params**:
-- `toolkit` — `gmail` or `slack`
-
-**Request body**:
-```json
-{
-  "indexId": "string (optional — defaults to personal network)"
-}
-```
-
-**Response**: Import result with counts.
-
----
 
 ### DELETE /api/integrations/:id
 
@@ -2988,17 +2916,6 @@ Get one opportunity with presentation for the viewer. If the requested opportuni
 
 **Response**: JSON with opportunity details and presentation. When a replacement was returned, `id` is the replacement opportunity ID and `resolvedFromOpportunityId` contains the originally requested ID.
 
-### GET /api/opportunities/:id/invite-message
-
-Generate an invite message for a ghost counterpart on an opportunity.
-
-**Auth**: AuthGuard
-
-**Path params**:
-- `id` — Opportunity ID
-
-**Response**: JSON with generated invite message.
-
 ### PATCH /api/opportunities/:id/status
 
 Update opportunity status.
@@ -3033,7 +2950,7 @@ When selected-intent scope is supplied, an `accepted` update affects only this o
 
 ### POST /api/opportunities/:id/start-chat
 
-Atomically accept a `pending` or `draft` opportunity and resolve the h2h conversation for the actor pair. Backs the Start Chat button on both ambient (pending) and orchestrator (draft) opportunity cards so the frontend can navigate directly to `/chat/:conversationId` in a single round-trip.
+Atomically accept a `pending` or `draft` opportunity and resolve the h2h conversation for the actor pair. Backs the Start Chat button on both ambient (pending) and chat-discovered (draft) opportunity cards so the frontend can navigate directly to `/chat/:conversationId` in a single round-trip.
 
 Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling acceptance, contact membership upsert), plus `getOrCreateDM(userA, userB)` to resolve/create the DM conversation. Does **not** insert a seed system message — the accepted opportunity itself renders inline in the chat timeline (per IND-237).
 
@@ -3344,23 +3261,6 @@ Subscribe to newsletter or waitlist via Loops.so.
 
 ---
 
-## Unsubscribe
-
-**Controller prefix**: `/unsubscribe`
-
-### GET /api/unsubscribe/:token
-
-Soft-delete a ghost user to opt out of emails. Returns an HTML response.
-
-**Auth**: None (public)
-
-**Path params**:
-- `token` — Unsubscribe token from `userNotificationSettings`
-
-**Response**: HTML page confirming unsubscribe or indicating the link is no longer valid.
-
----
-
 ## User
 
 **Controller prefix**: `/users`
@@ -3385,42 +3285,12 @@ Batch-fetch users by IDs (max 100).
       "avatar": "...",
       "location": "...",
       "socials": { ... },
-      "isGhost": false,
       "createdAt": "...",
       "updatedAt": "..."
     }
   ]
 }
 ```
-
-### POST /api/users/contacts
-
-Manually add a contact by email (creates ghost user if not registered).
-
-**Auth**: AuthGuard
-
-**Request body** (Zod-validated):
-```json
-{
-  "email": "string (required, valid email)",
-  "name": "string (optional)"
-}
-```
-
-**Response**:
-```json
-{
-  "result": { ... }
-}
-```
-
-### DELETE /api/users/contacts/:contactId
-
-Remove a contact from the authenticated user's personal network (soft delete of the `'contact'` membership).
-
-**Auth**: AuthGuard
-
-**Response**: `{ "success": true }` on success, `404` if the contact is not a member.
 
 ### POST /api/users/:userId/negotiations
 
@@ -3568,7 +3438,6 @@ Get a user by ID.
     "avatar": "...",
     "location": "...",
     "socials": { ... },
-    "isGhost": false,
     "createdAt": "...",
     "updatedAt": "..."
   }
@@ -3634,11 +3503,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 
 | Tool | Domain | Description |
 |------|--------|-------------|
-| `read_user_profiles` | Profile | Read user profiles (own or by query) |
-| `preview_user_context` | Profile | Generate a non-persisted onboarding profile draft from allowed sources |
-| `confirm_user_context` | Profile | Save an approved profile draft or explicit correction text and stamp `profileConfirmedAt` |
-| `create_user_profile` | Profile | Legacy/generic profile generation from social links or bio |
-| `update_user_profile` | Profile | Update profile details or merge reachable social handles |
+| `research_profile` | Profile | Run public profile research (Parallel lookup); returns a suggested profile for review — does not persist |
 | `complete_onboarding` | Profile | Validate a durable profile-approval timestamp plus an active first signal created at or after it; optional `intentId` pins the exact eligible signal and records the completion handoff |
 | `read_intents` | Intent | List user's intents with optional filters |
 | `create_intent` | Intent | Create a new intent from natural language |
@@ -3656,11 +3521,6 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_network_membership` | Network | Remove a member from a network |
 | `list_opportunities` | Opportunity | List user's opportunities with optional `networkId` and selected-intent `scopeType: 'intent', scopeId` filters |
 | `update_opportunity` | Opportunity | Accept or reject an opportunity. Optional selected-intent `scopeType/scopeId` narrows mutation before graph execution. With the uptake guard enabled, a first accept can return `success:false` plus `advisory.code="unresolved_uptake_questions"` without mutation; retry with the current `acknowledgedUptakeQuestionIds` only after explicit user approval to continue anyway. Successful acceptance returns a `conversationId`. |
-| `list_contacts` | Contact | List user's contacts |
-| `add_contact` | Contact | Add a contact by email |
-| `remove_contact` | Contact | Remove a contact |
-| `import_contacts` | Contact | Import contacts from file/integration |
-| `import_gmail_contacts` | Integration | Import contacts from Gmail via Composio |
 | `scrape_url` | Utility | Scrape and extract content from a URL |
 | `read_docs` | Utility | Read protocol documentation |
 
@@ -3680,7 +3540,7 @@ List pending questions for the authenticated user.
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `status` | `pending` \| `answered` \| `dismissed` | `pending` | `pending` and `answered` are supported; `dismissed` is rejected. |
-| `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `negotiation_inflight` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`chat` = orchestrator ask_user_question questions) |
+| `mode` | `discovery` \| `intent` \| `enrichment` \| `negotiation` \| `negotiation_inflight` \| `chat` \| `pool_discovery` | — | Filter by generation mode (`chat` = in-chat ask_user_question questions; `discovery` rows are historical — the inline generator was removed) |
 | `sourceType` | string | — | Filter by source type (e.g. `discovery`) |
 | `sourceId` | string | — | Filter by source entity ID |
 | `scopeType` | `intent` | — | Selected scope type. Use with `scopeId` to restrict to a selected intent. |
@@ -3726,7 +3586,7 @@ Submit an answer for a pending question. For non-negotiation modes, existing act
 
 **Response:** `{ success: true, resumed: boolean }` (200) or `{ error: "Question not found" }` (404)
 
-`resumed` is `true` when a live chat turn was blocked on this question (the orchestrator's `ask_user_question` tool) and now continues streaming with the answer. Clients should feed the answer back as a new chat message only when `resumed` is `false` and the question's mode is `chat`.
+`resumed` is `true` when a live chat turn was blocked on this question (the persona's `ask_user_question` tool) and now continues streaming with the answer. Clients should feed the answer back as a new chat message only when `resumed` is `false` and the question's mode is `chat`.
 
 ### POST /api/questions/:id/dismiss
 
@@ -3759,66 +3619,29 @@ Serves the Bull Board UI for monitoring BullMQ job queues. Monitors the followin
 Accessible at `http://localhost:3001/dev/queues/` when the protocol server is running in development mode.
 
 
-## Secure standalone Hermes and Index-owner authorization
+## Standalone Hermes and native-client authentication
 
-These routes are version-1 contracts for native clients. They never return a credential, PKCE verifier, activation proof, stored hash, owner ID, or secret to browser JavaScript. Every body is strict: unknown fields are rejected as `{ "error": "invalid_request" }` (400). All credentials are sent only by the native process in `x-api-key`; the browser sees at most request ID, state, and one-time code.
+Native clients authenticate with ordinary Better Auth API keys.
 
-### Audiences and credential lifecycle
+### Credentials
 
-- `idxh_` is a dedicated **`hermes-agent`** credential in `hermes_agent_credentials`, not a legacy API key. It has an owner, agent, installation UUID, setup-attempt UUID, exact ordered six actions, 30-day expiry, and `pending|active|revoked` state.
-- `idxo_` is a dedicated **`index-app-owner`** credential in `index_app_owner_credentials`, with owner, installation UUID, generation, 30-day expiry, and `pending|active|revoked` state.
-- The two audiences use separate Keychain identities. They are never browser/session credentials and no response shape documents their raw values outside the native exchange response.
-- `hermes-agent` is default-denied. Its full normal-product principal requires the exact ordered actions `manage:identity`, `manage:premises`, `manage:intents`, `manage:networks`, `manage:opportunities`, and `manage:negotiations`; missing, reordered, duplicate, retired, or extra actions deny authentication/admission. It may use the explicit full MCP policy and exact allowed REST paths, including `GET /agents/me`, product routes, and matching-agent negotiation pickup/respond/consult. It cannot access account security, credentials, permissions, billing, agent administration, or unknown paths.
-- `hermes-negotiator` is separate from `hermes-agent`: it has only `GET /agents/me` plus exact pickup/respond/consult routes and is represented in Hermes by four handlers (`index_agent_me`, `index_pickup_negotiation`, `index_respond_negotiation`, `index_consult_owner`). Its hidden run ID/capability are never browser or model arguments.
-- Active credentials expire after 30 days, have no refresh, and require a new browser authorization. Seven-day warning/status behavior belongs to the connector; expired or stale negotiation authority falls back to Index.
-
-### Hermes browser authorization
-
-`POST /api/hermes-authorizations` is public (rate-limited) and accepts exactly:
-
-```json
-{
-  "protocolVersion": 1,
-  "installationId": "uuid",
-  "redirectUri": "http://127.0.0.1:49152/callback",
-  "codeChallenge": "43-char-base64url-S256-hash",
-  "codeChallengeMethod": "S256",
-  "state": "32-to-128-char-base64url",
-  "actions": ["manage:identity", "manage:premises", "manage:intents", "manage:networks", "manage:opportunities", "manage:negotiations"]
-}
-```
-
-The callback must be byte-canonical `http://127.0.0.1:<49152-65535>/callback` with no query, fragment, alias, userinfo, or alternate path. The response is `201 { requestId, state, expiresAt }`; the request expires in 10 minutes.
-
-`GET /api/hermes-authorizations/:requestId?state=…&redirect_uri=…` is `SessionOnlyGuard` and requires exactly those two query keys once. It performs strict state/redirect query admission and returns only `{ requestId, installationId, installationName, actions, expiresAt }` for the matching pending request. `POST /api/hermes-authorizations/:requestId/approve` is also session-only and accepts strict `{ state, redirectUri }`, revalidating that state/redirect binding under the owner lock. It selects Index fallback, revokes prior installation authority, creates a setup generation, and returns `{ requestId, code, state }`. The five-minute code is single-use; it is a grant, not a credential. The connector rechecks the state against the loopback callback before it sends an exchange request.
-
-`POST /api/hermes-authorizations/exchange` is public/rate-limited and accepts strict `{ protocolVersion:1, requestId, code, verifier, redirectUri }`. It atomically verifies the one-time code, PKCE S256 verifier, request/redirect binding, expiry/consumption, current setup generation, and replay receipt. State is deliberately not an exchange field. Its native-only response is `{ credential, audience, agentId, installationId, setupAttemptId, credentialId, actions, expiresAt, activationState }`, where `activationState` is `pending`; only hashes persist. Invalid grants/expiry are 400 (`invalid_grant`/`expired_grant`), replay is 409 (`grant_replayed`), and setup conflict is 409 (`authorization_conflict`).
-
-`POST /api/hermes-authorizations/activate` accepts strict `{ "protocolVersion": 1, "keychainConfirmed": true }` plus the exact pending `idxh_` header. It rechecks owner, agent, installation, row identity, setup generation, expiry, audience, and action order under the owner lock before installing the exact permission and returning the same nonsecret metadata with `activationState:"active"`. It is idempotent only for that exact active generation. `POST /api/hermes-authorizations/disconnect` accepts strict `{ "protocolVersion": 1 }` plus its exact `idxh_` header. It is an idempotent self-revocation, including expired/already-revoked rows, and returns `{ revoked:true, credentialId, setupAttemptId }`; it cannot revoke a successor generation. Missing/wrong dedicated headers return 401 `invalid_credential`.
+- The **Hermes plugin** uses an API key supplied through the `INDEX_API_KEY` environment variable, sent as `x-api-key`. The dashboard's "log in with browser" runs the same web `/cli-auth` state-bound handshake as the CLI and Mac app, then persists the minted 90-day key to `~/.hermes/.env`; sign-out best-effort revokes it via `POST /api/auth/cli-credential/revoke`. Setting `INDEX_API_KEY` manually remains a supported override; revocation, expiry, and scoping come from the `apikeys` table.
+- The **Index macOS app** signs in through the web `/cli-auth` page (the same state-bound handshake the CLI uses) and stores the resulting 90-day API key in the Keychain. Logout revokes the exact key via `POST /api/auth/cli-credential/revoke`.
+- `hermes-negotiator` is a scheduled-negotiation API-key audience: it has only `GET /agents/me` plus exact pickup/respond/consult routes and is represented in Hermes by four handlers (`index_agent_me`, `index_pickup_negotiation`, `index_respond_negotiation`, `index_consult_owner`). Its hidden run ID/capability are never browser or model arguments. Expired or stale negotiation authority falls back to Index.
 
 ### Connected Hermes owner controls
 
-These routes require a Better Auth browser session (`SessionOnlyGuard`); API keys, including `idxh_` and `idxo_`, are rejected.
+These routes require a Better Auth browser session (`SessionOnlyGuard`); API keys are rejected.
 
-- `GET /api/connected-agents/hermes` returns `{ connections }`. Each nonsecret connection is `{ installationId, installationName, agentId, actions, activationState, selected, lastHeartbeatAt|null, expiresAt, health, indexCovering }`, where health is exactly `pending|active|stale|never_seen|expired|revoked`.
-- `POST /api/connected-agents/hermes/:installationId/pause` requires an empty body. It deselects Hermes immediately but preserves the active credential/permission and returns the refreshed connection view.
-- `DELETE /api/connected-agents/hermes/:installationId` idempotently selects Index, removes target authority, deletes legacy installation keys, revokes dedicated credentials, and returns `{ revoked:true }`.
+- `GET /api/connected-agents/hermes` returns `{ connections }`. Each nonsecret connection is `{ installationId, installationName, agentId, actions, activationState, selected, lastHeartbeatAt|null, expiresAt, health, indexCovering }`, where health is exactly `active|stale|never_seen|expired|revoked`.
+- `POST /api/connected-agents/hermes/:installationId/pause` requires an empty body. It deselects Hermes immediately but preserves the credential and returns the refreshed connection view.
+- `DELETE /api/connected-agents/hermes/:installationId` idempotently selects Index, removes target authority, deletes installation keys, and returns `{ revoked:true }`.
 
-Unknown or cross-owner installation IDs are opaque 404 `{ "error":"connected_agent_not_found" }`; malformed IDs/bodies are 400. Reconnect never extends a credential: it starts a fresh authorization.
-
-### Index macOS owner authorization
-
-`POST /api/index-app-owner-authorizations` is the native app's public PKCE request endpoint. It accepts strict `{ protocolVersion:1, installationId, redirectUri, state, codeChallenge, codeChallengeMethod:"S256", legacyKeyId:null|string }`; the callback and PKCE constraints are the same canonical Hermes constraints. It returns `201 { requestId, state, expiresAt }` and expires in 10 minutes.
-
-`GET /api/index-app-owner-authorizations/:requestId?state=…&redirect_uri=…` and `POST /:requestId/approve` are session-only. Metadata is exactly `{ requestId, installationId, legacyRevocationRequired, expiresAt }`; approval returns `{ requestId, code, state }`. Exchange accepts strict `{ protocolVersion:1, requestId, code, state, verifier, redirectUri }`, atomically validates/consumes the request and any same-owner legacy key ID, revokes that legacy authority before a pending replacement, and returns the native-only pending tuple `{ credential, activationProof, ownerId, credentialId, installationId, generation, expiresAt, activationState }`.
-
-`POST /api/index-app-owner-authorizations/activate` and `/rollback` require strict `{ protocolVersion:1, activationProof }` and the pending `idxo_` header. Activation consumes the one-time proof; rollback revokes the exact pending generation and returns `{ revoked:true, credentialId }`. `POST /revoke` accepts strict `{ protocolVersion:1 }` with a revocable `idxo_` header and returns the same idempotent receipt. Owner authorization errors are stable: 400 `invalid_request`, 403 `invalid_grant|invalid_credential`, 409 `replayed|authorization_conflict`, and 410 `expired`.
-
-The production app writes/verifies the owner credential only in its app Keychain item. Historical plaintext installation recovery retains only a nonsecret legacy key ID, deletes/verifies the historical file before login, and requires the server-side legacy revocation/fresh approval sequence.
+Unknown or cross-owner installation IDs are opaque 404 `{ "error":"connected_agent_not_found" }`; malformed IDs/bodies are 400.
 
 ## Agent negotiation runtime owner control
 
-Runtime routes require `OwnerControlGuard`: a Better Auth session or active `idxo_` owner credential. Agent-bound credentials are rejected. The server owns the selection, fallback, and generation authority.
+Runtime routes require `OwnerControlGuard`: a Better Auth browser session. Agent-bound credentials are rejected. The server owns the selection, fallback, and generation authority.
 
 - `GET /api/agent-runtime?installationId=<uuid>` returns the owner-scoped runtime state for that installation.
 - `POST /api/agent-runtime/hermes/prepare` accepts `{ installationId, setupAttemptId }` and creates a disabled generation; preparation grants no active runtime authority.
@@ -3827,4 +3650,4 @@ Runtime routes require `OwnerControlGuard`: a Better Auth session or active `idx
 - `POST /api/agent-runtime/rollback` accepts `{ setupAttemptId }` and compare-clears only that generation.
 - `DELETE /api/agent-runtime/hermes/:installationId` selects Index, revokes installation authority, and marks it inactive. It has no defined request body; callers must omit one (the current server does not separately reject a supplied DELETE body).
 
-Body-bearing runtime routes use exact schemas. Runtime domain errors retain `{ error, detail }`; stale/mismatched compare-and-set operations preserve the authoritative newer binding. Pickup/respond/consult re-read selected executor, global `manage:negotiations` authority, credential row/audience/expiry, installation, generation, expected speaker, and one-shot capability under the same owner advisory-lock transaction as the task mutation. Exact retries return their durable receipt; generation/credential/run replay across a task is denied.
+Body-bearing runtime routes use exact schemas. Runtime domain errors retain `{ error, detail }`; stale/mismatched compare-and-set operations preserve the authoritative newer binding. Pickup/respond/consult re-read selected executor, global `manage:negotiations` authority, credential row/audience/expiry, generation, expected speaker, and one-shot capability under the same owner advisory-lock transaction as the task mutation. Exact retries return their durable receipt; generation/credential/run replay across a task is denied.

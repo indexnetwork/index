@@ -1,15 +1,15 @@
 import '../src/startup.env';
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, mock } from 'bun:test';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
-import { createMcpServer, clearMcpToolMetadataCacheForTests, getCachedMcpToolMetadata } from '../../../packages/protocol/src/mcp/mcp.server';
-import { CANONICAL_MCP_TOOL_ACCESS_RULES } from '../../../packages/protocol/src/mcp/mcp.authorization-policy';
-import { createAgentTools } from '../../../packages/protocol/src/participant-agents/application/agent.tools';
-import { createToolRegistry } from '../../../packages/protocol/src/shared/agent/tool.registry';
-import type { ToolDeps } from '../../../packages/protocol/src/shared/agent/tool.helpers';
-import type { McpAuthResolver } from '../../../packages/protocol/src/shared/interfaces/auth.interface';
-import type { AgentDatabase } from '../../../packages/protocol/src/participant-agents/ports/agent.repository.port';
-import type { ScopedDepsFactory } from '../../../packages/protocol/src/mcp/mcp.server';
+import { createMcpServer, clearMcpToolMetadataCacheForTests, getCachedMcpToolMetadata } from '../../../packages/protocol/src/internal/mcp/mcp.server';
+import { CANONICAL_MCP_TOOL_ACCESS_RULES } from '../../../packages/protocol/src/internal/mcp/mcp.authorization-policy';
+import { createAgentTools } from '../../../packages/protocol/src/internal/agents/agent.tools';
+import { createToolRegistry } from '../../../packages/protocol/src/internal/shared/agent/tool.registry';
+import type { ToolDeps } from '../../../packages/protocol/src/internal/shared/agent/tool.helpers';
+import type { McpAuthResolver } from '../../../packages/protocol/src/internal/shared/interfaces/auth.interface';
+import type { AgentDatabase } from '../../../packages/protocol/src/internal/agents/agent.repository.port';
+import type { ScopedDepsFactory } from '../../../packages/protocol/src/internal/mcp/mcp.server';
 import { createHmac } from 'node:crypto';
 import { createOpportunityOwnerApprovalAuthority } from '../src/lib/mcp/owner-approval';
 import { createMemoryOwnerApprovalStore } from '../src/lib/mcp/owner-approval.store';
@@ -55,7 +55,6 @@ const mockDeps = {
   scraper: {} as ToolDeps['scraper'],
   embedder: {} as ToolDeps['embedder'],
   cache: {} as ToolDeps['cache'],
-  integration: {} as ToolDeps['integration'],
   contactService: {} as ToolDeps['contactService'],
   integrationImporter: {} as ToolDeps['integrationImporter'],
   enricher: {} as ToolDeps['enricher'],
@@ -188,7 +187,7 @@ describe('MCP Server Factory', () => {
     const expectedTools = [
       'read_intents',
       'create_intent',
-      'read_user_profiles',
+      'research_profile',
       'update_opportunity',
       'list_contacts',
       'scrape_url',
@@ -309,12 +308,10 @@ describe('MCP Server Factory', () => {
 
   it('classifies every MCP-surface registry tool in the canonical production matrix', () => {
     // The canonical matrix must classify exactly the tools exposed on the MCP
-    // surface. Contact/Gmail tools, scrape_url, and the deprecated aliases are
-    // omitted from the MCP registry (IND-596/597/598), so contactsEnabled must
-    // not add them back even when true.
+    // surface. Contact tools, scrape_url, and the deprecated aliases are
+    // omitted from the MCP registry (IND-596/597/598).
     const mcpRegistry = createToolRegistry({
       ...mockDeps,
-      contactsEnabled: true,
       chatSession: {
         listSessions: async () => [],
         getSession: async () => null,
@@ -1289,155 +1286,83 @@ describe('MCP Server Factory', () => {
     expect(resourceCalls.get).toBe(3);
   });
 
-  it('enforces exact question affected-domain inheritance on answer_pending_question at tools/call', async () => {
-    // The canonical matrix admits answer_pending_question with a UNION of domain
-    // actions, so a global manage:intents agent passes capability policy and
-    // reaches the handler. The handler must then deny answering a NEGOTIATION
-    // question (wrong affected domain) and write nothing.
-    const negotiationQuestion = {
-      id: 'neg-1',
-      title: 'Negotiation question',
-      prompt: 'Prompt',
-      options: [],
-      multiSelect: false,
-      mode: 'negotiation',
-      sourceType: 'negotiation',
-      sourceId: 'task-1',
-      createdAt: '2026-01-01T00:00:00.000Z',
-    };
-    let answerWrites = 0;
-    const answerCalls: Array<{ userId: string; questionId: string }> = [];
-    const questionDeps: Partial<ToolDeps> = {
-      findPendingQuestions: (async (userId: string) => {
-        void userId;
-        return [negotiationQuestion];
-      }) as unknown as ToolDeps['findPendingQuestions'],
-      answerPendingQuestion: (async (userId: string, questionId: string) => {
-        answerWrites += 1;
-        answerCalls.push({ userId, questionId });
-        return true;
-      }) as unknown as ToolDeps['answerPendingQuestion'],
-    };
-
-    // Wrong-domain global agent: admitted by policy, denied by the handler gate,
-    // nothing written.
-    const denied = await callTool({
-      identity: { userId: 'test-user-id', agentId: 'agent-q' },
-      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:intents'] }),
-      extraDeps: questionDeps,
-      toolName: 'answer_pending_question',
-      arguments: { questionId: 'neg-1', freeText: 'the client\u2019s explicit answer' },
+  it('keeps the retired CARD question tools retired; the conversational answer lane is a different contract', async () => {
+    // read_pending_questions retired with the card question surface
+    // (conversational-questions plan, "Retirements") and stays retired.
+    // answer_pending_question RETURNS as a deliberately different contract
+    // (MCP question flow): the conversational answer lane over the #1466 host
+    // — (negotiationId, question, answer), the same numbering the listing's
+    // park annotations print — not the card-era read/answer pair. This pin
+    // was updated consciously with that registration.
+    const names = await listToolNamesFor({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
     });
-    // Reached the handler (not a capability denial), but refused with no write.
-    expect(denied.code).not.toBe('MCP_CAPABILITY_DENIED');
-    const deniedPayload = JSON.parse(denied.text) as { success: boolean; error?: string };
-    expect(deniedPayload.success).toBe(false);
-    expect(deniedPayload.error).toMatch(/not authorized to answer this question/i);
-    expect(answerWrites).toBe(0);
-
-    // Matching-domain agent: admitted and the write is threaded with the
-    // authenticated caller userId (provenance).
-    const allowed = await callTool({
-      identity: { userId: 'test-user-id', agentId: 'agent-q' },
-      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:negotiations'] }),
-      extraDeps: questionDeps,
-      toolName: 'answer_pending_question',
-      arguments: { questionId: 'neg-1', freeText: 'the client\u2019s explicit answer' },
-    });
-    const allowedPayload = JSON.parse(allowed.text) as { success: boolean; data?: Record<string, unknown> };
-    expect(allowedPayload.success).toBe(true);
-    expect(answerWrites).toBe(1);
-    expect(answerCalls).toEqual([{ userId: 'test-user-id', questionId: 'neg-1' }]);
+    expect(names).not.toContain('read_pending_questions');
+    expect(names).toContain('answer_pending_question');
   });
 
-  it('projects read_pending_questions by exact affected domain at tools/call', async () => {
-    // A global manage:intents agent sees intent questions but never negotiation
-    // questions, even though the tool is union-admitted.
-    const questions = [
-      { id: 'intent-q', title: 'I', prompt: 'p', options: [], multiSelect: false, mode: 'intent', sourceType: 'intent', sourceId: 'i1', createdAt: '2026-01-01T00:00:00.000Z' },
-      { id: 'neg-q', title: 'N', prompt: 'p', options: [], multiSelect: false, mode: 'negotiation', sourceType: 'negotiation', sourceId: 't1', createdAt: '2026-01-01T00:00:00.000Z' },
-    ];
-    const questionDeps: Partial<ToolDeps> = {
-      findPendingQuestions: (async () => questions) as unknown as ToolDeps['findPendingQuestions'],
-    };
-
-    const result = await callTool({
-      identity: { userId: 'test-user-id', agentId: 'agent-q' },
-      agentDatabase: agentDbWith({ agentId: 'agent-q', scope: 'global', scopeId: null, actions: ['manage:intents'] }),
-      extraDeps: questionDeps,
-      toolName: 'read_pending_questions',
-      arguments: {},
+  it('lists the owner verdict tools for session humans only; agent principals never see or reach them', async () => {
+    // MCP question flow: reject/accept_opportunity are the owner's verdict
+    // lane — human_only, exactly the session-authenticated class the IND-593
+    // owner-provenance binding admits. An API-key agent principal (even one
+    // holding manage:negotiations + manage:opportunities) is hidden in
+    // tools/list and capability-denied on tools/call before any DB work.
+    const humanNames = await listToolNamesFor({
+      identity: { userId: 'test-user-id', isSessionAuth: true },
     });
-    const payload = JSON.parse(result.text) as { success: boolean; data?: { questions?: Array<{ id: string }> } };
-    expect(payload.success).toBe(true);
-    const ids = (payload.data?.questions ?? []).map((q) => q.id);
-    expect(ids).toEqual(['intent-q']);
+    expect(humanNames).toContain('reject_opportunity');
+    expect(humanNames).toContain('accept_opportunity');
+    expect(humanNames).toContain('answer_pending_question');
+
+    const agentDatabase = agentDbWith({
+      agentId: 'agent-verdict',
+      scope: 'global',
+      scopeId: null,
+      actions: ['manage:negotiations', 'manage:opportunities'],
+    });
+    const agentNames = await listToolNamesFor({
+      identity: { userId: 'test-user-id', agentId: 'agent-verdict' },
+      agentDatabase,
+    });
+    expect(agentNames).not.toContain('reject_opportunity');
+    expect(agentNames).not.toContain('accept_opportunity');
+    // The answer lane IS the agent's — it holds manage:negotiations.
+    expect(agentNames).toContain('answer_pending_question');
+
+    for (const toolName of ['reject_opportunity', 'accept_opportunity']) {
+      const denied = await callTool({
+        identity: { userId: 'test-user-id', agentId: 'agent-verdict' },
+        agentDatabase,
+        scopedThrows: true,
+        toolName,
+        arguments: { intentId: 'intent-1', counterparty: 1 },
+      });
+      expect(denied.isError, `${toolName}: agent principal denied`).toBe(true);
+      expect(denied.code, `${toolName}: capability denial`).toBe('MCP_CAPABILITY_DENIED');
+      expect(denied.scopedCreateArgs, `${toolName}: no scoped DB`).toEqual([]);
+    }
   });
 
-  // ── IND-583: human-only onboarding completion at the transport seam ─────────
-  //
-  // complete_onboarding is human_only. A registered agent — even one holding
-  // BOTH manage:identity and manage:premises (the exact pair the retired
-  // manage:profile grant projected to) — must neither see it in tools/list nor
-  // reach it via tools/call, and the denial must land before any chat DB,
-  // scoped DB, registry, or graph work. The session human is admitted and
-  // reaches the scoped handler seam. tools/list and tools/call therefore agree
-  // for both principals.
-  const IDENTITY_PREMISES_ACTIONS = ['manage:identity', 'manage:premises'];
-  const HUMAN_ONLY_ONBOARDING_TOOLS = ['complete_onboarding'] as const;
-
-  it('hides human-only onboarding tools from an agent holding identity+premises grants (tools/list)', async () => {
+  it('omits complete_onboarding from tools/list for every principal', async () => {
     clearMcpToolMetadataCacheForTests();
-    const deps = {
-      ...mockDeps,
-      database: resolvedContextDatabase,
-      agentDatabase: agentDbWith({ agentId: 'agent-ip', scope: 'global', scopeId: null, actions: IDENTITY_PREMISES_ACTIONS }),
-    };
     const server = createMcpServer(
-      deps,
       {
-        resolveIdentity: async () => ({ userId: 'test-user-id', agentId: 'agent-ip' }),
+        ...mockDeps,
+        database: resolvedContextDatabase,
+      },
+      {
+        resolveIdentity: async () => ({ userId: 'test-user-id', isSessionAuth: true }),
         resolveUserId: async () => 'test-user-id',
       },
       mockScopedDepsFactory,
     );
-    const response = await invokeMcpRequest({ server, method: 'tools/list', headers: { 'x-api-key': 'agent-key' } });
-    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
-    for (const tool of HUMAN_ONLY_ONBOARDING_TOOLS) {
-      expect(names, `${tool} must be hidden from an identity+premises agent`).not.toContain(tool);
-    }
-  });
-
-  it('denies an identity+premises agent calling human-only onboarding tools before any DB or graph work', async () => {
-    for (const tool of HUMAN_ONLY_ONBOARDING_TOOLS) {
-      const counter = { reads: 0 };
-      const result = await callTool({
-        identity: { userId: 'test-user-id', agentId: 'agent-ip' },
-        agentDatabase: agentDbWith({ agentId: 'agent-ip', scope: 'global', scopeId: null, actions: IDENTITY_PREMISES_ACTIONS }),
-        database: guardReads(counter),
-        scopedThrows: true,
-        toolName: tool,
-        arguments: {},
-      });
-      expect(result.isError, `${tool} must be denied`).toBe(true);
-      expect(result.code, `${tool} must be a capability denial`).toBe('MCP_CAPABILITY_DENIED');
-      expect(counter.reads, `${tool} must deny before chat DB`).toBe(0);
-      expect(result.scopedCreateArgs, `${tool} must deny before scoped DB`).toEqual([]);
-    }
-  });
-
-  it('admits the session human to human-only onboarding tools and reaches the scoped handler seam', async () => {
-    // Schema-valid arguments; the session human passes policy and reaches the
-    // scoped-deps/handler seam (scopedCreateArgs), which is the admission
-    // boundary — the exact parity partner of the agent denial above.
-    const complete = await callTool({
-      identity: { userId: 'test-user-id', isSessionAuth: true },
+    const response = await invokeMcpRequest({
+      server,
+      method: 'tools/list',
       headers: { authorization: 'Bearer session-token' },
-      toolName: 'complete_onboarding',
-      arguments: {},
     });
-    expect(complete.code).not.toBe('MCP_CAPABILITY_DENIED');
-    expect(complete.scopedCreateArgs.length).toBe(1);
+    const names = response.result?.tools?.map((tool) => tool.name) ?? [];
+    expect(names).not.toContain('complete_onboarding');
   });
 
   // ── IND-588: signals read/write split at the transport seam ─────────────────
@@ -1606,7 +1531,7 @@ describe('MCP Server Factory', () => {
   // scoped-deps/handler seam (scopedCreateArgs); forged denial is proven by an
   // MCP_CAPABILITY_DENIED code with zero chat-DB reads and zero scoped-deps
   // construction. Resource-level behavior (bound-community roster/mutation
-  // clamps, opportunity actor/lifecycle/scope + uptake interlock, discovery-run
+  // clamps, opportunity actor/lifecycle/scope, discovery-run
   // exact-principal ownership + coalescing partition, negotiation participation
   // + A2A transcript boundary + agent-vs-owner narration) is proven directly
   // against the handlers in the protocol package specs; these transport tests
@@ -1832,7 +1757,7 @@ describe('MCP Server Factory', () => {
   });
 
   // ── IND-593: opportunity-state capability gate (actor/lifecycle/scope + ──────
-  // uptake interlock proven in update-opportunity.spec.ts). ───────────────────
+  // retired uptake interlock covered in update-opportunity.spec.ts). ─────────
 
   /**
    * Faithful in-memory contract double for the injected owner-approval
@@ -2382,52 +2307,31 @@ describe('MCP Server Factory', () => {
     expect(fx.graph.calls).toBe(0);
   });
 
-  it('binds acceptance to a fresh, in-interaction owner approval at the transport seam (rejects unapproved/forged/replayed, persists only on exact ack)', async () => {
-    // Production-reachable proof of the fresh-approval interlock over MCP. An
-    // admitted manage:opportunities agent tries to ACCEPT on the owner's behalf.
-    // The tool's uptake interlock demands the exact, still-pending preparatory
-    // approval be acknowledged IN THIS call, bound to the exact opportunity +
-    // accepted action + owner principal (actor) + current interaction. An
-    // unacknowledged, forged, or replayed (wrong-id) acknowledgment yields a
-    // structured advisory and NEVER runs the opportunity mutation graph; only
-    // the exact acknowledgment persists the owner acceptance.
-    //
-    // The IND-593 owner-proof gate runs before this interlock; an attesting
-    // authority is injected so each call carries a valid owner proof and the
-    // advisory behavior is exercised in isolation.
+  it('accepts through the transport seam without the retired uptake advisory interposing', async () => {
+    // The pre-accept uptake interlock is retired (conversational-questions
+    // plan, "Retirements"). Even with the legacy flags set and a leftover
+    // pending uptake row visible to findPendingQuestions, an owner-approved
+    // acceptance runs the opportunity mutation graph directly: no advisory,
+    // no acknowledgment round-trip. The IND-593 owner-proof gate itself is
+    // covered by the surrounding tests.
     const OPP = '00000000-0000-4000-8000-0000000000aa';
-    const QUESTION_ID = 'uptake-question-1';
     const opportunity = {
       id: OPP,
       status: 'pending',
       actors: [{ userId: 'test-user-id', role: 'party', networkId: NETWORK_1 }],
     };
-    const uptakeQuestion = {
-      id: QUESTION_ID,
-      title: 'Prep',
-      prompt: 'Confirm timing?',
-      options: [],
-      multiSelect: false,
-      mode: 'negotiation',
-      sourceType: 'opportunity',
-      sourceId: OPP,
-      purpose: 'uptake',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      actors: [{ userId: 'test-user-id', networkId: NETWORK_1 }],
-    };
-    let opportunityGraphCalls = 0;
+    let opportunityMutations = 0;
     const scopedSystemDb = {
       getOpportunity: async () => opportunity,
     } as unknown as ToolDeps['systemDb'];
-    const graphs = {
-      ...mockDeps.graphs,
-      opportunity: {
-        invoke: async () => {
-          opportunityGraphCalls += 1;
-          return { mutationResult: { success: true, opportunityId: OPP, message: 'accepted' } };
-        },
-      },
-    } as unknown as ToolDeps['graphs'];
+    const mutate = async () => {
+      opportunityMutations += 1;
+      return { mutationResult: { success: true, opportunityId: OPP, message: 'accepted' } };
+    };
+    const opportunityOperations = {
+      sendOpportunity: mutate,
+      updateOpportunityStatus: mutate,
+    } as unknown as ToolDeps['opportunityOperations'];
     const proofAuthority = {
       consumeAgentProof: async (proof: string | undefined): Promise<OwnerApprovalVerdict> =>
         proof === 'owner-proof'
@@ -2439,9 +2343,10 @@ describe('MCP Server Factory', () => {
             },
       attestOwnerInteraction: async (): Promise<OwnerApprovalVerdict> => ({ kind: 'admitted' }),
     };
+    const findPendingQuestions = mock(async () => [{ id: 'uptake-question-1' }]);
     const extraDeps: Partial<ToolDeps> = {
-      graphs,
-      findPendingQuestions: (async () => [uptakeQuestion]) as unknown as ToolDeps['findPendingQuestions'],
+      opportunityOperations,
+      findPendingQuestions: findPendingQuestions as unknown as ToolDeps['findPendingQuestions'],
       opportunityOwnerApproval: proofAuthority as never,
     };
     const memberDb = {
@@ -2451,49 +2356,17 @@ describe('MCP Server Factory', () => {
     const identity = { userId: 'test-user-id', agentId: 'agent-a', networkScopeId: NETWORK_1 };
     const agentDatabase = agentDbWith({ agentId: 'agent-a', scope: 'network', scopeId: NETWORK_1, actions: ['manage:opportunities'] });
 
-    const prevEnabled = process.env.QUESTIONER_ENABLED;
-    const prevUptake = process.env.QUESTIONER_UPTAKE_ENABLED;
-    process.env.QUESTIONER_ENABLED = 'true';
-    process.env.QUESTIONER_UPTAKE_ENABLED = 'true';
-    try {
-      // (1) No acknowledgment: advisory, no owner acceptance persisted.
-      const unapproved = await callTool({
-        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
-        toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof' },
-      });
-      expect(unapproved.code).not.toBe('MCP_CAPABILITY_DENIED');
-      const unapprovedPayload = JSON.parse(unapproved.text) as { success: boolean; advisory?: { code?: string; advisoryOnly?: boolean; opportunityId?: string } };
-      expect(unapprovedPayload.success).toBe(false);
-      expect(unapprovedPayload.advisory?.code).toBe('unresolved_uptake_questions');
-      expect(unapprovedPayload.advisory?.advisoryOnly).toBe(true);
-      expect(unapprovedPayload.advisory?.opportunityId).toBe(OPP);
-      expect(opportunityGraphCalls).toBe(0);
-
-      // (2) Forged/replayed acknowledgment (a different id): still advisory, still no mutation.
-      const forged = await callTool({
-        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
-        toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof', acknowledgedUptakeQuestionIds: ['some-other-id'] },
-      });
-      const forgedPayload = JSON.parse(forged.text) as { success: boolean; advisory?: { code?: string } };
-      expect(forgedPayload.success).toBe(false);
-      expect(forgedPayload.advisory?.code).toBe('unresolved_uptake_questions');
-      expect(opportunityGraphCalls).toBe(0);
-
-      // (3) Exact acknowledgment in this interaction: owner acceptance is persisted.
-      const approved = await callTool({
-        identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
-        toolName: 'update_opportunity',
-        arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof', acknowledgedUptakeQuestionIds: [QUESTION_ID] },
-      });
-      const approvedPayload = JSON.parse(approved.text) as { success: boolean; data?: Record<string, unknown> };
-      expect(approvedPayload.success).toBe(true);
-      expect(opportunityGraphCalls).toBe(1);
-    } finally {
-      if (prevEnabled === undefined) delete process.env.QUESTIONER_ENABLED; else process.env.QUESTIONER_ENABLED = prevEnabled;
-      if (prevUptake === undefined) delete process.env.QUESTIONER_UPTAKE_ENABLED; else process.env.QUESTIONER_UPTAKE_ENABLED = prevUptake;
-    }
+    const approved = await callTool({
+      identity, agentDatabase, database: memberDb, extraDeps, scopedSystemDb,
+      toolName: 'update_opportunity',
+      arguments: { opportunityId: OPP, status: 'accepted', ownerApprovalProof: 'owner-proof' },
+    });
+    expect(approved.code).not.toBe('MCP_CAPABILITY_DENIED');
+    const approvedPayload = JSON.parse(approved.text) as { success: boolean; advisory?: unknown };
+    expect(approvedPayload.success).toBe(true);
+    expect(approvedPayload.advisory).toBeUndefined();
+    expect(findPendingQuestions).not.toHaveBeenCalled();
+    expect(opportunityMutations).toBe(1);
   });
 
   // ── IND-594: designated-delivery-only classification. The tools/call forgery
@@ -2632,6 +2505,7 @@ describe('MCP Server Factory', () => {
       getIntentIdsForOpportunities: async () => ({}),
       getOpportunityLifecyclesForNegotiations: async () => ({}),
       getMessagesForConversation: async () => [],
+      getNegotiationMessages: async () => [],
       getArtifactsForTask: async () => [],
     } as unknown as ToolDeps['negotiationDatabase'];
 
@@ -3215,7 +3089,7 @@ describe('MCP Server Factory', () => {
       { tool: 'confirm_opportunity_delivery', args: { opportunityId: '00000000-0000-4000-8000-000000000001', trigger: 'ambient' } },
       // human_only representative registered on this surface (chat-history tools
       // are chat-session-only and never in this MCP registry).
-      { tool: 'complete_onboarding', args: {} },
+      { tool: 'delete_network', args: { networkId: '00000000-0000-4000-8000-000000000001' } },
     ] as const;
 
     for (const { tool, args } of enrollmentDomainCalls) {

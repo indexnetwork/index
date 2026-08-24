@@ -7,16 +7,31 @@ change. It is the reference behind the tier annotations in `src/index.ts`.
 
 ## The public contract
 
-- The **only** supported entry point is the package root:
-  `import { ... } from "@indexnetwork/protocol"`.
+- The supported entry points are the package root:
+  `import { ... } from "@indexnetwork/protocol"` — and the **browser-safe
+  subpaths** listed in `package.json` `exports` (as of 21.1.0:
+  package root. There are no supported browser subpaths.
+  exposes one shared-schema module whose only runtime dependency is `zod`, for
+  consumers (the web client) that cannot load the node-only package root. The
+  schema module's symbols are also re-exported from the root (the fixture is
+  subpath-only, to keep test data out of the runtime barrel), and the subpaths
+  carry the Stable tier.
 - Deep imports (`@indexnetwork/protocol/dist/...` or `/src/...`) are **not** part
   of the contract and may change or disappear in any release — do not rely on them.
 - The contract is exactly the set of symbols re-exported from `src/index.ts`.
   Exports are listed explicitly (no `export *` wildcards), so the surface is
-  reviewable and additions are always intentional.
+  reviewable and additions are always intentional. Nothing checks this
+  mechanically — a removed or renamed stable export is caught in review of the
+  `src/index.ts` diff, and that is what triggers the major bump below.
 - Root exports are assembled through named capability facades. Those facades are
   implementation seams, not package subpath entry points: consumers must still
-  import only from `@indexnetwork/protocol`.
+  import only from `@indexnetwork/protocol`. A capability may state that facade
+  as a class rather than a re-export list — `intents` does, via `Intents` in
+  `intents/intent.module.ts` — which makes the whole capability one exported
+  symbol and its internal layout free to change without a contract change.
+- `protocol/`, `platform/`, `capabilities/`, and `internal/` are source-level
+  boundaries, not consumer subpaths. The sole supported Node import remains the
+  package root.
 
 ## Stability tiers
 
@@ -28,13 +43,14 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 
 | Barrel section | What it is |
 |---|---|
-| **Public API** | `createChatTools`, model config helpers, tool/runtime helpers (`ToolContext`, `ToolDeps`, `invokeToolRuntime`, …), `requestContext`. |
+| **Public API** | `createToolRegistry`, model config helpers, tool/runtime helpers (`ResolvedToolContext`, `ToolDeps`, `invokeToolRuntime`, …), `requestContext`. |
 | **Interfaces** | Every `*.interface.ts` port you implement to inject infrastructure (databases, embedder, cache, scraper, queues, integration, agent dispatcher, …). |
 | **Shared schemas** | Zod schemas + inferred types that cross the boundary (questions, identity, network-assignment, chat-context, …). |
 | **Graph factories** | `*GraphFactory` classes (`ChatGraphFactory`, `OpportunityGraphFactory`, `NegotiationGraphFactory`, …). |
-| **Agents** | Structured LLM agents (`UserContextGenerator`, `IndexNegotiator`, `OpportunityEvaluator`, …). |
-| **MCP** | `createMcpServer` and its supporting types. |
-| **Capability tools** | Named tool-factory entry points for Signals, Participant context, Communities, Opportunities, Negotiation, Questions, Participant agents, Contacts, and Integrations. |
+| **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, network indexing, guided intake, tools) plus `IntentsDeps` and the intake/indexer types. Replaced the six separate intent exports in 18.0.0. |
+| **Agents** | Structured LLM agents (`IndexNegotiator`, `OpportunityEvaluator`, …). |
+| **MCP** | `createMcpServer` plus the types needed to call it: `ScopedDepsFactory`, `McpCapabilityPolicyOptions`, `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS`, `McpAuthorizationObserver`, `McpAuthorizationDenialEvent`. The rest of `mcp.authorization-policy.ts` is package-internal as of 15.0.0. |
+| **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories became package-internal in 15.0.0 — compose them through `createMcpServer` or `createToolRegistry`. |
 
 ### Experimental
 

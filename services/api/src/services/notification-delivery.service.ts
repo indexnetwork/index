@@ -1,39 +1,33 @@
 import type { OpportunityRow, UserIdentity } from '../adapters/database.shared';
 import { db, eq } from '../adapters/database.shared';
 import type { OpportunityDatabaseAdapter } from '../adapters/opportunity.database.adapter';
-import type { AdapterPersistedQuestion, QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { QuestionCreatedPayload } from '../events/question.event';
 import type { OpportunityActionablePayload } from '../events/opportunity.event';
 import { log } from '../lib/log';
 import type { NotificationStreamEvent, NotificationStreamPublisher } from '../lib/notification-stream-events';
 import { intents } from '../schemas/database.schema';
+import { readOpenQuestionMessages, type OpenQuestionMessage } from '../lib/question/open-question-message';
 // eslint-disable-next-line boundaries/dependencies -- task-owned pure projection shared by realtime and snapshots.
-import { actionableRecipientIds, boundedNotificationLabel, buildOpportunityNotificationEvent, counterpartForRecipient } from './notification-projection';
+import { actionableRecipientIds, boundedNotificationLabel, buildOpportunityNotificationEvent, buildQuestionMessageStreamEvent, counterpartForRecipient } from './notification-projection';
 
 const logger = log.service.from('NotificationDelivery');
 
 export interface NotificationDeliveryDependencies {
-  questioner: Pick<QuestionerAdapter, 'getById' | 'findPending'>;
   opportunities: Pick<OpportunityDatabaseAdapter, 'getOpportunity' | 'getNotificationSnapshotOpportunities'>;
   getIdentity: (userId: string) => Promise<UserIdentity | null>;
   getIntentLabel: (intentId: string) => Promise<string | undefined>;
   publish: NotificationStreamPublisher;
+  /**
+   * The user's open question-messages, one per signal. Derived at snapshot
+   * time from the parked set — the question loop stores no read/unread state,
+   * so "still open" is the only thing that decides whether a frame is in the
+   * snapshot. Defaults to the real reader.
+   */
+  listOpenQuestionMessages?: (userId: string) => Promise<OpenQuestionMessage[]>;
+  /** Origin the question deep link is built against. */
+  webAppUrl?: string;
 }
 
-function questionIntentId(question: AdapterPersistedQuestion): string | undefined {
-  return question.detection.triggeredBy
-    ?? (question.detection.sourceType === 'intent' ? question.detection.sourceId : undefined)
-    ?? question.detection.negotiation?.recipientIntentId;
-}
-
-function standardQuestionTitle(
-  intentLabel: string | undefined,
-  opportunityLabel: string | undefined,
-): string {
-  if (opportunityLabel) return `Your agent has a question about ${opportunityLabel}'s fit`;
-  if (intentLabel) return `Your agent has a question about your ${intentLabel}`;
-  return 'Your agent has a question';
-}
+const DEFAULT_WEB_APP_URL = 'https://index.network';
 
 export async function loadNotificationIntentLabel(intentId: string): Promise<string | undefined> {
   const [row] = await db
@@ -55,38 +49,6 @@ export class NotificationDeliveryService {
     if (!counterpart) return undefined;
     const identity = await this.deps.getIdentity(counterpart.userId);
     return boundedNotificationLabel(identity?.identity.name);
-  }
-
-  private async projectQuestion(
-    question: AdapterPersistedQuestion,
-    recipientId: string,
-  ): Promise<NotificationStreamEvent> {
-    const opportunity = question.detection.sourceType === 'opportunity'
-      ? await this.deps.opportunities.getOpportunity(question.detection.sourceId)
-      : null;
-    const opportunityLabel = opportunity
-      ? await this.opportunityCounterpartLabel(opportunity, recipientId)
-      : undefined;
-
-    if (question.detection.mode === 'negotiation_inflight') {
-      return {
-        type: 'question.new',
-        id: question.id,
-        title: 'Your agent needs your input',
-        body: `A negotiation with ${opportunityLabel ?? 'someone'} is waiting for your answer.`,
-      };
-    }
-
-    const intentId = questionIntentId(question);
-    const intentLabel = intentId
-      ? boundedNotificationLabel(await this.deps.getIntentLabel(intentId))
-      : undefined;
-    return {
-      type: 'question.new',
-      id: question.id,
-      title: standardQuestionTitle(intentLabel, opportunityLabel),
-      body: question.payload.prompt?.trim() || 'Open Index to answer.',
-    };
   }
 
   private async projectOpportunity(
@@ -111,21 +73,6 @@ export class NotificationDeliveryService {
       title: projection.headline,
       body: projection.summary,
     };
-  }
-
-  async publishQuestionCreated(payload: QuestionCreatedPayload): Promise<void> {
-    try {
-      const question = await this.deps.questioner.getById(payload.questionId);
-      if (!question || question.status !== 'pending') return;
-      const event = await this.projectQuestion(question, payload.userId);
-      await this.deps.publish(payload.userId, event);
-    } catch (error) {
-      logger.error('Failed to publish question notification', {
-        questionId: payload.questionId,
-        userId: payload.userId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
   }
 
   async publishOpportunityActionable(payload: OpportunityActionablePayload): Promise<void> {
@@ -153,18 +100,52 @@ export class NotificationDeliveryService {
     }
   }
 
+  /**
+   * One frame per open question-message. The live `question.new` frame reaches
+   * connected clients only, so a client offline when a question landed would
+   * otherwise find it solely by opening the DM. Nothing here is stored or
+   * marked read: the frames are re-derived from the parked set on every
+   * snapshot, so answering (or the close-out) removes them by itself.
+   */
+  private async projectQuestionMessages(userId: string): Promise<NotificationStreamEvent[]> {
+    const listOpenQuestionMessages = this.deps.listOpenQuestionMessages
+      ?? ((id: string) => readOpenQuestionMessages(id));
+    let open: OpenQuestionMessage[];
+    try {
+      open = await listOpenQuestionMessages(userId);
+    } catch (error) {
+      // The opportunity half of the snapshot is still worth returning.
+      logger.error('Failed to project question-message notifications', {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+
+    return Promise.all(open.map(async (question) => {
+      // A missing label degrades the copy, never the frame — same rule the
+      // live delivery follows.
+      const signalLabel = await this.deps.getIntentLabel(question.intentId).catch(() => undefined);
+      return buildQuestionMessageStreamEvent({
+        messageId: question.messageId,
+        intentId: question.intentId,
+        questionCount: question.questionCount,
+        ...(signalLabel ? { signalLabel } : {}),
+        webAppUrl: this.deps.webAppUrl ?? DEFAULT_WEB_APP_URL,
+      });
+    }));
+  }
+
   async snapshot(userId: string): Promise<NotificationStreamEvent[]> {
-    const [questions, opportunities] = await Promise.all([
-      this.deps.questioner.findPending(userId),
+    const [opportunities, questionEvents] = await Promise.all([
       this.deps.opportunities.getNotificationSnapshotOpportunities(userId),
+      this.projectQuestionMessages(userId),
     ]);
-    const pendingQuestions = questions.filter(({ status }) => status === 'pending');
     const actionableOpportunities = opportunities.filter((opportunity) =>
       actionableRecipientIds(opportunity).includes(userId));
-    const [questionEvents, opportunityEvents] = await Promise.all([
-      Promise.all(pendingQuestions.map((question) => this.projectQuestion(question, userId))),
-      Promise.all(actionableOpportunities.map((opportunity) => this.projectOpportunity(opportunity, userId))),
-    ]);
-    return [...questionEvents, ...opportunityEvents];
+    const opportunityEvents = await Promise.all(
+      actionableOpportunities.map((opportunity) => this.projectOpportunity(opportunity, userId)),
+    );
+    return [...opportunityEvents, ...questionEvents];
   }
 }

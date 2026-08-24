@@ -5,24 +5,46 @@ import { RateLimit } from "../guards/limiter.guard";
 import { requestContext } from "../lib/request-context";
 import { getRequestAuthContext } from '../lib/request-auth-context';
 import { log } from "../lib/log";
-import { deprecatedRoute } from "../lib/router/deprecated-route";
 import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
-import { chatSessionService, type ChatStreamSurface } from "../services/chat.service";
+import { chatSessionService, RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, type ChatStreamSurface } from "../services/chat.service";
 import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
-import { questionService } from "../services/question.service";
-import { isNegotiatorChatEnabled } from "../lib/negotiator-feature";
-import { isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, ORCHESTRATOR_PERSONA_ID, REPORTER_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
-import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, formatSSEEvent, type DebugMetaDiscoveryQuestions } from "../types/chat-streaming.types";
+import { personalAgentQueue } from "../queues/personal-agent.queue";
+import type { PersonalAgentUserMessageEvent } from "../queues/personal-agent.queue";
+import { subscribePersonalAgentReply } from "../lib/agent/personal-agent-reply.stream";
+import type { PersonalAgentReplyChunk } from "../lib/agent/personal-agent-reply.stream";
+import { SuggestionGenerator, ChatInterruptClassifier, PERSONAL_AGENT_PERSONA_ID } from '@indexnetwork/protocol';
+import type { PersonalAgentResult } from '@indexnetwork/protocol';
+import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
 type RouteParams = Record<string, string>;
 type ChatScope = { scopeType: 'network' | 'intent'; scopeId: string };
 
 const logger = log.controller.from("chat");
+
+/**
+ * The orchestrator's event stream when it does not run: the signal's
+ * IntentAgent owns every turn of this scope (phase 2 full chat ownership),
+ * so the response comes from its serialized turn instead of the persona
+ * graph. An empty stream rather than a branch around the loop keeps one path
+ * through persistence, title, suggestions and `done` — the turn differs only
+ * in where its text came from.
+ */
+async function* emptyEventStream(): AsyncGenerator<never, void, unknown> {}
+
+/**
+ * Server-owned copy for a PersonalAgent turn that failed or timed out. The
+ * client's message is already persisted and its event is durable on the
+ * agent's inbox, retrying in the background — nothing is lost, so the copy
+ * says exactly that instead of asking them to resend.
+ */
+export const PERSONAL_AGENT_TURN_FAILURE_REPLY =
+  'I hit a snag acting on that just now, but your message is saved and I will pick it up shortly — '
+  + 'no need to send it again.';
+
 
 function normalizeChatScope(input: {
   scopeType?: 'network' | 'intent' | null;
@@ -80,10 +102,8 @@ const streamBodySchema = z.object({
   networkId: z.string().nullish(),
   scopeType: z.enum(['network', 'intent']).nullish(),
   scopeId: z.string().nullish(),
-  /** The recipient user ID for DM-style chats (used for ghost invite emails). */
+  /** The recipient user ID for DM-style chats. */
   recipientUserId: z.string().nullish(),
-  /** Explicit persona assertion for a newly bootstrapped persona chat. */
-  persona: z.enum(['negotiator', 'signal', 'reporter']).nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -98,19 +118,18 @@ function getSuggestionGenerator(): SuggestionGenerator {
   return suggestionGeneratorInstance;
 }
 
-/** Optional body for POST /chat/negotiator/session (P4.2 intent pinning). */
+/**
+ * Required body for POST /chat/negotiator/session (P4.2 intent pinning). The
+ * intent pin is the only negotiator surface, so a missing, unparseable, or
+ * blank `intentId` is a 400 rather than a fallback to the removed DM.
+ */
 const negotiatorSessionBodySchema = z.object({
-  intentId: z.string().min(1).nullish(),
+  intentId: z.string().min(1),
 });
-
-const reporterSessionBodySchema = z.object({
-  forceNew: z.boolean().optional(),
-}).strict();
 
 const resolveSessionBodySchema = z.object({
   scopeType: z.enum(['intent']),
   scopeId: z.string().min(1),
-  persona: z.enum(['signal', 'reporter']).optional(),
 });
 
 const interruptBodySchema = z.object({
@@ -122,7 +141,7 @@ const interruptBodySchema = z.object({
 
 /**
  * Resolve the caller's personal negotiator agent row (provisioning it when
- * missing — idempotent). Returns null for ghost or missing users, which
+ * missing — idempotent). Returns null for missing users, which
  * callers treat as 404.
  */
 async function resolveNegotiatorAgent(userId: string) {
@@ -139,9 +158,13 @@ function getInterruptClassifier(): ChatInterruptClassifier {
 
 @Controller("/chat")
 export class ChatController {
-  /** Map compatibility routes onto their authenticated product surface. */
-  private compatibilitySurface(req: Request): ChatStreamSurface {
-    return getRequestAuthContext(req)?.kind === 'session' ? 'web' : 'non_web';
+  /**
+   * Map dual-auth routes onto their authenticated product surface. Session
+   * principals are the web app; API-key principals are agent clients, which
+   * must name a surface-independent persona (there is no default).
+   */
+  private streamSurface(req: Request): ChatStreamSurface {
+    return getRequestAuthContext(req)?.kind === 'session' ? 'web' : 'agent';
   }
 
   /** Authorize an owned session mutation against its persisted persona. */
@@ -155,14 +178,25 @@ export class ChatController {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const surface = this.compatibilitySurface(req);
-    const storedPersona = session.persona ?? ORCHESTRATOR_PERSONA_ID;
-    if (surface === 'non_web' && storedPersona !== ORCHESTRATOR_PERSONA_ID) {
-      return Response.json({ error: "Session not found" }, { status: 404 });
+    const surface = this.streamSurface(req);
+    // Sessions with no persona column value predate personafication: they are
+    // retired-orchestrator rows, readable but never continuable.
+    const storedPersona = session.persona ?? RETIRED_ORCHESTRATOR_PERSONA_ID;
+    // API-key clients only ever hold a signal's DM; every other session —
+    // pre-collapse pinned chats that lost the DM fold-in included — is
+    // invisible to them. The canonical ('personal-intent', intentId) registry
+    // row is the authority, never the metadata scope echo.
+    if (surface === 'agent') {
+      const scope = sessionScope(session);
+      const canonicalId = scope?.scopeType === 'intent'
+        ? await chatSessionService.findNegotiatorIntentSessionId(user.id, scope.scopeId)
+        : null;
+      if (canonicalId !== sessionId) {
+        return Response.json({ error: "Session not found" }, { status: 404 });
+      }
     }
 
     const policy = chatSessionService.resolveStreamPersonaPolicy({
-      surface,
       storedPersona,
     });
     if (!policy.ok) {
@@ -177,66 +211,11 @@ export class ChatController {
 
   constructor(
     private readonly suggestionGenerator: () => Pick<SuggestionGenerator, 'generate'> = getSuggestionGenerator,
+    /** Seam for tests; production awaits the serialized inbox turn. */
+    private readonly runPersonalAgentUserTurn: (
+      event: PersonalAgentUserMessageEvent,
+    ) => Promise<PersonalAgentResult> = (event) => personalAgentQueue.runUserMessageTurn(event),
   ) {}
-  /**
-   * Send a message to the chat graph for processing.
-   * The graph routes to appropriate subgraphs based on intent analysis.
-   *
-   * @param req - The HTTP request object (body: { message: string })
-   * @param user - The authenticated user from AuthGuard
-   * @returns JSON response with graph execution result including responseText
-   */
-  @Post("/message")
-  @deprecatedRoute('chat.message')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async message(req: Request, user: AuthenticatedUser) {
-    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
-      surface: this.compatibilitySurface(req),
-    });
-    if (!personaPolicy.ok) {
-      return Response.json(
-        {
-          error: personaPolicy.error,
-          code: personaPolicy.code,
-          ...(personaPolicy.action ? { action: personaPolicy.action } : {}),
-        },
-        { status: personaPolicy.status },
-      );
-    }
-
-    // 1. Parse request body for message
-    let messageContent: string;
-    try {
-      const body = (await req.json()) as { message?: string };
-      messageContent = body.message || "";
-    } catch {
-      // No body or invalid JSON
-      return Response.json(
-        { error: "Invalid request body. Expected { message: string }" },
-        { status: 400 },
-      );
-    }
-
-    if (!messageContent.trim()) {
-      return Response.json(
-        { error: "Message content is required" },
-        { status: 400 },
-      );
-    }
-
-    // 2. Process message through service
-    const result = await chatSessionService.processMessage(
-      user.id,
-      messageContent,
-    );
-
-    // 3. Return response
-    return Response.json({
-      response: result.responseText,
-      error: result.error,
-    });
-  }
-
   /**
    * SSE streaming endpoint for chat messages with context support.
    * Streams graph events and LLM tokens in real-time, loading previous conversation context.
@@ -251,7 +230,7 @@ export class ChatController {
     req: Request,
     user: AuthenticatedUser,
   ): Promise<Response> {
-    return this.messageStreamForSurface(req, user, this.compatibilitySurface(req));
+    return this.messageStreamForSurface(req, user, this.streamSurface(req));
   }
 
   /** Main-web chat stream with server-selected Signal cutover policy. */
@@ -325,10 +304,6 @@ export class ChatController {
     const requestedScope = normalizeChatScope(body);
     if (requestedScope instanceof Response) return requestedScope;
 
-    // Captured by validateScope when an intent scope validates — used to pin
-    // the signal by name in the negotiator prompt (P4.2) without re-fetching.
-    let pinnedIntentLabel: string | undefined;
-
     const validateScope = async (scope: ChatScope | undefined) => {
       if (!scope) return undefined;
       if (scope.scopeType === 'network') {
@@ -342,33 +317,20 @@ export class ChatController {
       if (!validation.ok) {
         return Response.json({ error: validation.error }, { status: validation.status });
       }
-      pinnedIntentLabel = validation.title;
       return undefined;
     };
 
-    const requestedPersona = body.persona ?? undefined;
-    if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
-      if (!isNegotiatorChatEnabled()) {
-        return Response.json({ error: "Not found" }, { status: 404 });
-      }
-      if (requestedScope?.scopeType === 'network') {
-        return Response.json({ error: "Negotiator chat cannot be network-scoped" }, { status: 400 });
-      }
-    }
-
     let currentSessionId = body.sessionId;
-    let loadedSession = currentSessionId
+    const loadedSession = currentSessionId
       ? await chatSessionService.getSession(currentSessionId, user.id)
       : null;
     if (currentSessionId && !loadedSession) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
-      surface,
-      requestedPersona,
-      ...(loadedSession ? { storedPersona: loadedSession.persona } : {}),
-    });
+    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy(
+      loadedSession ? { storedPersona: loadedSession.persona } : {},
+    );
     if (!personaPolicy.ok) {
       return Response.json(
         {
@@ -382,7 +344,7 @@ export class ChatController {
 
     const sessionPersona = personaPolicy.persona;
     if (
-      sessionPersona === ONBOARDING_PERSONA_ID
+      surface === 'onboarding'
       && (requestedScope || sessionScope(loadedSession) || body.prefillMessages?.length)
     ) {
       return Response.json(
@@ -408,12 +370,16 @@ export class ChatController {
       );
     }
 
-    if (sessionPersona === NEGOTIATOR_PERSONA_ID) {
-      if (!isNegotiatorChatEnabled()) {
-        return Response.json({ error: "Not found" }, { status: 404 });
-      }
-      if (requestedScope?.scopeType === 'network') {
-        return Response.json({ error: "Negotiator chat cannot be network-scoped" }, { status: 400 });
+    // API-key clients only ever drive a signal's DM (the mac app's per-signal
+    // chat); the global chat stays a web surface, exactly as when persona ids
+    // encoded the split.
+    if (surface === 'agent') {
+      const scopeForTurn = currentSessionId ? sessionScope(loadedSession) : requestedScope;
+      if (scopeForTurn?.scopeType !== 'intent') {
+        return Response.json(
+          { error: "Chats with your agent require an intent scope" },
+          { status: 403 },
+        );
       }
     }
 
@@ -421,15 +387,18 @@ export class ChatController {
     if (requestScopeError) return requestScopeError;
 
     let effectiveScope = requestedScope;
-    let negotiatorAgent: Awaited<ReturnType<typeof resolveNegotiatorAgent>> = null;
-    if (!currentSessionId && sessionPersona === NEGOTIATOR_PERSONA_ID) {
-      negotiatorAgent = await resolveNegotiatorAgent(user.id);
-      if (!negotiatorAgent) {
-        return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
+    if (!currentSessionId && requestedScope?.scopeType === 'intent') {
+      // Intent scope is the signal's DM: one session per (user, intent),
+      // driven by the IntentAgent, introduced by the user's personal agent
+      // row — which therefore must exist.
+      const personalAgent = await resolveNegotiatorAgent(user.id);
+      if (!personalAgent) {
+        return Response.json({ error: "Personal agent not available" }, { status: 404 });
       }
-      const resolved = requestedScope?.scopeType === 'intent'
-        ? await chatSessionService.resolveNegotiatorIntentSession(user.id, requestedScope.scopeId)
-        : await chatSessionService.resolveNegotiatorSession(user.id, negotiatorAgent.name);
+      const resolved = await chatSessionService.resolveNegotiatorIntentSession(
+        user.id,
+        requestedScope.scopeId,
+      );
       if ('error' in resolved) {
         return Response.json({ error: resolved.error }, { status: resolved.status });
       }
@@ -438,86 +407,71 @@ export class ChatController {
       const initialTitle = body.prefillMessages?.length
         ? "Set Up Your Social Agent"
         : undefined;
-      if (requestedScope?.scopeType === 'intent') {
-        const resolved = await chatSessionService.resolveSessionForScope(
-          user.id,
-          requestedScope,
-          sessionPersona,
-        );
-        if ('error' in resolved) {
-          return Response.json({ error: resolved.error }, { status: resolved.status });
-        }
-        currentSessionId = resolved.session.id;
-      } else {
-        currentSessionId = await chatSessionService.createSession(
-          user.id,
-          initialTitle,
-          requestedScope?.scopeType === 'network' ? requestedScope.scopeId : undefined,
-          requestedScope,
-          sessionPersona,
-        );
-      }
+      currentSessionId = await chatSessionService.createSession(
+        user.id,
+        initialTitle,
+        requestedScope?.scopeType === 'network' ? requestedScope.scopeId : undefined,
+        requestedScope,
+        sessionPersona,
+      );
     } else if (loadedSession) {
-      if (sessionPersona === NEGOTIATOR_PERSONA_ID) {
-        if (requestedScope && !sessionScope(loadedSession)) {
-          return Response.json({ error: "Negotiator DM cannot be scoped" }, { status: 400 });
-        }
-      }
       const persistedScope = sessionScope(loadedSession);
       if (requestedScope && persistedScope && !sameScope(requestedScope, persistedScope)) {
         return Response.json({ error: "Session is already scoped differently" }, { status: 409 });
       }
       if (requestedScope && !persistedScope) {
-        if (sessionPersona === SIGNAL_PERSONA_ID) {
+        // Sessions never gain a scope retroactively: an intent focus opens
+        // the signal's own DM, a network focus opens its own chat.
+        return Response.json(
+          {
+            error: 'Start a separate chat with your agent for that focus.',
+            code: 'CHAT_SCOPE_REQUIRES_NEW_SESSION',
+            action: { type: 'start_signal_session', href: '/' },
+          },
+          { status: 409 },
+        );
+      }
+      effectiveScope = requestedScope ?? persistedScope;
+      if (effectiveScope?.scopeType === 'intent') {
+        // Only the signal's one canonical DM can drive intent-scoped turns.
+        // Anything else with an intent scope (e.g. a pre-collapse pinned chat
+        // that lost the fold-in to the DM — archived by migration, this guard
+        // is the backstop) stays readable but never streams: an agent turn
+        // here would deliver into the canonical DM instead. One registry
+        // select; same typed nudge the other read-only rows answer with.
+        const canonicalId = await chatSessionService.findNegotiatorIntentSessionId(user.id, effectiveScope.scopeId);
+        if (canonicalId !== currentSessionId) {
           return Response.json(
             {
-              error: 'Start a separate Signal Agent chat for that focus.',
-              code: 'CHAT_SCOPE_REQUIRES_NEW_SESSION',
+              error: "This conversation is read-only. Open the signal to continue with your agent.",
+              code: 'WEB_SIGNAL_SESSION_REQUIRED',
               action: { type: 'start_signal_session', href: '/' },
             },
             { status: 409 },
           );
         }
-        await chatSessionService.updateSessionScope(currentSessionId, user.id, requestedScope);
-        loadedSession = await chatSessionService.getSession(currentSessionId, user.id);
       }
-      effectiveScope = requestedScope ?? sessionScope(loadedSession);
     }
 
     const effectiveScopeError = await validateScope(effectiveScope);
     if (effectiveScopeError) return effectiveScopeError;
 
-    if (sessionPersona === NEGOTIATOR_PERSONA_ID && !negotiatorAgent) {
-      negotiatorAgent = await resolveNegotiatorAgent(user.id);
-      if (!negotiatorAgent) {
-        return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
-      }
-    }
-
     const sessionId = currentSessionId;
-    const factory = sessionPersona === ONBOARDING_PERSONA_ID
-      ? chatSessionService.getOnboardingGraphFactory()
-      : sessionPersona === SIGNAL_PERSONA_ID
-        ? chatSessionService.getSignalGraphFactory()
-      : sessionPersona === REPORTER_PERSONA_ID
-        ? chatSessionService.getReporterGraphFactory()
-        : sessionPersona === NEGOTIATOR_PERSONA_ID && negotiatorAgent
-        ? await chatSessionService.getNegotiatorGraphFactory(
-            negotiatorAgent,
-            user.id,
-            effectiveScope?.scopeType === 'intent' && pinnedIntentLabel
-              ? { label: pinnedIntentLabel }
-              : undefined,
-          )
-        : sessionPersona === ORCHESTRATOR_PERSONA_ID
-          ? chatSessionService.getGraphFactory()
-          : null;
-    if (!factory) {
-      return Response.json(
-        { error: 'This chat cannot be continued safely.', code: 'CHAT_PERSONA_UNSUPPORTED' },
-        { status: 409 },
-      );
-    }
+    // ─── Phase 2 (full chat ownership): a signal's DM runs no persona graph
+    // at all — EVERY intent-scoped turn is the signal's IntentAgent's,
+    // decided and executed on its serialized inbox. Global and network-scoped
+    // chats run the PersonalAgent graph persona.
+    const agentOwnsTurn = effectiveScope?.scopeType === 'intent';
+    // The graph persona introduces itself as the client's own agent, named
+    // from the same `type='personal'` row the IntentAgent belongs to. A
+    // missing row is not fatal: the prompt falls back to a generic
+    // self-description rather than a product noun, so the chat keeps working.
+    const identityAgent = agentOwnsTurn
+      ? null
+      : await resolveNegotiatorAgent(user.id).catch(() => null);
+    const factory = agentOwnsTurn
+      ? null
+      : chatSessionService.getPersonalAgentGraphFactory(identityAgent, { onboarding: surface === 'onboarding' });
     const useCheckpointer = body.useCheckpointer ?? true;
     const runId = crypto.randomUUID();
     const streamAbortController = new AbortController();
@@ -544,6 +498,7 @@ export class ChatController {
     const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "").split(",").map(o => o.trim()).filter(Boolean);
     const originUrl = rawOrigin && trustedOrigins.includes(rawOrigin) ? rawOrigin : undefined;
     const suggestionGenerator = this.suggestionGenerator;
+    const runPersonalAgentUserTurn = this.runPersonalAgentUserTurn;
 
     const stream = new ReadableStream({
       start(controller) {
@@ -584,25 +539,140 @@ export class ChatController {
           let partialResponse = "";
           let routingDecision: Record<string, unknown> | undefined;
           let subgraphResults: Record<string, unknown> | undefined;
-          let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown; discoveryQuestions?: DebugMetaDiscoveryQuestions } | undefined;
+          let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown} | undefined;
           let decisionQuestions: import("@indexnetwork/protocol").Question[] | undefined;
-          const streamedChatQuestionIds: string[] = [];
 
-          // Use context-aware streaming to load previous messages
+          // ─── The IntentAgent's turn (phase 2: full chat ownership) ──────
+          // EVERY turn of a negotiator intent-scoped DM belongs to the
+          // signal's IntentAgent: the message is persisted, its event runs
+          // on the agent's serialized inbox, and the agent's reply streams
+          // back over the turn's Redis channel as token events. The persona
+          // graph never runs for this scope — the 2026-08-20 incident's fix
+          // is now unconditional, and the client talks to one mind. If the
+          // channel yields nothing (or only a prefix) but the turn
+          // completes, the completed text is emitted as a token event — a
+          // turn is never lost to a dropped subscription.
+          let agentTurn: PersonalAgentResult | null = null;
+          let agentUserMessageId: string | null = null;
+          let agentAssistantMessageId: string | undefined;
+          /** Canned replies the agent attached to its delivered message. */
+          let agentReplyOptions: string[] | undefined;
 
-          for await (const event of factory.streamChatEventsWithContext(
-            {
-              userId: user.id,
-              message: messageContent,
+          if (agentOwnsTurn && effectiveScope) {
+            // The conversation is the agent's memory, so the client's message
+            // is persisted BEFORE the turn — the reverse of the persona path,
+            // which persists after streaming to avoid duplicating the current
+            // message in its loaded context.
+            agentUserMessageId = await chatSessionService.addMessage({
               sessionId,
-              maxContextMessages: 20,
-              ...(effectiveScope ? { scopeType: effectiveScope.scopeType, scopeId: effectiveScope.scopeId } : {}),
-              prefillMessages: body.prefillMessages,
-              runId,
-            },
-            checkpointer,
-            streamAbortController.signal,
-          )) {
+              role: 'user',
+              content: messageContent,
+            });
+            // Subscribe BEFORE enqueueing so no chunk can be published into
+            // an unwatched channel. Everything on the channel was checked
+            // and persisted by the host before publishing.
+            let streamedText = '';
+            let lastSeq = 0;
+            let unsubscribeReply: (() => void) | null = null;
+            try {
+              unsubscribeReply = await subscribePersonalAgentReply(agentUserMessageId, (chunk: PersonalAgentReplyChunk) => {
+                if (chunk.seq <= lastSeq) return;
+                lastSeq = chunk.seq;
+                streamedText += chunk.content;
+                try {
+                  controller.enqueue(
+                    encoder.encode(formatSSEEvent(createTokenEvent(sessionId, chunk.content))),
+                  );
+                } catch {
+                  // Stream may have already closed.
+                }
+              });
+            } catch (subscribeErr) {
+              // Degraded to the fallback emission below, never a lost turn.
+              logger.warn('PersonalAgent reply subscription failed', { sessionId, error: subscribeErr });
+            }
+            try {
+              agentTurn = await runPersonalAgentUserTurn({
+                event: 'user_message',
+                userId: user.id,
+                intentId: effectiveScope.scopeId,
+                sessionId,
+                messageId: agentUserMessageId,
+                text: messageContent,
+              });
+              fullResponse = agentTurn.messages.join('\n\n');
+              for (const act of agentTurn.acts) {
+                if (act.tool !== 'message_user') continue;
+                agentAssistantMessageId = act.messageId;
+                // The chips belong to the last message the turn delivered —
+                // the same one `agentAssistantMessageId` names. They are
+                // already persisted on it; the done event only spares the
+                // client a reload to see them.
+                agentReplyOptions = act.options;
+              }
+              // Dropped-subscription fallback: whatever the channel did not
+              // deliver of the completed turn is emitted as one token event.
+              // The host publishes chunks whose concatenation IS the joined
+              // messages, so a healthy stream leaves no remainder.
+              if (fullResponse && fullResponse !== streamedText) {
+                const remainder = fullResponse.startsWith(streamedText)
+                  ? fullResponse.slice(streamedText.length)
+                  : null;
+                if (remainder) {
+                  controller.enqueue(
+                    encoder.encode(formatSSEEvent(createTokenEvent(sessionId, remainder))),
+                  );
+                }
+                // A non-prefix divergence emits nothing more: the done
+                // event's response is authoritative for the final text.
+              }
+            } catch (agentErr) {
+              // The event is durable on the inbox and retries in the
+              // background; the client hears honest fixed copy rather than
+              // losing the turn.
+              logger.error('PersonalAgent turn failed; replying with fixed copy', { sessionId, error: agentErr });
+              fullResponse = PERSONAL_AGENT_TURN_FAILURE_REPLY;
+              try {
+                agentAssistantMessageId = await chatSessionService.addMessage({
+                  sessionId,
+                  role: 'assistant',
+                  content: fullResponse,
+                });
+              } catch (persistErr) {
+                logger.error('Failed to persist PersonalAgent failure copy', { sessionId, error: persistErr });
+              }
+              try {
+                controller.enqueue(
+                  encoder.encode(formatSSEEvent(createTokenEvent(sessionId, fullResponse))),
+                );
+              } catch {
+                // Stream may have already closed.
+              }
+            } finally {
+              unsubscribeReply?.();
+            }
+          }
+
+          // Use context-aware streaming to load previous messages. An
+          // agent-owned turn has no factory (checked above): its stream is
+          // empty so one path runs persistence, title, suggestions and done.
+          const orchestratorEvents = !factory || agentOwnsTurn
+            ? emptyEventStream()
+            : factory.streamChatEventsWithContext(
+              {
+                userId: user.id,
+                message: messageContent,
+                sessionId,
+                maxContextMessages: 20,
+                ...(effectiveScope ? { scopeType: effectiveScope.scopeType, scopeId: effectiveScope.scopeId } : {}),
+                prefillMessages: body.prefillMessages,
+                runId,
+              },
+              checkpointer,
+              streamAbortController.signal,
+            );
+
+          for await (const event of orchestratorEvents) {
             if (streamInterruptedBySteer) break;
             if (event) {
               // response_complete is an internal event carrying the agent's
@@ -636,28 +706,28 @@ export class ChatController {
                   tools: event.tools,
                   llm: event.llm,
                   ...(event.orchestratorNegotiations !== undefined && { orchestratorNegotiations: event.orchestratorNegotiations }),
-                  ...(event.discoveryQuestions !== undefined && { discoveryQuestions: event.discoveryQuestions as DebugMetaDiscoveryQuestions }),
                 };
               } else if (event.type === "decision_questions") {
                 // Event was already forwarded by the default enqueue above; just
                 // capture so the final `done` event can include `decisionQuestions`.
                 decisionQuestions = (event as { questions: import("@indexnetwork/protocol").Question[] }).questions;
-              } else if (event.type === "user_question") {
-                for (const question of event.questions) {
-                  if (typeof question.id === 'string') streamedChatQuestionIds.push(question.id);
-                }
               }
             }
           }
 
-          // Steer-interrupted: persist partial turn and bail (no done event emitted)
+          // Steer-interrupted: persist partial turn and bail (no done event
+          // emitted). Unreachable for an agent-owned turn — its stream is
+          // empty — but guarded anyway so a racing interrupt cannot persist
+          // the client's message twice.
           if (streamInterruptedBySteer) {
             try {
-              await chatSessionService.addMessage({ sessionId, role: 'user', content: messageContent });
+              if (!agentUserMessageId) {
+                await chatSessionService.addMessage({ sessionId, role: 'user', content: messageContent });
+              }
               // Use authoritative fullResponse when available; fall back to accumulated
               // partial tokens when the stream was cut before response_complete fired.
               const interruptedContent = (fullResponse || partialResponse).trim();
-              if (interruptedContent) {
+              if (interruptedContent && !agentOwnsTurn) {
                 await chatSessionService.addMessage({
                   sessionId,
                   role: 'assistant',
@@ -682,14 +752,19 @@ export class ChatController {
             }
           }
 
-          // Persist user message and assistant response
-          await chatSessionService.addMessage({
-            sessionId,
-            role: "user",
-            content: messageContent,
-          });
-          let assistantMessageId: string | undefined;
-          if (fullResponse) {
+          // Persist user message and assistant response. An agent-owned turn
+          // persisted both already — the message before the turn ran, the
+          // response inside the turn's own delivery — so this section is the
+          // persona path's alone.
+          if (!agentUserMessageId) {
+            await chatSessionService.addMessage({
+              sessionId,
+              role: "user",
+              content: messageContent,
+            });
+          }
+          let assistantMessageId: string | undefined = agentAssistantMessageId;
+          if (fullResponse && !agentOwnsTurn) {
             assistantMessageId = await chatSessionService.addMessage({
               sessionId,
               role: "assistant",
@@ -699,20 +774,11 @@ export class ChatController {
             });
           }
 
-          if (assistantMessageId && streamedChatQuestionIds.length > 0) {
-            await questionService.bindChatQuestionsToMessage({
-              questionIds: streamedChatQuestionIds,
-              userId: user.id,
-              conversationId: sessionId,
-              messageId: assistantMessageId,
-            });
-          }
-
-          // Negotiator DM turns debounce-schedule a chat reflection (P5.2):
+          // Signal-DM turns debounce-schedule a chat reflection (P5.2):
           // the job fires once the session has been idle for the delay window,
-          // distilling stated preferences into negotiator memories. No-op when
-          // NEGOTIATOR_MEMORY_WRITE_ENABLED is off; never blocks the stream.
-          if (sessionPersona === NEGOTIATOR_PERSONA_ID && fullResponse) {
+          // distilling stated preferences into negotiator memories. Never
+          // blocks the stream.
+          if (agentOwnsTurn && fullResponse) {
             negotiationReflectQueue.scheduleChatReflect({ sessionId, userId: user.id })
               .catch((err) => logger.error("Failed to schedule negotiator chat reflection", { sessionId, error: err }));
           }
@@ -780,6 +846,7 @@ export class ChatController {
                     title: sessionTitle,
                     suggestions,
                     ...(decisionQuestions !== undefined ? { decisionQuestions } : {}),
+                    ...(agentReplyOptions ? { options: agentReplyOptions } : {}),
                   }),
                 ),
               ),
@@ -829,23 +896,21 @@ export class ChatController {
    */
   @Get("/sessions")
   @UseGuards(RateLimit('read'), AuthGuard)
-  async getSessions(req: Request, user: AuthenticatedUser) {
-    // Compatibility history is orchestrator-only. The explicit negotiator
-    // filter remains available for the pinned Personal Agent lookup, while
-    // Signal history is reserved for the session-only web endpoint below.
-    const personaParam = new URL(req.url).searchParams.get("persona")?.trim();
-    const compatibilityPersona = personaParam === NEGOTIATOR_PERSONA_ID
-      ? NEGOTIATOR_PERSONA_ID
-      : ORCHESTRATOR_PERSONA_ID;
+  async getSessions(_req: Request, user: AuthenticatedUser) {
+    // Retained read-only history for the retired orchestrator persona. The
+    // negotiator filter that used to live here existed solely to look up the
+    // pinned Personal Agent DM; with that surface gone its callers are too, and
+    // negotiator sessions are reached through their intent. Signal history is
+    // reserved for the session-only web endpoint below.
     const sessions = await chatSessionService.getUserSessions(
       user.id,
-      undefined,
-      compatibilityPersona,
+      10,
+      RETIRED_ORCHESTRATOR_PERSONA_ID,
     );
     return Response.json({ sessions });
   }
 
-  /** Main-web history including orchestrator and Signal, but never negotiator. */
+  /** Main-web history including retired-orchestrator and Signal, never negotiator. */
   @Get("/web/sessions")
   @UseGuards(RateLimit('read'), SessionOnlyGuard)
   async getWebSessions(_req: Request, user: AuthenticatedUser) {
@@ -854,37 +919,36 @@ export class ChatController {
   }
 
   /**
-   * Get-or-create the user's stable negotiator DM session (P4.1).
-   * Idempotent: repeat calls return the same session — one persistent DM per
-   * user, keyed by the chat_session_scopes unique index. Gated by
-   * NEGOTIATOR_CHAT_ENABLED (404 when off, as if the route does not exist).
+   * Get-or-create the caller's negotiator session pinned to one of their
+   * intents (P4.2/IND-403). Idempotent: repeat calls for the same intent
+   * return the same session, keyed by the chat_session_scopes unique index.
    *
-   * @param _req - The HTTP request object (no body)
+   * `intentId` is required. The unscoped DM variant this route also served is
+   * gone, so a request without one has no session to resolve and is a 400
+   * rather than a silent fallback.
+   *
+   * @param req - The HTTP request object (body: { intentId: string })
    * @param user - The authenticated user from AuthGuard
    * @returns JSON with the session, whether it was created, and the negotiator agent identity
    */
   @Post("/negotiator/session")
   @UseGuards(RateLimit('write'), AuthGuard)
   async negotiatorSession(req: Request, user: AuthenticatedUser) {
-    if (!isNegotiatorChatEnabled()) {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
+    const invalidBody = Response.json(
+      { error: "Invalid request body. Expected { intentId: string }" },
+      { status: 400 },
+    );
 
-    // Body is optional (the sidebar posts none). `intentId` selects the
-    // per-intent pinned session (P4.2) instead of the DM.
-    let intentId: string | undefined;
+    let intentId: string;
     try {
-      const raw: unknown = await req.json();
-      const parsed = negotiatorSessionBodySchema.safeParse(raw);
-      if (!parsed.success) {
-        return Response.json(
-          { error: "Invalid request body. Expected { intentId?: string }" },
-          { status: 400 },
-        );
-      }
-      intentId = parsed.data.intentId?.trim() || undefined;
+      const parsed = negotiatorSessionBodySchema.safeParse(await req.json());
+      if (!parsed.success) return invalidBody;
+      const requested = parsed.data.intentId.trim();
+      if (!requested) return invalidBody;
+      intentId = requested;
     } catch {
-      // No body / empty body — DM variant.
+      // Missing or unparseable body — no intent to pin to.
+      return invalidBody;
     }
 
     const agent = await resolveNegotiatorAgent(user.id);
@@ -892,9 +956,7 @@ export class ChatController {
       return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
     }
 
-    const result = intentId
-      ? await chatSessionService.resolveNegotiatorIntentSession(user.id, intentId)
-      : await chatSessionService.resolveNegotiatorSession(user.id, agent.name);
+    const result = await chatSessionService.resolveNegotiatorIntentSession(user.id, intentId);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
     }
@@ -903,76 +965,24 @@ export class ChatController {
       session: result.session,
       created: result.created,
       agent: { id: agent.id, name: agent.name, description: agent.description },
+      // Constant since the intent-agent collapse: the agent's asks are plain
+      // messages with no regeneration pending state. Served so existing web
+      // clients keep parsing the bootstrap shape.
+      questionRegenerationPending: false,
     });
   }
 
   /**
-   * Resolve the current Reporter opening briefing for the authenticated web session.
-   *
-   * The route never accepts a persona. It returns the adapter's atomic creation
-   * claim so only one tab sends the hidden opening marker. `forceNew` is reserved
-   * for the explicit New conversation action and bypasses normal TTL reuse.
-   *
-   * @param req - Body `{ forceNew?: boolean }`
-   * @param user - Session-authenticated user
-   * @returns The authoritative reporter session and creation claim
-   */
-  @Post("/reporter/session")
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
-  async reporterSession(req: Request, user: AuthenticatedUser) {
-    if (!isAgentSurfaceEnabled()) {
-      return Response.json({ error: "Not found" }, { status: 404 });
-    }
-
-    let body: z.infer<typeof reporterSessionBodySchema>;
-    try {
-      const parsed = reporterSessionBodySchema.safeParse(await req.json());
-      if (!parsed.success) {
-        return Response.json(
-          { error: "Invalid request body. Expected { forceNew?: boolean }" },
-          { status: 400 },
-        );
-      }
-      body = parsed.data;
-    } catch {
-      return Response.json(
-        { error: "Invalid JSON in request body" },
-        { status: 400 },
-      );
-    }
-
-    const result = await chatSessionService.resolveReporterSession(
-      user.id,
-      body.forceNew ?? false,
-    );
-    return Response.json(result);
-  }
-
-  /**
-   * Resolve or create the stable orchestrator chat session for a selected intent.
+   * Resolve or create the stable intent-scoped chat session — the signal's
+   * DM — for the main-web surface.
    *
    * @param req - The HTTP request object (body: { scopeType: 'intent', scopeId: string })
-   * @param user - The authenticated user from AuthGuard
+   * @param user - The authenticated user from SessionOnlyGuard
    * @returns JSON response with the resolved session and whether it was created
    */
-  /** Resolve an intent-scoped session for the dedicated main-web surface. */
   @Post("/web/session/resolve")
   @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async webResolveSession(req: Request, user: AuthenticatedUser) {
-    return this.resolveSessionForSurface(req, user, 'web');
-  }
-
-  @Post("/session/resolve")
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async resolveSession(req: Request, user: AuthenticatedUser) {
-    return this.resolveSessionForSurface(req, user, this.compatibilitySurface(req));
-  }
-
-  private async resolveSessionForSurface(
-    req: Request,
-    user: AuthenticatedUser,
-    surface: ChatStreamSurface,
-  ) {
     let body: z.infer<typeof resolveSessionBodySchema>;
     try {
       const raw = await req.json();
@@ -991,25 +1001,8 @@ export class ChatController {
       );
     }
 
-    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
-      surface,
-      requestedPersona: body.persona,
-    });
-    if (!personaPolicy.ok) {
-      return Response.json(
-        {
-          error: personaPolicy.error,
-          code: personaPolicy.code,
-          ...(personaPolicy.action ? { action: personaPolicy.action } : {}),
-        },
-        { status: personaPolicy.status },
-      );
-    }
-
-    const result = await chatSessionService.resolveSessionForScope(user.id, {
-      scopeType: body.scopeType,
-      scopeId: body.scopeId,
-    }, personaPolicy.persona);
+    // An intent scope names exactly one session: the signal's DM.
+    const result = await chatSessionService.resolveNegotiatorIntentSession(user.id, body.scopeId);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
     }
@@ -1028,7 +1021,7 @@ export class ChatController {
   @Post("/session")
   @UseGuards(RateLimit('write'), AuthGuard)
   async getSession(req: Request, user: AuthenticatedUser) {
-    return this.getSessionForPersonas(req, user, new Set([ORCHESTRATOR_PERSONA_ID]));
+    return this.getSessionForPersonas(req, user, new Set([RETIRED_ORCHESTRATOR_PERSONA_ID]));
   }
 
   /** Session-only web detail across readable web and pinned chat personas. */
@@ -1038,7 +1031,7 @@ export class ChatController {
     return this.getSessionForPersonas(
       req,
       user,
-      new Set([ORCHESTRATOR_PERSONA_ID, SIGNAL_PERSONA_ID, REPORTER_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
+      new Set([RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, PERSONAL_AGENT_PERSONA_ID]),
     );
   }
 
@@ -1065,7 +1058,7 @@ export class ChatController {
       body.sessionId,
       user.id,
     );
-    if (!session || !allowedPersonas.has(session.persona ?? ORCHESTRATOR_PERSONA_ID)) {
+    if (!session || !allowedPersonas.has(session.persona ?? RETIRED_ORCHESTRATOR_PERSONA_ID)) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 

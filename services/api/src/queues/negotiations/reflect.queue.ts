@@ -21,7 +21,7 @@
 import { Job } from 'bullmq';
 import cron from 'node-cron';
 
-import { NegotiationReflector, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
+import { NegotiationReflector } from '@indexnetwork/protocol';
 import type { NegotiationReflectJobData, ReflectEnqueueFn, ReflectionTranscriptEntry, DistilledMemory } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
@@ -34,12 +34,7 @@ import { negotiatorMemoryWriteService, isNegotiatorMemoryWriteEnabled, type Nego
 export const QUEUE_NAME = 'negotiation-reflect';
 
 /** Idle window after the last negotiator-DM turn before chat_reflect fires. */
-const DEFAULT_CHAT_REFLECT_DELAY_MS = 15 * 60 * 1000;
-
-function chatReflectDelayMs(): number {
-  const raw = Number(process.env.NEGOTIATOR_CHAT_REFLECT_DELAY_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_CHAT_REFLECT_DELAY_MS;
-}
+const CHAT_REFLECT_DELAY_MS = 15 * 60 * 1000;
 
 export type ReflectJobData = NegotiationReflectJobData;
 
@@ -59,9 +54,16 @@ export interface ReflectQueueDeps {
       parts: unknown[];
       createdAt: Date;
     }>>;
+    getNegotiationMessages: (opportunityId: string) => Promise<Array<{
+      id: string;
+      senderId: string;
+      parts: unknown[];
+      createdAt: Date;
+    }>>;
   };
   chat?: {
-    getSession: (sessionId: string, userId: string) => Promise<{ persona: string } | null>;
+    getSession: (sessionId: string, userId: string) => Promise<{ persona: string; scopeType: string | null; scopeId: string | null } | null>;
+    findNegotiatorIntentSessionId: (userId: string, intentId: string) => Promise<string | null>;
     getSessionMessages: (sessionId: string, limit?: number) => Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>>;
   };
   reflector?: Pick<NegotiationReflector, 'reflectNegotiation' | 'reflectChat'>;
@@ -115,7 +117,7 @@ export class NegotiationReflectQueue {
     if (!isNegotiatorMemoryWriteEnabled()) return;
     const jobId = `chat-reflect-${data.sessionId}`;
     await this.queue.remove(jobId).catch(() => { /* not present or already active — fine */ });
-    await this.queue.add('chat_reflect', data, { jobId, delay: chatReflectDelayMs() });
+    await this.queue.add('chat_reflect', data, { jobId, delay: CHAT_REFLECT_DELAY_MS });
   }
 
   /** Run a job handler (worker path and tests with injected deps). */
@@ -178,12 +180,19 @@ export class NegotiationReflectQueue {
 
     const conversations: NonNullable<ReflectQueueDeps['conversations']> =
       this.deps?.conversations ?? conversationDatabaseAdapter;
+    // A negotiation is its own conversation now — no pair-shared thread to
+    // scope out of.
     const messages = await conversations.getMessagesForConversation(data.conversationId);
 
-    // Extract turn data parts (same projection the graph uses).
+    // Extract turn data parts. #1494: the persisted shape is
+    // {verb, message, reasoning} for a continuing turn, or {verb:'pause',
+    // reason} for a pause (redacted — payload is never in the shared
+    // thread). This is dormant until step 2 rewires reflectEnqueue at this
+    // queue, but the shape must be current now, not the pre-rewrite
+    // {action, assessment} one.
     const turns = messages
-      .map((m) => {
-        const dataPart = (m.parts as Array<{ kind?: string; data?: { action?: string; message?: string; assessment?: { reasoning?: string } } }>)
+      .map((m: { senderId: string; parts: unknown[] }) => {
+        const dataPart = (m.parts as Array<{ kind?: string; data?: { verb?: string; message?: string; reasoning?: string; reason?: string } }>)
           .find((p) => p.kind === 'data');
         return dataPart?.data ? { senderId: m.senderId, turn: dataPart.data } : null;
       })
@@ -207,9 +216,9 @@ export class NegotiationReflectQueue {
         const transcript: ReflectionTranscriptEntry[] = turns.map((t, index) => ({
           index,
           speaker: t.senderId === `agent:${user.id}` ? 'client' as const : 'counterparty' as const,
-          action: t.turn.action ?? 'unknown',
+          action: t.turn.verb === 'pause' ? `pause:${t.turn.reason ?? 'unknown'}` : (t.turn.verb ?? 'unknown'),
           ...(t.turn.message && { message: t.turn.message }),
-          ...(t.turn.assessment?.reasoning && { reasoning: t.turn.assessment.reasoning }),
+          ...(t.turn.reasoning && { reasoning: t.turn.reasoning }),
         }));
 
         const entries = await this.getReflector().reflectNegotiation({
@@ -254,11 +263,17 @@ export class NegotiationReflectQueue {
 
     const chat = this.deps?.chat ?? chatSessionService;
 
-    // Ownership + persona guard: only the client's own negotiator DM is
-    // reflected — orchestrator chats teach the negotiator nothing.
+    // Ownership + scope guard: only the client's own signal DM is reflected —
+    // global chats teach the negotiator nothing. Re-keyed from the retired
+    // negotiator persona id to the canonical ('personal-intent', intentId)
+    // registry row, the same authority that routes the DM's turns; a
+    // pre-collapse pinned chat that lost the DM fold-in never distils.
     const session = await chat.getSession(data.sessionId, data.userId);
-    if (!session || session.persona !== NEGOTIATOR_PERSONA_ID) {
-      this.logger.info('Not a negotiator session; skipping chat reflection', {
+    const canonicalId = session?.scopeType === 'intent' && session.scopeId
+      ? await chat.findNegotiatorIntentSessionId(data.userId, session.scopeId)
+      : null;
+    if (!session || canonicalId !== data.sessionId) {
+      this.logger.info('Not a canonical DM session; skipping chat reflection', {
         sessionId: data.sessionId,
         persona: session?.persona ?? 'none',
       });
@@ -305,15 +320,13 @@ export class NegotiationReflectQueue {
 export const negotiationReflectQueue = new NegotiationReflectQueue();
 
 /**
- * Returns the reflect enqueue callback when memory writes are enabled
- * (`NEGOTIATOR_MEMORY_WRITE_ENABLED=true`), or `undefined` otherwise.
+ * The reflect enqueue callback.
  *
  * Use at every negotiation-graph composition site (main.ts background graph,
  * negotiation/tool services, MCP composition root) — mirrors
- * `questionerEnqueueIfEnabled` so no path silently drops reflection.
+ * `parkedQuestionEnqueue` so no path silently drops reflection.
  */
-export function reflectEnqueueIfEnabled(): ReflectEnqueueFn | undefined {
-  if (!isNegotiatorMemoryWriteEnabled()) return undefined;
+export function reflectEnqueue(): ReflectEnqueueFn {
   return async (job) => {
     await negotiationReflectQueue.addReflectJob(job);
   };

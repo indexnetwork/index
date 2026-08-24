@@ -5,7 +5,6 @@ import { HERMES_CAPABILITIES } from '@/lib/hermes-auth';
 import { connectedAgentsService, type ConnectedHermesAgent } from '@/services/connected-agents';
 
 const healthLabels: Record<ConnectedHermesAgent['health'], string> = {
-  pending: 'Pending activation',
   active: 'Active',
   stale: 'Stale',
   never_seen: 'Never seen',
@@ -168,7 +167,7 @@ function ConnectedAgentsPage() {
         <aside className="rounded-sm border border-blue-100 bg-blue-50 p-5">
           <h2 className="font-semibold text-gray-900">Reconnect securely</h2>
           <p className="mt-2 text-sm text-gray-600">
-            Reconnecting starts a fresh browser authorization. It never mints or extends a credential from this page.
+            Reconnecting uses the API key configured in Hermes. It never mints or extends a credential from this page.
           </p>
           <Button
             variant="outline"
@@ -190,7 +189,7 @@ function ConnectedAgentsPage() {
                 <li>Choose Connect.</li>
               </ol>
               <p className="mt-3 text-sm text-gray-600">
-                Hermes will initiate a fresh PKCE browser attempt. This page makes no authorization request.
+                Hermes reads its API key from the environment. This page makes no authorization request.
               </p>
               <Button
                 variant="outline"

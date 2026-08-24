@@ -37,6 +37,9 @@ describe("/download", () => {
     expect(screen.getByText(/Coming soon/i)).toBeInTheDocument();
     expect(screen.getByText(mod.MAC_APP_REQUIREMENTS)).toBeInTheDocument();
 
+    expect(mod.HERMES_INSTALL_URL).toBe(
+      "hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1",
+    );
     const hermes = screen.getByRole("link", { name: /install hermes plugin/i });
     expect(hermes).toHaveAttribute("href", mod.HERMES_INSTALL_URL);
 

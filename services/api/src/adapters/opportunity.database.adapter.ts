@@ -1,5 +1,5 @@
-import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
-import { emitOpportunityLifecycleBestEffort } from '../events/opportunity.event';
+import { schema, CreateOpportunityInput, OpportunityRow, UserIdentity, and, buildProfileFromUser, db, desc, eq, gte, inArray, isNotNull, isNull, logger, lte, ne, normalizeEmbedding, notInArray, opportunities, or, sql, toOpportunityRow, traceAppOperation } from './database.shared';
+import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
@@ -24,6 +24,14 @@ interface IntentScopedOpportunityPersistenceConflict {
 type IntentScopedOpportunityPersistenceResult =
   | { created: OpportunityRow; expired: OpportunityRow[] }
   | { conflict: IntentScopedOpportunityPersistenceConflict };
+
+/** Statuses a dead pairing may be reopened from — see {@link OpportunityDatabaseAdapter.reopenOpportunityForRerun}. */
+export const REOPENABLE_OPPORTUNITY_STATUSES = ['rejected', 'stalled', 'expired'] as const;
+
+export type ReopenOpportunityResult =
+  | { reopened: OpportunityRow }
+  | { conflict: 'active_negotiation'; taskId: string }
+  | { conflict: 'not_reopenable'; status: OpportunityRow['status'] };
 
 function opportunityTriggerForOwner(opportunity: OpportunityRow, ownerUserId: string): string | undefined {
   return opportunity.detection.triggeredBy
@@ -199,50 +207,6 @@ export async function runAtomicOutcomeTransition<T extends OutcomeTransitionResu
 }
 
 /**
- * Restore an exact taskless attempt while holding the shared negotiation lock.
- * The opportunity row and qualifying-task query run after lock acquisition, so
- * they observe the committed winner rather than a pre-lock READ COMMITTED snapshot.
- */
-export async function compensateTasklessNegotiatingOpportunityInTransaction(
-  tx: DrizzleTx,
-  id: string,
-  expectedUpdatedAt: Date,
-  fallbackStatus: 'latent' | 'draft',
-): Promise<OpportunityRow | null> {
-  await acquireNegotiationAttemptLock(tx, id);
-
-  const [opportunity] = await tx
-    .select({ status: opportunities.status, updatedAt: opportunities.updatedAt })
-    .from(opportunities)
-    .where(eq(opportunities.id, id))
-    .for('update');
-  if (
-    opportunity?.status !== 'negotiating'
-    || opportunity.updatedAt.getTime() !== expectedUpdatedAt.getTime()
-  ) {
-    return null;
-  }
-
-  const [qualifyingTask] = await tx
-    .select({ id: schema.tasks.id })
-    .from(schema.tasks)
-    .where(qualifyingNegotiationAttemptTaskWhere(id, expectedUpdatedAt))
-    .limit(1);
-  if (qualifyingTask) return null;
-
-  const [row] = await tx
-    .update(opportunities)
-    .set({ status: fallbackStatus, acceptedBy: null, updatedAt: new Date() })
-    .where(and(
-      eq(opportunities.id, id),
-      eq(opportunities.status, 'negotiating'),
-      eq(opportunities.updatedAt, expectedUpdatedAt),
-    ))
-    .returning();
-  return row ? toOpportunityRow(row) : null;
-}
-
-/**
  * Candidate rows for persisted notification catch-up. This intentionally uses
  * actor membership rather than the legacy UI role-visibility policy; the
  * notification projection applies canonical actionability after the read.
@@ -252,6 +216,80 @@ export function notificationSnapshotOpportunityWhere(userId: string) {
     sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
     inArray(opportunities.status, ['latent', 'pending']),
   )!;
+}
+
+/**
+ * Statuses that enrichment-superseded expiry must never touch.
+ *
+ * `pending` means the agents already agreed and the row is waiting on its
+ * OWNER's approval — a won match. The protocol enricher's merge-candidate pool
+ * (DEFAULT_ENRICHER_EXCLUDE_STATUSES) omits `pending`, so a later sweep that
+ * re-finds the same pair hands the pending row back to us in `expireIds`;
+ * expiring it evaporates a match the human was about to approve.
+ *
+ * The invariant this pins: a `pending` opportunity leaves `pending` only by a
+ * human decision (accept/reject) or by its signal being archived — never by
+ * background churn. The intent-archive and removed-member cascades are
+ * deliberate human-caused paths and are unaffected.
+ */
+export const ENRICHMENT_EXPIRY_PROTECTED_STATUSES = ['pending'] as const;
+
+/**
+ * Expire the rows an enrichment merge superseded, skipping protected ones.
+ *
+ * A skipped row keeps its status AND its `updated_at` — an attempt CAS keyed to
+ * that timestamp must not lose its claim to a sweep that decided to leave the
+ * row alone. The newly created enriched row is still written, so dedup and
+ * suppression handle the duplicate on the read side as they always have.
+ *
+ * Runs inside the caller's transaction: the candidate statuses are read
+ * `FOR UPDATE`, so the skip decision cannot race a concurrent human decision.
+ *
+ * @param tx - The caller's open transaction
+ * @param expireIds - Rows the enricher marked superseded
+ * @param extraWhere - Extra predicate the caller scopes its expiry with
+ * @returns The rows actually expired
+ */
+async function expireEnrichmentSupersededIds(
+  tx: DrizzleTx,
+  expireIds: string[],
+  extraWhere?: ReturnType<typeof and>,
+): Promise<OpportunityRow[]> {
+  const expired: OpportunityRow[] = [];
+  if (expireIds.length === 0) return expired;
+
+  const candidates = await tx
+    .select({ id: opportunities.id, status: opportunities.status })
+    .from(opportunities)
+    .where(inArray(opportunities.id, expireIds))
+    // Deterministic lock order: two sweeps whose expire sets overlap queue up
+    // behind each other instead of deadlocking on a mirrored acquisition order.
+    .orderBy(opportunities.id)
+    .for('update');
+  const protectedIds = candidates
+    .filter((row) => (ENRICHMENT_EXPIRY_PROTECTED_STATUSES as readonly string[]).includes(row.status))
+    .map((row) => row.id);
+  if (protectedIds.length > 0) {
+    logger.info('enricher_skipped_pending', { opportunityIds: protectedIds });
+  }
+
+  const now = new Date();
+  for (const opportunityId of expireIds) {
+    if (protectedIds.includes(opportunityId)) continue;
+    const [row] = await tx
+      .update(opportunities)
+      .set({ status: 'expired', updatedAt: now })
+      .where(and(
+        eq(opportunities.id, opportunityId),
+        // Belt-and-braces: the FOR UPDATE read above already settled the skip,
+        // so this can only matter if that read is ever removed.
+        notInArray(opportunities.status, [...ENRICHMENT_EXPIRY_PROTECTED_STATUSES]),
+        ...(extraWhere ? [extraWhere] : []),
+      ))
+      .returning();
+    if (row) expired.push(toOpportunityRow(row));
+  }
+  return expired;
 }
 
 export class OpportunityDatabaseAdapter {
@@ -519,21 +557,7 @@ export class OpportunityDatabaseAdapter {
         throw new Error('OpportunityDatabaseAdapter.persistIntentScopedOpportunityIfNetworkEligible: no row returned');
       }
 
-      const expired: OpportunityRow[] = [];
-      if (expireIds.length > 0) {
-        const now = new Date();
-        for (const opportunityId of expireIds) {
-          const [row] = await tx
-            .update(opportunities)
-            .set({ status: 'expired', updatedAt: now })
-            .where(and(
-              eq(opportunities.id, opportunityId),
-              sameTrigger,
-            ))
-            .returning();
-          if (row) expired.push(toOpportunityRow(row));
-        }
-      }
+      const expired = await expireEnrichmentSupersededIds(tx, expireIds, sameTrigger);
       return { created: toOpportunityRow(inserted), expired };
     });
 
@@ -663,31 +687,74 @@ export class OpportunityDatabaseAdapter {
 
       return await validateEligibility() ? reactivate() : null;
     });
-    if (updated) emitOpportunityLifecycleBestEffort(updated);
+    if (updated) {
+      emitOpportunityLifecycleBestEffort(updated);
+      emitOpportunityTransitionBestEffort(updated);
+    }
     return updated;
   }
 
   /**
-   * Atomically restores an exact taskless negotiation attempt to its fallback status.
-   * Compensation and attempt-bound task creation serialize on the same advisory
-   * lock before rechecking the opportunity row and qualifying task existence.
+   * Reopen a dead pairing so the negotiation can be re-run.
+   *
+   * Terminal-only by design: `pending` (awaiting the owner's approval) and
+   * `accepted` (already connected) are live or won matches, never reopenable —
+   * reopening one would throw away a decision, not recover from a dead end.
+   *
+   * `updated_at` is written as `date_trunc('milliseconds', now())` and NOT with
+   * a bare `now()`. The attempt CAS in
+   * `createNegotiationTaskForAttemptInTransaction` compares this timestamp with
+   * a JS `Date` read back from the row, which carries milliseconds only; a
+   * microsecond-precision write makes the equality fail and the queued re-run
+   * dies as "stale or already claimed".
+   *
+   * Serializes on the shared negotiation-attempt lock, so a reopen racing a
+   * live claim observes the committed winner and reports the conflict instead
+   * of yanking a running negotiation back to `stalled`.
    *
    * @param id - Opportunity ID
-   * @param expectedUpdatedAt - Persistence boundary for the negotiation attempt
-   * @param fallbackStatus - Status to restore when the guarded update succeeds
-   * @returns The compensated opportunity, or null on a status, version, or task race
+   * @returns The reopened row, a conflict describing why it was refused, or
+   *   `null` when no such opportunity exists
    */
-  async compensateTasklessNegotiatingOpportunity(
-    id: string,
-    expectedUpdatedAt: Date,
-    fallbackStatus: 'latent' | 'draft',
-  ): Promise<OpportunityRow | null> {
-    return db.transaction((tx) => compensateTasklessNegotiatingOpportunityInTransaction(
-      tx,
-      id,
-      expectedUpdatedAt,
-      fallbackStatus,
-    ));
+  async reopenOpportunityForRerun(id: string): Promise<ReopenOpportunityResult | null> {
+    const result = await db.transaction(async (tx): Promise<ReopenOpportunityResult | null> => {
+      await acquireNegotiationAttemptLock(tx, id);
+
+      const [opportunity] = await tx
+        .select({ status: opportunities.status })
+        .from(opportunities)
+        .where(eq(opportunities.id, id))
+        .for('update');
+      if (!opportunity) return null;
+      if (!(REOPENABLE_OPPORTUNITY_STATUSES as readonly string[]).includes(opportunity.status)) {
+        return { conflict: 'not_reopenable', status: opportunity.status };
+      }
+
+      const [activeTask] = await tx
+        .select({ id: schema.tasks.id })
+        .from(schema.tasks)
+        .where(qualifyingActiveNegotiationTaskWhere(id))
+        .limit(1);
+      if (activeTask) return { conflict: 'active_negotiation', taskId: activeTask.id };
+
+      const [row] = await tx
+        .update(opportunities)
+        .set({
+          status: 'stalled',
+          acceptedBy: null,
+          updatedAt: sql`date_trunc('milliseconds', now())`,
+        })
+        .where(and(
+          eq(opportunities.id, id),
+          inArray(opportunities.status, [...REOPENABLE_OPPORTUNITY_STATUSES]),
+        ))
+        .returning();
+      return row ? { reopened: toOpportunityRow(row) } : null;
+    });
+    if (result && 'reopened' in result) {
+      emitOpportunityTransitionBestEffort(result.reopened);
+    }
+    return result;
   }
 
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
@@ -1021,7 +1088,10 @@ export class OpportunityDatabaseAdapter {
         .returning();
     }
     const updated = row ? toOpportunityRow(row) : null;
-    if (updated) emitOpportunityLifecycleBestEffort(updated);
+    if (updated) {
+      emitOpportunityLifecycleBestEffort(updated);
+      emitOpportunityTransitionBestEffort(updated);
+    }
     return updated;
   }
 
@@ -1160,9 +1230,9 @@ export class OpportunityDatabaseAdapter {
           .set({
             metadata: { ...(locked.metadata ?? {}), poolAdjustments: [...existingAdjustments, write.adjustment] },
             interpretation: { ...locked.interpretation, signals: [...existingSignals, write.signal] },
-            // Ranking metadata is presentation state, not a lifecycle event.
-            // Preserve updatedAt so POOL_QUESTIONS_RANKING=off remains
-            // byte-identical to the pre-adjustment newest-first ordering.
+            // Ranking metadata is presentation state, not a lifecycle event,
+            // so updatedAt is deliberately left alone — writing it would
+            // reorder a newest-first list on a change the user never made.
           })
           .where(eq(opportunities.id, locked.id));
         appliedIds.push(locked.id);
@@ -1215,7 +1285,10 @@ export class OpportunityDatabaseAdapter {
       },
       outbox,
     );
-    if (updated) emitOpportunityLifecycleBestEffort(updated);
+    if (updated) {
+      emitOpportunityLifecycleBestEffort(updated);
+      emitOpportunityTransitionBestEffort(updated);
+    }
     return updated;
   }
 
@@ -1251,16 +1324,7 @@ export class OpportunityDatabaseAdapter {
         .returning();
       if (!inserted) throw new Error('OpportunityDatabaseAdapter.createOpportunityAndExpireIds: no row returned');
       const created = toOpportunityRow(inserted);
-      const expired: OpportunityRow[] = [];
-      const now = new Date();
-      for (const id of expireIds) {
-        const [row] = await tx
-          .update(opportunities)
-          .set({ status: 'expired', updatedAt: now })
-          .where(eq(opportunities.id, id))
-          .returning();
-        if (row) expired.push(toOpportunityRow(row));
-      }
+      const expired = await expireEnrichmentSupersededIds(tx, expireIds);
       return { created, expired };
     }),
     );
@@ -1343,16 +1407,7 @@ export class OpportunityDatabaseAdapter {
         .returning();
       if (!inserted) throw new Error('OpportunityDatabaseAdapter.createOpportunityAndExpireIdsIfNetworkEligible: no row returned');
 
-      const expired: OpportunityRow[] = [];
-      const now = new Date();
-      for (const opportunityId of expireIds) {
-        const [row] = await tx
-          .update(opportunities)
-          .set({ status: 'expired', updatedAt: now })
-          .where(eq(opportunities.id, opportunityId))
-          .returning();
-        if (row) expired.push(toOpportunityRow(row));
-      }
+      const expired = await expireEnrichmentSupersededIds(tx, expireIds);
       return { created: toOpportunityRow(inserted), expired };
     });
     if (result) emitOpportunityLifecycleBestEffort(result.created);
@@ -1372,7 +1427,7 @@ export class OpportunityDatabaseAdapter {
     counterpartUserId: string,
     excludeOpportunityId: string
   ): Promise<string[]> {
-    return db.transaction(async (tx) => {
+    const ids = await db.transaction(async (tx) => {
       const siblingRows = await tx
         .select({ id: opportunities.id })
         .from(opportunities)
@@ -1383,15 +1438,17 @@ export class OpportunityDatabaseAdapter {
             ne(opportunities.id, excludeOpportunityId)
           )
         );
-      const ids = siblingRows.map((r) => r.id);
-      if (ids.length === 0) return [];
+      const siblingIds = siblingRows.map((r) => r.id);
+      if (siblingIds.length === 0) return [];
       const now = new Date();
       await tx
         .update(opportunities)
         .set({ status: 'accepted', updatedAt: now })
-        .where(inArray(opportunities.id, ids));
-      return ids;
+        .where(inArray(opportunities.id, siblingIds));
+      return siblingIds;
     });
+    for (const id of ids) emitOpportunityTransitionBestEffort({ id, status: 'accepted' });
+    return ids;
   }
 
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
@@ -1503,6 +1560,21 @@ export class OpportunityDatabaseAdapter {
     return [...matched];
   }
 
+  /**
+   * Statuses of every opportunity where (userId, intentId) is an actor side —
+   * the input of the own-intent exhaustion predicate
+   * (`lib/question/intent-exhaustion.ts`).
+   */
+  async getOpportunityStatusesForIntentActor(userId: string, intentId: string): Promise<OpportunityRow['status'][]> {
+    const rows = await db
+      .select({ status: opportunities.status })
+      .from(opportunities)
+      .where(
+        sql`${opportunities.actors} @> ${JSON.stringify([{ userId, intent: intentId }])}::jsonb`
+      );
+    return rows.map((row) => row.status);
+  }
+
   async expireOpportunitiesByIntent(intentId: string): Promise<number> {
     const rows = await db
       .select({ id: opportunities.id })
@@ -1520,6 +1592,7 @@ export class OpportunityDatabaseAdapter {
         )
       )
       .returning({ id: opportunities.id });
+    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return updated.length;
   }
 
@@ -1534,6 +1607,7 @@ export class OpportunityDatabaseAdapter {
         )
       )
       .returning({ id: opportunities.id });
+    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return updated.length;
   }
 
@@ -1551,6 +1625,7 @@ export class OpportunityDatabaseAdapter {
         )
       )
       .returning({ id: opportunities.id });
+    for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return updated.length;
   }
 
@@ -1757,75 +1832,6 @@ export class OpportunityDatabaseAdapter {
     );
   }
 
-  /**
-   * Cosine similarity search against user_context embeddings, scoped to shared networks.
-   * Matches only per-network context rows (the global networkId-null row is never a
-   * candidate), excluding the discovering user. Optional — lightweight-mode
-   * context-to-context discovery no-ops when the adapter omits it.
-   * @param params - Search parameters including embedding vector, network scope, and exclusions
-   * @returns Matching user contexts ranked by cosine similarity
-   */
-  async searchUserContextsBySimilarity(params: {
-    embedding: number[];
-    networkIds: string[];
-    excludeUserId: string;
-    limit: number;
-    minScore?: number;
-  }) {
-    return traceAppOperation(
-      {
-        name: 'vector search user contexts by similarity',
-        op: 'db.vector_search',
-        attributes: {
-          subsystem: 'database',
-          'db.system': 'postgresql',
-          'db.operation': 'vector_search',
-          'search.strategy': 'context-similarity',
-          'search.index_scope_count': params.networkIds.length,
-          'search.limit': params.limit,
-        },
-      },
-      async () => {
-    const { embedding, networkIds, excludeUserId, limit, minScore } = params;
-    const vectorStr = `[${embedding.join(',')}]`;
-
-    const rows = await db.execute<{
-      contextId: string;
-      userId: string;
-      networkId: string;
-      text: string;
-      similarity: number;
-    }>(sql`
-      SELECT
-        uc.id AS "contextId",
-        uc.user_id AS "userId",
-        uc.network_id AS "networkId",
-        uc.text AS "text",
-        1 - (uc.embedding <=> ${vectorStr}::vector) AS similarity
-      FROM ${schema.userContexts} uc
-      JOIN ${schema.networkMembers} nm
-        ON nm.user_id = uc.user_id AND nm.network_id = uc.network_id
-      JOIN ${schema.networks} n ON n.id = uc.network_id
-      WHERE uc.network_id = ANY(ARRAY[${sql.join(networkIds.map(id => sql`${id}`), sql`, `)}]::text[])
-        AND uc.user_id != ${excludeUserId}
-        AND nm.deleted_at IS NULL
-        AND n.deleted_at IS NULL
-        AND uc.embedding IS NOT NULL
-        ${minScore !== undefined ? sql`AND 1 - (uc.embedding <=> ${vectorStr}::vector) >= ${minScore}` : sql``}
-      ORDER BY uc.embedding <=> ${vectorStr}::vector
-      LIMIT ${limit}
-    `);
-
-    return rows as Array<{
-      contextId: string;
-      userId: string;
-      networkId: string;
-      text: string;
-      similarity: number;
-    }>;
-      },
-    );
-  }
 
   /**
    * Batched cosine similarity search against premise embeddings, scoped to shared networks.

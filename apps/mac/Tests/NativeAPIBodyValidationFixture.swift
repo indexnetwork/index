@@ -14,11 +14,6 @@ enum NativeAPIBodyValidationFixture {
         let id = string("00000000-0000-4000-8000-000000000001")
         let empty = object()
         let rounds = array([object(["prompt": string("Who?"), "answer": object(["selectedOptions": array([string("Founders")])])])])
-        let draft = object([
-            "identity": object(["name": string("Owner"), "bio": string("Builder"), "location": string("NY")]),
-            "narrative": object(["context": string("Builds safe systems")]),
-            "attributes": object(["skills": array([string("security")]), "interests": array([string("networks")])]),
-        ])
         let admitted: [(String, String, NativeJSONValue)] = [
             ("PATCH", "/auth/profile/update", object(["name": string("Owner"), "timezone": string("America/New_York"), "socials": array([object(["label": string("github"), "value": string("https://github.com/o")])]), "notificationPreferences": object(["connectionUpdates": .bool(true), "weeklyNewsletter": .bool(false)])])),
             ("PUT", "/agent-runtime", object(["runtime": string("index")])),
@@ -41,10 +36,9 @@ enum NativeAPIBodyValidationFixture {
             ("POST", "/opportunities/o1/start-chat", empty),
             ("POST", "/questions/q1/answer", object(["selectedOptions": array([string("yes")])])),
             ("POST", "/questions/q1/dismiss", empty),
-            ("POST", "/tools/read_user_contexts", object(["query": empty])),
-            ("POST", "/tools/preview_user_context", object(["query": object(["bioOrDescription": string("Builder")])])),
-            ("POST", "/tools/confirm_user_context", object(["query": object(["draft": draft])])),
             ("POST", "/enrichment/enrich", empty),
+            ("POST", "/auth/onboarding/confirm-profile", empty),
+            ("POST", "/auth/onboarding/complete", object(["intentId": string("intent-1")])),
             ("POST", "/conversations/dm", object(["peerUserId": id])),
             ("POST", "/conversations/c1/messages", object(["parts": array([object(["text": string("hello")])])])),
             ("PATCH", "/conversations/c1/metadata", object(["metadata": object(["title": string("Conversation")])])),
@@ -54,9 +48,70 @@ enum NativeAPIBodyValidationFixture {
         }
 
         try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/notifications/snapshot", body: nil), "valid notification snapshot rejected")
+        // Discover tab pages the public list; the wrapper always sends page+limit.
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public", body: nil), "public network discovery rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public?page=1&limit=50", body: nil), "paged public network discovery rejected")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/networks/discovery/public?cursor=1", body: nil), "unknown discovery query accepted")
+        // The intent radar is the app's only radar caller and it always sends the
+        // lifecycle filter, plus `presentation=skeleton` on the first of its two
+        // phases. Denying either leaves the radar stuck on "looking for your people".
+        let radarStatuses = "latent,pending,negotiating,stalled,accepted,expired"
+        let intentId = "00000000-0000-4000-8000-000000000001"
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?statuses=\(radarStatuses)&scopeType=intent&scopeId=\(intentId)", body: nil), "intent radar lifecycle query rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?statuses=\(radarStatuses)&presentation=skeleton&scopeType=intent&scopeId=\(intentId)", body: nil), "intent radar skeleton query rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?noCache=true", body: nil), "radar noCache query rejected")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?networkId=n1", body: nil), "unrequested radar query accepted")
+        // `statuses` belongs to the radar, `status` to the list; neither route takes the other's.
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities?status=pending&limit=10", body: nil), "opportunity list status query rejected")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities?statuses=\(radarStatuses)", body: nil), "opportunity list plural statuses accepted")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?status=pending", body: nil), "radar singular status accepted")
         try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "GET", path: "/notifications/stream", body: nil), "valid notification stream rejected")
-        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello"), "persona": string("negotiator")])), "valid chat stream rejected")
+        // Shape validation only: the bridge allowlists fields and enum values,
+        // it does not model server-side routing rules. A scopeless body is a
+        // well-formed request the bridge will send — the API answers it with a
+        // 403, because api-key chats must carry an intent scope. The app never
+        // sends this shape (see mainview/core.jsx, which always scopes).
+        try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hello")])), "valid chat stream rejected")
         try require(NativeAPIRequestBridge.validateMCPForFixture(arguments: object(["description": string("Meet founders"), "autoApprove": .bool(true)])), "valid create_intent rejected")
+        let agentId = "00000000-0000-4000-8000-000000000001"
+        try require(NativeAPIRequestBridge.validateMCPForFixture(
+            tool: "register_agent",
+            arguments: object([
+                "name": string("Hermes"),
+                "description": string("Hermes on this mac"),
+                "permissions": array([
+                    string("manage:negotiations"),
+                    string("manage:intents"),
+                    string("manage:opportunities"),
+                ]),
+            ])
+        ), "valid register_agent rejected")
+        try require(NativeAPIRequestBridge.validateMCPForFixture(
+            tool: "register_agent",
+            arguments: object(["name": string("Codex")])
+        ), "minimal register_agent rejected")
+        try require(!NativeAPIRequestBridge.validateMCPForFixture(
+            tool: "register_agent",
+            arguments: object(["name": string("X"), "permissions": array([string("manage:contacts")])])
+        ), "retired register_agent permission accepted")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "POST", path: "/agents/\(agentId)/tokens", body: empty
+        ), "empty createToken body rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "POST", path: "/agents/\(agentId)/tokens", body: object(["name": string("hermes")])
+        ), "named createToken body rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "PATCH", path: "/agents/\(agentId)", body: object(["handleNegotiations": .bool(true)])
+        ), "handleNegotiations patch rejected")
+        try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "DELETE", path: "/agents/\(agentId)", body: nil
+        ), "agent delete rejected")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "PATCH", path: "/agents/\(agentId)", body: empty
+        ), "empty agent patch accepted")
+        try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(
+            method: "POST", path: "/agents/\(agentId)", body: object(["name": string("X")])
+        ), "agent create POST accepted")
 
         for runtime in ["index", "hermes"] {
             let body = runtime == "index" ? object(["runtime": string(runtime)]) : object(["runtime": string(runtime), "installationId": id, "executorId": id, "setupAttemptId": id])
@@ -67,10 +122,11 @@ enum NativeAPIBodyValidationFixture {
             try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "POST", path: "/networks", body: object(["title": string("N"), "joinPolicy": string(policy)])), "network policy parity failed: \(policy)")
         }
         try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "POST", path: "/networks", body: object(["title": string("N"), "joinPolicy": string("approval")])), "unknown network policy accepted")
-        for persona in ["negotiator", "signal", "reporter"] {
-            try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string(persona)])), "chat persona parity failed: \(persona)")
+        // The persona field left the chat contract entirely: any value is an
+        // unknown key and the exact-shape check refuses it.
+        for persona in ["personal", "negotiator", "signal", "reporter", "orchestrator"] {
+            try require(!NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string(persona)])), "retired chat persona field accepted: \(persona)")
         }
-        try require(!NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "persona": string("orchestrator")])), "unknown chat persona accepted")
         for scope in ["network", "intent"] {
             try require(NativeAPIRequestBridge.validateSSEBodyForFixture(method: "POST", path: "/chat/stream", body: object(["message": string("hi"), "scopeType": string(scope), "scopeId": id])), "chat scope parity failed: \(scope)")
         }

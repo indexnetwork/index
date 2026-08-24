@@ -5,6 +5,8 @@ capabilities, schemas.py defines what the LLM sees, tools.py implements handlers
 that always return JSON strings, and register(ctx) wires everything into Hermes.
 """
 
+from __future__ import annotations
+
 import shutil
 from pathlib import Path
 from typing import Any
@@ -123,9 +125,7 @@ def _plugin_mode() -> str:
 def _register_negotiation_tools(ctx):
     for name, schema, handler in (
         ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),
-        ("index_pickup_negotiation", schemas.INDEX_PICKUP_NEGOTIATION, tools.index_pickup_negotiation),
         ("index_respond_negotiation", schemas.INDEX_RESPOND_NEGOTIATION, tools.index_respond_negotiation),
-        ("index_consult_owner", schemas.INDEX_CONSULT_OWNER, tools.index_consult_owner),
     ):
         ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
 
@@ -155,9 +155,7 @@ def register(ctx):
     for name, schema, handler in (
         ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),
         ("index_open_app", schemas.INDEX_OPEN_APP, tools.index_open_app),
-        ("index_pickup_negotiation", schemas.INDEX_PICKUP_NEGOTIATION, tools.index_pickup_negotiation),
         ("index_respond_negotiation", schemas.INDEX_RESPOND_NEGOTIATION, tools.index_respond_negotiation),
-        ("index_consult_owner", schemas.INDEX_CONSULT_OWNER, tools.index_consult_owner),
     ):
         ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
     if hasattr(ctx, "register_hook"):
@@ -169,3 +167,10 @@ def register(ctx):
             description="Load Index Network orchestrator guidance",
         )
     _register_skills(ctx)
+    # negotiation_wake.py (the conversation-SSE listener that auto-started a
+    # Hermes turn on a negotiation message) is deleted: external-agent
+    # negotiation dispatch is offline (#1494 round-3, Option A — see the PR
+    # body). There is no server-side signal left to wake on, and no route left
+    # to submit to either — `index_respond_negotiation` stays registered only
+    # to say so, so a negotiator asked for a turn learns why it cannot take one
+    # instead of reaching for some other tool.

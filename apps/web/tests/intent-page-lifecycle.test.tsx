@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentDetailPage from '@/app/i/[intentId]/page';
 import { createIntentsService } from '@/services/intents';
-import { createQuestionsService } from '@/services/questions';
 
 const mocks = vi.hoisted(() => {
   const intent: {
@@ -27,10 +26,6 @@ const mocks = vi.hoisted(() => {
   const refineIntent = vi.fn();
   const getRadarView = vi.fn();
   const getNegotiationActivity = vi.fn();
-  const getPending = vi.fn();
-  const getAnswered = vi.fn();
-  const answerQuestion = vi.fn();
-  const dismissQuestion = vi.fn();
 
   return {
     intent,
@@ -40,20 +35,10 @@ const mocks = vi.hoisted(() => {
     refineIntent,
     getRadarView,
     getNegotiationActivity,
-    getPending,
-    getAnswered,
-    answerQuestion,
-    dismissQuestion,
     notificationError: vi.fn(),
     intentsService: { getIntent, setIntentStatus, archiveIntent, refineIntent, visitIntent: vi.fn(async () => {}) },
     opportunitiesService: { getRadarView },
     conversationsService: { getNegotiationActivity },
-    questionsService: {
-      getPending,
-      getAnswered,
-      answer: answerQuestion,
-      dismiss: dismissQuestion,
-    },
   };
 });
 
@@ -68,30 +53,12 @@ vi.mock('@/components/chat/OpportunityCardInChat', () => ({
   OpportunitySkeleton: () => <div data-testid="opportunity-skeleton" />,
 }));
 
-vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
-  InjectedQuestions: ({
-    questions,
-    onAnswer,
-  }: {
-    questions: Array<{ id: string; payload?: { prompt: string }; title?: string }>;
-    onAnswer?: (id: string, body: { selectedOptions: string[] }) => Promise<void>;
-  }) => (
-    <div>
-      {questions.map((question) => (
-        <div key={question.id} data-testid={`question-${question.id}`}>
-          {question.payload?.prompt ?? (question as { title?: string }).title}
-          {onAnswer && (
-            <button
-              onClick={() => onAnswer(question.id, { selectedOptions: ['Yes'] })}
-            >
-              Answer
-            </button>
-          )}
-        </div>
-      ))}
-    </div>
-  ),
+// The agent chat panel renders unconditionally now; these tests exercise the
+// lifecycle column, so the panel is stubbed out.
+vi.mock('@/components/IntentNegotiatorChat', () => ({
+  default: () => <div data-testid="intent-negotiator-chat-stub" />,
 }));
+
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuthContext: () => ({
@@ -113,15 +80,10 @@ vi.mock('@/contexts/APIContext', () => ({
   useIntents: () => mocks.intentsService,
   useOpportunities: () => mocks.opportunitiesService,
   useConversations: () => mocks.conversationsService,
-  useQuestionsService: () => mocks.questionsService,
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({ negotiations: [] }),
-}));
-
-vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({ refresh: vi.fn(async () => {}) }),
 }));
 
 vi.mock('@/contexts/NotificationContext', () => ({
@@ -163,7 +125,6 @@ function renderIntentPage() {
 
 async function expectWorkspacePreserved() {
   expect(await screen.findByTestId('radar-card-opportunity-1')).toHaveTextContent('Existing Radar match');
-  expect(await screen.findByTestId('question-question-1')).toHaveTextContent('Which region?');
 }
 
 describe('Intent detail lifecycle', () => {
@@ -175,61 +136,17 @@ describe('Intent detail lifecycle', () => {
       items: [{ opportunityId: 'opportunity-1', status: 'negotiating' }],
     });
     mocks.getNegotiationActivity.mockResolvedValue([]);
-    mocks.getAnswered.mockResolvedValue([]);
-    mocks.getPending.mockResolvedValue([{
-      id: 'question-1',
-      title: 'Which region?',
-      prompt: 'Which region?',
-      options: [],
-      multiSelect: false,
-      mode: 'intent',
-      sourceType: 'intent',
-      sourceId: 'intent-1',
-      createdAt: new Date().toISOString(),
-    }]);
     mocks.setIntentStatus.mockResolvedValue({
       id: 'intent-1',
       status: 'PAUSED',
       lifecycleVersionMs: 100,
       changed: true,
     });
+    mocks.archiveIntent.mockResolvedValue({ success: true });
   });
 
   afterEach(() => {
     vi.useRealTimers();
-  });
-
-  test('hydrates the answered Q&A log from the server', async () => {
-    mocks.getPending.mockResolvedValue([]);
-    mocks.getAnswered.mockResolvedValue([{
-      id: 'answered-1',
-      payload: {
-        title: 'What kind of collaborator?',
-        prompt: 'What kind of collaborator?',
-        options: [],
-        multiSelect: false,
-      },
-      answer: {
-        selectedOptions: ['Technical founder', 'Climate operator'],
-        freeText: 'in Europe',
-        answeredBy: 'user-1',
-        answeredAt: new Date().toISOString(),
-      },
-      status: 'answered',
-    }]);
-    renderIntentPage();
-
-    expect(await screen.findByText('What kind of collaborator?')).toBeInTheDocument();
-    expect(screen.getByText('Technical founder, Climate operator, in Europe')).toBeInTheDocument();
-    expect(screen.getByText('noted — updating the search.')).toBeInTheDocument();
-  });
-
-  test('renders the questions empty state when there are no pending questions', async () => {
-    mocks.getPending.mockResolvedValue([]);
-    mocks.getAnswered.mockResolvedValue([]);
-    renderIntentPage();
-
-    expect(await screen.findByText('no pending questions right now.')).toBeInTheDocument();
   });
 
   test('ACTIVE renders live discovery, Pause, and the existing workspace', async () => {
@@ -261,12 +178,61 @@ describe('Intent detail lifecycle', () => {
     expect(screen.getByText('No matches here yet.')).toBeInTheDocument();
   });
 
+  test('a slow initial Radar request cannot be superseded into a permanent skeleton by the live poll', async () => {
+    vi.useFakeTimers();
+    let resolveSkeleton!: (value: { items: Array<{ opportunityId: string; status: string }> }) => void;
+    let resolveFull!: (value: { items: Array<{ opportunityId: string; status: string }> }) => void;
+    mocks.getRadarView.mockImplementation((options?: { presentation?: string }) => {
+      if (options?.presentation === 'skeleton') {
+        return new Promise((resolve) => { resolveSkeleton = resolve; });
+      }
+      return new Promise((resolve) => { resolveFull = resolve; });
+    });
+
+    renderIntentPage();
+    expect(screen.getAllByTestId('opportunity-skeleton')).toHaveLength(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    // The passive poll waits for the initial load instead of invalidating its
+    // request sequence and leaving opportunitiesLoading stuck forever.
+    expect(mocks.getRadarView).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSkeleton({ items: [{ opportunityId: 'slow-opportunity', status: 'negotiating' }] });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('radar-card-slow-opportunity')).toBeInTheDocument();
+    expect(screen.queryByTestId('opportunity-skeleton')).toBeNull();
+    expect(mocks.getRadarView).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveFull({ items: [{ opportunityId: 'slow-opportunity', status: 'negotiating' }] });
+    });
+  });
+
+  test('a failed two-phase Radar fetch exits loading and offers a retry', async () => {
+    mocks.getRadarView.mockRejectedValue(new Error('radar unavailable'));
+    renderIntentPage();
+
+    expect(await screen.findByText('Radar couldn’t load opportunities.')).toBeInTheDocument();
+    expect(screen.queryByTestId('opportunity-skeleton')).toBeNull();
+
+    mocks.getRadarView.mockResolvedValue({ items: [] });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByText('No matches here yet.')).toBeInTheDocument();
+    expect(screen.queryByText('Radar couldn’t load opportunities.')).toBeNull();
+  });
+
   test('PAUSED renders static paused discovery, Resume with Play, and keeps the workspace', async () => {
     mocks.intent.status = 'PAUSED';
     renderIntentPage();
 
     expect(await screen.findByText('paused')).toBeInTheDocument();
-    expect(screen.getByText(/background discovery is paused; existing Radar matches and questions remain available/)).toBeInTheDocument();
+    expect(screen.getByText(/background discovery is paused; existing Radar matches remain available/)).toBeInTheDocument();
     const resume = screen.getByRole('button', { name: 'Resume' });
     expect(resume.querySelector('.lucide-play')).not.toBeNull();
     expect(screen.queryByText('live')).toBeNull();
@@ -280,6 +246,54 @@ describe('Intent detail lifecycle', () => {
 
     expect(await screen.findByText('live')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
+  });
+
+  test('uses an in-app confirmation dialog before archiving', async () => {
+    renderIntentPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Archive this signal? It will stop matching.');
+    expect(dialog).toHaveTextContent('it will no longer find new opportunities.');
+    expect(mocks.archiveIntent).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(mocks.archiveIntent).not.toHaveBeenCalled();
+  });
+
+  test('archives from the in-app dialog without relying on window.confirm', async () => {
+    let resolveArchive!: () => void;
+    mocks.archiveIntent.mockReturnValue(new Promise<void>((resolve) => {
+      resolveArchive = resolve;
+    }));
+    renderIntentPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Archive signal' }));
+
+    expect(mocks.archiveIntent).toHaveBeenCalledWith('intent-1');
+    expect(screen.getByRole('button', { name: 'Archiving...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+
+    await act(async () => resolveArchive());
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  });
+
+  test('keeps the archive dialog available when the request fails', async () => {
+    mocks.archiveIntent.mockRejectedValue(new Error('network failed'));
+    renderIntentPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Archive signal' }));
+
+    await waitFor(() => {
+      expect(mocks.notificationError).toHaveBeenCalledWith('Failed to archive signal');
+    });
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Archive signal' })).toBeEnabled();
   });
 
   test.each([
@@ -333,39 +347,16 @@ describe('Intent detail lifecycle', () => {
     expect(await screen.findByText('paused')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
     await expectWorkspacePreserved();
-    expect(mocks.getPending).toHaveBeenCalledTimes(1);
     expect(mocks.getRadarView).toHaveBeenCalledTimes(2);
   });
 
-  test('Resume schedules bounded refreshes and surfaces a newly returned pool question', async () => {
+  test('Resume schedules bounded workspace refreshes', async () => {
     mocks.intent.status = 'PAUSED';
     mocks.setIntentStatus.mockResolvedValue({
       id: 'intent-1',
       status: 'ACTIVE',
       lifecycleVersionMs: 200,
       changed: true,
-    });
-    let pendingCalls = 0;
-    mocks.getPending.mockImplementation(async () => {
-      pendingCalls += 1;
-      const existing = {
-        id: 'question-1',
-        title: 'Which region?',
-        prompt: 'Which region?',
-        options: [],
-        multiSelect: false,
-        mode: 'intent',
-        sourceType: 'intent',
-        sourceId: 'intent-1',
-        createdAt: new Date().toISOString(),
-      };
-      if (pendingCalls < 3) return [existing];
-      return [existing, {
-        ...existing,
-        id: 'question-pool-2',
-        title: 'Builders or investors?',
-        mode: 'pool_discovery',
-      }];
     });
     renderIntentPage();
     await expectWorkspacePreserved();
@@ -380,16 +371,13 @@ describe('Intent detail lifecycle', () => {
     expect(screen.getByText('live')).toBeInTheDocument();
     expect(vi.getTimerCount()).toBe(5);
     expect(screen.getByTestId('radar-card-opportunity-1')).toBeInTheDocument();
-    expect(screen.queryByTestId('question-question-pool-2')).toBeNull();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_500);
     });
 
-    expect(screen.getByTestId('question-question-pool-2')).toHaveTextContent('Builders or investors?');
     expect(screen.getByTestId('radar-card-opportunity-1')).toBeInTheDocument();
-    // 4 remaining bounded-refresh checkpoints; the conversation scroll-pinning
-    // effect may additionally hold a rAF timer after the question list updates.
+    // 4 remaining bounded-refresh checkpoints may still be armed.
     expect(vi.getTimerCount()).toBeGreaterThanOrEqual(4);
   });
 
@@ -473,14 +461,6 @@ describe('Intent detail lifecycle', () => {
 });
 
 describe('intent lifecycle service', () => {
-  test('fetches answered questions scoped to the intent', async () => {
-    const get = vi.fn().mockResolvedValue({ questions: [] });
-    const service = createQuestionsService({ get } as never);
-
-    await expect(service.getAnswered({ scopeType: 'intent', scopeId: 'intent-1' })).resolves.toEqual([]);
-    expect(get).toHaveBeenCalledWith('/questions?status=answered&scopeType=intent&scopeId=intent-1');
-  });
-
   test('PATCHes the lifecycle endpoint and returns the authoritative response', async () => {
     const patch = vi.fn().mockResolvedValue({
       success: true,
@@ -511,121 +491,5 @@ describe('intent lifecycle service', () => {
     const service = createIntentsService({ patch } as never);
 
     await expect(service.setIntentStatus('intent-1', 'PAUSED')).rejects.toThrow('Invalid signal status response');
-  });
-});
-
-describe('intent-mode answer outcome UI', () => {
-  const makeIntentQuestion = () => ({
-    id: 'q-intent-1',
-    payload: {
-      title: 'What kind of co-founder?',
-      prompt: 'What kind of co-founder?',
-      options: [],
-      multiSelect: false,
-    },
-    detection: {
-      mode: 'intent' as const,
-      sourceType: 'intent',
-      sourceId: 'intent-1',
-      timestamp: new Date().toISOString(),
-    },
-    actors: [{ userId: 'user-1', role: 'subject' as const }],
-    status: 'pending' as const,
-    answer: null,
-    expiresAt: null,
-    createdAt: new Date().toISOString(),
-    conversationId: null,
-  });
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.intent.status = 'ACTIVE';
-    mocks.intent.payload = 'Looking for a co-founder';
-    mocks.intent.summary = 'Looking for a co-founder';
-    mocks.getIntent.mockResolvedValue({ ...mocks.intent });
-    mocks.getRadarView.mockResolvedValue({ items: [] });
-    mocks.getNegotiationActivity.mockResolvedValue([]);
-    mocks.getAnswered.mockResolvedValue([]);
-    mocks.getPending.mockResolvedValue([makeIntentQuestion()]);
-    mocks.answerQuestion.mockResolvedValue({ success: true });
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  async function clickAnswerAndFlush() {
-    const btn = await screen.findByRole('button', { name: 'Answer' });
-    vi.useFakeTimers();
-    await act(async () => {
-      fireEvent.click(btn);
-      // Flush the questionsService.answer promise chain (resolved via microtask).
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-  }
-
-  test('shows the pending spinner immediately after answering an intent-mode question', async () => {
-    renderIntentPage();
-    await clickAnswerAndFlush();
-
-    expect(screen.getByTestId('intent-refinement-pending')).toBeInTheDocument();
-    expect(screen.queryByTestId('intent-refinement-applied')).toBeNull();
-    expect(screen.queryByTestId('intent-refinement-fallback')).toBeNull();
-    expect(screen.queryByText('noted — updating the search.')).toBeNull();
-  });
-
-  test('resolves to ✓ applied when the intent description changes within the poll bound', async () => {
-    // Initial page load returns the old description; subsequent poll ticks return the updated one.
-    mocks.getIntent
-      .mockResolvedValueOnce({ ...mocks.intent, summary: 'Looking for a co-founder', payload: 'Looking for a co-founder' })
-      .mockResolvedValue({
-        ...mocks.intent,
-        summary: 'Looking for a technical co-founder, specifically with a B2B SaaS background',
-        payload: 'Looking for a technical co-founder, specifically with a B2B SaaS background',
-      });
-
-    renderIntentPage();
-    await clickAnswerAndFlush();
-
-    // Spinner shown while poll is pending.
-    expect(screen.getByTestId('intent-refinement-pending')).toBeInTheDocument();
-
-    // Advance one poll interval — intent now returns the updated description.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(4_000);
-    });
-
-    expect(screen.getByTestId('intent-refinement-applied')).toBeInTheDocument();
-    expect(screen.getByText(/signal updated/)).toBeInTheDocument();
-    expect(screen.queryByTestId('intent-refinement-pending')).toBeNull();
-    expect(screen.queryByTestId('intent-refinement-fallback')).toBeNull();
-  });
-
-  test('falls back to neutral text when intent description does not change within poll bound', async () => {
-    // getIntent always returns the same description — no refinement applied.
-    mocks.getIntent.mockResolvedValue({
-      ...mocks.intent,
-      summary: 'Looking for a co-founder',
-      payload: 'Looking for a co-founder',
-    });
-
-    renderIntentPage();
-    await clickAnswerAndFlush();
-
-    // Spinner is shown initially.
-    expect(screen.getByTestId('intent-refinement-pending')).toBeInTheDocument();
-
-    // Exhaust the full poll bound (90 s) without a description change.
-    await act(async () => {
-      // INTENT_POLL_MAX_MS = 90_000 ms; interval = 4_000 ms.
-      // The fallback fires on the 23rd tick (23 * 4_000 = 92_000 ms).
-      await vi.advanceTimersByTimeAsync(96_000);
-    });
-
-    expect(screen.getByTestId('intent-refinement-fallback')).toBeInTheDocument();
-    expect(screen.queryByTestId('intent-refinement-pending')).toBeNull();
-    expect(screen.queryByTestId('intent-refinement-applied')).toBeNull();
   });
 });

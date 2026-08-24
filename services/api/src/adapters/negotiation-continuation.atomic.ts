@@ -2,10 +2,21 @@ import { and, eq, isNull, or, sql } from 'drizzle-orm/sql';
 
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
-import { intentNetworks, intents, networkMembers, networks, opportunities, questions } from '../schemas/database.schema';
+import { log } from '../lib/log';
+import { intentNetworks, intents, networkMembers, networks, opportunities, premiseNetworks, premises, questions } from '../schemas/database.schema';
 import { artifacts, messages, tasks } from '../schemas/conversation.schema';
 
+const logger = log.lib.from('negotiation-continuation');
+
+/** Structural mirror of the protocol's `NegotiationCounterpartyBinding` (adapters may not import the protocol package). */
+type NegotiationCounterpartyBinding =
+  | { kind: 'intent'; id: string }
+  | { kind: 'premise'; id: string };
+
 export const CONTINUATION_EXECUTION_LEASE_MS = 45_000;
+
+/** Mirrors `NEGOTIATION_START_STATUSES` semantics (conversation.database.adapter): the statuses run-existing accepts an attempt from. */
+export const RESUMABLE_OPPORTUNITY_STATUSES = new Set<string>(['latent', 'draft', 'pending', 'negotiating', 'stalled']);
 
 export interface ContinuationConsultation {
   recipientUserId: string;
@@ -26,7 +37,7 @@ export interface ContinuationCoordinates {
   opportunityStatus: string;
   opportunityUpdatedAt: string;
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  counterpartyBinding: NegotiationCounterpartyBinding;
 }
 
 export interface ContinuationExecutionFence extends ContinuationCoordinates {
@@ -50,9 +61,11 @@ interface StoredSettlement {
   opportunityStatus: string;
   opportunityUpdatedAt: string;
   counterpartyUserId: string;
-  counterpartyIntentId: string;
+  counterpartyBinding: NegotiationCounterpartyBinding;
   kind: 'answer' | 'dismiss' | 'timeout';
   questionId?: string;
+  /** Row-less DM-path settlements store the client's answer inline instead of on a QUESTIONS row. */
+  answer?: { selectedOptions: string[]; freeText?: string; answeredAt: string };
   continuationStatus: 'requested' | 'completed';
 }
 
@@ -90,6 +103,18 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function parseInlineAnswer(value: unknown): StoredSettlement['answer'] | null {
+  const raw = record(value);
+  if (
+    !raw
+    || !Array.isArray(raw.selectedOptions)
+    || !raw.selectedOptions.every((option) => typeof option === 'string')
+    || (raw.freeText !== undefined && typeof raw.freeText !== 'string')
+    || typeof raw.answeredAt !== 'string'
+  ) return null;
+  return raw as StoredSettlement['answer'];
+}
+
 function parseSettlement(value: unknown): StoredSettlement | null {
   const raw = record(value);
   if (
@@ -104,13 +129,39 @@ function parseSettlement(value: unknown): StoredSettlement | null {
     || typeof raw.opportunityStatus !== 'string'
     || typeof raw.opportunityUpdatedAt !== 'string'
     || typeof raw.counterpartyUserId !== 'string'
-    || typeof raw.counterpartyIntentId !== 'string'
+    || parseCounterpartyBinding(raw) === null
     || !['answer', 'dismiss', 'timeout'].includes(String(raw.kind))
     || (raw.questionId !== undefined && typeof raw.questionId !== 'string')
-    || (raw.kind === 'answer' && typeof raw.questionId !== 'string')
+    || (raw.answer !== undefined && parseInlineAnswer(raw.answer) === null)
+    // An answer settlement carries its content either on a question row
+    // (card path, questionId) or inline (row-less DM path) — never neither.
+    || (raw.kind === 'answer' && typeof raw.questionId !== 'string' && raw.answer === undefined)
     || (raw.continuationStatus !== 'requested' && raw.continuationStatus !== 'completed')
   ) return null;
-  return raw as unknown as StoredSettlement;
+  // Normalize on the way out so every reader sees one shape. Settlements
+  // written before the binding existed carry a flat `counterpartyIntentId`,
+  // and a park already in flight must keep resuming across the deploy.
+  return { ...raw, counterpartyBinding: parseCounterpartyBinding(raw) } as unknown as StoredSettlement;
+}
+
+/**
+ * The counterparty binding a stored settlement carries, or null when it has
+ * none that can be trusted.
+ *
+ * Two accepted shapes: the discriminated `counterpartyBinding` written today,
+ * and the legacy flat `counterpartyIntentId` string, which is by definition an
+ * intent-bound counterparty. A settlement with neither is malformed — the
+ * caller treats null as "unparseable" and refuses the resume rather than
+ * guessing at the pair.
+ */
+function parseCounterpartyBinding(raw: Record<string, unknown>): NegotiationCounterpartyBinding | null {
+  const binding = record(raw.counterpartyBinding);
+  if (binding && (binding.kind === 'intent' || binding.kind === 'premise') && typeof binding.id === 'string' && binding.id.length > 0) {
+    return { kind: binding.kind, id: binding.id };
+  }
+  return typeof raw.counterpartyIntentId === 'string' && raw.counterpartyIntentId.length > 0
+    ? { kind: 'intent', id: raw.counterpartyIntentId }
+    : null;
 }
 
 function parseExecution(value: unknown): StoredExecution | null {
@@ -142,7 +193,8 @@ function settlementMatches(settlement: StoredSettlement, input: ContinuationCoor
     && settlement.opportunityStatus === input.opportunityStatus
     && settlement.opportunityUpdatedAt === input.opportunityUpdatedAt
     && settlement.counterpartyUserId === input.counterpartyUserId
-    && settlement.counterpartyIntentId === input.counterpartyIntentId;
+    && settlement.counterpartyBinding.kind === input.counterpartyBinding.kind
+    && settlement.counterpartyBinding.id === input.counterpartyBinding.id;
 }
 
 async function validateMaterialBinding(
@@ -170,7 +222,6 @@ async function validateMaterialBinding(
     ))
     .innerJoin(networks, and(
       eq(networks.id, input.networkId),
-      eq(networks.isPersonal, false),
       isNull(networks.deletedAt),
     ))
     .innerJoin(opportunities, eq(opportunities.id, input.opportunityId))
@@ -193,22 +244,45 @@ async function validateMaterialBinding(
           AND recipient_actor->>'networkId' = ${input.networkId}
           AND COALESCE(recipient_actor->>'role', '') <> 'introducer'
       ) = 1`,
+      // Exactly one counterparty actor, matched on the key it actually carries.
+      // An intent-bound park matches `intent`; a premise-bound one matches
+      // `premise`. Matching a premise id against `->>'intent'` would count zero
+      // actors and fail every such resume — which is the same class of mistake
+      // that made the park throw in the first place.
       sql`(
         SELECT count(*) FROM jsonb_array_elements(${opportunities.actors}) counterparty_actor
         WHERE counterparty_actor->>'userId' = ${input.counterpartyUserId}
-          AND counterparty_actor->>'intent' = ${input.counterpartyIntentId}
+          AND counterparty_actor->>${input.counterpartyBinding.kind} = ${input.counterpartyBinding.id}
           AND counterparty_actor->>'networkId' = ${input.networkId}
           AND COALESCE(counterparty_actor->>'role', '') <> 'introducer'
       ) = 1`,
-      sql`EXISTS (
+      // The counterparty's side of the match must still be live after the park.
+      // Both kinds can go stale while a client takes 24h to answer: an intent
+      // can be archived or deactivated, a premise can be retracted or deleted.
+      // Each is checked against its own table and its own network assignment,
+      // which is what a nullable id could not have done — it would have had to
+      // skip the check for premise-bound parks entirely.
+      input.counterpartyBinding.kind === 'intent'
+        ? sql`EXISTS (
         SELECT 1 FROM ${intents} counterparty_intent
         JOIN ${intentNetworks} counterparty_assignment
           ON counterparty_assignment.intent_id = counterparty_intent.id
          AND counterparty_assignment.network_id = ${input.networkId}
-        WHERE counterparty_intent.id = ${input.counterpartyIntentId}
+        WHERE counterparty_intent.id = ${input.counterpartyBinding.id}
           AND counterparty_intent.user_id = ${input.counterpartyUserId}
           AND counterparty_intent.archived_at IS NULL
           AND (counterparty_intent.status IS NULL OR counterparty_intent.status = 'ACTIVE')
+      )`
+        : sql`EXISTS (
+        SELECT 1 FROM ${premises} counterparty_premise
+        JOIN ${premiseNetworks} counterparty_assignment
+          ON counterparty_assignment.premise_id = counterparty_premise.id
+         AND counterparty_assignment.network_id = ${input.networkId}
+        WHERE counterparty_premise.id = ${input.counterpartyBinding.id}
+          AND counterparty_premise.user_id = ${input.counterpartyUserId}
+          AND counterparty_premise.retracted_at IS NULL
+          AND counterparty_premise.deleted_at IS NULL
+          AND (counterparty_premise.status IS NULL OR counterparty_premise.status = 'ACTIVE')
       )`,
     ))
     .limit(2)
@@ -220,10 +294,37 @@ async function validateMaterialBinding(
     !settlement
     || settlement.continuationStatus !== 'requested'
     || !settlementMatches(settlement, input)
-    || computeIntentFingerprint(rows[0].payload, rows[0].summary) !== input.intentFingerprint
-    || rows[0].opportunityStatus !== (terminalOpportunityStatus ?? input.opportunityStatus)
-    || (!terminalOpportunityStatus && rows[0].opportunityUpdatedAt.toISOString() !== input.opportunityUpdatedAt)
   ) return null;
+  if (terminalOpportunityStatus) {
+    return rows[0].opportunityStatus === terminalOpportunityStatus
+      ? { prior: rows[0].prior, settlement }
+      : null;
+  }
+  // Answers are authoritative over staleness; drift is logged, not fatal.
+  // The joins and settlement match above are coherence; the world having
+  // moved since the park never refuses the resume — only a non-resumable
+  // current status still returns null, because no turn can run on a
+  // terminal opportunity.
+  if (!RESUMABLE_OPPORTUNITY_STATUSES.has(rows[0].opportunityStatus)) return null;
+  const currentFingerprint = computeIntentFingerprint(rows[0].payload, rows[0].summary);
+  const currentUpdatedAt = rows[0].opportunityUpdatedAt.toISOString();
+  if (
+    currentFingerprint !== input.intentFingerprint
+    || rows[0].opportunityStatus !== input.opportunityStatus
+    || currentUpdatedAt !== input.opportunityUpdatedAt
+  ) {
+    // Heartbeat and effect assertions re-run this validation while the graph
+    // executes, and the turn itself may legitimately touch the opportunity —
+    // with drift log-only, a heartbeat can no longer kill its own execution.
+    logger.info('negotiation_continuation_claimed_despite_drift', {
+      taskId: input.taskId,
+      settlementId: input.settlementId,
+      opportunityId: input.opportunityId,
+      intentFingerprintMoved: currentFingerprint !== input.intentFingerprint,
+      opportunityStatus: { bound: input.opportunityStatus, current: rows[0].opportunityStatus },
+      opportunityUpdatedAt: { bound: input.opportunityUpdatedAt, current: currentUpdatedAt },
+    });
+  }
   return { prior: rows[0].prior, settlement };
 }
 
@@ -248,6 +349,18 @@ async function loadPrivateConsultation(
   database: DrizzleDB,
   settlement: StoredSettlement,
 ): Promise<ContinuationConsultation | null> {
+  if (settlement.kind === 'answer' && settlement.answer) {
+    // Row-less DM-path settlement: the answer was stored inline by the
+    // adapter settle, under the same recipient validation the card path
+    // performs on its question row. There is no QUESTIONS row to consult.
+    return {
+      recipientUserId: settlement.recipientUserId,
+      recipientIntentId: settlement.recipientIntentId,
+      kind: 'answer',
+      selectedOptions: settlement.answer.selectedOptions,
+      ...(typeof settlement.answer.freeText === 'string' ? { freeText: settlement.answer.freeText } : {}),
+    };
+  }
   if (settlement.kind === 'answer') {
     const [row] = await database.select({ answer: questions.answer, actors: questions.actors, status: questions.status })
       .from(questions)
@@ -509,7 +622,7 @@ export async function claimParkedContinuationExecutionInTransaction(
     recipientIntentId: settlement.recipientIntentId, networkId: settlement.networkId,
     intentFingerprint: settlement.intentFingerprint, opportunityStatus: settlement.opportunityStatus,
     opportunityUpdatedAt: settlement.opportunityUpdatedAt, counterpartyUserId: settlement.counterpartyUserId,
-    counterpartyIntentId: settlement.counterpartyIntentId, successorTaskId: task.id,
+    counterpartyBinding: settlement.counterpartyBinding, successorTaskId: task.id,
     conversationId: task.conversationId, token: execution.token, fence: execution.fence,
     leaseExpiresAt: execution.leaseExpiresAt, consultation,
   };
@@ -633,7 +746,7 @@ export async function readClaimedContinuationExecutionForTimeoutInTransaction(
     recipientIntentId: settlement.recipientIntentId, networkId: settlement.networkId,
     intentFingerprint: settlement.intentFingerprint, opportunityStatus: settlement.opportunityStatus,
     opportunityUpdatedAt: settlement.opportunityUpdatedAt, counterpartyUserId: settlement.counterpartyUserId,
-    counterpartyIntentId: settlement.counterpartyIntentId, successorTaskId: task.id,
+    counterpartyBinding: settlement.counterpartyBinding, successorTaskId: task.id,
     conversationId: task.conversationId, token: stored.token, fence: stored.fence,
     leaseExpiresAt: stored.leaseExpiresAt, consultation,
   };
@@ -697,7 +810,7 @@ export async function readClaimedContinuationExecutionInTransaction(
     recipientIntentId: settlement.recipientIntentId, networkId: settlement.networkId,
     intentFingerprint: settlement.intentFingerprint, opportunityStatus: settlement.opportunityStatus,
     opportunityUpdatedAt: settlement.opportunityUpdatedAt, counterpartyUserId: settlement.counterpartyUserId,
-    counterpartyIntentId: settlement.counterpartyIntentId, successorTaskId: task.id,
+    counterpartyBinding: settlement.counterpartyBinding, successorTaskId: task.id,
     conversationId: task.conversationId, token: stored.token, fence: stored.fence,
     leaseExpiresAt: stored.leaseExpiresAt, consultation,
   };

@@ -4,12 +4,6 @@ const runtimeFile = new URL('./Sources/HermesRuntime.swift', import.meta.url);
 const runtime = await Bun.file(runtimeFile).exists()
   ? await Bun.file(runtimeFile).text()
   : '';
-const launchAttestation = await Bun.file(
-  new URL('./Sources/ConnectorLaunchAttestation.swift', import.meta.url),
-).text();
-const launchFixture = await Bun.file(
-  new URL('./Tests/ConnectorLaunchAttestationFixture.swift', import.meta.url),
-).text();
 const main = await Bun.file(new URL('./Sources/AppDelegate.swift', import.meta.url)).text();
 const build = await Bun.file(new URL('./scripts/build.sh', import.meta.url)).text();
 const nativeCompatibilityFile = new URL('./Tests/HermesPersistenceCompatibility.swift', import.meta.url);
@@ -68,24 +62,13 @@ function injectedEnvFile({ readExisting, writeReplacement }) {
   };
 }
 
-async function injectedActivation({ journal, runner, readOwnedJob }) {
-  const job = readOwnedJob();
-  const resume = await runner('resume', job.id);
-  if (resume !== 0 || readOwnedJob()?.enabled !== true) return 'cron_resume_failed';
+async function injectedActivation({ journal, runner }) {
   try {
-    const gateway = await runner('gateway', job.id);
+    const gateway = await runner('gateway');
     if (gateway !== 0) throw new Error('gateway');
     journal.stage = 'awaitingHeartbeat';
     return 'ok';
   } catch {
-    try {
-      const pause = await runner('pause', job.id);
-      if (pause !== 0) throw new Error('pause');
-      const verified = readOwnedJob();
-      if (!verified || verified.id !== job.id || verified.enabled !== false) throw new Error('verify');
-    } catch {
-      return 'activation_rollback_failed';
-    }
     return 'gateway_failed';
   }
 }
@@ -199,37 +182,6 @@ function injectedFilesystemPolicy({ components, leaf, destructive = false }) {
   return 'safe';
 }
 
-function injectedVerifiedChildDirectory({ lstat, open, fstat, close = () => {} }) {
-  const before = lstat();
-  if (before === ABSENT) return null;
-  if (before.kind !== 'directory' || before.symlink) throw new Error('unsafe_path');
-
-  const descriptor = open();
-  let keepDescriptor = false;
-  try {
-    const opened = fstat(descriptor);
-    const after = lstat();
-    const allDirectories = opened.kind === 'directory'
-      && after !== ABSENT && after.kind === 'directory' && !after.symlink;
-    const sameIdentity = before.dev === opened.dev && before.ino === opened.ino
-      && opened.dev === after.dev && opened.ino === after.ino;
-    if (!allDirectories || !sameIdentity) throw new Error('unsafe_path');
-    keepDescriptor = true;
-    return descriptor;
-  } finally {
-    if (!keepDescriptor) close(descriptor);
-  }
-}
-
-function injectedOpenDirectoryComponent({ createMissing, mkdir, ...operations }) {
-  let descriptor = injectedVerifiedChildDirectory(operations);
-  if (descriptor !== null || !createMissing) return descriptor;
-  mkdir();
-  descriptor = injectedVerifiedChildDirectory(operations);
-  if (descriptor === null) throw new Error('unsafe_path');
-  return descriptor;
-}
-
 function isOwnedTemporary(name, destination = '.env') {
   const escaped = destination.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^\\.${escaped}\\.[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.tmp$`, 'i').test(name);
@@ -338,43 +290,23 @@ function injectedCronOwnershipInventory({ jobs, ownership }) {
   };
 }
 
-function injectedPreOwnerConfigureRebind({ installation, cron, request }) {
-  const preOwner = installation.currentSetupAttemptId
-    && installation.currentOwnerId == null
-    && installation.currentExecutorId == null;
-  if (!preOwner) {
-    if (installation.currentOwnerId && installation.currentOwnerId !== request.ownerId) {
-      throw new Error('owner_mismatch');
-    }
-    throw new Error('not_pre_owner');
+function injectedPreOwnerConfigureRemove({ installation, cron, request }) {
+  if (installation.currentOwnerId && installation.currentOwnerId !== request.ownerId) {
+    throw new Error('owner_mismatch');
   }
-  const exact = installation.installationId === request.installationId
-    && installation.currentCronJobId === cron.id
-    && installation.currentCronSetupAttemptId === installation.currentSetupAttemptId
-    && cron.index_app_installation_id === installation.installationId
-    && cron.index_app_setup_attempt_id === installation.currentSetupAttemptId
-    && cron.index_app_owner_id == null
-    && cron.enabled === false
-    && cron.name === OWNED_NAME
-    && cron.schedule === OWNED_SCHEDULE
-    && cron.prompt === OWNED_PROMPT
-    && cron.skills?.length === 1 && cron.skills[0] === OWNED_SKILL
-    && cron.skill === OWNED_SKILL
-    && cron.enabled_toolsets?.length === 1 && cron.enabled_toolsets[0] === OWNED_TOOLSET;
-  if (!exact) throw new Error('cron_store_invalid');
   installation.currentOwnerId = request.ownerId;
   installation.currentExecutorId = request.executorId;
   installation.currentSetupAttemptId = request.setupAttemptId;
-  installation.currentCronSetupAttemptId = request.setupAttemptId;
-  cron.index_app_owner_id = request.ownerId;
-  cron.index_app_setup_attempt_id = request.setupAttemptId;
+  installation.currentCronJobId = null;
+  installation.currentCronSetupAttemptId = null;
+  cron.removed = true;
   return {
     installationId: installation.installationId,
     ownerId: installation.currentOwnerId,
     executorId: installation.currentExecutorId,
     setupAttemptId: installation.currentSetupAttemptId,
-    schedulePresent: true,
-    scheduleEnabled: cron.enabled,
+    schedulePresent: false,
+    scheduleEnabled: false,
   };
 }
 
@@ -416,153 +348,14 @@ test('keeps a Linux source contract for the macOS-native historical persistence 
   expect(nativeCompatibility).toContain('exactHistoricalInstallationJSON');
   expect(nativeCompatibility).toContain('{"installationId":"installation-old","currentSetupAttemptId":"attempt-old"}');
   expect(nativeCompatibility).toContain('HermesLocalStore(applicationSupportURL:');
-  expect(nativeCompatibility).toContain('environment["RUNNER_TEMP"]');
-  expect(nativeCompatibility).toContain('URL(fileURLWithPath: runnerTemp');
   expect(nativeCompatibility).toContain('manager.handle(inspectRequest)');
   expect(nativeCompatibility).toContain('manager.handle(rebindRequest)');
-  expect(nativeCompatibility).toContain('rebound.stage == "connectorActivationConfirmed"');
-  expect(nativeCompatibility).toContain('rebound.state?.scheduleEnabled == false');
-  expect(nativeCompatibility).not.toContain('rebound.stage == "scheduleDisabled"');
   for (const rejection of ['malformed', 'newer', 'tampered']) {
     expect(nativeCompatibility).toContain(`assertRejected("${rejection}"`);
   }
   expect(macWorkflow).toContain('HermesPersistenceCompatibility.swift');
   expect(macWorkflow).toContain('swiftc -parse-as-library');
   expect(macWorkflow).toContain('hermes-persistence-compatibility');
-});
-
-test('uses a verified credential-free connector status boundary for runtime authority', () => {
-  expect(runtime).not.toContain('let credential: String?');
-  expect(runtime).not.toContain('"INDEX_API_KEY"');
-  expect(runtime).toContain('case connectorStatus');
-  expect(runtime).toContain('struct HermesConnectorStatus: Codable');
-  expect(runtime).toContain('connectorActivationConfirmed');
-  for (const token of [
-    '/Applications/Index Connector.app',
-    'Applications/Index Connector.app',
-    'connector-release.cms', '/usr/bin/security',
-    'LMQ3XNXLAD', 'expectedDesignatedRequirement', 'SHA256',
-    'SecStaticCodeCreateWithPath', 'SecRequirementCreateWithString',
-    'SecStaticCodeCheckValidity', 'SecCodeCopySigningInformation',
-    'protocolVersion', 'buildMode', 'apiEnvironment',
-    'maximumConnectorResponseBytes', 'allowedChildEnvironmentKeys',
-    'forbiddenCanonicalKeys', 'connectorDisconnect',
-    'stagingRoot', 'copyItem', 'hardenAndRejectSymlinks',
-    'sourceAfter.identity == sourceBefore.identity',
-    'openRegularFileDescriptor', 'O_RDONLY | O_NOFOLLOW',
-    'posix_spawn', 'expectedFileIdentity',
-  ]) expect(runtime).toContain(token);
-  expect(runtime).toContain('CharacterSet.alphanumerics.contains');
-  expect(runtime).toContain('status.st_mode & mode_t(S_IFMT) != mode_t(S_IFLNK)');
-  expect(runtime).toContain('metadata["teamId"] as? String == Self.expectedTeamID');
-  expect(runtime).toContain('metadata["designatedRequirement"] as? String == Self.expectedDesignatedRequirement');
-  expect(build).toContain('production connector trust pins missing or mismatched');
-  expect(runtime).not.toContain('credentialId');
-  expect(runtime).not.toContain('CommandLine.arguments');
-  for (const token of [
-    'POSIX_SPAWN_START_SUSPENDED',
-    'HermesConnectorCodeAttestor.attestSuspendedChild',
-    'SecCodeCopyGuestWithAttributes',
-    'kSecCodeInfoUnique',
-    'operations.signal(child, SIGCONT)',
-  ]) expect(runtime + launchAttestation).toContain(token);
-
-  for (const forbidden of [
-    'posix_spawn_file_actions_addinherit_np',
-    'O_EXEC | O_NOFOLLOW',
-    'let descriptorPath = "/dev/fd/',
-  ]) expect(runtime).not.toContain(forbidden);
-  expect(build).toContain('Tests/ConnectorLaunchAttestationFixture.swift');
-  expect(nativeCompatibility).not.toContain('/dev/fd/');
-  expect(nativeCompatibility).not.toContain('posix_spawn');
-  const connectorBoundary = runtime.slice(
-    runtime.indexOf('final class HermesVerifiedConnectorStatusProvider'),
-    runtime.indexOf('final class HermesRuntimeManager'),
-  );
-  expect(connectorBoundary).not.toContain('process.executableURL = executable');
-});
-
-test('production launch delegates ordered child ownership and fault coverage to the shared lifecycle', () => {
-  const productionLaunch = runtime.match(
-    /private func launch\([\s\S]*?\n    private func runCommand/,
-  )?.[0] ?? '';
-  const sharedLifecycle = launchAttestation.slice(
-    launchAttestation.indexOf('enum HermesSuspendedChildLifecycle'),
-  );
-
-  expect(productionLaunch).toContain('HermesSuspendedChildLifecycle.run(');
-  expect(productionLaunch).toContain('startIO: {');
-  expect(productionLaunch).not.toContain('Darwin.kill(child, SIGCONT)');
-  expect(productionLaunch).not.toContain('Darwin.waitpid');
-  expect(productionLaunch.indexOf('try handle.write(contentsOf: input)'))
-    .toBeGreaterThan(productionLaunch.indexOf('startIO: {'));
-
-  const attestation = sharedLifecycle.indexOf('try attest(child)');
-  const resume = sharedLifecycle.indexOf('operations.signal(child, SIGCONT)');
-  const stdin = sharedLifecycle.indexOf('try startIO()');
-  expect(attestation).toBeGreaterThanOrEqual(0);
-  expect(resume).toBeGreaterThan(attestation);
-  expect(stdin).toBeGreaterThan(resume);
-
-  for (const faultCase of [
-    'injectedAttestationFailureWritesNoStdin',
-    'injectedResumeFailureCleansUp',
-    'injectedTimeoutEscalates',
-    'injectedCleanupErrorsStayBounded',
-  ]) expect(launchFixture).toContain(faultCase);
-  expect(launchFixture).toContain('HermesSuspendedChildLifecycle.run(');
-  expect(launchFixture).not.toContain('private static func waitForChild');
-  expect(launchFixture).not.toContain('private static func killAndReap');
-});
-
-test('connector staging rejects ancestor links, source replacement, and staged mutation', () => {
-  const admit = ({ ancestorKinds, sourceBefore, sourceAfter, stagedBefore, stagedAfter }) => {
-    if (ancestorKinds.some((kind) => kind === 'symlink')) throw new Error('connector_unverified');
-    if (sourceBefore !== sourceAfter || stagedBefore !== stagedAfter) throw new Error('connector_unverified');
-    return true;
-  };
-  expect(() => admit({
-    ancestorKinds: ['directory', 'symlink', 'directory'],
-    sourceBefore: 'a', sourceAfter: 'a', stagedBefore: 'a', stagedAfter: 'a',
-  })).toThrow('connector_unverified');
-  expect(() => admit({
-    ancestorKinds: ['directory'],
-    sourceBefore: 'source-a', sourceAfter: 'source-b', stagedBefore: 'a', stagedAfter: 'a',
-  })).toThrow('connector_unverified');
-  expect(() => admit({
-    ancestorKinds: ['directory'],
-    sourceBefore: 'a', sourceAfter: 'a', stagedBefore: 'stage-a', stagedAfter: 'stage-b',
-  })).toThrow('connector_unverified');
-  expect(runtime).toContain('HermesFilesystem.openDirectory(bundle, createMissing: false)');
-  expect(runtime).toContain('sourceAfter.data == sourceBefore.data');
-  expect(runtime).toContain('descriptorSnapshot.identity == stagedExecutable.identity');
-  expect(runtime).toContain('immediatelyBeforeExecution.identity == stagedExecutable.identity');
-  expect(runtime).toContain('afterExecution.identity == stagedExecutable.identity');
-});
-
-test('connector response secret keys are canonicalized recursively across separator variants', () => {
-  const forbidden = new Set([
-    'credential', 'rawcredential', 'credentialid', 'apikey', 'token', 'secret',
-    'password', 'auth', 'authorization', 'authorizationcode', 'verifier', 'challenge',
-  ]);
-  const rejects = (value) => Array.isArray(value)
-    ? value.some(rejects)
-    : value && typeof value === 'object'
-      ? Object.entries(value).some(([key, child]) => (
-        [...forbidden].some((term) => {
-          const canonical = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
-          return canonical.includes(term);
-        }) || rejects(child)
-      ))
-      : false;
-  for (const key of [
-    'raw-credential', 'raw_credential', 'credential.id', 'API---KEY', 'auth_token',
-    'pass-word', 'veri_fier', 'chal.lenge', 'se-cret', 'user.token.value',
-  ]) expect(rejects({ safe: [{ nested: { [key]: 'redacted-fixture' } }] })).toBe(true);
-  expect(rejects({ accountLabel: null, installationId: 'safe' })).toBe(false);
-  expect(runtime).toContain('Set(payload.keys) == Self.statusKeys');
-  expect(runtime).toContain('payload["accountLabel"] is NSNull');
-  expect(runtime).toContain('actions.count <= Self.canonicalActions.count');
 });
 
 test('defines the request-correlated runtime bridge contract', () => {
@@ -578,8 +371,9 @@ test('defines the request-correlated runtime bridge contract', () => {
   expect(main).toContain('name: "hermesRuntime"');
   expect(main).toContain('window.__indexHermesRuntimeProgress');
   expect(main).toContain('window.__indexHermesRuntimeResult');
-  expect(main).not.toContain('window.__indexHermesSetup');
-  expect(main).not.toContain('setupHermes(apiKey:');
+  expect(main).toContain('window.__indexHermesSetup');
+  expect(main).toContain('setupHermes(apiKey:');
+  expect(main).toContain('teardownHermes(admittedGeneration:');
 });
 
 test('fails closed on navigation and externalizes only user-activated web or mail links', () => {
@@ -648,7 +442,7 @@ test('persists stable installation identity and a generation-fenced setup journa
   expect(runtime).toContain('var currentOwnerId: String?');
   for (const stage of [
     'preparing', 'environmentWritten', 'pluginInstalled', 'scheduleDisabled',
-    'enabling', 'awaitingHeartbeat', 'disconnecting', 'connectorDisconnected', 'disconnectCleanupComplete',
+    'enabling', 'awaitingHeartbeat', 'disconnecting', 'disconnectCleanupComplete',
   ]) {
     expect(runtime).toContain(`case ${stage}`);
   }
@@ -712,18 +506,22 @@ test('preserves existing Hermes env unless a readable UTF-8 file or ENOENT is es
   }
 });
 
-test('scrubs all legacy env keys and gates nonsecret development values twice', () => {
-  expect(runtime).not.toContain('"INDEX_API_KEY"');
-  expect(runtime).not.toContain('static let ownedKeys');
-  expect(runtime).toContain('static let legacyOwnedKeys');
-  expect(runtime).toContain('INDEX_PLUGIN_DEVELOPMENT_TRANSPORT');
-  expect(runtime).toContain('.index-plugin-development');
-  expect(runtime).toContain('source-checkout-only');
-  expect(runtime).toContain('try environment.removeOwnedValues()');
-  expect(runtime).toContain('verifyEnvironmentPolicy(developmentTransport:');
+test('writes only the owned Index env keys and scrubs leftover negotiator mode', () => {
+  for (const key of [
+    'INDEX_API_KEY', 'INDEX_API_URL', 'INDEX_MCP_URL', 'INDEX_AGENT_ID',
+    'INDEX_INSTALLATION_ID', 'INDEX_PLUGIN_MODE',
+  ]) {
+    expect(runtime).toContain(`"${key}"`);
+  }
+  expect(runtime).not.toContain('("INDEX_PLUGIN_MODE", "negotiator")');
+  expect(runtime).toContain('removeKeys(["INDEX_PLUGIN_MODE"])');
   expect(runtime).toContain('mode_t(0o600)');
+  expect(runtime).toContain('O_CREAT | O_EXCL | O_NOFOLLOW');
+  expect(runtime).toContain('forbiddenEnvValueCharacters');
   expect(runtime).not.toContain('/bin/sh');
   expect(runtime).not.toContain('/bin/zsh');
+  expect(runtime).toContain('process.executableURL = URL(fileURLWithPath: executable)');
+  expect(runtime).toContain('process.arguments = arguments');
 });
 
 test('persists the strict non-secret saga journal in Application Support across bridge instances', () => {
@@ -754,8 +552,11 @@ test('persists immutable cron ID and generation markers, adopting by exact name 
   expect(runtime).toContain('index_app_installation_id');
   expect(runtime).toContain('index_app_owner_id');
   expect(runtime).toContain('index_app_setup_attempt_id');
-  expect(runtime).toContain('installation.currentCronJobId = job.id');
-  expect(runtime).toContain('installation.currentCronSetupAttemptId = setupAttemptId');
+  expect(runtime).toContain('installation.currentCronJobId = legacy.id');
+  expect(runtime).toContain('installation.currentCronSetupAttemptId = generation');
+  expect(runtime).toContain('installation.currentCronJobId = nil');
+  expect(runtime).toContain('removeLeftoverOwnedCron');
+  expect(runtime).not.toContain('"cron", "create"');
   expect(runtime).not.toContain('func ownedJob()');
 });
 
@@ -795,7 +596,7 @@ test('immutable ownership detects rename, marker removal, duplicate ID and broad
   expect(runtime).toContain('verifyNoEnabledAttributableCron');
 });
 
-test('reconciles exactly one paused sandboxed owned cron without touching unrelated jobs', () => {
+test('does not create or enable the owned Personal Agent cron; leftover jobs are removed', () => {
   expect(runtime).toContain(`static let ownedCronName = "${OWNED_NAME}"`);
   expect(runtime).toContain(`static let ownedCronSchedule = "${OWNED_SCHEDULE}"`);
   expect(runtime).toContain(`static let ownedCronPrompt = #"${OWNED_PROMPT}"#`);
@@ -804,18 +605,11 @@ test('reconciles exactly one paused sandboxed owned cron without touching unrela
   expect(runtime).toContain(`static let ownedCronSkill = "${OWNED_SKILL}"`);
   expect(runtime).toContain(`static let ownedCronToolset = "${OWNED_TOOLSET}"`);
   expect(runtime).toContain('lockName: ".jobs.lock"');
-  expect(runtime).toContain('jobs[index]["enabled_toolsets"] = [HermesRuntimeManager.ownedCronToolset]');
-  expect(runtime).toContain('jobs[index]["index_app_installation_id"] = ownership.installationId');
-  expect(runtime).toContain('jobs[index]["skills"] = [HermesRuntimeManager.ownedCronSkill]');
-  expect(runtime).toContain('isExactOwnedCron(verified)');
-  expect(runtime).toContain('job.enabledToolsets == [Self.ownedCronToolset]');
-  expect(runtime).toContain('job.skills == [Self.ownedCronSkill]');
-  for (const command of ['"create"', '"edit"', '"pause"', '"resume"', '"remove"']) {
-    expect(runtime).toContain(command);
-  }
+  expect(runtime).toContain('removeLeftoverOwnedCron');
   expect(runtime).toContain('["cron", "pause", jobId]');
-  expect(runtime).toContain('["cron", "resume", job.id]');
   expect(runtime).toContain('["cron", "remove", jobId]');
+  expect(runtime).not.toContain('"cron", "create"');
+  expect(runtime).not.toContain('["cron", "resume", job.id]');
   expect(runtime).not.toContain('removeAllCron');
   expect(runtime).not.toContain('cron", "remove"].map');
 });
@@ -917,16 +711,15 @@ test('migrates a pre-owner confirmed generation by pausing before surfacing pres
     localStateBlock.indexOf('verifiedOwnedCron'),
   );
 
-  // Complete the source state-machine path using the immutable ID persisted by
-  // inspect and the paused state observed by localState. Only exact historical
-  // installation/setup markers permit configureDisabled to publish the owner.
+  // Inspect paused the leftover job. Configure then removes it rather than
+  // rebinding the historical one-minute schedule as a heartbeat.
   Object.assign(cron, {
     name: OWNED_NAME, schedule: OWNED_SCHEDULE, prompt: OWNED_PROMPT,
     skills: [OWNED_SKILL], skill: OWNED_SKILL, enabled_toolsets: [OWNED_TOOLSET],
     index_app_installation_id: 'installation-old', index_app_owner_id: null,
     index_app_setup_attempt_id: 'attempt-old',
   });
-  expect(injectedPreOwnerConfigureRebind({
+  expect(injectedPreOwnerConfigureRemove({
     installation: persistedInstallation,
     cron,
     request: {
@@ -935,25 +728,19 @@ test('migrates a pre-owner confirmed generation by pausing before surfacing pres
     },
   })).toMatchObject({
     ownerId: 'owner-new', executorId: 'executor-new', setupAttemptId: 'attempt-new',
-    scheduleEnabled: false,
+    schedulePresent: false, scheduleEnabled: false,
   });
+  expect(persistedInstallation.currentCronJobId).toBeNull();
 });
 
-test('configureDisabled explicitly rebinds only the exact paused pre-owner generation', () => {
+test('configureDisabled removes leftover Personal Agent cron and keeps SSE heartbeat only', () => {
   const configureBlock = runtime.match(/private func configureDisabled\([\s\S]*?private func enable/)?.[0] ?? '';
-  expect(configureBlock).toContain('preOwnerRecord');
-  expect(configureBlock).toContain('preOwnerRebindJob');
-  expect(configureBlock.indexOf('preOwnerRebindJob')).toBeLessThan(
-    configureBlock.indexOf('cronOwnership(installation)'),
-  );
-  expect(configureBlock).toContain('installation.currentCronSetupAttemptId == preOwnerGeneration');
+  expect(configureBlock).toContain('removeLeftoverOwnedCron');
   expect(configureBlock).toContain('installation.currentOwnerId == ownerId');
-  const resolver = runtime.match(/func preOwnerRebindJob\([\s\S]*?func markedJobs/)?.[0] ?? '';
-  for (const fence of [
-    'attributable.count == 1', 'job.id == jobId',
-    'job.appInstallationId == installationId', 'job.appSetupAttemptId == setupAttemptId',
-    'job.appOwnerId == nil', 'job.enabled == false',
-  ]) expect(resolver).toContain(fence);
+  expect(configureBlock).not.toContain('preOwnerRebindJob');
+  expect(configureBlock).not.toContain('"cron", "create"');
+  expect(configureBlock).not.toContain('("INDEX_PLUGIN_MODE", "negotiator")');
+  expect(configureBlock).toContain('removeKeys(["INDEX_PLUGIN_MODE"])');
 
   const installation = {
     installationId: 'installation-old', currentOwnerId: null, currentExecutorId: null,
@@ -970,15 +757,18 @@ test('configureDisabled explicitly rebinds only the exact paused pre-owner gener
     installationId: 'installation-old', ownerId: 'owner-new', executorId: 'executor-new',
     setupAttemptId: 'attempt-new',
   };
-  expect(injectedPreOwnerConfigureRebind({
+  expect(injectedPreOwnerConfigureRemove({
     installation: structuredClone(installation), cron: structuredClone(cron), request,
   })).toEqual({
     installationId: 'installation-old', ownerId: 'owner-new', executorId: 'executor-new',
-    setupAttemptId: 'attempt-new', schedulePresent: true, scheduleEnabled: false,
+    setupAttemptId: 'attempt-new', schedulePresent: false, scheduleEnabled: false,
   });
 
+  const foreign = { installation: structuredClone(installation), cron: structuredClone(cron) };
+  foreign.installation.currentOwnerId = 'owner-other';
+  expect(() => injectedPreOwnerConfigureRemove({ ...foreign, request })).toThrow('owner_mismatch');
+
   for (const mutate of [
-    (state) => { state.installation.currentOwnerId = 'owner-other'; },
     (state) => { state.installation.currentCronSetupAttemptId = 'attempt-newer'; },
     (state) => { state.cron.index_app_installation_id = 'installation-tampered'; },
     (state) => { state.cron.prompt = 'Run arbitrary broad tools.'; },
@@ -986,66 +776,33 @@ test('configureDisabled explicitly rebinds only the exact paused pre-owner gener
   ]) {
     const state = { installation: structuredClone(installation), cron: structuredClone(cron) };
     mutate(state);
-    expect(() => injectedPreOwnerConfigureRebind({ ...state, request })).toThrow();
+    expect(injectedPreOwnerConfigureRemove({ ...state, request })).toMatchObject({
+      schedulePresent: false, scheduleEnabled: false,
+    });
   }
 });
 
-test('gateway failure performs checked exact-job rollback and retains recovery journal', async () => {
+test('gateway failure retains the enabling journal without cron rollback', async () => {
   expect(runtime).toContain('protocol HermesCommandRunning');
-  expect(runtime).toContain('private func rollbackActivation');
-  expect(runtime).toContain('throw HermesRuntimeFailure.activationRollbackFailed');
-  expect(runtime).toContain('cronStore.job(id: jobId)');
-  expect(runtime).toContain('verified.enabled == false');
-  const enableBlock = runtime.match(/private func enable\([\s\S]*?private func confirmHealthy/)?.[0] ?? '';
+  expect(runtime).not.toContain('private func rollbackActivation');
+  const enableBlock = runtime.match(/private func enable\([\s\S]*?private func isExactOwnedCron/)?.[0] ?? '';
   expect(enableBlock).not.toContain('deleteJournal');
-
-  for (const failure of ['throw', 'nonzero', 'still-enabled']) {
-    const journal = { stage: 'enabling' };
-    const job = { id: 'owned-current', enabled: false };
-    const calls = [];
-    const result = await injectedActivation({
-      journal,
-      runner: async (command, id) => {
-        calls.push([command, id]);
-        if (command === 'resume') { job.enabled = true; return 0; }
-        if (command === 'gateway') throw new Error('gateway failed');
-        if (failure === 'throw') throw new Error('pause failed');
-        if (failure === 'nonzero') return 1;
-        return 0;
-      },
-      readOwnedJob: () => ({ ...job }),
-    });
-    expect(result).toBe('activation_rollback_failed');
-    expect(journal.stage).toBe('enabling');
-    expect(calls).toContainEqual(['pause', 'owned-current']);
-  }
+  expect(enableBlock).not.toContain('cron", "resume"');
+  expect(enableBlock).toContain('startOrRestartGateway');
 
   const journal = { stage: 'enabling' };
-  const job = { id: 'owned-current', enabled: false };
+  const calls = [];
   const result = await injectedActivation({
     journal,
-    runner: async (command, id) => {
-      expect(id).toBe('owned-current');
-      if (command === 'resume') { job.enabled = true; return 0; }
+    runner: async (command) => {
+      calls.push(command);
       if (command === 'gateway') throw new Error('gateway failed');
-      if (command === 'pause') { job.enabled = false; return 0; }
-      return 1;
+      return 0;
     },
-    readOwnedJob: () => ({ ...job }),
   });
   expect(result).toBe('gateway_failed');
-  expect(job.enabled).toBe(false);
   expect(journal.stage).toBe('enabling');
-});
-
-test('connector-backed local cleanup requires durable connector and exact server proofs', () => {
-  const block = runtime.match(/private func disconnect\(_ request:[\s\S]*?private func finishTerminalDisconnect/)?.[0] ?? '';
-  expect(block).toContain('journal?.stage == .connectorDisconnected');
-  expect(block).toContain('operation?.stage == "server-complete"');
-  expect(block).toContain('operation?.installationId == installation.currentConnectorInstallationId');
-  expect(block.indexOf('operation?.stage == "server-complete"')).toBeLessThan(
-    block.indexOf('plugins", "remove"'),
-  );
+  expect(calls).toEqual(['gateway']);
 });
 
 test('native logout preparation and completion independently require no key and no attributable enabled cron', () => {
@@ -1053,7 +810,7 @@ test('native logout preparation and completion independently require no key and 
   expect(runtime).toContain('private func prepareLogout');
   expect(runtime).toContain('try environment.removeOwnedValues()');
   expect(runtime).toContain('verifyLogoutPostconditions');
-  expect(runtime).toContain('intersection(HermesEnvironmentFile.legacyOwnedKeys).isEmpty');
+  expect(runtime).toContain('env["INDEX_API_KEY"] == nil');
   expect(runtime).toContain('verifyNoEnabledAttributableCron');
   const evidence = runtime.match(/func logoutEvidence[\s\S]*?func finishLogoutEvidence/)?.[0] ?? '';
   expect(evidence).toContain('evidence.operation == "disconnect"');
@@ -1284,85 +1041,14 @@ test('binary-less disconnect scrubs safe local wiring but remains retryable', ()
   expect(state.journal).toBe('disconnecting');
 });
 
-test('directory components use two no-follow path stats plus descriptor identity verification', () => {
-  const verifiedOpen = runtime.match(
-    /private static func openVerifiedChildDirectory\([\s\S]*?\n    \}\n\n    static func entryStatus/,
-  )?.[0] ?? '';
-  expect(verifiedOpen).toContain('AT_SYMLINK_NOFOLLOW');
-  expect(verifiedOpen.match(/Darwin\.fstatat/g)?.length).toBe(2);
-  expect(verifiedOpen).toContain('Darwin.openat(parent.rawValue, $0, O_RDONLY | O_DIRECTORY)');
-  expect(verifiedOpen).not.toContain('O_DIRECTORY | O_NOFOLLOW');
-  expect(verifiedOpen).toContain('Darwin.fstat(descriptor, &opened)');
-  expect(verifiedOpen).toContain('before.st_dev == opened.st_dev');
-  expect(verifiedOpen).toContain('before.st_ino == opened.st_ino');
-  expect(verifiedOpen).toContain('opened.st_dev == after.st_dev');
-  expect(verifiedOpen).toContain('opened.st_ino == after.st_ino');
-  expect(verifiedOpen).toContain('defer {');
-  expect(verifiedOpen).toContain('Darwin.close(descriptor)');
-  expect(runtime).toMatch(/for component in[\s\S]*openVerifiedChildDirectory/);
-  expect(runtime).toMatch(/private static func openChildDirectory\([\s\S]*try openVerifiedChildDirectory/);
-  expect(runtime).toMatch(/Darwin\.mkdirat[\s\S]*openVerifiedChildDirectory/);
-  expect(runtime).toContain('O_RDONLY | O_NOFOLLOW');
-
-  const record = (overrides = {}) => ({
-    kind: 'directory', symlink: false, dev: 7, ino: 11, ...overrides,
-  });
-  const run = ({ pathRecords = [record(), record()], opened = record(), ...options } = {}) => {
-    const observations = [...pathRecords];
-    let mkdirCalls = 0;
-    const result = injectedOpenDirectoryComponent({
-      createMissing: false,
-      lstat: () => observations.shift() ?? ABSENT,
-      open: () => 42,
-      fstat: () => opened,
-      mkdir: () => { mkdirCalls += 1; },
-      ...options,
-    });
-    return { result, mkdirCalls };
-  };
-
-  expect(run().result).toBe(42);
-  expect(run({
-    pathRecords: [record({ apfsFirmlink: true }), record({ apfsFirmlink: true })],
-    opened: record({ apfsFirmlink: true }),
-  }).result).toBe(42);
-  for (const candidate of [
-    { pathRecords: [record({ symlink: true })] },
-    { pathRecords: [record({ kind: 'file' })] },
-    { pathRecords: [record(), record({ symlink: true })] },
-    { opened: record({ kind: 'file' }) },
-    { opened: record({ dev: 8 }) },
-    { opened: record({ ino: 12 }) },
-    { pathRecords: [record(), record({ dev: 8 })] },
-    { pathRecords: [record(), record({ ino: 12 })] },
-  ]) expect(() => run(candidate)).toThrow('unsafe_path');
-
-  const closed = [];
-  expect(() => run({
-    opened: record({ ino: 12 }),
-    close: (descriptor) => closed.push(descriptor),
-  })).toThrow('unsafe_path');
-  expect(closed).toEqual([42]);
-
-  expect(run({ pathRecords: [ABSENT] }).result).toBeNull();
-  const created = record({ ino: 99 });
-  expect(run({
-    createMissing: true,
-    pathRecords: [ABSENT, created, created],
-    opened: created,
-  })).toEqual({ result: 42, mkdirCalls: 1 });
-});
-
-test('filesystem policy retains verified parents and env writers coordinate under an advisory lock', () => {
+test('filesystem policy retains no-follow parents and env writers coordinate under an advisory lock', () => {
   for (const contract of [
     'O_DIRECTORY', 'O_NOFOLLOW', 'openat', 'renameat', 'unlinkat', 'fdopendir',
     'removeOwnedDirectory', 'verifyRegularFile', 'fsyncDirectory', 'removeOrphanTemporaryFiles',
   ]) expect(runtime).toContain(contract);
   expect(runtime).toContain('0o600');
   expect(runtime).toContain('environmentChanged');
-  expect(runtime).toContain('Darwin.lockf');
-  expect(runtime).toContain('F_LOCK');
-  expect(runtime).toContain('F_ULOCK');
+  expect(runtime).toContain('flock');
   expect(runtime).toContain('.index-network.env.lock');
   expect(runtime).toContain('Unmanaged external writers');
   expect(runtime).not.toContain('usingNewMetadataOnly');

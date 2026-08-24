@@ -1,4 +1,0 @@
-interface:
-  display_name: "Configure Railway Auth"
-  short_description: "Index project workflow: Configure Railway Auth"
-  default_prompt: "Use $configure-railway-auth to follow the repository-specific Configure Railway Auth workflow."

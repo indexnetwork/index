@@ -9,17 +9,15 @@
 
 import crypto from 'crypto';
 
-import { FALLBACK_WHO_QUESTION, normalizeIntentDescription, IntentGraphFactory, SignalIntakeOrchestrator, SignalIntakePackGenerator, type IntakeAnswer, type IntakePackQuestion, type IntakeRound } from '@indexnetwork/protocol';
+import { Intents, type IntakeAnswer, type IntakePackQuestion, type IntakeRound } from '@indexnetwork/protocol';
 
 import { chatDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { signalIntakePackAdapter } from '../adapters/signal-intake-pack.database.adapter';
 import { computeAnswersHash, signalIntakeRunAdapter, SIGNAL_INTAKE_RUN_TTL_MS } from '../adapters/signal-intake-run.database.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
-import { questionerAdapter } from '../adapters/questioner.adapter.instance';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
-import { getSignalIntakeConfig, type SignalIntakeQuestionMode } from '../lib/fast-intake-feature';
+import { getSignalIntakeConfig } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 
 const logger = log.service.from('signal-intake');
@@ -72,30 +70,21 @@ export interface SignalIntakeServiceDeps {
   >;
   /** Server-side authority for the client-supplied `networkId`. */
   isNetworkMember: (networkId: string, userId: string) => Promise<boolean>;
-  orchestrator: Pick<SignalIntakeOrchestrator, 'generateFollowUps' | 'synthesize'>;
-  packGenerator: Pick<SignalIntakePackGenerator, 'generate'>;
+  /** The intents module: intake pack, follow-up planning, and synthesis. */
+  intents: Pick<Intents, 'generateIntakePack' | 'generateIntakeFollowUps' | 'synthesizeIntake'>;
   /** Intake knobs; production reads the env accessors, tests inject fixed values. */
-  intakeConfig?: () => { maxQuestions: number; mode: SignalIntakeQuestionMode };
+  intakeConfig?: () => { maxQuestions: number };
   getPremises: (userId: string) => Promise<Array<{ text: string }>>;
   getNetworkTitles: (userId: string) => Promise<string[]>;
   getGlobalContext: (userId: string) => Promise<string | null>;
+  /**
+   * Verify-only intent-graph invocation. Deliberately profile-blind: the
+   * propose path verifies exactly what the person answered.
+   */
   invokeIntentGraph: (input: {
     userId: string;
-    userProfile: string;
     inputContent: string;
   }) => Promise<{ verifiedIntents?: Array<Record<string, unknown>> }>;
-  recordAnsweredQuestion?: (input: {
-    userId: string;
-    prompt: string;
-    answer: IntakeAnswer;
-    stage: string;
-    /**
-     * The real question offered to the user, when it is in scope at the
-     * call site. Optional because follow-up rounds carry only their prompt;
-     * when absent, the recorder falls back to a derived proxy.
-     */
-    question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
-  }) => Promise<void>;
   now?: () => Date;
 }
 
@@ -154,7 +143,7 @@ export class SignalIntakeService {
         this.deps.getNetworkTitles(userId),
         this.deps.getGlobalContext(userId),
       ]);
-      const pack = await this.deps.packGenerator.generate({ premises, networkTitles, globalContext });
+      const pack = await this.deps.intents.generateIntakePack({ premises, networkTitles, globalContext });
       // premiseHash is owned by the background job; a cold-start write stores an
       // empty key so the next regen always refreshes rather than short-circuiting.
       await this.deps.packStore.upsertPack({
@@ -171,7 +160,7 @@ export class SignalIntakeService {
         stage: 'start', durationMs: Date.now() - started,
         packHit: false, speculationHit: false, whereTextUsed: false, fallbackUsed: true,
       });
-      return { brief: '', question: FALLBACK_WHO_QUESTION, packHit: false };
+      return { brief: '', question: Intents.FALLBACK_INTAKE_QUESTION, packHit: false };
     }
   }
 
@@ -193,20 +182,8 @@ export class SignalIntakeService {
     input: { rounds: IntakeRound[]; plannedTotal?: number },
   ): Promise<{ questions: IntakePackQuestion[]; total: number }> {
     const started = Date.now();
-    const { maxQuestions, mode } = this.deps.intakeConfig?.() ?? getSignalIntakeConfig();
+    const { maxQuestions } = this.deps.intakeConfig?.() ?? getSignalIntakeConfig();
     const { brief, question: round1 } = await this.getOrCreatePack(userId);
-    if (input.rounds.length === 1) {
-      // Round 1's answer is recorded against the pack's authoritative question
-      // payload, never the client-echoed prompt.
-      this.record({
-        userId,
-        prompt: round1.prompt,
-        answer: input.rounds[0].answer,
-        stage: 'who',
-        question: { title: round1.title, options: round1.options, multiSelect: round1.multiSelect },
-      });
-    }
-
     const remaining = Math.max(0, maxQuestions - input.rounds.length);
     if (remaining === 0) {
       logger.info('signal_intake_stage', {
@@ -219,8 +196,8 @@ export class SignalIntakeService {
     const lockedTotal = input.plannedTotal !== undefined
       ? Math.min(Math.max(Math.trunc(input.plannedTotal), 1), maxQuestions)
       : undefined;
-    const budget = mode === 'plural' || lockedTotal === undefined ? remaining : 1;
-    const plan = await this.deps.orchestrator.generateFollowUps({
+    const budget = lockedTotal === undefined ? remaining : 1;
+    const plan = await this.deps.intents.generateIntakeFollowUps({
       brief,
       rounds: input.rounds,
       maxFollowUps: budget,
@@ -229,10 +206,9 @@ export class SignalIntakeService {
         : {}),
     });
 
-    const questions = mode === 'plural' ? plan.questions : plan.questions.slice(0, 1);
-    const total = lockedTotal ?? (mode === 'plural'
-      ? input.rounds.length + plan.questions.length
-      : input.rounds.length + Math.min(Math.max(plan.plannedFollowUpCount, questions.length), remaining));
+    const questions = plan.questions.slice(0, 1);
+    const total = lockedTotal
+      ?? input.rounds.length + Math.min(Math.max(plan.plannedFollowUpCount, questions.length), remaining);
 
     logger.info('signal_intake_stage', {
       stage: 'question', durationMs: Date.now() - started,
@@ -254,12 +230,6 @@ export class SignalIntakeService {
   ): Promise<{ runId: string }> {
     const started = Date.now();
     await this.deps.runStore.sweepStaleRuns(userId, new Date(this.now.getTime() - SIGNAL_INTAKE_RUN_TTL_MS));
-    // Follow-up rounds arrive with their real prompts from the client; round 1
-    // was already recorded by followUpQuestions against the pack payload.
-    input.rounds.slice(1).forEach((round, index) => {
-      this.record({ userId, prompt: round.prompt, answer: round.answer, stage: `followup-${index + 2}` });
-    });
-
     const answersHash = computeAnswersHash({ rounds: input.rounds });
     const { run, claimed } = await this.deps.runStore.claimRun(userId, answersHash);
 
@@ -397,14 +367,12 @@ export class SignalIntakeService {
     networkId?: string,
   ): Promise<IntakeProposal> {
     try {
-      const { brief } = await this.getOrCreatePack(userId);
-      const synthesis = await this.deps.orchestrator.synthesize({ brief, ...answers });
+      // Synthesis and verification both run on the answers alone. The pack
+      // brief sources the questions upstream; it never reaches the signal.
+      const synthesis = await this.deps.intents.synthesizeIntake(answers);
 
-      // The brief stands in for the profile graph here: it is already a
-      // distilled identity paragraph, so `propose` skips that leg entirely.
       const graphResult = await this.deps.invokeIntentGraph({
         userId,
-        userProfile: brief,
         inputContent: synthesis.description,
       });
 
@@ -425,7 +393,7 @@ export class SignalIntakeService {
       }
 
       const proposalId = crypto.randomUUID();
-      const description = normalizeIntentDescription(first.description);
+      const description = Intents.normalizeDescription(first.description);
       await this.deps.proposalStore.createProposals([{
         proposalId,
         userId,
@@ -531,41 +499,30 @@ export class SignalIntakeService {
     return null;
   }
 
-  /** Fire-and-forget analytics mirror; never blocks or fails a request. */
-  private record(input: {
-    userId: string;
-    prompt: string;
-    answer: IntakeAnswer;
-    stage: string;
-    question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
-  }): void {
-    void this.deps.recordAnsweredQuestion?.(input).catch(() => undefined);
-  }
 }
 
 // -----------------------------------------------------------------------------
 // Production wiring
 // -----------------------------------------------------------------------------
 
-/** Compiled once and reused: the intent graph always runs in verification-only
- * `propose` mode here, so no DB writes happen from this leg of the funnel. */
-const intentGraphFactory = new IntentGraphFactory(
-  intentDatabaseAdapter,
-  new EmbedderAdapter(),
-  intentQueue,
-  questionerEnqueueIfEnabled(),
-);
-const compiledIntentGraph = intentGraphFactory.createGraph();
+/** Compiled once and reused: the intent graph always runs with `dryRun: true`
+ * here, so no DB writes happen from this leg of the funnel. */
+const productionIntents = new Intents({
+  database: intentDatabaseAdapter,
+  embedder: new EmbedderAdapter(),
+  queue: intentQueue,
+});
+const compiledIntentGraph = productionIntents.createGraph();
 
-/** Verify-only invocation of the intent graph, skipping the profile-graph leg
- * by supplying the precomputed pack brief as `userProfile` directly. */
+/** Verify-only invocation of the intent graph. The profile-graph leg is skipped
+ * and nothing is supplied in its place: an intent derives only from the person's
+ * answers, so inference and verification see the synthesized signal alone. */
 async function invokeIntentGraphProduction(input: {
   userId: string;
-  userProfile: string;
   inputContent: string;
 }): Promise<{ verifiedIntents?: Array<Record<string, unknown>> }> {
   const result = await compiledIntentGraph.invoke(
-    { ...input, operationMode: 'propose' as const },
+    { ...input, userProfile: '', dryRun: true },
     { recursionLimit: 100 },
   );
   return result as { verifiedIntents?: Array<Record<string, unknown>> };
@@ -577,9 +534,9 @@ async function getPremisesProduction(userId: string): Promise<Array<{ text: stri
   return premises.map((p) => ({ text: p.assertion.text })).filter((p) => p.text.length > 0);
 }
 
-/** Titles of every non-personal network the user belongs to. */
+/** Titles of every network the user belongs to. */
 async function getNetworkTitlesProduction(userId: string): Promise<string[]> {
-  const networkIds = await chatDatabaseAdapter.getNonPersonalNetworkIds(userId);
+  const networkIds = await chatDatabaseAdapter.getUserIndexIds(userId);
   const networks = await Promise.all(networkIds.map((id) => chatDatabaseAdapter.getNetwork(id)));
   return networks.filter((network): network is NonNullable<typeof network> => Boolean(network)).map((network) => network.title);
 }
@@ -590,67 +547,6 @@ async function getGlobalContextProduction(userId: string): Promise<string | null
   return context?.text ?? null;
 }
 
-/**
- * Mirrors an intake round's answer into the `questions` table so it is
- * visible to the same analytics/eval surfaces as chat-driven
- * `ask_user_question` rounds. Writes through the exact same
- * `QuestionerAdapter` singleton `chatQuestions.persist` (the orchestrator's
- * ask_user_question host bridge) delegates to — first inserting a pending row
- * via `persist`, then settling it to `answered` via `answer`, the same two
- * primitives the live chat-answer flow composes. There is no bulk
- * "insert-already-answered" primitive on the adapter, so this issues both
- * calls back to back rather than inventing a new write path.
- *
- * The fast funnel has no chat session, so `conversationId` is left unset
- * (stored as `null`). The `who` stage's real round-1 question (`title`,
- * `options`, `multiSelect`) is in scope at its call site and is threaded
- * through via `input.question`, so `payload` mirrors the actual menu the
- * user was offered. Follow-up rounds carry only their prompt, so when
- * `input.question` is absent, `payload.title` and `payload.options` fall
- * back to a proxy derived from the stage name and the user's actual
- * selections rather than the original option set.
- *
- * @param input - Stage, prompt, answer, owner, and (when available) the real
- * question offered.
- */
-async function recordAnsweredQuestionProduction(input: {
-  userId: string;
-  prompt: string;
-  answer: IntakeAnswer;
-  stage: string;
-  question?: { title: string; options: IntakePackQuestion['options']; multiSelect: boolean };
-}): Promise<void> {
-  const now = new Date().toISOString();
-  const [questionId] = await questionerAdapter.persist([{
-    detection: {
-      mode: 'chat',
-      sourceType: 'conversation',
-      sourceId: `intake:${input.stage}`,
-      timestamp: now,
-    },
-    actors: [{ userId: input.userId, role: 'subject' }],
-    payload: input.question ? {
-      title: input.question.title,
-      prompt: input.prompt,
-      options: input.question.options,
-      multiSelect: input.question.multiSelect,
-    } : {
-      title: input.stage === 'who' ? 'Who' : 'Follow-up',
-      prompt: input.prompt,
-      options: input.answer.selectedOptions.map((label) => ({ label, description: label })),
-      multiSelect: input.answer.selectedOptions.length > 1,
-    },
-    strategy: input.stage === 'who' ? 'refine_intent' : 'surface_missing_detail',
-  }]);
-  if (!questionId) return;
-  await questionerAdapter.answer(questionId, input.userId, {
-    selectedOptions: input.answer.selectedOptions,
-    ...(input.answer.freeText !== undefined ? { freeText: input.answer.freeText } : {}),
-    answeredBy: input.userId,
-    answeredAt: now,
-  });
-}
-
 /** Production singleton wired to the real adapters, compiled intent graph, and
  * context readers. Task 7's controller consumes this directly. */
 export const signalIntakeService = new SignalIntakeService({
@@ -658,12 +554,10 @@ export const signalIntakeService = new SignalIntakeService({
   runStore: signalIntakeRunAdapter,
   proposalStore: intentProposalDatabaseAdapter,
   isNetworkMember: (networkId, userId) => intentDatabaseAdapter.isNetworkMember(networkId, userId),
-  orchestrator: new SignalIntakeOrchestrator(),
-  packGenerator: new SignalIntakePackGenerator(),
+  intents: productionIntents,
   getPremises: getPremisesProduction,
   getNetworkTitles: getNetworkTitlesProduction,
   getGlobalContext: getGlobalContextProduction,
   invokeIntentGraph: invokeIntentGraphProduction,
-  recordAnsweredQuestion: recordAnsweredQuestionProduction,
   intakeConfig: getSignalIntakeConfig,
 });

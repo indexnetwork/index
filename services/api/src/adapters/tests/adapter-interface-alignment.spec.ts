@@ -21,8 +21,6 @@ import type { Cache as ProtocolCache, CacheOptions as ProtocolCacheOptions } fro
 
 import type { LensEmbedding as ProtocolLensEmbedding, HydeSearchOptions as ProtocolHydeSearchOptions, HydeCandidate as ProtocolHydeCandidate, VectorSearchResult as ProtocolVectorSearchResult, VectorStoreOption as ProtocolVectorStoreOption } from '@indexnetwork/protocol';
 
-import type { IntegrationAdapter as ProtocolIntegrationAdapter, IntegrationSession as ProtocolIntegrationSession, IntegrationSessionOptions as ProtocolIntegrationSessionOptions, ToolActionResponse as ProtocolToolActionResponse, IntegrationConnection as ProtocolIntegrationConnection } from '@indexnetwork/protocol';
-
 import type { UserDatabase as ProtocolUserDatabase, SystemDatabase as ProtocolSystemDatabase } from '@indexnetwork/protocol';
 
 import type { QuestionerDatabase as ProtocolQuestionerDatabase, PersistableQuestion as ProtocolPersistableQuestion, PersistedQuestion as ProtocolPersistedQuestion, QuestionFilters as ProtocolQuestionFilters } from '@indexnetwork/protocol';
@@ -33,8 +31,6 @@ import type { QuestionerDatabase as ProtocolQuestionerDatabase, PersistableQuest
 import type { Cache as AdapterCache, CacheOptions as AdapterCacheOptions } from '../cache.adapter';
 
 import type { LensEmbedding as AdapterLensEmbedding, HydeSearchOptions as AdapterHydeSearchOptions, HydeCandidate as AdapterHydeCandidate, VectorSearchResult as AdapterVectorSearchResult, VectorStoreOption as AdapterVectorStoreOption } from '../embedder.adapter';
-
-import type { IntegrationAdapter as AdapterIntegrationAdapter, IntegrationSession as AdapterIntegrationSession, IntegrationSessionOptions as AdapterIntegrationSessionOptions, ToolActionResponse as AdapterToolActionResponse, IntegrationConnection as AdapterIntegrationConnection } from '../integration.adapter';
 
 import { createUserDatabase, createSystemDatabase } from '../database.adapter';
 
@@ -119,62 +115,6 @@ describe('Embedder adapter ↔ protocol interface alignment', () => {
 
   it('VectorStoreOption: protocol → adapter', () => {
     const check: (_: ProtocolVectorStoreOption<unknown>) => AdapterVectorStoreOption<unknown> = (v) => v;
-    expect(check).toBeDefined();
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// INTEGRATION ADAPTER ALIGNMENT
-// ═══════════════════════════════════════════════════════════════════════════════
-
-describe('Integration adapter ↔ protocol interface alignment', () => {
-  it('IntegrationSession: adapter → protocol', () => {
-    const check: (_: AdapterIntegrationSession) => ProtocolIntegrationSession = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('IntegrationSession: protocol → adapter', () => {
-    const check: (_: ProtocolIntegrationSession) => AdapterIntegrationSession = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('IntegrationSessionOptions: adapter → protocol', () => {
-    const check: (_: AdapterIntegrationSessionOptions) => ProtocolIntegrationSessionOptions = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('IntegrationSessionOptions: protocol → adapter', () => {
-    const check: (_: ProtocolIntegrationSessionOptions) => AdapterIntegrationSessionOptions = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('ToolActionResponse: adapter → protocol', () => {
-    const check: (_: AdapterToolActionResponse) => ProtocolToolActionResponse = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('ToolActionResponse: protocol → adapter', () => {
-    const check: (_: ProtocolToolActionResponse) => AdapterToolActionResponse = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('IntegrationConnection: adapter → protocol', () => {
-    const check: (_: AdapterIntegrationConnection) => ProtocolIntegrationConnection = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('IntegrationConnection: protocol → adapter', () => {
-    const check: (_: ProtocolIntegrationConnection) => AdapterIntegrationConnection = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('IntegrationAdapter: adapter → protocol', () => {
-    const check: (_: AdapterIntegrationAdapter) => ProtocolIntegrationAdapter = (v) => v;
-    expect(check).toBeDefined();
-  });
-
-  it('IntegrationAdapter: protocol → adapter', () => {
-    const check: (_: ProtocolIntegrationAdapter) => AdapterIntegrationAdapter = (v) => v;
     expect(check).toBeDefined();
   });
 });

@@ -7,6 +7,90 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Breaking
+- **`index_respond_negotiation` refuses (D24).** It POSTed
+  `/agents/{agentId}/negotiations/{negotiationId}/respond`, a route protocol
+  #1494 deleted, so every call answered 404. It now refuses with that
+  explanation instead of dispatching, and takes no arguments. It is
+  deliberately NOT repointed at the MCP `respond_to_negotiation` surface:
+  that lane authorises a turn as the calling principal's own agent, a
+  different authority from the one this bridge held. External agents stay
+  offline until they are rebuilt on the new auth model.
+
+### Removed
+- The dispatch path that tool was the only caller of: the per-pass mutation
+  fencing and hidden run authority (`_NegotiationRunState` and its helpers,
+  `_begin`/`_finish_negotiation_mutation`, `_dispatch_negotiation_request`,
+  the ambiguous-replay retry), the `_NEGOTIATION_ACTIONS` vocabulary, agent-id
+  resolution for it, and the `hermes_run` plumbing through `request_rest` with
+  its `x-index-hermes-run-id` / `-capability` headers. `tests/gateway.py`
+  tested that fencing end to end and goes with it.
+- The `index-negotiator` skill's action vocabulary and submit contract: a
+  scheduled pass now outputs `[SILENT]`, and the skill reads and explains
+  rather than pretending it can submit.
+- Remove the retired `read_pending_questions` MCP wrapper from the standalone
+  Hermes surface, matching Protocol 22.0.0.
+- Remove `negotiation_wake.py` (the conversation-SSE listener that
+  auto-started one Hermes turn per negotiation id, forever). External-agent
+  negotiation dispatch is offline (protocol #1494 round-3, Option A): there
+  is no server-side signal left to wake on, and the listener's own
+  one-start-per-id-per-process design meant a negotiation could get exactly
+  one Hermes turn before getting stuck paused. `index_respond_negotiation`
+  is submitted on explicit instruction only now.
+
+## [0.25.0] - 2026-08-23
+
+### Breaking
+- **Negotiation-graph rewrite (protocol #1494).** `index_pickup_negotiation`
+  and `index_consult_owner` are removed outright — a negotiation is never
+  claimed into a distinct state any more (it just stays `working` until it
+  pauses or resolves), so there is nothing left to poll for or consult
+  about. `index_respond_negotiation` is the only negotiation tool left; its
+  shape changes to `{ agentId, negotiationId, action }` — no `roleAlignment`.
+  `action` is a new closed six-value vocabulary (`outreach`, `counter`,
+  `question`, `ask_principal`, `recommend_pending`, `recommend_reject`)
+  replacing the old `accept`/`decline`/`request_time`/`continue` set; there
+  is no accept, decline, or withdraw any more — a negotiator that wants out
+  submits `recommend_reject` and lets the owner's own agent act on it.
+- The conversation-SSE wake listener no longer polls a pickup heartbeat on
+  keepalive or piggybacks a tick off the desktop inbox list — there is no
+  server-side "poll for anything pending" endpoint left. It only starts a
+  Hermes turn for a negotiation id it actually observes on an SSE message
+  event; there is no periodic catch-up behind it any more (a known,
+  accepted gap — see `negotiation_wake.py`'s docstring).
+- **Known gap, not fixable from this package alone:** the negotiation
+  `/respond` route still requires a server-issued run-bound capability
+  header for the dedicated Hermes credential audience, and pickup was the
+  only thing that ever issued one. `index_respond_negotiation` calls will
+  be rejected with 401 end to end until services/api adds a replacement
+  issuance path.
+
+## [0.24.0] - 2026-08-17
+### Added
+- Pending pickup injects one Hermes chat turn so the model can reply with `index_respond_to_negotiation` and a real shared message. Empty pickup stays a seat heartbeat. Gateway injection needs `plugins.entries.index-network.allow_gateway_injection`.
+
+### Changed
+- Browser login treats the `/cli-auth` CLI key as bootstrap only: after the handshake the plugin reuses or registers the Hermes agent, mints an agent-bound token into `INDEX_API_KEY`, and revokes the CLI key. Login still succeeds if minting fails so Discover can keep the owner key.
+
+## [0.23.0] - 2026-08-14
+### Added
+- Conversation SSE wake for ordinary agent keys: `negotiation_wake` listens to `GET /conversations/stream`, stamps negotiation pickup on keepalive (~15s) and non-own negotiation messages, and runs one conservative consult/respond pass when a turn is pending. Desktop reuses the existing 15s inbox poll tick (no second scheduler).
+
+## [0.22.1] - 2026-08-13
+### Changed
+- Rename the Hermes sidebar entry from Index to Discover.
+
+## [0.22.0] - 2026-08-13
+### Added
+- Restore the browser login gate in the dashboard: **log in with browser** runs the same web `/cli-auth` v2 loopback handshake as the Index CLI and Mac app, persists the minted key to `~/.hermes/.env` (`INDEX_API_KEY`/`INDEX_API_KEY_ID`), and takes effect in-process without a restart. Sign out best-effort revokes the key via `/auth/cli-credential/revoke` and clears it. `INDEX_API_KEY` remains a manual override.
+
+## [0.21.0] - 2026-08-13
+### Removed
+- **Breaking:** the signed Index Connector transport, PKCE loopback authorization, dedicated `idxh_` Keychain credential, plaintext-scrub migration, and recovery-only disconnect machinery are all removed. Connector-based installs stop authenticating and must reconfigure.
+
+### Changed
+- The plugin authenticates with a single `INDEX_API_KEY` environment variable (an ordinary agent API key created in Index web settings). `INDEX_API_URL`/`INDEX_MCP_URL` remain optional endpoint overrides. The dashboard login screen now explains the API-key setup instead of opening a browser flow.
+
 ## [0.20.0] - 2026-08-12
 ### Added
 - Secure standalone macOS connection (0.20.0): production Hermes uses the signed Index Connector, canonical PKCE loopback approval, a dedicated Keychain-only `idxh_` identity, and fixed production endpoints rather than persisted plugin credentials. Full mode receives the exact six canonical actions while negotiator mode remains the four-handler, server-fenced execution surface.

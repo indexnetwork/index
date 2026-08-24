@@ -4,48 +4,47 @@ import type { DeduplicationOptions } from 'bullmq';
 import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import type { NegotiationGraphLike, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
+import type { MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
 
-import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
+import { createOpportunityGraphDb, runOpportunityDiscovery, DISCOVERY_WORKER_CONCURRENCY, type OpportunityGraphDb } from './discovery.shared';
 import { buildIntentDiscoveryTrigger, type FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
 export type { FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
-import { maybeMinePoolDiscriminators, minePoolDiscriminatorsOnCompletion, type PoolMiningTrigger } from '../pool/mining.shared';
-import { maybeEnqueueIntentRecovery } from '../questioner/recovery.shared';
-import type { RecoveryQuestionerJobData } from '../questioner.queue';
+import { createIntentDiscoveryLock, type IntentDiscoveryLock } from './discovery.intent-lock';
+import { maybeRunNegotiationEvidenceShadow } from '../pool/negotiation-evidence.shadow';
 
 export const QUEUE_NAME = 'opportunity-from-intent';
+
+/**
+ * Same-intent overlap guard (see discovery.intent-lock.ts). The lock outlives
+ * any plausible scan so it never lapses mid-run, yet a worker that dies
+ * without releasing only blocks that intent's next run for this long.
+ */
+export const SAME_INTENT_LOCK_TTL_MS = 10 * 60 * 1000;
+/** How long a job that found its intent already running waits before re-checking. */
+export const SAME_INTENT_DEFER_DELAY_MS = 30 * 1000;
 
 export interface FromIntentJobData {
   intentId: string;
   userId: string;
   networkIds?: string[];
-  /**
-   * What enqueued this run. `pool_answer` marks Tier-1 answer-triggered
-   * re-discovery; `intent_resume` identifies lifecycle resume runs while
-   * retaining the ordinary discovery/mining path.
-   */
-  trigger?: 'pool_answer' | 'intent_resume';
+  /** What enqueued this run. `intent_resume` identifies lifecycle resume runs. */
+  trigger?: 'intent_resume';
 }
 
 export type FromIntentDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded'
+  'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded' | 'recordIntentDiscoveryProgress'
 >;
 
 export interface FromIntentDeps {
   database?: FromIntentDatabase;
   invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
-  negotiationGraph?: NegotiationGraphLike;
+  matchesReady?: MatchesReadyFn;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
-  /** Pool-discriminator mining hook (IND-417/418). Defaults to the shared fire-and-forget implementation; injectable for tests. */
-  minePoolDiscriminators?: (trigger: PoolMiningTrigger) => void | Promise<void>;
-  /** Answer context appended to Tier-1 discovery input after the debounce window. */
-  getPoolAnswerContext?: (userId: string, intentId: string) => Promise<string>;
-  /** Beat-2 narration for pool-answer re-runs (IND-419); injectable for tests. */
-  narratePoolRerun?: (input: { userId: string; intentId: string; newCandidates: number | null }) => Promise<void>;
-  /** Post-success no-opportunity recovery hook; failure-isolated by this queue. */
-  recoverAfterCompletion?: (input: RecoveryQuestionerJobData) => Promise<unknown>;
+  /** Same-intent overlap guard; defaults to Redis (in-process map under the hermetic test baseline). */
+  intentLock?: IntentDiscoveryLock;
+  /** Test hook: shortens the re-check delay of a deferred same-intent job. */
+  sameIntentDeferDelayMs?: number;
 }
 
 export class FromIntentQueue {
@@ -57,6 +56,8 @@ export class FromIntentQueue {
   private readonly queueLogger = log.queue.from('FromIntentQueue');
   private readonly database: FromIntentDatabase | ChatDatabaseAdapter;
   private readonly graphDb: OpportunityGraphDb;
+  private readonly intentLock: IntentDiscoveryLock;
+  private readonly sameIntentDeferDelayMs: number;
   private deps: FromIntentDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<FromIntentJobData>> | null = null;
 
@@ -64,9 +65,11 @@ export class FromIntentQueue {
     this.deps = deps;
     this.database = deps?.database ?? new ChatDatabaseAdapter();
     this.graphDb = createOpportunityGraphDb(this.database);
+    this.intentLock = deps?.intentLock ?? createIntentDiscoveryLock();
+    this.sameIntentDeferDelayMs = deps?.sameIntentDeferDelayMs ?? SAME_INTENT_DEFER_DELAY_MS;
   }
 
-  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher' | 'stampNewbornOpportunities' | 'getPoolAnswerContext' | 'narratePoolRerun'>): void {
+  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'matchesReady' | 'agentDispatcher'>): void {
     this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
@@ -80,6 +83,14 @@ export class FromIntentQueue {
       removeOnFail?: boolean;
       deduplication?: DeduplicationOptions;
     },
+  ): Promise<Job<FromIntentJobData>> {
+    await this.recordProgress(data, 'queued', 0);
+    return this.enqueueDiscover(data, options);
+  }
+
+  private enqueueDiscover(
+    data: FromIntentJobData,
+    options?: Parameters<FromIntentQueue['addJob']>[1],
   ): Promise<Job<FromIntentJobData>> {
     return this.queue.add('discover_opportunities', data, {
       attempts: 3,
@@ -95,17 +106,34 @@ export class FromIntentQueue {
     });
   }
 
-  async processJob(name: string, data: FromIntentJobData): Promise<void> {
+  private async recordProgress(
+    data: FromIntentJobData,
+    status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked',
+    attempt: number,
+    assignedCommunityCount?: number,
+    /** Run tallies, known only at a successful boundary; omitted leaves the stored counts alone. */
+    counts?: { processedCommunityCount: number; possibleOverlapCount: number; conversationsStartedCount: number },
+  ): Promise<void> {
+    const record = (this.database as Partial<FromIntentDatabase>).recordIntentDiscoveryProgress;
+    // Isolated queue tests and a rolling deploy may run a worker before its
+    // adapter has been updated. Production adapters always provide this.
+    if (!record) return;
+    await record.call(this.database, {
+      intentId: data.intentId, userId: data.userId, status, attempt, assignedCommunityCount, ...counts,
+    });
+  }
+
+  async processJob(name: string, data: FromIntentJobData, attempt = 1): Promise<void> {
     switch (name) {
       case 'discover_opportunities':
-        await this.handleDiscover(data);
+        await this.handleDiscover(data, attempt);
         break;
       default:
         this.queueLogger.warn('Unknown job name', { name });
     }
   }
 
-  private async handleDiscover(data: FromIntentJobData): Promise<void> {
+  private async handleDiscover(data: FromIntentJobData, attempt: number): Promise<void> {
     const { intentId, userId, networkIds } = data;
     // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()` and
     // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
@@ -136,9 +164,10 @@ export class FromIntentQueue {
 
     // A trigger intent is authoritative for admission: omitted scope means all
     // of its still-valid assignments, never all owner memberships. Explicit
-    // scope is narrowing-only. Any empty intersection must stop before the graph,
-    // pool mining, or narration can observe an unscoped run.
+    // scope is narrowing-only. Any empty intersection must stop before the graph
+    // or the evidence shadow can observe an unscoped run.
     if (validNetworkIds.length === 0) {
+      await this.recordProgress(data, 'blocked', 0, 0);
       this.logger.warn('Intent has no valid discovery networks, skipping fail-closed', {
         intentId,
         userId,
@@ -147,23 +176,11 @@ export class FromIntentQueue {
       return;
     }
 
+    await this.recordProgress(data, 'running', attempt, validNetworkIds.length);
+
     this.logger.info('Starting discovery', { intentId, userId, networkIds: validNetworkIds });
 
-    let searchQuery = intent.payload;
-    if (data.trigger === 'pool_answer' && this.deps?.getPoolAnswerContext) {
-      try {
-        const answerContext = await this.deps.getPoolAnswerContext(userId, intentId);
-        if (answerContext.trim()) searchQuery = `${searchQuery}\n\n${answerContext.trim()}`;
-      } catch (error) {
-        // The run still provides a useful pool refresh if answer-context lookup
-        // fails; Tier 0 already applied the deterministic preference locally.
-        this.logger.warn('Pool answer context unavailable; running base intent', {
-          intentId,
-          userId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+    const searchQuery = intent.payload;
 
     const invokeOpts = buildIntentDiscoveryTrigger({
       userId,
@@ -172,6 +189,9 @@ export class FromIntentQueue {
       triggerIntentId: intentId,
     });
 
+    // The graph's own summary is the only honest source for the owner-visible
+    // tallies; it is null when the caller injected a graph (test path), in
+    // which case the success write carries no counts at all.
     const summary = await runOpportunityDiscovery({
       graphDb: this.graphDb,
       deps: this.deps,
@@ -212,51 +232,26 @@ export class FromIntentQueue {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    await this.recordProgress(data, 'succeeded', attempt, stampNetworkIds.length, summary ? {
+      // The graph runs once across every valid network, so "processed" is the
+      // set that was still valid at the success stamp — there is no per-community
+      // boundary observable from here.
+      processedCommunityCount: stampNetworkIds.length,
+      possibleOverlapCount: summary.candidatesFound,
+      // Each created opportunity enqueues a negotiation run, so this is a count
+      // of conversations the run actually started.
+      conversationsStartedCount: summary.opportunitiesCreated,
+    } : undefined);
 
-    // Intent refinement is an independent, failure-isolated post-success
-    // effect. It shares a material-fingerprint cadence with the creation-time
-    // intent Questioner, so this completion retry cannot duplicate a question.
-    // Run it before pool mining/narration so every intent-page question family
-    // gets the same completion opportunity.
-    try {
-      await (this.deps?.recoverAfterCompletion ?? maybeEnqueueIntentRecovery)({
-        source: 'from_intent',
-        recipientUserId: userId,
-        intentId,
-      });
-    } catch (error) {
-      // Discovery has already completed authoritatively. Recovery is bounded,
-      // asynchronous follow-up and must never turn success into a retry.
-      this.logger.warn('Recovery completion hook failed after successful discovery', {
-        intentId,
-        userId,
-        errorClass: error instanceof Error ? error.name : 'UnknownError',
-      });
-    }
-
-    // Pool-discriminator mining + question enqueue (IND-417/418): web intent
-    // creation/edit is the frontend's discovery path — without this hook only
-    // MCP-triggered runs would ever produce pool questions. Normal runs stay
-    // fire-and-forget; pool-answer runs await failure-isolated mining so the
-    // next question is ready before Beat 2. Flags off = no-op.
-    const miningTrigger: PoolMiningTrigger = {
+    // Lens C negotiation-evidence shadow (IND-433): fire-and-forget on its
+    // own flag. Formerly triggered through the pool-discriminator mining hook;
+    // the mining pass and its question enqueue are retired
+    // (conversational-questions plan, "Retirements").
+    void maybeRunNegotiationEvidenceShadow({
       source: 'from_intent',
       userId,
       intentId,
-    };
-    if (data.trigger === 'pool_answer') {
-      await (this.deps?.minePoolDiscriminators ?? minePoolDiscriminatorsOnCompletion)(miningTrigger);
-    } else {
-      (this.deps?.minePoolDiscriminators ?? maybeMinePoolDiscriminators)(miningTrigger);
-    }
-
-    if (data.trigger === 'pool_answer' && this.deps?.narratePoolRerun) {
-      await this.deps.narratePoolRerun({
-        userId,
-        intentId,
-        newCandidates: summary?.opportunitiesCreated ?? null,
-      });
-    }
+    }).catch(() => {});
   }
 
   /** Resolve the assignment + current-membership intersection used for both admission and stamping. */
@@ -273,13 +268,83 @@ export class FromIntentQueue {
       .sort();
   }
 
+  /**
+   * Same-intent overlap guard around the processor. With worker concurrency
+   * above 1, a second job for an intent whose scan is still running would
+   * otherwise start alongside it; enqueue-time dedup cannot see active jobs.
+   * Returns a release function when this job owns the intent, or null when
+   * another run already holds it. Fails open: the lock only saves provider
+   * budget (persistence tolerates overlap), so a Redis hiccup must not fail a
+   * scan.
+   */
+  private async acquireIntentLock(data: FromIntentJobData): Promise<(() => Promise<void>) | null> {
+    const token = crypto.randomUUID();
+    try {
+      if (!(await this.intentLock.tryAcquire(data.intentId, token, SAME_INTENT_LOCK_TTL_MS))) return null;
+    } catch (error) {
+      this.queueLogger.warn('Same-intent lock unavailable; running unguarded', {
+        intentId: data.intentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return async () => {};
+    }
+    return async () => {
+      try {
+        await this.intentLock.release(data.intentId, token);
+      } catch (error) {
+        this.queueLogger.warn('Same-intent lock release failed; TTL will clear it', {
+          intentId: data.intentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+  }
+
+  /**
+   * A job that found its intent already running is re-added as a fresh delayed
+   * job rather than dropped: it may carry a newer trigger (an edit, a resume)
+   * than the run in flight read. No custom jobId — the original id is still
+   * occupied by this job — and no progress write: the running job's lifecycle
+   * writes for this intent are the authoritative ones.
+   */
+  private async deferOverlappingJob(job: Job<FromIntentJobData>): Promise<void> {
+    this.queueLogger.info('Discovery already running for intent; deferring job', {
+      event: 'intent_discovery_overlap_deferred',
+      jobId: job.id,
+      intentId: job.data.intentId,
+      userId: job.data.userId,
+      retryInMs: this.sameIntentDeferDelayMs,
+    });
+    await this.enqueueDiscover(job.data, {
+      priority: job.opts?.priority,
+      delay: this.sameIntentDeferDelayMs,
+    });
+  }
+
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<FromIntentJobData>) => {
       this.queueLogger.info('Processing job', { jobId: job.id });
-      await this.processJob(job.name, job.data);
+      const release = await this.acquireIntentLock(job.data);
+      if (!release) {
+        await this.deferOverlappingJob(job);
+        return;
+      }
+      try {
+        await this.processJob(job.name, job.data, job.attemptsMade + 1);
+      } catch (error) {
+        const attempt = job.attemptsMade + 1;
+        await this.recordProgress(job.data, 'failed', attempt);
+        throw error;
+      } finally {
+        await release();
+      }
     };
-    this.worker = QueueFactory.createWorker<FromIntentJobData>(QUEUE_NAME, processor);
+    this.worker = QueueFactory.createWorker<FromIntentJobData>(QUEUE_NAME, processor, {
+      // Scans for different signals run side by side; same-intent runs are
+      // serialized by the lock above. Rationale for the number lives with it.
+      concurrency: DISCOVERY_WORKER_CONCURRENCY,
+    });
   }
 
   async close(): Promise<void> {

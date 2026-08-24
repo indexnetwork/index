@@ -19,7 +19,6 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { NegotiatorMemoryWriteService, NEGOTIATOR_MEMORY_KIND_CAPS, isNegotiatorMemoryWriteEnabled } from '../negotiator-memory.service';
 import type { NegotiatorMemory } from '../../schemas/database.schema';
 
-const origFlag = process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
 
 function mkRow(partial: Partial<NegotiatorMemory>): NegotiatorMemory {
   return {
@@ -87,28 +86,9 @@ const dossierEntry = {
 
 describe('NegotiatorMemoryWriteService', () => {
   beforeEach(() => {
-    process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = 'true';
   });
 
   afterEach(() => {
-    if (origFlag === undefined) delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-    else process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = origFlag;
-  });
-
-  it('flag off → zero writes, adapter never touched', async () => {
-    delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-    expect(isNegotiatorMemoryWriteEnabled()).toBe(false);
-
-    const { service, memories } = mkService();
-    const result = await service.writeDistilledMemories({
-      userId: 'u-1',
-      entries: [playbookEntry],
-      sourceRef: { type: 'negotiation', id: 'neg-1' },
-    });
-
-    expect(result).toEqual({ written: 0, skipped: 1 });
-    expect(memories.create).not.toHaveBeenCalled();
-    expect(memories.list).not.toHaveBeenCalled();
   });
 
   it('writes an entry with embedding and provenance (turnIndexes merged into the ref)', async () => {
@@ -289,17 +269,6 @@ describe('NegotiatorMemoryWriteService', () => {
     expect(content).toContain('but only the range');
   });
 
-  it('recordDisclosureRuleFromAnswer no-ops when the flag is off', async () => {
-    delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-    const { service, memories } = mkService();
-    await service.recordDisclosureRuleFromAnswer({
-      userId: 'u-1',
-      questionId: 'q-1',
-      selectedOptions: ['Yes'],
-    });
-    expect(memories.create).not.toHaveBeenCalled();
-  });
-
   it('recordDisclosureRuleFromAnswer no-ops on an empty answer', async () => {
     const { service, memories } = mkService();
     await service.recordDisclosureRuleFromAnswer({
@@ -346,14 +315,6 @@ describe('NegotiatorMemoryWriteService', () => {
     });
   });
 
-  it('rememberFromChat returns null and writes nothing when the flag is off', async () => {
-    delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-    const { service, memories } = mkService();
-    const result = await service.rememberFromChat({ userId: 'u-1', kind: 'threshold', content: 'Min $150/h.' });
-    expect(result).toBeNull();
-    expect(memories.create).not.toHaveBeenCalled();
-  });
-
   it('rememberFromChat enforces the kind cap before writing', async () => {
     const cap = NEGOTIATOR_MEMORY_KIND_CAPS.threshold;
     const rows = Array.from({ length: cap }, (_, i) =>
@@ -365,7 +326,6 @@ describe('NegotiatorMemoryWriteService', () => {
   });
 
   it('forgetFromChat by id deletes the exact row (works with the flag off — forgetting is a standing right)', async () => {
-    delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
     const row = mkRow({ id: 'mem-9', kind: 'playbook', content: 'Old tactic' });
     const { service, deleted } = mkService({ getByIdRow: row });
 

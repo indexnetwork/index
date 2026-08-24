@@ -9,6 +9,102 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- **Breaking (API 0.95.0):** remove the Agent reporter feature. `POST
+  /api/chat/reporter/session` and the `POST /api/agent/actions/confirm` /
+  `GET /api/agent/actions/proposals/:id` endpoints are gone, together with
+  `AgentActionController`, `AgentActionService`,
+  `AgentActionProposalDatabaseAdapter`, `resolveReporterChatSession`, and the
+  `reporter` branch of `resolveStreamPersonaPolicy`. `reporter` is no longer a
+  known persona, so any surviving row fails closed with
+  `CHAT_PERSONA_UNSUPPORTED` (409) rather than driving a turn. The
+  `WEB_AGENT_SURFACE_DISABLED` and `WEB_AGENT_PERSONA_FORBIDDEN` policy codes are
+  removed with it.
+- **Breaking (API 0.95.0):** drop the `WEB_AGENT_SURFACE_ENABLED`,
+  `WEB_AGENT_ACTIONS_ENABLED` and `REPORTER_BRIEFING_TTL_MS` environment
+  variables and the `features.agentSurface` / `features.agentActions` fields on
+  `GET /api/auth/me`. Remove these three variables from Railway after deploying.
+- Migration `0131_remove_agent_reporter` deletes every `persona = 'reporter'`
+  conversation (4 rows / 2 messages in production, cascading to messages,
+  participants, metadata, timeline sessions, scopes and summaries) and drops the
+  empty `agent_action_proposals` table and its
+  `agent_action_proposal_status` enum. The actions flag was never enabled
+  anywhere, so the table had never held a row.
+- **Breaking (API 0.89.0):** MCP no longer gates tools on incomplete
+  onboarding. `complete_onboarding` is omitted from the MCP surface; web
+  onboarding chat and `POST /api/tools/complete_onboarding` are unchanged.
+- Remove the `discovery` / `discovery-env-matrix` / `discovery-quality` eval CLI
+  (`src/cli/discovery*.ts` and its specs), the committed env-matrix baselines,
+  the 12 `eval:*` scripts and `typecheck:cli-specs`. These
+  statically imported `packages/protocol/eval/**`, which was removed in the same
+  change. The `eval_matrix_metadata` table, migrations `0115`/`0125` and the
+  `evalMatrixMetadata` schema entry are deliberately retained — dropping the
+  table is a destructive production migration and is not part of this change.
+  Restore by scoping to the eval paths (`src/cli/discovery*`,
+  `src/cli/tests/discovery*`, the two discovery fixtures under
+  `src/cli/tests/fixtures/`, and `services/api/eval`) — `src/cli/` still holds
+  19 live operational tools, so a whole-directory restore would overwrite them.
+- Drop the `.env.example` § 15d discovery eval gate (`DISCOVERY_TARGETS`,
+  `DISCOVERY_CONFIRM`, `NEON_API_KEY`, and the quality base/replica targets) and
+  the matching `NON_API_PATTERNS` exemptions, now that nothing reads them.
+- Drop the orphaned `HISTORICAL_QUALITY_APPROVED_EMBEDDING_IDENTITY` constant
+  from `src/lib/embedding/embedding.identity.ts`; its only consumer was the
+  removed quality CLI. `embeddingConfigurationFingerprint` in the same file is
+  still used by `embedder.adapter.ts` and is retained.
+
+### Changed
+- Retain `tsconfig.spec.json` as `typecheck:specs`, rescoped from the deleted
+  discovery specs to `src/queues/tests/discovery-trigger.builders.spec.ts`. That
+  spec is production, not eval: its three `@ts-expect-error` directives are the
+  compile-time proof that discovery-trigger callers pass a concrete `networkId`,
+  and `tsconfig.json` excludes `src/**/*.spec.ts`, so deleting the config
+  outright would have dropped the guard silently.
+- Keep `bun test src/cli/tests/` in CI as a dedicated `test`-job step. The
+  removed `eval-cli-tests` job also covered three retained non-eval specs
+  guarding destructive operational CLIs (33 tests).
+- Move the raw-SQL maintenance-write guidance for `src/cli/` into a nested `AGENTS.md`, so it loads whenever those files are open instead of depending on a skill description matching the prompt. No runtime change.
+
+### Fixed
+- Stop the IntentAgent reply stage from claiming acts it never executed. Seen
+  in dev: a client message that read as an answer was judged `wait` (it did
+  not resolve any waiting negotiation), and the reply stage then told the
+  client "I've reached out to [counterparty] to get more specific details" —
+  nothing was sent. Both `INTENT_AGENT_REPLY_INSTRUCTION` and the rendered
+  turn context now say explicitly, when the only executed act on a client
+  message was `wait`, that nothing was sent, no one was contacted, and
+  whatever the message might have answered still stands unresolved.
+- Allow owners to confirm a manually edited Signal proposal by re-verifying the
+  edited description and atomically replacing the pending proposal's
+  authoritative payload and analysis before confirmation. Network mismatches,
+  expired proposals, and concurrent proposal changes still fail closed.
+- Budget refinement questions per intent to 2 per rolling 24 hours (`QUESTIONER_INTENT_DAILY_CAP`), counted across the recovery and pool-discovery families combined. Both families re-arm whenever the intent text changes, and answering a refinement question is what changes it — so without a budget each answer bought another question and the loop only ended when the user stopped replying. Chat intake is not counted, and `0` disables background refinement without touching `QUESTIONER_ENABLED`.
+
+### Changed
+- Drop the retired `non_web` surface and `WEB_SIGNAL_AGENT_ENABLED` literals from `chat.service.isolated.ts`. The tests passed either way — `"non_web"` fell through to the same branch as `"agent"` — but the strings named a surface that no longer exists, and `tsconfig.json` excludes `src/**/*.isolated.ts`, so nothing would ever have caught the drift.
+
+### Removed
+- **Breaking (API 0.88.0):** retire the pre-personafication `orchestrator` chat persona. There is no default chat persona: every H2A turn names one, and unknown values fail closed. `POST /api/chat/message` is deleted (it was orchestrator-only), `ChatSessionService.processMessage()` and `getGraphFactory()` are gone, and the `non_web` stream surface is replaced by `agent`, which requires an explicit persona (`CHAT_PERSONA_REQUIRED` when omitted). `signal` and `reporter` remain web-only, so `negotiator` is the persona an API-key client can start.
+- **Breaking:** delete `WEB_SIGNAL_AGENT_ENABLED`. Signal is the permanent web chat persona — with the orchestrator gone, flag-off had no persona to fall back to and left web chat with nothing startable. `features.signalAgent` is removed from `GET /auth/me`; startup warns while the variable is still set.
+- Remove Telegram inbound chat. It called the orchestrator graph directly, bypassing the persona policy entirely; inbound messages now reply with a pointer to the app. Outbound notification delivery is unchanged.
+- **Breaking (API 0.86.0):** retire the pre-personafication `orchestrator` chat persona. There is no default chat persona: every H2A turn names one, and unknown values fail closed. `POST /api/chat/message` is deleted (it was orchestrator-only), `ChatSessionService.processMessage()` and `getGraphFactory()` are gone, and the `non_web` stream surface is replaced by `agent`, which requires an explicit persona (`CHAT_PERSONA_REQUIRED` when omitted). `signal` and `reporter` remain web-only, so `negotiator` is the persona an API-key client can start.
+- **Breaking:** delete `WEB_SIGNAL_AGENT_ENABLED`. Signal is the permanent web chat persona — with the orchestrator gone, flag-off had no persona to fall back to and left web chat with nothing startable. `features.signalAgent` is removed from `GET /auth/me`.
+- Remove Telegram inbound chat. It called the orchestrator graph directly, bypassing the persona policy entirely; inbound messages now reply with a pointer to the app. Outbound notification delivery is unchanged.
+- Remove the inline discovery-question generator, which had no caller: `QuestionGeneratorService`, the `QuestionGeneratorReader` port, `DiscoveryQuestionInput`, the `discovery` questioner preset, and the `QUESTIONER_DISCOVERY_*` accessors. The `discovery` question *mode* and every read path for existing rows are retained; startup warns when the retired variables are still set.
+- **Breaking (API 0.85.0):** remove the Aug-10 dedicated credential layer. The `hermes-authorization` and `index-app-owner-authorization` controllers, services, adapters, PKCE flows, and the `hermes_agent_credentials`, `hermes_authorizations`, `hermes_emergency_receipts`, `index_app_owner_authorizations`, and `index_app_owner_credentials` tables are deleted via forward migration. `idxh_`/`idxo_` credentials stop authenticating; Hermes and the Mac app use ordinary Better Auth API keys.
+- **Breaking:** remove the CLI v1 Bearer bridge (`isLegacyCliV1Metadata`) and the v1 `protocolVersion` on `/auth/cli-credential`. `AuthGuard` is now JWT (Bearer/query token) or `x-api-key`, nothing else; released v1 CLI binaries must upgrade.
+- Remove the Hermes production-assurance workflow, migration-preflight and emergency-control CLIs, and their isolated database fixtures, which existed solely for the removed credential layer.
+
+### Changed
+- Change the `conversations.persona` column default from `'orchestrator'` to the neutral `'none'` (migration `0128`). The column is meaningless for H2H DMs and A2A negotiation conversations, which insert without one; every H2A writer now names its persona explicitly. Existing rows are untouched — orchestrator conversations stay readable and listable, but a new turn returns 409 `WEB_SIGNAL_SESSION_REQUIRED`. The same migration relabels reporter intent-scope rows to `reporter-intent` so they are not orphaned by the now-uniform `<persona>-intent` registry key.
+- Point the MCP elicitation message writer and the generic protocol-facing session reader at the Signal persona; both previously read the orchestrator's sessions, which are now read-only history.
+- Change the `conversations.persona` column default from `'orchestrator'` to the neutral `'none'` (migration `0128`). The column is meaningless for H2H DMs and A2A negotiation conversations, which insert without one; every H2A writer now names its persona explicitly. Existing rows are untouched — orchestrator conversations stay readable and listable, but a new turn returns 409 `WEB_SIGNAL_SESSION_REQUIRED`. The same migration relabels reporter intent-scope rows to `reporter-intent` so they are not orphaned by the now-uniform `<persona>-intent` registry key.
+- Retire the deprecated REST/chat profile and profile-run tool aliases with protocol 12.0.0; direct Tool API callers must use canonical user-context and enrichment-run names.
+- Record production evidence for the separately gated `opportunity_discovery_runs` Release 2 cleanup; no destructive migration is included.
+
+### Fixed
+- Require TLS for legacy discovery children only after exact Neon target attestation and handoff equality, without changing strict query-free manifests or generic Drizzle behavior (API 0.84.2).
+- Refuse legacy discovery runs before target attestation or reset when provider/Redis runtime prerequisites are missing or ambiguous, and report child failures by sanitized code-owned execution stage.
+
 ### Added
 - Add guarded historical-quality runtime reconciliation (API 0.83.1), including the compatible quality-attestation migration after the dev-owned Hermes migration history.
 - Add Hermes backend production assurance (API 0.83.0): a provider-free PostgreSQL 16 release gate now migrates the dedicated disposable `hermes_assurance` database and runs real authority, lifecycle/fault, 100,000-row migration-preflight, aggregate expiry-telemetry, stale/expired Index-coverage, and emergency concurrency/rollback evidence. Release dispatch requires explicit approved lock/total thresholds and the immutable currently deployed API digest; CI exercises emergency control in dry-run mode only and publishes fixed-schema credential-free evidence.

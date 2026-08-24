@@ -3,7 +3,6 @@ import WebKit
 import Network
 import Security
 import UserNotifications
-import CryptoKit
 
 // Pressing noninteractive window chrome asks the native shell to drag the
 // frameless window. Interactive controls and window content remain untouched.
@@ -32,19 +31,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var webView: WKWebView!
     private var authServer: LoopbackAuthServer?
     private var ownerCredentialStore: OwnerCredentialStore?
-    private var ownerMigrationJournal: OwnerCredentialMigrationJournal?
     private var ownerStartupFailure: String?
-    private let ownerInstallationId = OwnerInstallationStore.loadOrCreate()
     private var nativeAPIBridge: NativeAPIRequestBridge?
     private var nativeAPIGenerations: [String: UInt64] = [:]
-    private var pendingOwnerVerifier: String?
-    private var pendingOwnerRedirectURI: String?
     var secureRandomBytesProvider: (Int) -> Data? = { count in
         var bytes = [UInt8](repeating: 0, count: count)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
         return Data(bytes)
     }
-    private let ownerAuthQueue = DispatchQueue(label: "network.index.owner-authorization", qos: .userInitiated)
     private let hermesRuntime = HermesRuntimeManager()
     private let hermesRuntimeQueue = DispatchQueue(label: "network.index.hermes-runtime", qos: .userInitiated)
     /// Exact file URL authorized to invoke the credential-bearing runtime bridge.
@@ -444,6 +438,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 )
             }
             else if action == "detectHarnesses" { detectHarnesses(admittedGeneration: admittedGeneration) }
+            else if action == "setupHermes" {
+                if let key = body?["value"] as? String {
+                    setupHermes(apiKey: key, admittedGeneration: admittedGeneration)
+                }
+            }
+            else if action == "teardownHermes" {
+                teardownHermes(admittedGeneration: admittedGeneration)
+            }
             else if action == "setAgentFace" {
                 // The page is loaded from a file:// URL, where WebKit gives the
                 // document an opaque origin and localStorage is not persisted.
@@ -492,6 +494,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                       self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
                 self.webView.evaluateJavaScript(
                     "if (typeof window.__indexHarnessesDetected === 'function') { window.__indexHarnessesDetected(\(json)); }",
+                    completionHandler: nil)
+            }
+        }
+    }
+
+    /// Write ~/.hermes/.env and install/enable the Index plugin off the main
+    /// thread, then hand the result to the page via window.__indexHermesSetup.
+    private func setupHermes(apiKey: String, admittedGeneration: UInt64) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = HermesSetup.run(apiKey: apiKey)
+            let json = (try? JSONSerialization.data(withJSONObject: result))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+            DispatchQueue.main.async {
+                guard let self,
+                      self.webViewReady,
+                      admittedGeneration == self.trustedDocumentGeneration,
+                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
+                self.webView.evaluateJavaScript(
+                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
+                    completionHandler: nil)
+            }
+        }
+    }
+
+    /// Uninstall the hermes plugin and scrub its env off the main thread,
+    /// then hand the result to the page via window.__indexHermesSetup.
+    private func teardownHermes(admittedGeneration: UInt64) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = HermesSetup.teardown()
+            let json = (try? JSONSerialization.data(withJSONObject: result))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+            DispatchQueue.main.async {
+                guard let self,
+                      self.webViewReady,
+                      admittedGeneration == self.trustedDocumentGeneration,
+                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
+                self.webView.evaluateJavaScript(
+                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
                     completionHandler: nil)
             }
         }
@@ -672,41 +712,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         completionHandler()
     }
 
-    // MARK: - Native auth bridge
-
     // MARK: - Native owner credential + request bridge
 
-    private struct OwnerAuthorizationCreated: Decodable {
-        let requestId: String
-    }
-    private struct OwnerAuthorizationExchange: Decodable {
-        let credential: String
-        let activationProof: String
-        let credentialId: String
-        let installationId: String
-        let generation: String
-        let expiresAt: String
-        let activationState: String
-    }
-
     private func configureOwnerCredentialStore() {
-        guard let accessGroup = AppConfig.ownerKeychainAccessGroup,
-              let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        if let accessGroup = AppConfig.ownerKeychainAccessGroup {
+            do {
+                ownerCredentialStore = try OwnerCredentialStore(accessGroup: accessGroup)
+            } catch {
+                ownerCredentialStore = nil
+                ownerStartupFailure = "This build has no authorized owner Keychain group. Use a signed Index build."
+            }
+        } else {
+#if INDEX_DEVELOPMENT_BUILD
+            ownerCredentialStore = OwnerCredentialStore(developmentLoginKeychain: IndexKeychainStore())
+#else
             ownerStartupFailure = "This build has no authorized owner Keychain group. Use a signed Index build."
-            return
-        }
-        let support = root.appendingPathComponent(CredentialStore.service, isDirectory: true)
-        do {
-            var store = try OwnerCredentialStore(
-                accessGroup: accessGroup,
-                applicationSupportDirectory: support
-            )
-            ownerMigrationJournal = try store.prepareForStartup(installationId: ownerInstallationId)
-            ownerCredentialStore = store
-        } catch {
-            ownerCredentialStore = nil
-            ownerMigrationJournal = nil
-            ownerStartupFailure = "Owner credential migration failed closed. The app remains signed out."
+#endif
         }
     }
 
@@ -717,20 +738,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             apiBaseURL: api,
             mcpURL: mcp,
             credentialProvider: { [weak self] in
-                guard let self, self.ownerMigrationJournal == nil else { return nil }
-                return try self.ownerCredentialStore?.loadCredential()
+                try self?.ownerCredentialStore?.loadCredential()
             },
             trustedMessage: { [weak self] message in self?.isTrustedBridgeMessage(message) == true },
             terminal: { [weak self] response in self?.emitNativeAPIResponse(response) },
             event: { [weak self] event in self?.emitNativeAPIEvent(event) }
         )
-        if ownerMigrationJournal == nil, currentOwnerCredential() != nil {
+        if currentOwnerCredential() != nil {
             try? nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
-        }
-        if ownerMigrationJournal?.phase == .revocation_pending,
-           ownerMigrationJournal?.legacyKeyId == nil,
-           currentOwnerCredential() != nil {
-            retryPendingOwnerRevocation()
         }
     }
 
@@ -776,8 +791,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     /// Document-start metadata is deliberately credential-free.
     private func nativeInjectionScript() -> String {
-        let authenticated = ownerMigrationJournal == nil
-            && (currentOwnerCredential()?.expiresAt ?? .distantPast) > Date()
+        let authenticated = (currentOwnerCredential()?.expiresAt ?? .distantPast) > Date()
         let obj: [String: Any] = [
             "apiBaseUrl": AppConfig.apiBaseURL,
             "authenticated": authenticated,
@@ -794,22 +808,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         """
     }
 
+    /// The CLI's 90-day key lifetime; the server enforces the real expiry, this
+    /// local value only gates the credential-free `authenticated` bootstrap flag.
+    private static let ownerKeyLifetime: TimeInterval = 90 * 24 * 60 * 60
+
     private func startLogin(admittedGeneration: UInt64) {
-        guard let store = ownerCredentialStore else {
+        guard ownerCredentialStore != nil else {
             notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
         }
-        do { try store.verifyLegacyCredentialAbsent() }
-        catch { notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return }
         authServer?.stop()
-        guard let state = try? secureRandomState(), let verifier = try? secureRandomState() else {
+        guard let state = try? secureRandomState() else {
             ownerStartupFailure = "secure_random_unavailable"
             notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
             return
         }
-        let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
         let server = LoopbackAuthServer(state: state) { [weak self] result in
             DispatchQueue.main.async {
                 self?.finishLogin(result, admittedGeneration: admittedGeneration)
@@ -822,186 +834,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             case .failure:
                 self.finishLogin(.failure(LoopbackAuthServer.AuthError.noPort), admittedGeneration: admittedGeneration)
             case .success(let port):
-                let redirect = "http://127.0.0.1:\(port)/callback"
-                let body: [String: Any] = [
-                    "protocolVersion": 1,
-                    "installationId": self.ownerInstallationId,
-                    "redirectUri": redirect,
-                    "state": state,
-                    "codeChallenge": challenge,
-                    "codeChallengeMethod": "S256",
-                    "legacyKeyId": self.ownerMigrationJournal?.legacyKeyId ?? NSNull(),
-                ]
-                self.performOwnerRequest(path: "/index-app-owner-authorizations", body: body) { result in
-                    DispatchQueue.main.async {
-                        guard admittedGeneration == self.trustedDocumentGeneration else { return }
-                        switch result {
-                        case .failure:
-                            self.finishLogin(.failure(LoopbackAuthServer.AuthError.invalidCallback), admittedGeneration: admittedGeneration)
-                        case .success(let data):
-                            guard let created = try? JSONDecoder().decode(OwnerAuthorizationCreated.self, from: data) else {
-                                self.finishLogin(.failure(LoopbackAuthServer.AuthError.invalidCallback), admittedGeneration: admittedGeneration); return
-                            }
-                            server.bind(requestId: created.requestId)
-                            self.pendingOwnerVerifier = verifier
-                            self.pendingOwnerRedirectURI = redirect
-                            var journal = self.ownerMigrationJournal ?? OwnerCredentialMigrationJournal(
-                                version: 1, installationId: self.ownerInstallationId,
-                                legacyKeyId: nil, requestId: nil, phase: .fresh_login_required
-                            )
-                            journal.requestId = created.requestId
-                            do {
-                                try store.saveJournal(journal)
-                                self.ownerMigrationJournal = journal
-                            } catch {
-                                self.finishLogin(.failure(LoopbackAuthServer.AuthError.invalidCallback), admittedGeneration: admittedGeneration); return
-                            }
-                            var page = URLComponents(string: AppConfig.trimTrailingSlash(AppConfig.appURL) + "/index-app-authorize")
-                            page?.queryItems = [
-                                URLQueryItem(name: "request_id", value: created.requestId),
-                                URLQueryItem(name: "state", value: state),
-                                URLQueryItem(name: "redirect_uri", value: redirect),
-                            ]
-                            if let url = page?.url { NSWorkspace.shared.open(url) }
-                        }
-                    }
-                }
+                let callback = "http://127.0.0.1:\(port)/callback"
+                var page = URLComponents(string: AppConfig.trimTrailingSlash(AppConfig.appURL) + "/cli-auth")
+                // The auth page requires every query value in strict
+                // encodeURIComponent canonical form; URLQueryItem leaves
+                // ':' and '/' unescaped, which the page rejects.
+                page?.percentEncodedQuery = [
+                    "callback=\(Self.encodeURIComponent(callback))",
+                    "version=2",
+                    "state=\(Self.encodeURIComponent(state))",
+                ].joined(separator: "&")
+                if let url = page?.url { NSWorkspace.shared.open(url) }
             }
         }
     }
 
     private func finishLogin(
-        _ result: Result<(requestId: String, code: String, state: String), Error>,
+        _ result: Result<(apiKey: String, keyId: String), Error>,
         admittedGeneration: UInt64
     ) {
         authServer?.stop(); authServer = nil
-        guard case .success(let callback) = result,
-              let verifier = pendingOwnerVerifier,
-              let redirect = pendingOwnerRedirectURI else {
-            pendingOwnerVerifier = nil; pendingOwnerRedirectURI = nil
+        guard case .success(let callback) = result, let store = ownerCredentialStore else {
             notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
         }
-        pendingOwnerVerifier = nil; pendingOwnerRedirectURI = nil
-        guard var journal = ownerMigrationJournal else {
-            notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
-        }
-        journal.phase = .revocation_pending
+        // The .iso8601 Keychain encoding drops fractional seconds, so truncate
+        // up front or the read-back equality check can never match.
+        let record = OwnerCredentialRecord(
+            credential: callback.apiKey,
+            credentialId: callback.keyId,
+            expiresAt: Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + Self.ownerKeyLifetime).rounded(.down))
+        )
         do {
-            try ownerCredentialStore?.saveJournal(journal)
-            ownerMigrationJournal = journal
+            try store.putAndVerify(record)
+            try nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
         } catch {
+            try? ownerCredentialStore?.deleteAndVerify()
             notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration); return
         }
-        let body: [String: Any] = [
-            "protocolVersion": 1, "requestId": callback.requestId,
-            "code": callback.code, "state": callback.state,
-            "verifier": verifier, "redirectUri": redirect,
-        ]
-        performOwnerRequest(path: "/index-app-owner-authorizations/exchange", body: body) { [weak self] exchangeResult in
-            guard let self else { return }
-            switch exchangeResult {
-            case .failure:
-                DispatchQueue.main.async { self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration) }
-            case .success(let data):
-                guard let exchange = try? JSONDecoder().decode(OwnerAuthorizationExchange.self, from: data),
-                      exchange.activationState == "pending",
-                      exchange.installationId == self.ownerInstallationId,
-                      let expiry = self.parseServerDate(exchange.expiresAt),
-                      let store = self.ownerCredentialStore else {
-                    DispatchQueue.main.async { self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration) }; return
-                }
-                let record = OwnerCredentialRecord(
-                    credential: exchange.credential, credentialId: exchange.credentialId,
-                    installationId: exchange.installationId, generation: exchange.generation,
-                    expiresAt: expiry
-                )
-                do { try store.putAndVerify(record) }
-                catch {
-                    self.rollbackFailedActivation(record: record, proof: exchange.activationProof, admittedGeneration: admittedGeneration); return
-                }
-                self.performOwnerRequest(
-                    path: "/index-app-owner-authorizations/activate",
-                    body: ["protocolVersion": 1, "activationProof": exchange.activationProof],
-                    credential: exchange.credential
-                ) { activation in
-                    switch activation {
-                    case .failure:
-                        self.rollbackFailedActivation(record: record, proof: exchange.activationProof, admittedGeneration: admittedGeneration)
-                    case .success:
-                        do {
-                            guard try store.loadCredential() == record else {
-                                throw OwnerCredentialStoreFailure.keychainReadBackFailed
-                            }
-                            try store.clearJournal()
-                            self.ownerMigrationJournal = nil
-                            try self.nativeAPIBridge?.endQuarantineAfterCredentialReadBack()
-                            DispatchQueue.main.async { self.notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration) }
-                        } catch {
-                            let recovery = OwnerCredentialMigrationJournal(
-                                version: 1, installationId: self.ownerInstallationId,
-                                legacyKeyId: nil, requestId: nil, phase: .revocation_pending
-                            )
-                            try? store.saveJournal(recovery)
-                            self.ownerMigrationJournal = recovery
-                            self.rollbackFailedActivation(record: record, proof: exchange.activationProof, admittedGeneration: admittedGeneration)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func rollbackFailedActivation(record: OwnerCredentialRecord, proof: String, admittedGeneration: UInt64) {
-        performOwnerRequest(
-            path: "/index-app-owner-authorizations/rollback",
-            body: ["protocolVersion": 1, "activationProof": proof],
-            credential: record.credential
-        ) { [weak self] rollback in
-            guard let self else { return }
-            switch rollback {
-            case .success:
-                self.finishFailedActivationRevocation(admittedGeneration: admittedGeneration)
-            case .failure:
-                // Activation may have committed while its response was lost.
-                // Exact self-revocation handles pending, active, and already
-                // revoked rows idempotently before local deletion.
-                self.performOwnerRequest(
-                    path: "/index-app-owner-authorizations/revoke",
-                    body: ["protocolVersion": 1], credential: record.credential
-                ) { revoke in
-                    if case .success = revoke {
-                        self.finishFailedActivationRevocation(admittedGeneration: admittedGeneration)
-                    } else {
-                        DispatchQueue.main.async {
-                            self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func finishFailedActivationRevocation(admittedGeneration: UInt64) {
-        do { try ownerCredentialStore?.deleteAndVerify() }
-        catch { return }
-        DispatchQueue.main.async {
-            self.notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
-        }
+        notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
     }
 
     private func logout(ownerId: String?, admittedGeneration: UInt64) {
-        guard let ownerId,
-              let evidence = hermesRuntime.logoutEvidence(ownerId: ownerId),
-              let store = ownerCredentialStore,
-              let record = currentOwnerCredential() else { return }
-        let journal = OwnerCredentialMigrationJournal(
-            version: 1, installationId: ownerInstallationId,
-            legacyKeyId: nil, requestId: nil, phase: .revocation_pending
-        )
-        do { try store.saveJournal(journal); ownerMigrationJournal = journal }
-        catch { return }
+        // Simple connect path does not require a Hermes saga journal. Evidence
+        // is optional and only finishes a leftover Personal Agent setup row.
+        let evidence = ownerId.flatMap { hermesRuntime.logoutEvidence(ownerId: $0) }
+        guard currentOwnerCredential() != nil else { return }
         notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
-        guard let bridge = nativeAPIBridge else { return }
+        guard let bridge = nativeAPIBridge, let record = currentOwnerCredential() else { return }
         bridge.beginQuarantine { [weak self] in
             self?.revokeAndDelete(record: record, evidence: evidence)
         }
@@ -1013,25 +892,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         catch { return nil }
     }
 
-    private func retryPendingOwnerRevocation() {
-        guard let record = currentOwnerCredential(), let bridge = nativeAPIBridge else { return }
-        bridge.beginQuarantine { [weak self] in
-            self?.revokeAndDelete(record: record, evidence: nil)
-        }
-    }
-
     private func revokeAndDelete(record: OwnerCredentialRecord, evidence: HermesSagaOperationRecord?) {
+        // Ordinary Better Auth API-key revocation - the same endpoint the CLI
+        // logout uses. Local deletion waits for server denial so a lost
+        // response never strands a still-live key.
         performOwnerRequest(
-            path: "/index-app-owner-authorizations/revoke",
-            body: ["protocolVersion": 1], credential: record.credential
+            path: "/auth/cli-credential/revoke",
+            body: ["keyId": record.credentialId, "targetKey": record.credential],
+            credential: record.credential
         ) { [weak self] revokeResult in
             guard let self, case .success = revokeResult else { return }
             self.verifyCredentialDenied(record.credential) { denied in
                 guard denied, let store = self.ownerCredentialStore else { return }
                 do {
                     try store.deleteAndVerify()
-                    try store.clearJournal()
-                    self.ownerMigrationJournal = nil
                     if let evidence { self.hermesRuntime.finishLogoutEvidence(evidence) }
                 } catch { return }
             }
@@ -1047,12 +921,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             let status = (response as? HTTPURLResponse)?.statusCode
             completion(status == 401 || status == 403)
         }.resume()
-    }
-
-    private func parseServerDate(_ value: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     private func performOwnerRequest(
@@ -1094,6 +962,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if (typeof window.__indexAuthChanged === 'function') { window.__indexAuthChanged(\(value)); }
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    /// Matches JavaScript encodeURIComponent exactly: only A-Za-z0-9 and
+    /// !'()*-._~ stay literal, everything else becomes uppercase %XX.
+    static func encodeURIComponent(_ value: String) -> String {
+        let allowed = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+        )
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     private func secureRandomState() throws -> String {

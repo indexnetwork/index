@@ -2,8 +2,6 @@ import { and, eq, isNull, or, sql } from 'drizzle-orm/sql';
 
 import type { DrizzleDB } from '../drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
-import { HERMES_AGENT_AUDIENCE } from './hermes-authorization';
-import { HERMES_CANONICAL_ACTIONS } from './hermes-capabilities';
 import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, type NegotiationCredentialPrincipal } from './hermes-credential';
 
 function metadata(value: string | null): Record<string, unknown> | null {
@@ -52,50 +50,6 @@ export async function authorizeNegotiationMutationInTransaction(
       sql`'manage:negotiations' = ANY(${schema.agentPermissions.actions})`,
     )).limit(1);
   if (!permission) return false;
-
-  if (principal.audience === HERMES_AGENT_AUDIENCE) {
-    if (
-      !principal.installationId
-      || !principal.setupAttemptId
-      || !principal.actions
-      || principal.actions.length !== HERMES_CANONICAL_ACTIONS.length
-      || !HERMES_CANONICAL_ACTIONS.every((action, index) => principal.actions?.[index] === action)
-      || !principal.actions.includes('manage:negotiations')
-    ) return false;
-
-    const [credential] = await tx.select({
-      id: schema.hermesAgentCredentials.id,
-      ownerId: schema.hermesAgentCredentials.ownerId,
-      agentId: schema.hermesAgentCredentials.agentId,
-      audience: schema.hermesAgentCredentials.audience,
-      installationId: schema.hermesAgentCredentials.installationId,
-      setupAttemptId: schema.hermesAgentCredentials.setupAttemptId,
-      actions: schema.hermesAgentCredentials.actions,
-      activationState: schema.hermesAgentCredentials.activationState,
-      expiresAt: schema.hermesAgentCredentials.expiresAt,
-    }).from(schema.hermesAgentCredentials).where(and(
-      eq(schema.hermesAgentCredentials.id, principal.credentialId),
-      eq(schema.hermesAgentCredentials.ownerId, ownerId),
-      eq(schema.hermesAgentCredentials.activationState, 'active'),
-      sql`${schema.hermesAgentCredentials.expiresAt} > now()`,
-    )).limit(1).for('update');
-
-    return Boolean(
-      credential
-      && credential.ownerId === ownerId
-      && credential.agentId === agent.id
-      && credential.audience === HERMES_AGENT_AUDIENCE
-      && credential.installationId === principal.installationId
-      && credential.installationId === agent.installationId
-      && credential.setupAttemptId === principal.setupAttemptId
-      && credential.setupAttemptId === agent.runtimeSetupAttemptId
-      && credential.actions.length === HERMES_CANONICAL_ACTIONS.length
-      && HERMES_CANONICAL_ACTIONS.every((action, index) => credential.actions[index] === action)
-      && credential.actions.includes('manage:negotiations')
-      && credential.activationState === 'active'
-      && credential.expiresAt.getTime() > Date.now()
-    );
-  }
 
   const [credential] = await tx.select({
     id: schema.apikeys.id,

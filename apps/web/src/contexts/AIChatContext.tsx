@@ -1,12 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
-import { REPORTER_BRIEFING_KICKOFF } from "@indexnetwork/protocol";
 
 import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
 import { apiClient } from "@/lib/api";
 import { AuthSessionError, clearJwtToken } from "@/lib/auth-client";
 import type { Suggestion } from "@/hooks/useSuggestions";
 import type { Question } from "@/components/DecisionQuestions/types";
-import type { PendingQuestion } from "@/services/questions";
 import { log } from "@/lib/logger";
 
 const logger = log.context.from("AIChatContext");
@@ -94,7 +92,9 @@ export interface TraceEvent {
   startedAt?: number;
   turnIndex?: number;
   actor?: "source" | "candidate";
-  action?: "propose" | "accept" | "reject" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
+  /** `pause` carries its reason in `pauseReason`, not here. */
+  verb?: "outreach" | "counter" | "question" | "pause";
+  pauseReason?: "counterparty_silent" | "needs_principal" | "ready_for_verdict" | "turn_cap" | "open_failed";
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };
@@ -118,7 +118,6 @@ export interface QueuedMessage {
 export interface ChatSendOptions {
   hidden?: boolean;
   prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
-  persona?: "signal" | "reporter";
   /** @deprecated Product surfaces should use their dedicated send helper. */
   surface?: "web";
   existingMessageId?: string;
@@ -150,6 +149,12 @@ interface ChatMessage {
   wasInterrupted?: boolean;
   /** Durable timeline session that supplied this persisted message. */
   conversationSessionId?: string | null;
+  /**
+   * Canned replies the agent offered under a question — tap one and its exact
+   * text is sent as an ordinary user message. Nothing else reads them, so a
+   * chip is a shortcut for typing and never a separate answer channel.
+   */
+  options?: string[];
 }
 
 export type ChatScope =
@@ -188,10 +193,9 @@ interface AIChatContextType {
   scopeNetworkId: string | null;
   /** Set the current network scope (e.g. from the network filter dropdown in ChatContent). Call with null for "Everywhere". */
   setScopeNetworkId: (networkId: string | null) => void;
-  /** Resolve or create the stable persona session for an intent scope. */
+  /** Resolve or create the stable session for an intent scope — the signal's DM. */
   resolveIntentSession: (
     intent: { id: string; label?: string },
-    persona?: "signal" | "reporter",
   ) => Promise<string | null>;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
@@ -213,12 +217,8 @@ interface AIChatContextType {
     attachmentNames?: string[],
     options?: Omit<ChatSendOptions, "surface">,
   ) => Promise<void>;
-  /** Clear messages and session state. Detached route cleanup may preserve a one-shot forced persona. */
-  clearChat: (options?: { abortStream?: boolean; preserveForcedPersona?: boolean }) => void;
-  /** Clear the current chat and force the next new web session to request Signal. */
-  startSignalSession: () => void;
-  /** Resolve the current reporter briefing, optionally forcing an explicit fresh conversation. */
-  startReporterSession: (options?: { forceNew?: boolean }) => Promise<boolean>;
+  /** Clear messages and session state. */
+  clearChat: (options?: { abortStream?: boolean }) => void;
   /** Load a session, returning false for failed or superseded requests. */
   loadSession: (sessionId: string) => Promise<boolean>;
   /** Load exactly one earlier durable timeline session into display history. */
@@ -234,13 +234,6 @@ interface AIChatContextType {
   pendingQueue: QueuedMessage[];
   cancelQueuedMessage: (id: string) => void;
   submitMidStreamMessage: (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => void;
-  /**
-   * Questions streamed live by a chat persona's ask_user_question tool
-   * (`user_question` SSE event). The turn is blocked server-side until they
-   * are answered/dismissed or the wait times out. ChatContent and guided
-   * Signal intake surfaces consume these from the same stream state.
-   */
-  liveQuestions: PendingQuestion[];
 }
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
@@ -321,13 +314,13 @@ function mergeDebugMetaIntoTraceEvents(
 }
 
 const SAFE_TURN_BLOCK_MESSAGES: Readonly<Record<string, string>> = {
-  WEB_SIGNAL_PERSONA_REQUIRED: "Start a new Signal Agent chat to continue.",
-  WEB_SIGNAL_SESSION_REQUIRED: "This earlier chat is read-only. Start a new Signal Agent chat to continue.",
-  WEB_SIGNAL_AGENT_DISABLED: "Signal Agent is not available right now.",
+  WEB_SIGNAL_PERSONA_REQUIRED: "Start a new chat with your agent to continue.",
+  WEB_SIGNAL_SESSION_REQUIRED: "This earlier chat is read-only. Start a new chat with your agent to continue.",
+  WEB_SIGNAL_AGENT_DISABLED: "Your agent is not available right now.",
   WEB_SIGNAL_PERSONA_FORBIDDEN: "This chat can only be continued in the web app.",
   CHAT_PERSONA_MISMATCH: "This request does not match the chat that was opened.",
   CHAT_PERSONA_UNSUPPORTED: "This chat cannot be continued safely.",
-  CHAT_SCOPE_REQUIRES_NEW_SESSION: "Start a separate Signal Agent chat for that focus.",
+  CHAT_SCOPE_REQUIRES_NEW_SESSION: "Start a separate chat with your agent for that focus.",
 };
 
 /** Parse only known policy denials and never render server-controlled detail text. */
@@ -371,7 +364,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [sessionPersona, setSessionPersona] = useState<string | null>(null);
   const [turnBlock, setTurnBlock] = useState<ChatTurnBlock | null>(null);
-  const forcePersonaNextSessionRef = useRef<"signal" | "reporter" | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionLoadState, setSessionLoadState] = useState<ChatSessionLoadState>({
@@ -393,8 +385,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   /** Messages submitted while the first web stream is creating its session. */
   const preSessionQueueRef = useRef<QueuedMessage[]>([]);
   const [pendingQueue, setPendingQueue] = useState<QueuedMessage[]>([]);
-  /** Live questions from any chat persona's ask_user_question tool (user_question SSE event). */
-  const [liveQuestions, setLiveQuestions] = useState<PendingQuestion[]>([]);
   type SendAbortReason = "clear" | "load" | "steer" | "stopped" | "superseded" | "unmount";
   type SendOperation = {
     token: symbol;
@@ -409,8 +399,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   /** Independent latest-owner token for intent-session resolution requests. */
   const intentResolutionOwnerRef = useRef<symbol | null>(null);
   const activeSendRef = useRef<SendOperation | null>(null);
-  /** Coalesce route-mount resolution with an already-started reporter action. */
-  const reporterStartRef = useRef<Promise<boolean> | null>(null);
 
   const ownsOperation = useCallback((token: symbol) => operationOwnerRef.current === token, []);
 
@@ -452,17 +440,15 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const resolveIntentSession = useCallback(async (
     intent: { id: string; label?: string },
-    persona?: "signal" | "reporter",
   ): Promise<string | null> => {
     const resolutionToken = Symbol(`resolve-intent-session:${intent.id}`);
     intentResolutionOwnerRef.current = resolutionToken;
     try {
       const response = await apiClient.post<{
         session: { id: string; scopeType?: "intent" | "network" | null; scopeId?: string | null };
-      }>(persona ? "/chat/web/session/resolve" : "/chat/session/resolve", {
+      }>("/chat/web/session/resolve", {
         scopeType: "intent",
         scopeId: intent.id,
-        ...(persona ? { persona } : {}),
       });
       if (intentResolutionOwnerRef.current !== resolutionToken) return null;
       setScopeOverride({ type: "intent", id: intent.id, ...(intent.label ? { label: intent.label } : {}) });
@@ -508,7 +494,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
       // A new session has no id until the first stream receives its response
       // headers. Keep submissions made during that window instead of dropping
-      // them (the reporter briefing hits this path).
+      // them (a hidden kickoff send hits this path).
       if (!sessionId) {
         preSessionQueueRef.current = [...preSessionQueueRef.current, entry];
         return;
@@ -592,13 +578,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       if (!displayContent) return;
 
       const operationSessionId = targetSessionId ?? sessionId;
-      const requestedPersona = options?.persona
-        ?? (!operationSessionId ? forcePersonaNextSessionRef.current ?? undefined : undefined);
       const effectiveTransport: ChatTransport = transport === "web"
-        || requestedPersona === "signal"
-        || requestedPersona === "reporter"
-        || sessionPersona === "signal"
-        || sessionPersona === "reporter"
+        || sessionPersona === "personal"
         ? "web"
         : "compatibility";
 
@@ -677,7 +658,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           ...(fileIds?.length ? { fileIds } : {}),
           ...(chatScope ? { scopeType: chatScope.type, scopeId: chatScope.id } : {}),
           ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
-          ...(requestedPersona ? { persona: requestedPersona } : {}),
         };
 
         const streamEndpoint = effectiveTransport === "web"
@@ -727,7 +707,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           // mark it route-ready so the ensuing /d/:id navigation never reloads
           // or briefly replaces it with a loading shell.
           setSessionLoadState({ status: "ready", targetSessionId: newSessionId, error: null });
-          forcePersonaNextSessionRef.current = null;
           // The scope selected at session creation becomes the session's bound scope.
           if (chatScope) {
             setSessionScope(chatScope);
@@ -971,7 +950,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       negotiationConversationId: event.negotiationConversationId,
                       turnIndex: event.turnIndex,
                       actor: event.actor,
-                      action: event.action,
+                      verb: event.verb,
+                      pauseReason: event.pauseReason,
                       reasoning: event.reasoning,
                       message: event.message,
                       suggestedRoles: event.suggestedRoles,
@@ -1041,36 +1021,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     }
                     break;
                   }
-                  case "user_question": {
-                    // `user_question` carries opaque IDs only. Resolve cards
-                    // through the conversation-scoped canonical read so model
-                    // output can never forge question content or provenance.
-                    const eventSessionId =
-                      (typeof event.sessionId === "string" && event.sessionId) ||
-                      newSessionId ||
-                      sessionId ||
-                      "";
-                    const requestedIds = new Set(
-                      (event.questions ?? [])
-                        .map((question: { id?: unknown }) => question.id)
-                        .filter((id): id is string => typeof id === "string"),
-                    );
-                    if (!eventSessionId || requestedIds.size === 0) break;
-                    void apiClient.get<{ questions: PendingQuestion[] }>(
-                      `/questions?conversationId=${encodeURIComponent(eventSessionId)}&mode=chat`,
-                    ).then(({ questions }) => {
-                      const incoming = questions.filter((question) => requestedIds.has(question.id));
-                      if (incoming.length === 0) return;
-                      setLiveQuestions((previous) => {
-                        const byId = new Map(previous.map((question) => [question.id, question]));
-                        for (const question of incoming) byId.set(question.id, question);
-                        return [...byId.values()];
-                      });
-                    }).catch((error: unknown) => {
-                      logger.error("Failed to resolve streamed chat question", { error, eventSessionId });
-                    });
-                    break;
-                  }
                   case "decision_questions": {
                     const incoming = (event.questions ?? []) as Question[];
                     setMessages((prev) =>
@@ -1102,11 +1052,18 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                           msg.decisionQuestions && msg.decisionQuestions.length > 0
                             ? msg.decisionQuestions
                             : fromDone;
+                        // Chips ride the done event only so this turn shows
+                        // them without a reload; the persisted message carries
+                        // the same list for every later read.
+                        const options = Array.isArray(event.options)
+                          ? (event.options as string[])
+                          : undefined;
                         return {
                           ...msg,
                           content: finalContent,
                           isStreaming: false,
                           ...(decisionQuestions ? { decisionQuestions } : {}),
+                          ...(options && options.length > 0 ? { options } : {}),
                         };
                       }),
                     );
@@ -1235,10 +1192,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     options?: ChatSendOptions,
   ) => {
     const transport: ChatTransport = options?.surface === "web"
-      || options?.persona === "signal"
-      || options?.persona === "reporter"
-      || sessionPersona === "signal"
-      || sessionPersona === "reporter"
+      || sessionPersona === "personal"
       ? "web"
       : "compatibility";
     return sendMessageWithTransport(transport, message, fileIds, attachmentNames, options);
@@ -1259,8 +1213,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Drain pending messages whenever loading ends.
-  // Pre-session messages are first so a new reporter chat cannot lose a user
-  // submission while its hidden briefing creates the session.
+  // Pre-session messages are first so a new chat cannot lose a user
+  // submission while its first send creates the session.
   React.useEffect(() => {
     if (isLoading || turnBlock) return;
     if (preSessionQueueRef.current.length > 0 && sessionId) {
@@ -1312,13 +1266,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const clearChat = useCallback((options?: {
     abortStream?: boolean;
-    preserveForcedPersona?: boolean;
   }) => {
     const abortStream = options?.abortStream !== false;
     const active = activeSendRef.current;
     operationOwnerRef.current = null;
     intentResolutionOwnerRef.current = null;
-    reporterStartRef.current = null;
     if (active && !abortStream) {
       active.refreshSidebarWhenStale = true;
     } else {
@@ -1339,22 +1291,13 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setPreviousSessionCursor(null);
     setIsLoadingPreviousMessages(false);
     setSuggestions([]);
-    setLiveQuestions([]);
     setSessionId(null);
     setSessionTitle(null);
     setSessionPersona(null);
-    if (!options?.preserveForcedPersona) {
-      forcePersonaNextSessionRef.current = null;
-    }
     setTurnBlock(null);
     setSessionScope(null); // Clear session-bound scope so new chat can use UI selection
     setSessionNetworkId(null); // Clear session-bound network so new chat can use UI selection
   }, [invalidateActiveSend]);
-
-  const startSignalSession = useCallback(() => {
-    clearChat();
-    forcePersonaNextSessionRef.current = "signal";
-  }, [clearChat]);
 
   const loadSession = useCallback(async (id: string): Promise<boolean> => {
     invalidateActiveSend("load");
@@ -1376,7 +1319,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setPreviousSessionCursor(null);
     setIsLoadingPreviousMessages(false);
     setSuggestions([]);
-    forcePersonaNextSessionRef.current = null;
 
     interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
     interruptTimeoutsRef.current.clear();
@@ -1384,7 +1326,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     preSessionQueueRef.current = [];
     steerPendingRef.current = [];
     setPendingQueue([]);
-    setLiveQuestions([]);
     setTurnBlock(null);
 
     try {
@@ -1411,6 +1352,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
           interrupted?: boolean | null;
+          options?: string[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1456,6 +1398,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(m.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(m.interrupted ? { wasInterrupted: true } : {}),
+        ...(Array.isArray(m.options) && m.options.length > 0 ? { options: m.options } : {}),
         conversationSessionId: data.sessionId,
       }));
 
@@ -1500,6 +1443,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
           interrupted?: boolean | null;
+          options?: string[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1532,6 +1476,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(message.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(message.interrupted ? { wasInterrupted: true } : {}),
+        ...(Array.isArray(message.options) && message.options.length > 0 ? { options: message.options } : {}),
         conversationSessionId: data.sessionId,
       }));
       setMessages((current) => {
@@ -1550,58 +1495,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       setIsLoadingPreviousMessages(false);
     }
   }, [hasPreviousSession, isLoadingPreviousMessages, previousSessionCursor, sessionId]);
-
-  const startReporterSession = useCallback((options?: {
-    forceNew?: boolean;
-  }): Promise<boolean> => {
-    const forceNew = options?.forceNew === true;
-    if (!forceNew && reporterStartRef.current) return reporterStartRef.current;
-
-    const start = (async (): Promise<boolean> => {
-      // Route cleanup deliberately detaches ordinary streams. Reporter entry and
-      // explicit New conversation are stronger ownership boundaries: abort and
-      // invalidate everything before claiming the server-authoritative briefing.
-      clearChat();
-      const resolutionToken = Symbol("resolve-reporter-session");
-      operationOwnerRef.current = resolutionToken;
-
-      try {
-        const resolved = await apiClient.post<{
-          session: { id: string };
-          created: boolean;
-        }>("/chat/reporter/session", { forceNew });
-        if (!ownsOperation(resolutionToken)) return false;
-
-        const loaded = await loadSession(resolved.session.id);
-        if (!loaded) return false;
-        if (!resolved.created) return true;
-
-        // Bind the hidden marker to the already-created claim explicitly. The
-        // load state update has not necessarily produced a new React closure yet.
-        await sendMessageWithTransport(
-          "web",
-          REPORTER_BRIEFING_KICKOFF,
-          undefined,
-          undefined,
-          { hidden: true, persona: "reporter" },
-          resolved.session.id,
-        );
-        return true;
-      } catch (error) {
-        if (ownsOperation(resolutionToken)) {
-          operationOwnerRef.current = null;
-          logger.error("Reporter session resolution failed", { error });
-        }
-        return false;
-      }
-    })();
-
-    const tracked = start.finally(() => {
-      if (reporterStartRef.current === tracked) reporterStartRef.current = null;
-    });
-    reporterStartRef.current = tracked;
-    return tracked;
-  }, [clearChat, loadSession, ownsOperation, sendMessageWithTransport]);
 
   const isSessionReady = useCallback((id: string) => (
     sessionLoadState.status === "ready"
@@ -1652,8 +1545,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         sendMessage,
         sendWebMessage,
         clearChat,
-        startSignalSession,
-        startReporterSession,
         loadSession,
         loadPreviousMessages,
         hasPreviousSession,
@@ -1664,7 +1555,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         pendingQueue,
         cancelQueuedMessage,
         submitMidStreamMessage,
-        liveQuestions,
       }}
     >
       {children}

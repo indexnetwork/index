@@ -1,9 +1,7 @@
 /**
  * Profile command handlers for the Index CLI.
  *
- * Implements: (default), show, sync, create, update subcommands.
- * Follows the same handleX(client, subcommand, positionals, options)
- * pattern as network.command.ts and conversation.command.ts.
+ * Implements: (default), show, sync subcommands.
  */
 
 import type { ApiClient } from "./api.client";
@@ -11,30 +9,18 @@ import * as output from "./output";
 
 /**
  * Route a profile subcommand to the appropriate handler.
- *
- * @param client - Authenticated API client.
- * @param subcommand - The subcommand (show, sync, create, update, or undefined for self).
- * @param positionals - Positional arguments after the subcommand.
- * @param options - Additional options (json, linkedin, github, twitter).
  */
 export async function handleProfile(
   client: ApiClient,
   subcommand: string | undefined,
   positionals: string[],
-  options: { json?: boolean; linkedin?: string; github?: string; twitter?: string; details?: string } = {},
+  options: { json?: boolean } = {},
 ): Promise<void> {
-  if (subcommand === "create") {
-    await profileCreate(client, options, options?.json);
-    return;
-  }
-
-  if (subcommand === "update") {
-    const action = positionals.join(" ");
-    if (!action) {
-      output.error("Usage: index profile update <action> [--details <text>]", 1);
-      return;
-    }
-    await profileUpdate(client, action, options.details, options?.json);
+  if (subcommand === "create" || subcommand === "update" || subcommand === "search") {
+    output.error(
+      `profile ${subcommand} was removed; use "index profile sync" for public research prefill`,
+      1,
+    );
     return;
   }
 
@@ -53,33 +39,10 @@ export async function handleProfile(
     return;
   }
 
-  if (subcommand === "search") {
-    const query = positionals.join(" ");
-    if (!query) { output.error("Usage: index profile search <query>", 1); return; }
-    const result = await client.readUserContexts({ query });
-    if (options.json) { console.log(JSON.stringify(result)); return; }
-    if (!result.success) { output.error(result.error ?? "Search failed", 1); return; }
-    const data = result.data as { profiles: Array<{ userId: string; name: string; bio?: string; location?: string }> };
-    output.heading("Search Results");
-    if (!data.profiles?.length) {
-      output.dim("  No profiles found.");
-    } else {
-      for (const p of data.profiles) {
-        console.log(`  ${p.name} (${p.userId.slice(0, 8)})`);
-        if (p.bio) output.dim(`    ${p.bio.slice(0, 100)}`);
-      }
-    }
-    console.log();
-    return;
-  }
-
   // Default: show own profile
   await profileMe(client, options?.json);
 }
 
-/**
- * Show the authenticated user's own profile.
- */
 async function profileMe(client: ApiClient, json?: boolean): Promise<void> {
   if (!json) {
     output.info("Loading your profile...");
@@ -93,9 +56,6 @@ async function profileMe(client: ApiClient, json?: boolean): Promise<void> {
   output.profileCard(user);
 }
 
-/**
- * Show another user's profile by ID.
- */
 async function profileShow(client: ApiClient, userId: string, json?: boolean): Promise<void> {
   if (!json) {
     output.info("Loading profile...");
@@ -108,7 +68,7 @@ async function profileShow(client: ApiClient, userId: string, json?: boolean): P
   output.profileCard(user);
 }
 
-/** Trigger synchronous profile enrichment for the authenticated user. */
+/** Trigger synchronous public profile research for the authenticated user. */
 async function profileSync(client: ApiClient, json?: boolean): Promise<void> {
   if (!json) output.info("Enriching profile...");
   const result = await client.enrichProfile();
@@ -117,64 +77,7 @@ async function profileSync(client: ApiClient, json?: boolean): Promise<void> {
     return;
   }
   output.success("Profile enriched.");
-  if (result.profile.name) output.dim(`  Name: ${result.profile.name}`);
-  if (result.profile.location) output.dim(`  Location: ${result.profile.location}`);
-  output.dim(`  Social links: ${result.profile.socials.length}`);
-}
-
-/**
- * Create a user profile from social URLs.
- *
- * @param client - Authenticated API client.
- * @param options - Social URL options (linkedin, github, twitter).
- */
-async function profileCreate(
-  client: ApiClient,
-  options: { linkedin?: string; github?: string; twitter?: string },
-  json?: boolean,
-): Promise<void> {
-  if (!json) output.info("Creating profile...");
-  const query: {
-    confirm?: boolean;
-    linkedinUrl?: string;
-    githubUrl?: string;
-    twitterUrl?: string;
-  } = { confirm: true };
-  if (options.linkedin) query.linkedinUrl = options.linkedin;
-  if (options.github) query.githubUrl = options.github;
-  if (options.twitter) query.twitterUrl = options.twitter;
-
-  const result = await client.createUserContext(query);
-  if (json) { console.log(JSON.stringify(result)); return; }
-  if (!result.success) {
-    output.error(result.error ?? "Profile creation failed", 1);
-    return;
-  }
-  output.success("Profile created.");
-}
-
-/**
- * Update the user's profile with a natural-language action.
- *
- * @param client - Authenticated API client.
- * @param action - The update action description.
- * @param details - Optional additional details.
- */
-async function profileUpdate(
-  client: ApiClient,
-  action: string,
-  details?: string,
-  json?: boolean,
-): Promise<void> {
-  if (!json) output.info("Updating profile...");
-  const query: { action: string; details?: string } = { action };
-  if (details) query.details = details;
-
-  const result = await client.updateUserContext(query);
-  if (json) { console.log(JSON.stringify(result)); return; }
-  if (!result.success) {
-    output.error(result.error ?? "Profile update failed", 1);
-    return;
-  }
-  output.success("Profile updated.");
+  if (result.profile?.name) output.dim(`  Name: ${result.profile.name}`);
+  if (result.profile?.location) output.dim(`  Location: ${result.profile.location}`);
+  output.dim(`  Social links: ${result.profile?.socials?.length ?? 0}`);
 }

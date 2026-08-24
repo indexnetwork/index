@@ -2,17 +2,23 @@
  * Conversation service — typed API client for the conversations endpoints.
  */
 
-export type NegotiationTaskState =
-  | 'submitted'
-  | 'working'
-  | 'input_required'
-  | 'completed'
-  | 'failed'
-  | 'canceled'
-  | 'rejected'
-  | 'auth_required'
-  | 'waiting_for_agent'
-  | 'claimed';
+/** A negotiation task's lifecycle is now exactly these three states (negotiation-graph rewrite, #1494). */
+export type NegotiationTaskState = 'working' | 'paused' | 'completed';
+
+/**
+ * Every reason the protocol may pause a negotiation on — the wire vocabulary,
+ * defined once for the whole app. A member missing here is not a type error
+ * anywhere: the value still arrives, and each consumer renders it as whatever
+ * its own default branch happens to say.
+ */
+export const NEGOTIATION_PAUSE_REASONS = [
+  'counterparty_silent',
+  'needs_principal',
+  'ready_for_verdict',
+  'turn_cap',
+  'open_failed',
+] as const;
+export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
 
 export type NegotiationOpportunityStatus =
   | 'latent'
@@ -27,14 +33,14 @@ export type NegotiationOpportunityStatus =
 export interface ConversationNegotiationLifecycle {
   taskId: string;
   state: NegotiationTaskState;
+  /** Set only when `state === 'paused'`. */
+  pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
   statusTimestamp: string | null;
   opportunityId: string | null;
   opportunityStatus: NegotiationOpportunityStatus | null;
   acceptedByViewer: boolean;
   turnCount: number;
-  maxTurns: number | null;
   signalCount: number;
-  outcome: { hasOpportunity: boolean; reason: string | null } | null;
   updatedAt: string;
   /**
    * IND-610: the owner-facing outreach-gate decision, named-field projected by
@@ -43,9 +49,10 @@ export interface ConversationNegotiationLifecycle {
    * negotiations that are otherwise visible in a mutual conversation.
    *
    * `source` distinguishes the two refusals that collapse into the same
-   * `screened_out` outcome: `screen` (the outreach gate passed before any
-   * contact, so `evidence.*` is present) and `outcome` (the agent refused on
-   * its opening turn, so only reasoning exists).
+   * `screened_out` outcome: `outcome` (the agent refused on its opening turn,
+   * so only reasoning exists) and `screen` — READ-ONLY HISTORY, the outreach
+   * gate that wrote `evidence.*` is gone, but rows from before its removal
+   * still project one.
    */
   screenDecision?: {
     source: 'screen' | 'outcome';
@@ -57,10 +64,20 @@ export interface ConversationNegotiationLifecycle {
   } | null;
 }
 
+/** A viewer-visible opportunity and the exact negotiation task that owns its session. */
+export interface ConversationNegotiationOpportunity extends Omit<ConversationNegotiationLifecycle, 'taskId' | 'opportunityId' | 'opportunityStatus' | 'statusTimestamp' | 'screenDecision'> {
+  intentId: string;
+  title: string;
+  taskId: string;
+  opportunityId: string;
+  opportunityStatus: NegotiationOpportunityStatus | null;
+}
+
 export interface ConversationSummary {
   id: string;
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
-  lastMessage: { parts: unknown[]; senderId: string; createdAt: string } | null;
+  /** The task session that produced the latest message, when it has one. */
+  lastMessage: { parts: unknown[]; senderId: string; createdAt: string; taskId?: string | null } | null;
   metadata: { title?: string; shareToken?: string } | null;
   /** Viewer-scoped opportunity signal provenance, latest first. */
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
@@ -68,8 +85,13 @@ export interface ConversationSummary {
   unreadCount: number;
   lastMessageAt: string | null;
   createdAt: string;
-  /** Latest task and opportunity lifecycle for A2A negotiation summaries. */
+  /**
+   * The task session that represents this A2A conversation to the viewer: the
+   * most alive session with that counterparty, newest only within a liveness
+   * tier. A pending approval is never shadowed by a later screened-out pairing.
+   */
   negotiation?: ConversationNegotiationLifecycle | null;
+  negotiationOpportunities?: ConversationNegotiationOpportunity[];
 }
 
 export interface ConversationMessage {
@@ -88,14 +110,30 @@ export interface NegotiationActivityMessage {
   id: string;
   opportunityId: string;
   sender: 'yours' | 'theirs';
+  /** The turn's verb (`outreach`, `counter`, `question`, `pause`) when it is one. */
+  verb?: string;
+  /** Set only when `verb === 'pause'`. */
+  pauseReason?: NegotiationPauseReason;
+  /** What the message renders as: a text part, or the turn's own message. */
+  text?: string;
   parts: unknown[];
   createdAt: string;
+}
+
+/** One scored checklist dimension (checklist plan §2), as projected for the UI. */
+export interface NegotiationChecklistItem {
+  name: string;
+  kind: string;
+  result: string;
+  basis: string;
 }
 
 export interface NegotiationActivityGroup {
   correspondentUserId: string;
   correspondentLabel: string;
   correspondentAvatar: string | null;
+  /** The checklist of the negotiation this group's latest exchange belongs to. */
+  checklist?: NegotiationChecklistItem[];
   messages: NegotiationActivityMessage[];
 }
 

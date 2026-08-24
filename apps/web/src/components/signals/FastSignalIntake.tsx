@@ -7,7 +7,7 @@ import { useNetworksState } from "@/contexts/IndexesContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient } from "@/lib/api";
 import { intakeService, type IntakeAnswerBody, type IntakeProposalResponse, type IntakeRound } from "@/services/intake";
-import type { PendingQuestion, QuestionPayload } from "@/services/questions";
+import type { QuestionPayload } from "@/services/questions";
 
 type Stage = "who" | "followup" | "where" | "clarify" | "proposal";
 
@@ -25,19 +25,9 @@ function answerLabel(answer: IntakeAnswerBody): string {
   return [...answer.selectedOptions, answer.freeText?.trim() ?? ""].filter(Boolean).join(", ");
 }
 
-/** GuidedQuestion only reads `.payload`; the rest is inert filler for the shared type. */
-function toPendingQuestion(id: string, payload: QuestionPayload): PendingQuestion {
-  return {
-    id,
-    detection: { mode: "intent", sourceType: "fast-intake", sourceId: id, timestamp: new Date().toISOString() },
-    actors: [],
-    payload,
-    status: "pending",
-    answer: null,
-    expiresAt: null,
-    createdAt: new Date().toISOString(),
-    conversationId: null,
-  };
+/** GuidedQuestion renders an id-keyed question payload. */
+function toPendingQuestion(id: string, payload: QuestionPayload): { id: string; payload: QuestionPayload } {
+  return { id, payload };
 }
 
 export interface FastSignalIntakeProps {
@@ -79,10 +69,7 @@ export function FastSignalIntake({ onConfirmed, resumeIntentId }: FastSignalInta
   const prepareRef = useRef<Promise<{ runId: string }> | null>(null);
   const resumeAttemptedRef = useRef(false);
 
-  // The community picker offers communities, and a personal network is not one: it is the
-  // user's own private space. Mirrors NetworksPanel's `!i.isPersonal` filter and
-  // the server-side brief, which is built from `getNonPersonalNetworkIds`.
-  const communities = useMemo(() => indexes.filter((item) => !item.isPersonal), [indexes]);
+  const communities = useMemo(() => indexes, [indexes]);
 
   // Depends only on identifiers already available at this point, so callbacks
   // declared further down (resume completion included) can safely list it as

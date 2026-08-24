@@ -20,7 +20,6 @@ export interface ProfileData {
   avatar: string | null;
   location: string | null;
   socials: Array<{ label: string; value: string }> | null;
-  isGhost: boolean;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -43,9 +42,8 @@ export function profileCard(data: ProfileData): string {
 
   // Name line
   const displayName = data.name ?? "(unnamed)";
-  const ghostTag = data.isGhost ? `  ${YELLOW}[ghost]${RESET}` : "";
-  const nameContent = `${BOLD}${WHITE}${displayName}${RESET}${ghostTag}`;
-  lines.push(`  ${border("|")} ${nameContent}${padTo(W - 2, stripAnsi(displayName + (data.isGhost ? "  [ghost]" : "")))}${border("|")}`);
+  const nameContent = `${BOLD}${WHITE}${displayName}${RESET}`;
+  lines.push(`  ${border("|")} ${nameContent}${padTo(W - 2, stripAnsi(displayName))}${border("|")}`);
 
   // Intro / bio
   if (data.intro) {
@@ -88,67 +86,6 @@ export function profileCard(data: ProfileData): string {
   const output = lines.join("\n");
   console.log(output);
   return output;
-}
-
-// ── Contact table ──────────────────────────────────────────────────
-
-/**
- * Print a table of contacts.
- *
- * @param contacts - Array of contact objects from the API.
- */
-export function contactTable(
-  contacts: Array<{ userId: string; name: string; email: string; isGhost?: boolean }>,
-): void {
-  if (contacts.length === 0) {
-    console.log("  No contacts yet.");
-    return;
-  }
-  const nameWidth = Math.max(6, ...contacts.map((c) => c.name.length));
-  const header = `  ${"Name".padEnd(nameWidth)}  Email`;
-  console.log(`${BOLD}${header}${RESET}`);
-  for (const c of contacts) {
-    const ghost = c.isGhost ? ` ${DIM}(ghost)${RESET}` : "";
-    console.log(`  ${c.name.padEnd(nameWidth)}  ${c.email}${ghost}`);
-  }
-}
-
-// ── Session table ───────────────────────────────────────────────────
-
-/**
- * Print a table of sessions.
- */
-export function sessionTable(
-  sessions: Array<{ id: string; title: string | null; createdAt: string }>,
-): void {
-  if (sessions.length === 0) {
-    dim("  No chat sessions found.");
-    return;
-  }
-
-  const idWidth = 36;
-  const titleWidth = 40;
-  const dateWidth = 20;
-
-  console.log(
-    `  ${BOLD}${"ID".padEnd(idWidth)}  ${"Title".padEnd(titleWidth)}  ${"Created".padEnd(dateWidth)}${RESET}`,
-  );
-  console.log(`  ${GRAY}${"-".repeat(idWidth)}  ${"-".repeat(titleWidth)}  ${"-".repeat(dateWidth)}${RESET}`);
-
-  for (const s of sessions) {
-    const title = (s.title ?? "(untitled)").slice(0, titleWidth);
-    const date = new Date(s.createdAt).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    console.log(
-      `  ${GRAY}${s.id.padEnd(idWidth)}${RESET}  ${title.padEnd(titleWidth)}  ${GRAY}${date}${RESET}`,
-    );
-  }
 }
 
 // ── Intent output ──────────────────────────────────────────────────

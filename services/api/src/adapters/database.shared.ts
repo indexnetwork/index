@@ -3,6 +3,7 @@
  * tables, operators, DTO types, and cross-adapter helper functions.
  * No dependency on lib/protocol. Imported by every database/*.adapter.ts file.
  */
+import type { NegotiationPauseReason } from './conversation.database.adapter';
 import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm/sql';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
@@ -34,69 +35,6 @@ export function detectSocialLabel(value: string): string {
 /** Sentinel participant ID for the built-in chat agent. */
 export const SYSTEM_AGENT_ID = 'system-agent';
 
-/**
- * Creates a personal network for the user if one doesn't exist.
- * Adds the user as the owner member.
- * @param userId - The user to create a personal network for
- * @returns The personal network ID
- */
-export async function ensurePersonalNetwork(userId: string): Promise<string> {
-  // Fast path: check mapping table
-  const existing = await db
-    .select({ networkId: schema.personalNetworks.networkId })
-    .from(schema.personalNetworks)
-    .where(eq(schema.personalNetworks.userId, userId))
-    .limit(1);
-
-  if (existing.length > 0) return existing[0].networkId;
-
-  const networkId = crypto.randomUUID();
-
-  // Personal networks are prompt-less by default so the assignment policy treats
-  // them as "no filtration" (score 1.0) — every one of the owner's intents lands
-  // in their own personal network. The owner may later set a prompt to curate it.
-  await db.insert(schema.networks).values({
-    id: networkId,
-    title: 'My Network',
-    isPersonal: true,
-  }).onConflictDoNothing();
-
-  await db.insert(schema.personalNetworks).values({
-    userId,
-    networkId,
-  }).onConflictDoNothing();
-
-  await db.insert(schema.networkMembers).values({
-    networkId,
-    userId,
-    permissions: ['owner'],
-    autoAssign: true,
-  }).onConflictDoNothing();
-
-  // Re-query to return the actual persisted ID (handles race with concurrent calls)
-  const persisted = await db
-    .select({ networkId: schema.personalNetworks.networkId })
-    .from(schema.personalNetworks)
-    .where(eq(schema.personalNetworks.userId, userId))
-    .limit(1);
-
-  return persisted[0]?.networkId ?? networkId;
-}
-
-/**
- * Returns the personal network ID for a user.
- * @param userId - The user to look up
- * @returns The personal network ID, or null if not found
- */
-export async function getPersonalIndexId(userId: string): Promise<string | null> {
-  const result = await db
-    .select({ networkId: schema.personalNetworks.networkId })
-    .from(schema.personalNetworks)
-    .where(eq(schema.personalNetworks.userId, userId))
-    .limit(1);
-
-  return result[0]?.networkId ?? null;
-}
 
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
 export interface ActiveIntentRow {
@@ -184,6 +122,26 @@ export interface IntentListRow {
   waitingOpportunityCount: number;
   /** True while a fresh intent has not completed its first discovery run. */
   warming: boolean;
+  /**
+   * The signal's agent asked its owner something and is still waiting: the
+   * newest message in the signal's DM is an agent question offering canned
+   * replies. Derived per read from the conversation itself — answering (by
+   * typing or by tapping a chip) is what clears it.
+   */
+  awaitingReply: boolean;
+  discoveryProgress?: {
+    status: 'queued' | 'running' | 'retrying' | 'completed' | 'failed' | 'blocked' | 'unknown';
+    attempt: number;
+    maxAttempts: number;
+    assignedCommunityCount: number;
+    processedCommunityCount: number;
+    possibleOverlapCount: number;
+    conversationsStartedCount: number;
+    queuedAt: Date | null;
+    startedAt: Date | null;
+    completedAt: Date | null;
+    updatedAt: Date | null;
+  };
 }
 // UserIdentity shape (aligned with `@indexnetwork/protocol`'s UserIdentity; defined
 // locally to honor the adapter layering rule of not importing protocol interfaces).
@@ -200,11 +158,10 @@ export interface NetworkMembershipRow {
   permissions: string[];
   memberPrompt: string | null;
   autoAssign: boolean;
-  isPersonal: boolean;
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, sessions, userSocials, userContexts } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, files, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -363,13 +320,26 @@ export function ownIntentsListWhere(
  * Database adapter for intent CRUD (Intent Graph).
  */
 export type ChatScopeType = 'network' | 'intent';
-export type ChatPersonaId = 'orchestrator' | 'signal' | 'negotiator' | 'reporter' | 'onboarding';
+/**
+ * Value of `conversations.persona`.
+ *
+ * - `personal` — the one live chat persona (PersonalAgent). The retired
+ *   signal/negotiator/onboarding ids were collapsed into it by migration.
+ * - `telegram` — Telegram notification transcript. Not a chat persona: nothing
+ *   drives a turn in it, it only collects delivered notifications.
+ * - `orchestrator` — retired pre-personafication default. No new rows are
+ *   written with it; existing ones stay readable.
+ */
+export type ChatPersonaId =
+  | 'personal'
+  | 'telegram'
+  | 'orchestrator';
 
 export interface ChatSession {
   id: string;
   userId: string;
   title: string | null;
-  /** Chat persona driving this session's agent loop (e.g. 'orchestrator'). */
+  /** Persona this session is persisted under (e.g. 'personal'). */
   persona: string;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId: string | null;
@@ -391,6 +361,12 @@ export interface ChatMessage {
   subgraphResults: Record<string, unknown> | null;
   tokenCount: number | null;
   interrupted?: boolean | null;
+  /**
+   * Canned replies the client may tap instead of typing. Present only on an
+   * agent question that offered them; tapping one sends its text as an
+   * ordinary user message, so nothing else reads this.
+   */
+  options?: string[] | null;
   createdAt: Date;
 }
 
@@ -404,7 +380,6 @@ export interface ChatConversationMeta {
   /** Canonical focused scope id. */
   scopeId?: string | null;
   shareToken?: string | null;
-  ghostInviteSent?: boolean;
   [key: string]: unknown;
 }
 
@@ -424,6 +399,13 @@ export interface ChatMessageMeta {
   discoveries?: unknown;
   /** Set to true when the assistant message was partially generated before a steer interrupt. */
   interrupted?: boolean;
+  /**
+   * ISO timestamp of the last in-place question-message regeneration (the
+   * conversational-questions edit rule). Absent on messages never edited.
+   */
+  regeneratedAt?: string;
+  /** Canned replies offered under an agent question (2-4 short strings). */
+  options?: string[];
   [key: string]: unknown;
 }
 
@@ -431,8 +413,8 @@ export interface CreateSessionInput {
   id: string;
   userId: string;
   title?: string;
-  /** Chat persona for this session. Omit for the default ('orchestrator'). */
-  persona?: ChatPersonaId;
+  /** Persona this session is persisted under. Required — there is no default. */
+  persona: ChatPersonaId;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId?: string;
   scopeType?: ChatScopeType;
@@ -448,6 +430,8 @@ export interface CreateMessageInput {
   subgraphResults?: Record<string, unknown>;
   tokenCount?: number;
   interrupted?: boolean;
+  /** Canned replies for an agent question; stored in messages.metadata. */
+  options?: string[];
 }
 
 /**
@@ -637,19 +621,18 @@ export interface ResolvedParticipant {
 /**
  * IND-610: owner-only projection of the outreach-gate decision.
  *
- * `source` keeps the provenance honest — the same `screened_out` outcome is
- * reachable from two places, and the card that renders this must not claim
- * screen-node evidence it does not have:
- * - `screen`  — `tasks.metadata.screenDecision`, written by the outreach gate
- *   before any contact; carries structured `evidence.*`.
- * - `outcome` — the negotiation-outcome artifact's `reasoning`, used when the
- *   agent refused on the opening turn instead (no screen-node evidence).
+ * `source` keeps the provenance honest — the card that renders this must not
+ * claim screen-node evidence it does not have:
+ * - `screen`  — `tasks.metadata.screenDecision`. READ-ONLY HISTORY: the
+ *   outreach gate that wrote it is gone, but existing task rows carry it.
+ * - `outcome` — the negotiation-outcome artifact's `reasoning`, written when
+ *   the agent refuses on its opening turn (IND-564). The only live source.
  */
 export interface ProjectedScreenDecision {
   source: 'screen' | 'outcome';
   decision: 'reach_out' | 'pass';
   reasoning: string;
-  /** Screen-node evidence; null when the decision came from the outcome. */
+  /** Screen-node evidence on historical rows; null when the decision came from the outcome. */
   counterpartyPremiseFit: string | null;
   intentAlignment: string | null;
   screenedAt: string | null;
@@ -657,7 +640,7 @@ export interface ProjectedScreenDecision {
 
 export interface NegotiationLifecycleSummary {
   taskId: string;
-  state: 'submitted' | 'working' | 'input_required' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed';
+  state: 'submitted' | 'working' | 'input_required' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed' | 'paused';
   statusTimestamp: Date | null;
   opportunityId: string | null;
   opportunityStatus: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
@@ -667,14 +650,20 @@ export interface NegotiationLifecycleSummary {
   maxTurns: number | null;
   signalCount: number;
   outcome: { hasOpportunity: boolean; reason: string | null } | null;
+  /**
+   * Set only when `state === 'paused'`. `payload` is private to the seat that
+   * paused (`pausedBy`) — every other viewer sees `reason` only, the same
+   * privacy rule `negotiation.tools.ts`'s `pauseFor` applies A2A-side.
+   */
+  pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
   updatedAt: Date;
   /**
-   * IND-610: the owner-facing outreach-gate decision, named-field projected
-   * from `tasks.metadata.screenDecision` (or, when the refusal happened at the
-   * opening turn instead of the screen node, from the negotiation-outcome
-   * artifact's `reasoning`). Populated only when the caller has independently
-   * verified the viewer is the negotiation's initiator — never the raw
-   * metadata blob.
+   * IND-610: the owner-facing "did not reach out" decision, named-field
+   * projected from the negotiation-outcome artifact's `reasoning` (an
+   * opening-turn refusal) or, on historical rows, from
+   * `tasks.metadata.screenDecision`. Populated only when the caller has
+   * independently verified the viewer is the negotiation's initiator — never
+   * the raw metadata blob.
    */
   screenDecision?: ProjectedScreenDecision | null;
 }
@@ -686,12 +675,36 @@ export interface ConversationSummary {
   createdAt: Date;
   updatedAt: Date;
   participants: ResolvedParticipant[];
-  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date } | null;
+  /** The task session that produced the latest message, when it has one. */
+  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date; taskId: string | null } | null;
   metadata: Record<string, unknown> | null;
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
   unreadCount: number;
-  /** Present only when negotiation lifecycle projection was requested. */
+  /**
+   * Present only when negotiation lifecycle projection was requested. The one
+   * task session that represents this conversation to the viewer: the most
+   * alive visible session, newest first within a liveness tier — NOT simply
+   * the newest task (negotiation-session-rollup.projection.ts).
+   */
   negotiation?: NegotiationLifecycleSummary | null;
+  /**
+   * Viewer-scoped opportunities with an addressable negotiation task. Unlike
+   * `negotiation`, this is not limited to one session per conversation.
+   */
+  negotiationOpportunities?: Array<{
+    intentId: string;
+    opportunityId: string;
+    title: string;
+    taskId: string;
+    state: NegotiationLifecycleSummary['state'];
+    opportunityStatus: NegotiationLifecycleSummary['opportunityStatus'];
+    acceptedByViewer: boolean;
+    turnCount: number;
+    maxTurns: number | null;
+    signalCount: number;
+    outcome: NegotiationLifecycleSummary['outcome'];
+    updatedAt: Date;
+  }>;
 }
 
 /**
@@ -703,19 +716,6 @@ export interface ConversationSummary {
  */
 
 // ── De-duplicated query helpers (formerly copy-pasted across adapters) ──
-export async function readUserContext(userId: string, networkId: string | null) {
-  const rows = await db.select()
-    .from(userContexts)
-    .where(and(
-      eq(userContexts.userId, userId),
-      networkId === null ? isNull(userContexts.networkId) : eq(userContexts.networkId, networkId),
-    ))
-    .limit(1);
-  if (rows.length === 0) return null;
-  const r = rows[0];
-  return { id: r.id, text: r.text, embedding: r.embedding as unknown as number[], premiseHash: r.premiseHash ?? '', generatedAt: r.generatedAt };
-}
-
 export async function readPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
     id: string; userId: string;
     assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };

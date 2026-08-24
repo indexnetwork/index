@@ -20,13 +20,11 @@ const ROOT = new URL("../src", import.meta.url).pathname;
  * credential-free source-test gate.
  */
 export const LIVE_MODEL_SPECS = new Set([
-  "chat/tests/chat.prompt.spec.ts",
-  "contact/tests/contact.inviter.spec.ts",
-  "enrichment/tests/enrichment.generator.spec.ts",
-  "negotiation/tests/insight.generator.spec.ts",
-  "negotiation/tests/negotiator-discovery-query.spec.ts",
-  "opportunity/tests/opportunity.graph.spec.ts",
-  "premise/tests/premise.decomposer.spec.ts",
+  "capabilities/tests/intents.spec.ts",
+  "negotiations/tests/insight.generator.spec.ts",
+  "negotiations/tests/negotiator-discovery-query.spec.ts",
+  "opportunities/tests/opportunity.graph.spec.ts",
+  "premises/tests/premise.decomposer.spec.ts",
 ]);
 
 type ChildTestInput = Pick<ChildTestResult, "file" | "exitCode" | "durationMs" | "output">;
@@ -48,7 +46,7 @@ async function runOne(file: string): Promise<ChildTestInput> {
   ]);
   const exitCode = await proc.exited;
   return {
-    file: file.replace(ROOT + "/", ""),
+    file: file.replace(ROOT + "/", "").replace(/^internal\//, ""),
     exitCode,
     durationMs: Date.now() - started,
     output: stdout + stderr,
@@ -73,7 +71,7 @@ export async function main(): Promise<number> {
   console.log(`Running ${files.length} provider-free spec files with concurrency=${concurrency}`);
   if (liveFiles.length > 0) {
     console.log("Excluded explicit live-model specs (run through the live-evaluation workflow):");
-    for (const file of liveFiles) console.log(`  ${file.replace(ROOT + "/", "")}`);
+    for (const file of liveFiles) console.log(`  ${file.replace(ROOT + "/", "").replace(/^internal\//, "")}`);
   }
   console.log();
 

@@ -1,0 +1,59 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+
+import type { HydeDocument } from '../../platform/database.js';
+/** HyDE generation mode. Frame-v1 is the only supported mode. */
+export const HYDE_FRAME_GENERATION_VERSION = "frame-v1" as const;
+export type HydeGenerationMode = typeof HYDE_FRAME_GENERATION_VERSION;
+
+/** Hash source text without persisting the source itself in frame metadata. */
+export function computeHydeSourceTextHash(sourceText: string): string {
+  return bytesToHex(sha256(utf8ToBytes(sourceText)));
+}
+
+function isFrameStrategy(strategy: string): boolean {
+  return strategy.startsWith(`${HYDE_FRAME_GENERATION_VERSION}:`);
+}
+
+function hasFrameMetadataForSource(document: HydeDocument, sourceTextHash: string): boolean {
+  const context = document.context;
+  return isFrameStrategy(document.strategy)
+    && context?.hydeGenerationVersion === HYDE_FRAME_GENERATION_VERSION
+    && context.validationStatus === 'valid'
+    && typeof context.lensLabel === 'string'
+    && context.lensLabel.length > 0
+    && typeof context.frameFingerprint === 'string'
+    && context.frameFingerprint.length > 0
+    && context.sourceTextHash === sourceTextHash
+    && typeof context.generatedAt === 'string'
+    && Number.isFinite(Date.parse(context.generatedAt));
+}
+
+/**
+ * Select persisted documents that belong to the currently active generation
+ * mode and, for frame-v1, the newest generation marker group.
+ */
+export function selectHydeDocumentsForGeneration(
+  documents: HydeDocument[],
+  mode: HydeGenerationMode,
+  sourceText: string,
+): HydeDocument[] {
+  const sourceTextHash = computeHydeSourceTextHash(sourceText);
+  const eligible = documents.filter((document) => hasFrameMetadataForSource(document, sourceTextHash));
+  let newestGeneratedAt: string | undefined;
+  let newestTimestamp = Number.NEGATIVE_INFINITY;
+
+  for (const document of eligible) {
+    const generatedAt = document.context?.generatedAt;
+    if (typeof generatedAt !== 'string') continue;
+    const timestamp = Date.parse(generatedAt);
+    if (timestamp > newestTimestamp) {
+      newestTimestamp = timestamp;
+      newestGeneratedAt = generatedAt;
+    }
+  }
+
+  return newestGeneratedAt
+    ? eligible.filter((document) => document.context?.generatedAt === newestGeneratedAt)
+    : [];
+}

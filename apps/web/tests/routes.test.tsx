@@ -110,7 +110,6 @@ vi.mock('@/contexts/APIContext', () => {
   };
   const usersService = {
     getUserProfile: vi.fn().mockResolvedValue(null),
-    triggerDiscoveryNegotiation: vi.fn(),
   };
   const noopService = new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) });
   const services = {
@@ -207,8 +206,6 @@ vi.mock('@/contexts/AIChatContext', () => {
     sendMessage: vi.fn().mockResolvedValue(undefined),
     sendWebMessage: vi.fn().mockResolvedValue(undefined),
     clearChat: vi.fn(),
-    startSignalSession: vi.fn(),
-    startReporterSession: vi.fn().mockResolvedValue(false),
     loadSession: vi.fn().mockResolvedValue(false),
     loadPreviousMessages: vi.fn().mockResolvedValue(undefined),
     hasPreviousSession: false,
@@ -223,7 +220,6 @@ vi.mock('@/contexts/AIChatContext', () => {
     pendingQueue: [],
     cancelQueuedMessage: vi.fn(),
     submitMidStreamMessage: vi.fn(),
-    liveQuestions: [],
   } satisfies AIChatContextContract;
   return {
     AIChatProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -243,6 +239,9 @@ vi.mock('@/contexts/ConversationContext', () => ({
         sessionHistory: new Map(),
         sessionOpportunityMap: new Map(),
         isConnected: false,
+        // Subscriptions must hand back an unsubscribe: an effect that
+        // returns the subscribe result crashes cleanup otherwise.
+        subscribeQuestionRegeneration: vi.fn(() => () => {}),
       },
       {
         get(target, prop) {

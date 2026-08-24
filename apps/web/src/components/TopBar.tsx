@@ -4,32 +4,25 @@ import { ChevronDown, Settings, LogOut, Menu, X } from 'lucide-react';
 
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useOpportunities } from '@/contexts/APIContext';
-import { useAIChat } from '@/contexts/AIChatContext';
-import { useNetworkFilter } from '@/contexts/IndexFilterContext';
-import { useQuestions } from '@/contexts/QuestionsContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import UserAvatar from '@/components/UserAvatar';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { countNegotiationsRequiringAction } from '@/lib/negotiation-inbox';
-import { getNegotiatorDmSessionId } from '@/lib/negotiator-dm';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('TopBar');
 
 /**
  * Top navigation bar. Replaces the retired left sidebar: logo on the left
- * (links to Discover), primary nav (Signals / Chat / Negotiations / Networks /
- * Agent) and the profile menu on the right. Signals is the Discover home, also reachable via
+ * (links to Discover), primary nav (Signals / Chat / Negotiations / Networks) and the profile
+ * menu on the right. Signals is the Discover home, also reachable via
  * the logo.
  */
 export default function TopBar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, signOut, features } = useAuthContext();
+  const { user, signOut } = useAuthContext();
   const opportunitiesService = useOpportunities();
-  const { clearChat } = useAIChat();
-  const { setSelectedNetworkIds } = useNetworkFilter();
-  const { personalAgentPending, questions } = useQuestions();
   const { conversations, negotiations } = useConversation();
   const unreadConversationCount = conversations.filter(
     (conversation) => isVisibleH2HConversation(conversation) && conversation.unreadCount > 0,
@@ -44,10 +37,9 @@ export default function TopBar() {
   // Active-route detection ported from the sidebar so deep routes highlight.
   // Signals covers Discover (/) plus the signal detail and creation routes.
   const isSignalsView = pathname === '/' || pathname?.startsWith('/i/');
+  const isNegotiationsView = pathname === '/negotiations' || pathname?.startsWith('/negotiations/');
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
-  const isNegotiationsView = pathname === '/negotiations';
   const isNetworksView = pathname?.startsWith('/networks');
-  const isAgentView = pathname?.startsWith('/agent') || pathname?.startsWith('/d/');
   const isSettingsView = pathname?.startsWith('/settings');
 
   useEffect(() => {
@@ -101,24 +93,6 @@ export default function TopBar() {
     }
   };
 
-  const handleAgentClick = () => {
-    clearChat({ abortStream: false });
-    setSelectedNetworkIds([]);
-    // A pending ask_user consultation outranks the Agent home: deep-link to
-    // the negotiator DM thread, with /questions as the fallback (IND-558).
-    if (questions.some((q) => q.detection.mode === 'negotiation_inflight')) {
-      if (!features?.negotiatorChat) {
-        navigate('/questions');
-        return;
-      }
-      void getNegotiatorDmSessionId().then((sessionId) => {
-        navigate(sessionId ? `/d/${sessionId}` : '/questions');
-      });
-      return;
-    }
-    navigate('/agent');
-  };
-
   const navItemClass = (active: boolean) =>
     `px-3 py-1.5 rounded-md text-sm transition-colors ${
       active ? 'bg-gray-100 text-black font-bold' : 'text-black font-medium hover:bg-gray-50'
@@ -157,18 +131,6 @@ export default function TopBar() {
       </button>
       <button onClick={() => navigate('/networks')} className={navItemClass(!!isNetworksView)}>
         Networks
-      </button>
-      <button onClick={handleAgentClick} className={navItemClass(!!isAgentView)}>
-        Agent
-        {/* Personal Agent pending-question badge, ported from the retired sidebar. */}
-        {personalAgentPending > 0 && (
-          <span
-            data-testid="negotiator-question-badge"
-            className="ml-1.5 inline-block min-w-[20px] rounded-full bg-[#041729] px-2 py-0.5 text-center text-xs text-white"
-          >
-            {personalAgentPending > 99 ? '99+' : personalAgentPending}
-          </span>
-        )}
       </button>
     </>
   );

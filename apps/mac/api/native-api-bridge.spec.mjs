@@ -15,7 +15,6 @@ const appSource = readFileSync(new URL('../src/ui/app.jsx', import.meta.url), 'u
 const settingsSource = readFileSync(new URL('../src/ui/settings.jsx', import.meta.url), 'utf8');
 const plist = readFileSync(new URL('../Info.plist', import.meta.url), 'utf8');
 const build = readFileSync(new URL('../scripts/build.sh', import.meta.url), 'utf8');
-const migrationFixture = readFileSync(new URL('../Tests/OwnerCredentialMigrationFixture.swift', import.meta.url), 'utf8');
 const streamFixture = readFileSync(new URL('../Tests/NativeAPIStreamDelegateFixture.swift', import.meta.url), 'utf8');
 const bodyFixture = readFileSync(new URL('../Tests/NativeAPIBodyValidationFixture.swift', import.meta.url), 'utf8');
 const quarantineFixture = readFileSync(new URL('../Tests/NativeAPIQuarantineFixture.swift', import.meta.url), 'utf8');
@@ -44,6 +43,26 @@ describe('credential-free native API JavaScript boundary', () => {
     expect(bridge.receive({ requestId: 'opaque-1', ok: true, status: 200, body: { user: { id: 'u1' } } })).toBe(true);
     expect(bridge.receive({ requestId: 'opaque-1', ok: true, status: 200, body: { user: { id: 'attacker' } } })).toBe(false);
     await expect(pending).resolves.toEqual({ status: 200, body: { user: { id: 'u1' } }, headers: {} });
+  });
+
+  it('surfaces body.error and detail instead of opaque http_error', async () => {
+    const { bridge } = createBridgeHarness();
+    const pending = bridge.request({ kind: 'http', method: 'PATCH', path: '/agents/a1', body: { handleNegotiations: true } });
+    expect(bridge.receive({
+      requestId: 'opaque-1',
+      ok: false,
+      status: 403,
+      errorCode: 'http_error',
+      body: {
+        error: 'forbidden',
+        detail: 'This endpoint requires a session token; API keys are not accepted',
+      },
+    })).toBe(true);
+    await expect(pending).rejects.toMatchObject({
+      name: 'IndexApiError',
+      status: 403,
+      message: 'forbidden: This endpoint requires a session token; API keys are not accepted',
+    });
   });
 
   it('delivers bounded events and sends correlated cancellation on abort', async () => {
@@ -219,32 +238,19 @@ describe('credential-free native API JavaScript boundary', () => {
       expect(source).not.toMatch(/x-api-key|ownerCredential|INDEX_NATIVE\.apiKey|native\(\)\.apiKey/);
     }
     expect(mainSwift).not.toMatch(/"apiKey"\s*:|__indexAuthChanged\([^)]*(?:apiKey|key)/);
-    expect(mainSwift).not.toContain('targetKey');
     expect(apiSource).not.toMatch(/\bmcpCall\s*,|\binvokeTool\s*,/);
     expect(clientSource).not.toContain('invoke: (toolName');
   });
 });
 
-describe('native owner migration and transport source contracts', () => {
-  it('keeps a strict durable revocation journal and deletes only credential.json', () => {
-    expect(ownerStore).toContain('revocation_pending');
-    expect(ownerStore).toContain('credential.json');
-    expect(ownerStore).toContain('owner-credential-migration.json');
-    expect(ownerStore).toContain('verifyLegacyCredentialAbsent');
-    expect(ownerStore).toContain('Set(object.keys) == Self.legacyCredentialKeys');
-    expect(ownerStore).not.toContain('.mappedIfSafe');
-    expect(ownerStore).toContain('^[A-Za-z0-9_-]+$');
+describe('native owner credential and transport source contracts', () => {
+  it('stores the owner API key only through the verified Keychain descriptor', () => {
+    expect(ownerStore).toContain('keychain.putAndVerify');
+    expect(ownerStore).toContain('deleteAndVerify');
+    expect(ownerStore).toContain('Set(object.keys) == Self.credentialKeys');
+    expect(ownerStore).not.toContain('credential.json');
     expect(ownerStore).not.toContain('removeItem(at: applicationSupportDirectory)');
     expect(mainSwift).not.toContain('removeItem(at: applicationSupportDirectory)');
-    for (const evidence of [
-      'malformed plaintext accepted', 'deletion failure accepted',
-      'offline revocation evidence was not durable', 'legacy key ID missing',
-      'absence read-back failure accepted', 'invalid legacy key ID accepted',
-      'invalid legacy key ID source was deleted', 'Keychain read-back mismatch accepted',
-    ]) expect(migrationFixture).toContain(evidence);
-    expect(migrationFixture).not.toMatch(/require\(\s*try/s);
-    expect(build).toContain('--fixture OwnerCredentialMigrationFixture');
-    expect(macWorkflow).toContain('./scripts/build.sh --fixture OwnerCredentialMigrationFixture');
   });
 
   it('enforces exact native method/path/MCP/upload/SSE bounds before network work', () => {
@@ -265,10 +271,7 @@ describe('native owner migration and transport source contracts', () => {
     expect(nativeBridge).toContain('/agent-runtime/reconcile-index');
     expect(nativeBridge).toContain('required: ["agentId", "installationId", "setupAttemptId"]');
     expect(nativeBridge).toContain('allowedMCPTools');
-    expect(nativeBridge).toContain('/tools/read_user_contexts');
-    expect(nativeBridge).toContain('/tools/preview_user_context');
-    expect(nativeBridge).toContain('/tools/confirm_user_context');
-    expect(nativeBridge).not.toContain('^/tools/[^/?]+$');
+        expect(nativeBridge).not.toContain('^/tools/[^/?]+$');
     expect(nativeBridge).toContain('isGloballyBoundedJSON');
     expect(nativeBridge).toContain('isAllowedBody');
     expect(nativeBridge).toContain('isAllowedSSEBody');
@@ -276,9 +279,17 @@ describe('native owner migration and transport source contracts', () => {
     expect(nativeBridge).toContain('exactTypedObject');
     expect(nativeBridge).toContain('boundedStringArray');
     expect(nativeBridge).toContain('validMessageParts');
-    expect(nativeBridge).toContain('validDraft');
     expect(nativeBridge).toContain('hasAllowedQuery');
     expect(nativeBridge).toContain('create_intent');
+    expect(nativeBridge).toContain('register_agent');
+    expect(nativeBridge).toContain('^/agents/[^/?]+/tokens$');
+    expect(nativeBridge).toContain('PATCH');
+    expect(nativeBridge).toContain('handleNegotiations');
+    expect(nativeBridge).toContain('validAgentPermissions');
+    expect(bodyFixture).toContain('valid register_agent rejected');
+    expect(bodyFixture).toContain('empty createToken body rejected');
+    expect(bodyFixture).toContain('handleNegotiations patch rejected');
+    expect(bodyFixture).toContain('agent delete rejected');
     expect(mcpTransportSource).toContain('Client must accept both application/json and text/event-stream');
     expect(nativeBridge).toContain('application/json, text/event-stream');
     expect(nativeBridge).toContain('URLSessionDataDelegate');
@@ -324,32 +335,56 @@ describe('native owner migration and transport source contracts', () => {
     const finish = nativeBridge.match(/private func finish\(_ response[\s\S]*?\n {4}}\n}/)?.[0] || '';
     expect(finish.indexOf('terminal(response)')).toBeLessThan(finish.indexOf('drains.forEach'));
     expect(finish).toContain('streamContexts.removeValue');
-    expect(mainSwift).toContain('retryPendingOwnerRevocation');
     expect(quarantineFixture).toContain('logout revoked before active requests drained');
     expect(quarantineFixture).toContain('quarantine admitted a new request');
     expect(quarantineFixture).toContain('SSE terminal did not precede revoke drain');
     expect(quarantineFixture).toContain('verified activation did not reopen quarantine');
   });
 
-  it('uses code-only PKCE exchange, Keychain verification, activation/rollback, and ordered revocation', () => {
-    expect(mainSwift).toContain('Data(SHA256.hash');
+  it('uses the state-bound /cli-auth handshake, Keychain verification, and ordered revocation', () => {
     expect(mainSwift).toContain('secureRandomState');
     expect(mainSwift).toContain('secureRandomBytesProvider');
     expect(mainSwift).toContain('secure_random_unavailable');
     const login = mainSwift.match(/private func startLogin[\s\S]*?private func finishLogin/)?.[0] || '';
     expect(login.indexOf('secureRandomState()')).toBeLessThan(login.indexOf('LoopbackAuthServer(state:'));
-    expect(login.indexOf('secure_random_unavailable')).toBeLessThan(login.indexOf('performOwnerRequest'));
+    expect(login).toContain('/cli-auth');
+    expect(login).toContain('version=2');
     expect(mainSwift).not.toMatch(/UUID\(\)\.uuidString \+ UUID\(\)\.uuidString/);
-    expect(mainSwift).toContain('/index-app-owner-authorizations/exchange');
     expect(mainSwift).toContain('try store.putAndVerify(record)');
-    expect(mainSwift).toContain('/index-app-owner-authorizations/activate');
-    expect(mainSwift).toContain('/index-app-owner-authorizations/rollback');
-    expect(mainSwift).toContain('/index-app-owner-authorizations/revoke');
+    expect(mainSwift).toContain('/auth/cli-credential/revoke');
+    expect(mainSwift).not.toContain('/index-app-owner-authorizations');
     const logoutBlock = mainSwift.match(/private func logout[\s\S]*?private func verifyCredentialDenied/)?.[0] || '';
     expect(logoutBlock.indexOf('beginQuarantine')).toBeLessThan(logoutBlock.indexOf('revokeAndDelete'));
     expect(logoutBlock.indexOf('verifyCredentialDenied')).toBeLessThan(logoutBlock.indexOf('store.deleteAndVerify()'));
-    expect(mainSwift).toContain('Set(names) == ["request_id", "code", "state"]');
-    expect(mainSwift).not.toMatch(/api_key|session_token|targetKey/);
+    expect(loopbackAuth).toContain('Set(names) == ["api_key", "key_id", "state"]');
+    expect(mainSwift).not.toMatch(/session_token/);
+  });
+
+  it('percent-encodes the authorize query with exactly encodeURIComponent semantics', () => {
+    // The authorize page parses the tuple with decodeURIComponent, so the
+    // native side has to match it character for character. URLQueryItem leaves
+    // ':' and '/' literal, which is what broke loopback redirect_uri sign-in.
+    const declared = appDelegate.match(
+      /static func encodeURIComponent[\s\S]*?charactersIn:\s*"([^"]*)"/,
+    )?.[1];
+    expect(declared).toBeTruthy();
+
+    // Derive the expectation from the real thing rather than restating the
+    // literal, so a hand-edited charset cannot quietly agree with a hand-edited
+    // test. Every ASCII character encodeURIComponent leaves alone, and no other.
+    const unreserved = Array.from({ length: 128 }, (_, code) => String.fromCharCode(code))
+      .filter((character) => encodeURIComponent(character) === character)
+      .join('');
+    expect([...declared].sort().join('')).toBe([...unreserved].sort().join(''));
+
+    // Guard the specific regression: these must not survive unescaped.
+    for (const character of [':', '/', '+', '&', '=', '?', '#', ' ']) {
+      expect(declared).not.toContain(character);
+    }
+
+    // And the encoded string has to actually reach the URL.
+    expect(appDelegate).toContain('percentEncodedQuery');
+    expect(appDelegate).not.toMatch(/page\?\.queryItems\s*=/);
   });
 
   it('requires the owner-only access group and macOS 13 production inspection boundary', () => {

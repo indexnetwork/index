@@ -69,7 +69,7 @@ function controlledStream(options?: { sessionId?: string; persona?: string }) {
   };
 }
 
-function sessionResponse(id: string, content = id, persona = 'signal') {
+function sessionResponse(id: string, content = id, persona = 'personal') {
   return {
     session: { id, title: `Title ${id}`, persona },
     messages: [{
@@ -93,26 +93,20 @@ function Probe() {
   const [loadResult, setLoadResult] = useState('none');
   const [resolutionTarget, setResolutionTarget] = useState('none');
   const resolveIntent = (id: string) => {
-    void chat.resolveIntentSession({ id, label: `Intent ${id}` }, 'signal').then((resolvedSessionId) => {
+    void chat.resolveIntentSession({ id, label: `Intent ${id}` }).then((resolvedSessionId) => {
       if (resolvedSessionId) setResolutionTarget(resolvedSessionId);
     });
   };
-  const resolveReporter = () => {
-    void chat.resolveIntentSession({ id: 'reporter-scope', label: 'Reporter scope' }, 'reporter');
-  };
   return (
     <div>
-      <button onClick={() => void chat.sendWebMessage('first', undefined, undefined, { persona: 'signal' })}>
+      <button onClick={() => void chat.sendWebMessage('first')}>
         web first
       </button>
       <button onClick={() => void chat.sendWebMessage('second')}>web second</button>
       <button onClick={() => void chat.sendMessage('compatibility')}>compatibility</button>
       <button onClick={() => chat.clearChat()}>clear</button>
       <button onClick={() => chat.clearChat({ abortStream: false })}>clear detached</button>
-      <button onClick={() => chat.startSignalSession()}>start signal</button>
-      <button onClick={() => void chat.startReporterSession()}>start reporter</button>
-      <button onClick={() => void chat.startReporterSession({ forceNew: true })}>new reporter</button>
-      <button onClick={() => void chat.sendWebMessage('reporter message')}>reporter message</button>
+      <button onClick={() => chat.clearChat()}>start signal</button>
       <button onClick={() => void chat.loadSession('session-a')}>load a</button>
       <button onClick={() => void chat.loadSession('session-b')}>load b</button>
       <button onClick={() => void chat.loadSession('old-session')}>load old</button>
@@ -121,7 +115,6 @@ function Probe() {
       </button>
       <button onClick={() => resolveIntent('intent-a')}>resolve intent a</button>
       <button onClick={() => resolveIntent('intent-b')}>resolve intent b</button>
-      <button onClick={resolveReporter}>resolve reporter</button>
       <button onClick={() => chat.submitMidStreamMessage('queued follow-up', [])}>queue follow-up</button>
       <span data-testid="session">{chat.sessionId ?? 'none'}</span>
       <span data-testid="persona">{chat.sessionPersona ?? 'none'}</span>
@@ -140,8 +133,6 @@ function Probe() {
       <span data-testid="chat-scope">{chat.chatScope ? `${chat.chatScope.type}:${chat.chatScope.id}` : 'none'}</span>
       <span data-testid="ready-b">{chat.isSessionReady('session-b') ? 'yes' : 'no'}</span>
       <span data-testid="queue-id">{chat.pendingQueue[0]?.id ?? 'none'}</span>
-      <span data-testid="live-question-count">{chat.liveQuestions.length}</span>
-      <span data-testid="live-question-prompt">{chat.liveQuestions[0]?.payload.prompt ?? 'none'}</span>
     </div>
   );
 }
@@ -170,7 +161,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
 
   test('web sends use the dedicated route while compatibility sends remain compatible', async () => {
     mocks.apiClient.stream
-      .mockResolvedValueOnce(streamResponse({ sessionId: 'signal-session-1', persona: 'signal' }))
+      .mockResolvedValueOnce(streamResponse({ sessionId: 'signal-session-1', persona: 'personal' }))
       .mockResolvedValueOnce(streamResponse());
 
     renderProvider();
@@ -190,94 +181,6 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(mocks.apiClient.stream.mock.calls[2]?.[0]).toBe('/chat/stream');
   });
 
-  test('a newly claimed reporter session loads first and sends exactly one bound kickoff', async () => {
-    mocks.apiClient.post
-      .mockResolvedValueOnce({ session: { id: 'reporter-session' }, created: true })
-      .mockResolvedValueOnce(sessionResponse('reporter-session', 'persisted', 'reporter'));
-    mocks.apiClient.stream.mockResolvedValueOnce(streamResponse({
-      sessionId: 'reporter-session',
-      persona: 'reporter',
-      response: 'fresh briefing',
-    }));
-
-    renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
-
-    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1));
-    expect(mocks.apiClient.post.mock.calls[0]).toEqual([
-      '/chat/reporter/session',
-      { forceNew: false },
-    ]);
-    expect(mocks.apiClient.post.mock.calls[1]).toEqual([
-      '/chat/web/session',
-      { sessionId: 'reporter-session' },
-    ]);
-    expect(mocks.apiClient.stream.mock.calls[0]?.[0]).toBe('/chat/web/stream');
-    expect(mocks.apiClient.stream.mock.calls[0]?.[1]).toMatchObject({
-      message: 'reporter-briefing-kickoff',
-      sessionId: 'reporter-session',
-      persona: 'reporter',
-    });
-    await waitFor(() => expect(text('session')).toBe('reporter-session'));
-  });
-
-  test('a within-TTL reporter session hydrates persisted messages without a kickoff', async () => {
-    mocks.apiClient.post
-      .mockResolvedValueOnce({ session: { id: 'reporter-existing' }, created: false })
-      .mockResolvedValueOnce(sessionResponse('reporter-existing', 'saved follow-up', 'reporter'));
-
-    renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
-
-    await waitFor(() => expect(text('session')).toBe('reporter-existing'));
-    expect(text('messages')).toBe('saved follow-up');
-    expect(mocks.apiClient.stream).not.toHaveBeenCalled();
-  });
-
-  test('force-new aborts the old briefing and quarantines its late response', async () => {
-    const oldBriefing = deferred<Response>();
-    mocks.apiClient.post
-      .mockResolvedValueOnce({ session: { id: 'reporter-old' }, created: true })
-      .mockResolvedValueOnce(sessionResponse('reporter-old', 'old persisted', 'reporter'))
-      .mockResolvedValueOnce({ session: { id: 'reporter-fresh' }, created: true })
-      .mockResolvedValueOnce(sessionResponse('reporter-fresh', 'fresh persisted', 'reporter'));
-    mocks.apiClient.stream
-      .mockReturnValueOnce(oldBriefing.promise)
-      .mockResolvedValueOnce(streamResponse({
-        sessionId: 'reporter-fresh',
-        persona: 'reporter',
-        response: 'fresh briefing',
-      }));
-
-    renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'start reporter' }));
-    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1));
-    const oldSignal = (mocks.apiClient.stream.mock.calls[0]?.[2] as { signal: AbortSignal }).signal;
-
-    fireEvent.click(screen.getByRole('button', { name: 'new reporter' }));
-    await waitFor(() => expect(mocks.apiClient.stream).toHaveBeenCalledTimes(2));
-    expect(oldSignal.aborted).toBe(true);
-    expect(mocks.apiClient.post.mock.calls[2]).toEqual([
-      '/chat/reporter/session',
-      { forceNew: true },
-    ]);
-    await waitFor(() => expect(text('session')).toBe('reporter-fresh'));
-
-    await act(async () => {
-      oldBriefing.resolve(streamResponse({
-        sessionId: 'reporter-old',
-        persona: 'reporter',
-        response: 'late old briefing',
-      }));
-      await oldBriefing.promise;
-    });
-
-    expect(text('session')).toBe('reporter-fresh');
-    expect(text('messages')).toContain('fresh briefing');
-    expect(text('messages')).not.toContain('late old briefing');
-    expect(text('loading')).toBe('no');
-  });
-
   test('preserves a message submitted before the first web session id arrives', async () => {
     const first = deferred<Response>();
     mocks.apiClient.stream
@@ -293,7 +196,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(mocks.apiClient.stream).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      first.resolve(streamResponse({ sessionId: 'web-session', persona: 'reporter' }));
+      first.resolve(streamResponse({ sessionId: 'web-session', persona: 'personal' }));
       await first.promise;
     });
 
@@ -315,7 +218,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'clear' }));
 
     await act(async () => {
-      old.resolve(streamResponse({ sessionId: 'stale-session', persona: 'signal', response: 'stale' }));
+      old.resolve(streamResponse({ sessionId: 'stale-session', persona: 'personal', response: 'stale' }));
       await old.promise;
     });
 
@@ -334,7 +237,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'clear detached' }));
 
     await act(async () => {
-      old.resolve(streamResponse({ sessionId: 'detached-session', persona: 'signal', response: 'detached' }));
+      old.resolve(streamResponse({ sessionId: 'detached-session', persona: 'personal', response: 'detached' }));
       await old.promise;
     });
 
@@ -356,7 +259,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     await waitFor(() => expect(text('ready-b')).toBe('yes'));
 
     await act(async () => {
-      old.resolve(streamResponse({ sessionId: 'stale-session', persona: 'signal', response: 'stale' }));
+      old.resolve(streamResponse({ sessionId: 'stale-session', persona: 'personal', response: 'stale' }));
       await old.promise;
     });
 
@@ -491,7 +394,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
   });
 
   test.each([
-    ['WEB_SIGNAL_AGENT_DISABLED', 'Signal Agent is not available right now.'],
+    ['WEB_SIGNAL_AGENT_DISABLED', 'Your agent is not available right now.'],
     ['CHAT_PERSONA_MISMATCH', 'This request does not match the chat that was opened.'],
     ['CHAT_PERSONA_UNSUPPORTED', 'This chat cannot be continued safely.'],
   ])('maps %s to product-safe state without trusting server detail', async (code, safeMessage) => {
@@ -514,7 +417,7 @@ describe('AIChatContext Signal persona transport and ownership', () => {
         'untrusted detail',
         { type: 'start_signal_session', href: '/' },
       ))
-      .mockResolvedValueOnce(streamResponse({ sessionId: 'fresh-signal', persona: 'signal' }));
+      .mockResolvedValueOnce(streamResponse({ sessionId: 'fresh-signal', persona: 'personal' }));
 
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'web first' }));
@@ -526,7 +429,9 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'web second' }));
     await waitFor(() => expect(text('session')).toBe('fresh-signal'));
     expect(mocks.apiClient.stream.mock.calls[1]?.[0]).toBe('/chat/web/stream');
-    expect(mocks.apiClient.stream.mock.calls[1]?.[1]).toMatchObject({ persona: 'signal' });
+    // The persona field left the request contract: the server has one persona
+    // and needs no assertion from the client.
+    expect(mocks.apiClient.stream.mock.calls[1]?.[1]).not.toHaveProperty('persona');
   });
 
   test('rejects a valid-looking action attached to the wrong policy code', async () => {
@@ -555,50 +460,11 @@ describe('AIChatContext Signal persona transport and ownership', () => {
     expect(text('block-action')).toBe('none');
   });
 
-  test('forwards blocking user_question events into live questions for guided surfaces', async () => {
-    const stream = controlledStream({ sessionId: 'signal-session', persona: 'signal' });
-    mocks.apiClient.stream.mockResolvedValueOnce(stream.response);
-    mocks.apiClient.get.mockResolvedValueOnce({
-      questions: [{
-        id: 'question-1',
-        detection: { sourceType: 'intent', sourceId: 'intent-1' },
-        actors: [],
-        payload: { title: 'Signal focus', prompt: 'What are you looking for?', options: [{ label: 'A collaborator', description: 'Someone to build with' }], multiSelect: false },
-        status: 'pending', answer: null, expiresAt: null, createdAt: '2026-01-01T00:00:00Z', conversationId: 'signal-session',
-      }],
-    });
-
-    renderProvider();
-    fireEvent.click(screen.getByRole('button', { name: 'web first' }));
-    await waitFor(() => expect(text('session')).toBe('signal-session'));
-
-    await act(async () => {
-      stream.event({
-        type: 'user_question',
-        sessionId: 'signal-session',
-        questions: [{
-          id: 'question-1',
-          title: 'Signal focus',
-          prompt: 'What are you looking for?',
-          options: [{ label: 'A collaborator', description: 'Someone to build with' }],
-          multiSelect: false,
-        }],
-      });
-    });
-
-    await waitFor(() => expect(text('live-question-count')).toBe('1'));
-    expect(text('live-question-prompt')).toBe('What are you looking for?');
-    await act(async () => {
-      stream.event({ type: 'done', response: 'waiting' });
-      stream.close();
-    });
-  });
-
   test('queued web sends retain the dedicated transport when drained', async () => {
-    const first = controlledStream({ sessionId: 'signal-session', persona: 'signal' });
+    const first = controlledStream({ sessionId: 'signal-session', persona: 'personal' });
     mocks.apiClient.stream
       .mockResolvedValueOnce(first.response)
-      .mockResolvedValueOnce(streamResponse({ sessionId: 'signal-session', persona: 'signal' }));
+      .mockResolvedValueOnce(streamResponse({ sessionId: 'signal-session', persona: 'personal' }));
 
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'web first' }));

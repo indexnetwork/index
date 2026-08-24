@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { Check, CheckCircle2, Clock, X } from "lucide-react";
-import GhostBadge from "@/components/GhostBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import UserAvatar from "@/components/UserAvatar";
+import AskingFirstCard from "@/components/negotiations/AskingFirstCard";
+import type { AskingFirstState } from "@/components/negotiations/asking-first";
 import { toSignalProductLanguage } from "@/lib/product-language";
 import { cn } from "@/lib/utils";
 
@@ -72,8 +73,6 @@ export interface OpportunityCardData {
   score?: number;
   /** Opportunity status at the time the card was created. */
   status?: string;
-  /** Whether the counterpart is a ghost (not yet onboarded) user. */
-  isGhost?: boolean;
   /** Template-only pool-answer demotion explanation from server metadata. */
   deprioritizedReason?: string;
   /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
@@ -88,6 +87,13 @@ export interface OpportunityCardData {
    * fetch replaces the card.
    */
   presentationPending?: boolean;
+  /**
+   * Set while this opportunity's negotiation is parked before any contact,
+   * waiting on the viewer's answer (#1445). Replaces the body: the opportunity
+   * is `negotiating`, so the presenter's "your agent is still talking with
+   * theirs · no action needed yet" is the exact opposite of what happened.
+   */
+  askingFirst?: AskingFirstState;
 }
 
 /** Status values that allow user actions (accept/reject). Matches DB opportunity_status enum. */
@@ -167,7 +173,6 @@ interface OpportunityCardProps {
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
-    isGhost?: boolean,
   ) => void | Promise<void>;
   /** Handler for secondary action (reject/skip). */
   onSecondaryAction?: (
@@ -175,7 +180,6 @@ interface OpportunityCardProps {
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
-    isGhost?: boolean,
   ) => void | Promise<void>;
   /** Whether an action is currently loading for this card. */
   isLoading?: boolean;
@@ -262,7 +266,6 @@ export default function OpportunityCard({
           card.userId,
           card.viewerRole,
           card.name,
-          card.isGhost,
         );
         setActionTaken("accepted");
       } catch (err) {
@@ -281,7 +284,6 @@ export default function OpportunityCard({
           card.userId,
           card.viewerRole,
           card.name,
-          card.isGhost,
         );
         setActionTaken("rejected");
       } catch {
@@ -353,7 +355,6 @@ export default function OpportunityCard({
                 avatar={card.avatar || null}
                 size={28}
                 className="shrink-0"
-                blur={card.isGhost}
               />
               <span className="font-bold text-gray-900 text-sm hover:underline truncate">
                 {card.name || "Someone"}
@@ -416,12 +417,10 @@ export default function OpportunityCard({
               avatar={card.avatar || null}
               size={32}
               className="shrink-0"
-              blur={card.isGhost}
             />
             <div className="min-w-0">
               <h4 className="font-bold text-gray-900 text-sm hover:underline flex items-center gap-1.5">
                 {card.name || "Someone"}
-                {card.isGhost && <GhostBadge />}
               </h4>
               <p className="text-[11px] text-[#3D3D3D]">
                 {toSignalProductLanguage(card.mutualIntentsLabel || "Potential connection")}
@@ -493,9 +492,20 @@ export default function OpportunityCard({
         </div>
       )}
 
+      {/* Parked before any contact: the agent has a question for the viewer and
+          has said nothing to the counterparty. Takes precedence over both the
+          presence block and the body below — the presence chip would claim a
+          dialogue that has not started, and the presenter's negotiating copy
+          claims the agents are already talking. */}
+      {card.askingFirst && (
+        <div className="mb-3">
+          <AskingFirstCard state={card.askingFirst} counterpartName={card.name || "This person"} />
+        </div>
+      )}
+
       {/* Ambient negotiation presence (Option C): templated chip + latest move
           for in-flight negotiations. The human gate stays explicit. */}
-      {negotiationPresence && effectiveStatus === "negotiating" && (
+      {negotiationPresence && !card.askingFirst && effectiveStatus === "negotiating" && (
         <div className="mb-3 rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <NegotiationPresenceChip
@@ -511,7 +521,7 @@ export default function OpportunityCard({
           </p>
           <button
             type="button"
-            onClick={() => navigate(`/chat/${negotiationPresence.conversationId}`)}
+            onClick={() => navigate(`/negotiations/${negotiationPresence.conversationId}`)}
             className="mt-1.5 text-xs font-medium text-[#041729] hover:underline"
           >
             Watch the negotiation
@@ -519,8 +529,11 @@ export default function OpportunityCard({
         </div>
       )}
 
-      {/* Main Text (Personalized Summary) — shimmer while the presenter text is still being generated */}
-      {card.presentationPending ? (
+      {/* Main Text (Personalized Summary) — shimmer while the presenter text is
+          still being generated. Suppressed for a pre-contact park: the card
+          above IS the body, and the presenter's negotiating template ("still
+          talking with theirs", "no action needed yet") contradicts it. */}
+      {card.askingFirst ? null : card.presentationPending ? (
         <div className="space-y-2 animate-pulse" aria-hidden="true">
           <div className="h-4 w-full bg-gray-200 rounded-sm" />
           <div className="h-4 w-[85%] bg-gray-200 rounded-sm" />

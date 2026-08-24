@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/claude-plugin",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Index Network Claude Code plugin — orchestrator and negotiator skills",
   "type": "module",
   "homepage": "https://index.network",

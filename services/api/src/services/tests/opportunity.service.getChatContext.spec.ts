@@ -169,7 +169,6 @@ function createService(rows: Opportunity[]) {
     database as never,
     cache as never,
     undefined,
-    undefined,
     {
       presenter: presenter as never,
       presenterDatabase: {} as never,

@@ -14,10 +14,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
   const { isAuthenticated } = useAuthContext();
 
-  const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/mynetwork', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
+  const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
   const publicRoutes = ['/c'];
   // /l is chrome-free web invite join; /index stays app-only public join.
-  const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist'];
+  const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe'];
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.
@@ -54,7 +54,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const isCliAuth = pathname?.startsWith('/cli-auth');
 
   const isMessagesView = useMemo(() =>
-    pathname === '/chat' || pathname?.startsWith('/chat/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
+    pathname === '/chat' || pathname?.startsWith('/chat/') || pathname === '/negotiations' || pathname?.startsWith('/negotiations/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
   [pathname]);
 
   // Agent chat routes get the conversation-history aside (relocated from the

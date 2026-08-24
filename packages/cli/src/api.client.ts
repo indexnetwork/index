@@ -5,10 +5,10 @@
  * common error patterns (401, network errors).
  */
 
-import type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
+import type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityDetail, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, Conversation, ConversationMessage, Negotiation, NegotiationListOptions, EnrichmentResult, ToolResult } from "./types";
 
 // Re-export all types for backward compatibility
-export type { ChatSession, UserProfile, StreamChatParams, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
+export type { UserProfile, UserData, Intent, ListIntentsOptions, IntentListResult, OpportunityListOptions, Opportunity, OpportunityActor, OpportunityInterpretation, OpportunityDetection, OpportunityDetail, OpportunityParty, Network, NetworkMember, NetworkRequest, NetworkCreateResult, NetworkInvitationResult, ConversationParticipant, Conversation, MessagePart, ConversationMessage, Negotiation, NegotiationListOptions, NegotiationSpeaker, NegotiationTurn, NegotiationOutcome, EnrichedProfile, EnrichmentResult, ToolResult } from "./types";
 
 export interface UptakeQuestion {
   id: string;
@@ -50,56 +50,18 @@ function isEarlyAccessNetworkCreationError(error: unknown): error is ApiError {
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
-  private readonly authKind: "session" | "api_key";
 
   /**
    * @param baseUrl - Protocol server base URL (e.g. `http://localhost:3001`).
-   * @param token - Session JWT or API key.
-   * @param authKind - Credential transport; defaults to legacy session JWT.
+   * @param token - CLI API key.
    */
-  constructor(
-    baseUrl: string,
-    token: string,
-    authKind: "session" | "api_key" = "session",
-  ) {
+  constructor(baseUrl: string, token: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
-    this.authKind = authKind;
   }
 
   private authHeaders(): Record<string, string> {
-    return this.authKind === "api_key"
-      ? { "x-api-key": this.token }
-      : { Authorization: `Bearer ${this.token}` };
-  }
-
-  /**
-   * List all chat sessions for the authenticated user.
-   *
-   * @returns Array of session objects.
-   * @throws Error on auth failure or network error.
-   */
-  async listSessions(): Promise<ChatSession[]> {
-    const res = await this.get("/api/chat/sessions");
-    const body = (await res.json()) as { sessions: ChatSession[] };
-    return body.sessions;
-  }
-
-  /** Mint a time-bounded API key for non-web CLI compatibility. */
-  async mintCliApiKey(protocolVersion: 1 | 2 = 2): Promise<{ key: string; keyId: string }> {
-    const res = await this.post("/api/auth/cli-credential", { protocolVersion });
-    const body = (await res.json()) as { key?: unknown; id?: unknown; expiresAt?: unknown };
-    if (
-      typeof body.key !== "string"
-      || !body.key
-      || typeof body.id !== "string"
-      || !body.id
-      || typeof body.expiresAt !== "string"
-      || !body.expiresAt
-    ) {
-      throw new Error("CLI credential response did not include a key, key ID, and expiry");
-    }
-    return { key: body.key, keyId: body.id };
+    return { "x-api-key": this.token };
   }
 
   /**
@@ -185,36 +147,6 @@ export class ApiClient {
         : {}),
     });
     return await res.json() as Record<string, unknown>;
-  }
-
-  /**
-   * Open an SSE stream to the chat endpoint.
-   *
-   * Returns the raw Response so the caller can read the body
-   * as a stream and parse SSE events incrementally.
-   *
-   * @param params - Stream parameters (message, optional sessionId).
-   * @returns The raw fetch Response with SSE body.
-   * @throws Error on auth failure or network error.
-   */
-  async streamChat(params: StreamChatParams): Promise<Response> {
-    const res = await fetch(`${this.baseUrl}/api/chat/stream`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...this.authHeaders(),
-      },
-      body: JSON.stringify({
-        message: params.message,
-        ...(params.sessionId ? { sessionId: params.sessionId } : {}),
-      }),
-    });
-
-    if (!res.ok) {
-      await this.handleError(res);
-    }
-
-    return res;
   }
 
   /**
@@ -509,25 +441,6 @@ export class ApiClient {
   async enrichProfile(): Promise<EnrichmentResult> {
     const res = await this.post("/api/enrichment/enrich", {});
     return await res.json() as EnrichmentResult;
-  }
-
-  async readUserContexts(
-    query: { userId?: string; networkId?: string; query?: string } = {},
-  ): Promise<ToolResult> {
-    return this.callTool("read_user_contexts", query);
-  }
-
-  async createUserContext(query: {
-    confirm?: boolean;
-    linkedinUrl?: string;
-    githubUrl?: string;
-    twitterUrl?: string;
-  }): Promise<ToolResult> {
-    return this.callTool("create_user_context", query);
-  }
-
-  async updateUserContext(query: { action: string; details?: string }): Promise<ToolResult> {
-    return this.callTool("update_user_context", query);
   }
 
   /**

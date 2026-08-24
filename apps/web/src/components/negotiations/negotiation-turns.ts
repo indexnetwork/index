@@ -1,4 +1,4 @@
-import type { ConversationMessage } from '@/services/conversation';
+import { NEGOTIATION_PAUSE_REASONS, type ConversationMessage, type NegotiationPauseReason } from '@/services/conversation';
 
 /** User-facing role vocabulary — internal agent/patient labels never surface. */
 export const ROLE_LABELS: Record<string, string> = {
@@ -16,17 +16,25 @@ export interface ActionVerb {
   color: string;
 }
 
-/** Colored action verbs for the turn rail (proposals §2.3 palette). */
+/**
+ * Colored action verbs for the turn rail (proposals §2.3 palette).
+ *
+ * A negotiator turn is one of `outreach | counter | question` (continues) or
+ * `pause` with a reason (`counterparty_silent | needs_principal |
+ * ready_for_verdict`) — there is no `accept`/`decline`/`withdraw`/`ask_user`
+ * on the turn surface any more; a negotiation only ever ends via a separate
+ * verdict write, never a turn. Pauses use amber/gray, not red — none of them
+ * are a decision.
+ */
 export const ACTION_VERBS: Record<string, ActionVerb> = {
-  propose: { label: 'PROPOSED', color: 'text-blue-600' },
   counter: { label: 'COUNTERED', color: 'text-amber-600' },
   question: { label: 'QUESTIONED', color: 'text-[#35799C]' },
-  ask_user: { label: 'ASKED YOU', color: 'text-[#35799C]' },
   outreach: { label: 'OPENED', color: 'text-[#35799C]' },
-  accept: { label: 'ACCEPTED', color: 'text-emerald-600' },
-  reject: { label: 'DECLINED', color: 'text-red-600' },
-  decline: { label: 'DECLINED', color: 'text-red-600' },
-  withdraw: { label: 'WITHDRAWN', color: 'text-red-600' },
+  counterparty_silent: { label: 'WAITING', color: 'text-gray-500' },
+  needs_principal: { label: 'ASKED YOU', color: 'text-[#35799C]' },
+  ready_for_verdict: { label: 'READY FOR REVIEW', color: 'text-amber-600' },
+  turn_cap: { label: 'PAUSED', color: 'text-gray-500' },
+  open_failed: { label: 'COULD NOT START', color: 'text-gray-500' },
 };
 
 export function verbFor(action: string | null): ActionVerb | null {
@@ -39,18 +47,50 @@ export interface SuggestedRoles {
   otherUser?: string;
 }
 
+export type { NegotiationPauseReason };
+
 export interface TranscriptTurn {
   id: string;
   sessionId: string | null;
   senderId: string;
   createdAt: string;
-  action: string | null;
+  /** `outreach` | `counter` | `question` | `pause`. */
+  verb: string | null;
+  /** Set only when `verb === 'pause'`. */
+  pauseReason: NegotiationPauseReason | null;
+  /** Set only for `needs_principal` (`{question}`) and `ready_for_verdict` (`{recommendation, reasoning}`) pauses. */
+  pausePayload: Record<string, unknown> | null;
+  /** The chip key to look up in `ACTION_VERBS` — the verb for a continuing turn, the reason for a pause. */
+  chipKey: string | null;
   text: string;
   suggestedRoles: SuggestedRoles | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const PAUSE_REASONS = new Set<NegotiationPauseReason>(NEGOTIATION_PAUSE_REASONS);
+
+function isPauseReason(value: unknown): value is NegotiationPauseReason {
+  return typeof value === 'string' && PAUSE_REASONS.has(value as NegotiationPauseReason);
+}
+
+/** Fallback text for a pause turn, which carries no top-level `message`. */
+function pauseText(reason: NegotiationPauseReason, payload: Record<string, unknown> | null): string {
+  if (reason === 'needs_principal') {
+    const question = typeof payload?.question === 'string' ? payload.question : null;
+    return question ?? 'Waiting on the principal for guidance.';
+  }
+  if (reason === 'ready_for_verdict') {
+    const reasoning = typeof payload?.reasoning === 'string' ? payload.reasoning : null;
+    const recommendation = typeof payload?.recommendation === 'string' ? payload.recommendation : null;
+    if (reasoning) return reasoning;
+    return recommendation ? `Recommending ${recommendation}.` : 'Ready for a verdict.';
+  }
+  if (reason === 'turn_cap') return 'This negotiation reached its limit and is waiting on review.';
+  if (reason === 'open_failed') return 'This negotiation could not be started; nothing has been said yet.';
+  return 'Waiting on the other side to respond.';
 }
 
 /**
@@ -66,10 +106,19 @@ export function extractTurn(message: ConversationMessage): TranscriptTurn | null
     if (part.kind === 'data' && isRecord(part.data)) data = part.data;
     if (typeof part.text === 'string' && part.text.trim()) textPart = part.text;
   }
+
+  const verb = typeof data?.verb === 'string' ? data.verb : null;
+  const isPause = verb === 'pause';
+  const pauseReason = isPause && isPauseReason(data?.reason) ? (data!.reason as NegotiationPauseReason) : null;
+  const pausePayload = isPause && isRecord(data?.payload) ? (data!.payload as Record<string, unknown>) : null;
+
   const assessment = data && isRecord(data.assessment) ? data.assessment : null;
   const messageText = typeof data?.message === 'string' ? data.message : null;
   const reasoningText = typeof assessment?.reasoning === 'string' ? assessment.reasoning : null;
-  const text = messageText ?? reasoningText ?? textPart ?? '';
+  const text = messageText
+    ?? reasoningText
+    ?? textPart
+    ?? (pauseReason ? pauseText(pauseReason, pausePayload) : '');
   if (!text.trim()) return null;
 
   const suggestedRolesRaw = assessment?.suggestedRoles;
@@ -85,10 +134,50 @@ export function extractTurn(message: ConversationMessage): TranscriptTurn | null
     sessionId: message.sessionId ?? null,
     senderId: message.senderId,
     createdAt: message.createdAt,
-    action: typeof data?.action === 'string' ? data.action : null,
+    verb,
+    pauseReason,
+    pausePayload,
+    chipKey: pauseReason ?? verb,
     text,
     suggestedRoles,
   };
+}
+
+/**
+ * Turns that reflect actual contact with the counterparty. A `needs_principal`
+ * pause is the agent's own private pause to ask its principal — it settles
+ * nothing about whether the counterparty was ever reached, so it must not
+ * count as one. Without this exclusion, a screened_out negotiation whose only
+ * turn is its own pre-contact pause reads as contacted, which hides the
+ * owner-only gate card behind a generic "declined" banner that names no
+ * reasoning at all.
+ */
+export function contactTurns(turns: readonly TranscriptTurn[]): TranscriptTurn[] {
+  return turns.filter((turn) => turn.pauseReason !== 'needs_principal');
+}
+
+/** Who authored the turn that ended a negotiation, from the viewer's side. */
+export type TerminalTurnAuthor = 'own' | 'counterparty';
+
+/**
+ * A negotiation no longer ends via a turn — `resolve` is a separate write
+ * (a verdict of `pending` or `reject`), not part of the transcript at all,
+ * and a negotiator turn can only ever continue or pause, never decide. There
+ * is therefore nothing in the transcript that reliably names who ended a
+ * negotiation any more: the closest thing, a `ready_for_verdict` pause
+ * recommending `reject`, is exactly that — a recommendation to that side's
+ * own principal, not the decision itself, and IS-A (not yet built) is free
+ * to act on it, override it, or wait. Always returns null; kept as a named
+ * function (rather than deleted at every call site) so a future caller that
+ * gains a real verdict-attribution field can wire it in without re-deriving
+ * this reasoning. See ResolvedBanner's terminalAuthor prop for why a guess
+ * here is worse than no claim at all.
+ */
+export function terminalTurnAuthor(
+  _turns: TranscriptTurn[],
+  _ownAgentId: string | null,
+): TerminalTurnAuthor | null {
+  return null;
 }
 
 /**
@@ -177,7 +266,7 @@ export function outcomeChipVariant(status: string | null | undefined): OutcomeCh
 export function formatSectionDate(isoDate: string): string {
   const date = new Date(isoDate);
   if (!Number.isFinite(date.getTime())) return '';
-  return date.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 export interface SectionLabelOpts {
@@ -217,7 +306,7 @@ export function deriveSectionLabel(opts: SectionLabelOpts): string {
   // Unattributed legacy fallback — keep existing format.
   const date = opts.firstTurnCreatedAt ? new Date(opts.firstTurnCreatedAt) : null;
   const monthYear = date && Number.isFinite(date.getTime())
-    ? date.toLocaleString('en-US', { month: 'short', year: 'numeric' })
+    ? date.toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
     : '';
   return `Earlier negotiation${monthYear ? ` · ${monthYear}` : ''}`;
 }

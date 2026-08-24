@@ -10,7 +10,7 @@ supported entry point is the package root (`import { ... } from "@indexnetwork/p
 deep imports are not part of the contract. Every symbol is re-exported explicitly from
 `src/index.ts` and tagged with a stability tier:
 
-- **Stable** — interfaces, graph factories, agents, `createChatTools`, the
+- **Stable** — interfaces, graph factories, agents, `createMcpServer`, the
   tool/runtime helpers, and shared schemas. Breaking changes require a major bump.
 - **Experimental** (`@experimental`) — advanced graph-state types and internal
   helpers; may change in a minor release.
@@ -18,29 +18,23 @@ deep imports are not part of the contract. Every symbol is re-exported explicitl
 See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
 and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
-Internal source is domain-first: `signals`, `communities`, `questions`,
+Private source under `src/internal/` is domain-first: `signals`, `communities`, `questions`,
 `participant-agents`, `contacts`, and `integrations`; opportunity and negotiation
-place state/contracts in `domain/` and workflows/tools in `application/`.
+place state/contracts in `domain/` and workflows/tools in `application/`. The
+`intents` capability is instead organized by function behind a single exported
+class, `Intents`: files sit flat and named for what they do, with `graph/` and
+`intake/` the two multi-file stages that keep a directory.
 
-## Source-map publication policy
+## Boundary model
 
-Published `@indexnetwork/protocol` tarballs contain **no source maps**: neither
-JavaScript (`*.js.map`) nor declaration (`*.d.ts.map`) maps. The zero-map budget
-is enforced by the `prepack` build (`tsconfig.package.json`) and by
-`architecture:artifacts`; it is intentionally separate from the normal `build`.
+The package is migrating incrementally to a protocol kernel. `protocol/`
+contains portable, framework-free contracts; `platform/` contains host-facing
+ports and supported runtime hooks; and `capabilities/` exposes small named
+behavior surfaces. Graphs, prompts, retrieval, and agent helpers remain
+private implementation. These are source boundaries only: import supported
+symbols from `@indexnetwork/protocol`, not source subpaths. See
+[docs/protocol-kernel.md](./docs/protocol-kernel.md) for migration status.
 
-This is a registry-size and downstream-support tradeoff. The ordinary build keeps
-maps so the deployment Sentry workflow can upload them for first-party debugging,
-but they are not copied into the npm registry. A downstream runtime stack therefore
-names a `dist/*.js` location rather than the original TypeScript source. Consumers
-should retain the package version with an incident and use the matching source
-revision or their own observability mapping when they need source-level diagnosis.
-
-Declaration navigation is unchanged: `dist/**/*.d.ts` remains published and is the
-supported editor/type-checking surface. Declaration maps are deliberately omitted
-because they are not required to navigate those declarations and would expose the
-same source-map size cost. This policy is reversible by changing only
-`tsconfig.package.json`; do not add maps to the package file list ad hoc.
 
 ## Install
 
@@ -54,27 +48,15 @@ npm install @indexnetwork/protocol
 
 The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
 
-To override the chat model or reasoning effort when using the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`), pass `modelConfig` on `ToolContext`. `ChatAgent` reads these fields when the chat graph runs; the tools themselves do not consume `modelConfig`:
+Environment variables are the supported way to configure models. `CHAT_MODEL` and `CHAT_REASONING_EFFORT` (`minimal | low | medium | high | xhigh`) drive the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`); every other protocol agent — evaluators, generators, miners — reads `OPENROUTER_API_KEY` from the environment.
 
-```typescript
-import { createChatTools } from "@indexnetwork/protocol";
-
-const tools = await createChatTools({
-  // ... other deps ...
-  modelConfig: {
-    chatModel: "google/gemini-2.5-flash",       // optional — has a default
-    chatReasoningEffort: "low",                  // optional: minimal | low | medium | high | xhigh
-  },
-});
-```
-
-`apiKey` and `baseURL` can also be overridden this way. All other protocol agents (evaluators, generators, etc.) rely on `OPENROUTER_API_KEY` set in the environment regardless of `modelConfig`.
+There is a per-instance `modelConfig` (chat model, reasoning effort, `apiKey`, `baseURL`) that `ChatAgent` reads off the resolved tool context, but it lives on the internal composition types (`ToolContext` / `ProtocolDeps`), not on `ToolDeps`, and those types are not exported. **Programmatic model override is therefore not part of the public contract in 15.0.0** — use the environment variables. If you need a typed override path, open an issue rather than reaching through a deep import.
 
 ### 2. Implement the adapters
 
 The package defines interfaces — your application provides the concrete implementations.
 
-**Required** (always needed by `createChatTools`):
+**Required** (always needed by the tool registry):
 
 | Interface | Responsibility |
 |---|---|
@@ -85,7 +67,6 @@ The package defines interfaces — your application provides the concrete implem
 | `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
 | `IntegrationAdapter` | OAuth and external tool actions |
 | `IntentGraphQueue` | Background intent processing queue |
-| `ContactServiceAdapter` | Contact management |
 | `ChatSessionReader` | Load conversation history |
 | `ProfileEnricher` | Enrich profiles from external sources |
 | `NegotiationGraphDatabase` | Negotiation state persistence |
@@ -98,61 +79,69 @@ The package defines interfaces — your application provides the concrete implem
 | `AgentDispatcher` | Resolves and invokes personal agents during negotiation turns — required to register the negotiation tools |
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
 | `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
-| `EnrichmentRunStore` / `EnrichmentRunQueue` | Persist and execute async MCP enrichment runs |
 | `MintConnectLink` | Mints short connect links for opportunity accepts |
 | `ChatSummaryReader` | Read-through chat-session digest |
 | `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |
-| `QuestionGeneratorReader` / `QuestionerDatabase` | Decision-question generation and persistence |
 | `NegotiationSummaryReader` | Negotiation-digest summarization (falls back to deterministic digests) |
 
 All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
 
 ### 3. Create tools
 
-Pass your adapter implementations to `createChatTools` to get a set of LangChain-compatible tools bound to a user session:
+Two entry points are supported, both taking a single dependency object built
+from the adapters above.
+
+`createMcpServer` is the complete integration: it composes every capability's
+tools internally, applies the authorization policy, and returns a ready MCP
+server.
 
 ```typescript
-import { createChatTools } from "@indexnetwork/protocol";
+import { createMcpServer, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from "@indexnetwork/protocol";
 
-const tools = await createChatTools({
-  userId: "user-uuid",
-
-  // ── Required adapters ──
-  database,             // ChatGraphCompositeDatabase
-  embedder,             // Embedder
-  scraper,              // Scraper
-  cache,                // Cache
-  hydeCache,            // HydeCache
-  integration,          // IntegrationAdapter
-  intentQueue,          // IntentGraphQueue
-  contactService,       // ContactServiceAdapter
-  chatSession,          // ChatSessionReader
-  enricher,             // ProfileEnricher
-  negotiationDatabase,  // NegotiationGraphDatabase
-  integrationImporter,  // bulk contact import
-  createUserDatabase,   // (db, userId) => UserDatabase
-  createSystemDatabase, // (db, userId, indexScope, embedder?) => SystemDatabase
-
-  // ── Optional scoping ──
-  networkId: "optional-network-uuid", // scope tools to a specific index/network
-  sessionId: "chat-session-id",       // enables draft opportunities with conversation context
-
-  // ── Optional capabilities (enable when the host supports them) ──
-  agentDatabase,        // AgentDatabase — agent registry
-  agentDispatcher,      // AgentDispatcher — routes negotiation turns to personal agents
-  deliveryLedger,       // DeliveryLedger — OpenClaw delivery commits
-  enrichmentRuns,       // EnrichmentRunStore (+ enrichmentRunQueue) — async MCP enrichment runs
-  mintConnectLink,      // short connect links for opportunity accepts
-  modelConfig,          // override chat model / reasoning effort (see above)
-});
-
-// tools is an array of LangChain Tool objects ready to bind to an agent
+const server = createMcpServer(
+  deps,                // ToolDeps + the opportunity owner-approval port
+  authResolver,        // McpAuthResolver
+  scopedDepsFactory,   // ScopedDepsFactory — builds per-user scoped userDb/systemDb
+  CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS,
+  authorizationObserver, // optional McpAuthorizationObserver
+);
 ```
 
-`createChatTools` accepts a single `ToolContext` object. The required adapters
-above are always needed; optional capabilities default to a degraded-but-
-functional mode when omitted (for example, without `agentDispatcher` the
-negotiation tools are not registered).
+`createToolRegistry` is the lower-level surface for hosts running their own
+runtime. It returns a `Map` of tool name to `RawToolDefinition` — raw async
+handlers taking `{ context, query }` — which you invoke through
+`invokeToolRuntime`:
+
+```typescript
+import { createToolRegistry, invokeToolRuntime, resolveChatContext } from "@indexnetwork/protocol";
+
+const registry = createToolRegistry(deps, { surface: "mcp" }); // omit `surface` for the full REST set
+
+const context = await resolveChatContext({
+  database,                 // the ChatGraphCompositeDatabase reads listed above
+  userId: "user-uuid",
+  networkId,                // optional — scopes tools to one network
+  sessionId,                // optional — enables draft opportunities
+});
+
+const tool = registry.get("search_intents")!;
+const result = await invokeToolRuntime({
+  toolName: tool.name,
+  tool,
+  context,
+  query: { /* validated against tool.schema */ },
+});
+```
+
+The dependency object carries the required adapters listed above; optional
+capabilities default to a degraded-but-functional mode when omitted (for
+example, without `agentDispatcher` the negotiation tools are not registered).
+
+The per-capability tool factories behind these entry points
+(`createChatTools`, `createIntentTools`, `createNegotiationTools`, …) are
+package-internal as of 15.0.0 and are not part of the supported surface.
+`createEnrichmentTools` remains exported for hosts that run enrichment on its
+own worker, separately from the chat runtime.
 
 ## Graphs
 
@@ -161,15 +150,10 @@ For direct graph invocation (bypassing the tool layer), a `*GraphFactory` class 
 ```typescript
 import {
   ChatGraphFactory,
-  IntentGraphFactory,
   OpportunityGraphFactory,
-  EnrichmentGraphFactory,
   PremiseGraphFactory,
   NegotiationGraphFactory,
   HydeGraphFactory,
-  NetworkGraphFactory,
-  NetworkMembershipGraphFactory,
-  IntentNetworkGraphFactory,
   RadarGraphFactory,
   MaintenanceGraphFactory,
 } from "@indexnetwork/protocol";
@@ -178,24 +162,83 @@ import {
 Each factory takes its typed dependencies in the constructor and exposes a
 `.createGraph()` method that returns a compiled LangGraph ready for `.invoke()`.
 
+The intent and community graphs are the exceptions: they are reached through the
+`Intents` and `Networks` module classes rather than factories of their own (see
+[Intents](#intents) and [Networks](#networks) below).
+
 | Factory | Workflow |
 |---|---|
 | `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
-| `IntentGraphFactory` | Clarify, infer, verify felicity, reconcile, and persist intents |
 | `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, persist |
-| `EnrichmentGraphFactory` | Enrich users (scrape + embed) and decompose into premises |
 | `PremiseGraphFactory` | Decompose and index a user's premises |
 | `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
-| `NetworkGraphFactory` | Manage network/network CRUD |
-| `NetworkMembershipGraphFactory` | Manage network/network member join/leave |
-| `IntentNetworkGraphFactory` | Evaluate and assign/unassign intents to indexes |
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 | `MaintenanceGraphFactory` | Periodic maintenance (feed health, opportunity expiration) |
 
 ### Persisted chat personas
 
-`ChatGraphFactory.withPersona()` keeps the runtime neutral while selecting an exported persona configuration. `SIGNAL_PERSONA`, `REPORTER_PERSONA`, and `ONBOARDING_PERSONA` each own an exact positive tool allowlist; shared tools added later remain unavailable until reviewed. `ONBOARDING_PERSONA` reuses Signal's proposal-only, live-membership-narrowed `create_intent` contract and otherwise exposes only privacy consent, approved self-context preview/confirmation, guided questions, and validated completion. Hosts must persist the exported persona ID on session creation and treat it as authoritative on follow-ups.
+`ChatGraphFactory.withPersona()` keeps the runtime neutral while selecting an exported persona configuration. `SIGNAL_PERSONA` and `ONBOARDING_PERSONA` each own an exact positive tool allowlist; shared tools added later remain unavailable until reviewed. `ONBOARDING_PERSONA` reuses Signal's proposal-only, live-membership-narrowed `create_intent` contract and otherwise exposes only privacy consent, approved self-context preview/confirmation, guided questions, and validated completion. Hosts must persist the exported persona ID on session creation and treat it as authoritative on follow-ups.
+
+## Intents
+
+Signals are the protocol's base unit, and the whole capability ships as one
+class. `Intents` covers the lifecycle graph, semantic verification, network
+indexing, the guided intake interview, and the agent-facing intent tools.
+
+```typescript
+import { Intents } from "@indexnetwork/protocol";
+
+const intents = new Intents({
+  database,           // IntentGraphDatabase — required only by createGraph()
+  embedder,           // EmbeddingGenerator
+  queue,              // IntentGraphQueue
+});
+```
+
+Every dependency is optional, so a host that only wants the model-backed
+helpers can construct `new Intents()` with nothing. Collaborators are built on
+first use, so an unused method costs nothing.
+
+| Method | Purpose |
+|---|---|
+| `createGraph()` | Compile the lifecycle graph — prep, infer, verify, reconcile, execute. Requires `database` |
+| `verifyIntent(content, profileContext)` | Felicity conditions, speech-act classification, semantic entropy, specificity |
+| `indexIntent(intent, indexPrompt, memberPrompt, sourceName?, networkContext?)` | Score one signal against one network; `null` when the model call fails |
+| `generateIntakePack(input)` | The participant's intake brief and round-1 question |
+| `generateIntakeFollowUps(input)` | Plan and write the next follow-up questions |
+| `synthesizeIntake(input)` | Turn answered rounds into a description and card summary |
+| `Intents.createTools(defineTool, deps)` | Register the agent-facing intent tools |
+| `Intents.normalizeDescription(description)` | Normalize a description to its persisted form |
+| `Intents.FALLBACK_INTAKE_QUESTION` | The static round-1 question used when generation is unavailable |
+
+## Networks
+
+Communities ship the same way: one class covering the community lifecycle graph,
+the membership graph, signal↔community assignment, and the agent-facing
+community tools.
+
+```typescript
+import { Networks } from "@indexnetwork/protocol";
+
+const networks = new Networks({
+  database,          // community, roster, and assignment persistence
+  indexer: intents,  // an `Intents` instance — scores a signal against a community
+});
+```
+
+Both dependencies are optional; each method names what it requires, so a host
+that only registers tools can construct `new Networks()` with nothing.
+
+| Method | Purpose |
+|---|---|
+| `createGraph()` | Compile the community lifecycle graph — create, read, update, delete. Requires `database` |
+| `createMembershipGraph()` | Compile the roster graph — add, list, remove members. Requires `database` |
+| `createAssignmentGraph()` | Compile signal↔community assignment, direct or model-evaluated. Requires `database` and `indexer` |
+| `Networks.createTools(defineTool, deps)` | Register the agent-facing community tools |
+
+Assignment takes an `Intents` instance as its evaluator — the `indexer`
+dependency is narrowed to the single `indexIntent` method it calls.
 
 ## MCP server
 

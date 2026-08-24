@@ -4,12 +4,11 @@ import { runNegotiationEvidenceShadow } from '@indexnetwork/protocol';
 import type { NegotiationEvidenceMiner, RawEvidenceSegment } from '@indexnetwork/protocol';
 
 import { computeIntentFingerprint } from '../../../lib/intent/intent.fingerprint';
-import { hasValidatedRejectedNoOpportunityEvidence } from '../../../lib/questioner/recovery-evidence';
 import { canonicalizeNegotiationSender, collectNegotiationEvidenceSegments, deriveTaskNetworkBinding, getValidatedCounterpartyUserId, maybeRunNegotiationEvidenceShadow, toBoundedErrorTelemetry } from '../negotiation-evidence.shadow';
 import type { NegotiationEvidenceShadowDeps } from '../negotiation-evidence.shadow';
-import type { PoolMiningTrigger } from '../mining.shared';
+import type { EvidenceShadowTrigger } from '../negotiation-evidence.shadow';
 
-const TRIGGER: PoolMiningTrigger = {
+const TRIGGER: EvidenceShadowTrigger = {
   source: 'discovery_run',
   userId: 'owner-1',
   intentId: 'intent-1',
@@ -77,7 +76,7 @@ function makeDeps(overrides: Partial<NegotiationEvidenceShadowDeps> = {}): {
     getIntent: mock(async () => INTENT),
     getNegotiationTasksForOpportunity: mock(async () => [task('task-1')]),
     getMessagesByTaskIds: mock(async () => new Map([
-      ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: 'hello' } }] }]],
+      ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach', message: 'hello' } }] }]],
     ])),
     getArtifactsForTask: mock(async () => []),
     getAnsweredNegotiationQuestionsForOpportunity: mock(async () => []),
@@ -122,19 +121,10 @@ function makeDeps(overrides: Partial<NegotiationEvidenceShadowDeps> = {}): {
 }
 
 afterEach(() => {
-  delete process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE;
 });
 
 describe('maybeRunNegotiationEvidenceShadow — gating', () => {
-  it('is a no-op when the flag is off', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'off';
-    const { deps } = makeDeps();
-    await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
-    expect(deps.database.getIntent).not.toHaveBeenCalled();
-  });
-
   it('is a no-op for introducer-flow and intent-less triggers even when enabled', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const { deps } = makeDeps();
     await maybeRunNegotiationEvidenceShadow({ ...TRIGGER, isIntroducerFlow: true }, deps);
     await maybeRunNegotiationEvidenceShadow({ ...TRIGGER, intentId: undefined }, deps);
@@ -142,55 +132,10 @@ describe('maybeRunNegotiationEvidenceShadow — gating', () => {
   });
 });
 
-describe('aggregate-only rejected recovery evidence', () => {
-  const rejected = {
-    ...OPPORTUNITY,
-    status: 'rejected',
-    actors: OPPORTUNITY.actors.map((actor) => ({ ...actor, networkId: 'net-1' })),
-  };
-  const outcome = [{
-    name: 'negotiation-outcome',
-    parts: [{ kind: 'data', data: { hasOpportunity: false, reasoning: 'private' } }],
-  }];
-
-  it('accepts exactly one completed, capture-current, bilateral no-opportunity outcome', () => {
-    expect(hasValidatedRejectedNoOpportunityEvidence({
-      opportunity: rejected,
-      tasks: [task('task-1')],
-      artifactsByTaskId: new Map([['task-1', outcome]]),
-      recipientUserId: 'owner-1', intentId: 'intent-1', currentIntentFingerprint: FINGERPRINT,
-    })).toBe(true);
-  });
-
-  it('fails closed on status, participant/network, task, fingerprint, artifact, and ambiguity drift', () => {
-    const base = {
-      opportunity: rejected,
-      tasks: [task('task-1')],
-      artifactsByTaskId: new Map([['task-1', outcome]]),
-      recipientUserId: 'owner-1', intentId: 'intent-1', currentIntentFingerprint: FINGERPRINT,
-    };
-    expect(hasValidatedRejectedNoOpportunityEvidence({ ...base, opportunity: { ...rejected, status: 'accepted' } })).toBe(false);
-    expect(hasValidatedRejectedNoOpportunityEvidence({
-      ...base,
-      opportunity: { ...rejected, actors: rejected.actors.map((actor) => ({ ...actor, networkId: 'other' })) },
-    })).toBe(false);
-    expect(hasValidatedRejectedNoOpportunityEvidence({ ...base, tasks: [{ ...task('task-1'), state: 'running' }] })).toBe(false);
-    expect(hasValidatedRejectedNoOpportunityEvidence({ ...base, currentIntentFingerprint: 'drifted' })).toBe(false);
-    expect(hasValidatedRejectedNoOpportunityEvidence({
-      ...base,
-      artifactsByTaskId: new Map([['task-1', [{ name: 'negotiation-outcome', parts: [{ kind: 'data', data: { hasOpportunity: true } }] }]]]),
-    })).toBe(false);
-    expect(hasValidatedRejectedNoOpportunityEvidence({
-      ...base,
-      artifactsByTaskId: new Map([['task-1', [...outcome, ...outcome]]]),
-    })).toBe(false);
-  });
-});
-
 describe('negotiation evidence task isolation and validation', () => {
   it('builds one segment per continuation using only exact task-linked messages and artifacts', async () => {
     const getMessagesByTaskIds = mock(async () => new Map([
-      ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose' } }] }]],
+      ['task-1', [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach' } }] }]],
       ['task-2', [{ senderId: 'agent:counterparty-1', parts: [{ kind: 'data', data: { action: 'counter' } }] }]],
     ]));
     const getArtifactsForTask = mock(async (taskId: string) => taskId === 'task-2'
@@ -220,7 +165,7 @@ describe('negotiation evidence task isolation and validation', () => {
       actions: segment.turns.map((turn) => turn.action),
       hasOutcome: Boolean(segment.outcome),
     }))).toEqual([
-      { taskId: 'task-1', conversationId: 'conversation-task-1', actions: ['propose'], hasOutcome: false },
+      { taskId: 'task-1', conversationId: 'conversation-task-1', actions: ['outreach'], hasOutcome: false },
       { taskId: 'task-2', conversationId: 'conversation-task-2', actions: ['counter'], hasOutcome: true },
     ]);
   });
@@ -263,7 +208,7 @@ describe('negotiation evidence task isolation and validation', () => {
       getIntent: mock(async () => INTENT),
       getNegotiationTasksForOpportunity: mock(async () => [task('task-1')]),
       getMessagesByTaskIds: mock(async () => new Map([['task-1', [
-        { senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose' } }] },
+        { senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach' } }] },
         { senderId: 'agent:counterparty-1', parts: [{ kind: 'data', data: { action: 'counter' } }] },
         { senderId: 'owner-1', parts: [{ kind: 'data', data: { action: 'accept' } }] },
         { senderId: 'agent:third-user', parts: [{ kind: 'data', data: { action: 'decline' } }] },
@@ -279,13 +224,12 @@ describe('negotiation evidence task isolation and validation', () => {
       networkId: 'net-1',
     }, database);
     expect(segment.turns.map((turn) => [turn.senderUserId, turn.action])).toEqual([
-      ['owner-1', 'propose'],
+      ['owner-1', 'outreach'],
       ['counterparty-1', 'counter'],
     ]);
   });
 
   it('never projects opportunity userAnswers, including synthetic expiry disclosure text', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const secret = 'SECRET_DISCLOSURE_SUBJECT';
     const opportunityWithAnswers = {
       ...OPPORTUNITY,
@@ -402,7 +346,6 @@ describe('negotiation evidence task isolation and validation', () => {
 
 describe('negotiation evidence final revalidation and telemetry', () => {
   it('revalidates owner, lifecycle, archive state, and fingerprint before invoking shadow mining', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const invalidFinalIntents = [
       { ...INTENT, userId: 'other-owner' },
       { ...INTENT, status: 'PAUSED' },
@@ -424,7 +367,6 @@ describe('negotiation evidence final revalidation and telemetry', () => {
   });
 
   it('logs only bounded errorClass/errorCode labels for failures', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     class ProviderFailure extends Error {
       code = `provider code ${'x'.repeat(100)}`;
     }
@@ -494,7 +436,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('mines an opportunity whose context.networkId is absent (the IND-433 NO-GO scenario)', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const { deps, capturedScopes, capturedSegments, infos } = makeDeps({
       selectPool: mock(async () => [{ ...OPPORTUNITY, context: {} }]),
     });
@@ -517,7 +458,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('skips fail-closed opportunities and logs only aggregate skip counts', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const tasksByOpportunityId: Record<string, ReturnType<typeof task>[]> = {
       'opp-disagree': [
         task('d1', { opportunityId: 'opp-disagree' }),
@@ -551,7 +491,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('mines only the largest derived-network group and still excludes sibling tasks from other networks', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const tasksByOpportunityId: Record<string, ReturnType<typeof task>[]> = {
       // Bound to net-1; the empty-network sibling stays excluded from segments
       // by the unrelaxed validateTask pass-network equality.
@@ -570,7 +509,7 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
       async (opportunityId: string) => tasksByOpportunityId[opportunityId] ?? [],
     );
     deps.database.getMessagesByTaskIds = mock(async (taskIds: string[]) => new Map(
-      taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: null } }] }]]),
+      taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach', message: null } }] }]]),
     ));
 
     await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
@@ -585,7 +524,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('counts terminal-status opportunities in the pass with aggregate telemetry only', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const { deps, capturedSegments, infos } = makeDeps({
       selectPool: mock(async () => [
         { ...OPPORTUNITY, id: 'opp-1', status: 'rejected', context: {} },
@@ -599,7 +537,6 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
   });
 
   it('keeps the k>=5 distinct-opportunity floor and scope matching untouched', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const run = async (poolSize: number) => {
       const mine = mock(async () => []);
       const opportunities = Array.from({ length: poolSize }, (_, i) => ({
@@ -616,7 +553,7 @@ describe('IND-465 — network binding derived from capture-time task metadata', 
         async (opportunityId: string) => [task(`task-${opportunityId}`, { opportunityId })],
       );
       deps.database.getMessagesByTaskIds = mock(async (taskIds: string[]) => new Map(
-        taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'propose', message: null } }] }]]),
+        taskIds.map((taskId) => [taskId, [{ senderId: 'agent:owner-1', parts: [{ kind: 'data', data: { action: 'outreach', message: null } }] }]]),
       ));
       await maybeRunNegotiationEvidenceShadow(TRIGGER, deps);
       return { mine, infos };
@@ -716,7 +653,6 @@ describe('IND-465 slice 2 — answeredBy-verified owner answers', () => {
   });
 
   it('projects verified owner answers end-to-end through the shadow pass', async () => {
-    process.env.NEGOTIATION_EVIDENCE_QUESTIONS_MODE = 'shadow';
     const { deps, capturedSegments } = makeDeps();
     deps.database.getAnsweredNegotiationQuestionsForOpportunity = mock(async () => [
       { answeredBy: 'owner-1', selectedOptions: ['Weekly sync works'] },

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Run Protocol Evals"
-  short_description: "Index project workflow: Run Protocol Evals"
-  default_prompt: "Use $run-protocol-evals to follow the repository-specific Run Protocol Evals workflow."

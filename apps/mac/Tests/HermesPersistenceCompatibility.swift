@@ -38,43 +38,6 @@ private struct FixtureLayout {
     let jobsURL: URL
 }
 
-private final class FixtureConnectorStatus: HermesConnectorStatusProviding {
-    func status() throws -> HermesConnectorStatus {
-        HermesConnectorStatus(
-            connected: true,
-            health: "active",
-            revocationPending: false,
-            installationId: "installation-old",
-            agentId: "executor-new",
-            setupAttemptId: "attempt-new",
-            actions: [
-                "manage:identity", "manage:premises", "manage:intents",
-                "manage:networks", "manage:opportunities", "manage:negotiations",
-            ],
-            expiresAt: ISO8601DateFormatter().string(
-                from: Date().addingTimeInterval(29 * 24 * 60 * 60)
-            )
-        )
-    }
-
-    func disconnect(
-        installationId: String,
-        agentId: String,
-        setupAttemptId: String
-    ) throws -> HermesConnectorStatus {
-        HermesConnectorStatus(
-            connected: false,
-            health: "disconnected",
-            revocationPending: false,
-            installationId: installationId,
-            agentId: nil,
-            setupAttemptId: nil,
-            actions: [],
-            expiresAt: nil
-        )
-    }
-}
-
 private final class FixtureRunner: HermesCommandRunning {
     private let jobsURL: URL
 
@@ -89,6 +52,8 @@ private final class FixtureRunner: HermesCommandRunning {
                 job["state"] = "paused"
                 job["enabled"] = false
             }
+        } else if arguments.starts(with: ["cron", "remove"]), arguments.count == 3 {
+            try deleteJob(id: arguments[2])
         } else if arguments.starts(with: ["cron", "edit"]), arguments.count >= 3 {
             let id = arguments[2]
             try mutateJob(id: id) { job in
@@ -125,6 +90,18 @@ private final class FixtureRunner: HermesCommandRunning {
         try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
             .write(to: jobsURL, options: .atomic)
     }
+
+    private func deleteJob(id: String) throws {
+        let data = try Data(contentsOf: jobsURL)
+        guard var root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var jobs = root["jobs"] as? [[String: Any]] else {
+            throw FixtureFailure.assertion("runner could not read cron store")
+        }
+        jobs.removeAll { $0["id"] as? String == id }
+        root["jobs"] = jobs
+        try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+            .write(to: jobsURL, options: .atomic)
+    }
 }
 
 @main
@@ -135,10 +112,8 @@ struct HermesPersistenceCompatibilityFixture {
     static let historicalCronID = "owned-cron-old"
 
     static func main() throws {
-        trace("starting historical rebind")
         try runHistoricalRebind()
 
-        trace("checking malformed record rejection")
         try assertRejected("malformed") {
             let layout = try makeLayout(label: "malformed", installationJSON: "{")
             defer { try? FileManager.default.removeItem(at: layout.root) }
@@ -148,7 +123,6 @@ struct HermesPersistenceCompatibilityFixture {
             }
         }
 
-        trace("checking newer record rejection")
         try assertRejected("newer") {
             let newer = #"{"installationId":"installation-old","currentSetupAttemptId":"attempt-old","version":2}"#
             let layout = try makeLayout(label: "newer", installationJSON: newer)
@@ -159,7 +133,6 @@ struct HermesPersistenceCompatibilityFixture {
             }
         }
 
-        trace("checking tampered cron rejection")
         try assertRejected("tampered") {
             let layout = try makeLayout(
                 label: "tampered",
@@ -175,10 +148,6 @@ struct HermesPersistenceCompatibilityFixture {
         print("macOS native Hermes historical persistence compatibility passed")
     }
 
-    private static func trace(_ message: String) {
-        FileHandle.standardError.write(Data("[HermesPersistenceCompatibility] \(message)\n".utf8))
-    }
-
     private static var inspectRequest: HermesRuntimeRequest {
         HermesRuntimeRequest(
             requestId: "inspect-history",
@@ -187,6 +156,7 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: nil,
             executorId: nil,
             setupAttemptId: nil,
+            credential: nil,
             operationJournal: nil
         )
     }
@@ -199,6 +169,7 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: "installation-old",
             executorId: "executor-new",
             setupAttemptId: "attempt-new",
+            credential: "fixture-secret-not-persisted-in-installation",
             operationJournal: nil
         )
     }
@@ -210,57 +181,38 @@ struct HermesPersistenceCompatibilityFixture {
         )
         defer { try? FileManager.default.removeItem(at: layout.root) }
 
-        trace("constructed layout at \(layout.root.path)")
-        let initialStore: HermesLocalStore
-        do {
-            initialStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
-            trace("opened initial local store")
-        } catch {
-            trace("initial local store failed: \(error), errno=\(errno)")
-            throw error
-        }
+        let initialStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
         let decoded = try initialStore.loadOrCreateInstallation()
-        trace("decoded historical installation")
         try require(decoded.installationId == "installation-old", "historical installation ID did not decode")
         try require(decoded.currentSetupAttemptId == "attempt-old", "historical setup did not decode")
         try require(decoded.currentOwnerId == nil, "historical record unexpectedly gained an owner")
 
         let manager = makeManager(layout)
-        trace("constructed runtime manager")
         let inspected = manager.handle(inspectRequest)
-        trace("completed pre-owner inspect: \(inspected.errorCode ?? "ok")")
         try require(!inspected.ok, "pre-owner inspect unexpectedly succeeded")
         try require(inspected.errorCode == "owner_unattributed", "inspect did not surface owner_unattributed")
         try require(inspected.state?.scheduleEnabled == false, "inspect did not pause the historical cron")
 
         let adoptedStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
-        trace("opened adopted local store")
         let adopted = try adoptedStore.loadOrCreateInstallation()
-        trace("decoded adopted installation")
         try require(adopted.installationId == "installation-old", "adoption changed installation ID")
         try require(adopted.currentSetupAttemptId == "attempt-old", "adoption changed historical setup")
         try require(adopted.currentCronJobId == historicalCronID, "adoption did not persist immutable cron ID")
         try require(adopted.currentCronSetupAttemptId == "attempt-old", "adoption lost cron generation")
         try require(adopted.currentOwnerId == nil, "inspect attributed an owner")
 
-        trace("starting exact pre-owner rebind")
         let rebound = manager.handle(rebindRequest)
-        trace("completed rebind: \(rebound.errorCode ?? "ok")")
         try require(rebound.ok, "exact pre-owner rebind failed: \(rebound.errorCode ?? "none")")
-        try require(
-            rebound.stage == "connectorActivationConfirmed",
-            "rebind did not confirm connector activation"
-        )
-        try require(rebound.state?.scheduleEnabled == false, "rebind did not finish disabled")
+        try require(rebound.stage == "scheduleDisabled", "rebind did not finish disabled")
 
         // Reload through a fresh production store to prove the saved tuple is
         // durable rather than merely retained by the manager instance.
         let reloadedStore = try HermesLocalStore(applicationSupportURL: layout.applicationSupport)
         let reloaded = try reloadedStore.loadOrCreateInstallation()
         try require(reloaded.installationId == "installation-old", "reload changed installation ID")
-        try require(reloaded.currentCronJobId == historicalCronID, "reload changed immutable cron ID")
+        try require(reloaded.currentCronJobId == nil, "configure left a leftover cron ID")
         try require(reloaded.currentSetupAttemptId == "attempt-new", "reload lost rebound setup")
-        try require(reloaded.currentCronSetupAttemptId == "attempt-new", "reload lost cron setup marker")
+        try require(reloaded.currentCronSetupAttemptId == nil, "configure left a leftover cron generation")
         try require(reloaded.currentOwnerId == "owner-new", "reload lost owner")
         try require(reloaded.currentExecutorId == "executor-new", "reload lost executor")
 
@@ -271,21 +223,19 @@ struct HermesPersistenceCompatibilityFixture {
             installationId: "installation-old",
             executorId: "executor-other",
             setupAttemptId: "attempt-other",
+            credential: "foreign-secret",
             operationJournal: nil
         ))
         try require(!foreignRebind.ok && foreignRebind.errorCode == "owner_mismatch", "owner fence accepted a foreign rebind")
         let afterForeignAttempt = try HermesLocalStore(
             applicationSupportURL: layout.applicationSupport
         ).loadOrCreateInstallation()
-        try require(afterForeignAttempt.currentCronJobId == historicalCronID, "foreign rebind changed cron ID")
+        try require(afterForeignAttempt.currentCronJobId == nil, "foreign rebind restored leftover cron")
         try require(afterForeignAttempt.currentSetupAttemptId == "attempt-new", "foreign rebind changed setup")
         try require(afterForeignAttempt.currentOwnerId == "owner-new", "foreign rebind changed owner")
 
-        let cron = try onlyCron(at: layout.jobsURL)
-        try require(cron["id"] as? String == historicalCronID, "cron ID changed during rebind")
-        try require(cron["index_app_installation_id"] as? String == "installation-old", "cron lost installation marker")
-        try require(cron["index_app_owner_id"] as? String == "owner-new", "cron lost owner marker")
-        try require(cron["index_app_setup_attempt_id"] as? String == "attempt-new", "cron lost setup marker")
+        let leftoverCount = try cronJobCount(at: layout.jobsURL)
+        try require(leftoverCount == 0, "leftover Personal Agent cron was not removed")
     }
 
     private static func makeManager(_ layout: FixtureLayout) -> HermesRuntimeManager {
@@ -293,8 +243,7 @@ struct HermesPersistenceCompatibilityFixture {
             runner: FixtureRunner(jobsURL: layout.jobsURL),
             binaryProvider: { layout.binary.path },
             applicationSupportURL: layout.applicationSupport,
-            hermesHomeURL: layout.hermesHome,
-            connectorStatusProvider: FixtureConnectorStatus()
+            hermesHomeURL: layout.hermesHome
         )
     }
 
@@ -304,14 +253,18 @@ struct HermesPersistenceCompatibilityFixture {
         cronPrompt: String = HermesRuntimeManager.historicalPreOwnerCronPrompt
     ) throws -> FixtureLayout {
         let manager = FileManager.default
-        // GitHub's macOS runner exports a real, job-owned temporary directory;
-        // its /var and /private/tmp compatibility paths are symlinks that the
-        // production no-symlink boundary must reject.
-        guard let runnerTemp = ProcessInfo.processInfo.environment["RUNNER_TEMP"],
-              !runnerTemp.isEmpty else {
-            throw FixtureFailure.assertion("RUNNER_TEMP is required for the native fixture")
+        // The runtime walks parents with O_NOFOLLOW, so the fixture root must
+        // avoid macOS's symlinked temporary directories (/var -> /private/var).
+        // CI provides RUNNER_TEMP, a real job-owned directory; local runs use
+        // the per-user caches directory, which has no symlinked ancestors.
+        let base: URL
+        if let runnerTemp = ProcessInfo.processInfo.environment["RUNNER_TEMP"], !runnerTemp.isEmpty {
+            base = URL(fileURLWithPath: runnerTemp, isDirectory: true)
+        } else {
+            base = manager.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Caches", isDirectory: true)
         }
-        let root = URL(fileURLWithPath: runnerTemp, isDirectory: true)
+        let root = base
             .appendingPathComponent("index-hermes-native-\(label)-\(UUID().uuidString)", isDirectory: true)
         let applicationSupport = root.appendingPathComponent("Application Support", isDirectory: true)
         let installationDirectory = applicationSupport
@@ -353,14 +306,13 @@ struct HermesPersistenceCompatibilityFixture {
         )
     }
 
-    private static func onlyCron(at jobsURL: URL) throws -> [String: Any] {
+    private static func cronJobCount(at jobsURL: URL) throws -> Int {
         let data = try Data(contentsOf: jobsURL)
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let jobs = root["jobs"] as? [[String: Any]],
-              jobs.count == 1 else {
-            throw FixtureFailure.assertion("cron store did not contain exactly one job")
+              let jobs = root["jobs"] as? [[String: Any]] else {
+            throw FixtureFailure.assertion("cron store was unreadable")
         }
-        return jobs[0]
+        return jobs.count
     }
 
     private static func throwsError(_ body: () throws -> Void) -> Bool {

@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { EyeOff, MoreHorizontal, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Trash2, ChevronRight } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import ConversationPreviewLine from '@/components/ConversationPreviewLine';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
-import { apiClient } from '@/lib/api';
 import { isVisibleH2HConversation } from '@/lib/conversation-visibility';
 import { resolveConversationPreview } from '@/lib/conversation-preview';
-import { countNegotiationsRequiringAction, deriveNegotiationInbox, type NegotiationInboxItem } from '@/lib/negotiation-inbox';
-import { CHIP_CLASS, statusLabel } from '@/lib/negotiation-chips';
+import { groupNegotiationOutline } from '@/lib/negotiation-outline';
 
 interface RecentChat {
   groupId: string;
@@ -48,8 +46,8 @@ const formatConversationTime = (timestamp: number) => {
 
 export default function ChatSidebar() {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const { user, features } = useAuthContext();
+  const { pathname, search } = useLocation();
+  const { user } = useAuthContext();
   const { conversations, negotiations, isConnected, refreshConversations, refreshNegotiations, hideConversation } = useConversation();
 
   // Background revalidation flag. The ConversationProvider prefetches both
@@ -57,16 +55,9 @@ export default function ChatSidebar() {
   // empty state (skeleton vs "No messages yet") on a genuinely cold cache.
   const [refreshing, setRefreshing] = useState(true);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
-  const [mode, setMode] = useState<'h2h' | 'a2a'>('h2h');
   const chatMenuRef = useRef<HTMLDivElement>(null);
 
-  // 30s tick keeps relative timestamps (subline timeAgo, row times) fresh
-  // instead of frozen at fetch time (IND-555).
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(interval);
-  }, []);
+  const [expandedCounterpartIds, setExpandedCounterpartIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user?.id) return;
@@ -77,33 +68,15 @@ export default function ChatSidebar() {
     return () => { cancelled = true; };
   }, [user?.id, refreshConversations, refreshNegotiations]);
 
-  // One classification source for inbox, tab, TopBar pill, and this toggle
-  // badge — no inline re-derivation here (R1).
-  const yourMoveCount = useMemo(
-    () => countNegotiationsRequiringAction(negotiations, user?.id),
+  const showingNegotiations = pathname === '/negotiations' || pathname.startsWith('/negotiations/');
+
+  const negotiationOutline = useMemo(
+    () => groupNegotiationOutline(negotiations, user?.id),
     [negotiations, user?.id],
   );
-  const inbox = useMemo(
-    () => (mode === 'a2a' ? deriveNegotiationInbox(negotiations, user?.id, now) : null),
-    [mode, negotiations, user?.id, now],
-  );
-  // Flat posture order — your move → live → waiting → resolved — with
-  // hairline dividers between runs. No group headers in a rail this narrow.
-  const negotiationRuns = useMemo(() => {
-    if (!inbox) return [];
-    return [
-      { key: 'your-move', items: inbox.yourMove },
-      { key: 'live', items: inbox.inProgress.filter((item) => item.status === 'live') },
-      { key: 'waiting', items: inbox.inProgress.filter((item) => item.status === 'waiting') },
-      { key: 'resolved', items: inbox.resolved },
-    ].filter((run) => run.items.length > 0);
-  }, [inbox]);
-  const negotiationCount = inbox
-    ? inbox.yourMove.length + inbox.inProgress.length + inbox.resolved.length
-    : 0;
+  const negotiationCount = negotiationOutline.reduce((count, group) => count + group.opportunities.length, 0);
 
-  const recentChats: RecentChat[] = mode === 'h2h'
-    ? conversations.filter(isVisibleH2HConversation).map((conv) => {
+  const recentChats: RecentChat[] = conversations.filter(isVisibleH2HConversation).map((conv) => {
       const peer = (conv.participants ?? []).find((p) => p.participantId !== user?.id && p.participantType === 'user');
       const lastText = (conv.lastMessage?.parts as { text?: string }[] | undefined)?.find(p => p.text)?.text ?? '';
       return {
@@ -118,8 +91,7 @@ export default function ChatSidebar() {
         showUnreadCount: conv.unreadCount > 0,
         sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
-    }).sort((a, b) => b.sortTimestamp - a.sortTimestamp)
-    : [];
+    }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -131,36 +103,10 @@ export default function ChatSidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [chatMenuOpen]);
 
-  // Answer rows go to the negotiator DM — the transcript is read-only and
-  // can't take an answer. Falls back to the transcript when the negotiator
-  // surface is unavailable (flag off, session bootstrap failed).
-  const openNegotiatorDm = async (fallbackConversationId: string) => {
-    if (!features?.negotiatorChat) {
-      navigate(`/chat/${fallbackConversationId}`);
-      return;
-    }
-    try {
-      const existing = await apiClient.get<{ sessions: { id: string }[] }>('/chat/sessions?persona=negotiator');
-      const session = existing.sessions?.[0];
-      if (session) {
-        navigate(`/d/${session.id}`);
-        return;
-      }
-      const created = await apiClient.post<{ session: { id: string } }>('/chat/negotiator/session');
-      navigate(`/d/${created.session.id}`);
-    } catch {
-      navigate(`/chat/${fallbackConversationId}`);
-    }
-  };
-
-  const openNegotiation = (item: NegotiationInboxItem) => {
-    if (item.status === 'answer') {
-      void openNegotiatorDm(item.conversationId);
-      return;
-    }
-    // Agreed rows land on the transcript's review affordance; live, waiting,
-    // and resolved rows open the transcript as before.
-    navigate(`/chat/${item.conversationId}`);
+  // A fallback row has no addressable task; the detail page then falls back to
+  // the conversation's latest session, which is the pre-#1444 behavior.
+  const openNegotiation = (conversationId: string, taskId: string | null) => {
+    navigate(taskId ? `/negotiations/${conversationId}?taskId=${encodeURIComponent(taskId)}` : `/negotiations/${conversationId}`);
   };
 
   const renderSkeleton = () => (
@@ -178,100 +124,18 @@ export default function ChatSidebar() {
     </div>
   );
 
-  const renderNegotiationRow = (item: NegotiationInboxItem) => {
-    const isResolved = item.group === 'resolved';
-    return (
-      <div
-        key={item.conversationId}
-        className={`relative group flex items-center py-2 px-2 -mx-2 rounded-md transition-colors hover:bg-gray-50 ${isResolved ? 'opacity-80' : ''}`}
-      >
-        <button
-          onClick={() => openNegotiation(item)}
-          className="flex-1 flex items-center gap-3 text-sm text-left pr-10 min-w-0 text-gray-700 hover:text-black"
-        >
-          <UserAvatar avatar={item.counterpart.avatar} id={item.counterpart.id} name={item.counterpart.name} size={28} className="flex-shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-black flex items-center gap-1.5">
-              <span className="truncate">{item.counterpart.name}</span>
-              <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold font-ibm-plex-mono ${CHIP_CLASS[item.status]}`}>
-                {statusLabel(item)}
-              </span>
-            </p>
-            <p className="truncate text-[11px] font-ibm-plex-mono text-gray-400">
-              {item.signalCount} signal{item.signalCount === 1 ? '' : 's'} · {item.lastAction} · {item.timeAgo}
-            </p>
-            {(item.status === 'answer' || item.status === 'agreed') && (
-              <p className="truncate text-[11px] text-gray-400">
-                {item.status === 'answer' ? 'Tap to answer in your agent chat' : 'Tap to review and start the chat'}
-              </p>
-            )}
-          </div>
-        </button>
-        <span className="absolute right-8 top-2 text-[11px] leading-none font-normal text-gray-400">
-          {formatConversationTime(item.sortTimestamp)}
-        </span>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setChatMenuOpen(chatMenuOpen === item.conversationId ? null : item.conversationId);
-          }}
-          aria-label="Negotiation options"
-          className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-100 rounded transition-all flex-shrink-0"
-        >
-          <MoreHorizontal className="w-4 h-4 text-gray-400" />
-        </button>
-        {chatMenuOpen === item.conversationId && (
-          <div
-            ref={chatMenuRef}
-            className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[140px] z-30"
-          >
-            <button
-              onClick={async (e) => {
-                e.stopPropagation();
-                setChatMenuOpen(null);
-                await hideConversation(item.conversationId);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <EyeOff className="w-4 h-4" /> Hide
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const selectedTaskId = new URLSearchParams(search).get('taskId');
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="lg:hidden px-4 py-3 min-h-[68px] flex items-center gap-3">
         <button onClick={() => navigate('/')} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
-        <h2 className="text-lg font-bold text-black font-ibm-plex-mono">Conversations</h2>
+        <h2 className="text-lg font-bold text-black font-ibm-plex-mono">
+          {showingNegotiations ? 'Negotiations' : 'Conversations'}
+        </h2>
       </div>
       <div className="flex-1 overflow-y-auto px-4 pt-4 lg:pt-4">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex flex-1 items-center gap-1 bg-gray-100 rounded-md p-0.5">
-            <button
-              onClick={() => setMode('h2h')}
-              className={`flex-1 text-xs font-semibold py-1.5 rounded transition-colors font-ibm-plex-mono ${mode === 'h2h' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Messages
-            </button>
-            <button
-              onClick={() => setMode('a2a')}
-              className={`flex-1 text-xs font-semibold py-1.5 rounded transition-colors font-ibm-plex-mono ${mode === 'a2a' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Negotiations
-              {yourMoveCount > 0 && (
-                <span
-                  data-testid="chat-negotiations-your-move-badge"
-                  aria-label={`${yourMoveCount} negotiation${yourMoveCount === 1 ? '' : 's'} need your input`}
-                  className="ml-1 inline-flex h-4 min-w-4 flex-none items-center justify-center rounded-full bg-[#041729] px-1 align-middle text-[10px] font-bold leading-none text-white"
-                >
-                  {yourMoveCount > 99 ? '99+' : yourMoveCount}
-                </span>
-              )}
-            </button>
-          </div>
+        <div className="flex items-center justify-end mb-3">
           <span
             data-testid="chat-connection-dot"
             role="status"
@@ -280,7 +144,7 @@ export default function ChatSidebar() {
             className={`h-1.5 w-1.5 flex-none rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-gray-400'}`}
           />
         </div>
-        {mode === 'a2a' ? (
+        {showingNegotiations ? (
           negotiationCount === 0 && refreshing ? (
             renderSkeleton()
           ) : negotiationCount === 0 ? (
@@ -289,13 +153,83 @@ export default function ChatSidebar() {
               <p className="mt-1.5 text-[11px] leading-relaxed text-gray-400">Your agents’ connection work will appear here.</p>
             </div>
           ) : (
-            <div className="space-y-1">
-              {negotiationRuns.map((run, runIndex) => (
-                <div key={run.key}>
-                  {runIndex > 0 && <div className="mx-2 my-1 h-px bg-gray-100" aria-hidden="true" />}
-                  {run.items.map(renderNegotiationRow)}
-                </div>
-              ))}
+            <div className="space-y-1" data-testid="negotiation-outline">
+              {negotiationOutline.map((counterparty) => {
+                const expanded = expandedCounterpartIds.has(counterparty.id);
+                const regionId = `negotiations-${counterparty.id}`;
+                return (
+                  <div key={counterparty.id} className="rounded-md">
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      aria-controls={regionId}
+                      onClick={() => setExpandedCounterpartIds((previous) => {
+                        const next = new Set(previous);
+                        if (next.has(counterparty.id)) next.delete(counterparty.id);
+                        else next.add(counterparty.id);
+                        return next;
+                      })}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#4091bb]"
+                    >
+                      <ChevronRight className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                      <UserAvatar avatar={counterparty.avatar} id={counterparty.id} name={counterparty.name} size={28} className="flex-shrink-0" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-black">{counterparty.name}</span>
+                      <span className="font-ibm-plex-mono text-[10px] text-gray-400">{counterparty.opportunities.length}</span>
+                    </button>
+                    {expanded && (
+                      <div id={regionId} className="ml-5 border-l border-gray-200 pl-2" role="region" aria-label={`${counterparty.name} opportunities`}>
+                        {counterparty.opportunities.map((opportunity) => {
+                          const presentation = opportunity.presentation;
+                          const selected = pathname === `/negotiations/${opportunity.conversationId}`
+                            && selectedTaskId === (opportunity.taskId ?? null);
+                          const opportunityMenuId = `negotiation:${opportunity.conversationId}:${opportunity.taskId ?? 'latest'}`;
+                          return (
+                            <div key={`${opportunity.conversationId}-${opportunity.taskId ?? 'latest'}`} className={`group relative flex min-w-0 items-center rounded-md ${selected ? 'bg-[#f1f5f7]' : 'hover:bg-gray-50'}`}>
+                              <button
+                                type="button"
+                                onClick={() => openNegotiation(opportunity.conversationId, opportunity.taskId)}
+                                aria-current={selected ? 'page' : undefined}
+                                className="relative flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#4091bb]"
+                              >
+                                {selected && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-[#041729]" aria-hidden="true" />}
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${presentation.dotClass}`} aria-hidden="true" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs font-medium text-gray-800">{opportunity.title}</span>
+                                  <span className="block truncate font-ibm-plex-mono text-[10px] text-gray-400">
+                                    {presentation.label}
+                                  </span>
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Negotiation options"
+                                onClick={() => setChatMenuOpen(chatMenuOpen === opportunityMenuId ? null : opportunityMenuId)}
+                                className="mr-1 rounded p-1 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <MoreHorizontal className="h-4 w-4 text-gray-400" />
+                              </button>
+                              {chatMenuOpen === opportunityMenuId && (
+                                <div ref={chatMenuRef} className="absolute right-0 top-full z-30 min-w-[140px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      setChatMenuOpen(null);
+                                      await hideConversation(opportunity.conversationId);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" /> Hide
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )
         ) : recentChats.length === 0 && refreshing ? (
@@ -373,16 +307,6 @@ export default function ChatSidebar() {
                 )}
               </div>
             ))}
-          </div>
-        )}
-        {mode === 'a2a' && (
-          <div className="mt-3 border-t border-gray-100 pt-3">
-            <button
-              onClick={() => navigate('/negotiations')}
-              className="text-[11px] font-ibm-plex-mono text-[#35799C] transition-colors hover:text-[#041729]"
-            >
-              View all in Negotiations inbox &rarr;
-            </button>
           </div>
         )}
       </div>

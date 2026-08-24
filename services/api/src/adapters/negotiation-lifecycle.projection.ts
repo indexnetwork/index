@@ -40,9 +40,13 @@ export function readInitiatorUserId(metadata: Record<string, unknown>): string |
 
 /**
  * Reads the named `tasks.metadata.screenDecision` fields written by the
- * outreach gate. Named-field projection only — the raw metadata blob is never
- * returned, so unrelated or internal keys on the task cannot leak through this
- * surface (`docs/design/negotiation-dialogue-game.md:87`).
+ * outreach gate. READ-ONLY HISTORY: the gate is gone and nothing writes this
+ * key any more, but negotiations that ran before its removal still carry it
+ * and the owner's gate-decision card still renders them.
+ *
+ * Named-field projection only — the raw metadata blob is never returned, so
+ * unrelated or internal keys on the task cannot leak through this surface
+ * (`docs/design/negotiation-dialogue-game.md:87`).
  */
 function readScreenDecisionRecord(metadata: Record<string, unknown>): ProjectedScreenDecision | null {
   const raw = metadata.screenDecision;
@@ -67,10 +71,11 @@ function readScreenDecisionRecord(metadata: Record<string, unknown>): ProjectedS
  * Picks the honest text for the decision, without regard to who is asking.
  *
  * Two distinct refusals collapse into the same `screened_out` outcome:
- * - the screen node passed before any contact — reasoning and structured
- *   evidence live on `tasks.metadata.screenDecision`;
- * - the agent refused on its opening turn — no screen record blocked, and the
- *   only reasoning lives on the negotiation-outcome artifact.
+ * - the agent refused on its opening turn — the live route; the only reasoning
+ *   lives on the negotiation-outcome artifact;
+ * - HISTORICAL: the outreach gate passed before any contact — reasoning and
+ *   structured evidence live on `tasks.metadata.screenDecision`. Nothing
+ *   writes that key now, but rows from before its removal still hold one.
  *
  * When the outcome is `screened_out` but the screen record did not itself pass,
  * that record describes a decision which was *overtaken* by the opening

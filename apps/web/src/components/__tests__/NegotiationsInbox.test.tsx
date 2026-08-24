@@ -13,11 +13,12 @@ function negotiation(
   counterpartName: string,
   input: {
     state?: NonNullable<ConversationSummary['negotiation']>['state'];
-    action?: string;
+    pauseReason?: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
     senderId?: string;
     turnCount?: number;
   } = {},
 ): ConversationSummary {
+  const data: Record<string, unknown> = input.pauseReason ? { verb: 'pause', reason: input.pauseReason } : { verb: 'counter' };
   return {
     id,
     participants: [
@@ -25,9 +26,12 @@ function negotiation(
       { participantId: `agent:${id}-peer`, participantType: 'agent', name: 'Index Negotiator', avatar: null, ownerName: counterpartName },
     ],
     lastMessage: {
-      parts: [{ kind: 'data', data: { action: input.action ?? 'counter' } }],
+      parts: [{ kind: 'data', data }],
       senderId: input.senderId ?? `agent:${id}-peer`,
       createdAt: '2026-07-24T11:00:00.000Z',
+      // The message belongs to the represented session; without the task id
+      // the inbox (correctly) refuses to read it as that session's turn.
+      taskId: `${id}-task`,
     },
     metadata: null,
     via: [],
@@ -37,28 +41,27 @@ function negotiation(
     negotiation: {
       taskId: `${id}-task`,
       state: input.state ?? 'working',
+      pause: input.pauseReason ? { reason: input.pauseReason } : null,
       statusTimestamp: '2026-07-24T11:00:00.000Z',
       opportunityId: `${id}-opportunity`,
       opportunityStatus: 'negotiating',
       acceptedByViewer: false,
       turnCount: input.turnCount ?? 1,
-      maxTurns: 6,
       signalCount: 2,
-      outcome: null,
       updatedAt: '2026-07-24T11:00:00.000Z',
     },
   };
 }
 
 const answerNegotiation = negotiation('question', 'Mira Chen', {
-  state: 'input_required',
-  action: 'ask_user',
+  state: 'paused',
+  pauseReason: 'needs_principal',
   senderId: 'agent:me',
 });
 
 const mocks = vi.hoisted(() => ({
   negotiations: [] as ConversationSummary[],
-  features: { negotiatorChat: true } as { negotiatorChat?: boolean } | undefined,
+  features: {} as Record<string, boolean> | undefined,
   apiGet: vi.fn(),
 }));
 
@@ -102,31 +105,12 @@ describe('NegotiationsInbox answer-row deep links (IND-558)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     currentPath.value = '/negotiations';
-    mocks.features = { negotiatorChat: true };
-    mocks.apiGet.mockResolvedValue({ sessions: [{ id: 'negotiator-session' }] });
   });
 
-  it('routes answer rows to the negotiator DM when the session exists', async () => {
+  // The negotiator DM these rows used to deep-link is gone; /questions was
+  // already this path's fallback and is now the only destination.
+  it('routes answer rows to /questions without resolving a session', async () => {
     mocks.negotiations = [answerNegotiation];
-    renderInbox();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Open negotiation with Mira Chen' }));
-    await waitFor(() => expect(currentPath.value).toBe('/d/negotiator-session'));
-    expect(mocks.apiGet).toHaveBeenCalledWith('/chat/sessions?persona=negotiator');
-  });
-
-  it('falls back to /questions when no negotiator session exists', async () => {
-    mocks.negotiations = [answerNegotiation];
-    mocks.apiGet.mockResolvedValue({ sessions: [] });
-    renderInbox();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Open negotiation with Mira Chen' }));
-    await waitFor(() => expect(currentPath.value).toBe('/questions'));
-  });
-
-  it('falls back to /questions when the negotiator chat flag is off', async () => {
-    mocks.negotiations = [answerNegotiation];
-    mocks.features = { negotiatorChat: false };
     renderInbox();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open negotiation with Mira Chen' }));
@@ -139,6 +123,6 @@ describe('NegotiationsInbox answer-row deep links (IND-558)', () => {
     renderInbox();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Open negotiation with Aisha Khan' }));
-    await waitFor(() => expect(currentPath.value).toBe('/chat/live'));
+    await waitFor(() => expect(currentPath.value).toBe('/negotiations/live'));
   });
 });

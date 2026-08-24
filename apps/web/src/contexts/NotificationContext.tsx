@@ -135,7 +135,7 @@ function NotificationToasts({
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end">
+    <div className="fixed top-[4.5rem] right-4 z-50 flex flex-col gap-2 items-end">
       {notifications.map((notification, index) => {
         if (notification.type === 'intent_broadcast') {
           return (

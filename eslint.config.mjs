@@ -11,6 +11,8 @@ export default tseslint.config(
       "**/dist/",
       "**/node_modules/",
       "**/.worktrees/",
+      // Nested Agent Village project has its own package/tooling and generated Next output.
+      "packages/edge-city/**",
       "services/api/drizzle/",
       "scripts/",
       "docs/",
@@ -122,14 +124,11 @@ export default tseslint.config(
   // (lib/logger.ts itself carries a file-level eslint-disable — it is the
   // console sink.)
   {
-    files: ["apps/web/src/**/*.{ts,tsx}", "apps/eval-ops/src/**/*.{ts,tsx}"],
+    files: ["apps/web/src/**/*.{ts,tsx}"],
     ignores: [
       "apps/web/src/**/*.spec.{ts,tsx}",
       "apps/web/src/**/*.test.{ts,tsx}",
       "apps/web/src/test/**",
-      "apps/eval-ops/src/**/*.spec.{ts,tsx}",
-      "apps/eval-ops/src/**/*.test.{ts,tsx}",
-      "apps/eval-ops/src/test/**",
     ],
     rules: {
       "no-console": "error",
@@ -152,7 +151,7 @@ export default tseslint.config(
 
   // ── Web app: React-specific rules ──────────────────────────────────
   {
-    files: ["apps/web/src/**/*.{ts,tsx}", "apps/eval-ops/src/**/*.{ts,tsx}"],
+    files: ["apps/web/src/**/*.{ts,tsx}"],
     plugins: {
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,

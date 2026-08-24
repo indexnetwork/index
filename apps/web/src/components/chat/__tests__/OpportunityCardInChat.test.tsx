@@ -63,3 +63,40 @@ describe("OpportunityCard negotiation presence", () => {
     expect(screen.queryByText(/Currently negotiating/)).toBeNull();
   });
 });
+
+describe("OpportunityCard asking-you-first state", () => {
+  // A pre-contact park (#1445) leaves the opportunity `negotiating`, so the
+  // presenter hands us the in-flight template: "still talking with theirs", "no
+  // action needed yet", plus the presence chip. All three are false while the
+  // negotiation is parked before any contact, and the card must not show them.
+  const askingFirst = {
+    intentId: "intent-7",
+    reason: "unresolved_owner_constraint",
+    whatFit: "Consumer-AI founder with strong general AI depth.",
+  };
+
+  it("renders the asking-first card in place of the negotiating body", () => {
+    renderCard({ ...baseCard, askingFirst }, true);
+
+    const card = screen.getByTestId("asking-first-card");
+    expect(card).toHaveTextContent("Your agent wants to ask you first");
+    expect(card).toHaveTextContent("Aisha Khan was not contacted and cannot see this.");
+    expect(screen.getByRole("link", { name: "Answer in this signal's DM" }).getAttribute("href"))
+      .toBe("/i/intent-7");
+    expect(screen.queryByText("Your agents are debating a connection.")).toBeNull();
+  });
+
+  it("suppresses the negotiation presence, which would claim a dialogue that has not started", () => {
+    renderCard({ ...baseCard, askingFirst }, true);
+
+    expect(screen.queryByText(/Currently negotiating/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Watch the negotiation" })).toBeNull();
+  });
+
+  it("leaves an ordinary negotiating card alone", () => {
+    renderCard(baseCard, true);
+
+    expect(screen.queryByTestId("asking-first-card")).toBeNull();
+    expect(screen.getByText("Your agents are debating a connection.")).toBeTruthy();
+  });
+});

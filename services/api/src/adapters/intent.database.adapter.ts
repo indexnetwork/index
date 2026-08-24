@@ -1,17 +1,28 @@
-import { readUserContext, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
+import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreatedIntentRow, IntentLifecycleStatus, IntentListRow, UpdateIntentInput, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, count, db, desc, eq, inArray, isNull, logger, ne, ownIntentsListWhere, sql } from './database.shared';
 
 import { IntentEvents } from '../events/intent.event';
+import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
+import { intentProposalDatabaseAdapter, type ReviseIntentProposalInput } from './intent-proposal.database.adapter';
+import type { IntentProposalRow } from '../schemas/database.schema';
 
+
+/** Scope type of the per-signal DM the personal agent speaks into. */
+const PERSONAL_INTENT_SCOPE_TYPE = 'personal-intent';
 
 export class IntentDatabaseAdapter {
   /**
    * Retrieve a single user_context row (global when networkId is null), or null.
    * Mirrors {@link ChatDatabaseAdapter.getUserContext} for the intent graph.
    */
-  async getUserContext(userId: string, networkId: string | null) {
-    return readUserContext(userId, networkId);
+  async getUserContext(userId: string, _networkId: string | null) {
+    const profile = await buildProfileFromUser(userId);
+    if (!profile) return null;
+    const text = [profile.identity.bio, profile.identity.name, profile.identity.location]
+      .map((s) => s?.trim()).filter(Boolean).join(' ');
+    if (!text) return null;
+    return { id: userId, text, embedding: [] as number[], premiseHash: '', generatedAt: new Date() };
   }
 
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {
@@ -201,6 +212,23 @@ export class IntentDatabaseAdapter {
 
       return { kind: 'created', intent: created } as const;
     });
+  }
+
+  /**
+   * Resolve a durable proposal without exposing records owned by another user.
+   * Delegates to {@link IntentProposalDatabaseAdapter} — the single source of
+   * truth for the intent_proposals table's read/write surface.
+   */
+  async getProposalForOwner(proposalId: string, userId: string): Promise<IntentProposalRow | null> {
+    return intentProposalDatabaseAdapter.getProposalForOwner(proposalId, userId);
+  }
+
+  /**
+   * Atomically replace the verified payload of a still-pending owner proposal.
+   * Delegates to {@link IntentProposalDatabaseAdapter}.
+   */
+  async revisePendingProposal(input: ReviseIntentProposalInput): Promise<IntentProposalRow | null> {
+    return intentProposalDatabaseAdapter.revisePendingProposal(input);
   }
 
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {
@@ -474,6 +502,7 @@ export class IntentDatabaseAdapter {
         ne(schema.opportunities.status, 'expired'),
       ))
       .returning({ id: schema.opportunities.id });
+    for (const row of result) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return result.length;
   }
 
@@ -583,8 +612,10 @@ export class IntentDatabaseAdapter {
       db.select({ count: count() }).from(schema.intents).where(where),
     ]);
 
-    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId);
+    const { rows: withExtras, totalWaitingOpportunities } = await this.attachIntentExtras(rows, userId, false);
     return {
+      // Progress is intentionally a single-signal owner detail contract; keep
+      // the existing list payload stable and inexpensive for dashboards.
       rows: withExtras,
       total: Number(totalResult[0]?.count ?? 0),
       totalWaitingOpportunities,
@@ -594,29 +625,34 @@ export class IntentDatabaseAdapter {
   /**
    * Enrich a page of intent list rows with their registered networks, the
    * per-intent counts the UI surfaces (pending questions, waiting
-   * opportunities), and the fresh-intent discovery state. Runs three grouped
-   * queries in parallel and joins in memory, so it stays O(1) round-trips
-   * regardless of page size.
+   * opportunities), the fresh-intent discovery state, and whether the signal's
+   * own agent is holding an unanswered question. Runs the grouped queries in
+   * parallel and joins in memory, so it stays O(1) round-trips regardless of
+   * page size.
    *
    * @param rows - The paginated base intent rows to enrich.
    * @param userId - Owner, used to scope the waiting-opportunity actor match.
-   * @returns The rows with `networks`, `pendingQuestionCount`, and
-   *   `waitingOpportunityCount` populated (empty/zero when none), plus a
-   *   deduplicated total of waiting opportunities across the page's signals.
+   * @returns The rows with `networks`, `pendingQuestionCount`,
+   *   `waitingOpportunityCount` and `awaitingReply` populated (empty/zero/false
+   *   when none), plus a deduplicated total of waiting opportunities across
+   *   the page's signals.
    */
   private async attachIntentExtras(
-    rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming'> & {
+    rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming' | 'awaitingReply'> & {
       /** Stamped by the from-intent queue on first successful discovery (IND-482). */
       firstDiscoverySucceededAt: Date | null;
     })[],
     userId: string,
+    includeDiscoveryProgress = true,
   ): Promise<{ rows: IntentListRow[]; totalWaitingOpportunities: number }> {
     if (rows.length === 0) return { rows: [], totalWaitingOpportunities: 0 };
     const intentIds = rows.map(r => r.id);
     const warmingCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [networks, countResult] = await Promise.all([
+    const [networks, countResult, progress, awaitingReply] = await Promise.all([
       this.networksByIntent(intentIds),
       this.countsByIntent(intentIds, userId),
+      includeDiscoveryProgress ? this.discoveryProgressByIntent(intentIds, userId) : Promise.resolve(new Map()),
+      this.awaitingReplyByIntent(intentIds, userId),
     ]);
     return {
       rows: rows.map(({ firstDiscoverySucceededAt, ...r }) => ({
@@ -624,11 +660,93 @@ export class IntentDatabaseAdapter {
         networks: networks.get(r.id) ?? [],
         pendingQuestionCount: countResult.byIntent.get(r.id)?.questions ?? 0,
         waitingOpportunityCount: countResult.byIntent.get(r.id)?.opportunities ?? 0,
+        awaitingReply: awaitingReply.has(r.id),
         warming: r.createdAt > warmingCutoff
           && firstDiscoverySucceededAt == null,
+        ...(includeDiscoveryProgress ? { discoveryProgress: progress.get(r.id) ?? {
+          // Legacy signals have no durable worker row. Do not infer a run from
+          // freshness; report the absence honestly, except known historical success.
+          status: firstDiscoverySucceededAt ? 'completed' : 'unknown',
+          attempt: 0, maxAttempts: 3, assignedCommunityCount: (networks.get(r.id) ?? []).length,
+          processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
+          queuedAt: null, startedAt: null, completedAt: firstDiscoverySucceededAt, updatedAt: null,
+        }} : {}),
       })),
       totalWaitingOpportunities: countResult.totalWaitingOpportunities,
     };
+  }
+
+  /**
+   * The signals whose agent is waiting on the owner: the newest message in the
+   * signal's ('personal-intent', intentId) DM is agent-authored AND offered
+   * canned replies, so it is a question nobody has answered yet. A later
+   * message of any kind — the owner's typed answer or their tapped chip, both
+   * ordinary user messages — makes the newest row theirs and clears the flag.
+   *
+   * Derived, never stored: there is no "answered" bit to drift out of sync,
+   * and one DISTINCT ON read covers the whole page.
+   *
+   * @param intentIds - The page's signals
+   * @param userId - Owner, scoping the DM lookup
+   * @returns The subset of ids whose DM is waiting on an answer
+   */
+  private async awaitingReplyByIntent(intentIds: string[], userId: string): Promise<Set<string>> {
+    const waiting = new Set<string>();
+    if (intentIds.length === 0) return waiting;
+    const rows = await db
+      .selectDistinctOn([schema.chatSessionScopes.scopeId], {
+        intentId: schema.chatSessionScopes.scopeId,
+        role: schema.messages.role,
+        metadata: schema.messages.metadata,
+      })
+      .from(schema.chatSessionScopes)
+      .innerJoin(
+        schema.messages,
+        eq(schema.messages.conversationId, schema.chatSessionScopes.conversationId),
+      )
+      .where(and(
+        eq(schema.chatSessionScopes.userId, userId),
+        eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
+        inArray(schema.chatSessionScopes.scopeId, intentIds),
+      ))
+      .orderBy(
+        schema.chatSessionScopes.scopeId,
+        desc(schema.messages.createdAt),
+        desc(schema.messages.id),
+      );
+    for (const row of rows) {
+      if (row.role !== 'agent') continue;
+      const options = (row.metadata as { options?: unknown } | null)?.options;
+      if (Array.isArray(options) && options.length > 0) waiting.add(row.intentId);
+    }
+    return waiting;
+  }
+
+  private async discoveryProgressByIntent(intentIds: string[], userId: string): Promise<Map<string, NonNullable<IntentListRow['discoveryProgress']>>> {
+    const result = new Map<string, NonNullable<IntentListRow['discoveryProgress']>>();
+    if (!intentIds.length) return result;
+    const rows = await db.select().from(schema.intentDiscoveryProgress).where(and(
+      inArray(schema.intentDiscoveryProgress.intentId, intentIds),
+      eq(schema.intentDiscoveryProgress.userId, userId),
+    ));
+    for (const row of rows) {
+      // A worker heartbeat is the durable row's update time. Do not present a
+      // retained/dead BullMQ job as active after a worker crash or redelivery
+      // gap; its precise state is no longer knowable.
+      const stale = (row.status === 'queued' || row.status === 'running')
+        && Date.now() - row.updatedAt.getTime() > 30 * 60 * 1000;
+      result.set(row.intentId, {
+        status: stale ? 'unknown' : row.status === 'succeeded' ? 'completed' : row.status === 'failed'
+          ? (row.attempt < row.maxAttempts ? 'retrying' : 'failed') : row.status,
+        attempt: row.attempt, maxAttempts: row.maxAttempts,
+        assignedCommunityCount: row.assignedCommunityCount,
+        processedCommunityCount: row.processedCommunityCount,
+        possibleOverlapCount: row.possibleOverlapCount,
+        conversationsStartedCount: row.conversationsStartedCount,
+        queuedAt: row.queuedAt, startedAt: row.startedAt, completedAt: row.completedAt, updatedAt: row.updatedAt,
+      });
+    }
+    return result;
   }
 
 
@@ -929,25 +1047,6 @@ export class IntentDatabaseAdapter {
   }
 
   /**
-   * Returns personal network IDs where the given user is a contact member.
-   * @param userId - The user whose contact memberships to look up
-   * @returns Array of personal network IDs
-   */
-  async getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]> {
-    return db
-      .select({ networkId: schema.networkMembers.networkId })
-      .from(schema.networkMembers)
-      .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
-      .where(
-        and(
-          eq(schema.networkMembers.userId, userId),
-          eq(schema.networks.isPersonal, true),
-          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
-        )
-      );
-  }
-
-  /**
    * Delete all intents for a user (for test teardown).
    */
   async deleteByUserId(userId: string): Promise<void> {
@@ -957,12 +1056,6 @@ export class IntentDatabaseAdapter {
       .where(eq(schema.intents.userId, userId));
     await db.delete(schema.intentNetworks).where(inArray(schema.intentNetworks.intentId, userIntentIds));
     await db.delete(schema.intents).where(eq(schema.intents.userId, userId));
-  }
-
-  // --- Profile check (required by IntentGraphDatabase for prepNode gate) ---
-
-  async getProfile(userId: string): Promise<UserIdentity | null> {
-    return buildProfileFromUser(userId);
   }
 
   // --- Read mode methods (required by IntentGraphDatabase for queryNode) ---
@@ -986,7 +1079,6 @@ export class IntentDatabaseAdapter {
       location: user.location ?? null,
       socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
       onboarding: user.onboarding ?? null,
-      isGhost: user.isGhost ?? false,
       deletedAt: user.deletedAt ?? null,
     };
   }

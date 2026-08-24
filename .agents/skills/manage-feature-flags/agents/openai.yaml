@@ -1,4 +1,0 @@
-interface:
-  display_name: "Manage Feature Flags"
-  short_description: "Index project workflow: Manage Feature Flags"
-  default_prompt: "Use $manage-feature-flags to follow the repository-specific Manage Feature Flags workflow."

@@ -1,5 +1,4 @@
 import { useId, useState } from 'react';
-import { Link } from 'react-router';
 import { Check } from 'lucide-react';
 import { cn, formatChatDayLabel } from '@/lib/utils';
 import type { ChatContextOpportunity } from '@/services/opportunities';
@@ -15,6 +14,28 @@ const HEADLINE_MAX = 60;
 
 const truncate = (s: string, max: number): string =>
   s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
+
+/** Placeholder for accepted-opportunity summaries while chat context loads. */
+export function OpportunityDividerSkeleton() {
+  return (
+    <div className="my-4 animate-pulse" data-testid="opportunity-divider-skeleton" aria-label="Loading accepted opportunities">
+      <div className="flex items-center gap-2">
+        <span className="h-px flex-1 bg-gray-200" />
+        <span className="h-3 w-72 max-w-[55%] rounded bg-gray-200" />
+        <span className="h-px flex-1 bg-gray-200" />
+      </div>
+      <div className="mx-auto mt-3 max-w-md space-y-2">
+        {[0, 1].map((index) => (
+          <div key={index} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">
+            <div className="h-4 w-4/5 rounded bg-gray-200" />
+            <div className="mt-2 h-3 w-full rounded bg-gray-200" />
+            <div className="mt-1.5 h-3 w-3/4 rounded bg-gray-200" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Centered divider chip rendered between messages to mark the moment a shared

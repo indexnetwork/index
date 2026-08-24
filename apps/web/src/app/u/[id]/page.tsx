@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Loader2, MessageCircle } from "lucide-react";
-import GhostBadge from "@/components/GhostBadge";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers, useNetworks } from "@/contexts/APIContext";
 import UserAvatar from "@/components/UserAvatar";
@@ -9,7 +8,6 @@ import { User } from "@/lib/types";
 import { Link } from "react-router";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import InviteMessageModal from "@/components/InviteMessageModal";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { getPublicUserProfile } from "@/services/users";
 import { log } from "@/lib/logger";
@@ -47,24 +45,8 @@ export default function UserProfilePage() {
   const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteMessage, setInviteMessage] = useState('');
-  const [isTriggering, setIsTriggering] = useState(false);
 
   const isOtherUser = !!user?.id && user.id !== id;
-
-  const handleTriggerNegotiation = useCallback(async () => {
-    if (!id || !isOtherUser) return;
-    const targetId = id;
-    setIsTriggering(true);
-    try {
-      return await usersService.triggerDiscoveryNegotiation(targetId);
-    } catch (err) {
-      logger.error('Failed to trigger negotiation', { error: err });
-    } finally {
-      setIsTriggering(false);
-    }
-  }, [id, isOtherUser, usersService]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -131,18 +113,6 @@ export default function UserProfilePage() {
 
   return (
     <>
-    {showInviteModal && (
-      <InviteMessageModal
-        userName={profileData.name}
-        message={inviteMessage}
-        onMessageChange={setInviteMessage}
-        onConfirm={() => {
-          setShowInviteModal(false);
-          navigate(`/u/${id}/chat`, { state: { prefill: inviteMessage } });
-        }}
-        onCancel={() => setShowInviteModal(false)}
-      />
-    )}
     <ClientLayout>
       <div className="px-6 lg:px-8 py-6 pb-20">
         <ContentContainer className="space-y-8">
@@ -153,11 +123,10 @@ export default function UserProfilePage() {
 
           {/* Avatar, Name, Location, Socials */}
           <div className="flex items-center gap-4">
-            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={80} blur={profileData.isGhost} />
+            <UserAvatar id={profileData.id} name={profileData.name} avatar={profileData.avatar} size={80} />
             <div className="flex-1">
               <h1 className="font-ibm-plex-mono text-2xl font-bold text-black mb-1 flex items-center gap-2">
                 {profileData.name}
-                {profileData.isGhost && <GhostBadge />}
               </h1>
               {profileData.location && (
                 <p className="text-sm text-gray-500 mb-3">{profileData.location}</p>
@@ -181,12 +150,7 @@ export default function UserProfilePage() {
             {isAuthenticated && isOtherUser && (
               <button
                 onClick={() => {
-                  if (profileData.isGhost) {
-                    setInviteMessage(`Hey ${profileData.name}, would love to connect!`);
-                    setShowInviteModal(true);
-                  } else {
-                    navigate(`/u/${id}/chat`);
-                  }
+                  navigate(`/u/${id}/chat`);
                 }}
                 className="flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors flex-shrink-0"
               >
@@ -225,11 +189,7 @@ export default function UserProfilePage() {
           {isAuthenticated && id && (
             <div>
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Negotiations</h3>
-              <NegotiationHistory
-                userId={id}
-                onTriggerNegotiation={isOtherUser ? handleTriggerNegotiation : undefined}
-                isTriggering={isTriggering}
-              />
+              <NegotiationHistory userId={id} />
             </div>
           )}
 

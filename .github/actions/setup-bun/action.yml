@@ -1,0 +1,50 @@
+name: Setup Bun
+description: >
+  Wraps oven-sh/setup-bun with two extra retries and backoff, so transient
+  GitHub release outages (503s, socket hang ups) don't fail the whole job.
+
+inputs:
+  bun-version:
+    description: Bun version to install
+    required: true
+  no-cache:
+    description: Disable caching of the downloaded Bun binary
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - id: attempt-1
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      continue-on-error: true
+      with:
+        bun-version: ${{ inputs.bun-version }}
+        no-cache: ${{ inputs.no-cache }}
+
+    - if: steps.attempt-1.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "setup-bun attempt 1 failed, retrying in 30s..."
+        sleep 30
+
+    - id: attempt-2
+      if: steps.attempt-1.outcome == 'failure'
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      continue-on-error: true
+      with:
+        bun-version: ${{ inputs.bun-version }}
+        no-cache: ${{ inputs.no-cache }}
+
+    - if: steps.attempt-1.outcome == 'failure' && steps.attempt-2.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "setup-bun attempt 2 failed, retrying in 60s..."
+        sleep 60
+
+    - id: attempt-3
+      if: steps.attempt-1.outcome == 'failure' && steps.attempt-2.outcome == 'failure'
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version: ${{ inputs.bun-version }}
+        no-cache: ${{ inputs.no-cache }}

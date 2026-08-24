@@ -8,6 +8,27 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- **Breaking (web 0.58.0):** remove the Agent reporter surface. `/agent` now
+  always renders the ordinary agent chat; `AgentReporterSurface`, the
+  `agentSurface` feature flag, `startReporterSession`, the reporter branch of the
+  sessions panel's **New conversation** action, `services/agent-actions.ts` and
+  the `AgentActionProposalCard` (plus its ```agent_action_proposal``` fence
+  parsing and loading skeleton in `AssistantMessageContent`) are all gone.
+- Remove `ChatContent`'s `persona`, `readOnlySurface` and `suggestionOverride`
+  props. The reporter surface was their only caller, so the read-only header
+  suppression, suggestion override and reporter routing branches collapse away.
+- **Breaking (web 0.55.0):** remove the Protocol Atlas. The `/protocol-atlas`
+  route, its host allowlist (`dev.index.network`, `localhost`, `127.0.0.1`,
+  `[::1]`), and the static site under `docs/protocol-atlas/` are gone, along with
+  the 2,080-line generator (`scripts/build-protocol-atlas.ts`), the
+  `publish:protocol-atlas` build step, and the `check:protocol-atlas` gate that
+  ran ahead of `vite build`. The atlas was a generated architecture diagram of
+  `packages/protocol`; it is no longer maintained, and the build no longer
+  depends on regenerating it.
+- **Breaking (web 0.54.0):** remove the `signalAgent` feature flag. Signal is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "signal"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Retired `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
+- **Breaking (web 0.53.0):** remove the `signalAgent` feature flag. Signal is the permanent web chat persona, so the flag is gone from `UserFeatures` and every gate that read it: new chats always request `persona: "signal"`, `/i/new` is no longer flag-gated, and the "Who are you trying to meet?" entry point always renders. Legacy `orchestrator` sessions stay visible and read-only unconditionally, rather than only while the flag was on.
+- **Breaking (web 0.52.0):** delete the `/hermes-authorize` and `/index-app-authorize` PKCE consent pages; the dedicated `idxh_`/`idxo_` credential layer was removed from the API. Hermes uses an ordinary agent API key and the Mac app signs in through `/cli-auth`.
+- Remove the cli-auth v1 contract: the `session_token` callback field, `buildLegacyCliCallbackUrl`, and the version-less request shape are gone; `/cli-auth` accepts only the state-bound v2 request (`callback`, `version=2`, `state`).
 - Remove the "Automatic Member Enrichment" policy section from network Access
   settings (web 0.49.0); the backing `profileEnrichment` network permission was
   removed from the API. Enrichment preferences will move to a separate service,
@@ -21,6 +42,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Show the owner-only outreach-gate card, instead of the generic unexplained "declined" banner, on a screened_out negotiation whose only turn is the client's own pre-contact consult. An `ask_user` turn is a private consult, not contact with the counterparty, so the transcript page now excludes it (`contactTurns()`) when deciding whether contact was made and whether the gate card should replace the empty transcript state.
+- Render canonical user-context chat tool calls with the same human-friendly profile labels as historical traces (web 0.51.1).
 - Keep the existing route-rendering smoke harness aligned with current web context contracts so its 21 covered route components mount under production-shaped empty states.
 - Make the existing QuestionsContext poll an invalidation-only signal for intent workspaces (IND-507): authoritative lifecycle filtering removes stale negotiation IDs from the stable revision and triggers one passive exact-intent pending+answered refetch without visit-time pool mining or a second poller. Exact answered exchanges remain once after continuation/reload; stale responses are ignored and cards replace/dedupe by durable question ID. Unproven anchors and all unanchored answered/pending cards trail deterministically, while the one mounted `IntentNegotiatorChat` and existing mobile FocusScope/inert/focus-restoration and desktop labelled-region layout remain unchanged.
 

@@ -136,8 +136,9 @@ merges multi-lens candidates, and then passes them to `OpportunityEvaluator`. Hy
 and opportunity evaluation are separate stages: an evaluator-only regression suite cannot
 show that a hypothetical document retrieved the right candidate.
 
-IND-426 therefore includes the evidence-v2 paired retrieval study in
-`packages/protocol/eval/hyde/`. Its frozen local corpus has 90 cases and 900 candidates
+IND-426 therefore included the evidence-v2 paired retrieval study, which lived in
+`packages/protocol/eval/hyde/` until the evals were removed on 2026-08-16 (restore it
+from the `archive/eval-2026-08-16` tag). Its frozen local corpus had 90 cases and 900 candidates
 under the existing five drift strata: profile-context contamination, entity/location
 substitution, time/numeric scale, credential/organization/exclusivity, and role/polarity
 controls. Every stratum retains at least 15 cases. The primary 75-case cohort represents
@@ -214,5 +215,5 @@ file is atomically replaced, but the public/private/template set is
 not transactional and `--force` regenerates opaque IDs; preserve it as one set. Run
 artifacts are gitignored and there is no committed baseline. Frame-v1 remains default-off
 until full canonical evidence is reviewed. The matching eval remains only a secondary evaluator-only
-check. See the [HyDE eval README](../../packages/protocol/eval/hyde/README.md) for the
-staged CLI, adjudication rubrics, exact metrics, and artifact handling.
+check. The staged CLI, adjudication rubrics, exact metrics, and artifact handling are
+documented in that suite's README, preserved in the `archive/eval-2026-08-16` tag.

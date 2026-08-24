@@ -11,7 +11,6 @@ export interface Member {
   name: string;
   email: string;
   avatar?: string | null;
-  isGhost?: boolean;
   intro?: string | null;
   location?: string | null;
   socials?: Array<{ id: string; userId: string; label: string; value: string }>;
@@ -47,7 +46,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
-  // Get non-personal networks shared between the current user and a target user
+  // Get networks shared between the current user and a target user
   getSharedIndexes: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
     const response = await api.get<{ networks: Array<{ id: string; title: string; _count: { members: number } }> }>(`/networks/shared/${userId}`);
     return response.networks || [];
@@ -383,4 +382,3 @@ export function useNetworkService() {
   const api = useAuthenticatedAPI();
   return useMemo(() => createIndexesService(api), [api]);
 }
-

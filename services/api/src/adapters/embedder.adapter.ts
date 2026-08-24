@@ -5,6 +5,7 @@
 
 import OpenAI from 'openai';
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm/sql';
+import { withMultiSignalBonus } from '../lib/embedding/similarity.calibration';
 import { OPENROUTER_EMBEDDING_BASE_URL, OPENROUTER_EMBEDDING_DIMENSIONS, OPENROUTER_EMBEDDING_MODEL } from '../lib/embedding/embedding.config';
 import { embeddingConfigurationFingerprint } from '../lib/embedding/embedding.identity';
 import { traceAppOperation } from '../lib/sentry-performance';
@@ -29,22 +30,10 @@ export interface HydeSearchOptions {
   limitPerStrategy?: number;
   limit?: number;
   minScore?: number;
-  /**
-   * Discovery corpus gating, composed by the caller (defaults preserve legacy behavior).
-   * Omitted fields default to: intents true, profile true, profileCorpus 'premise'.
-   */
-  corpusGating?: {
-    /** Search the intents corpus. */
-    intents?: boolean;
-    /** Search the active profile corpus. */
-    profile?: boolean;
-    /** Which corpus backs 'profiles' lens hints and profile searches. */
-    profileCorpus?: 'premise' | 'user_context';
-  };
 }
 
 export interface HydeCandidate {
-  type: 'intent' | 'premise' | 'user_context';
+  type: 'intent';
   id: string;
   userId: string;
   score: number;
@@ -67,33 +56,37 @@ export type VectorStoreOption<T> = {
   minScore?: number;
 };
 
-/** Which corpora a HyDE lens search should hit, given caller-composed gating. */
-export function planHydeCorpusSearches(
-  le: LensEmbedding,
-  gating?: HydeSearchOptions['corpusGating'],
-): {
-  intents: boolean;
-  premises: boolean;
-  userContexts: boolean;
-  preferred: 'intents' | 'premises' | 'user_contexts';
-} {
-  const intents = gating?.intents ?? true;
-  const profile = gating?.profile ?? true;
-  const profileCorpus = gating?.profileCorpus ?? 'premise';
-  const premises = profile && profileCorpus === 'premise';
-  const userContexts = profile && profileCorpus === 'user_context';
-  const preferred =
-    le.corpus === 'intents' && intents
-      ? 'intents'
-      : userContexts
-        ? 'user_contexts'
-        : 'premises';
-  return {
-    intents,
-    premises,
-    userContexts,
-    preferred,
-  };
+/**
+ * Collapse HyDE matches to one candidate per user, scored honestly.
+ *
+ * The retained score is the user's best raw cosine similarity plus a bounded
+ * bonus for each ADDITIONAL DISTINCT lens that surfaced them. Counting matched
+ * rows instead of lenses (one lens hitting three of a user's premises counted as
+ * three signals) saturated the old additive bonus, so unrelated candidates all
+ * landed on exactly 1.0 and monopolised the by-rank evaluation batch.
+ */
+export function mergeAndRankHydeCandidates(
+  candidates: HydeCandidate[],
+  limit: number,
+): HydeCandidate[] {
+  const byUser = new Map<string, HydeCandidate[]>();
+  for (const c of candidates) {
+    const existing = byUser.get(c.userId) ?? [];
+    existing.push(c);
+    byUser.set(c.userId, existing);
+  }
+
+  const scored = Array.from(byUser.entries()).map(([, matches]) => {
+    const bestMatch = matches.reduce((a, b) => (a.score > b.score ? a : b));
+    const lenses = [...new Set(matches.map((m) => m.matchedVia))];
+    return {
+      ...bestMatch,
+      score: withMultiSignalBonus(bestMatch.score, lenses.length),
+      matchedLenses: lenses.length > 1 ? lenses : undefined,
+    };
+  });
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,17 +272,11 @@ export class EmbedderAdapter {
     const halfLimit = Math.ceil(limitPerStrategy / 2);
     const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
-      const plan = planHydeCorpusSearches(le, options.corpusGating);
+      // Discovery is intent-to-intent: a lens that asked for a profile corpus
+      // still searches intents, on a half budget so it cannot crowd out the
+      // lens that asked for them directly.
       return [
-        plan.intents
-          ? this.searchIntentsForHyde(le.embedding, filter, plan.preferred === 'intents' ? limitPerStrategy : halfLimit, minScore, le.lens)
-          : Promise.resolve([]),
-        plan.premises
-          ? this.searchPremisesForHyde(le.embedding, filter, plan.preferred === 'premises' ? limitPerStrategy : halfLimit, minScore, le.lens)
-          : Promise.resolve([]),
-        plan.userContexts
-          ? this.searchContextsForHyde(le.embedding, filter, plan.preferred === 'user_contexts' ? limitPerStrategy : halfLimit, minScore, le.lens)
-          : Promise.resolve([]),
+        this.searchIntentsForHyde(le.embedding, filter, le.corpus === 'intents' ? limitPerStrategy : halfLimit, minScore, le.lens),
       ];
     });
 
@@ -355,134 +342,12 @@ export class EmbedderAdapter {
     }));
   }
 
-  private async searchPremisesForHyde(
-    embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
-    limit: number,
-    minScore: number,
-    lens: string
-  ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
-    const db = await getDb();
-    const vectorStr = `[${embedding.join(',')}]`;
-    const { premises, premiseNetworks } = schema;
-
-    const conditions = [
-      inArray(premiseNetworks.networkId, filter.indexScope),
-      ...(filter.excludeUserId ? [ne(premises.userId, filter.excludeUserId)] : []),
-      eq(premises.status, 'ACTIVE'),
-      isNull(premises.deletedAt),
-      isNull(schema.users.deletedAt),
-      isNull(schema.networkMembers.deletedAt),
-      isNull(schema.networks.deletedAt),
-      isNotNull(premises.embedding),
-      sql`1 - (${premises.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
-    ];
-
-    const results = await db
-      .select({
-        id: premises.id,
-        userId: premises.userId,
-        similarity: sql<number>`1 - (${premises.embedding} <=> ${vectorStr}::vector)`,
-        networkId: premiseNetworks.networkId,
-      })
-      .from(premises)
-      .innerJoin(premiseNetworks, eq(premises.id, premiseNetworks.premiseId))
-      .innerJoin(schema.networkMembers, and(
-        eq(schema.networkMembers.userId, premises.userId),
-        eq(schema.networkMembers.networkId, premiseNetworks.networkId),
-      ))
-      .innerJoin(schema.networks, eq(schema.networks.id, premiseNetworks.networkId))
-      .innerJoin(schema.users, eq(premises.userId, schema.users.id))
-      .where(and(...conditions))
-      .orderBy(sql`${premises.embedding} <=> ${vectorStr}::vector`)
-      .limit(limit);
-
-    return results.map((r) => ({
-      type: 'premise' as const,
-      id: r.id,
-      userId: r.userId,
-      score: r.similarity,
-      matchedVia: lens,
-      networkId: r.networkId,
-    }));
-  }
-
-  private async searchContextsForHyde(
-    embedding: number[],
-    filter: { indexScope: string[]; excludeUserId?: string },
-    limit: number,
-    minScore: number,
-    lens: string
-  ): Promise<HydeCandidate[]> {
-    if (filter.indexScope?.length === 0) return [];
-    const db = await getDb();
-    const vectorStr = `[${embedding.join(',')}]`;
-    const { userContexts } = schema;
-
-    const conditions = [
-      inArray(userContexts.networkId, filter.indexScope),
-      ...(filter.excludeUserId ? [ne(userContexts.userId, filter.excludeUserId)] : []),
-      isNull(schema.users.deletedAt),
-      isNull(schema.networkMembers.deletedAt),
-      isNull(schema.networks.deletedAt),
-      isNotNull(userContexts.embedding),
-      sql`1 - (${userContexts.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
-    ];
-
-    const results = await db
-      .select({
-        id: userContexts.id,
-        userId: userContexts.userId,
-        text: userContexts.text,
-        similarity: sql<number>`1 - (${userContexts.embedding} <=> ${vectorStr}::vector)`,
-        networkId: userContexts.networkId,
-      })
-      .from(userContexts)
-      .innerJoin(schema.networkMembers, and(
-        eq(schema.networkMembers.userId, userContexts.userId),
-        eq(schema.networkMembers.networkId, userContexts.networkId),
-      ))
-      .innerJoin(schema.networks, eq(schema.networks.id, userContexts.networkId))
-      .innerJoin(schema.users, eq(userContexts.userId, schema.users.id))
-      .where(and(...conditions))
-      .orderBy(sql`${userContexts.embedding} <=> ${vectorStr}::vector`)
-      .limit(limit);
-
-    return results.map((r) => ({
-      type: 'user_context' as const,
-      id: r.id,
-      userId: r.userId,
-      score: r.similarity,
-      matchedVia: lens,
-      networkId: r.networkId!,
-      text: r.text,
-    }));
-  }
 
   private mergeAndRankCandidates(
     candidates: HydeCandidate[],
     limit: number
   ): HydeCandidate[] {
-    const byUser = new Map<string, HydeCandidate[]>();
-    for (const c of candidates) {
-      const existing = byUser.get(c.userId) ?? [];
-      existing.push(c);
-      byUser.set(c.userId, existing);
-    }
-
-    const scored = Array.from(byUser.entries()).map(([, matches]) => {
-      const bestMatch = matches.reduce((a, b) => (a.score > b.score ? a : b));
-      const lensBonus = (matches.length - 1) * 0.1;
-      const lenses = [...new Set(matches.map((m) => m.matchedVia))];
-      return {
-        ...bestMatch,
-        score: Math.min(bestMatch.score + lensBonus, 1),
-        matchedLenses: lenses.length > 1 ? lenses : undefined,
-      };
-    });
-
-    return scored.sort((a, b) => b.score - a.score).slice(0, limit);
+    return mergeAndRankHydeCandidates(candidates, limit);
   }
 
   // ─────────────────────────────────────────────────────────────────────────

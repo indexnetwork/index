@@ -23,7 +23,7 @@ const order: Record<LogLevel, number> = { verbose: 5, debug: 10, info: 20, warn:
 
 const RESET = '\x1b[0m';
 
-/** Valid context names for LOG_FILTER. */
+/** Valid logger context names. */
 const LOG_CONTEXT_NAMES = new Set<string>([
   'controller', 'service', 'agent', 'cli', 'graph', 'job', 'queue',
   'protocol', 'route', 'router', 'server', 'lib',
@@ -39,16 +39,8 @@ function parseContextFilter(raw: string | null | undefined): Set<LogContext> | n
   return allowed.size > 0 ? allowed : null;
 }
 
-/**
- * Parse LOG_FILTER env var. Comma-separated list of context names; only those loggers will emit.
- * Example: LOG_FILTER=graph or LOG_FILTER=graph,protocol
- * If unset or empty, all contexts are allowed.
- */
-function envContextFilter(): Set<LogContext> | null {
-  return parseContextFilter(process.env.LOG_FILTER);
-}
-
-let contextFilter: Set<LogContext> | null = envContextFilter();
+/** No filter by default: every context emits. Narrow it with setContextFilter. */
+let contextFilter: Set<LogContext> | null = null;
 
 export function setContextFilter(filter: string | null) {
   contextFilter = parseContextFilter(filter);

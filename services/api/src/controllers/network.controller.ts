@@ -23,7 +23,7 @@ function errorMessage(err: unknown): string {
 @Controller('/networks')
 export class NetworkController {
   /**
-   * List networks the authenticated user is a member of, including their personal network.
+   * List networks the authenticated user is a member of.
    */
   @Get('')
   @UseGuards(RateLimit('read'), AuthGuard)
@@ -32,9 +32,7 @@ export class NetworkController {
     const result = await networkService.getNetworksForUser(user.id);
     let filtered = result;
     if (networkScopeId) {
-      const networks = result.networks.filter(
-        (n: { id: string; isPersonal?: boolean | null }) => n.id === networkScopeId || n.isPersonal === true,
-      );
+      const networks = result.networks.filter((n: { id: string }) => n.id === networkScopeId);
       // Recompute pagination so count/totalCount/total stay consistent with
       // the post-filter networks array; otherwise scoped callers see stale
       // counts that don't match the rows they receive.
@@ -99,19 +97,6 @@ export class NetworkController {
       }
       throw err;
     }
-  }
-
-  /**
-   * Search users by name/email, optionally excluding existing members of a network.
-   */
-  @Get('/search-users')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async searchPersonalNetworkMembers(req: Request, user: AuthenticatedUser) {
-    const url = new URL(req.url);
-    const q = url.searchParams.get('q') || '';
-    const networkId = url.searchParams.get('networkId') || undefined;
-    const users = await networkService.searchPersonalNetworkMembers(user.id, q, networkId);
-    return Response.json({ users });
   }
 
   /**
@@ -216,7 +201,7 @@ export class NetworkController {
       if (msg === 'Member not found') {
         return Response.json({ error: msg }, { status: 404 });
       }
-      if (msg === 'Cannot demote the last owner' || msg === 'Cannot change role of a contact' || msg === 'Cannot change your own role') {
+      if (msg === 'Cannot demote the last owner' || msg === 'Cannot change your own role') {
         return Response.json({ error: msg }, { status: 400 });
       }
       throw err;
@@ -492,7 +477,7 @@ export class NetworkController {
    * Invite a single member to a network by email. Owner-only.
    * Idempotent: re-inviting a user who already has a network-scoped agent is
    * a no-op (no key minted, no email). When the user does NOT yet have a
-   * scoped agent — newly created users and pre-existing ghost contacts alike
+   * scoped agent — newly created and pre-existing users alike
    * — provisions one and emails the invitation with a connect command.
    */
   @Post('/:id/members/invite')
@@ -724,7 +709,7 @@ export class NetworkController {
   }
 
   /**
-   * Get non-personal networks shared between the authenticated user and a target user.
+   * Get networks shared between the authenticated user and a target user.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/shared/:userId')

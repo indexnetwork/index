@@ -25,8 +25,7 @@ const DEFAULT_EVENT = {
  */
 export function mapEventSummary(input = {}) {
   const networks = Array.isArray(input.networks) ? input.networks : [];
-  const nonPersonal = networks.filter((network) => network && network.isPersonal !== true);
-  const selected = nonPersonal[0] || networks[0];
+  const selected = networks[0];
   const memberCount = networks.reduce((sum, network) => {
     const count = network && network._count && typeof network._count.members === 'number'
       ? network._count.members

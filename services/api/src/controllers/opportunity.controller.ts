@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
-import { AuthGuard, authorizeIndexAppOwnerOpportunityStatus, isSessionAuthenticated } from '../guards/auth.guard';
+import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
@@ -45,21 +45,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeId?: string; acknowledgedUptakeQuestionIds?: string[] } | Response {
+function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeId?: string } | Response {
   if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   const rawScopeType = typeof body.scopeType === 'string' ? body.scopeType : undefined;
   const rawScopeId = typeof body.scopeId === 'string' ? body.scopeId : undefined;
   const rawIntentId = typeof body.intentId === 'string' ? body.intentId : undefined;
-  const rawAcknowledgedIds = body.acknowledgedUptakeQuestionIds;
-  if (rawAcknowledgedIds !== undefined && (
-    !Array.isArray(rawAcknowledgedIds)
-    || rawAcknowledgedIds.some((id) => typeof id !== 'string' || !id.trim())
-  )) {
-    return Response.json({ error: 'acknowledgedUptakeQuestionIds must be an array of non-empty strings' }, { status: 400 });
-  }
-  const acknowledgedUptakeQuestionIds = Array.isArray(rawAcknowledgedIds)
-    ? [...new Set(rawAcknowledgedIds.map((id) => (id as string).trim()))]
-    : undefined;
 
   if (rawScopeType || rawScopeId) {
     const parsedScopeType = scopeTypeQuerySchema.safeParse(rawScopeType);
@@ -67,16 +57,16 @@ function parseIntentScopeFromBody(body: unknown): { scopeType?: 'intent'; scopeI
     const parsedScopeId = uuidQuerySchema.safeParse(rawScopeId);
     if (!parsedScopeId.success) return Response.json({ error: 'Invalid scopeId; must be a UUID' }, { status: 400 });
     if (rawIntentId && rawIntentId !== rawScopeId) return Response.json({ error: 'intentId must match scopeId when both are provided' }, { status: 400 });
-    return { scopeType: 'intent', scopeId: rawScopeId, acknowledgedUptakeQuestionIds };
+    return { scopeType: 'intent', scopeId: rawScopeId };
   }
 
   if (rawIntentId) {
     const parsedIntentId = uuidQuerySchema.safeParse(rawIntentId);
     if (!parsedIntentId.success) return Response.json({ error: 'Invalid intentId; must be a UUID' }, { status: 400 });
-    return { scopeType: 'intent', scopeId: rawIntentId, acknowledgedUptakeQuestionIds };
+    return { scopeType: 'intent', scopeId: rawIntentId };
   }
 
-  return { acknowledgedUptakeQuestionIds };
+  return {};
 }
 
 /** Route params when path has :id or :networkId */
@@ -201,26 +191,6 @@ export class OpportunityController {
   }
 
   /**
-   * GET /opportunities/:id/invite-message — generate an invite message for a ghost counterpart.
-   */
-  @Get('/:id/invite-message')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getInviteMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const id = params?.id;
-    if (!id) {
-      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
-    }
-
-    const result = await opportunityService.generateInviteMessage(id, user.id);
-
-    if ('error' in result && 'status' in result && typeof result.status === 'number') {
-      return Response.json({ error: result.error }, { status: result.status });
-    }
-
-    return Response.json(result);
-  }
-
-  /**
    * GET /opportunities/:id — get one opportunity with presentation for the viewer.
    * Accepts full UUID or short ID prefix.
    */
@@ -279,9 +249,6 @@ export class OpportunityController {
     if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 
     const rawStatus = typeof body.status === 'string' ? body.status : undefined;
-    if (rawStatus && !authorizeIndexAppOwnerOpportunityStatus(req, rawStatus)) {
-      return Response.json({ error: 'Index app owner status operation denied' }, { status: 403 });
-    }
     const status = rawStatus as 'latent' | 'draft' | 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
     const allowed = ['latent', 'draft', 'pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
@@ -308,6 +275,48 @@ export class OpportunityController {
     }
 
     return Response.json(result);
+  }
+
+  /**
+   * POST /opportunities/:id/reopen — reopen a dead pairing and queue its
+   * negotiation re-run. Accepts a full UUID or short ID prefix.
+   *
+   * Terminal-only: `rejected`, `stalled`, or `expired`. A `pending` match is
+   * waiting on its owner's decision and an `accepted` one already connected —
+   * both answer 409, as does a match that still has a live negotiation task
+   * (the response then carries that task's `taskId`).
+   *
+   * @param req - Incoming request (body is ignored; the agent network scope is read from it).
+   * @param user - Authenticated user; must be an actor on the opportunity.
+   * @param params - Route params; `id` is the opportunity ID.
+   * @returns 202 `{ opportunityId, status: 'stalled', enqueued: true }`, or a
+   *   structured error (403 for non-actors, 404 unknown, 409 not reopenable).
+   */
+  @Post('/:id/reopen')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async reopen(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const { networkScopeId } = await withAgentScope(req, user);
+    const result = await opportunityService.reopenOpportunity(resolved.id, user.id, {
+      ...(networkScopeId ? { networkScopeId } : {}),
+    });
+    if ('error' in result) {
+      return Response.json(
+        result.taskId ? { error: result.error, taskId: result.taskId } : { error: result.error },
+        { status: result.status },
+      );
+    }
+    logger.info('Opportunity reopened', { userId: user.id, opportunityId: resolved.id });
+    return Response.json(result, { status: 202 });
   }
 
   /**

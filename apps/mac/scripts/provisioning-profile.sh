@@ -75,9 +75,11 @@ if expected_domain not in domains and 'applinks:*' not in domains and '*' not in
 canonical_owner_group = f'{expected_team}.{bundle_id}.owner-credentials'
 if expected_owner_group != canonical_owner_group:
     fail('owner Keychain group does not match the signing Team and bundle')
+# Apple issues Developer ID profiles with the team wildcard group; the signed
+# app entitlement (validated separately) still pins exactly the owner group.
 groups = entitlements.get('keychain-access-groups')
-if groups != [expected_owner_group]:
-    fail('does not authorize exactly the owner Keychain group')
+if groups not in ([expected_owner_group], [f'{expected_team}.*']):
+    fail('does not authorize the owner Keychain group')
 PY
 }
 

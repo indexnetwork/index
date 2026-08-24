@@ -4,10 +4,11 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
-import { HydeGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
+import { buildProfileFromUser } from '../adapters/database.shared';
+import { HydeGraphFactory, HydeGenerator, LensInferrer, Intents, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
 import { fromIntentQueue } from './opportunity/from-intent.queue';
+import { intentResumeDiscoveryJobId } from '../events/intent.event';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
 export const QUEUE_NAME = 'intent-hyde-queue';
@@ -60,7 +61,6 @@ export type IntentQueueDatabase = Pick<
 export interface IntentQueueDeps {
   database?: IntentQueueDatabase;
   /** Resolve the user's global user_context paragraph for HyDE enrichment (generate-if-empty). */
-  getUserContextText?: (userId: string) => Promise<string>;
   invokeHyde?: (opts: {
     sourceText: string;
     sourceType: string;
@@ -97,7 +97,6 @@ export class IntentQueue implements IntentGraphQueue {
    * Enqueue a job to generate HyDE documents for an intent (implements {@link IntentGraphQueue}).
    * @param data - intentId, userId, and optional scope envelope. When scopeType/scopeId
    *   is set, the worker restricts indexing to the focused network plus the user's
-   *   personal networks (see {@link IntentJobData}).
    * @returns The BullMQ job
    */
   addGenerateHydeJob(data: IntentJobData): Promise<Job<IntentJobPayload>> {
@@ -111,6 +110,18 @@ export class IntentQueue implements IntentGraphQueue {
    */
   addDeleteHydeJob(data: { intentId: string }): Promise<Job<IntentJobPayload>> {
     return this.addJob('delete_hyde', data);
+  }
+
+  /**
+   * Enqueue discovery for an intent resumed from PAUSED back to ACTIVE
+   * (implements {@link IntentGraphQueue}). The lifecycle-version job id
+   * deduplicates retries of the same resume.
+   */
+  addResumeDiscoveryJob(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
+    return fromIntentQueue.addJob(
+      { intentId: data.intentId, userId: data.userId, trigger: 'intent_resume' },
+      { priority: 10, jobId: intentResumeDiscoveryJobId(data.userId, data.intentId, data.lifecycleVersionMs) },
+    );
   }
 
   private readonly logger = log.job.from('IntentJob');
@@ -139,7 +150,7 @@ export class IntentQueue implements IntentGraphQueue {
       return db.getAssignmentNetworkMembershipsForUser(userId);
     }
     const networkIds = await db.getAssignmentNetworkIdsForUser(userId);
-    return networkIds.map((networkId) => ({ networkId, isPersonal: false }));
+    return networkIds.map((networkId) => ({ networkId }));
   }
 
   /**
@@ -312,19 +323,19 @@ export class IntentQueue implements IntentGraphQueue {
     const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, scope);
     this.hydeLogger.info('Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
 
-    // Fetch discoverer global context + active intents for HyDE context (best-effort).
-    // The global user_context paragraph replaces the old identity/narrative/attributes
-    // flattening; it is generated on demand when the user has no stored row yet.
+    // Fetch discoverer profile (users row) + active intents for HyDE context (best-effort).
     let profileContext: string | undefined;
     try {
-      const getUserContextText = this.deps?.getUserContextText ?? ensureGlobalUserContext;
-      const [userContext, activeIntents] = await Promise.all([
-        getUserContextText(userId),
+      const [profile, activeIntents] = await Promise.all([
+        buildProfileFromUser(userId),
         db.getActiveIntents(userId),
       ]);
       const lines: string[] = [];
-      if (userContext) {
-        lines.push(userContext);
+      if (profile) {
+        const id = profile.identity;
+        if (id.name?.trim()) lines.push(id.name.trim());
+        if (id.bio?.trim()) lines.push(id.bio.trim());
+        if (id.location?.trim()) lines.push(id.location.trim());
       }
       if (activeIntents?.length) {
         const capped = activeIntents.slice(0, 5);
@@ -379,7 +390,6 @@ export class IntentQueue implements IntentGraphQueue {
       this.deps?.addOpportunityJob ??
       ((d: { intentId: string; userId: string; networkIds?: string[] }) => fromIntentQueue.addJob(d));
     // Carry only the focused network scope into discovery. Assignment writes may
-    // include the user's personal network, but scoped opportunity discovery must not.
     const discoveryScope: { networkIds?: string[] } = await (async () => {
       try {
         const assignmentMemberships = await this.getAssignmentMemberships(userId);
@@ -464,13 +474,13 @@ export class IntentQueue implements IntentGraphQueue {
       let evaluateIntentAssignment = this.deps?.evaluateIntentAssignment;
       const getIntentAssignmentEvaluator = () => {
         evaluateIntentAssignment ??= (() => {
-          const indexer = new IntentIndexer();
+          const indexer = new Intents();
           return (o: {
             intent: string;
             indexPrompt: string | null;
             memberPrompt: string | null;
             sourceName?: string | null;
-          }) => indexer.invoke(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null);
+          }) => indexer.indexIntent(o.intent, o.indexPrompt, o.memberPrompt, o.sourceName ?? null);
         })();
         return evaluateIntentAssignment;
       };

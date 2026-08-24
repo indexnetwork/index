@@ -1,21 +1,22 @@
 import type { ConversationSummary } from '@/services/conversation';
+import { deriveNegotiationPresentation, type NegotiationPresentationStatus } from '@/lib/negotiation-presentation';
+import type { NegotiationPauseReason } from '@/services/conversation';
+
+/** Mirrors NEGOTIATION_MAX_TURNS_AMBIENT — a fixed safety cap, not a per-negotiation field any more. */
+export const NEGOTIATION_MAX_TURNS = 6;
 
 export type NegotiationInboxGroup = 'your_move' | 'in_progress' | 'resolved';
-export type NegotiationInboxStatus =
-  | 'answer'
-  | 'agreed'
-  | 'live'
-  | 'waiting'
-  | 'accepted'
-  | 'started'
-  | 'rejected'
-  | 'stalled'
-  /** IND-610: the owner's own agent declined before any contact. Owner-only. */
-  | 'not_sent';
+export type NegotiationInboxStatus = NegotiationPresentationStatus;
+
+export interface NegotiationCounterpart {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
 
 export interface NegotiationInboxItem {
   conversationId: string;
-  counterpart: { id: string; name: string; avatar: string | null };
+  counterpart: NegotiationCounterpart;
   group: NegotiationInboxGroup;
   status: NegotiationInboxStatus;
   signalCount: number;
@@ -32,22 +33,33 @@ export interface NegotiationInboxGroups {
   resolved: NegotiationInboxItem[];
 }
 
-interface LastTurnData {
-  action: string | null;
+export interface LastTurnData {
+  /** `outreach` | `counter` | `question` | `pause`. */
+  verb: string | null;
+  pauseReason: NegotiationPauseReason | null;
 }
 
-const REJECT_ACTIONS = new Set(['reject', 'decline', 'withdraw']);
-const STALL_REASONS = new Set(['turn_cap', 'timeout']);
-
-function readLastTurn(parts: unknown[]): LastTurnData {
+export function readLastTurn(parts: unknown[]): LastTurnData {
   for (const part of parts) {
     if (typeof part !== 'object' || part === null || Array.isArray(part)) continue;
     const record = part as Record<string, unknown>;
     if (record.kind !== 'data' || typeof record.data !== 'object' || record.data === null || Array.isArray(record.data)) continue;
-    const action = (record.data as Record<string, unknown>).action;
-    return { action: typeof action === 'string' ? action : null };
+    const data = record.data as Record<string, unknown>;
+    const verb = typeof data.verb === 'string' ? data.verb : null;
+    const reason = verb === 'pause' && typeof data.reason === 'string' ? data.reason : null;
+    return { verb, pauseReason: reason as LastTurnData['pauseReason'] };
   }
-  return { action: null };
+  return { verb: null, pauseReason: null };
+}
+
+/**
+ * Conversation summaries contain one last message, while a durable A2A
+ * conversation can contain several task sessions. Only use that message to
+ * classify a task when its projected task id proves the session relationship.
+ */
+export function sessionScopedLastTurn(conversation: ConversationSummary, taskId: string | null | undefined): LastTurnData & { senderId: string | null } {
+  if (!taskId || conversation.lastMessage?.taskId !== taskId) return { verb: null, pauseReason: null, senderId: null };
+  return { ...readLastTurn(conversation.lastMessage.parts), senderId: conversation.lastMessage.senderId };
 }
 
 function formatTimeAgo(timestamp: number, now: number): string {
@@ -63,73 +75,118 @@ function formatTimeAgo(timestamp: number, now: number): string {
   return `${months}mo ago`;
 }
 
-function describeAction(action: string | null, isOwnAgent: boolean): string {
+/**
+ * The summary line of a live row. `verb`/`pauseReason` describe the
+ * represented session's own last turn, or null when the conversation's last
+ * message belongs to another session with the same person (a later pairing
+ * that died, say). A null turn is then described from the row's state, so a
+ * dead session's "did not recommend proceeding" can never caption a row
+ * whose badge says the viewer is awaited.
+ */
+function describeLive(status: NegotiationInboxStatus, lastTurn: LastTurnData, isOwnAgent: boolean): string {
+  if (lastTurn.verb === null && status === 'awaiting_review') return 'agents recommended moving forward';
+  return describeTurn(lastTurn, isOwnAgent);
+}
+
+function describeTurn(lastTurn: LastTurnData, isOwnAgent: boolean): string {
   const actor = isOwnAgent ? 'your agent' : 'their agent';
-  switch (action) {
-    case 'ask_user': return `${actor} asked for guidance`;
-    case 'propose': return `${actor} proposed a connection`;
+  if (lastTurn.verb === 'pause') {
+    switch (lastTurn.pauseReason) {
+      case 'needs_principal': return `${actor} asked for guidance`;
+      case 'ready_for_verdict': return `${actor} recommended a decision`;
+      case 'counterparty_silent': return 'waiting on the other side';
+      case 'turn_cap': return `${actor} reached its limit`;
+      case 'open_failed': return 'this negotiation could not be started';
+      default: return 'agents exchanged a turn';
+    }
+  }
+  switch (lastTurn.verb) {
     case 'counter': return `${actor} countered`;
     case 'question': return `${actor} asked a question`;
-    case 'accept': return `${actor} recommended moving forward`;
-    case 'reject':
-    case 'decline': return `${actor} did not recommend proceeding`;
-    case 'withdraw': return `${actor} stepped back`;
     case 'outreach': return `${actor} opened the dialogue`;
     default: return 'agents exchanged a turn';
   }
 }
 
-function describeResolved(status: NegotiationInboxStatus, reason: string | null): string {
-  if (status === 'accepted') return 'you started the chat';
-  if (status === 'started') return 'the chat was started';
-  if (status === 'stalled') {
-    return reason === 'timeout'
-      ? 'the dialogue ended before the agents reached agreement'
-      : 'agents could not reach agreement within the turn limit';
-  }
-  if (reason === 'screened_out') return 'agents did not find enough mutual value to continue';
+function describeResolved(status: NegotiationInboxStatus): string {
+  if (status === 'accepted_by_viewer') return 'you accepted the connection';
+  if (status === 'connection_accepted') return 'the connection was accepted';
+  if (status === 'no_agreement') return 'agents could not reach agreement';
+  if (status === 'couldnt_complete') return 'the negotiation could not complete';
+  if (status === 'expired') return 'the opportunity expired';
   return 'agents did not recommend moving forward';
 }
 
-function classifyConversation(conversation: ConversationSummary, action: string | null, viewerUserId: string | undefined): {
+function classifyConversation(conversation: ConversationSummary, viewerUserId: string | undefined): {
   group: NegotiationInboxGroup;
   status: NegotiationInboxStatus;
 } {
-  const lifecycle = conversation.negotiation;
-  const opportunityStatus = lifecycle?.opportunityStatus;
-
-  if (opportunityStatus === 'accepted') {
-    return { group: 'resolved', status: lifecycle?.acceptedByViewer ? 'accepted' : 'started' };
-  }
-  if (opportunityStatus === 'rejected') return { group: 'resolved', status: 'rejected' };
-  if (opportunityStatus === 'stalled' || opportunityStatus === 'expired') {
-    return { group: 'resolved', status: 'stalled' };
-  }
-  if (lifecycle?.state === 'input_required' && action === 'ask_user' && conversation.lastMessage?.senderId === `agent:${viewerUserId}`) {
-    return { group: 'your_move', status: 'answer' };
-  }
-  if (opportunityStatus === 'pending') return { group: 'your_move', status: 'agreed' };
-
-  if (lifecycle?.outcome?.hasOpportunity === true) return { group: 'your_move', status: 'agreed' };
-  if (lifecycle?.outcome?.hasOpportunity === false) {
-    return STALL_REASONS.has(lifecycle.outcome.reason ?? '')
-      ? { group: 'resolved', status: 'stalled' }
-      : { group: 'resolved', status: 'rejected' };
-  }
-  if (lifecycle && ['failed', 'canceled', 'auth_required'].includes(lifecycle.state)) {
-    return { group: 'resolved', status: 'stalled' };
-  }
-  if (lifecycle?.state === 'rejected' || (action && REJECT_ACTIONS.has(action))) {
-    return { group: 'resolved', status: 'rejected' };
-  }
-  if (action === 'accept') return { group: 'your_move', status: 'agreed' };
-
-  return lifecycle?.turnCount && lifecycle.turnCount > 0
-    ? { group: 'in_progress', status: 'live' }
-    : { group: 'in_progress', status: 'waiting' };
+  const latestTurn = sessionScopedLastTurn(conversation, conversation.negotiation?.taskId);
+  const presentation = deriveNegotiationPresentation({
+    lifecycle: conversation.negotiation,
+    latestSenderId: latestTurn.senderId,
+    viewerUserId,
+  });
+  return { group: presentation.group, status: presentation.status };
 }
 
-/** Derive user-facing inbox groups without exposing raw task or opportunity states. */
+/**
+ * Resolve the non-viewer seat of an A2A conversation. Shared with the chat
+ * rail's outline so both surfaces name a counterparty the same way.
+ */
+export function resolveNegotiationCounterpart(
+  conversation: ConversationSummary,
+  viewerUserId: string | undefined,
+): NegotiationCounterpart | null {
+  const ownAgentId = viewerUserId ? `agent:${viewerUserId}` : null;
+  const counterpart = conversation.participants.find((participant) => participant.participantId !== ownAgentId);
+  if (!counterpart) return null;
+  return {
+    id: counterpart.participantId.replace(/^agent:/, ''),
+    name: counterpart.ownerName ?? conversation.metadata?.title ?? counterpart.name ?? 'Unknown user',
+    avatar: counterpart.avatar,
+  };
+}
+
+/**
+ * The one rule for "does this negotiation conversation exist for this viewer".
+ *
+ * Zero-turn rows are normally invisible (abandoned task shells). The one
+ * exception is the viewer's OWN "did not reach out" decision: it has no
+ * messages by definition, so this filter is what made the IND-610 gate card
+ * reachable only by direct link.
+ *
+ * The owner boundary is NOT re-derived here. `negotiation.screenDecision` is
+ * projected by the API only when `initiatorUserId === viewerUserId`
+ * (services/api/src/adapters/negotiation-lifecycle.projection.ts), so its mere
+ * presence IS the owner proof. A counterparty never receives the field and
+ * therefore never gets this row.
+ *
+ * Both the inbox (which feeds the your-move badge) and the chat rail's outline
+ * enumerate conversations through this predicate. Anything the badge can count
+ * is therefore something the rail must be able to render — a negotiation the
+ * badge advertises can never be missing from the list.
+ */
+export function isVisibleNegotiationConversation(
+  conversation: ConversationSummary,
+  viewerUserId: string | undefined,
+): boolean {
+  if (!resolveNegotiationCounterpart(conversation, viewerUserId)) return false;
+  return Boolean(conversation.lastMessage) || Boolean(conversation.negotiation?.screenDecision);
+}
+
+/**
+ * Derive user-facing inbox groups without exposing raw task or opportunity
+ * states.
+ *
+ * One row per A2A conversation, i.e. per counterparty person. The API already
+ * collapsed that person's several task sessions into `conversation.negotiation`
+ * by liveness (awaiting approval › parked › in progress › resolved, recency
+ * only within a tier — services/api negotiation-session-rollup.projection.ts),
+ * so a person with one live pairing and any number of dead ones is a live row
+ * here, and counts toward "your move". Earlier pairings with the same person
+ * are deliberately not summarised on the row; the transcript holds them.
+ */
 export function deriveNegotiationInbox(
   negotiations: ConversationSummary[],
   viewerUserId: string | undefined,
@@ -137,23 +194,13 @@ export function deriveNegotiationInbox(
 ): NegotiationInboxGroups {
   const ownAgentId = viewerUserId ? `agent:${viewerUserId}` : null;
   const items = negotiations.flatMap<NegotiationInboxItem>((conversation) => {
-    const counterpart = conversation.participants.find((participant) => participant.participantId !== ownAgentId);
+    // Visibility and counterparty naming come from the shared helpers above so
+    // the rail's outline enumerates exactly the same conversations.
+    if (!isVisibleNegotiationConversation(conversation, viewerUserId)) return [];
+    const counterpart = resolveNegotiationCounterpart(conversation, viewerUserId);
     if (!counterpart) return [];
 
-    // Zero-turn rows are normally invisible (abandoned task shells), matching
-    // ChatSidebar's A2A rule. The one exception is the viewer's OWN outreach
-    // gate decision: it has no messages by definition, so this filter is what
-    // made the IND-610 gate card reachable only by direct link.
-    //
-    // The owner boundary is NOT re-derived here. `negotiation.screenDecision`
-    // is projected by the API only when `initiatorUserId === viewerUserId`
-    // (services/api/src/adapters/negotiation-lifecycle.projection.ts), so its
-    // mere presence IS the owner proof. A counterparty never receives the
-    // field and therefore never gets this row.
     if (!conversation.lastMessage) {
-      const gateDecision = conversation.negotiation?.screenDecision;
-      if (!gateDecision) return [];
-
       const gateTimestamp = new Date(
         conversation.negotiation?.updatedAt ?? conversation.lastMessageAt ?? conversation.createdAt,
       ).getTime();
@@ -161,25 +208,24 @@ export function deriveNegotiationInbox(
 
       return [{
         conversationId: conversation.id,
-        counterpart: {
-          id: counterpart.participantId.replace(/^agent:/, ''),
-          name: counterpart.ownerName ?? conversation.metadata?.title ?? counterpart.name ?? 'Unknown user',
-          avatar: counterpart.avatar,
-        },
+        counterpart,
         group: 'resolved',
-        status: 'not_sent',
+        status: 'not_started',
         signalCount: Math.max(conversation.negotiation?.signalCount ?? 0, conversation.via.length),
         lastAction: 'Your agent did not reach out',
         timeAgo: formatTimeAgo(gateSafeTimestamp, now),
         sortTimestamp: gateSafeTimestamp,
         turnCount: 0,
-        maxTurns: conversation.negotiation?.maxTurns ?? 6,
+        maxTurns: NEGOTIATION_MAX_TURNS,
       }];
     }
 
-    const lastTurn = readLastTurn(conversation.lastMessage.parts);
-    const classification = classifyConversation(conversation, lastTurn.action, viewerUserId);
+    const classification = classifyConversation(conversation, viewerUserId);
     const lifecycle = conversation.negotiation;
+    // The represented session is the most alive one with this person, not
+    // necessarily the one that produced the conversation's last message; its
+    // summary line and timestamp come from that session alone.
+    const lastTurn = sessionScopedLastTurn(conversation, lifecycle?.taskId);
     const sortTimestamp = new Date(
       lifecycle?.updatedAt
         ?? conversation.lastMessage.createdAt
@@ -187,32 +233,27 @@ export function deriveNegotiationInbox(
         ?? conversation.createdAt,
     ).getTime();
     const safeTimestamp = Number.isFinite(sortTimestamp) ? sortTimestamp : 0;
-    const reason = lifecycle?.outcome?.reason ?? null;
 
     return [{
       conversationId: conversation.id,
-      counterpart: {
-        id: counterpart.participantId.replace(/^agent:/, ''),
-        name: counterpart.ownerName ?? conversation.metadata?.title ?? counterpart.name ?? 'Unknown user',
-        avatar: counterpart.avatar,
-      },
+      counterpart,
       group: classification.group,
       status: classification.status,
       signalCount: Math.max(lifecycle?.signalCount ?? 0, conversation.via.length),
       lastAction: classification.group === 'resolved'
-        ? describeResolved(classification.status, reason)
-        : describeAction(lastTurn.action, conversation.lastMessage.senderId === ownAgentId),
+        ? describeResolved(classification.status)
+        : describeLive(classification.status, lastTurn, lastTurn.senderId === ownAgentId),
       timeAgo: formatTimeAgo(safeTimestamp, now),
       sortTimestamp: safeTimestamp,
       turnCount: lifecycle ? lifecycle.turnCount : null,
-      maxTurns: lifecycle?.maxTurns ?? 6,
+      maxTurns: NEGOTIATION_MAX_TURNS,
     }];
   });
 
   const byNewest = (left: NegotiationInboxItem, right: NegotiationInboxItem) => right.sortTimestamp - left.sortTimestamp;
   const yourMove = items
     .filter((item) => item.group === 'your_move')
-    .sort((left, right) => (left.status === right.status ? byNewest(left, right) : left.status === 'answer' ? -1 : 1));
+    .sort((left, right) => (left.status === right.status ? byNewest(left, right) : left.status === 'needs_input' ? -1 : 1));
 
   return {
     yourMove,

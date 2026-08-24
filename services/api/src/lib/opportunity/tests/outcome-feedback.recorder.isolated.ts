@@ -52,29 +52,19 @@ function record(overrides: Partial<OutcomeFeedbackRecord> = {}): OutcomeFeedback
 }
 
 beforeEach(() => {
-  delete process.env.OUTCOME_QUESTIONS_MODE;
 });
 
 afterEach(() => {
-  delete process.env.OUTCOME_QUESTIONS_MODE;
 });
 
 describe('OutcomeFeedbackRecorder.prepare — eligibility', () => {
-  it('returns null when OUTCOME_QUESTIONS_MODE is off', async () => {
-    const d = deps();
-    expect(await new OutcomeFeedbackRecorder(d).prepare(record())).toBeNull();
-    expect(d.getIntent).not.toHaveBeenCalled();
-  });
-
   it('excludes API-key / agent provenance', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const d = deps();
     expect(await new OutcomeFeedbackRecorder(d).prepare(record({ provenance: 'api_key' }))).toBeNull();
     expect(d.getIntent).not.toHaveBeenCalled();
   });
 
   it('excludes a caller who is not a non-introducer actor', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     expect(await new OutcomeFeedbackRecorder(deps()).prepare(record({ recipientUserId: 'stranger' }))).toBeNull();
     const introduced = opportunity({
       actors: [
@@ -86,7 +76,6 @@ describe('OutcomeFeedbackRecorder.prepare — eligibility', () => {
   });
 
   it('excludes missing, unresolvable, or counterparty-owned recipient intent scopes', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const noIntent = opportunity({
       actors: [
         { networkId: 'net-1', userId: 'owner-1', role: 'patient' },
@@ -101,7 +90,6 @@ describe('OutcomeFeedbackRecorder.prepare — eligibility', () => {
   });
 
   it('fails closed when no presentation-approved snapshot exists and never uses evaluator reasoning', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const d = deps({ getApprovedCandidateSnapshot: mock(async () => null) });
     const result = await new OutcomeFeedbackRecorder(d).prepare(record());
     expect(result).toBeNull();
@@ -110,7 +98,6 @@ describe('OutcomeFeedbackRecorder.prepare — eligibility', () => {
   });
 
   it('skips zero-counterpart and multiparty opportunities', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const zero = opportunity({
       actors: [
         { networkId: 'net-1', userId: 'owner-1', role: 'patient', intent: 'intent-1' },
@@ -137,7 +124,6 @@ describe('OutcomeFeedbackRecorder.prepare — actor scope resolution', () => {
   ] as unknown as Opportunity['actors'];
 
   it('fails closed without an exact scope when duplicate recipient actor intents exist', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const d = deps();
     expect(await new OutcomeFeedbackRecorder(d).prepare(record({
       opportunity: opportunity({ actors: duplicateScopeActors }),
@@ -146,7 +132,6 @@ describe('OutcomeFeedbackRecorder.prepare — actor scope resolution', () => {
   });
 
   it('uses an exact selected intent to disambiguate duplicate recipient actors', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const d = deps({
       getIntent: mock(async (intentId) => ({ payload: intentId, summary: null, userId: 'owner-1' })),
     });
@@ -161,7 +146,6 @@ describe('OutcomeFeedbackRecorder.prepare — actor scope resolution', () => {
   });
 
   it('rejects a selected intent that has no matching recipient actor', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const d = deps();
     expect(await new OutcomeFeedbackRecorder(d).prepare(record({
       opportunity: opportunity({ actors: duplicateScopeActors }),
@@ -173,7 +157,6 @@ describe('OutcomeFeedbackRecorder.prepare — actor scope resolution', () => {
 
 describe('OutcomeFeedbackRecorder.prepare — event shape and independence', () => {
   it('stores only the approved snapshot and builds revision-scoped hashes', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const result = await new OutcomeFeedbackRecorder(deps()).prepare(record());
     expect(result).not.toBeNull();
     const { event, scope } = result!;
@@ -200,7 +183,6 @@ describe('OutcomeFeedbackRecorder.prepare — event shape and independence', () 
   });
 
   it('collapses duplicate actor rows for the same sole counterpart to one independence key', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const actors = [
       { networkId: 'net-1', userId: 'owner-1', role: 'patient', intent: 'intent-1' },
       { networkId: 'net-1', userId: 'counter-1', role: 'agent', intent: 'intent-counter' },
@@ -211,7 +193,6 @@ describe('OutcomeFeedbackRecorder.prepare — event shape and independence', () 
   });
 
   it('cannot inflate independence with repeated or overlapping counterpart participation', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const recorder = new OutcomeFeedbackRecorder(deps());
     const singleA = (id: string) => opportunity({
       id,
@@ -235,7 +216,6 @@ describe('OutcomeFeedbackRecorder.prepare — event shape and independence', () 
   });
 
   it('keeps retry identity stable within a revision and changes it after a material revision', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     let payload = 'revision one';
     const recorder = new OutcomeFeedbackRecorder(deps({
       getIntent: mock(async () => ({ payload, summary: null, userId: 'owner-1' })),
@@ -250,7 +230,6 @@ describe('OutcomeFeedbackRecorder.prepare — event shape and independence', () 
   });
 
   it('propagates intent read failures so an eligible action cannot commit without its event', async () => {
-    process.env.OUTCOME_QUESTIONS_MODE = 'shadow';
     const d = deps({ getIntent: mock(async () => { throw new Error('db down'); }) });
     await expect(new OutcomeFeedbackRecorder(d).prepare(record())).rejects.toThrow('db down');
     expect(d.triggerMine).not.toHaveBeenCalled();

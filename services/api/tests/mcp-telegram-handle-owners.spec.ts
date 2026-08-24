@@ -28,7 +28,7 @@ async function createUserWithTelegram(value: string): Promise<string> {
   const email = `tg-owner-${randomUUID().slice(0, 8)}@test.invalid`;
   const [u] = await db
     .insert(users)
-    .values({ email, name: 'TG Owner Test', emailVerified: true, isGhost: false })
+    .values({ email, name: 'TG Owner Test', emailVerified: true })
     .returning({ id: users.id });
   createdUserIds.push(u.id);
   await db.insert(userSocials).values({ userId: u.id, label: 'telegram', value });

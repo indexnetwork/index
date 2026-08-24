@@ -251,12 +251,18 @@ final class NativeAPIRequestBridge {
         ("GET", #"^/agent-runtime(?:\?installationId=[A-Za-z0-9_-]+)?$"#),
         ("PUT", #"^/agent-runtime$"#),
         ("POST", #"^/agent-runtime/(?:hermes/prepare|rollback|reconcile-index)$"#),
+        ("DELETE", #"^/agent-runtime/hermes/[A-Za-z0-9_-]+$"#),
         ("GET", #"^/networks$"#), ("POST", #"^/networks$"#),
+        ("GET", #"^/networks/discovery/public(?:\?.*)?$"#),
         ("GET", #"^/networks/[^/?]+/(?:overview|my-intents)$"#),
         ("POST", #"^/networks/[^/?]+/(?:join|leave)$"#),
         ("GET", #"^/network-requests$"#), ("POST", #"^/network-requests$"#),
         ("PATCH", #"^/network-requests/[^/?]+$"#), ("DELETE", #"^/network-requests/[^/?]+$"#),
-        ("GET", #"^/agents$"#), ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
+        ("GET", #"^/agents$"#),
+        ("POST", #"^/agents/[^/?]+/tokens$"#),
+        ("PATCH", #"^/agents/[^/?]+$"#),
+        ("DELETE", #"^/agents/[^/?]+$"#),
+        ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
         ("POST", #"^/intents/(?:list|confirm|reject|intake/(?:start|question|prepare|proposal|revise))$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
         ("GET", #"^/opportunities(?:\?.*)?$"#),
@@ -266,8 +272,9 @@ final class NativeAPIRequestBridge {
         ("POST", #"^/opportunities/[^/?]+/start-chat$"#),
         ("GET", #"^/questions(?:\?.*)?$"#),
         ("POST", #"^/questions/[^/?]+/(?:answer|dismiss)$"#),
-        ("POST", #"^/tools/(?:read_user_contexts|preview_user_context|confirm_user_context)$"#),
         ("POST", #"^/enrichment/enrich$"#),
+        ("POST", #"^/auth/onboarding/confirm-profile$"#),
+        ("POST", #"^/auth/onboarding/complete$"#),
         ("GET", #"^/notifications/snapshot$"#),
         ("GET", #"^/conversations(?:/negotiations)?$"#),
         ("GET", #"^/conversations/[^/?]+/messages(?:\?.*)?$"#),
@@ -284,7 +291,11 @@ final class NativeAPIRequestBridge {
     static let allowedSSERoutes: Set<String> = [
         "GET /notifications/stream", "GET /conversations/stream", "POST /chat/stream",
     ]
-    static let allowedMCPTools: Set<String> = ["create_intent"]
+    static let allowedMCPTools: Set<String> = ["create_intent", "register_agent"]
+    static let allowedAgentPermissionActions: Set<String> = [
+        "manage:identity", "manage:premises", "manage:intents",
+        "manage:networks", "manage:opportunities", "manage:negotiations",
+    ]
 
     private let apiBaseURL: URL
     private let mcpURL: URL
@@ -385,7 +396,7 @@ final class NativeAPIRequestBridge {
                 throw NativeAPIRequestFailure.deniedOperation
             }
         case .mcp:
-            guard let tool = operation.tool, tool == "create_intent", Self.allowedMCPTools.contains(tool),
+            guard let tool = operation.tool, Self.allowedMCPTools.contains(tool),
                   Self.isGloballyBoundedJSON(operation.arguments),
                   Self.isAllowedMCPArguments(tool: tool, arguments: operation.arguments) else {
                 throw NativeAPIRequestFailure.deniedOperation
@@ -569,18 +580,6 @@ final class NativeAPIRequestBridge {
             }
         }
     }
-    private static func validDraft(_ value: NativeJSONValue?) -> Bool {
-        exactTypedObject(value, required: ["identity", "narrative", "attributes"]) { draft in
-            exactTypedObject(draft["identity"], required: ["name", "bio", "location"]) { identity in
-                optionalString(identity, "name", maximum: 256) && optionalString(identity, "bio", maximum: 65_536)
-                    && optionalString(identity, "location", maximum: 512)
-            } && exactTypedObject(draft["narrative"], required: ["context"]) { narrative in
-                optionalString(narrative, "context", maximum: 65_536)
-            } && exactTypedObject(draft["attributes"], required: ["skills", "interests"]) { attributes in
-                boundedStringArray(attributes["skills"]) && boundedStringArray(attributes["interests"])
-            }
-        }
-    }
     private static func validMessageParts(_ value: NativeJSONValue?) -> Bool {
         guard case .array(let values) = value, !values.isEmpty, values.count <= 100 else { return false }
         return values.allSatisfy { item in
@@ -688,17 +687,28 @@ final class NativeAPIRequestBridge {
             }
         case let value where value.range(of: #"^/questions/[^/?]+/dismiss$"#, options: .regularExpression) != nil:
             return keysAllowed(body, allowed: [])
-        case "/tools/read_user_contexts":
-            return exactTypedObject(body, required: ["query"]) { keysAllowed($0["query"], allowed: []) }
-        case "/tools/preview_user_context":
-            return exactTypedObject(body, required: ["query"]) { item in
-                exactTypedObject(item["query"], optional: ["linkedinUrl", "githubUrl", "twitterUrl", "bioOrDescription"]) { query in
-                    query.keys.allSatisfy { optionalString(query, $0, maximum: $0 == "bioOrDescription" ? 65_536 : 2_048) }
-                }
+        case "/enrichment/enrich":
+            return keysAllowed(body, allowed: ["name", "linkedin", "twitter", "github", "telegram", "websites"])
+        case "/auth/onboarding/confirm-profile": return keysAllowed(body, allowed: [])
+        case "/auth/onboarding/complete": return keysAllowed(body, allowed: ["intentId"])
+        case let value where value.range(of: #"^/agents/[^/?]+/tokens$"#, options: .regularExpression) != nil:
+            // Empty object or omitted name: createToken defaults the label server-side.
+            if body == nil { return true }
+            return exactTypedObject(body, optional: ["name"]) { optionalString($0, "name", maximum: 256) }
+        case let value where value.range(of: #"^/agents/[^/?]+$"#, options: .regularExpression) != nil:
+            guard method == "PATCH" else { return false }
+            return exactTypedObject(
+                body,
+                optional: ["name", "description", "status", "notifyOnOpportunity", "dailySummaryEnabled", "handleNegotiations"]
+            ) { item in
+                !item.keys.isEmpty
+                    && optionalString(item, "name", maximum: 256)
+                    && optionalString(item, "description", maximum: 8_192)
+                    && (item["status"] == nil || enumString(item["status"], ["active", "inactive"]))
+                    && optionalBool(item, "notifyOnOpportunity")
+                    && optionalBool(item, "dailySummaryEnabled")
+                    && optionalBool(item, "handleNegotiations")
             }
-        case "/tools/confirm_user_context":
-            return exactTypedObject(body, required: ["query"]) { item in exactTypedObject(item["query"], required: ["draft"]) { validDraft($0["draft"]) } }
-        case "/enrichment/enrich": return keysAllowed(body, allowed: [])
         case "/conversations/dm":
             return exactTypedObject(body, required: ["peerUserId"]) { identifier($0["peerUserId"]) }
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:
@@ -718,12 +728,11 @@ final class NativeAPIRequestBridge {
             return body == nil
         }
         if method == "POST" && path == "/chat/stream" {
-            return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId", "persona"]) { item in
+            return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId"]) { item in
                 boundedString(item["message"], maximum: 65_536)
                     && (item["sessionId"] == nil || identifier(item["sessionId"]))
                     && (item["scopeType"] == nil || enumString(item["scopeType"], ["network", "intent"]))
                     && (item["scopeId"] == nil || identifier(item["scopeId"]))
-                    && (item["persona"] == nil || enumString(item["persona"], ["negotiator", "signal", "reporter"]))
                     && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
             }
         }
@@ -731,10 +740,31 @@ final class NativeAPIRequestBridge {
     }
 
     private static func isAllowedMCPArguments(tool: String, arguments: NativeJSONValue?) -> Bool {
-        tool == "create_intent"
-            && exactTypedObject(arguments, required: ["description"], optional: ["autoApprove"]) { item in
+        switch tool {
+        case "create_intent":
+            return exactTypedObject(arguments, required: ["description"], optional: ["autoApprove"]) { item in
                 boundedString(item["description"], maximum: 65_536) && optionalBool(item, "autoApprove")
             }
+        case "register_agent":
+            return exactTypedObject(arguments, required: ["name"], optional: ["description", "permissions"]) { item in
+                boundedString(item["name"], maximum: 256)
+                    && optionalString(item, "description", maximum: 8_192)
+                    && (item["permissions"] == nil || validAgentPermissions(item["permissions"]))
+            }
+        default:
+            return false
+        }
+    }
+
+    private static func validAgentPermissions(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, values.count <= allowedAgentPermissionActions.count else { return false }
+        var seen = Set<String>()
+        for entry in values {
+            guard case .string(let action) = entry,
+                  allowedAgentPermissionActions.contains(action),
+                  seen.insert(action).inserted else { return false }
+        }
+        return true
     }
 
     private static func hasAllowedQuery(_ path: String) -> Bool {
@@ -752,10 +782,18 @@ final class NativeAPIRequestBridge {
         switch route {
         case "/agent-runtime": allowed = ["installationId"]
         case "/users/batch": allowed = ["ids"]
+        case "/networks/discovery/public": allowed = ["page", "limit"]
         case let value where value.range(of: #"^/users/[^/?]+/negotiations$"#, options: .regularExpression) != nil:
             allowed = ["status", "limit", "offset"]
-        case "/opportunities", "/opportunities/radar":
+        // The list and the radar do not take the same filter: the list reads a
+        // single `status`, the radar reads a comma-joined `statuses` plus the
+        // two-phase `presentation` mode. Sharing one set silently denied every
+        // radar call the app actually makes, so they are spelled out separately
+        // and each mirrors what its own handler reads.
+        case "/opportunities":
             allowed = ["status", "limit", "offset", "scopeType", "scopeId", "noCache"]
+        case "/opportunities/radar":
+            allowed = ["statuses", "presentation", "limit", "offset", "scopeType", "scopeId", "noCache"]
         case "/opportunities/chat-context": allowed = ["peerUserId"]
         case "/questions": allowed = ["status", "sourceId", "scopeType", "scopeId", "limit", "offset"]
         case let value where value.range(of: #"^/conversations/[^/?]+/messages$"#, options: .regularExpression) != nil:

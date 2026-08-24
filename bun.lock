@@ -17,32 +17,11 @@
         "yaml": "^2.8.1",
       },
     },
-    "apps/eval-ops": {
-      "name": "@indexnetwork/eval-ops",
-      "version": "0.6.0",
-      "dependencies": {
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "react-router": "^7",
-      },
-      "devDependencies": {
-        "@tailwindcss/vite": "^4",
-        "@testing-library/jest-dom": "^6.9.1",
-        "@testing-library/react": "^16.3.2",
-        "@types/react": "^19",
-        "@types/react-dom": "^19",
-        "@vitejs/plugin-react": "^4",
-        "happy-dom": "^20.8.3",
-        "tailwindcss": "^4.1.18",
-        "typescript": "^5",
-        "vite": "^6",
-        "vitest": "^4.0.18",
-      },
-    },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.51.0",
+      "version": "0.59.0",
       "dependencies": {
+        "@indexnetwork/protocol": "workspace:*",
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-dialog": "^1.1.14",
         "@radix-ui/react-dismissable-layer": "1.1.11",
@@ -86,11 +65,11 @@
     },
     "packages/claude-plugin": {
       "name": "@indexnetwork/claude-plugin",
-      "version": "0.3.0",
+      "version": "0.3.1",
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.13.2",
+      "version": "0.17.0",
       "bin": {
         "index": "bin/index.cjs",
       },
@@ -98,24 +77,25 @@
         "@types/bun": "1.3.14",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.13.2",
-        "@indexnetwork/cli-darwin-x64": "0.13.2",
-        "@indexnetwork/cli-linux-arm64": "0.13.2",
-        "@indexnetwork/cli-linux-x64": "0.13.2",
+        "@indexnetwork/cli-darwin-arm64": "0.17.0",
+        "@indexnetwork/cli-darwin-x64": "0.17.0",
+        "@indexnetwork/cli-linux-arm64": "0.17.0",
+        "@indexnetwork/cli-linux-x64": "0.17.0",
       },
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.20.0",
+      "version": "0.25.0",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "11.2.1",
+      "version": "32.0.0",
       "dependencies": {
         "@langchain/core": "1.1.48",
         "@langchain/langgraph": "1.3.2",
         "@langchain/openai": "1.4.7",
         "@modelcontextprotocol/server": "2.0.0",
+        "@noble/hashes": "2.2.0",
         "zod": "3.25.76",
       },
       "devDependencies": {
@@ -126,7 +106,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.83.2",
+      "version": "0.97.0",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",
@@ -438,8 +418,6 @@
     "@indexnetwork/claude-plugin": ["@indexnetwork/claude-plugin@workspace:packages/claude-plugin"],
 
     "@indexnetwork/cli": ["@indexnetwork/cli@workspace:packages/cli"],
-
-    "@indexnetwork/eval-ops": ["@indexnetwork/eval-ops@workspace:apps/eval-ops"],
 
     "@indexnetwork/hermes-plugin": ["@indexnetwork/hermes-plugin@workspace:packages/hermes-plugin"],
 

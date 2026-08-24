@@ -1,6 +1,6 @@
 # Index Network Hermes Plugin
 
-The Index plugin connects Hermes to Index on macOS through the signed **Index Connector**. The Index macOS app is optional: Hermes can connect, operate, reconnect, and disconnect without it.
+The Index plugin connects Hermes to Index over plain HTTPS, authenticated with an agent API key.
 
 ## Connect
 
@@ -8,46 +8,28 @@ The Index plugin connects Hermes to Index on macOS through the signed **Index Co
 hermes plugins install indexnetwork/hermes-plugin
 ```
 
-Open the **Index** dashboard and select **Connect to Index**. The connector opens the browser, uses PKCE S256 and an exact `http://127.0.0.1:<49152-65535>/callback` callback, and stores the resulting dedicated `idxh_` credential only in the connector Keychain identity. The dashboard, plugin files, Hermes environment, browser JavaScript, logs, and connector responses never receive or persist that credential.
+Connect to Index by opening the **Index** dashboard and choosing **log in with browser** — the same `/cli-auth` handshake the Index CLI and Mac app use. The handshake mints a CLI owner key, then the plugin registers or reuses the Hermes agent, mints an agent-bound token, and persists that token as `INDEX_API_KEY` in `~/.hermes/.env`. The CLI key is revoked after bootstrap. **Sign out** clears the local key. On a headless host the dashboard shows the login link to open elsewhere.
 
-The owner approves the exact six normal-product capabilities:
+Manual override: set an agent API key yourself instead of using the browser flow:
 
-- `manage:identity`
-- `manage:premises`
-- `manage:intents`
-- `manage:networks`
-- `manage:opportunities`
-- `manage:negotiations`
+```bash
+export INDEX_API_KEY=<your Index agent API key>
+```
 
-They do **not** grant account security, billing, account deletion, credential or permission administration, or agent administration. The credential expires after 30 days, warns during its final seven days, and has no refresh token or silent renewal. Reconnect repeats browser approval and rotates the generation. Expired, stale, paused, or revoked Hermes activity leaves Index as the negotiation fallback.
+Optional overrides: `INDEX_API_URL` and `INDEX_MCP_URL` (default to production endpoints). Browser login pairs with the configured API environment (`INDEX_APP_BASE_URL` wins, else derived from `INDEX_API_URL`).
 
-Existing Hermes installations with historical plaintext configuration are forced through secure relogin: owned schedules are paused, the historical configuration is scrubbed and verified absent, and legacy authority is revoked before a replacement becomes active. If cleanup or revocation is uncertain, the connector is recovery-only; use its status/retry-disconnect path rather than treating the connection as active.
+`GET /agents/me` needs the agent-bound token, not the CLI owner key. The agent token can be revoked from web settings.
+
+Full-mode wake listens to `GET /conversations/stream`. There is no more pickup/claim — a negotiation is never claimed into a distinct state, it just stays `working` until it pauses or resolves — so wake reacts only to a negotiation message it actually observes on the stream (not this owner's own agent turn), and injects one Hermes chat to reply with `index_respond_negotiation` for that specific negotiation. There is no periodic catch-up poll behind it any more.
 
 ## Modes and capability boundary
 
-`full` (the default) registers the normal Index tool/dashboard surface through the connector. `negotiator` registers exactly four handlers:
+`full` (the default) registers the normal Index tool/dashboard surface. `negotiator` registers exactly two handlers:
 
 1. `index_agent_me`
-2. `index_pickup_negotiation`
-3. `index_respond_negotiation`
-4. `index_consult_owner`
+2. `index_respond_negotiation`
 
-The negotiator is not a reduced version of the full six-action credential. It is a separate server-enforced scheduled-execution boundary: pickup/respond/consult require the selected agent, exact generation, native hidden one-shot run authority, and the closed action contracts. `INDEX_PLUGIN_MODE=negotiator` is fail-closed for unknown non-empty values. It has no dashboard, broad MCP wrappers, hook, command, or orchestrator skill.
-
-## Connector boundary
-
-Production uses only the verified connector at one of two fixed paths:
-
-- `/Applications/Index Connector.app/Contents/MacOS/IndexConnector`
-- `~/Applications/Index Connector.app/Contents/MacOS/IndexConnector`
-
-The plugin rejects symlinks, unsafe ownership/modes, mismatched CMS release metadata, Team ID, bundle/designated requirement, hash, protocol version, build mode, or endpoint environment. It uses JSON lines protocol v1 with exactly `hello`, `status`, `authorize.start`, `authorize.poll`, `rest`, `mcp`, and `disconnect`; responses are correlated, bounded, and recursively secret-free. Connector forwarding has fixed production HTTPS endpoints, exact REST/MCP allowlists, 30-second ordinary request deadlines, 8 MiB upload limit, and bounded SSE/resource queues. No caller may supply an endpoint, header, credential, or arbitrary connector executable.
-
-A source-only development transport exists for CI/headless development only and needs **both** `INDEX_PLUGIN_DEVELOPMENT_TRANSPORT=1` and the unshipped `.index-plugin-development` source marker. It is excluded from published packages and is not a production configuration.
-
-## Owner controls and recovery
-
-Owners use the website's connected-agent view to see nonsecret installation identity, granted actions, health, heartbeat, expiry, and whether Index is covering. They can pause (deselects Hermes but preserves an active credential), revoke (idempotently removes installation authority), or reconnect (fresh browser authorization only). The connector's `disconnect` is recovery-only when needed: it retains its Keychain item until the server's exact revocation receipt and any required denial probe are confirmed, then deletes it and clears nonsecret recovery state.
+The negotiator is a separate server-enforced scheduled-execution boundary: respond requires the selected agent and native hidden one-shot run authority with a closed action vocabulary. `INDEX_PLUGIN_MODE=negotiator` is fail-closed for unknown non-empty values. It has no dashboard, broad MCP wrappers, hook, command, or orchestrator skill.
 
 ## Development
 
@@ -56,8 +38,6 @@ Build generated desktop output only through its script:
 ```bash
 cd packages/hermes-plugin
 bun run build:desktop
-python3 tests/connector_protocol.py
-python3 tests/migration.py
 python3 tests/smoke.py
 python3 tests/gateway.py
 ```

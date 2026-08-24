@@ -1,15 +1,9 @@
 name: index-network
-version: 0.20.0
+version: 0.25.0
 description: Index Network Hermes plugin with native tools backed by Index MCP and personal-agent APIs.
 provides_tools:
   - index_read_intents
-  - index_read_user_contexts
-  - index_preview_user_context
-  - index_confirm_user_context
-  - index_create_user_context
-  - index_update_user_context
-  - index_get_enrichment_run
-  - index_cancel_enrichment_run
+  - index_research_profile
   - index_create_intent
   - index_update_intent
   - index_create_intent_index
@@ -30,16 +24,12 @@ provides_tools:
   - index_read_premises
   - index_update_premise
   - index_retract_premise
-  - index_read_pending_questions
   - index_read_activity_summary
   - index_read_docs
   - index_agent_me
   - index_open_app
-  - index_pickup_negotiation
   - index_respond_negotiation
-  - index_consult_owner
 provides_hooks:
   - pre_llm_call
-# Production uses the signed Index Connector and never reads a plaintext key.
-# Source-checkout development transport is separately double-gated and is not
-# included in the published package.
+# The plugin authenticates with the INDEX_API_KEY environment variable
+# (an agent API key created in Index web settings).

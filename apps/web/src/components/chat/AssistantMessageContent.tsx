@@ -2,10 +2,11 @@ import type { ComponentType, ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Loader2 } from "lucide-react";
+import { parseQuestionMessage } from "@indexnetwork/protocol";
 import OpportunityCard, { type OpportunityCardData, OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import IntentProposalCard, { type IntentProposalData, IntentProposalSkeleton } from "@/components/chat/IntentProposalCard";
-import AgentActionProposalCard, { AgentActionProposalSkeleton, type AgentActionConfirmationResponse, type AgentActionProposalData, type AgentActionProposalResolutionResponse } from "@/components/chat/AgentActionProposalCard";
 import NetworksPanel from "@/components/chat/NetworksPanel";
+import { QuestionSteps } from "@/components/chat/QuestionSteps";
 import { cn } from "@/lib/utils";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 
@@ -30,59 +31,8 @@ export type MessageSegment =
   | { type: "opportunity_loading" }
   | { type: "intent_proposal"; data: IntentProposalData }
   | { type: "intent_proposal_loading" }
-  | { type: "agent_action_proposal"; data: AgentActionProposalData }
-  | { type: "agent_action_proposal_loading" }
   | { type: "networks_panel" }
   | { type: "networks_panel_loading" };
-
-/** Validate UUID-shaped values before any proposal data reaches a card. */
-function isUuid(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-/** Parse only the known, display-safe action proposal wire shape. */
-export function parseAgentActionProposal(value: unknown): AgentActionProposalData | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const candidate = value as Record<string, unknown>;
-  const allowedProposalKeys = new Set(["proposalId", "actions"]);
-  if (Object.keys(candidate).some((key) => !allowedProposalKeys.has(key))) return null;
-  if (!isUuid(candidate.proposalId) || !Array.isArray(candidate.actions) || candidate.actions.length < 1 || candidate.actions.length > 5) {
-    return null;
-  }
-
-  const allowedActionKeys = new Set([
-    "type",
-    "entityId",
-    "currentState",
-    "proposedOperation",
-    "skipped",
-    "reason",
-    // These are emitted by the current backend for display context but are
-    // never used as confirmation input.
-    "description",
-    "evidence",
-  ]);
-  const types = new Set(["retract_premise", "narrow_signal", "pause_signal"]);
-  const actions = candidate.actions.map((raw) => {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const action = raw as Record<string, unknown>;
-    if (Object.keys(action).some((key) => !allowedActionKeys.has(key))) return null;
-    if (typeof action.type !== "string" || !types.has(action.type) || typeof action.entityId !== "string" || !action.entityId.trim()) return null;
-    if (typeof action.currentState !== "string" || !action.currentState.trim()) return null;
-    if (typeof action.proposedOperation !== "string" || !action.proposedOperation.trim()) return null;
-    const expectedOperation = action.type === "retract_premise"
-      ? "RETRACT_PREMISE"
-      : action.type === "narrow_signal" ? "NARROW_SIGNAL" : "PAUSE_SIGNAL";
-    if (action.proposedOperation !== expectedOperation) return null;
-    if (action.skipped !== undefined && typeof action.skipped !== "boolean") return null;
-    for (const key of ["reason", "description", "evidence"] as const) {
-      if (action[key] !== undefined && typeof action[key] !== "string") return null;
-    }
-    return action as unknown as AgentActionProposalData["actions"][number];
-  });
-  if (actions.some((action) => action === null)) return null;
-  return { proposalId: candidate.proposalId, actions: actions as AgentActionProposalData["actions"] };
-}
 
 /**
  * Parse agent message content, extracting fenced blocks as typed segments.
@@ -91,7 +41,7 @@ export function parseAgentActionProposal(value: unknown): AgentActionProposalDat
  */
 export function parseAllBlocks(content: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
-  const regex = /```(opportunity|intent_proposal|agent_action_proposal|networks_panel)\s*\n([\s\S]*?)\n```/g;
+  const regex = /```(opportunity|intent_proposal|networks_panel)\s*\n([\s\S]*?)\n```/g;
   let lastIndex = 0;
   let match;
 
@@ -125,13 +75,6 @@ export function parseAllBlocks(content: string): MessageSegment[] {
             type: "text",
             content: "This proposal couldn't be loaded as a card. Ask again to add this as a signal.",
           });
-        } else if (blockType === "agent_action_proposal") {
-          const proposal = parseAgentActionProposal(data);
-          if (proposal) {
-            segments.push({ type: "agent_action_proposal", data: proposal });
-          } else {
-            segments.push({ type: "text", content: match[0] });
-          }
         } else {
           segments.push({ type: "text", content: match[0] });
         }
@@ -146,10 +89,9 @@ export function parseAllBlocks(content: string): MessageSegment[] {
   const remainingContent = content.slice(lastIndex);
   const partialOpp = remainingContent.match(/```opportunity(?:\s*\n|$)/);
   const partialIntent = remainingContent.match(/```intent_proposal(?:\s*\n|$)/);
-  const partialAgentAction = remainingContent.match(/```agent_action_proposal(?:\s*\n|$)/);
   const partialNetworks = remainingContent.match(/```networks_panel(?:\s*\n|$)/);
 
-  const candidates = ([partialOpp, partialIntent, partialAgentAction, partialNetworks] as (RegExpMatchArray | null)[]).filter(
+  const candidates = ([partialOpp, partialIntent, partialNetworks] as (RegExpMatchArray | null)[]).filter(
     (c): c is RegExpMatchArray => c !== null,
   );
   const partialMatch =
@@ -167,8 +109,6 @@ export function parseAllBlocks(content: string): MessageSegment[] {
       segments.push({ type: "opportunity_loading" });
     } else if (partialMatch === partialIntent) {
       segments.push({ type: "intent_proposal_loading" });
-    } else if (partialMatch === partialAgentAction) {
-      segments.push({ type: "agent_action_proposal_loading" });
     } else {
       segments.push({ type: "networks_panel_loading" });
     }
@@ -189,7 +129,6 @@ export function parseAllBlocks(content: string): MessageSegment[] {
 function dedupeSegments(segments: MessageSegment[]): MessageSegment[] {
   const seenOpps = new Set<string>();
   const seenProposals = new Set<string>();
-  const seenActionProposals = new Set<string>();
   return segments.filter((seg) => {
     if (seg.type === "opportunity") {
       if (seenOpps.has(seg.data.opportunityId)) return false;
@@ -199,11 +138,6 @@ function dedupeSegments(segments: MessageSegment[]): MessageSegment[] {
     if (seg.type === "intent_proposal") {
       if (seenProposals.has(seg.data.proposalId)) return false;
       seenProposals.add(seg.data.proposalId);
-      return true;
-    }
-    if (seg.type === "agent_action_proposal") {
-      if (seenActionProposals.has(seg.data.proposalId)) return false;
-      seenActionProposals.add(seg.data.proposalId);
       return true;
     }
     return true;
@@ -218,14 +152,12 @@ export interface AssistantMessageContentProps {
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
-    isGhost?: boolean,
   ) => void;
   onOpportunitySecondaryAction?: (
     opportunityId: string,
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
-    isGhost?: boolean,
   ) => void;
   opportunityLoadingMap?: Record<string, boolean>;
   /** Map of opportunityId -> current status from server */
@@ -234,11 +166,14 @@ export interface AssistantMessageContentProps {
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
-  onAgentActionResolve?: (proposalId: string) => Promise<AgentActionProposalResolutionResponse>;
-  onAgentActionConfirm?: (proposalId: string) => Promise<AgentActionConfirmationResponse>;
   OAuthLink?: ComponentType<ComponentPropsWithoutRef<"a">>;
   onNetworkJoin?: (networkId: string, networkTitle: string) => void;
   networkPanelPendingJoinIds?: Set<string>;
+  /**
+   * Tap-to-quote for question-message steps: prefill the surface's chat input
+   * with the question being answered. Answers are plain chat replies.
+   */
+  onQuestionQuote?: (prompt: string) => void;
 }
 
 /**
@@ -258,12 +193,35 @@ export default function AssistantMessageContent({
   onIntentProposalReject,
   onIntentProposalUndo,
   intentProposalStatusMap,
-  onAgentActionResolve,
-  onAgentActionConfirm,
   OAuthLink,
   onNetworkJoin,
   networkPanelPendingJoinIds,
+  onQuestionQuote,
 }: AssistantMessageContentProps) {
+  // Question-message: a body whose terminal section is a valid ```index-questions
+  // block renders as prose + steps. parseQuestionMessage fails closed — on any
+  // malformed block it returns null and the whole body falls through to the
+  // normal rendering path unchanged (the fence shows as a plain code block).
+  const parsedQuestions = parseQuestionMessage(content);
+  if (parsedQuestions) {
+    const prose = normalizeBlockquotes(mentionsToMarkdownLinks(parsedQuestions.prose));
+    return (
+      <div>
+        {prose.trim() && (
+          <div className="chat-markdown max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={OAuthLink ? { a: OAuthLink } : undefined}
+            >
+              {prose}
+            </ReactMarkdown>
+          </div>
+        )}
+        <QuestionSteps block={parsedQuestions.block} onQuote={onQuestionQuote} />
+      </div>
+    );
+  }
+
   const displayedContent = normalizeBlockquotes(mentionsToMarkdownLinks(content));
 
   if (!displayedContent && isStreaming) {
@@ -328,22 +286,6 @@ export default function AssistantMessageContent({
           return (
             <div key={`intent-loading-${idx}`} className="my-3">
               <IntentProposalSkeleton />
-            </div>
-          );
-        } else if (segment.type === "agent_action_proposal") {
-          return (
-            <div key={segment.data.proposalId} className="my-3">
-              <AgentActionProposalCard
-                card={segment.data}
-                onResolve={onAgentActionResolve}
-                onConfirm={onAgentActionConfirm}
-              />
-            </div>
-          );
-        } else if (segment.type === "agent_action_proposal_loading") {
-          return (
-            <div key={`agent-action-loading-${idx}`} className="my-3">
-              <AgentActionProposalSkeleton />
             </div>
           );
         } else if (segment.type === "networks_panel") {

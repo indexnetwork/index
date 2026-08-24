@@ -1,29 +1,41 @@
 import { describe, expect, test } from "bun:test";
 
-import { capabilityForSourcePath, facadeCapabilityForSourcePath, implementationCapabilityForSourcePath } from "../capability-model.ts";
+import { barrelCapabilityForSourcePath, capabilityForSourcePath, implementationCapabilityForSourcePath } from "../capability-model.ts";
 
 describe("protocol capability model", () => {
   test("normalizes canonical and compatibility directories", () => {
-    expect(capabilityForSourcePath("signals/application/intent.graph.ts")).toBe("signals");
-    expect(capabilityForSourcePath("intent/intent.graph.ts")).toBe("signals");
-    expect(capabilityForSourcePath("participant-context/domain/index.ts")).toBe("participant-context");
-    expect(capabilityForSourcePath("enrichment/enrichment.graph.ts")).toBe("participant-context");
-    expect(capabilityForSourcePath("communities/application/network.graph.ts")).toBe("communities");
-    expect(capabilityForSourcePath("network/network.graph.ts")).toBe("communities");
-    expect(capabilityForSourcePath("participant-agents/application/agent.tools.ts")).toBe("participant-agents");
-    expect(capabilityForSourcePath("chat/chat.graph.ts")).toBe("participant-agents");
+    expect(capabilityForSourcePath("intents/graph/intent.graph.ts")).toBe("intents");
+    expect(capabilityForSourcePath("intents/intake/intake.orchestrator.ts")).toBe("intents");
+    expect(capabilityForSourcePath("contexts/context.generator.ts")).toBe("contexts");
+    expect(capabilityForSourcePath("networks/network.graph.ts")).toBe("networks");
+    expect(capabilityForSourcePath("networks/indexer.state.ts")).toBe("networks");
+    expect(capabilityForSourcePath("agents/agent.tools.ts")).toBe("agents");
+    expect(capabilityForSourcePath("chat/chat.graph.ts")).toBe("agents");
   });
 
-  test("classifies protocol runtime shells without inventing host components", () => {
-    expect(capabilityForSourcePath("runtime/foreground/composition/tool.registry.ts")).toBe("interaction-composition");
-    expect(capabilityForSourcePath("runtime/background/index.ts")).toBe("ambient-background");
-    expect(capabilityForSourcePath("platform/index.ts")).toBe("neutral-platform");
-    expect(capabilityForSourcePath("public/index.ts")).toBe("public-compatibility");
+  test("classifies the tool composition root as interaction-composition", () => {
+    expect(capabilityForSourcePath("shared/agent/tool.registry.ts")).toBe("interaction-composition");
+    expect(capabilityForSourcePath("shared/agent/tool.factory.ts")).toBe("interaction-composition");
+    expect(capabilityForSourcePath("maintenance/maintenance.graph.ts")).toBe("interaction-composition");
   });
 
-  test("recognizes capability facades and leaves neutral shared code unclassified", () => {
-    expect(facadeCapabilityForSourcePath("capabilities/opportunities.facade.ts")).toBe("opportunities");
-    expect(facadeCapabilityForSourcePath("capabilities/negotiation.discovery.facade.ts")).toBe("negotiation");
-    expect(implementationCapabilityForSourcePath("shared/hyde/hyde.graph.ts")).toBeUndefined();
+  test("recognizes capability barrels and leaves neutral shared code unclassified", () => {
+    expect(barrelCapabilityForSourcePath("opportunities/index.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("negotiations/index.ts")).toBeUndefined();
+    // Flattened capabilities use named module barrels rather than `index.ts`.
+    expect(barrelCapabilityForSourcePath("capabilities/intents.ts")).toBe("intents");
+    expect(barrelCapabilityForSourcePath("questions/question.module.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("capabilities/agents.ts")).toBe("agents");
+    expect(barrelCapabilityForSourcePath("intents/index.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("intents/graph/intent.graph.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("capabilities/networks.ts")).toBe("networks");
+    expect(barrelCapabilityForSourcePath("networks/index.ts")).toBeUndefined();
+    expect(barrelCapabilityForSourcePath("networks/network.graph.ts")).toBeUndefined();
+    // HyDE used to live in shared/ and was unclassified; it is a capability now.
+    expect(barrelCapabilityForSourcePath("capabilities/discovery.ts")).toBe("discovery");
+    expect(implementationCapabilityForSourcePath("discovery/hyde.graph.ts")).toBe("discovery");
+    // What remains under shared/ is genuinely neutral and stays unclassified.
+    expect(implementationCapabilityForSourcePath("shared/observability/log.ts")).toBeUndefined();
+    expect(implementationCapabilityForSourcePath("shared/interfaces/scraper.interface.ts")).toBeUndefined();
   });
 });

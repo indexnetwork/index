@@ -18,7 +18,7 @@ const deliveries = {
 };
 
 function makeController(): AgentController {
-  return new AgentController(agents as never, undefined, undefined, deliveries as never);
+  return new AgentController(agents as never, undefined, deliveries as never);
 }
 
 describe('AgentController.getDeliveryStats', () => {

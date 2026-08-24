@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/contexts/AIChatContext", () => ({
   useAIChat: () => ({
     messages: [], liveQuestions: [], isLoading: false,
-    startSignalSession: vi.fn(), sendWebMessage: mocks.sendWebMessage, clearChat: vi.fn(),
+    sendWebMessage: mocks.sendWebMessage, clearChat: vi.fn(),
   }),
 }));
 vi.mock("@/contexts/AuthContext", () => ({
@@ -32,13 +32,10 @@ vi.mock("@/contexts/AuthContext", () => ({
     signOut: vi.fn(), openLoginModal: vi.fn(),
   }),
 }));
-// The personal network is deliberately in this fixture: it is a real membership
-// the context returns, and round 3 must not offer it as a community to look in.
 vi.mock("@/contexts/IndexesContext", () => ({
   useNetworksState: () => ({
     indexes: [
-      { id: "network-1", title: "Builders", isPersonal: false },
-      { id: "personal-1", title: "My personal network", isPersonal: true },
+      { id: "network-1", title: "Builders" },
     ],
   }),
 }));
@@ -232,14 +229,14 @@ describe("fast signal intake", () => {
     expect(mocks.proposal.mock.calls[0][0]).not.toHaveProperty("whereText");
   });
 
-  test("the where picker offers communities but never the personal network", async () => {
+  test("the where picker offers available communities", async () => {
     renderPage();
 
     await answer("Who do you want to meet?", "A design partner");
     await answer("What would you bring?", "A design partner");
 
     await screen.findByText("Builders");
-    expect(screen.queryByText("My personal network")).toBeNull();
+    expect(screen.getByText("Builders")).toBeTruthy();
   });
 
   test("revising carries the picked community so confirm still matches the proposal", async () => {
@@ -385,14 +382,12 @@ describe("fast signal intake", () => {
     expect(screen.getAllByText("A design partner", { selector: "p" }).length).toBeGreaterThanOrEqual(2);
   });
 
-  test("falls back to the legacy chat path when the flag is off", async () => {
+  test("always uses the deterministic funnel — the legacy chat fallback is retired", async () => {
     mocks.fastSignalIntake = false;
     renderPage();
 
-    await waitFor(() => expect(mocks.sendWebMessage).toHaveBeenCalledWith(
-      "new-signal-kickoff", undefined, undefined, expect.objectContaining({ hidden: true, persona: "signal" }),
-    ));
-    expect(mocks.start).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+    expect(mocks.sendWebMessage).not.toHaveBeenCalled();
   });
 
   test("skipping a proposal rejects it server-side and lands on the terminal state", async () => {

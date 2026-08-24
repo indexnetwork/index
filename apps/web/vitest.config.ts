@@ -7,17 +7,20 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Mirrors vite.config.ts: resolve the reporter kickoff marker from source
-      // so tests never depend on a built packages/protocol/dist.
-      '@indexnetwork/protocol': path.resolve(
-        __dirname,
-        '../../packages/protocol/src/chat/reporter.prompt.ts',
-      ),
     },
   },
   test: {
     environment: 'happy-dom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['tests/**/*.test.{ts,tsx}', 'src/**/*.{test,spec}.{ts,tsx}'],
+    server: {
+      deps: {
+        // zod's entry re-exports its API as a namespace binding (`export { z }`),
+        // which the externalized-module interop drops under the Bun-run vitest
+        // pipeline (z arrives undefined). Inlining runs it through the vite
+        // transform, which preserves the binding.
+        inline: ['zod'],
+      },
+    },
   },
 });

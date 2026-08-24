@@ -2,14 +2,11 @@
 [build]
 watchPatterns = [
   "/apps/web/**",
-  "/docs/protocol-atlas/**",
-  "/scripts/build-protocol-atlas.ts",
-  "/scripts/tests/build-protocol-atlas.spec.ts",
   "/packages/protocol/**",
   "/bun.lock",
   "/package.json",
 ]
-buildCommand = "bun run build:web"
+buildCommand = "bun run build:package:protocol && bun run build:web"
 
 [deploy]
 startCommand = "cd apps/web && bun run start"

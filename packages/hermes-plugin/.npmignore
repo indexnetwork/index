@@ -4,4 +4,3 @@ tests/__pycache__/
 *.pyc
 dashboard/*.pyc
 tests/*.pyc
-.index-plugin-development

@@ -4,21 +4,19 @@ Index is a macOS 13+ WKWebView client with a native, credential-free request bri
 
 ## Security model
 
-The signed app owns an `idxo_` credential with audience `index-app-owner`; the standalone Index Connector owns the separate `idxh_` Hermes credential with audience `hermes-agent`. They use separate Keychain services/access groups and neither process can read the other item's credential. Raw credentials, PKCE verifiers, authorization codes, activation proofs, and authorization headers never enter browser JavaScript, WebKit storage, Application Support records, logs, callback URLs, or generated HTML.
+The signed app stores one ordinary Better Auth API key in the Keychain. Raw credentials and authorization headers never enter browser JavaScript, WebKit storage, Application Support records, logs, callback URLs, or generated HTML.
 
 The native `indexAPI` bridge accepts only the exact bundled main document and document generation. JavaScript supplies structured, allowlisted requests; Swift constructs the fixed API/MCP URLs, reads the owner credential natively, validates body/schema/resource bounds, and returns sanitized data only. It permits bounded REST, upload, and SSE operations (32 pending requests, 1 MiB ordinary request/response, 8 MiB decoded images, 64 KiB events, 256 events; 30-second ordinary and five-minute stream deadlines). It never accepts a browser-supplied URL, header, credential, or transport override.
 
-## Owner sign-in and migration
+## Owner sign-in
 
-The app uses PKCE S256 with the canonical callback `http://127.0.0.1:<49152-65535>/callback`. The first-party flow creates a pending `idxo_` credential, verifies its Keychain write/read-back, and activates it with a one-time native proof. It expires after 30 days with no refresh path.
+Login opens the web `/cli-auth` page (the same state-bound handshake the CLI uses) with a loopback callback on `http://127.0.0.1:<port>/callback`. The callback returns an ordinary 90-day API key plus its key ID; the app verifies the Keychain write/read-back before treating login as complete.
 
-Historical `credential.json` installations are not migrated into Keychain. Startup preserves only nonsecret legacy key-ID recovery evidence, securely deletes and verifies absence of the exact plaintext file, remains signed out, and requires a fresh browser login. During approved replacement, the server revokes the legacy credential before issuing the pending replacement. Offline or uncertain cases remain recovery-only; the Application Support parent is retained because it contains nonsecret runtime journals.
-
-Logout quarantines bridge work, pauses/scrubs Hermes local activity, revokes the exact owner credential, verifies denial, then deletes the Keychain item. Uncertain network or persistence outcomes retain nonsecret recovery evidence and never claim logout completed.
+Logout quarantines bridge work, pauses/scrubs Hermes local activity, revokes the exact API key via `/auth/cli-credential/revoke`, verifies denial, then deletes the Keychain item. Uncertain network or persistence outcomes retain the credential and never claim logout completed.
 
 ## Hermes runtime
 
-The native app may show the same owner controls as the web, but it is not required for direct Hermes use. Connector-backed selection requires verified connector trust/status, exact installation/agent/setup-generation equality, active health, exact six-action grant, and valid expiry. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule, preserves unrelated Hermes state, and never recreates plaintext credentials. Disconnect is ordered connector status/disconnect → exact owner CAS to Index → fenced local cleanup; uncertain state remains recovery-only.
+The native app may show the same owner controls as the web, but it is not required for direct Hermes use. The Hermes plugin authenticates with an ordinary agent-bound API key supplied via the `INDEX_API_KEY` environment variable. The local runtime uses generation-fenced fallback and cron ownership markers: it pauses only the exact owned schedule and preserves unrelated Hermes state.
 
 ## Build and source checks
 
@@ -53,6 +51,13 @@ This will:
 - Automatically open the app (if not running) or trigger a reload
 
 The app will hot-reload as you edit files, great for UI tweaking.
+
+`dev.sh` defaults `INDEX_DEVELOPMENT_BUILD=1`: the build enables the web
+inspector and, because an ad-hoc build carries no provisioning-profile-authorized
+Keychain access group, stores the owner credential in the login keychain so
+sign-in works locally. Production (signed) builds are unaffected and still fail
+closed without the authorized owner group. Override with
+`INDEX_DEVELOPMENT_BUILD=0 ./dev.sh`.
 
 **To manually reload** during development, press **Cmd+R** (standard browser reload) in the app, or close and relaunch.
 

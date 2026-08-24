@@ -103,9 +103,7 @@ export function toolActivity(description: string): void {
 
 /** Human-friendly descriptions for protocol tools (mirrors frontend). */
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  read_user_contexts: "Reading your profile...",
-  create_user_context: "Creating your profile...",
-  update_user_context: "Updating your profile...",
+  research_profile: "Researching your public profile...",
   read_intents: "Fetching your active signals...",
   create_intent: "Creating a new signal...",
   update_intent: "Updating signal...",
@@ -123,11 +121,6 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   update_opportunity: "Updating opportunity status...",
   scrape_url: "Reading content from URL...",
   read_docs: "Looking up documentation...",
-  import_gmail_contacts: "Importing Gmail contacts...",
-  import_contacts: "Importing contacts...",
-  list_contacts: "Listing your contacts...",
-  add_contact: "Adding contact...",
-  remove_contact: "Removing contact...",
 };
 
 /** Get a human-friendly description for a raw tool name. */

@@ -1,4 +1,4 @@
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, TelegramPrefs, User, UserWithGraph, and, db, eq, inArray, isNull, sessions, sql, userContexts, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, TelegramPrefs, User, UserWithGraph, and, db, eq, inArray, isNull, sessions, sql, userNotificationSettings, userSocials, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 
@@ -18,7 +18,7 @@ export class UserDatabaseAdapter {
   /**
    * Find multiple users by IDs. Returns public profile fields only (same shape as single-user API).
    */
-  async findByIds(userIds: string[]): Promise<Array<{ id: string; name: string; intro: string | null; avatar: string | null; location: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; isGhost: boolean; createdAt: Date; updatedAt: Date }>> {
+  async findByIds(userIds: string[]): Promise<Array<{ id: string; name: string; intro: string | null; avatar: string | null; location: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; createdAt: Date; updatedAt: Date }>> {
     if (userIds.length === 0) return [];
     const userRows = await db.select({
       id: users.id,
@@ -26,7 +26,6 @@ export class UserDatabaseAdapter {
       intro: users.intro,
       avatar: users.avatar,
       location: users.location,
-      isGhost: users.isGhost,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     })
@@ -173,18 +172,12 @@ export class UserDatabaseAdapter {
       .from(userSocials)
       .where(eq(userSocials.userId, userId));
 
-    // "Has a profile" now means the user has been enriched into a global user_context
-    // row (networkId = null) -- the profile replacement. Replaces the retired
-    // user_profiles existence check that gated background auto-enrichment.
-    const globalContext = await db.select({ id: userContexts.id })
-      .from(userContexts)
-      .where(and(eq(userContexts.userId, userId), isNull(userContexts.networkId)))
-      .limit(1);
+    const hasProfile = Boolean(user.intro?.trim() || user.name?.trim());
 
     return {
       ...user,
       socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
-      hasProfile: globalContext.length > 0,
+      hasProfile,
       notificationPreferences: settings?.preferences as {
         connectionUpdates: boolean;
         weeklyNewsletter: boolean;

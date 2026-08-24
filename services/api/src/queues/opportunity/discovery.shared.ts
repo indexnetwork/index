@@ -3,16 +3,30 @@ import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, NegotiationGraphLike, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
+import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
 
 import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
+
+/**
+ * Worker concurrency shared by the from-intent and from-enrichment discovery
+ * queues. The factory default (1) serialized every user's scan behind every
+ * other user's, which is what made a second onboarding look stalled. 4 lets a
+ * handful of signals scan side by side; it stays low because one scan already
+ * fans its evaluator out in parallel (one LLM call per candidate) on top of
+ * HyDE and embedder calls, so worker concurrency multiplies provider load —
+ * raise it only after checking LLM/embedder rate limits. The intent-agent
+ * queue deliberately keeps 1 (agent turns for one conversation must not
+ * interleave) and is not covered by this constant.
+ */
+export const DISCOVERY_WORKER_CONCURRENCY = 4;
 
 /** Graph DB shape the opportunity/HyDE graphs require — every `from-*` queue casts its ChatDatabaseAdapter to this. */
 export type OpportunityGraphDb = OpportunityGraphDatabase & HydeGraphDatabase;
 
 /** Runtime deps shared by every opportunity-discovery queue worker. */
 export interface OpportunityDiscoveryDeps {
-  negotiationGraph?: NegotiationGraphLike;
+  /** Wakes a signal's PersonalAgent once the batch is persisted. */
+  matchesReady?: MatchesReadyFn;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   /** Only intent-triggered roots provide this P4b pre-insert callback. */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
@@ -41,7 +55,7 @@ export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: Opport
     hydeGraph,
     undefined,
     undefined,
-    deps?.negotiationGraph,
+    deps?.matchesReady,
     deps?.agentDispatcher,
     async (opportunityId: string, userId: string) => {
       await negotiationRunExistingQueue.addJob({ opportunityId, userId });

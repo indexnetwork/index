@@ -20,7 +20,6 @@ mock.module('../../adapters/cache.adapter', () => ({
 mock.module('../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class {},
 }));
-mock.module('../../lib/opportunity/uptake-acceptance.guard', () => ({ uptakeAcceptanceGuard: {} }));
 mock.module('../../lib/opportunity/outcome-feedback.recorder', () => ({ outcomeFeedbackRecorder: {} }));
 
 const { OpportunityService } = await import('../opportunity.service');

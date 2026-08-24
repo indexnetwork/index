@@ -2,7 +2,7 @@
 
 Mounted at /api/plugins/index-network/ by Hermes dashboard only in full mode. The routes reuse
 the plugin's native Index tool handlers so dashboard visibility and
-question-answer writes stay scoped to the connector-authenticated principal.
+question-answer writes stay scoped to the API-key-authenticated principal.
 
 The dashboard is intent-centric: each intent carries its own pending and
 answered questions (server-scoped per intent, the Mac app's queries) and its
@@ -19,11 +19,12 @@ import json
 import os
 import re
 import sys
+import threading
 import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 _DASHBOARD_DIR = Path(__file__).resolve().parent
 _PLUGIN_ROOT = _DASHBOARD_DIR.parent
@@ -175,6 +176,27 @@ def _load_tools_module():
 
 tools = _load_tools_module()
 auth_login = _load_module("index_network_hermes_dashboard_auth_login", _DASHBOARD_DIR / "auth_login.py")
+agent_bootstrap = _load_module(
+    "index_network_hermes_dashboard_agent_bootstrap",
+    _DASHBOARD_DIR / "agent_bootstrap.py",
+)
+
+
+def _promote_cli_key(cli_key: str, cli_key_id: str | None) -> dict[str, Any]:
+    """Swap the CLI owner key for a Hermes agent token, then rebuild transport."""
+    tools.reset_transport()
+    try:
+        return agent_bootstrap.promote(
+            tools.get_transport(),
+            auth_login.persist_api_key,
+            cli_key,
+            cli_key_id,
+        )
+    finally:
+        tools.reset_transport()
+
+
+auth_login.set_post_login(_promote_cli_key)
 
 
 def _call_read_intents() -> dict[str, Any]:
@@ -211,7 +233,7 @@ def _call_tool(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, 
 
     This is the Mac app's tool path: it accepts the browser-login CLI credential,
     whereas the MCP surface resolves that key to the enrollment-only principal and
-    denies identity tools such as confirm_user_context / read_user_contexts.
+    denies identity tools such as research_profile.
     """
     return tools._api_request("POST", f"/tools/{quote(tool_name, safe='')}", {"query": args or {}})
 
@@ -378,19 +400,6 @@ def _onboarding_gate(me: dict[str, Any] | None = None) -> dict[str, Any]:
     }
 
 
-def _approved_draft_from_body(body: dict[str, Any]) -> dict[str, Any]:
-    """Build the structured draft `confirm_user_context` expects from a profile form body."""
-    name = _text(body.get("name"))
-    intro = _text(body.get("intro"))
-    location = _text(body.get("location"))
-    context = _text(body.get("context")) or intro
-    return {
-        "identity": {"name": name, "bio": intro, "location": location},
-        "narrative": {"context": context},
-        "attributes": {"skills": [], "interests": []},
-    }
-
-
 def _notification_preferences(value: Any) -> dict[str, bool]:
     prefs = value if isinstance(value, dict) else {}
     return {
@@ -432,7 +441,7 @@ def _avatar_filename(content_type: str) -> str:
 
 
 def _api_multipart(path: str, field: str, filename: str, content: bytes, content_type: str) -> dict[str, Any]:
-    """Upload through the connector's bounded start/chunk/finish protocol."""
+    """Upload through the transport's bounded start/chunk/finish protocol."""
     try:
         return tools.get_transport().upload(path, field, filename, content, content_type)
     except tools.TransportError as exc:
@@ -766,7 +775,6 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         title = _text(network.get("title") or network.get("name"), "Untitled network")
         detail = _truncate(network.get("prompt") or network.get("description"))
         owner = network.get("user") if isinstance(network.get("user"), dict) else {}
-        is_personal = network.get("isPersonal") is True
         # Prefer viewer membership role from GET /networks; owner-id compare
         # fails when a network has multiple owners.
         api_role = _text(network.get("role"))
@@ -783,7 +791,6 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         member_count = _member_count(network)
         if member_count is not None:
             item["memberCount"] = member_count
-        item["isPersonal"] = is_personal
         item["role"] = "owner" if is_owner else "member"
         if network.get("hasMasterKey") is True:
             item["hasMasterKey"] = True
@@ -804,7 +811,7 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         if detail:
             item["detail"] = detail
         items.append(item)
-    items.sort(key=lambda n: (not n.get("isPersonal"), n.get("title", "").lower()))
+    items.sort(key=lambda n: n.get("title", "").lower())
     return {
         "items": items,
         "count": len(items),
@@ -1128,7 +1135,7 @@ def _build_dashboard(
 
 @full_router.get("/auth/status")
 def auth_status() -> dict[str, Any]:
-    """Report connector health without reading or receiving a credential."""
+    """Report transport health from the configured API key."""
     try:
         status = tools.get_transport().status()
     except tools.TransportError as exc:
@@ -1153,42 +1160,71 @@ def auth_status() -> dict[str, Any]:
 def _login_app_base_url() -> str:
     """Web origin that serves `/cli-auth`, paired with the active API environment.
 
-    Delegates to `tools._app_base_url` so login, invites, and opportunity
-    `appUrl`s all share one pairing rule (`INDEX_APP_BASE_URL`, else derive
-    from `INDEX_API_URL` / `~/.hermes/.env`, else production).
+    An explicit `INDEX_APP_BASE_URL` wins (it also drives deep links). Otherwise
+    the origin is derived from `INDEX_API_URL` by dropping a leading `protocol.`
+    host label (`protocol.dev.index.network` -> `dev.index.network`), so a plugin
+    pointed at dev/staging signs in against the matching web app instead of prod.
+    Without this pairing a dev-configured plugin would mint a prod key that then
+    401s against the dev API.
     """
-    return tools._app_base_url()
+    if os.environ.get("INDEX_APP_BASE_URL", "").strip():
+        return tools._app_base_url()
+    api_url = os.environ.get("INDEX_API_URL", "").strip()
+    if not api_url:
+        return tools.INDEX_APP_BASE_URL
+    try:
+        parts = urlsplit(api_url)
+    except ValueError:
+        return tools.INDEX_APP_BASE_URL
+    if parts.scheme in ("http", "https") and parts.netloc:
+        host = parts.netloc
+        if host.startswith("protocol."):
+            host = host[len("protocol."):]
+        return f"{parts.scheme}://{host}"
+    return tools.INDEX_APP_BASE_URL
+
 
 @full_router.post("/auth/login/start")
 def auth_login_start(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Migrate plaintext first, then let the connector open browser consent."""
+    """Start the Mac/CLI `/cli-auth` handshake and open the browser to sign in.
+
+    Returns `authUrl` so the UI can offer a manual link when the plugin runs on
+    a headless/remote agent host where opening a browser is not possible.
+    """
     try:
-        result = auth_login.start_login(tools.get_transport())
-    except tools.TransportError as exc:
-        return exc.as_payload()
+        auth_url = auth_login.start_login(_login_app_base_url())
     except Exception as exc:  # noqa: BLE001 - handlers must not raise.
         return {"success": False, "error": f"Could not start login: {exc}"}
-    return {"success": True, "started": result.get("status") == "pending", **result}
+    opener = tools._url_opener_command(auth_url)
+    open_error = tools._open_url(opener) if opener else "No URL opener is available on this host."
+    return {"success": True, "started": True, "opened": open_error is None, "authUrl": auth_url, "openError": open_error}
 
 
 @full_router.get("/auth/login/status")
 def auth_login_status() -> dict[str, Any]:
-    """Poll the connector-owned browser authorization attempt."""
-    try:
-        result = auth_login.poll_status(tools.get_transport())
-    except tools.TransportError as exc:
-        return exc.as_payload()
-    return {"success": result.get("status") != "failed", **result}
+    """Poll the pending login; on success the Hermes agent key is persisted."""
+    result = auth_login.poll_status()
+    payload: dict[str, Any] = {"success": result.get("status") != "failed", "status": result.get("status")}
+    if result.get("error"):
+        payload["error"] = result.get("error")
+    if "negotiatorReady" in result:
+        payload["negotiatorReady"] = result["negotiatorReady"]
+    return payload
 
 
 @full_router.post("/auth/logout")
 def auth_logout(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Revoke through connector recovery and delete only after confirmation."""
-    try:
-        result = auth_login.disconnect(tools.get_transport())
-    except tools.TransportError as exc:
-        return exc.as_payload()
-    return {"success": result.get("status") == "disconnected", "needsLogin": True, **result}
+    """Best-effort revoke the CLI key, then clear it from `~/.hermes/.env` + process."""
+    api_key = os.environ.get("INDEX_API_KEY", "").strip()
+    key_id = os.environ.get("INDEX_API_KEY_ID", "").strip()
+    if api_key and key_id:
+        try:
+            tools._api_request("POST", "/auth/cli-credential/revoke", {"keyId": key_id, "targetKey": api_key})
+        except Exception:  # noqa: BLE001 - revoke is best-effort; local cleanup still runs.
+            pass
+    auth_login.clear_api_key()
+    tools.reset_transport()
+    return {"success": True, "needsLogin": True}
 
 
 @full_router.get("/bootstrap")
@@ -1784,32 +1820,26 @@ def set_intent_status(
 def profile() -> dict[str, Any]:
     """Return the current user's profile.
 
-    Identity (name, bio, location, context) comes from the MCP `read_user_contexts`
-    self-read; avatar and socials come from the public `GET /users/:id`. Email,
-    timezone, and notification preferences are sourced from the now API-key-capable
-    `GET /auth/me` (email stays read-only — see `_MOCKED_PROFILE_FIELDS`).
+    Identity (name, intro, location), avatar, and socials come from the public
+    `GET /users/:id` — identity lives on the user row, there is no separate
+    context record to overlay. Email, timezone, and notification preferences
+    are sourced from the API-key-capable `GET /auth/me` (email stays read-only
+    — see `_MOCKED_PROFILE_FIELDS`).
     """
     me = _fetch_me()
     user_id = _text(me.get("id"))
     if not user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
 
-    contexts = _data(_call_tool("read_user_contexts")) or {}
     user = _fetch_user(user_id)
-
-    name = _text(user.get("name")) or _text(contexts.get("name") if isinstance(contexts, dict) else None)
-    intro = _text(user.get("intro")) or _text(contexts.get("bio") if isinstance(contexts, dict) else None)
-    location = _text(user.get("location")) or _text(contexts.get("location") if isinstance(contexts, dict) else None)
-    context_text = _text(contexts.get("context") if isinstance(contexts, dict) else None)
 
     profile_obj: dict[str, Any] = {
         "id": user_id,
-        "name": name,
-        "intro": intro,
-        "location": location,
+        "name": _text(user.get("name")),
+        "intro": _text(user.get("intro")),
+        "location": _text(user.get("location")),
         "avatar": _avatar_url(user.get("avatar")),
         "socials": _profile_socials(user),
-        "context": context_text,
         "email": _text(me.get("email")),
         "timezone": _text(me.get("timezone")),
         "notificationPreferences": _notification_preferences(me.get("notificationPreferences")),
@@ -1826,8 +1856,9 @@ def profile() -> dict[str, Any]:
 def public_profile(user_id: str) -> dict[str, Any]:
     """Return another user's public, read-only profile (web `/u/:id` equivalent).
 
-    Backed by the public `GET /users/:id` (avatar, socials, intro, location) plus the
-    user's `context` paragraph from MCP `read_user_contexts(userId)`.
+    Backed entirely by the public `GET /users/:id` (avatar, socials, name, intro,
+    location) — identity lives on the user row, there is no separate context
+    record to overlay.
     """
     user_id = _text(user_id)
     if not user_id:
@@ -1843,9 +1874,6 @@ def public_profile(user_id: str) -> dict[str, Any]:
     if isinstance(user, dict) and user.get("success") is False:
         return user
 
-    contexts = _data(_call_tool("read_user_contexts", {"userId": user_id})) or {}
-    context_text = _text(contexts.get("context") if isinstance(contexts, dict) else None)
-
     profile_obj: dict[str, Any] = {
         "id": user_id,
         "name": _text(user.get("name")),
@@ -1853,7 +1881,6 @@ def public_profile(user_id: str) -> dict[str, Any]:
         "location": _text(user.get("location")),
         "avatar": _avatar_url(user.get("avatar")),
         "socials": _profile_socials(user),
-        "context": context_text,
     }
     return {"success": True, "profile": profile_obj, "readOnly": True}
 
@@ -1923,15 +1950,12 @@ def upload_network_image(body: dict[str, Any] | None = Body(default=None)) -> di
 
 @full_router.post("/profile/intro")
 def generate_intro(_body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    """Generate an AI intro via the API-key-capable `POST /enrichment/sync`.
-
-    The enrichment graph persists the identity bio to `users.intro`; the sync
-    response surfaces it as a flat `intro` field which is echoed back to the client.
-    """
-    payload = tools._api_request("POST", "/enrichment/sync")
+    """Research public profile data via `POST /enrichment/enrich` and return intro."""
+    payload = tools._api_request("POST", "/enrichment/enrich")
     if payload.get("success") is False:
         return payload
-    intro = _text(payload.get("intro"))
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    intro = _text(profile.get("intro") or payload.get("intro"))
     return {"success": True, "intro": intro}
 
 
@@ -1964,9 +1988,9 @@ def onboarding_enrich(_body: dict[str, Any] | None = Body(default=None)) -> dict
 def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
     """Confirm the first-run profile review (Mac settings `enrich` path).
 
-    Persists the approved draft through MCP `confirm_user_context` (sets
-    `onboarding.profileConfirmedAt`) and writes socials/name/intro/location via
-    `PATCH /auth/profile/update`.
+    Writes name/intro/location/socials via `PATCH /auth/profile/update`, then
+    confirms the profile via `POST /auth/onboarding/confirm-profile` (sets
+    `onboarding.profileConfirmedAt`).
     """
     if not isinstance(body, dict):
         return {"success": False, "error": "Confirm body must be an object."}
@@ -1976,29 +2000,14 @@ def onboarding_confirm(body: dict[str, Any] | None = Body(default=None)) -> dict
     if not update:
         return {"success": False, "error": "Name, intro, location, or socials are required."}
 
-    draft = body.get("draft") if isinstance(body.get("draft"), dict) else _approved_draft_from_body(body)
-    identity = draft.get("identity") if isinstance(draft.get("identity"), dict) else {}
-    narrative = draft.get("narrative") if isinstance(draft.get("narrative"), dict) else {}
-    attributes = draft.get("attributes") if isinstance(draft.get("attributes"), dict) else {}
-    approved = {
-        "identity": {
-            "name": _text(identity.get("name")) or _text(body.get("name")),
-            "bio": _text(identity.get("bio")) or _text(body.get("intro")),
-            "location": _text(identity.get("location")) or _text(body.get("location")),
-        },
-        "narrative": {"context": _text(narrative.get("context")) or _text(body.get("context")) or _text(body.get("intro"))},
-        "attributes": {
-            "skills": [s for s in _list(attributes.get("skills")) if isinstance(s, str) and s.strip()],
-            "interests": [s for s in _list(attributes.get("interests")) if isinstance(s, str) and s.strip()],
-        },
-    }
-    confirm = _call_tool("confirm_user_context", {"draft": approved})
-    if confirm.get("success") is False:
-        return confirm
-
     payload = tools._api_request("PATCH", "/auth/profile/update", update)
     if payload.get("success") is False:
         return payload
+
+    confirm = tools._api_request("POST", "/auth/onboarding/confirm-profile")
+    if confirm.get("success") is False:
+        return confirm
+
     return {"success": True, "onboarding": _onboarding_gate(), "applied": update}
 
 
@@ -2058,7 +2067,7 @@ async def _watch_websocket_disconnect(websocket: WebSocket) -> None:
 
 
 async def _relay_sse_to_websocket(websocket: WebSocket, path: str) -> None:
-    """Relay connector-owned SSE frames to a dashboard WebSocket."""
+    """Relay transport-owned SSE frames to a dashboard WebSocket."""
     await websocket.accept()
     iterator = tools.get_transport().stream_sse(path)
     relay_task: asyncio.Task[None] | None = None
@@ -2183,6 +2192,12 @@ def _normalize_conversation(conversation: dict[str, Any], current_user_id: str) 
 @full_router.get("/conversations")
 def list_conversations() -> dict[str, Any]:
     """List the caller's conversations (participant-gated) as counterpart summaries."""
+    # Negotiation-graph rewrite (#1494): this used to also fire an off-thread
+    # negotiation_wake tick here (piggy-backing desktop's 15s poll as a cheap
+    # pickup heartbeat, since the REST bridge buffers SSE). Pickup is gone,
+    # and so is negotiation_wake.py itself (#1494 round-3, Option A) --
+    # external-agent negotiation dispatch is offline, so there is no
+    # server-side signal left to tick or wake on at all.
     current_user_id = _resolve_user_id()
     if not current_user_id:
         return {"success": False, "error": "Could not resolve the current user from the configured API key."}
@@ -2246,7 +2261,7 @@ def send_message(conversation_id: str, body: dict[str, Any] | None = Body(defaul
 
 
 def _conversation_stream():
-    """Relay connector-owned, bounded SSE polling to the dashboard tab."""
+    """Relay transport-owned, bounded SSE polling to the dashboard tab."""
     try:
         yield from tools.get_transport().stream_sse("/conversations/stream")
     except Exception as exc:  # noqa: BLE001 - surface a sanitized stream frame.
@@ -2273,7 +2288,7 @@ async def conversations_socket(websocket: WebSocket) -> None:
 
 
 def _notification_stream():
-    """Relay connector-owned notification SSE to Hermes clients."""
+    """Relay transport-owned notification SSE to Hermes clients."""
     try:
         yield from tools.get_transport().stream_sse("/notifications/stream")
     except Exception as exc:  # noqa: BLE001

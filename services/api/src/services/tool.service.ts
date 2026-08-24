@@ -5,22 +5,17 @@
 
 import { z } from 'zod';
 
+import { matchesReadyBestEffort } from '../lib/negotiation/negotiation-graph';
 import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
-import { deriveAllowedNetworkIds, IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, ContactServiceAdapter, IntegrationAdapter, PendingQuestionSummary, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { questionerEnqueueIfEnabled } from '../queues/questioner.queue';
-import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
-import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
-import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
 import { enrichUserProfile } from '../lib/parallel/parallel';
-import { QuestionerAdapter } from '../adapters/questioner.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import db from '../lib/drizzle/drizzle';
 
@@ -32,7 +27,6 @@ type ToolServiceDeps = ToolDeps & {
   opportunityOwnerApproval?: OpportunityOwnerApprovalAuthority;
 };
 
-const questionerAdapter = new QuestionerAdapter(db);
 
 /**
  * Manages direct HTTP invocation of chat tools.
@@ -44,16 +38,9 @@ export class ToolService {
   private cache = new RedisCacheAdapter();
   private compiledGraphs: ToolDeps['graphs'] | null = null;
   private cachedToolList: Array<{ name: string; description: string; schema: Record<string, unknown> }> | null = null;
-  private contactsEnabled: boolean;
 
-  constructor(
-    private contactService: ContactServiceAdapter,
-    private integrationImporter: ToolDeps['integrationImporter'],
-    private integration: IntegrationAdapter,
-    options: { graphs?: ToolDeps['graphs']; contactsEnabled?: boolean } = {},
-  ) {
+  constructor(options: { graphs?: ToolDeps['graphs'] } = {}) {
     this.compiledGraphs = options.graphs ?? null;
-    this.contactsEnabled = options.contactsEnabled ?? process.env.CONTACTS_ENABLED === 'true';
   }
 
   /**
@@ -75,65 +62,16 @@ export class ToolService {
       scraper: this.scraper,
       embedder: this.embedder,
       cache: this.cache,
-      integration: this.integration,
-      contactService: this.contactService,
-      contactsEnabled: this.contactsEnabled,
-      integrationImporter: this.integrationImporter,
       enricher: { enrichUserProfile },
-      getUserContextText: ensureGlobalUserContext,
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
-      stampNewbornOpportunities,
+      // Discovery run from a tool must wake the signal's agent exactly as the
+      // background queue does. Without it the tool-built opportunity graph's
+      // matches_ready edge ends at END: matches persist and nobody is woken.
+      matchesReady: matchesReadyBestEffort,
       // IND-593: direct authenticated-owner tool calls (REST tool controller /
       // CLI) traverse the owner-approval boundary via host attestation. Own
       // authority instance over the store shared with the MCP composition.
       opportunityOwnerApproval: getDirectOpportunityOwnerApprovalAuthority(),
-      findPendingQuestions: async (
-        userId: string,
-        filters?: {
-          sourceType?: string;
-          sourceId?: string;
-          purpose?: import('@indexnetwork/protocol').QuestionPurpose;
-          networkId?: string;
-          scopeType?: 'intent';
-          scopeId?: string;
-          modes?: Array<'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery'>;
-          limit?: number;
-        },
-      ) => {
-        const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
-          ? filters
-          : { ...filters, excludeModes: ['pool_discovery'] });
-        return rows.map((row): PendingQuestionSummary => ({
-          id: row.id,
-          title: row.payload.title,
-          prompt: row.payload.prompt,
-          options: row.payload.options,
-          multiSelect: row.payload.multiSelect,
-          mode: row.detection.mode,
-          ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
-          sourceType: row.detection.sourceType,
-          sourceId: row.detection.sourceId,
-          createdAt: row.createdAt,
-          ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-          actors: row.actors.map((actor) => ({
-            userId: actor.userId,
-            ...(actor.networkId ? { networkId: actor.networkId } : {}),
-          })),
-        }));
-      },
-      // P4.3/IND-404: conversational answers from the negotiator chat ride the
-      // exact pipeline the question cards use — atomic pending→answered flip in
-      // the adapter, then QuestionEvents.onAnswered mode dispatch.
-      answerPendingQuestion: async (
-        userId: string,
-        questionId: string,
-        answer: { selectedOptions: string[]; freeText?: string },
-      ) => questionerAdapter.answer(questionId, userId, {
-        selectedOptions: answer.selectedOptions,
-        ...(answer.freeText ? { freeText: answer.freeText } : {}),
-        answeredBy: userId,
-        answeredAt: new Date().toISOString(),
-      }),
       graphs,
     };
   }
@@ -196,8 +134,10 @@ export class ToolService {
 
     const toolDeps = this.buildToolDeps(database, userDb, systemDb, graphs);
 
-    // Build registry and look up tool
-    const registry = createToolRegistry(toolDeps);
+    // Build registry and look up tool. The resolved context carries the
+    // caller's focused scope, so tools that scope makes impossible are absent
+    // from the registry rather than refused after the model calls them.
+    const registry = createToolRegistry(toolDeps, { scope: context });
     const tool = registry.get(toolName);
     if (!tool) {
       const available = Array.from(registry.keys()).sort();
@@ -276,13 +216,13 @@ export class ToolService {
 
     logger.verbose('Compiling graphs (first call, will be cached)');
 
-    const intentGraph = new IntentGraphFactory(
+    const intents = new Intents({
       database,
-      this.embedder,
-      intentQueue,
-      questionerEnqueueIfEnabled(),
-    ).createGraph();
-    const profileGraph = new EnrichmentGraphFactory(database, this.scraper).createGraph();
+      embedder: this.embedder,
+      queue: intentQueue,
+    });
+    const intentGraph = intents.createGraph();
+    const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
     const hydeCache = new RedisCacheAdapter();
     const compiledHydeGraph = new HydeGraphFactory(
       database as unknown as HydeGraphDatabase,
@@ -292,40 +232,29 @@ export class ToolService {
       new HydeGenerator(),
     ).createGraph();
     // No-op dispatcher: ToolService is used for non-chat tool invocations.
-    // External agent yield is handled via the ProtocolDeps flow in tool.factory.ts and mcp.controller.ts.
+    // Only the opportunity graph below still needs one (hasExternalAgent,
+    // the unlimited-maxTurns rule) — the negotiation graph no longer takes a
+    // dispatcher at all (external-agent turn dispatch is offline, #1494
+    // round-3 Option A).
     const noOpDispatcher: AgentDispatcher = {
-      dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
       hasExternalAgent: async () => false,
     };
-    const negotiationGraph = new NegotiationGraphFactory(
-      conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
-      noOpDispatcher,
-      undefined,
-      // Stalled negotiations enqueue follow-up questions for the source user.
-      questionerEnqueueIfEnabled(),
-      // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
-      reflectEnqueueIfEnabled(),
-      // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
-      negotiatorMemoryRetrieve(),
-    ).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(
       database,
       this.embedder,
       compiledHydeGraph,
       undefined,
       undefined,
-      negotiationGraph,
+      matchesReadyBestEffort,
       noOpDispatcher,
       undefined,
-      stampNewbornOpportunities,
     ).createGraph();
-    const indexGraph = new NetworkGraphFactory(database).createGraph();
-    const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
-    const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
-    const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
+    const networks = new Networks({ database, indexer: intents });
+    const indexGraph = networks.createGraph();
+    const networkMembershipGraph = networks.createMembershipGraph();
+    const intentIndexGraph = networks.createAssignmentGraph();
 
     this.compiledGraphs = {
-      profile: profileGraph,
       intent: intentGraph,
       index: indexGraph,
       networkMembership: networkMembershipGraph,

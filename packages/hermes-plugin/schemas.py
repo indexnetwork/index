@@ -48,13 +48,7 @@ INDEX_READ_INTENTS = {
 }
 
 FORWARDED_MCP_TOOLS = (
-    "read_user_contexts",
-    "preview_user_context",
-    "confirm_user_context",
-    "create_user_context",
-    "update_user_context",
-    "get_enrichment_run",
-    "cancel_enrichment_run",
+    "research_profile",
     "create_intent",
     "update_intent",
     "create_intent_index",
@@ -75,7 +69,6 @@ FORWARDED_MCP_TOOLS = (
     "read_premises",
     "update_premise",
     "retract_premise",
-    "read_pending_questions",
     "read_activity_summary",
     "read_docs",
 )
@@ -103,7 +96,7 @@ INDEX_AGENT_ME = {
     "name": "index_agent_me",
     "description": (
         "Return the authenticated Index Network personal agent bound to the "
-        "secure connector connection. Use this before autonomous negotiation when "
+        "configured API key. Use this before autonomous negotiation when "
         "you need the agent id or want to verify the connection is agent-bound."
     ),
     "parameters": {
@@ -138,105 +131,18 @@ INDEX_OPEN_APP = {
     },
 }
 
-INDEX_PICKUP_NEGOTIATION = {
-    "name": "index_pickup_negotiation",
-    "description": (
-        "Poll Index Network for one pending negotiation turn assigned to this "
-        "personal agent and claim it if present. Use this in autonomous/scheduled "
-        "negotiator runs before deciding whether to respond. If pending is false, "
-        "there is no work and the run should stay silent."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "agentId": {
-                "type": "string",
-                "description": (
-                    "Optional personal agent UUID. Omit to resolve it from "
-                    "/agents/me using the configured agent-bound API key."
-                ),
-            },
-        },
-        "required": [],
-    },
-}
-
 INDEX_RESPOND_NEGOTIATION = {
     "name": "index_respond_negotiation",
     "description": (
-        "Consume this scheduled pass by submitting one closed response for the "
-        "negotiation returned by index_pickup_negotiation. The server selects "
-        "the protocol action and shared prose from fixed templates."
+        "OFFLINE -- always refuses. The negotiation-graph rewrite deleted the REST "
+        "respond route this bridge submitted turns to, and external agents stay "
+        "offline until they are rebuilt on the new auth model. Call it only to be "
+        "told that; there is no turn to submit and no substitute tool."
     ),
     "parameters": {
         "type": "object",
         "additionalProperties": False,
-        "properties": {
-            "agentId": {
-                "type": "string",
-                "description": (
-                    "Optional personal agent UUID. Omit to resolve it from "
-                    "/agents/me using the configured agent-bound API key."
-                ),
-            },
-            "negotiationId": {
-                "type": "string",
-                "description": "Required negotiation UUID returned by index_pickup_negotiation.",
-            },
-            "action": {
-                "type": "string",
-                "enum": ["accept", "decline", "request_time", "continue"],
-                "description": (
-                    "One closed directive copied from the pickup response's allowedActions. "
-                    "No model-authored shared message is accepted."
-                ),
-            },
-            "roleAlignment": {
-                "type": "string",
-                "enum": ["peers", "owner_leads", "counterparty_leads"],
-                "description": "Closed role alignment used to derive protocol roles.",
-            },
-        },
-        "required": ["negotiationId", "action", "roleAlignment"],
-    },
-}
-
-INDEX_CONSULT_OWNER = {
-    "name": "index_consult_owner",
-    "description": (
-        "Pause one eligible claimed negotiation turn and ask the owning user a "
-        "privacy-minimal question. Use only when pickup returns canConsultOwner=true. "
-        "A successful consultation ends this autonomous pass; do not also respond."
-    ),
-    "parameters": {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "agentId": {
-                "type": "string",
-                "description": (
-                    "Optional personal agent UUID. Omit to resolve it from "
-                    "/agents/me using the configured agent-bound API key."
-                ),
-            },
-            "negotiationId": {
-                "type": "string",
-                "description": "Required negotiation UUID returned by index_pickup_negotiation.",
-            },
-            "reason": {
-                "type": "string",
-                "enum": [
-                    "consequential_disclosure_permission",
-                    "repeated_non_convergence",
-                    "insufficient_commitment_authority",
-                    "unresolved_owner_constraint",
-                ],
-                "description": (
-                    "Required closed server consultation category. The server "
-                    "must independently derive the same category for this claim."
-                ),
-            },
-        },
-        "required": ["negotiationId", "reason"],
+        "properties": {},
+        "required": [],
     },
 }

@@ -244,26 +244,32 @@ describe('ConversationDatabaseAdapter', () => {
       createdIds.push(conv.id);
 
       const staleSubmitted = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user',
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       const staleWorking = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user',
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       await adapter.updateTaskState(staleWorking.id, 'working');
       const freshSubmitted = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user',
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       const completed = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user',
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       await adapter.updateTaskState(completed.id, 'completed');
       const nonNegotiation = await adapter.createTask(conv.id, { type: 'chat' });
+      // Pre-rewrite row: no round stamp. The watchdog must never sweep it —
+      // sweeping SSE-publishes a pause into a conversation this lifecycle
+      // never opened.
+      const legacySubmitted = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-legacy', sourceUserId: 'watchdog-user',
+      });
 
       const oldSubmitted = new Date(Date.now() - 11 * 60 * 1000);
       const oldWorking = new Date(Date.now() - 13 * 60 * 60 * 1000);
       await db.update(schema.tasks)
         .set({ createdAt: oldSubmitted, updatedAt: oldSubmitted })
-        .where(inArray(schema.tasks.id, [staleSubmitted.id]));
+        .where(inArray(schema.tasks.id, [staleSubmitted.id, legacySubmitted.id]));
       await db.update(schema.tasks)
         .set({ createdAt: oldWorking, updatedAt: oldWorking })
         .where(inArray(schema.tasks.id, [staleWorking.id]));
@@ -286,6 +292,7 @@ describe('ConversationDatabaseAdapter', () => {
       expect(staleIds).not.toContain(freshSubmitted.id);
       expect(staleIds).not.toContain(completed.id);
       expect(staleIds).not.toContain(nonNegotiation.id);
+      expect(staleIds).not.toContain(legacySubmitted.id);
       expect(stale.every((task) => task.metadata && (task.metadata as Record<string, unknown>).type === 'negotiation')).toBe(true);
     }, 10000);
   });
@@ -412,6 +419,96 @@ describe('ConversationDatabaseAdapter', () => {
         outcome: { hasOpportunity: true, reason: null },
       });
     }, 20000);
+
+    it('lets an older pending approval represent the pair over a newer screened-out pairing', async () => {
+      // Two opportunities between the same pair: outreach → accept (pending
+      // the owner's approval), then a later pairing the gate screened out.
+      // The represented session is the live one, for the owner who may see
+      // both AND for the counterparty who may not see the gate at all.
+      const suffix = `${Date.now()}-${crypto.randomUUID()}`;
+      const ownerId = `rollup-owner-${suffix}`;
+      const counterpartId = `rollup-counterpart-${suffix}`;
+      const pendingOpportunityId = `rollup-pending-${suffix}`;
+      const screenedOpportunityId = `rollup-screened-${suffix}`;
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${ownerId}`, participantType: 'agent' },
+        { participantId: `agent:${counterpartId}`, participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+
+      await db.insert(schema.opportunities).values([
+        { id: pendingOpportunityId, status: 'pending' as const },
+        { id: screenedOpportunityId, status: 'rejected' as const },
+      ].map(({ id, status }) => ({
+        id,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'rollup-network', userId: ownerId, role: 'peer' },
+          { networkId: 'rollup-network', userId: counterpartId, role: 'peer' },
+        ],
+        interpretation: { category: 'test', reasoning: 'Rollup test.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status,
+      })));
+      createdOpportunityIds.push(pendingOpportunityId, screenedOpportunityId);
+
+      const pendingTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        initiatorUserId: ownerId,
+        opportunityId: pendingOpportunityId,
+        maxTurns: 6,
+      });
+      await adapter.createMessage({
+        conversationId: conversation.id,
+        senderId: `agent:${counterpartId}`,
+        role: 'agent',
+        taskId: pendingTask.id,
+        parts: [{ kind: 'data', data: { action: 'accept' } }],
+      });
+      await adapter.updateTaskState(pendingTask.id, 'completed');
+      await adapter.createArtifact({
+        taskId: pendingTask.id,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: true, turnCount: 2 } }],
+      });
+
+      const screenedTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        initiatorUserId: ownerId,
+        opportunityId: screenedOpportunityId,
+        maxTurns: 6,
+      });
+      await adapter.updateTaskState(screenedTask.id, 'completed');
+      await adapter.createArtifact({
+        taskId: screenedTask.id,
+        name: 'negotiation-outcome',
+        parts: [{ kind: 'data', data: { hasOpportunity: false, reason: 'screened_out', turnCount: 0, reasoning: 'Not enough mutual value.' } }],
+      });
+      // Make the screened-out pairing unambiguously the newer task.
+      await db.update(schema.tasks).set({ createdAt: new Date(Date.now() + 60_000) }).where(eq(schema.tasks.id, screenedTask.id));
+
+      const ownerSummary = (await adapter.getConversationsForUser(`agent:${ownerId}`, ownerId, true))
+        .find((candidate) => candidate.id === conversation.id);
+      expect(ownerSummary?.negotiation).toMatchObject({
+        taskId: pendingTask.id,
+        opportunityId: pendingOpportunityId,
+        opportunityStatus: 'pending',
+        outcome: { hasOpportunity: true, reason: null },
+      });
+      // The conversation's last message is still that session's accept, so
+      // the web can caption the row from it.
+      expect(ownerSummary?.lastMessage?.taskId).toBe(pendingTask.id);
+
+      const counterpartSummary = (await adapter.getConversationsForUser(`agent:${counterpartId}`, counterpartId, true))
+        .find((candidate) => candidate.id === conversation.id);
+      expect(counterpartSummary?.negotiation?.taskId).toBe(pendingTask.id);
+      expect(JSON.stringify(counterpartSummary ?? {})).not.toContain('Not enough mutual value');
+    }, 30000);
   });
 
   describe('getLatestNegotiationTaskForConversation', () => {
@@ -515,6 +612,294 @@ describe('ConversationDatabaseAdapter', () => {
       expect(mutualIds).not.toContain(screenedTask.id);
       expect(mutualIds).toContain(rejectedTask.id);
       expect(mutualIds).toContain(inProgressTask.id);
+    }, 30000);
+  });
+
+  describe('getConversationsForUser — opportunity session projection', () => {
+    it('projects every viewer-visible opportunity with its newest task without exposing the counterpart intent', async () => {
+      const run = crypto.randomUUID();
+      const viewerId = `outline-viewer-${run}`;
+      const counterpartId = `outline-counterpart-${run}`;
+      const viewerIntentId = `outline-intent-${run}`;
+      const counterpartIntentId = `outline-private-${run}`;
+      const firstOpportunityId = `outline-opportunity-a-${run}`;
+      const secondOpportunityId = `outline-opportunity-b-${run}`;
+      createdUserIds.push(viewerId, counterpartId);
+      createdIntentIds.push(viewerIntentId, counterpartIntentId);
+      createdOpportunityIds.push(firstOpportunityId, secondOpportunityId);
+
+      await db.insert(schema.users).values([
+        { id: viewerId, email: `${viewerId}@test.com`, name: 'Outline Viewer' },
+        { id: counterpartId, email: `${counterpartId}@test.com`, name: 'Outline Counterpart' },
+      ]);
+      await db.insert(schema.intents).values([
+        { id: viewerIntentId, userId: viewerId, payload: 'Need a design partner', summary: 'Design partner' },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Private counterpart intent', summary: 'Private signal' },
+      ]);
+      await db.insert(schema.opportunities).values([firstOpportunityId, secondOpportunityId].map((id, index) => ({
+        id,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [{ networkId: 'outline-network', userId: viewerId, role: 'peer' }, { networkId: 'outline-network', userId: counterpartId, role: 'peer' }],
+        interpretation: { category: 'test', reasoning: 'Projection test', confidence: 0.8 },
+        context: {}, confidence: '0.8', status: index === 0 ? 'negotiating' as const : 'accepted' as const,
+      })));
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${viewerId}`, participantType: 'agent' },
+        { participantId: `agent:${counterpartId}`, participantType: 'agent' },
+      ]);
+      createdIds.push(conversation.id);
+      for (const opportunityId of [firstOpportunityId, secondOpportunityId]) {
+        await adapter.appendMatchProvenance(conversation.id, {
+          opportunityId,
+          intents: [{ userId: viewerId, intentId: viewerIntentId }, { userId: counterpartId, intentId: counterpartIntentId }],
+          recordedAt: new Date().toISOString(),
+        });
+      }
+      const olderTask = await adapter.createTask(conversation.id, { type: 'negotiation', sourceUserId: viewerId, candidateUserId: counterpartId, opportunityId: firstOpportunityId });
+      const newestTask = await adapter.createTask(conversation.id, { type: 'negotiation', sourceUserId: viewerId, candidateUserId: counterpartId, opportunityId: firstOpportunityId });
+      const secondTask = await adapter.createTask(conversation.id, { type: 'negotiation', sourceUserId: viewerId, candidateUserId: counterpartId, opportunityId: secondOpportunityId });
+      await db.update(schema.tasks).set({ createdAt: new Date(Date.now() - 1_000) }).where(eq(schema.tasks.id, olderTask.id));
+
+      const summary = (await adapter.getConversationsForUser(`agent:${viewerId}`, viewerId, true))
+        .find((candidate) => candidate.id === conversation.id);
+      expect(summary?.negotiationOpportunities).toEqual(expect.arrayContaining([
+        expect.objectContaining({ intentId: viewerIntentId, opportunityId: firstOpportunityId, title: 'Design partner', taskId: newestTask.id, opportunityStatus: 'negotiating' }),
+        expect.objectContaining({ intentId: viewerIntentId, opportunityId: secondOpportunityId, title: 'Design partner', taskId: secondTask.id, opportunityStatus: 'accepted' }),
+      ]));
+      expect(summary?.negotiationOpportunities?.some((item) => item.taskId === olderTask.id)).toBeFalse();
+      expect(JSON.stringify(summary?.negotiationOpportunities)).not.toContain(counterpartIntentId);
+    }, 30000);
+  });
+
+  describe('getNegotiationTasksForUser — archived filter (#1494 round-2 cap-cut item)', () => {
+    it('excludes archived legacy negotiations from list_negotiations', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const userId = `archived-filter-user-${run}`;
+      const counterpart = `archived-filter-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      const liveTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        seats: { 'intent-live': { userId, round: 1 } },
+      });
+
+      // A pre-rewrite row (no seat binding) is inert: the graph reads it back as
+      // null, so listing it would offer a negotiation that errors when opened.
+      const legacyTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+      });
+
+      const archivedConversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(archivedConversation.id);
+      const archivedTask = await adapter.createTask(archivedConversation.id, {
+        type: 'negotiation',
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        archivedAt: new Date().toISOString(),
+      });
+
+      const tasks = await adapter.getNegotiationTasksForUser(userId);
+      const ids = tasks.map((t) => t.id);
+      expect(ids).toContain(liveTask.id);
+      expect(ids).not.toContain(archivedTask.id);
+      expect(ids).not.toContain(legacyTask.id);
+    });
+  });
+
+  describe('getNegotiationTaskForOpportunity — archived filter (#1494 round-3 finding 4)', () => {
+    it('does not resolve an archived legacy task as the opportunity\'s existing negotiation', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const opportunityId = `archived-opp-filter-${run}`;
+      const userId = `archived-opp-filter-user-${run}`;
+      const counterpart = `archived-opp-filter-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+      const archivedTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId,
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        archivedAt: new Date().toISOString(),
+      });
+
+      const found = await adapter.getNegotiationTaskForOpportunity(opportunityId);
+      expect(found?.id).not.toBe(archivedTask.id);
+      expect(found).toBeNull();
+    });
+  });
+
+  describe('pre-rewrite negotiations are inert to the new lifecycle (#1494 round-4)', () => {
+    it('a legacy row without a seat binding is invisible to the round count and to every graph lookup', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const intentId = `legacy-inert-intent-${run}`;
+      const userId = `legacy-inert-user-${run}`;
+      const counterpart = `legacy-inert-counterpart-${run}`;
+      const legacyOpportunityId = `legacy-inert-opportunity-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      const current = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId: `legacy-inert-current-${run}`,
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        seats: { [intentId]: { userId, round: 3 } },
+      });
+      await adapter.updateTaskState(current.id, 'working');
+
+      // Pre-rewrite rows: no seat binding, and one of them parked in a state
+      // the three-state lifecycle no longer has.
+      const legacyWorking = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId: `legacy-inert-working-${run}`,
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        intentId,
+      });
+      await adapter.updateTaskState(legacyWorking.id, 'working');
+      const legacyOffContract = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId: legacyOpportunityId,
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        intentId,
+      });
+      await adapter.updateTaskState(legacyOffContract.id, 'input_required');
+
+      // Only the round-3 row counts; a legacy row can neither inflate the
+      // count nor sit outside it while still being resumable.
+      expect(await adapter.countActiveNegotiationsForRound(intentId, 3)).toBe(1);
+
+      expect((await adapter.getNegotiationTask(current.id))?.id).toBe(current.id);
+      expect(await adapter.getNegotiationTask(legacyWorking.id)).toBeNull();
+      expect(await adapter.getNegotiationTask(legacyOffContract.id)).toBeNull();
+      expect(await adapter.getNegotiationTaskForOpportunity(legacyOpportunityId)).toBeNull();
+    });
+  });
+
+  describe('updateNegotiationTaskState / bindNegotiationSeat — no lost updates (#1494 round-3 cap-cut a)', () => {
+    it('two concurrent writers touching different metadata keys both land', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const userId = `concurrent-meta-user-${run}`;
+      const counterpart = `concurrent-meta-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        seats: { 'intent-a': { userId, round: 1 } },
+      });
+
+      // The old select-then-spread-then-update shape had a lost-update race
+      // here: whichever call's UPDATE landed second would overwrite the
+      // whole metadata blob with its own stale read, discarding the other's
+      // key. jsonb_set merges one key server-side, so both survive
+      // regardless of interleaving.
+      await Promise.all([
+        adapter.bindNegotiationSeat(task.id, 'intent-a', { userId, round: 7 }),
+        adapter.updateNegotiationTaskState(task.id, 'paused', { reason: 'counterparty_silent' }),
+      ]);
+
+      const reread = await adapter.getNegotiationTask(task.id);
+      expect(reread?.metadata.seats['intent-a']).toEqual({ userId, round: 7 });
+      expect(reread?.metadata.pause).toMatchObject({ reason: 'counterparty_silent' });
+      expect(reread?.state).toBe('paused');
+    });
+  });
+
+  describe('getConversationsForUser — pause projection (#1494 round-2 finding 10)', () => {
+    it('projects pause.reason to every viewer, and payload only to the seat that paused', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const pauser = `pause-pauser-${run}`;
+      const other = `pause-other-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${pauser}`, participantType: 'agent' as const },
+        { participantId: `agent:${other}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: pauser,
+        candidateUserId: other,
+        initiatorUserId: pauser,
+        pause: {
+          reason: 'needs_principal',
+          payload: { question: 'What equity split are you open to?' },
+          pausedBy: pauser,
+        },
+      });
+      await adapter.updateTaskState(task.id, 'paused');
+
+      const pauserSummary = (await adapter.getConversationsForUser(`agent:${pauser}`, pauser, true))
+        .find((c) => c.id === conversation.id);
+      expect(pauserSummary?.negotiation?.pause).toEqual({
+        reason: 'needs_principal',
+        payload: { question: 'What equity split are you open to?' },
+      });
+
+      const otherSummary = (await adapter.getConversationsForUser(`agent:${other}`, other, true))
+        .find((c) => c.id === conversation.id);
+      expect(otherSummary?.negotiation?.pause).toEqual({ reason: 'needs_principal' });
+      expect(JSON.stringify(otherSummary?.negotiation?.pause)).not.toContain('equity split');
+    }, 30000);
+
+    it('never projects a stale metadata.pause once the task is no longer paused (#1494 round-3 finding 5)', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const pauser = `stale-pause-pauser-${run}`;
+      const other = `stale-pause-other-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${pauser}`, participantType: 'agent' as const },
+        { participantId: `agent:${other}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      // The task WAS paused (metadata.pause still set, as a caller that
+      // forgot to clear it on resume would leave), but state has moved on —
+      // the projection must not read a stale answered question as live.
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: pauser,
+        candidateUserId: other,
+        initiatorUserId: pauser,
+        pause: {
+          reason: 'needs_principal',
+          payload: { question: 'What equity split are you open to?' },
+          pausedBy: pauser,
+        },
+      });
+      await adapter.updateTaskState(task.id, 'working');
+
+      const pauserSummary = (await adapter.getConversationsForUser(`agent:${pauser}`, pauser, true))
+        .find((c) => c.id === conversation.id);
+      expect(pauserSummary?.negotiation?.pause).toBeNull();
     }, 30000);
   });
 

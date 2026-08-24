@@ -86,9 +86,10 @@ export function classifySpecFiles(root: string, liveModelSpecs: ReadonlySet<stri
   liveFiles: string[];
 } {
   const allFiles = findSpecFiles(root).sort();
+  const relativePath = (file: string) => relative(root, file).replace(/^internal\//, "");
   return {
-    providerFreeFiles: allFiles.filter((file) => !liveModelSpecs.has(relative(root, file))),
-    liveFiles: allFiles.filter((file) => liveModelSpecs.has(relative(root, file))),
+    providerFreeFiles: allFiles.filter((file) => !liveModelSpecs.has(relativePath(file))),
+    liveFiles: allFiles.filter((file) => liveModelSpecs.has(relativePath(file))),
   };
 }
 

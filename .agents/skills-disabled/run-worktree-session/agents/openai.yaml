@@ -1,4 +1,0 @@
-interface:
-  display_name: "Run Worktree Session"
-  short_description: "Index project workflow: Run Worktree Session"
-  default_prompt: "Use $run-worktree-session to follow the repository-specific Run Worktree Session workflow."

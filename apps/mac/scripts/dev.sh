@@ -2,6 +2,10 @@
 # dev.sh — watch sources, rebuild, and relaunch dist/Index.app on every change.
 cd "$(dirname "$0")/.." || exit 1
 
+# The hot-reload loop is a development workflow: default to the development
+# build (web inspector + login-keychain owner credential fallback).
+export INDEX_DEVELOPMENT_BUILD="${INDEX_DEVELOPMENT_BUILD:-1}"
+
 snapshot() {
   stat -f '%m %N' \
     scripts/assemble.py scripts/build.sh \

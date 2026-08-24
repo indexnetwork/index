@@ -32,6 +32,6 @@ async function init(): Promise<LimiterStorage> {
   return s;
 }
 
-export { CLASS_CONFIG, resolveClassConfig, isLimiterDisabled } from './config';
+export { CLASS_CONFIG, resolveClassConfig } from './config';
 export type { LimiterClass } from './config';
 export type { LimiterStorage, HitResult } from './storage';

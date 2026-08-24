@@ -1,18 +1,14 @@
 import { z } from 'zod';
-import { HermesNegotiationResponseSchema, NegotiationConsultationReasonSchema } from '@indexnetwork/protocol';
 
-import { AuthGuard, authorizeNegotiationRespondPrincipal, OwnerControlGuard, SessionOnlyGuard, requireNegotiationCredentialPrincipal, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, OwnerControlGuard, SessionOnlyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
-import { captureAppException } from '../lib/sentry';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { AgentTestMessageService } from '../services/agent-test-message.service';
 import { agentService } from '../services/agent.service';
-import { negotiationPollingService, NotFoundError, ConflictError, UnauthorizedError, SeatViolationError } from '../services/negotiation-polling.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
-import { parseFiniteLimit, pickupNegotiationAtControllerBoundary, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
-import { readHermesRunHeaders } from '../lib/agent/hermes-negotiation-run';
-import { isDedicatedHermesNegotiationAudience } from '../lib/agent/hermes-credential';
+import { parseFiniteLimit, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
+import { RuntimeDomainError } from '../lib/agent/runtime-errors';
 
 const agentTestMessageService = new AgentTestMessageService();
 
@@ -66,24 +62,6 @@ const confirmOpportunityDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
 });
 
-// Accepts the union of v1 + v2 action vocabularies; the polling service
-// enforces the per-task version + seat subset (wrong-seat action → 400).
-const respondNegotiationSchema = z.object({
-  action: z.enum(['propose', 'accept', 'reject', 'counter', 'question', 'outreach', 'withdraw', 'decline']),
-  message: z.string().nullable().optional(),
-  assessment: z.object({
-    reasoning: z.string(),
-    suggestedRoles: z.object({
-      ownUser: z.enum(['agent', 'patient', 'peer']),
-      otherUser: z.enum(['agent', 'patient', 'peer']),
-    }),
-  }),
-});
-
-const consultNegotiationSchema = z.object({
-  reason: NegotiationConsultationReasonSchema,
-}).strict();
-
 function jsonError(error: string, status: number) {
   return Response.json({ error }, { status });
 }
@@ -101,10 +79,7 @@ function parseErrorMessage(err: unknown): string {
 }
 
 function errorStatus(err: unknown, fallback = 400): number {
-  if (err instanceof SeatViolationError) return 400;
-  if (err instanceof UnauthorizedError) return 403;
-  if (err instanceof NotFoundError) return 404;
-  if (err instanceof ConflictError) return 409;
+  if (err instanceof RuntimeDomainError) return err.status;
   const message = parseErrorMessage(err);
   if (message === 'Agent not found' || message === 'Transport not found' || message === 'Permission not found' || message === 'Token not found') {
     return 404;
@@ -115,45 +90,6 @@ function errorStatus(err: unknown, fallback = 400): number {
   }
 
   return fallback;
-}
-
-type NegotiationControllerOperation = 'pickup' | 'respond' | 'consult';
-
-function negotiationErrorResponse(
-  err: unknown,
-  context: {
-    agentId: string;
-    negotiationId?: string;
-    operation: NegotiationControllerOperation;
-    stage: 'authorization' | 'mutation';
-  },
-): Response {
-  if (err instanceof SeatViolationError) return jsonError(err.message, 400);
-  if (err instanceof UnauthorizedError) return jsonError(err.message, 403);
-  if (err instanceof NotFoundError) return jsonError(err.message, 404);
-  if (err instanceof ConflictError) return jsonError(err.message, 409);
-
-  const error = err instanceof Error ? err.message : String(err);
-  const directCode = err && typeof err === 'object' && 'code' in err
-    ? (err as { code?: unknown }).code
-    : undefined;
-  logger.error(`Negotiation ${context.operation} failed`, {
-    agentId: context.agentId,
-    ...(context.negotiationId ? { negotiationId: context.negotiationId } : {}),
-    stage: context.stage,
-    error,
-    ...(typeof directCode === 'string' ? { code: directCode } : {}),
-  });
-  captureAppException(err, {
-    subsystem: 'protocol',
-    operation: `agent.negotiation.${context.operation}`,
-    tags: { stage: context.stage },
-    context: {
-      agentId: context.agentId,
-      ...(context.negotiationId ? { negotiationId: context.negotiationId } : {}),
-    },
-  });
-  return jsonError('Internal server error', 500);
 }
 
 async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T | Response> {
@@ -213,10 +149,8 @@ async function parseOptionalBody<T>(req: Request, schema: z.ZodSchema<T>, emptyV
 export class AgentController {
   constructor(
     private readonly agents: typeof agentService = agentService,
-    private readonly negotiations: typeof negotiationPollingService = negotiationPollingService,
     private readonly testMessages: AgentTestMessageService = agentTestMessageService,
     private readonly deliveries: typeof opportunityDeliveryService = opportunityDeliveryService,
-    private readonly resolveAgentPrincipal: (req: Request) => Promise<string | null> = resolveApiKeyAgentId,
   ) {}
   @Get('')
   @UseGuards(RateLimit('read'), AuthGuard)
@@ -275,7 +209,7 @@ export class AgentController {
   }
 
   @Patch('/:id')
-  @UseGuards(RateLimit('write'), SessionOnlyGuard)
+  @UseGuards(RateLimit('write'), OwnerControlGuard)
   async update(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
@@ -457,145 +391,30 @@ export class AgentController {
     }
   }
 
-  @Post('/:id/negotiations/pickup')
-  @UseGuards(AuthGuard)
-  async pickupNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    try {
-      // Pickup linearizes exact runtime authority, task outcome, and heartbeat
-      // in the polling adapter's one owner-locked transaction. The hermetic
-      // controller seam has no independent heartbeat writer.
-      const outcome = await pickupNegotiationAtControllerBoundary({
-        request: req,
-        agentId,
-        ownerId: user.id,
-        resolveAgentPrincipal: this.resolveAgentPrincipal,
-        negotiations: this.negotiations,
-      });
-      if (outcome.kind === 'forbidden') {
-        throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
-      }
-      if (outcome.kind === 'empty') {
-        return new Response(null, { status: 204 });
-      }
-      return Response.json(outcome.value);
-    } catch (err) {
-      return negotiationErrorResponse(err, {
-        agentId,
-        operation: 'pickup',
-        stage: 'mutation',
-      });
-    }
-  }
-
-  @Post('/:id/negotiations/:negotiationId/respond')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async respondNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    const negotiationId = params?.negotiationId;
-    if (!agentId || !negotiationId) {
-      return jsonError('Agent ID and negotiation ID are required', 400);
-    }
-
-    try {
-      if (!await authorizeNegotiationRespondPrincipal(req, agentId, this.resolveAgentPrincipal)) {
-        throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
-      }
-    } catch (err) {
-      return negotiationErrorResponse(err, {
-        agentId,
-        negotiationId,
-        operation: 'respond',
-        stage: 'authorization',
-      });
-    }
-
-    try {
-      const principal = requireNegotiationCredentialPrincipal(req);
-      if (isDedicatedHermesNegotiationAudience(principal.audience)) {
-        const runHeaders = readHermesRunHeaders(req);
-        if (!runHeaders?.capability) {
-          throw new UnauthorizedError('Hermes negotiation mutation requires its run-bound capability');
-        }
-        const body = await parseBody(req, HermesNegotiationResponseSchema);
-        if (body instanceof Response) return body;
-        return Response.json(await this.negotiations.respondHermes(
-          agentId,
-          user.id,
-          negotiationId,
-          body,
-          principal,
-          { runId: runHeaders.runId, capability: runHeaders.capability, outcome: 'responded' },
-        ));
-      }
-      const body = await parseBody(req, respondNegotiationSchema);
-      if (body instanceof Response) return body;
-      const result = await this.negotiations.respond(agentId, user.id, negotiationId, body, principal);
-      return Response.json(result);
-    } catch (err) {
-      return negotiationErrorResponse(err, {
-        agentId,
-        negotiationId,
-        operation: 'respond',
-        stage: 'mutation',
-      });
-    }
-  }
-
-  @Post('/:id/negotiations/:negotiationId/consult')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async consultNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    const negotiationId = params?.negotiationId;
-    if (!agentId || !negotiationId) {
-      return jsonError('Agent ID and negotiation ID are required', 400);
-    }
-
-    try {
-      if (!await authorizeNegotiationRespondPrincipal(req, agentId, this.resolveAgentPrincipal)) {
-        throw new UnauthorizedError('Negotiation polling requires the exact agent-bound API key');
-      }
-    } catch (err) {
-      return negotiationErrorResponse(err, {
-        agentId,
-        negotiationId,
-        operation: 'consult',
-        stage: 'authorization',
-      });
-    }
-
-    const body = await parseBody(req, consultNegotiationSchema);
-    if (body instanceof Response) return body;
-    try {
-      const principal = requireNegotiationCredentialPrincipal(req);
-      const dedicatedHermes = isDedicatedHermesNegotiationAudience(principal.audience);
-      const runHeaders = dedicatedHermes ? readHermesRunHeaders(req) : null;
-      if (dedicatedHermes && !runHeaders?.capability) {
-        throw new UnauthorizedError('Hermes negotiation mutation requires its run-bound capability');
-      }
-      return Response.json(await this.negotiations.consult(
-        agentId,
-        user.id,
-        negotiationId,
-        body,
-        principal,
-        runHeaders?.capability
-          ? { runId: runHeaders.runId, capability: runHeaders.capability, outcome: 'consulted' }
-          : undefined,
-      ));
-    } catch (err) {
-      return negotiationErrorResponse(err, {
-        agentId,
-        negotiationId,
-        operation: 'consult',
-        stage: 'mutation',
-      });
-    }
-  }
+  // Negotiation pickup (claim a turn to work on) is retired whole-cloth by the
+  // negotiation-graph rewrite (#1494, docs/plans/2026-08-23-personal-agent-
+  // and-negotiation-graphs.md): a negotiation stays `working` until it pauses
+  // or resolves — it is never claimed into a distinct state, so there is
+  // nothing left to pick up.
+  //
+  // The REST respond route (`POST /:id/negotiations/:negotiationId/respond`)
+  // is retired too, along with the rest of external-agent dispatch (round-3
+  // review, findings 2+8; owner-decided Option A — see the PR body): external
+  // agents are offline in this PR, with no meaningful request/response shape
+  // left for a standalone poller to submit a turn against. The MCP
+  // `respond_to_negotiation` tool is the one remaining way to submit a turn;
+  // it is untouched by this deletion. `NegotiationPollingService` and its
+  // authorization helper are deleted along with this route — this was their
+  // only caller.
+  //
+  // Owner consultation (pausing an exact external claim to route a
+  // privacy-minimal question through the Questioner/expiry/continuation
+  // lifecycle) was already retired whole-cloth by the negotiation-graph
+  // rewrite: a negotiator that cannot continue without the principal pauses
+  // `needs_principal` instead.
+  //
+  // Both routes are deleted rather than kept as dead stubs, since there is no
+  // longer a meaningful request/response shape for either.
 
   @Post('/:id/test-messages')
   @UseGuards(RateLimit('write'), AuthGuard)

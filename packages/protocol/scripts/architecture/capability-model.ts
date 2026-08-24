@@ -1,107 +1,104 @@
 export type Capability =
-  | "signals"
-  | "participant-context"
-  | "communities"
+  | "intents"
+  | "contexts"
+  | "networks"
   | "opportunities"
-  | "negotiation"
-  | "questions"
-  | "participant-agents"
-  | "contacts"
-  | "integrations"
-  | "interaction-composition"
-  | "ambient-background"
-  | "neutral-platform"
-  | "public-compatibility";
+  | "negotiations"
+  | "agents"
+  | "discovery"
+  | "interaction-composition";
 
-/** Single-segment top-level directories with a fixed capability assignment. */
+/** Internal implementation directories with a fixed capability assignment. */
 export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
-  // Canonical capability directories and their legacy compatibility paths.
-  signals: "signals",
-  intent: "signals",
-  "participant-context": "participant-context",
-  enrichment: "participant-context",
-  premise: "participant-context",
-  context: "participant-context",
-  communities: "communities",
-  network: "communities",
-  opportunity: "opportunities",
-  negotiation: "negotiation",
-  questioner: "questions",
-  "participant-agents": "participant-agents",
-  chat: "participant-agents",
-  agent: "participant-agents",
-  contacts: "contacts",
-  contact: "contacts",
-  integrations: "integrations",
-  integration: "integrations",
+  // Every top-level directory maps to exactly one capability.
+  intents: "intents",
+  contexts: "contexts",
+  enrichment: "contexts",
+  premises: "contexts",
+  networks: "networks",
+  opportunities: "opportunities",
+  negotiations: "negotiations",
+  agents: "agents",
+  chat: "agents",
+  discovery: "discovery",
   maintenance: "interaction-composition",
-  platform: "neutral-platform",
-  public: "public-compatibility",
 };
+
+/**
+ * The capability directory that owns each capability's barrel.
+ *
+ * A capability can span several top-level directories (contexts
+ * covers enrichment/ and premises/ as well as contexts/), but exactly one of them holds
+ * the `index.ts` that other capabilities are allowed to import.
+ */
+export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string | undefined>> = {
+  intents: "intents",
+  contexts: undefined,
+  networks: "networks",
+  opportunities: undefined,
+  negotiations: undefined,
+  agents: "agents",
+  discovery: undefined,
+  // The composition root is the one all-capability point; it has no barrel of
+  // its own and is reached through the package entry point instead.
+  "interaction-composition": undefined,
+};
+
+/**
+ * The barrel filename for capabilities that do not use `index.ts`.
+ *
+ * Flattened capabilities use named module barrels rather than generic
+ * `index.ts` files, so their entry points describe the capability they expose.
+ */
+export const CAPABILITY_BARREL_FILENAMES: Readonly<Partial<Record<Capability, string>>> = {
+  intents: "../capabilities/intents.ts",
+  networks: "../capabilities/networks.ts",
+  agents: "agent.module.ts",
+  discovery: "../capabilities/discovery.ts",
+};
+
+/** The barrel filename a capability's public surface must live in. */
+export function barrelFilenameForCapability(capability: Capability): string {
+  return CAPABILITY_BARREL_FILENAMES[capability] ?? "index.ts";
+}
+
+/** The source-relative barrel path for a capability, if it has one. */
+export function barrelPathForCapability(capability: Capability): string | undefined {
+  if (["intents", "networks", "agents", "discovery", "contexts"].includes(capability)) return `capabilities/${capability}.ts`;
+  const directory = CAPABILITY_BARREL_DIRECTORIES[capability];
+  return directory ? `internal/${directory}/${barrelFilenameForCapability(capability)}` : undefined;
+}
 
 /** Every permitted direction is deliberately named and reviewed here. */
 export const ALLOWED_CAPABILITY_DIRECTIONS: Readonly<
   Record<Capability, readonly Capability[]>
 > = {
-  signals: ["participant-agents", "questions"],
-  "participant-context": ["participant-agents", "questions"],
-  communities: ["participant-agents", "signals"],
-  opportunities: ["participant-agents", "signals", "negotiation", "questions"],
-  negotiation: ["opportunities", "questions"],
-  questions: ["negotiation"],
-  "participant-agents": ["negotiation"],
-  contacts: ["opportunities"],
-  integrations: [],
+  intents: ["agents"],
+  contexts: ["agents", "discovery"],
+  networks: ["agents", "intents"],
+  opportunities: ["agents", "intents", "negotiations", "discovery"],
+  negotiations: ["opportunities"],
+  agents: ["negotiations"],
+  // discovery needs only the debug-metadata type it stamps on graph state.
+  discovery: ["agents"],
   "interaction-composition": [
-    "signals",
-    "participant-context",
-    "communities",
+    "intents",
+    "contexts",
+    "networks",
     "opportunities",
-    "negotiation",
-    "questions",
-    "participant-agents",
-    "contacts",
-    "integrations",
-  ],
-  "ambient-background": [
-    "signals",
-    "participant-context",
-    "communities",
-    "opportunities",
-    "negotiation",
-    "questions",
-    "participant-agents",
-    "contacts",
-    "integrations",
-  ],
-  "neutral-platform": [],
-  "public-compatibility": [
-    "signals",
-    "participant-context",
-    "communities",
-    "opportunities",
-    "negotiation",
-    "questions",
-    "participant-agents",
-    "contacts",
-    "integrations",
-    "interaction-composition",
+    "negotiations",
+    "agents",
+    "discovery",
   ],
 };
 
 /** Capabilities allowed to import another capability's implementation directly. */
 export const DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES: ReadonlySet<Capability> =
-  new Set<Capability>(["interaction-composition", "ambient-background"]);
+  new Set<Capability>(["interaction-composition"]);
 
 export function capabilityForSourcePath(pathFromSource: string): Capability | undefined {
-  const normalized = pathFromSource.replace(/\\/g, "/");
-  const [topLevel, second] = normalized.split("/");
-  if (topLevel === "runtime") {
-    if (second === "foreground") return "interaction-composition";
-    if (second === "background") return "ambient-background";
-    return undefined;
-  }
-  if (topLevel === "capabilities") return facadeCapabilityForSourcePath(normalized);
+  const normalized = implementationPath(pathFromSource);
+  const [topLevel] = normalized.split("/");
   if (topLevel === "shared" && /^shared\/agent\/tool\.(?:factory|registry|helpers)\.ts$/.test(normalized)) {
     return "interaction-composition";
   }
@@ -111,20 +108,36 @@ export function capabilityForSourcePath(pathFromSource: string): Capability | un
 export function implementationCapabilityForSourcePath(
   pathFromSource: string,
 ): Capability | undefined {
-  const normalized = pathFromSource.replace(/\\/g, "/");
-  const [topLevel, second] = normalized.split("/");
-  if (topLevel === "runtime") {
-    if (second === "foreground") return "interaction-composition";
-    if (second === "background") return "ambient-background";
-    return undefined;
-  }
+  const normalized = implementationPath(pathFromSource);
+  const [topLevel] = normalized.split("/");
   return CAPABILITY_DIRECTORIES[topLevel];
 }
 
-export function facadeCapabilityForSourcePath(
+/**
+ * The capability a path is the public barrel *of*, if any.
+ *
+ * This is the single seam a cross-capability import may target. It replaces the
+ * capabilities/*.facade.ts layer: the barrel now lives inside the capability it
+ * describes rather than in a separate directory of re-export files.
+ */
+export function barrelCapabilityForSourcePath(
   pathFromSource: string,
 ): Capability | undefined {
+  if (pathFromSource === "capabilities/intents.ts") return "intents";
+  if (pathFromSource === "capabilities/networks.ts") return "networks";
+  if (pathFromSource === "capabilities/agents.ts") return "agents";
+  if (pathFromSource === "capabilities/discovery.ts") return "discovery";
+  const normalized = implementationPath(pathFromSource);
+  const match = /^([a-z-]+)\/([a-z0-9.-]+\.ts)$/.exec(normalized);
+  if (!match) return undefined;
+  const [, directory, filename] = match;
+  const capability = CAPABILITY_DIRECTORIES[directory];
+  if (!capability) return undefined;
+  if (CAPABILITY_BARREL_DIRECTORIES[capability] !== directory) return undefined;
+  return barrelFilenameForCapability(capability) === filename ? capability : undefined;
+}
+
+function implementationPath(pathFromSource: string): string {
   const normalized = pathFromSource.replace(/\\/g, "/");
-  const match = /^capabilities\/([a-z-]+)(?:\.[a-z-]+)?\.facade\.ts$/.exec(normalized);
-  return match?.[1] as Capability | undefined;
+  return normalized.startsWith("internal/") ? normalized.slice("internal/".length) : normalized;
 }

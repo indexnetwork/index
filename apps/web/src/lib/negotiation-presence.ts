@@ -3,10 +3,10 @@ import type { ConversationSummary } from '@/services/conversation';
 
 /**
  * In-flight statuses: the agents are still talking (the negotiation has not
- * resolved and is not waiting on a human accept). 'answer' is in-flight too —
- * the negotiation continues once the viewer replies.
+ * resolved and is not waiting on a human accept). A request for the viewer's
+ * input is in-flight too — the negotiation continues once they reply.
  */
-const IN_FLIGHT_STATUSES: ReadonlySet<NegotiationInboxStatus> = new Set(['answer', 'live', 'waiting']);
+const IN_FLIGHT_STATUSES: ReadonlySet<NegotiationInboxStatus> = new Set(['needs_input', 'negotiating']);
 
 export interface LiveNegotiation extends NegotiationInboxItem {
   /** Opportunity this negotiation is about (null for pre-opportunity dialogues). */

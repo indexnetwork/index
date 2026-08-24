@@ -11,7 +11,7 @@ const logger = log.controller.from('intent');
 
 const ConfirmSchema = z.object({
   proposalId: z.string().uuid('proposalId must be a UUID'),
-  description: z.string().trim().min(1, 'description is required'),
+  description: z.string().trim().min(1, 'description is required').max(65_536),
   networkId: z.string().uuid('networkId must be a UUID').optional(),
 }).strict();
 const RejectSchema = z.object({
@@ -139,6 +139,8 @@ export class IntentController {
           ? 404
           : err.code === 'proposal_expired'
             ? 410
+            : err.code === 'proposal_edit_rejected'
+              ? 422
             : 409;
         return Response.json({
           error: err.code,
@@ -253,6 +255,13 @@ export class IntentController {
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
         archivedAt: r.archivedAt?.toISOString() ?? null,
+        discoveryProgress: r.discoveryProgress && {
+          ...r.discoveryProgress,
+          queuedAt: r.discoveryProgress.queuedAt?.toISOString() ?? null,
+          startedAt: r.discoveryProgress.startedAt?.toISOString() ?? null,
+          completedAt: r.discoveryProgress.completedAt?.toISOString() ?? null,
+          updatedAt: r.discoveryProgress.updatedAt?.toISOString() ?? null,
+        },
       },
     });
   }

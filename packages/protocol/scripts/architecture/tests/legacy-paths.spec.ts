@@ -6,7 +6,6 @@ import * as ts from "typescript";
 const REPOSITORY_ROOT = resolve(import.meta.dir, "../../../../..");
 
 const LEGACY_PATHS = [
-  "packages/protocol/src/capabilities/contacts.tools.port.ts",
   "packages/protocol/src/capabilities/integrations.tools.port.ts",
   "packages/protocol/src/capabilities/negotiation.tools.port.ts",
   "packages/protocol/src/capabilities/opportunities.tools.port.ts",
@@ -44,7 +43,6 @@ const LEGACY_PATHS = [
   "packages/protocol/src/questioner/questioner.tools.ts",
   "packages/protocol/src/questioner/questioner.types.ts",
   "packages/protocol/src/agent/agent.tools.ts",
-  "packages/protocol/src/contact/contact.inviter.ts",
   "packages/protocol/src/contact/contact.tools.ts",
   "packages/protocol/src/integration/integration.tools.ts",
   "packages/protocol/src/opportunity/delivery-card.cache.ts",
@@ -195,6 +193,6 @@ test("finds static template and import-equals legacy specifiers", () => {
 });
 
 test("repository source does not reference deprecated protocol paths", async () => {
-  expect(LEGACY_PATHS).toHaveLength(89);
+  expect(LEGACY_PATHS).toHaveLength(87);
   expect(await legacyPathViolations()).toEqual([]);
 });

@@ -12,8 +12,6 @@
  */
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
-process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = 'true';
-process.env.NEGOTIATOR_MEMORY_INJECT = 'true';
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { eq } from "drizzle-orm/sql";

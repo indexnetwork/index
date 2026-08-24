@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { AuthGuard } from '../../guards/auth.guard';
-import { FastSignalIntakeEnabledGuard } from '../../guards/fast-intake.guard';
 import { RouteRegistry } from '../../lib/router/router.decorators';
 import { IntentIntakeController } from '../intent-intake.controller';
 
@@ -40,29 +38,7 @@ const request = (body: unknown) => new Request('http://localhost/intents/intake'
   body: JSON.stringify(body),
 });
 
-const original = process.env.FAST_SIGNAL_INTAKE;
-beforeEach(() => { process.env.FAST_SIGNAL_INTAKE = 'true'; });
-afterEach(() => {
-  if (original === undefined) delete process.env.FAST_SIGNAL_INTAKE;
-  else process.env.FAST_SIGNAL_INTAKE = original;
-});
-
-describe('IntentIntakeController flag gating', () => {
-  it('404s every route when the flag is off', async () => {
-    process.env.FAST_SIGNAL_INTAKE = 'false';
-    const controller = new IntentIntakeController({ service: makeService() as never });
-
-    const responses = await Promise.all([
-      controller.start(request({}), user),
-      controller.question(request({ rounds: [rounds[0]] }), user),
-      controller.prepare(request({ rounds }), user),
-      controller.proposal(request({ runId: '11111111-1111-4111-8111-111111111111', rounds }), user),
-      controller.revise(request({ runId: '11111111-1111-4111-8111-111111111111', feedback: 'x', rounds }), user),
-    ]);
-
-    for (const response of responses) expect(response.status).toBe(404);
-  });
-
+describe('IntentIntakeController route guards', () => {
   it('rate-limits every synthesizing route far tighter than ordinary writes', () => {
     // Each of these can launch an LLM synthesis plus a full intent-graph run and
     // a durable proposal write: /prepare answers 202 and then does it in the
@@ -82,16 +58,6 @@ describe('IntentIntakeController flag gating', () => {
     }
   });
 
-  it('registers FastSignalIntakeEnabledGuard before AuthGuard on every route, so an unauthenticated request to a flag-off deployment 404s before AuthGuard ever runs', () => {
-    for (const method of ['start', 'question', 'prepare', 'proposal', 'revise'] as const) {
-      const guards = RouteRegistry.getGuards(IntentIntakeController, method);
-      const flagIndex = guards.indexOf(FastSignalIntakeEnabledGuard);
-      const authIndex = guards.indexOf(AuthGuard);
-      expect(flagIndex).toBeGreaterThanOrEqual(0);
-      expect(authIndex).toBeGreaterThanOrEqual(0);
-      expect(flagIndex).toBeLessThan(authIndex);
-    }
-  });
 });
 
 describe('IntentIntakeController routes', () => {

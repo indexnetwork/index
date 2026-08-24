@@ -876,6 +876,160 @@
       "when": 1786542875613,
       "tag": "0125_add_eval_matrix_quality_attestation",
       "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1786626887810,
+      "tag": "0126_nosy_tana_nile",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1786626887811,
+      "tag": "0127_dismiss_retired_discovery_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1786713287811,
+      "tag": "0128_retire_orchestrator_persona",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1786799687811,
+      "tag": "0129_delete_ghost_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1786799687812,
+      "tag": "0130_drop_is_ghost",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1786886087811,
+      "tag": "0131_remove_agent_reporter",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1786886087812,
+      "tag": "0132_dismiss_retired_uptake_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1786886087813,
+      "tag": "0133_dismiss_retired_pool_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1786886087814,
+      "tag": "0134_dismiss_retired_recovery_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1786886087815,
+      "tag": "0135_dismiss_retired_intent_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1786886087816,
+      "tag": "0136_dismiss_retired_chat_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1786886087817,
+      "tag": "0137_add_intent_discovery_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1786886087818,
+      "tag": "0138_add_intent_agent_dossier_and_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1786886087819,
+      "tag": "0139_retire_personal_networks",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1786886087820,
+      "tag": "0140_finalize_personal_network_retirement",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1786886087821,
+      "tag": "0141_normalize_negotiation_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1786886087822,
+      "tag": "0144_negotiation_round_and_brief",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1786886087823,
+      "tag": "0145_collapse_chat_personas",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1786886087824,
+      "tag": "0146_negotiation_round_size",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1786886087825,
+      "tag": "0147_negotiation_kickoff_started_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1786886087826,
+      "tag": "0148_per_seat_negotiation_briefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1786886087827,
+      "tag": "0149_per_seat_negotiation_seats",
+      "breakpoints": true
     }
   ]
 }

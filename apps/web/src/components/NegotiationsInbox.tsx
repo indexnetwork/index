@@ -6,41 +6,12 @@ import { ContentContainer } from '@/components/layout';
 import UserAvatar from '@/components/UserAvatar';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
-import { deriveNegotiationInbox, flattenNegotiationInbox, type NegotiationInboxItem, type NegotiationInboxStatus } from '@/lib/negotiation-inbox';
-import { getNegotiatorDmSessionId } from '@/lib/negotiator-dm';
-
-const CHIP_CLASS: Record<NegotiationInboxStatus, string> = {
-  answer: 'border-[#041729] bg-[#041729] text-white',
-  agreed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  live: 'border-amber-200 bg-amber-50 text-amber-700',
-  waiting: 'border-gray-200 bg-gray-100 text-gray-600',
-  accepted: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  started: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  rejected: 'border-red-200 bg-red-50 text-red-700',
-  stalled: 'border-amber-200 bg-amber-50 text-amber-700',
-  // IND-610: a decision by the viewer's own agent, not a counterparty verdict.
-  // Deliberately neutral rather than red — nothing was rejected, and nobody
-  // else was ever involved.
-  not_sent: 'border-gray-200 bg-gray-100 text-gray-600',
-};
-
-function statusLabel(item: NegotiationInboxItem): string {
-  switch (item.status) {
-    case 'answer': return 'Answer your agent';
-    case 'agreed': return 'Agents agreed';
-    case 'live': return `● Live · turn ${item.turnCount} of ${item.maxTurns}`;
-    case 'waiting': return 'Waiting on their agent';
-    case 'accepted': return 'Accepted by you';
-    case 'started': return 'Chat started';
-    case 'rejected': return 'No opportunity';
-    case 'stalled': return 'Stalled';
-    case 'not_sent': return 'Not sent';
-  }
-}
+import { deriveNegotiationInbox, flattenNegotiationInbox, type NegotiationInboxItem } from '@/lib/negotiation-inbox';
+import { chipClass, statusLabel } from '@/lib/negotiation-chips';
 
 function StatusChip({ item }: { item: NegotiationInboxItem }) {
   return (
-    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold font-ibm-plex-mono ${CHIP_CLASS[item.status]}`}>
+    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold font-ibm-plex-mono ${chipClass(item.status)}`}>
       {statusLabel(item)}
     </span>
   );
@@ -114,12 +85,12 @@ function NegotiationRow({ item, flash, rowRef, onOpen }: {
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <StatusChip item={item} />
-        {item.status === 'agreed' && (
+        {item.status === 'awaiting_review' && (
           <span className="rounded-sm bg-[#041729] px-3 py-1.5 text-xs font-semibold text-white">
             Review
           </span>
         )}
-        {(item.status === 'live' || item.status === 'waiting') && (
+        {item.status === 'negotiating' && (
           <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
         )}
       </div>
@@ -152,7 +123,7 @@ function InboxGroup({ label, items, flashes, onOpen }: {
 
 export default function NegotiationsInbox() {
   const navigate = useNavigate();
-  const { user, features } = useAuthContext();
+  const { user } = useAuthContext();
   const { negotiations, refreshNegotiations, isConnected } = useConversation();
   const [refreshing, setRefreshing] = useState(negotiations.length === 0);
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
@@ -186,22 +157,16 @@ export default function NegotiationsInbox() {
   const flatItems = useMemo(() => flattenNegotiationInbox(groups), [groups]);
   const totalCount = groups.yourMove.length + groups.inProgress.length + groups.resolved.length;
 
-  // "Answer your agent" rows deep-link to the negotiator DM — the transcript
-  // is read-only and can't take an answer. /questions is the fallback when
-  // the negotiator surface is unavailable (IND-558).
+  // "Answer your agent" rows go to /questions — the transcript is read-only
+  // and can't take an answer. Other rows open their dedicated negotiation
+  // transcript, never the human-to-human Chat surface.
   const openNegotiation = useCallback((item: NegotiationInboxItem) => {
-    if (item.status !== 'answer') {
-      navigate(`/chat/${item.conversationId}`);
+    if (item.status !== 'needs_input') {
+      navigate(`/negotiations/${item.conversationId}`);
       return;
     }
-    if (!features?.negotiatorChat) {
-      navigate('/questions');
-      return;
-    }
-    void getNegotiatorDmSessionId().then((sessionId) => {
-      navigate(sessionId ? `/d/${sessionId}` : '/questions');
-    });
-  }, [navigate, features]);
+    navigate('/questions');
+  }, [navigate]);
 
   // Diff each refetch against the previous rows and flash what changed
   // (design §3 R2): posture moves (group/status) in steel, content updates

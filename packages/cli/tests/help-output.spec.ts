@@ -23,15 +23,14 @@ describe("main help output", () => {
 
     expect(help).not.toContain("--target <uid>");
     expect(help).not.toContain("--introduce <uid>");
+    expect(help).not.toContain("--token");
 
     for (const expected of [
-      "index login --token <token>",
+      "index login",
       "index logout",
-      'index conversation "message"',
-      "index conversation --session <id>",
+      "index conversation list",
       "index sync --json",
       "--app-url <url>",
-      "--session <id>",
       "--archived",
       "--status <status>",
       "--since <date>",

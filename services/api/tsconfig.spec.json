@@ -1,37 +1,18 @@
+// `bun run build` compiles tsconfig.json, which excludes `src/**/*.spec.ts`, so
+// no spec is type-checked by it. That matters where an assertion *is* a type
+// assertion: `discovery-trigger.builders.spec.ts` proves with three
+// `@ts-expect-error` directives that trigger callers must pass a concrete
+// `networkId`, and a directive nobody compiles proves nothing.
+//
+// Scope note: this include list is deliberately narrow. It is not the whole
+// `src/queues/tests` directory — widening it would adopt pre-existing type
+// errors in unrelated specs, which is its own follow-up.
 {
-  // Type-checks the discovery CLI specs and focused queue contract spec, which
-  // the build tsconfig excludes (`src/**/*.spec.ts`) and CI's `bun run build`
-  // therefore never compiles.
-  //
-  // That exclusion is normally harmless — until a spec's assertion *is* a
-  // type-level assertion. `discovery.neon.spec.ts` carries the only guard
-  // proving `resetAbBranch` refuses an unattested manifest at compile time: a
-  // `@ts-expect-error` on a forged manifest. Widen that parameter back to
-  // `AbManifest` and the directive becomes unused, which is an error TypeScript
-  // reports — but only in a compilation that includes the file. Without this
-  // config, nothing in CI includes it, and the brand's whole protection could be
-  // removed with every check green.
-  //
-  // Scope note: this is deliberately `discovery.*.spec.ts` and not the whole
-  // `src/cli/tests` directory. Four unrelated specs
-  // (`backfill-intent-verification-analysis.spec.ts`,
-  // `discovery-env-matrix.spec.ts`, `discovery-retrieval-smoke.spec.ts`,
-  // `discovery-env-matrix-base-indexer.isolated.ts`) carry ten pre-existing type
-  // errors; adopting them here would mean fixing unrelated tests in this change.
-  // Widening the `include` below is the whole of that follow-up.
-  //
-  // `noEmit`, and `rootDir` is relaxed to the repo root because
-  // `discovery.flags.spec.ts` reads
-  // `packages/protocol/eval/ops/ops.allowlist.ts` by path (that module is
-  // deliberately dependency-free so any consumer can import it) and it is
-  // outside `src/`.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": true,
-    "rootDir": "../.."
+    "noEmit": true
   },
   "include": [
-    "src/cli/tests/discovery.*.spec.ts",
     "src/queues/tests/discovery-trigger.builders.spec.ts"
   ],
   "exclude": [

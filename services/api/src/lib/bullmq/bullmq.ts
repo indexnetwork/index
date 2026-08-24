@@ -65,7 +65,12 @@ const DEFAULT_JOB_OPTS: JobsOptions = {
   },
 };
 
-function useHermeticRedis(): boolean {
+/**
+ * True when queue infrastructure must stay in-memory: tests without
+ * RUN_REDIS_INTEGRATION_TESTS=1. Exported so queue collaborators that reach
+ * for Redis outside BullMQ (e.g. SSE publishes) can apply the same guard.
+ */
+export function useHermeticRedis(): boolean {
   return process.env.NODE_ENV === 'test'
     && process.env.RUN_REDIS_INTEGRATION_TESTS !== '1';
 }

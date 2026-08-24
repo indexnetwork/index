@@ -25,7 +25,7 @@ async function setupNetworkAndOwner() {
   const ownerEmail = `owner-${randomUUID()}@example.com`;
   const [owner] = await db
     .insert(users)
-    .values({ email: ownerEmail, name: 'Owner', emailVerified: true, isGhost: false })
+    .values({ email: ownerEmail, name: 'Owner', emailVerified: true })
     .returning({ id: users.id });
   const [network] = await db
     .insert(networks)
@@ -90,7 +90,7 @@ describe('networkInvitationService.resendInvite', () => {
     const memberEmail = `bare-${randomUUID()}@example.com`;
     const [member] = await db
       .insert(users)
-      .values({ email: memberEmail, name: 'Bare', emailVerified: true, isGhost: false })
+      .values({ email: memberEmail, name: 'Bare', emailVerified: true })
       .returning({ id: users.id });
     await db
       .insert(networkMembers)

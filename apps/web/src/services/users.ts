@@ -109,20 +109,6 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
   },
 
   /**
-   * Manually add a contact by email. Creates a ghost user if not registered.
-   */
-  addContact: async (email: string, name?: string): Promise<void> => {
-    await api.post('/users/contacts', { email, name });
-  },
-
-  /**
-   * Remove a contact from the authenticated user's personal network.
-   */
-  removeContact: async (contactUserId: string): Promise<void> => {
-    await api.delete(`/users/contacts/${contactUserId}`);
-  },
-
-  /**
    * Get negotiation dashboard data: LLM-generated summary + structured stats. Self-only.
    */
   getNegotiationInsights: async (userId: string): Promise<NegotiationInsights | null> => {
@@ -145,14 +131,6 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
     const qs = params.toString();
     const response = await api.get<{ negotiations: NegotiationSummary[] }>(`/users/${userId}/negotiations${qs ? `?${qs}` : ''}`);
     return response.negotiations ?? [];
-  },
-
-  /**
-   * Trigger a discovery negotiation with the target user.
-   */
-  triggerDiscoveryNegotiation: async (userId: string): Promise<NegotiationSummary> => {
-    const response = await api.post<{ negotiation: NegotiationSummary }>(`/users/${userId}/negotiations`);
-    return response.negotiation;
   },
 });
 

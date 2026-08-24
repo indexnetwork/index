@@ -59,12 +59,6 @@ describe("parseArgs", () => {
 
   // ── Global flags ───────────────────────────────────────────────────
 
-  it("parses --json flag on contact list", () => {
-    const result = parseArgs(["contact", "list", "--json"]);
-    expect(result.command).toBe("contact");
-    expect(result.json).toBe(true);
-  });
-
   it("parses --json flag on intent list", () => {
     const result = parseArgs(["intent", "list", "--json"]);
     expect(result.command).toBe("intent");
@@ -81,57 +75,6 @@ describe("parseArgs", () => {
     const result = parseArgs(["login", "--app-url", "http://app.example.com"]);
     expect(result.command).toBe("login");
     expect(result.appUrl).toBe("http://app.example.com");
-  });
-
-  it("parses --token flag", () => {
-    const result = parseArgs(["login", "--token", "my-token"]);
-    expect(result.command).toBe("login");
-    expect(result.token).toBe("my-token");
-  });
-
-  it("parses -t shorthand for --token", () => {
-    const result = parseArgs(["login", "-t", "my-token"]);
-    expect(result.command).toBe("login");
-    expect(result.token).toBe("my-token");
-  });
-
-  // ── Contact commands ───────────────────────────────────────────────
-
-  describe("contact", () => {
-    it("parses contact list", () => {
-      const result = parseArgs(["contact", "list"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("list");
-    });
-
-    it("parses contact add with email", () => {
-      const result = parseArgs(["contact", "add", "foo@bar.com"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("add");
-      expect(result.positionals).toEqual(["foo@bar.com"]);
-    });
-
-    it("parses contact add with --name", () => {
-      const result = parseArgs(["contact", "add", "foo@bar.com", "--name", "John"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("add");
-      expect(result.positionals).toEqual(["foo@bar.com"]);
-      expect(result.name).toBe("John");
-    });
-
-    it("parses contact remove", () => {
-      const result = parseArgs(["contact", "remove", "foo@bar.com"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("remove");
-      expect(result.positionals).toEqual(["foo@bar.com"]);
-    });
-
-    it("parses contact import --gmail", () => {
-      const result = parseArgs(["contact", "import", "--gmail"]);
-      expect(result.command).toBe("contact");
-      expect(result.subcommand).toBe("import");
-      expect(result.gmail).toBe(true);
-    });
   });
 
   // ── Intent commands ────────────────────────────────────────────────
@@ -373,36 +316,28 @@ describe("parseArgs", () => {
   // ── Conversation commands ──────────────────────────────────────────
 
   describe("conversation", () => {
-    it("parses conversation with no args as REPL mode", () => {
+    it("parses conversation with no args as an unset subcommand", () => {
       const result = parseArgs(["conversation"]);
       expect(result.command).toBe("conversation");
-      expect(result.message).toBeUndefined();
       expect(result.subcommand).toBeUndefined();
     });
 
-    it("parses conversation with message as one-shot mode", () => {
+    it("leaves the subcommand unset for retired agent-chat forms", () => {
       const result = parseArgs(["conversation", "hello", "world"]);
       expect(result.command).toBe("conversation");
-      expect(result.message).toBe("hello world");
+      expect(result.subcommand).toBeUndefined();
     });
 
-    it("parses conversation sessions", () => {
+    it("no longer recognises the retired 'sessions' subcommand", () => {
       const result = parseArgs(["conversation", "sessions"]);
       expect(result.command).toBe("conversation");
-      expect(result.subcommand).toBe("sessions");
+      expect(result.subcommand).toBeUndefined();
     });
 
-    it("parses conversation --session <id>", () => {
-      const result = parseArgs(["conversation", "--session", "abc-123"]);
+    it("consumes the retired --session flag without leaking its value", () => {
+      const result = parseArgs(["conversation", "--session", "abc-123", "list"]);
       expect(result.command).toBe("conversation");
-      expect(result.sessionId).toBe("abc-123");
-    });
-
-    it("parses conversation --session <id> with message", () => {
-      const result = parseArgs(["conversation", "--session", "abc-123", "hello"]);
-      expect(result.command).toBe("conversation");
-      expect(result.sessionId).toBe("abc-123");
-      expect(result.message).toBe("hello");
+      expect(result.subcommand).toBe("list");
     });
 
     it("parses conversation --api-url", () => {

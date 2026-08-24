@@ -129,6 +129,10 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('opportunities.radar', (client) => client.opportunities.radar({ noCache: true }), { path: '/opportunities/radar?noCache=true' });
     await expectCall('opportunities.radar scoped intent', (client) => client.opportunities.radar({ scopeType: 'intent', scopeId: SELECTED_INTENT_ID, noCache: true }), { path: `/opportunities/radar?scopeType=intent&scopeId=${SELECTED_INTENT_ID}&noCache=true` });
     await expectCall('opportunities.radarForIntent', (client) => client.opportunities.radarForIntent(SELECTED_INTENT_ID, { noCache: true }), { path: `/opportunities/radar?noCache=true&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    // What the radar column actually calls on every poll, both phases of it.
+    const RADAR_STATUSES = 'latent,pending,negotiating,stalled,accepted,expired';
+    await expectCall('opportunities.radarForIntent lifecycle', (client) => client.opportunities.radarForIntent(SELECTED_INTENT_ID, { statuses: RADAR_STATUSES }), { path: `/opportunities/radar?statuses=${encodeURIComponent(RADAR_STATUSES)}&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
+    await expectCall('opportunities.radarForIntent skeleton', (client) => client.opportunities.radarForIntent(SELECTED_INTENT_ID, { statuses: RADAR_STATUSES, presentation: 'skeleton' }), { path: `/opportunities/radar?statuses=${encodeURIComponent(RADAR_STATUSES)}&presentation=skeleton&scopeType=intent&scopeId=${SELECTED_INTENT_ID}` });
     await expectCall('opportunities.chatContext', (client) => client.opportunities.chatContext('user/1'), { path: '/opportunities/chat-context?peerUserId=user%2F1' });
     await expectCall('opportunities.get', (client) => client.opportunities.get('opp/1'), { path: '/opportunities/opp%2F1' });
     await expectCall('opportunities.inviteMessage', (client) => client.opportunities.inviteMessage('opp/1'), { path: '/opportunities/opp%2F1/invite-message' });
@@ -138,19 +142,19 @@ describe('mac Index API client endpoint contract', () => {
     await expectCall('opportunities.startChatForIntent', (client) => client.opportunities.startChatForIntent('opp/1', SELECTED_INTENT_ID), { path: '/opportunities/opp%2F1/start-chat', method: 'POST', body: { scopeType: 'intent', scopeId: SELECTED_INTENT_ID } });
   });
 
-  it('exposes only the three exact REST owner tool wrappers', async () => {
+  it('exposes enrichment prefill and onboarding REST helpers', async () => {
     const operations = [];
     const client = createIndexApiClient({ nativeRequest: async (operation) => {
       operations.push(operation); return { status: 200, body: {}, headers: {} };
     } });
-    await client.tools.readUserContexts();
-    await client.tools.previewUserContext({ bioOrDescription: 'builder' });
-    await client.tools.confirmUserContext({ identity: {}, narrative: {}, attributes: {} });
-    expect(Object.keys(client.tools)).toEqual(['readUserContexts', 'previewUserContext', 'confirmUserContext']);
-    expect(operations).toEqual([
-      { kind: 'http', method: 'POST', path: '/tools/read_user_contexts', body: { query: {} } },
-      { kind: 'http', method: 'POST', path: '/tools/preview_user_context', body: { query: { bioOrDescription: 'builder' } } },
-      { kind: 'http', method: 'POST', path: '/tools/confirm_user_context', body: { query: { draft: { identity: {}, narrative: {}, attributes: {} } } } },
+    await client.enrichment.trigger({ name: 'Ada' });
+    await client.auth.confirmOnboardingProfile();
+    await client.auth.completeOnboarding({ intentId: 'intent-1' });
+    expect(Object.keys(client.enrichment)).toEqual(['trigger']);
+    expect(operations.map((o) => o.path)).toEqual([
+      '/enrichment/enrich',
+      '/auth/onboarding/confirm-profile',
+      '/auth/onboarding/complete',
     ]);
   });
 

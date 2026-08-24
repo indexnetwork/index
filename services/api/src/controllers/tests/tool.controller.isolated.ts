@@ -4,9 +4,6 @@ import { ToolService } from "../../services/tool.service";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
 import type { ToolDeps } from '@indexnetwork/protocol';
 
-import { ComposioIntegrationAdapter } from "../../adapters/integration.adapter";
-import { contactService } from "../../services/contact.service";
-import { IntegrationService } from "../../services/integration.service";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 const paidIntegrationsEnabled = process.env.RUN_PAID_INTEGRATION_TESTS === '1';
@@ -61,8 +58,6 @@ describe("ToolController Integration", () => {
     });
     testUserBId = userB.id;
 
-    const integrationAdapter = new ComposioIntegrationAdapter();
-    const integrationService = new IntegrationService(integrationAdapter, contactService);
     const noOpGraph = { invoke: async () => ({}) };
     const graphs = {
       profile: noOpGraph,
@@ -73,27 +68,12 @@ describe("ToolController Integration", () => {
       opportunity: noOpGraph,
       premise: noOpGraph,
     } as unknown as ToolDeps['graphs'];
-    const toolService = new ToolService(contactService, integrationService, integrationAdapter, {
-      graphs,
-      contactsEnabled: true,
-    });
+    const toolService = new ToolService({ graphs });
     controller = new ToolController(toolService);
     console.log(`Created test users: A=${testUserId}, B=${testUserBId}`);
   }, 60_000);
 
   afterAll(async () => {
-    // Remove contacts and memberships created during tests before deleting users
-    if (testUserId) {
-      try {
-        // Remove any contacts added during tests
-        const contacts = await invokeTool("list_contacts", {});
-        const contactList = ((contacts.data as Record<string, unknown>)?.contacts as Array<{ userId: string }>) ?? [];
-        for (const c of contactList) {
-          await invokeTool("remove_contact", { contactUserId: c.userId });
-        }
-      } catch { /* ignore cleanup errors */ }
-    }
-
     for (const id of [testUserId, testUserBId]) {
       if (id) {
         try { await userAdapter.deleteById(id); } catch { /* FK constraint — user has memberships */ }
@@ -135,7 +115,7 @@ describe("ToolController Integration", () => {
   }, 60_000);
 
   test("POST /tools blocks non-onboarding tools for incomplete users", async () => {
-    const { status, data } = await invokeTool("list_contacts", {}, {
+    const { status, data } = await invokeTool("list_opportunities", {}, {
       id: testUserBId,
       email: testEmailB,
       name: "Test Tool User B",
@@ -144,7 +124,7 @@ describe("ToolController Integration", () => {
     expect(status).toBe(200);
     expect(data.success).toBe(false);
     expect(data.error).toBe("Onboarding required");
-    expect(String(data.message)).toContain("complete_onboarding");
+    expect(String(data.message)).toContain("research_profile");
   }, 60_000);
 
   test("POST /tools/unknown_tool should return 404 error", async () => {
@@ -163,13 +143,6 @@ describe("ToolController Integration", () => {
     console.log("unknown_tool error:", data.error);
   }, 60_000);
 
-  test("POST /tools/list_contacts should return contacts for user", async () => {
-    const { status, data } = await invokeTool("list_contacts", {});
-    expect(status).toBe(200);
-    expect(data).toBeDefined();
-    console.log("list_contacts result:", JSON.stringify(data).slice(0, 200));
-  }, 60_000);
-
   test("POST /tools/read_networks should return indexes for user", async () => {
     const { status, data } = await invokeTool("read_networks", {});
     expect(status).toBe(200);
@@ -177,11 +150,11 @@ describe("ToolController Integration", () => {
     console.log("read_networks result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
-  test("POST /tools/read_user_profiles should return profile data", async () => {
-    const { status, data } = await invokeTool("read_user_profiles", {});
+  test("POST /tools/research_profile should return a result", async () => {
+    const { status, data } = await invokeTool("research_profile", {});
     expect(status).toBe(200);
     expect(data).toBeDefined();
-    console.log("read_user_profiles result:", JSON.stringify(data).slice(0, 200));
+    console.log("research_profile result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
   test("POST /tools/list_opportunities should return opportunities", async () => {
@@ -225,20 +198,6 @@ describe("ToolController Integration", () => {
   // in TypeScript but fail silently at runtime.
 
   describe("CLI tool call contracts", () => {
-
-    // ── Profile (CLI: profile search, show, create, update) ──────
-
-    test("read_user_profiles with query (CLI: profile search)", async () => {
-      const { status, data } = await invokeTool("read_user_profiles", { query: "nonexistent-xyz" });
-      expect(status).toBe(200);
-      expect(data.success).toBe(true);
-    }, 30_000);
-
-    test("read_user_profiles with userId (CLI: profile show via tool)", async () => {
-      const { status, data } = await invokeTool("read_user_profiles", { userId: testUserId });
-      expect(status).toBe(200);
-      expect(data.success).toBe(true);
-    }, 30_000);
 
     // ── Intent (CLI: intent update, link, unlink, links) ─────────
 
@@ -311,31 +270,6 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    // ── Contact (CLI: contact list, add, remove) ─────────────────
-
-    test("list_contacts with empty query (CLI: contact list)", async () => {
-      const { status, data } = await invokeTool("list_contacts", {});
-      expect(status).toBe(200);
-      expect(data.success).toBe(true);
-    }, 60_000);
-
-    test("add_contact with email + name (CLI: contact add)", async () => {
-      const { status, data } = await invokeTool("add_contact", {
-        email: "new-contact-test@example.com",
-        name: "New Contact",
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 60_000);
-
-    test("remove_contact with contactUserId (CLI: contact remove)", async () => {
-      const { status, data } = await invokeTool("remove_contact", {
-        contactUserId: "00000000-0000-0000-0000-000000000000",
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 60_000);
-
     // ── Membership (CLI: introduce prerequisite calls) ───────────
 
     test("read_network_memberships with userId (CLI: introduce step 1)", async () => {
@@ -370,20 +304,12 @@ describe("ToolController Integration", () => {
     // ── Sync (CLI: sync) ─────────────────────────────────────────
 
     test("all sync tools accept empty query (CLI: sync)", async () => {
-      const syncTools = ["read_user_profiles", "read_networks", "read_intents", "list_contacts"];
+      const syncTools = ["read_networks", "read_intents"];
       for (const toolName of syncTools) {
         const { status, data } = await invokeTool(toolName, {});
         expect(status).toBe(200);
         expect(data).toBeDefined();
       }
-    }, 60_000);
-
-    // ── Onboarding (CLI: onboarding complete) ────────────────────
-
-    test("complete_onboarding with empty query (CLI: onboarding complete)", async () => {
-      const { status, data } = await invokeTool("complete_onboarding", {});
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
     openRouterTest("create_intent with description (CLI: intent create)", async () => {
@@ -411,20 +337,5 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    openRouterTest("create_user_profile with confirm (CLI: profile sync - no profile)", async () => {
-      const { status, data } = await invokeTool("create_user_profile", {
-        confirm: true,
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 60_000);
-
-    openRouterTest("update_user_profile with action (CLI: profile sync - has profile)", async () => {
-      const { status, data } = await invokeTool("update_user_profile", {
-        action: "regenerate",
-      });
-      expect(status).toBe(200);
-      expect(String(data.error ?? "")).not.toContain("Invalid query");
-    }, 60_000);
   });
 });

@@ -37,6 +37,25 @@ export interface GetOpportunitiesOptions {
   offset?: number;
 }
 
+/**
+ * The radar's pre-contact-consultation state, projected by
+ * `services/api/src/lib/opportunity/asking-first.projection.ts`.
+ *
+ * Present only while the viewer's own agent has parked a negotiation before any
+ * contact, waiting on an answer in the signal's DM (#1445). Derived from the
+ * park on every fetch, so it vanishes when the park resolves.
+ */
+export interface AskingFirstState {
+  /** The viewer's signal whose DM holds the question — the card's deep link. */
+  intentId: string;
+  /** Closed consultation category from the park. */
+  reason?: string;
+  /** What the agent saw in this match, from the park's seed assessment. */
+  whatFit?: string;
+  /** ISO-8601 park time. */
+  askedAt?: string;
+}
+
 /** Full lifecycle status union (see API OpportunityStatus). */
 export type OpportunityLifecycleStatus =
   | 'latent'
@@ -67,8 +86,6 @@ export interface RadarCardItem {
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
-  /** Whether the counterpart is a ghost (not yet onboarded) user. */
-  isGhost?: boolean;
   /** Template-only pool-answer demotion explanation from server metadata. */
   deprioritizedReason?: string;
   /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
@@ -83,6 +100,13 @@ export interface RadarCardItem {
    * Render a shimmer body and wait for the full fetch to replace the card.
    */
   presentationPending?: boolean;
+  /**
+   * Present while this opportunity's negotiation is parked before any contact,
+   * waiting on the viewer's answer in the signal's DM. The opportunity is
+   * `negotiating` throughout, so this field is the only thing that tells the
+   * two apart — see `AskingFirstCard`.
+   */
+  askingFirst?: AskingFirstState;
 }
 
 export interface RadarViewResponse {
@@ -107,29 +131,6 @@ export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' |
 export interface OpportunityStatusUpdateResponse {
   opportunity: OpportunityListItem | null;
   counterpartUserId?: string;
-}
-
-/** Public question projection embedded in an acceptance advisory. */
-export interface UptakeQuestion {
-  id: string;
-  title: string;
-  prompt: string;
-  options: Array<{ label: string; description: string }>;
-  multiSelect: boolean;
-}
-
-/** Structured 409 soft interlock returned before opportunity acceptance. */
-export interface UptakeAcceptanceAdvisory {
-  code: 'unresolved_uptake_questions';
-  advisoryOnly: true;
-  opportunityId: string;
-  questions: UptakeQuestion[];
-  acknowledgedUptakeQuestionIds: string[];
-}
-
-export interface UptakeAcceptanceErrorBody {
-  error: string;
-  advisory: UptakeAcceptanceAdvisory;
 }
 
 export interface OpportunityPresentation {
@@ -233,21 +234,15 @@ export const createOpportunitiesService = (
     opportunityId: string,
     status: OpportunityStatus,
     scope?: { scopeType: 'intent'; scopeId: string },
-    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<OpportunityStatusUpdateResponse> => {
     return api.patch<OpportunityStatusUpdateResponse>(
       `/opportunities/${opportunityId}/status`,
-      { status, ...(scope ?? {}), ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}) }
+      { status, ...(scope ?? {}) }
     );
   },
 
   getOpportunity: async (opportunityId: string): Promise<OpportunityDetailResponse> => {
     return api.get<OpportunityDetailResponse>(`/opportunities/${opportunityId}`);
-  },
-
-  /** Fetch a pre-generated invite message for a ghost user opportunity. */
-  getInviteMessage: async (opportunityId: string): Promise<{ message: string }> => {
-    return api.get<{ message: string }>(`/opportunities/${opportunityId}/invite-message`);
   },
 
   /**
@@ -261,7 +256,6 @@ export const createOpportunitiesService = (
   startChat: async (
     opportunityId: string,
     scope?: { scopeType: 'intent'; scopeId: string },
-    acknowledgedUptakeQuestionIds?: string[],
   ): Promise<{
     conversationId: string;
     counterpartUserId: string;
@@ -273,7 +267,6 @@ export const createOpportunitiesService = (
       opportunity: { id: string; status: OpportunityStatus };
     }>(`/opportunities/${opportunityId}/start-chat`, {
       ...(scope ?? {}),
-      ...(acknowledgedUptakeQuestionIds ? { acknowledgedUptakeQuestionIds } : {}),
     });
   },
 

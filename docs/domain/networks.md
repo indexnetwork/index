@@ -1,7 +1,7 @@
 ---
 title: "Networks"
 type: domain
-tags: [networks, communities, permissions, personal-networks, ghost-users, contacts, auto-assign]
+tags: [networks, communities, permissions, auto-assign]
 created: 2026-03-26
 updated: 2026-05-24
 ---
@@ -22,7 +22,6 @@ A network can represent:
 - A project team ("DeFi Protocol Builders")
 - A topical interest group ("Climate Tech")
 - A time-bound event ("Edge Esmeralda 2026")
-- A personal space (see Personal Networks below)
 
 Each network has:
 - **Title**: Human-readable name
@@ -52,7 +51,6 @@ Network membership is tracked in the `network_members` table with a composite pr
 |---|---|
 | **owner** | Full access: manage members, settings, read/write intents. Cannot be removed except by self. |
 | **member** | Standard access: read/write intents within the network. |
-| **contact** | Special permission indicating a contact relationship (see Contacts below). |
 
 Ownership is determined through the `network_members` table's `permissions` array containing `'owner'`, not through a denormalized column on the network itself.
 
@@ -63,43 +61,6 @@ Each member can customize their relationship with a network:
 - **Member prompt**: A personal description of what they want to share in this network. For example, a network's prompt might be "AI/ML collaborators" while a member's prompt says "Specifically seeking PyTorch experts". The member prompt adds specificity that the Intent Indexer agent uses when evaluating intent-network fit.
 
 - **Auto-assign** (`autoAssign: boolean`): When enabled, new intents from this user are automatically evaluated against this network and assigned if they qualify. When disabled, assignment requires explicit action.
-
----
-
-## Personal Networks
-
-Every user has exactly one personal network, created automatically on registration. Personal networks are identified by `isPersonal: true` on the `networks` row and enforced by the `personal_networks` mapping table (primary key on `userId`, unique constraint on `networkId`).
-
-Personal networks serve as the user's private workspace:
-- They cannot be deleted, renamed, or listed publicly
-- They are filtered from public network listings by guards
-- They store the user's contacts (see below)
-- They hold intents that the user has not explicitly shared with any community
-
----
-
-## Contacts as Members
-
-Index Network does not have a separate contacts table. Instead, contacts are stored as `network_members` rows with the `'contact'` permission on the owner's personal network.
-
-When a user adds a contact (by email), the system:
-1. Looks up the email to find an existing user
-2. If no user exists, creates a **ghost user** (see below)
-3. Creates a `network_members` row on the owner's personal network with `permissions: ['contact']`
-
-When a user accepts an opportunity, the counterpart is automatically added as a contact via this same mechanism with `restore: true` (which re-activates a previously soft-deleted contact if one exists).
-
----
-
-## Ghost Users
-
-A ghost user is a placeholder for someone who has been imported as a contact but has not yet signed up for Index Network. Ghost users have `isGhost: true` on the users table.
-
-Ghost users are created when:
-- A user adds a contact by email and no account exists for that email
-- A CSV or integration import references unknown email addresses
-
-Ghost users participate in the data model (they can be members of networks, they can be actors in opportunities) but they cannot log in or take actions until they sign up. When a ghost user signs up with the same email, their ghost account is upgraded to a full account and all existing memberships and opportunities carry over.
 
 ---
 

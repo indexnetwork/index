@@ -71,21 +71,17 @@ window.IndexApp = (function () {
     return true;
   }
   function login() { return post("login"); }
-  let logoutSafetyHandler = null;
   let logoutInFlight = false;
-  function setLogoutSafetyHandler(handler) {
-    logoutSafetyHandler = typeof handler === "function" ? handler : null;
-    return () => { if (logoutSafetyHandler === handler) logoutSafetyHandler = null; };
-  }
   function logout() {
-    if (!hasBridge() || !logoutSafetyHandler) return false;
+    if (!hasBridge()) return false;
     if (logoutInFlight) return true;
     logoutInFlight = true;
-    Promise.resolve()
-      .then(() => logoutSafetyHandler())
-      // Native key deletion/revocation is unreachable until the coordinator has
-      // persisted select-Index recovery and proven local scheduling paused.
-      .then((result) => post("completeLogout", { ownerId:result.ownerId }))
+    const api = getClient();
+    Promise.resolve(api ? api.auth.me() : null)
+      .then((response) => {
+        const user = response && (response.user || response);
+        return post("completeLogout", { ownerId: user && user.id ? user.id : null });
+      })
       .catch(() => { logoutInFlight = false; });
     return true;
   }
@@ -105,7 +101,29 @@ window.IndexApp = (function () {
     });
   }
 
-  // ---- generation-fenced Hermes runtime bridge ----------------------------
+  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
+  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
+  const hermesWaiters = [];
+  window.__indexHermesSetup = function (result) {
+    while (hermesWaiters.length) hermesWaiters.shift()(result || {});
+  };
+  function setupHermes(apiKey) {
+    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
+    return new Promise((resolve) => {
+      hermesWaiters.push(resolve);
+      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
+    });
+  }
+  // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
+  function teardownHermes() {
+    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
+    return new Promise((resolve) => {
+      hermesWaiters.push(resolve);
+      post("teardownHermes");
+    });
+  }
+
+  // ---- generation-fenced Hermes runtime bridge (kept for native recovery) ---
 
   function hasHermesRuntimeBridge() {
     return !!(window.webkit && window.webkit.messageHandlers
@@ -293,9 +311,7 @@ window.IndexApp = (function () {
     const apiRole = n.role === "owner" || n.role === "member" ? n.role : null;
     const ownerId = n.user && n.user.id;
     const inferredOwner = !!(meId && ownerId && meId === ownerId);
-    const role = n.isPersonal
-      ? "personal"
-      : (apiRole || (inferredOwner ? "owner" : "member"));
+    const role = apiRole || (inferredOwner ? "owner" : "member");
     return {
       id: n.id,
       name: n.title || n.name || "untitled",
@@ -303,7 +319,6 @@ window.IndexApp = (function () {
       members: (n._count && n._count.members) || n.memberCount || 0,
       role,
       joined,
-      isPersonal: n.isPersonal === true,
       hasMasterKey: n.hasMasterKey === true,
       hidden: n.hidden === true,
       privacy: joinPolicy === "anyone" ? "public" : "private",
@@ -325,43 +340,47 @@ window.IndexApp = (function () {
     return networks.map((n) => mapNetworkEntry(n, user, n.isMember === true));
   }
 
-  // ---- tools + enrichment -------------------------------------------------
+  // ---- enrichment + onboarding REST ---------------------------------------
 
-  // Exact onboarding tool wrappers. No page API accepts a tool name.
-  function readUserContexts() {
+  function confirmOnboardingProfile() {
     const c = getClient();
-    return c ? c.tools.readUserContexts() : Promise.reject(new Error("no api client"));
+    return c ? c.auth.confirmOnboardingProfile() : Promise.reject(new Error("no api client"));
   }
-  function previewUserContext(query) {
+  function completeOnboarding(intentId) {
     const c = getClient();
-    return c ? c.tools.previewUserContext(query || {}) : Promise.reject(new Error("no api client"));
-  }
-  function confirmUserContext(draft) {
-    const c = getClient();
-    return c ? c.tools.confirmUserContext(draft) : Promise.reject(new Error("no api client"));
+    const body = intentId ? { intentId } : {};
+    return c ? c.auth.completeOnboarding(body) : Promise.reject(new Error("no api client"));
   }
 
-  // Run the full public-research enrichment inline (POST /enrichment/enrich) and
-  // resolve { enriched, profile:{ name, intro, location, socials } } so callers
-  // can display discovered socials immediately. Other enrichment is automatic.
-  function triggerEnrichment() {
+  // Run public profile prefill (POST /enrichment/enrich) for the authenticated user.
+  function triggerEnrichment(hints) {
     const c = getClient();
     if (!c) return Promise.reject(new Error("no api client"));
-    return c.enrichment.trigger();
+    return c.enrichment.trigger(hints || {});
   }
 
   // ---- bounded native SSE -------------------------------------------------
 
-  // POST /chat/stream. `persona` selects the server persona (e.g. "negotiator");
-  // api-key callers fall back to the orchestrator when omitted. Resolves with
+  // POST /chat/stream. There is one server persona, so the request names no
+  // persona field. Resolves with
   // the session id (from the X-Session-Id response header) once the stream ends.
   // onSession fires as soon as headers arrive, so mid-stream events (e.g.
   // user_question) can be resolved against the conversation right away.
-  async function streamChat({ message, sessionId, scopeType, scopeId, persona, onEvent, onSession, signal }) {
+  async function streamChat({ message, sessionId, scopeType, scopeId, onEvent, onSession, signal }) {
+    // A half-supplied scope is a caller bug, not a request to drop the scope.
+    // This used to send `if (scopeType && scopeId)`, so a null scopeId silently
+    // downgraded the turn to unscoped — which this app has no surface for
+    // (the API answers a scopeless api-key turn with 403).
+    // Fail here, where the caller is named, rather than at the server.
+    if (Boolean(scopeType) !== Boolean(scopeId)) {
+      throw new Error(
+        `streamChat needs scopeType and scopeId together (got scopeType=${JSON.stringify(scopeType)}, scopeId=${JSON.stringify(scopeId)})`,
+      );
+    }
+
     const body = { message };
     if (sessionId) body.sessionId = sessionId;
-    if (scopeType && scopeId) { body.scopeType = scopeType; body.scopeId = scopeId; }
-    if (persona) body.persona = persona;
+    if (scopeType) { body.scopeType = scopeType; body.scopeId = scopeId; }
 
     let immediateSession = sessionId || null;
     const receive = (event) => {
@@ -518,19 +537,36 @@ window.IndexApp = (function () {
 
   // ---- MCP tools/call -----------------------------------------------------
 
-  // Single structured tools/call through native /mcp. Used for intent creation,
-  // which has no plain REST POST.
-  // create_intent is the only MCP operation exposed to the page.
-  async function createIntent(description) {
+  // Single structured tools/call through native /mcp. Used for intent creation
+  // and agent registration (SessionOnly REST create rejects owner API keys).
+  async function mcpCall(tool, args) {
     const response = await nativeAPIBridge.request({
-      kind:"mcp", tool:"create_intent", arguments:{ description, autoApprove:true },
+      kind:"mcp", tool, arguments: args || {},
     });
     const rpc = response.body;
-    if (!rpc) throw new Error("MCP create_intent returned no response");
-    if (rpc.error) throw new Error(rpc.error.message || "MCP create_intent failed");
+    if (!rpc) throw new Error(`MCP ${tool} returned no response`);
+    if (rpc.error) throw new Error(rpc.error.message || `MCP ${tool} failed`);
     const result = rpc.result || {};
-    if (result.isError) throw new Error(extractMcpText(result) || "MCP create_intent reported an error");
+    if (result.isError) throw new Error(extractMcpText(result) || `MCP ${tool} reported an error`);
     return parseMcpResult(result);
+  }
+
+  async function createIntent(description) {
+    return mcpCall("create_intent", { description, autoApprove: true });
+  }
+
+  async function registerAgent(input) {
+    const payload = await mcpCall("register_agent", {
+      name: input.name,
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.permissions ? { permissions: input.permissions } : {}),
+    });
+    // tool results arrive wrapped: { success, data: { message, agent } } or flat
+    const agent = (payload && payload.data && payload.data.agent)
+      || (payload && payload.agent)
+      || null;
+    if (!agent) throw new Error((payload && payload.error) || "registration failed");
+    return agent;
   }
 
   // Chat turns embed proposals as ```intent_proposal fenced JSON blocks, the
@@ -579,12 +615,14 @@ window.IndexApp = (function () {
     mapDiscoverNetworks,
     login,
     logout,
-    setLogoutSafetyHandler,
     detectHarnesses,
+    setupHermes,
+    teardownHermes,
     hermesRuntime,
     onAuthChanged,
     onDeepLink,
     createIntent,
+    registerAgent,
     parseIntentProposals,
     streamChat,
     streamInbox,
@@ -592,9 +630,8 @@ window.IndexApp = (function () {
     setNotifyPrefs,
     notifyPrefs,
     startDesktopNotifications,
-    readUserContexts,
-    previewUserContext,
-    confirmUserContext,
+    confirmOnboardingProfile,
+    completeOnboarding,
     triggerEnrichment,
   };
 })();

@@ -7,9 +7,7 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 
 import { cacheAdapter, hydeCacheAdapter } from '../adapters/cache.adapter';
-import { ensureGlobalUserContext } from '../lib/usercontext/global-context';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { ComposioIntegrationAdapter } from '../adapters/integration.adapter';
 import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
@@ -19,52 +17,31 @@ import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
-import { QuestionerAdapter } from '../adapters/questioner.adapter';
-import type { AdapterPersistableQuestion } from '../adapters/questioner.adapter';
-import { questionerQueue } from '../queues/questioner.queue';
-import { stampNewbornOpportunities } from '../queues/pool/newborn.shared';
-import { awaitChatQuestionAnswers } from '../lib/chat-question.events';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { enrichmentRunAdapter } from '../adapters/enrichment-run.adapter';
-import { enrichmentRunQueue } from '../queues/enrichment-run.queue';
 import db from '../lib/drizzle/drizzle';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
 import { chatSessionService } from '../services/chat.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
-import { QuestionGeneratorService } from '../services/question-generator.service';
 import { NegotiationSummaryService } from '../services/negotiation-summary.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
-import { contactService } from '../services/contact.service';
-import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
-import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
-import { reflectEnqueueIfEnabled } from '../queues/negotiations/reflect.queue';
-import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
-import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
-import { questionService } from '../services/question.service';
-import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
+import { matchesReadyBestEffort, negotiationGraph } from '../lib/negotiation/negotiation-graph';
+import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
-import { HERMES_AGENT_CREDENTIAL_PREFIX, isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
-import { projectHermesAgentMcpIdentity } from '../lib/agent/hermes-mcp-identity';
-import { INDEX_APP_OWNER_AUDIENCE, INDEX_APP_OWNER_CREDENTIAL_PREFIX } from '../lib/agent/index-app-owner-authorization';
-import { validateIndexAppOwnerMcpEnvelope } from '../lib/agent/index-app-owner-mcp';
-import { recordRequestAuthContext } from '../lib/request-auth-context';
-import { resolveHermesAgentCredential, resolveIndexAppOwnerCredential } from '../guards/auth.guard';
+import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { IntentGraphFactory, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, isQuestionerEnabled, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, QuestionerEnqueuePayload, PendingQuestionSummary, McpAuthInput, McpResolvedIdentity, ChatQuestionsHost, PersistableQuestion, PersistedQuestion, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createPersonalAgentPersona, PERSONAL_AGENT_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
-import { isAgentActionsEnabled } from '../lib/agent-surface-feature';
-import { agentActionProposalDatabaseAdapter } from '../adapters/agent-action-proposal.database.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
@@ -77,72 +54,12 @@ type McpToolDeps = ToolDeps & {
 // COMPOSITION ROOT (was protocol-init.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const integration = new ComposioIntegrationAdapter();
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
-const questionGeneratorService = new QuestionGeneratorService();
-const questionerAdapter = new QuestionerAdapter(db);
 const negotiationSummaryService = new NegotiationSummaryService();
-const integrationImporter = new IntegrationService(integration, contactService);
-const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
+const agentDispatcher = new AgentDispatcherImpl(agentService);
 
 const apiBaseUrl = resolveProtocolBaseUrl();
-
-/**
- * Host bridge for the orchestrator's blocking ask_user_question tool:
- * synchronous chat-question persistence plus the in-memory answer wait bus
- * (resolved by QuestionEvents.onAnswered/onDismissed wiring in main.ts).
- */
-const findPendingQuestionsForTools: NonNullable<ToolDeps['findPendingQuestions']> = async (userId, filters) => {
-  const rows = await questionerAdapter.findPending(userId, filters?.scopeType === 'intent'
-    ? filters
-    : { ...filters, excludeModes: ['pool_discovery'] });
-  return rows.map((row): PendingQuestionSummary => ({
-    id: row.id,
-    title: row.payload.title,
-    prompt: row.payload.prompt,
-    options: row.payload.options,
-    multiSelect: row.payload.multiSelect,
-    mode: row.detection.mode,
-    ...(row.detection.purpose ? { purpose: row.detection.purpose } : {}),
-    sourceType: row.detection.sourceType,
-    sourceId: row.detection.sourceId,
-    createdAt: row.createdAt,
-    ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-    actors: row.actors.map((actor) => ({
-      userId: actor.userId,
-      ...(actor.networkId ? { networkId: actor.networkId } : {}),
-    })),
-  }));
-};
-
-const answerPendingQuestionForTools: NonNullable<ToolDeps['answerPendingQuestion']> = async (
-  userId,
-  questionId,
-  answer,
-) => questionService.answer(questionId, userId, {
-  selectedOptions: answer.selectedOptions,
-  ...(answer.freeText !== undefined ? { freeText: answer.freeText } : {}),
-  answeredBy: userId,
-  answeredAt: new Date().toISOString(),
-});
-
-const chatQuestionsHost: ChatQuestionsHost = {
-  persist: async (batch: PersistableQuestion[]): Promise<PersistedQuestion[]> => {
-    const ids = await questionerAdapter.persist(batch as AdapterPersistableQuestion[]);
-    const now = new Date().toISOString();
-    return ids.map((id, i) => ({
-      id,
-      detection: batch[i].detection,
-      actors: batch[i].actors,
-      payload: batch[i].payload,
-      status: 'pending' as const,
-      answer: null,
-      createdAt: now,
-    }));
-  },
-  awaitAnswers: (questionIds, opts) => awaitChatQuestionAnswers(questionIds, opts),
-};
 
 const protocolDeps = {
   database: chatDatabaseAdapter,
@@ -150,20 +67,22 @@ const protocolDeps = {
   scraper: scraperAdapter,
   cache: cacheAdapter,
   hydeCache: hydeCacheAdapter,
-  integration,
   intentQueue,
-  contactService,
-  contactsEnabled: process.env.CONTACTS_ENABLED === 'true',
-  actionToolsEnabled: isAgentActionsEnabled(),
-  actionProposalStore: agentActionProposalDatabaseAdapter,
   intentProposalStore: intentProposalDatabaseAdapter,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
   negotiationSummary: negotiationSummaryService,
-  questionGenerator: questionGeneratorService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
-  integrationImporter,
+  // The one fully-wired composition (reflectEnqueue included) — chat/MCP
+  // tool.factory.ts must use this instead of building its own reflect-less
+  // instance, or the all-paused -> reflect trigger is silently lost on
+  // every negotiation opened through this surface.
+  negotiationGraph,
+  // The same hand-off the discovery queues use. `tool.factory` builds its own
+  // OpportunityGraph from this field; unset, its matches_ready edge ends at
+  // END and a chat-run discovery persists matches nobody is ever woken for.
+  matchesReady: matchesReadyBestEffort,
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
@@ -178,47 +97,39 @@ const protocolDeps = {
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
   // route; threaded into chat tools by the protocol chat factory.
   opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
-  enrichmentRuns: enrichmentRunAdapter,
-  enrichmentRunQueue,
-  negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
-  stampNewbornOpportunities,
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
-  questionerDatabase: questionerAdapter,
-  findPendingQuestions: findPendingQuestionsForTools,
-  answerPendingQuestion: answerPendingQuestionForTools,
-  getUserContextText: ensureGlobalUserContext,
-  chatQuestions: chatQuestionsHost,
-  ...(isQuestionerEnabled() && {
-    questionerEnqueue: async (input: QuestionerEnqueuePayload) => {
-      await questionerQueue.addGenerateJob(input);
-    },
-  }),
-  // P5.4 (IND-408): host bridge for the negotiator persona's remember/forget
-  // memory tools. Injected only while memory writes are enabled — when the
-  // flag is off the tools are simply not registered. Consumed exclusively by
-  // createNegotiatorTools; the orchestrator registry never sees these tools.
-  ...(isNegotiatorMemoryWriteEnabled() && {
-    negotiatorMemoryTools: {
-      remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>
-        negotiatorMemoryWriteService.rememberFromChat({ userId, ...input }),
-      forget: async (userId: string, input: { memoryId?: string; description?: string }) =>
-        negotiatorMemoryWriteService.forgetFromChat({ userId, ...input }),
-    },
-  }),
+  // #1471: host bridge for the negotiator persona's `reject_opportunity` /
+  // `accept_opportunity` tools — the owner's VERDICT lane, which had no lever
+  // in chat before. Registered only in intent-pinned negotiator sessions; the
+  // orchestrator registry never sees it.
+  negotiatorVerdictTools: negotiatorVerdictToolsHost,
 };
 
 const chatSessionReader = {
   getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
+  // Intent-pinned DMs are excluded: a signal's DM transcript belongs to its
+  // signal surface, never to a generic MCP session reader.
   listSessions: (userId: string, limit?: number) =>
-    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit, 'orchestrator'),
+    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit ?? 25, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
   getSession: (userId: string, sessionId: string, messageLimit?: number) =>
-    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
+    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit ?? 50, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
 };
-export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps);
+/**
+ * Composition-root chat factory. Signal is the product's primary chat persona,
+ * so it is the one this factory carries; every other persona (onboarding,
+ * negotiator) is derived from it via `withPersona`, sharing the
+ * persona-neutral runtime and all injected deps. There is no default persona —
+ * the retired orchestrator used to be it.
+ */
+// The runtime has no default persona; this base factory just carries the deps.
+// Every chat surface derives a sibling factory bound to the client's own agent
+// identity (`ChatSessionService.get*GraphFactory`), so the nameless persona
+// here never drives a turn.
+export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, createPersonalAgentPersona());
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)
@@ -233,10 +144,13 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   logger.info('Compiling MCP graphs (first call, will be cached)');
 
   const { database, embedder, scraper } = protocolDeps;
-  const qEnqueue = protocolDeps.questionerEnqueue;
-  const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue, qEnqueue).createGraph();
+  const intents = new Intents({
+    database,
+    embedder,
+    queue: protocolDeps.intentQueue,
+  });
+  const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
-  const profileGraph = new EnrichmentGraphFactory(database, scraper, protocolDeps.enricher, qEnqueue, premiseGraph).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -244,29 +158,18 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     new LensInferrer(),
     new HydeGenerator(),
   ).createGraph();
-  const negotiationGraph = new NegotiationGraphFactory(
-    protocolDeps.negotiationDatabase,
-    protocolDeps.agentDispatcher!,
-    protocolDeps.negotiationTimeoutQueue,
-    qEnqueue,
-    // Finished negotiations enqueue memory distillation (P5.2, flag-gated).
-    reflectEnqueueIfEnabled(),
-    // P5.3 memory read path (gated on NEGOTIATOR_MEMORY_INJECT).
-    negotiatorMemoryRetrieve(),
-  ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
-    undefined, undefined, negotiationGraph,
+    undefined, undefined, matchesReadyBestEffort,
     protocolDeps.agentDispatcher,
     protocolDeps.queueNegotiateExisting,
-    protocolDeps.stampNewbornOpportunities,
   ).createGraph();
-  const indexGraph = new NetworkGraphFactory(database).createGraph();
-  const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
-  const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
+  const networks = new Networks({ database, indexer: intents });
+  const indexGraph = networks.createGraph();
+  const networkMembershipGraph = networks.createMembershipGraph();
+  const intentIndexGraph = networks.createAssignmentGraph();
 
   compiledGraphs = {
-    profile: profileGraph,
     intent: intentGraph,
     index: indexGraph,
     networkMembership: networkMembershipGraph,
@@ -569,32 +472,6 @@ const authResolver: McpAuthResolver = {
     }
 
     if (input.apiKey) {
-      if (input.apiKey.startsWith(INDEX_APP_OWNER_CREDENTIAL_PREFIX)) {
-        try {
-          const { user } = await resolveIndexAppOwnerCredential(input.apiKey);
-          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
-            userId: user.id,
-            isSessionAuth: true,
-            networkScopeId: null,
-          });
-        } catch (err) {
-          if (err instanceof TelegramIdentityError) throw err;
-          throw new Error('Invalid API key', { cause: err });
-        }
-      }
-      if (input.apiKey.startsWith(HERMES_AGENT_CREDENTIAL_PREFIX)) {
-        try {
-          const { user, principal } = await resolveHermesAgentCredential(input.apiKey);
-          return finalizeMcpIdentity(
-            telegramHandleFromAuthInput(input),
-            projectHermesAgentMcpIdentity({ ownerId: user.id, agentId: principal.agentId }),
-          );
-        } catch (err) {
-          if (err instanceof TelegramIdentityError) throw err;
-          throw new Error('Invalid API key', { cause: err });
-        }
-      }
-
       let sessionUserId: string | undefined;
 
       try {
@@ -745,21 +622,20 @@ function createMcpServerInstance(): McpServer {
     scraper: protocolDeps.scraper,
     embedder: protocolDeps.embedder,
     cache: protocolDeps.cache,
-    integration: protocolDeps.integration,
-    contactService: protocolDeps.contactService,
-    contactsEnabled: protocolDeps.contactsEnabled,
-    integrationImporter: protocolDeps.integrationImporter,
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
+    negotiationGraph,
+    matchesReady: protocolDeps.matchesReady,
     agentDispatcher: protocolDeps.agentDispatcher,
-    stampNewbornOpportunities: protocolDeps.stampNewbornOpportunities,
-    negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
+    // #1471: owner-verdict host behind reject/accept_opportunity (the Radar
+    // Skip/Start-Chat path). Registered on the MCP surface only; the
+    // capability matrix confines verdicts to session-authenticated owners.
+    negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
     chatSession: protocolDeps.chatSession,
     chatSummary: protocolDeps.chatSummary,
     negotiationSummary: protocolDeps.negotiationSummary,
-    questionGenerator: protocolDeps.questionGenerator,
     chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
     opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,
@@ -774,15 +650,9 @@ function createMcpServerInstance(): McpServer {
       userId: report.userId,
     }),
     mcpRateLimiter: (input) => checkMcpRateLimit(input),
-    getUserContextText: ensureGlobalUserContext,
-    enrichmentRuns: protocolDeps.enrichmentRuns,
-    enrichmentRunQueue: protocolDeps.enrichmentRunQueue,
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     intentProposalStore: protocolDeps.intentProposalStore,
-    ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
-    findPendingQuestions: protocolDeps.findPendingQuestions,
-    answerPendingQuestion: protocolDeps.answerPendingQuestion,
     graphs,
   };
 
@@ -871,12 +741,8 @@ async function createPerRequestTransport(): Promise<PerRequestMcpConnection> {
 // HTTP HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const DEFAULT_MCP_MAX_REQUEST_BYTES = 1_000_000;
-
-function getMcpMaxRequestBytes(): number {
-  const parsed = Number.parseInt(process.env.MCP_MAX_REQUEST_BYTES ?? '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MCP_MAX_REQUEST_BYTES;
-}
+/** Ceiling on a single /mcp request body. */
+const MCP_MAX_REQUEST_BYTES = 1_000_000;
 
 function requestTooLargeResponse(maxRequestBytes: number, corsHeaders: Record<string, string>): Response {
   return new Response(
@@ -970,7 +836,7 @@ export async function mcpHandler(
   req: Request,
   corsHeaders: Record<string, string>,
 ): Promise<Response> {
-  const maxRequestBytes = getMcpMaxRequestBytes();
+  const maxRequestBytes = MCP_MAX_REQUEST_BYTES;
 
   // 1. Cheap content-length precheck before any body draining
   const contentLengthResponse = rejectMcpContentLengthTooLarge(req, maxRequestBytes, corsHeaders);
@@ -1005,33 +871,6 @@ export async function mcpHandler(
   const sizeCheckedRequest = await enforceMcpRequestSize(req, maxRequestBytes, corsHeaders);
   if (sizeCheckedRequest instanceof Response) return sizeCheckedRequest;
   req = sizeCheckedRequest;
-
-  // The dedicated native owner credential is not admitted by route alone. Its
-  // only MCP capability is one exact non-batch tools/call for create_intent.
-  // Authenticate the active installation authority and record its product
-  // context before allocating the generic MCP transport/tool registry.
-  const apiKey = req.headers.get('x-api-key');
-  if (apiKey?.startsWith(INDEX_APP_OWNER_CREDENTIAL_PREFIX)) {
-    if (req.method !== 'POST' || new URL(req.url).pathname !== '/mcp') {
-      return new Response(JSON.stringify({ error: 'Owner MCP operation denied' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
-    let envelope: unknown;
-    try { envelope = await req.clone().json(); }
-    catch { return new Response(JSON.stringify({ error: 'Invalid owner MCP request' }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }); }
-    if (!validateIndexAppOwnerMcpEnvelope(envelope)) {
-      return new Response(JSON.stringify({ error: 'Owner MCP operation denied' }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
-    try {
-      const { principal } = await resolveIndexAppOwnerCredential(apiKey);
-      recordRequestAuthContext(req, {
-        kind: 'api_key', agentId: null, audience: INDEX_APP_OWNER_AUDIENCE,
-        credentialId: principal.credentialId, installationId: principal.installationId,
-        setupAttemptId: principal.generation,
-      });
-    } catch {
-      return new Response(JSON.stringify({ error: 'Invalid API key' }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-    }
-  }
 
   let connection: PerRequestMcpConnection | undefined;
   try {

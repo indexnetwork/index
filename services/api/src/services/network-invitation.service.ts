@@ -5,7 +5,6 @@ import { log } from '../lib/log';
 import * as schema from '../schemas/database.schema';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../adapters/agent-token.adapter';
-import { ensurePersonalNetwork } from '../adapters/database.adapter';
 import { networkInvitationTemplate } from '../lib/email/templates/network-invitation.template';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { buildConnectCommand } from '../lib/openclaw/connect-command';
@@ -82,7 +81,6 @@ class NetworkInvitationService {
     const mintKey = params.mintKey ?? false;
 
     const { user, created } = await this.findOrCreateUser(email, params.name);
-    await ensurePersonalNetwork(user.id);
     // Fire-and-forget: nothing in the invite path reads the negotiator row, and the
     // ensure-on-signin hook covers the user again at first login (IND-410).
     void agentDatabaseAdapter.ensureNegotiatorAgent(user.id).catch((err) => {
@@ -119,11 +117,11 @@ class NetworkInvitationService {
   }
 
   /**
-   * Idempotent invite. Ensures user, personal network, and network membership
+   * Idempotent invite. Ensures user and network membership
    * always exist; provisions a network-scoped personal agent and API key
    * (and emails the connect command) whenever the user does not already have
    * a scoped agent for this network. Reusing a user who was created via
-   * another path (e.g. ghost contact) still yields a key + email.
+   * another path still yields a key + email.
    *
    * @param params - networkId, email, optional name
    * @returns InviteResult — see field docs
@@ -246,7 +244,6 @@ class NetworkInvitationService {
         // browser session. Keep the legacy Better Auth flag for compatibility;
         // authorization must continue to come from JWT sessions or scoped keys.
         emailVerified: true,
-        isGhost: false,
       })
       .onConflictDoNothing()
       .returning({ id: schema.users.id, email: schema.users.email });

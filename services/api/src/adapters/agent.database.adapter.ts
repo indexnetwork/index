@@ -5,8 +5,6 @@ import { RuntimeConflictError, RuntimeNotFoundError } from '../lib/agent/runtime
 import { API_KEY_START_LENGTH, generateApiKey, hashApiKey } from '../lib/apikey/credential';
 import * as schema from '../schemas/database.schema';
 import { log } from '../lib/log';
-import { HERMES_AGENT_AUDIENCE } from '../lib/agent/hermes-authorization';
-import { HERMES_CANONICAL_ACTIONS } from '../lib/agent/hermes-capabilities';
 import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS } from '../lib/agent/hermes-credential';
 import { hermesRuntimeTelemetry, observeHermesAdvisoryLockWait } from '../lib/agent/hermes-runtime-telemetry';
 
@@ -242,13 +240,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       await tx.delete(schema.apikeys).where(
         sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${agentId}`,
       );
-      await tx.update(schema.hermesAgentCredentials).set({
-        activationState: 'revoked',
-        revokedAt: new Date(),
-      }).where(and(
-        eq(schema.hermesAgentCredentials.agentId, agentId),
-        sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
-      ));
     });
 
     logger.info('Soft-deleted agent and revoked linked tokens', { agentId });
@@ -404,9 +395,11 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     userId: string;
     actions: string[];
   }): Promise<AgentPermissionRow> {
+    // id has no DB default; Postgres checks NOT NULL before ON CONFLICT.
+    const permissionId = crypto.randomUUID();
     const result = await db.execute(sql`
-      INSERT INTO agent_permissions (agent_id, user_id, scope, scope_id, actions)
-      VALUES (${input.agentId}, ${input.userId}, 'global', NULL, ${input.actions})
+      INSERT INTO agent_permissions (id, agent_id, user_id, scope, scope_id, actions)
+      VALUES (${permissionId}, ${input.agentId}, ${input.userId}, 'global', NULL, ${input.actions})
       ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
       DO UPDATE SET actions = EXCLUDED.actions
       RETURNING id,
@@ -545,31 +538,21 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     if (agentIds.length === 0) {
       return new Set();
     }
-    const [legacyRows, dedicatedRows] = await Promise.all([
-      db
-        .select({ agentId: sql<string>`(${schema.apikeys.metadata}::jsonb ->> 'agentId')` })
-        .from(schema.apikeys)
-        .where(
-          and(
-            eq(schema.apikeys.enabled, true),
-            or(
-              isNull(schema.apikeys.expiresAt),
-              sql`${schema.apikeys.expiresAt} > now()`,
-            ),
-            inArray(sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId')`, agentIds),
+    const rows = await db
+      .select({ agentId: sql<string>`(${schema.apikeys.metadata}::jsonb ->> 'agentId')` })
+      .from(schema.apikeys)
+      .where(
+        and(
+          eq(schema.apikeys.enabled, true),
+          or(
+            isNull(schema.apikeys.expiresAt),
+            sql`${schema.apikeys.expiresAt} > now()`,
           ),
+          inArray(sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId')`, agentIds),
         ),
-      db.select({ agentId: schema.hermesAgentCredentials.agentId })
-        .from(schema.hermesAgentCredentials)
-        .where(and(
-          inArray(schema.hermesAgentCredentials.agentId, agentIds),
-          eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
-          eq(schema.hermesAgentCredentials.activationState, 'active'),
-          sql`${schema.hermesAgentCredentials.expiresAt} > now()`,
-        )),
-    ]);
+      );
     return new Set(
-      [...legacyRows, ...dedicatedRows].map((row) => row.agentId).filter((id): id is string => !!id),
+      rows.map((row) => row.agentId).filter((id): id is string => !!id),
     );
   }
 
@@ -674,7 +657,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   /**
    * Atomically choose the sole external negotiation executor for an owner.
    * Negotiator credentials retain negotiation-only authority; an active full
-   * dedicated row retains its exact canonical actions. The generic legacy path
+   * negotiator credential retains negotiation-only authority. The generic path
    * preserves other actions.
    */
   async setNegotiationExecutorBinding(input: {
@@ -710,7 +693,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       }
 
       let target: typeof schema.agents.$inferSelect | null = null;
-      let exactTargetActions: readonly string[] = ['manage:negotiations'];
+      const exactTargetActions: readonly string[] = ['manage:negotiations'];
       if (input.targetAgentId) {
         const [candidate] = await tx
           .select()
@@ -732,47 +715,23 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         )) {
           throw new RuntimeConflictError();
         }
-        const [[legacyCredential], [dedicatedCredential]] = await Promise.all([
-          tx.select({ id: schema.apikeys.id })
-            .from(schema.apikeys)
-            .where(and(
-              eq(schema.apikeys.enabled, true),
-              or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
-              sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${candidate.id}`,
-              input.exactTargetPermissions
-                ? and(
-                    isNotNull(schema.apikeys.expiresAt),
-                    sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}`,
-                    sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
-                    sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
-                  )
-                : undefined,
-            ))
-            .limit(1),
-          tx.select({ id: schema.hermesAgentCredentials.id, actions: schema.hermesAgentCredentials.actions })
-            .from(schema.hermesAgentCredentials)
-            .where(and(
-              eq(schema.hermesAgentCredentials.ownerId, input.ownerId),
-              eq(schema.hermesAgentCredentials.agentId, candidate.id),
-              eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
-              eq(schema.hermesAgentCredentials.activationState, 'active'),
-              sql`${schema.hermesAgentCredentials.expiresAt} > now()`,
-              eq(schema.hermesAgentCredentials.installationId, candidate.installationId ?? ''),
-              input.exactTargetPermissions
-                ? eq(schema.hermesAgentCredentials.setupAttemptId, input.expectedSetupAttemptId ?? '')
-                : undefined,
-            ))
-            .limit(1),
-        ]);
-        if (!legacyCredential && !dedicatedCredential) throw new RuntimeConflictError();
-        if (input.exactTargetPermissions && dedicatedCredential && !legacyCredential) {
-          if (
-            dedicatedCredential.actions.length !== HERMES_CANONICAL_ACTIONS.length
-            || !HERMES_CANONICAL_ACTIONS.every((action, index) => dedicatedCredential.actions[index] === action)
-            || !dedicatedCredential.actions.includes('manage:negotiations')
-          ) throw new RuntimeConflictError();
-          exactTargetActions = dedicatedCredential.actions;
-        }
+        const [credential] = await tx.select({ id: schema.apikeys.id })
+          .from(schema.apikeys)
+          .where(and(
+            eq(schema.apikeys.enabled, true),
+            or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
+            sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${candidate.id}`,
+            input.exactTargetPermissions
+              ? and(
+                  isNotNull(schema.apikeys.expiresAt),
+                  sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}`,
+                  sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
+                  sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
+                )
+              : undefined,
+          ))
+          .limit(1);
+        if (!credential) throw new RuntimeConflictError();
         target = candidate;
       }
 
@@ -820,9 +779,11 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           actions: [...exactTargetActions],
         });
       } else {
+        // id has no DB default; Postgres checks NOT NULL before ON CONFLICT.
+        const permissionId = crypto.randomUUID();
         await tx.execute(sql`
-          INSERT INTO agent_permissions (agent_id, user_id, scope, scope_id, actions)
-          VALUES (${target.id}, ${input.ownerId}, 'global', NULL, ARRAY['manage:negotiations']::text[])
+          INSERT INTO agent_permissions (id, agent_id, user_id, scope, scope_id, actions)
+          VALUES (${permissionId}, ${target.id}, ${input.ownerId}, 'global', NULL, ARRAY['manage:negotiations']::text[])
           ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
           DO UPDATE SET actions = CASE
             WHEN 'manage:negotiations' = ANY(agent_permissions.actions)
@@ -924,14 +885,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${target.id}
         AND ${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${input.expectedSetupAttemptId}
       `);
-      await tx.update(schema.hermesAgentCredentials).set({
-        activationState: 'revoked',
-        revokedAt: new Date(),
-      }).where(and(
-        eq(schema.hermesAgentCredentials.agentId, target.id),
-        eq(schema.hermesAgentCredentials.setupAttemptId, input.expectedSetupAttemptId),
-        sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
-      ));
       return true;
     });
   }
@@ -961,47 +914,24 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         permission.userId === ownerId
         && permission.scope === 'global'
         && permission.actions.includes('manage:negotiations'));
-      const [[legacyCredential], [dedicatedCredential]] = await Promise.all([
-        tx.select({ id: schema.apikeys.id })
-          .from(schema.apikeys)
-          .where(and(
-            eq(schema.apikeys.enabled, true),
-            or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
-            sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${selected.id}`,
-            selected.runtimeKind === 'hermes'
-              ? and(
-                  isNotNull(schema.apikeys.expiresAt),
-                  sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${selected.runtimeSetupAttemptId}`,
-                  sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
-                  sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
-                )
-              : undefined,
-          ))
-          .limit(1),
-        tx.select({ id: schema.hermesAgentCredentials.id, actions: schema.hermesAgentCredentials.actions })
-          .from(schema.hermesAgentCredentials)
-          .where(and(
-            eq(schema.hermesAgentCredentials.ownerId, ownerId),
-            eq(schema.hermesAgentCredentials.agentId, selected.id),
-            eq(schema.hermesAgentCredentials.audience, HERMES_AGENT_AUDIENCE),
-            eq(schema.hermesAgentCredentials.activationState, 'active'),
-            eq(schema.hermesAgentCredentials.installationId, selected.installationId ?? ''),
-            eq(schema.hermesAgentCredentials.setupAttemptId, selected.runtimeSetupAttemptId ?? ''),
-            sql`${schema.hermesAgentCredentials.expiresAt} > now()`,
-          ))
-          .limit(1),
-      ]);
-      const fullPermission = permissionRows.find((permission) =>
-        permission.userId === ownerId && permission.scope === 'global');
-      const dedicatedValid = Boolean(
-        dedicatedCredential
-        && dedicatedCredential.actions.length === HERMES_CANONICAL_ACTIONS.length
-        && HERMES_CANONICAL_ACTIONS.every((action, index) => dedicatedCredential.actions[index] === action)
-        && fullPermission?.actions.length === HERMES_CANONICAL_ACTIONS.length
-        && HERMES_CANONICAL_ACTIONS.every((action, index) => fullPermission.actions[index] === action)
-      );
+      const [legacyCredential] = await tx.select({ id: schema.apikeys.id })
+        .from(schema.apikeys)
+        .where(and(
+          eq(schema.apikeys.enabled, true),
+          or(isNull(schema.apikeys.expiresAt), sql`${schema.apikeys.expiresAt} > now()`),
+          sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${selected.id}`,
+          selected.runtimeKind === 'hermes'
+            ? and(
+                isNotNull(schema.apikeys.expiresAt),
+                sql`${schema.apikeys.metadata}::jsonb->>'setupAttemptId' = ${selected.runtimeSetupAttemptId}`,
+                sql`${schema.apikeys.metadata}::jsonb->>'audience' = ${HERMES_NEGOTIATOR_AUDIENCE}`,
+                sql`${schema.apikeys.metadata}::jsonb->>'kind' = ${HERMES_NEGOTIATOR_CREDENTIAL_KIND}`,
+              )
+            : undefined,
+        ))
+        .limit(1);
 
-      if (selected.status !== 'active' || !hasGlobalAuthority || (!legacyCredential && !dedicatedValid)) {
+      if (selected.status !== 'active' || !hasGlobalAuthority || !legacyCredential) {
         await tx.execute(sql`
           UPDATE agent_permissions
           SET actions = array_remove(actions, 'manage:negotiations')
@@ -1109,15 +1039,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       await tx.delete(schema.apikeys).where(
         sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${target.id}`,
       );
-      await tx.update(schema.hermesAgentCredentials).set({
-        activationState: 'revoked',
-        revokedAt: new Date(),
-      }).where(and(
-        eq(schema.hermesAgentCredentials.ownerId, input.ownerId),
-        eq(schema.hermesAgentCredentials.agentId, target.id),
-        eq(schema.hermesAgentCredentials.installationId, input.installationId),
-        sql`${schema.hermesAgentCredentials.activationState} IN ('pending', 'active')`,
-      ));
       return 'disconnected';
     });
   }
@@ -1128,12 +1049,11 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   /**
    * Ensure the user has a personal negotiator agent row (one per user).
-   * Idempotent — safe to call on every sign-in; follows the ensurePersonalNetwork
-   * setup-side-effect pattern. Ghost users are skipped: they never signed up and
-   * must not get negotiator rows (a later real sign-in de-ghosts and provisions).
+   * Idempotent — safe to call on every sign-in. A missing user row is skipped
+   * rather than provisioned.
    *
    * @param userId - The user to provision a negotiator for
-   * @returns The negotiator agent id, or null when the user is missing or a ghost
+   * @returns The negotiator agent id, or null when the user is missing
    */
   async ensureNegotiatorAgent(userId: string): Promise<string | null> {
     const findExisting = () =>
@@ -1156,12 +1076,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     }
 
     const [user] = await db
-      .select({ name: schema.users.name, isGhost: schema.users.isGhost })
+      .select({ name: schema.users.name })
       .from(schema.users)
       .where(eq(schema.users.id, userId))
       .limit(1);
 
-    if (!user || user.isGhost) {
+    if (!user) {
       return null;
     }
 

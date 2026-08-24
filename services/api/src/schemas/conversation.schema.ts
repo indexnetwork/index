@@ -21,6 +21,7 @@ export const taskStateEnum = pgEnum('task_state', [
   'auth_required',
   'waiting_for_agent',
   'claimed',
+  'paused',
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,9 +38,14 @@ export const conversations = pgTable('conversations', {
    * Chat persona driving this conversation's agent loop (H2A sessions only;
    * ignored for H2H DMs and A2A negotiation conversations). Plain text —
    * deliberately not a pg enum so future personas need no enum migration.
-   * Default 'orchestrator' covers all pre-persona rows backfill-free.
+   *
+   * Every H2A writer names its persona explicitly. The default exists only for
+   * the rows where the column is meaningless (DMs, negotiation conversations)
+   * and is the neutral sentinel 'none'. It used to be 'orchestrator', which
+   * doubled as the default chat persona; that persona is retired and its rows
+   * are retained read-only (migration 0128).
    */
-  persona: text('persona').notNull().default('orchestrator'),
+  persona: text('persona').notNull().default('none'),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -83,6 +89,14 @@ export const tasks = pgTable(
     statusMessage: jsonb('status_message'),
     statusTimestamp: timestamp('status_timestamp', { withTimezone: true }),
     metadata: jsonb('metadata'),
+    /**
+     * NegotiationGraph's briefs, ONE PER SEAT, keyed by the seat's user id
+     * (design doc 2026-08-23, D18). A brief is what a seat's own IS-A tells
+     * it about its own client, so it is never shared: the initiator's kickoff
+     * writes its own, and the counterparty's agent authors its own at its
+     * first turn. Unused by non-negotiation task rows.
+     */
+    briefs: jsonb('briefs').$type<Record<string, string>>().notNull().default({}),
     extensions: jsonb('extensions'),
     claimedByAgentId: text('claimed_by_agent_id'),
     claimedAt: timestamp('claimed_at', { withTimezone: true }),
@@ -242,7 +256,7 @@ export const conversationMetadata = pgTable('conversation_metadata', {
 });
 
 /**
- * Stable scope mapping for H2A/orchestrator chat sessions.
+ * Stable scope mapping for H2A chat sessions.
  *
  * Intent-scoped chats use this table to enforce one conversation per
  * `(userId, scopeType, scopeId)` while keeping the canonical conversation

@@ -41,13 +41,17 @@ export async function acquireNegotiationPairLock(
 }
 
 const ACTIVE_NEGOTIATION_FRESH_MS = 5 * 60 * 1000;
-const DEFAULT_ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * Mirrors the protocol's ASK_USER_WINDOW_MS. Adapters may not import from the
+ * protocol package (see the eslint boundaries rule), so the value is restated
+ * here; adapters/tests/negotiation-attempt.ask-user-window.spec.ts pins the two
+ * together so they cannot drift.
+ */
+export const ASK_USER_WINDOW_MS = 24 * 60 * 60 * 1000;
 const ASK_USER_LOCK_SLACK_MS = 60 * 60 * 1000;
 
 function askUserLockWindowMs(): number {
-  const parsed = Number(process.env.NEGOTIATION_ASK_USER_WINDOW_MS);
-  return (Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_ASK_USER_WINDOW_MS)
-    + ASK_USER_LOCK_SLACK_MS;
+  return ASK_USER_WINDOW_MS + ASK_USER_LOCK_SLACK_MS;
 }
 
 function qualifyingFreshNegotiationTaskStateWhere() {
@@ -104,6 +108,18 @@ export function qualifyingPairNegotiationTaskWhere(
  */
 export function notArchivedNegotiationTaskWhere() {
   return sql`${schema.tasks.metadata}->>'archivedAt' IS NULL`;
+}
+
+/**
+ * Reusable SQL predicate that keeps only rewrite-era negotiation tasks.
+ * Every task the negotiation graph opens records `metadata.seats` (one
+ * binding per seat: its signal and that signal's kickoff round); pre-rewrite
+ * rows have no such key. Anything the working|paused|completed lifecycle acts
+ * on must carry it, so a legacy row can never be swept, resumed, or acted on
+ * while staying invisible to the round-scoped active count.
+ */
+export function rewriteEraNegotiationTaskWhere() {
+  return sql`${schema.tasks.metadata} ? 'seats'`;
 }
 
 /**

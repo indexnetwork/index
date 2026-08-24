@@ -18,11 +18,8 @@ export const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
 export interface AuthDbContract {
   /** Returns a configured adapter object for Better Auth's `database` option. */
   createDrizzleAdapter(): unknown;
-  ensurePersonalNetwork(userId: string): Promise<string>;
-  /** Ensures the user has a personal negotiator agent row. Idempotent; skips ghosts. */
+  /** Ensures the user has a personal negotiator agent row. Idempotent. */
   ensureNegotiatorAgent(userId: string): Promise<string | null>;
-  /** Flips isGhost to false for the given user. No-op if already non-ghost. */
-  claimGhostUser(userId: string): Promise<void>;
 }
 
 /**
@@ -58,10 +55,7 @@ export interface AuthDeps {
  * follows the project layering rules (lib receives adapters via injection).
  *
  * @remarks Email/password auth is disabled in production — only magic link
- * and social OAuth are available. Ghost user de-ghosting is handled by the
- * session.create.after hook which calls `claimGhostUser` on every login.
- * The adapter-level ON CONFLICT upsert in `createDrizzleAdapter` remains
- * as a dev-only fallback for email/password signups.
+ * and social OAuth are available.
  */
 export function createAuth(deps: AuthDeps) {
   const { authDb, getTrustedOrigins, sendMagicLinkEmail, secondaryStorage } = deps;
@@ -79,16 +73,6 @@ export function createAuth(deps: AuthDeps) {
         create: {
           after: async (session) => {
             try {
-              await authDb.claimGhostUser(session.userId);
-            } catch (err) {
-              logger.error('Failed to claim ghost user on sign-in', { userId: session.userId, error: err });
-            }
-            try {
-              await authDb.ensurePersonalNetwork(session.userId);
-            } catch (err) {
-              logger.error('Failed to ensure personal network on sign-in', { userId: session.userId, error: err });
-            }
-            try {
               await authDb.ensureNegotiatorAgent(session.userId);
             } catch (err) {
               logger.error('Failed to ensure negotiator agent on sign-in', { userId: session.userId, error: err });
@@ -99,11 +83,6 @@ export function createAuth(deps: AuthDeps) {
       user: {
         create: {
           after: async (user) => {
-            try {
-              await authDb.ensurePersonalNetwork(user.id);
-            } catch (err) {
-              logger.error('Failed to create personal network on registration', { userId: user.id, error: err });
-            }
             try {
               await authDb.ensureNegotiatorAgent(user.id);
             } catch (err) {
@@ -200,10 +179,14 @@ export function createAuth(deps: AuthDeps) {
       }) as any,
     ],
     advanced: {
-      defaultCookieAttributes: {
-        sameSite: "none",
-        secure: true,
-      },
+      // Cookie attributes must match the scheme the API is actually served on.
+      // `SameSite=None` requires `Secure`, and browsers drop Secure cookies set
+      // over plain http — Chrome carves out localhost, Firefox does not, so an
+      // unconditional `secure: true` makes local email/password login succeed
+      // server-side while the browser silently discards the session cookie.
+      defaultCookieAttributes: API_URL.startsWith("https")
+        ? { sameSite: "none", secure: true }
+        : { sameSite: "lax", secure: false },
       database: {
         generateId: () => crypto.randomUUID(),
       },

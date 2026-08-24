@@ -56,11 +56,8 @@ const premiseIds = {
 const opportunityIds = Array.from({ length: 7 }, (_, index) => `!ind430-${suffix}-opp-${index}`);
 const priorRunId = `!ind430-${suffix}-prior-run`;
 
-const originalEnv = {
-  maxNetworks: process.env.FRAME_DRIFT_MONITORING_MAX_NETWORKS,
-  maxPairs: process.env.FRAME_DRIFT_MONITORING_MAX_PAIRS,
-  minUsers: process.env.FRAME_DRIFT_MONITORING_MIN_USERS,
-};
+/** Tight bounds so the fixture can exercise truncation and the k-anonymity floor. */
+const TEST_CONFIG = { schedule: '15 0 * * *', maxNetworks: 3, maxPairs: 1, minUsers: 2 };
 
 async function insertOpportunity(
   id: string,
@@ -81,25 +78,14 @@ async function insertOpportunity(
   });
 }
 
-function restoreEnv(key: keyof typeof originalEnv, envName: string): void {
-  const value = originalEnv[key];
-  if (value === undefined) delete process.env[envName];
-  else process.env[envName] = value;
-}
-
 describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
   beforeAll(async () => {
-    process.env.FRAME_DRIFT_MONITORING_MAX_NETWORKS = '3';
-    process.env.FRAME_DRIFT_MONITORING_MAX_PAIRS = '1';
-    process.env.FRAME_DRIFT_MONITORING_MIN_USERS = '2';
-
     await db.insert(users).values([
       ...Object.entries(userIds).map(([name, id]) => ({
         id,
         email: `${name}-${suffix}@example.com`,
         name: `Frame Drift ${name}`,
         emailVerified: true,
-        isGhost: false,
       })),
     ]);
     await db.update(users).set({ deletedAt: new Date('2026-07-01T00:00:00Z') })
@@ -232,10 +218,6 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
   }, 60_000);
 
   afterAll(async () => {
-    restoreEnv('maxNetworks', 'FRAME_DRIFT_MONITORING_MAX_NETWORKS');
-    restoreEnv('maxPairs', 'FRAME_DRIFT_MONITORING_MAX_PAIRS');
-    restoreEnv('minUsers', 'FRAME_DRIFT_MONITORING_MIN_USERS');
-
     const centroidRunRows = await db.select({ runId: frameCentroidSnapshots.runId })
       .from(frameCentroidSnapshots)
       .where(inArray(frameCentroidSnapshots.networkId, Object.values(networkIds)));
@@ -256,6 +238,10 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
       inArray(crossNetworkYieldSnapshots.networkBId, Object.values(networkIds)),
     ));
     await db.delete(frameDriftObservationRuns).where(inArray(frameDriftObservationRuns.id, runIds));
+    // The run header is keyed on the bucket, not on this fixture's ids, so a
+    // run that produced no snapshot rows would otherwise leak and make every
+    // later execution of this spec see a duplicate.
+    await db.delete(frameDriftObservationRuns).where(eq(frameDriftObservationRuns.bucketStart, BUCKET_START));
     await db.delete(opportunities).where(inArray(opportunities.id, opportunityIds));
     await db.delete(userContexts).where(inArray(userContexts.userId, Object.values(userIds)));
     await db.delete(premiseNetworks).where(inArray(premiseNetworks.premiseId, Object.values(premiseIds)));
@@ -268,7 +254,7 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
 
   it('captures a private stable cohort and never rewrites an immutable bucket', async () => {
     const adapter = new FrameDriftDatabaseAdapter(db);
-    const firstService = new FrameDriftMonitoringService(adapter, () => FIRST_CAPTURE);
+    const firstService = new FrameDriftMonitoringService(adapter, () => FIRST_CAPTURE, TEST_CONFIG);
 
     const first = await firstService.captureDailyBucket(BUCKET_START, BUCKET_END);
 
@@ -341,8 +327,7 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
       createdAt: SECOND_CAPTURE,
     });
 
-    process.env.FRAME_DRIFT_MONITORING_MAX_NETWORKS = '4';
-    const secondService = new FrameDriftMonitoringService(adapter, () => SECOND_CAPTURE);
+    const secondService = new FrameDriftMonitoringService(adapter, () => SECOND_CAPTURE, { ...TEST_CONFIG, maxNetworks: 4 });
     const second = await secondService.captureDailyBucket(BUCKET_START, BUCKET_END);
 
     expect(second.observationStatus).toBe('duplicate');
@@ -368,7 +353,8 @@ describe('FrameDriftDatabaseAdapter PostgreSQL/pgvector integration', () => {
     );
     expect(observationRunsAfterDuplicate).toEqual(observationRunsBefore);
 
-    const thirdService = new FrameDriftMonitoringService(adapter, () => THIRD_CAPTURE);
+    // The raised bound reaches the NEXT bucket, never the sealed one above.
+    const thirdService = new FrameDriftMonitoringService(adapter, () => THIRD_CAPTURE, { ...TEST_CONFIG, maxNetworks: 4 });
     const third = await thirdService.captureDailyBucket(BUCKET_END, NEXT_BUCKET_END);
     expect(third.observationStatus).toBe('inserted');
 

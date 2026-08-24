@@ -67,4 +67,98 @@ describe('projectNegotiationActivity', () => {
     expect(result[0]?.correspondentUserId).toBe('ada');
     expect(result[0]?.messages.map((message) => message.id)).toEqual(['a2', 'a5', 'a6']);
   });
+
+  it("keeps ask_user consultations private to the sending agent's principal", () => {
+    const askUser = (message: string) => [{
+      kind: 'data',
+      data: { action: 'ask_user', message },
+    }];
+
+    const result = projectNegotiationActivity(
+      'owner',
+      [{ id: 'opp-a', status: 'negotiating', actors: [{ userId: 'owner' }, { userId: 'ada' }] }],
+      new Map([['task-a', 'opp-a']]),
+      [
+        { id: 'public', taskId: 'task-a', senderId: 'agent:ada', parts: [{ text: 'A public counter.' }], createdAt: date(1) },
+        { id: 'their-private-ask', taskId: 'task-a', senderId: 'agent:ada', parts: askUser('What does my client want?'), createdAt: date(2) },
+        { id: 'own-private-ask', taskId: 'task-a', senderId: 'agent:owner', parts: askUser('What do you want?'), createdAt: date(3) },
+      ],
+      new Map([['ada', { name: 'Ada', avatar: null }]]),
+    );
+
+    expect(result[0]?.messages.map((message) => message.id)).toEqual(['public', 'own-private-ask']);
+    expect(JSON.stringify(result)).not.toContain('What does my client want?');
+  });
+
+  /**
+   * A2A negotiation turns persist as `[{ kind: 'data', data: turn }]` and carry
+   * NO text part, so the text-part filter dropped every one of them — the
+   * intent page's negotiations tab rendered "no agent conversations have
+   * started yet" for every live negotiation, with the agent's prose sitting one
+   * field down in `data.message`. Checked against the dev database at the time:
+   * 18 of 18 agent messages were data parts, 0 had a text part.
+   */
+  it('projects negotiation turns, their action, and the checklist they carry', () => {
+    const turn = (action: string, message: string, checklist?: unknown) => [{
+      kind: 'data',
+      data: {
+        action,
+        message,
+        assessment: { reasoning: 'internal', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } },
+        ...(checklist ? { checklist } : {}),
+      },
+    }];
+    const checklist = [
+      { name: 'Mutual want', kind: 'mutual_want', result: 'ok', basis: 'both intents say so' },
+      { name: 'Weekday availability', kind: 'fit', result: 'unknown', basis: '' },
+      { name: 'Skill level', kind: 'fit', result: 'unknown', basis: '' },
+    ];
+
+    const result = projectNegotiationActivity(
+      'owner',
+      [{ id: 'opp-a', status: 'negotiating', actors: [{ userId: 'owner' }, { userId: 'ada' }] }],
+      new Map([['task-a', 'opp-a']]),
+      [
+        { id: 't1', taskId: 'task-a', senderId: 'agent:owner', parts: turn('outreach', 'Reaching out about climbing.', checklist), createdAt: date(1) },
+        { id: 't2', taskId: 'task-a', senderId: 'agent:ada', parts: turn('question', 'Which grade and which evenings?'), createdAt: date(2) },
+        { id: 't3', taskId: 'task-a', senderId: 'agent:owner', parts: turn('ask_user', 'Pausing to ask my client.'), createdAt: date(3) },
+      ],
+      new Map([['ada', { name: 'Ada', avatar: null }]]),
+    );
+
+    expect(result[0]?.messages.map((message) => message.action)).toEqual(['outreach', 'question', 'ask_user']);
+    expect(result[0]?.messages.map((message) => message.text)).toEqual([
+      'Reaching out about climbing.',
+      'Which grade and which evenings?',
+      'Pausing to ask my client.',
+    ]);
+    // The checklist rides on the FIRST turn here, outside the latest-three
+    // window in longer negotiations — so it is derived from the whole record.
+    expect(result[0]?.checklist).toEqual(checklist);
+  });
+
+  it('derives the checklist from the last turn that carried one, past the latest-three slice', () => {
+    const turn = (action: string, message: string, checklist?: unknown) => [{
+      kind: 'data',
+      data: { action, message, assessment: { reasoning: 'r', suggestedRoles: { ownUser: 'peer', otherUser: 'peer' } }, ...(checklist ? { checklist } : {}) },
+    }];
+    const first = [{ name: 'Mutual want', kind: 'mutual_want', result: 'unknown', basis: '' }];
+    const rescored = [{ name: 'Mutual want', kind: 'mutual_want', result: 'ok', basis: 'they said yes' }];
+
+    const result = projectNegotiationActivity(
+      'owner',
+      [{ id: 'opp-a', status: 'negotiating', actors: [{ userId: 'owner' }, { userId: 'ada' }] }],
+      new Map([['task-a', 'opp-a']]),
+      [
+        { id: 'm1', taskId: 'task-a', senderId: 'agent:owner', parts: turn('outreach', 'one', first), createdAt: date(1) },
+        { id: 'm2', taskId: 'task-a', senderId: 'agent:ada', parts: turn('counter', 'two', rescored), createdAt: date(2) },
+        { id: 'm3', taskId: 'task-a', senderId: 'agent:owner', parts: turn('counter', 'three'), createdAt: date(3) },
+        { id: 'm4', taskId: 'task-a', senderId: 'agent:ada', parts: turn('accept', 'four'), createdAt: date(4) },
+      ],
+      new Map([['ada', { name: 'Ada', avatar: null }]]),
+    );
+
+    expect(result[0]?.messages.map((message) => message.id)).toEqual(['m2', 'm3', 'm4']);
+    expect(result[0]?.checklist).toEqual(rescored);
+  });
 });

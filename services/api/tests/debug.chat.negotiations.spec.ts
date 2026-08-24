@@ -105,6 +105,10 @@ beforeAll(async () => {
         conversationId: negConvId,
         taskId: task.id,
         senderId: `agent:${userId}`, // source actor
+        // Explicit, distinct timestamps: both rows would otherwise share one
+        // `defaultNow()` from the single INSERT, leaving the turn order this
+        // test asserts undetermined by the data.
+        createdAt: new Date(Date.now() - 60_000),
         role: 'user',
         parts: [
           {
@@ -123,6 +127,7 @@ beforeAll(async () => {
         conversationId: negConvId,
         taskId: task.id,
         senderId: `agent:${candidateUserId}`, // candidate actor
+        createdAt: new Date(Date.now() - 30_000),
         role: 'agent',
         parts: [
           {

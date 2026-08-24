@@ -16,103 +16,28 @@ describe("ApiClient", () => {
     await mock.stop();
   });
 
-  describe("listSessions", () => {
-    it("returns sessions from the API", async () => {
-      mock.on("GET", "/api/chat/sessions", () =>
-        Response.json({
-          sessions: [
-            { id: "s1", title: "First", createdAt: "2026-01-01" },
-            { id: "s2", title: "Second", createdAt: "2026-01-02" },
-          ],
-        }),
-      );
-
-      const sessions = await client.listSessions();
-      expect(sessions).toHaveLength(2);
-      expect(sessions[0].id).toBe("s1");
-      expect(sessions[1].title).toBe("Second");
-    });
-
-    it("sends the authorization header", async () => {
-      let receivedAuth = "";
-      mock.on("GET", "/api/chat/sessions", (req) => {
-        receivedAuth = req.headers.get("authorization") ?? "";
-        return Response.json({ sessions: [] });
-      });
-
-      await client.listSessions();
-      expect(receivedAuth).toBe("Bearer test-token-123");
-    });
-
-    it("throws on 401 with an auth error", async () => {
-      mock.on("GET", "/api/chat/sessions", () =>
-        Response.json({ error: "Invalid or expired access token" }, { status: 401 }),
-      );
-
-      try {
-        await client.listSessions();
-        expect(true).toBe(false); // should not reach
-      } catch (e: unknown) {
-        expect((e as Error).message).toContain("expired");
-      }
-    });
-  });
-
-  describe("CLI credential migration", () => {
-    it("mints a time-bounded CLI API key with a legacy session JWT", async () => {
-      let authorization = "";
-      let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/auth/cli-credential", async (req) => {
-        authorization = req.headers.get("authorization") ?? "";
-        receivedBody = await req.json() as Record<string, unknown>;
-        return Response.json({
-          key: "migrated-cli-key",
-          id: "migrated-key-id",
-          expiresAt: "2026-10-16T12:00:00.000Z",
-        });
-      });
-
-      await expect(client.mintCliApiKey()).resolves.toEqual({
-        key: "migrated-cli-key",
-        keyId: "migrated-key-id",
-      });
-      expect(authorization).toBe("Bearer test-token-123");
-      expect(receivedBody).toEqual({ protocolVersion: 2 });
-    });
-  });
-
   describe("API-key credential transport", () => {
-    it("uses x-api-key for compatibility history and orchestrator streaming", async () => {
-      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+    it("uses x-api-key on authenticated reads", async () => {
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123");
       const received: Array<{ path: string; apiKey: string; authorization: string }> = [];
-      mock.on("GET", "/api/chat/sessions", (req) => {
+      mock.on("GET", "/api/conversations", (req) => {
         received.push({
-          path: "/api/chat/sessions",
+          path: "/api/conversations",
           apiKey: req.headers.get("x-api-key") ?? "",
           authorization: req.headers.get("authorization") ?? "",
         });
-        return Response.json({ sessions: [] });
-      });
-      mock.on("POST", "/api/chat/stream", (req) => {
-        received.push({
-          path: "/api/chat/stream",
-          apiKey: req.headers.get("x-api-key") ?? "",
-          authorization: req.headers.get("authorization") ?? "",
-        });
-        return new Response("data: {}\n\n", { status: 200 });
+        return Response.json({ conversations: [] });
       });
 
-      await apiKeyClient.listSessions();
-      await apiKeyClient.streamChat({ message: "hello" });
+      await apiKeyClient.listConversations();
 
       expect(received).toEqual([
-        { path: "/api/chat/sessions", apiKey: "cli-key-123", authorization: "" },
-        { path: "/api/chat/stream", apiKey: "cli-key-123", authorization: "" },
+        { path: "/api/conversations", apiKey: "cli-key-123", authorization: "" },
       ]);
     });
 
     it("revokes only the exact stored API-key ID using the key itself", async () => {
-      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123");
       let receivedBody: Record<string, unknown> = {};
       let receivedApiKey = "";
       mock.on("POST", "/api/auth/cli-credential/revoke", async (req) => {
@@ -127,7 +52,7 @@ describe("ApiClient", () => {
     });
 
     it("defaults target proof to the caller token for self-revocation", async () => {
-      const apiKeyClient = new ApiClient(mock.url, "self-cli-key", "api_key");
+      const apiKeyClient = new ApiClient(mock.url, "self-cli-key");
       let receivedBody: Record<string, unknown> = {};
       mock.on("POST", "/api/auth/cli-credential/revoke", async (req) => {
         receivedBody = await req.json() as Record<string, unknown>;
@@ -140,7 +65,7 @@ describe("ApiClient", () => {
     });
 
     it("requires typed revocation success", async () => {
-      const apiKeyClient = new ApiClient(mock.url, "cli-key-123", "api_key");
+      const apiKeyClient = new ApiClient(mock.url, "cli-key-123");
       mock.on("POST", "/api/auth/cli-credential/revoke", () => Response.json({ success: false }));
 
       await expect(apiKeyClient.revokeApiKey("exact-key-id"))
@@ -273,50 +198,6 @@ describe("ApiClient", () => {
     });
   });
 
-  describe("streamChat", () => {
-    it("returns a readable response for SSE streaming", async () => {
-      mock.on("POST", "/api/chat/stream", async (req) => {
-        const body = await req.json();
-        expect(body.message).toBe("hello");
-
-        const encoder = new TextEncoder();
-        const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode('event: status\ndata: {"message":"Processing..."}\n\n'));
-            controller.enqueue(encoder.encode('event: done\ndata: {"sessionId":"s1","response":"Hi there"}\n\n'));
-            controller.close();
-          },
-        });
-
-        return new Response(stream, {
-          headers: { "Content-Type": "text/event-stream" },
-        });
-      });
-
-      const response = await client.streamChat({ message: "hello" });
-      expect(response.ok).toBe(true);
-      expect(response.headers.get("content-type")).toBe("text/event-stream");
-
-      // Read the full body
-      const text = await response.text();
-      expect(text).toContain("event: status");
-      expect(text).toContain("event: done");
-    });
-
-    it("includes sessionId when provided", async () => {
-      let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/chat/stream", async (req) => {
-        receivedBody = await req.json() as Record<string, unknown>;
-        return new Response("event: done\ndata: {}\n\n", {
-          headers: { "Content-Type": "text/event-stream" },
-        });
-      });
-
-      await client.streamChat({ message: "hi", sessionId: "abc" });
-      expect(receivedBody.sessionId).toBe("abc");
-    });
-  });
-
   // ── Network methods ──────────────────────────────────────────────
 
   describe("listNetworks", () => {
@@ -324,8 +205,8 @@ describe("ApiClient", () => {
       mock.on("GET", "/api/networks", () =>
         Response.json({
           networks: [
-            { id: "n1", title: "Test Network", memberCount: 5, isPersonal: false },
-            { id: "n2", title: "Personal", memberCount: 1, isPersonal: true },
+            { id: "n1", title: "Test Network", memberCount: 5 },
+            { id: "n2", title: "Private Network", memberCount: 1 },
           ],
         }),
       );

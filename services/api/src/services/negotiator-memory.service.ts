@@ -5,9 +5,6 @@
  * queue (post-negotiation + chat distillation) and the ask_user answer path
  * (immediate disclosure_rule) both land here. Owns the anti-poisoning policy:
  *
- * - **Flag gate**: `NEGOTIATOR_MEMORY_WRITE_ENABLED` (default OFF — code
- *   ships inert, the environment turns it on; off in prod until P5.4
- *   inspection ships so users can see memory before it accumulates).
  * - **Per-kind entry caps** per negotiator: at cap, the lowest-confidence
  *   (oldest first) entry is evicted to make room.
  * - **Dossier upsert**: one dossier per (agent, subject) — repeat encounters
@@ -259,7 +256,7 @@ export class NegotiatorMemoryWriteService {
       content,
       confidence: REMEMBER_CONFIDENCE,
       ...(embedding && { embedding }),
-      sourceRefs: [{ type: 'chat', id: input.sessionId ?? 'negotiator-dm' }],
+      sourceRefs: [{ type: 'chat', id: input.sessionId ?? 'negotiator-chat' }],
     });
     logger.info('Negotiator memory remembered from chat', { userId: input.userId, agentId, kind: input.kind, id: row.id });
     return toToolView(row);

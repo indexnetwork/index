@@ -43,6 +43,29 @@ export class IndexApiError extends Error {
 }
 
 /**
+ * Prefer API body.error / body.detail over opaque native errorCode (e.g. http_error).
+ * @param {{ status?: unknown, body?: unknown, errorCode?: unknown }} result
+ * @returns {string}
+ */
+export function messageFromNativeFailure(result) {
+  const body = result && result.body;
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    const error = 'error' in body && body.error != null && String(body.error).trim()
+      ? String(body.error).trim()
+      : '';
+    const detail = 'detail' in body && body.detail != null && String(body.detail).trim()
+      ? String(body.detail).trim()
+      : '';
+    if (error && detail) return `${error}: ${detail}`;
+    if (error) return error;
+    if (detail) return detail;
+  }
+  const status = Number(result && result.status) || 0;
+  if (status > 0) return `HTTP ${status}`;
+  return String((result && result.errorCode) || 'native_request_failed');
+}
+
+/**
  * Normalize an API base URL so endpoint construction is stable.
  * @param {string | undefined} value
  * @returns {string}
@@ -130,7 +153,7 @@ export function createNativeAPIRequestBridge(options) {
     });
     else {
       const error = new IndexApiError(
-        String(result.errorCode || 'native_request_failed'),
+        messageFromNativeFailure(result),
         Number(result.status) || 0,
         result.body ?? null,
       );
@@ -290,9 +313,21 @@ export function createIndexApiClient(options = {}) {
       '/agent-runtime/rollback',
       { ...options, method: 'POST', body: { setupAttemptId } },
     ),
+    disconnectHermesRuntime: (installationId, options = {}) => request(
+      `/agent-runtime/hermes/${encodeURIComponent(installationId)}`,
+      { ...options, method: 'DELETE' },
+    ),
     auth: {
       me: (options = {}) => request('/auth/me', options),
       updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),
+      confirmOnboardingProfile: (options = {}) => request(
+        '/auth/onboarding/confirm-profile',
+        { ...options, method: 'POST', body: {} },
+      ),
+      completeOnboarding: (body = {}, options = {}) => request(
+        '/auth/onboarding/complete',
+        { ...options, method: 'POST', body },
+      ),
     },
 
     storage: {
@@ -374,6 +409,10 @@ export function createIndexApiClient(options = {}) {
 
     agents: {
       list: (options = {}) => request('/agents', options),
+      update: (agentId, body, options = {}) => request(
+        `/agents/${encodeURIComponent(agentId)}`,
+        { ...options, method: 'PATCH', body },
+      ),
       createToken: (agentId, name, options = {}) => request(
         `/agents/${encodeURIComponent(agentId)}/tokens`,
         { ...options, method: 'POST', body: name ? { name } : {} },
@@ -493,24 +532,9 @@ export function createIndexApiClient(options = {}) {
       ),
     },
 
-    tools: {
-      readUserContexts: (options = {}) => request(
-        '/tools/read_user_contexts', { ...options, method: 'POST', body: { query: {} } },
-      ),
-      previewUserContext: (query, options = {}) => request(
-        '/tools/preview_user_context', { ...options, method: 'POST', body: { query } },
-      ),
-      confirmUserContext: (draft, options = {}) => request(
-        '/tools/confirm_user_context', { ...options, method: 'POST', body: { query: { draft } } },
-      ),
-    },
-
     enrichment: {
-      // Run the full public-research enrichment inline for the authenticated
-      // user and resolve { enriched: true, profile: { name, intro, location,
-      // socials } } so the caller can show discovered socials immediately.
-      // Every other enrichment path is automatic (profile save, signup, imports).
-      trigger: (options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: {} }),
+      // Public profile prefill (Parallel lookup). Optional body hints merge with account defaults.
+      trigger: (hints = {}, options = {}) => request('/enrichment/enrich', { ...options, method: 'POST', body: hints }),
     },
 
     conversations: {

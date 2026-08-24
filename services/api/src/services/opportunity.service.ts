@@ -3,16 +3,20 @@ import { log } from '../lib/log';
 import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
 
-import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, chatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
+// Imported from the owning adapter rather than the barrel: the reopen write is
+// api-local, and specs that stub the barrel should not have to know about it.
+import { OpportunityDatabaseAdapter, type ReopenOpportunityResult } from '../adapters/opportunity.database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { uptakeAcceptanceGuard, type UptakeAcceptanceAdvisoryResult, type UptakeAcceptanceGuardLike } from '../lib/opportunity/uptake-acceptance.guard';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
+import { readAskingFirstStates, type AskingFirstTaskReader } from '../lib/opportunity/asking-first.projection';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
 
 const logger = log.service.from("OpportunityService");
 const startChatLogger = log.service.from("OpportunityService.startChat");
 const updateStatusLogger = log.service.from("OpportunityService.updateOpportunityStatus");
+const reopenLogger = log.service.from("OpportunityService.reopenOpportunity");
 
 /**
  * Lifecycle statuses surfaced in the default opportunity list (when no explicit
@@ -62,7 +66,6 @@ interface OpportunityStatusUpdateResult {
 interface IntentScopeOptions {
   scopeType?: 'intent';
   scopeId?: string;
-  acknowledgedUptakeQuestionIds?: string[];
   /** Internal clamp derived from a network-scoped API-key principal. */
   networkScopeId?: string;
   /**
@@ -224,6 +227,48 @@ interface OpportunityPresentationDeps {
   gatherContext?: typeof gatherPresenterContext;
 }
 
+/**
+ * Reopen seam. The reopen write is api-local (it lives on
+ * `OpportunityDatabaseAdapter`, not on the protocol database port), so the
+ * service reaches it through this narrow port rather than through `this.db`.
+ */
+export interface OpportunityReopenDatabase {
+  reopenOpportunityForRerun(id: string): Promise<ReopenOpportunityResult | null>;
+}
+
+/** Enqueue seam for the re-run job, so specs can assert the enqueue without Redis. */
+export interface NegotiationRerunQueue {
+  addJob(data: { opportunityId: string; userId: string }): Promise<unknown>;
+}
+
+export interface OpportunityReopenDeps {
+  database?: OpportunityReopenDatabase;
+  queue?: NegotiationRerunQueue;
+}
+
+/**
+ * Negotiation-closure seam for the owner verdict.
+ *
+ * An owner accept/reject is a user action on the OPPORTUNITY, outside the
+ * negotiation loop — but the pairing it decides may still have a live
+ * negotiation, and `NegotiationGraph`'s `resolve` is the only terminal write
+ * on a negotiation task: it records the outcome artifact, completes the task,
+ * and re-runs the all-paused check that arms the round's reflect job.
+ *
+ * Production composes the conversation adapter's task read with the single
+ * compiled graph; specs pass a fake pair.
+ */
+export interface OwnerVerdictNegotiationCloser {
+  /** The opportunity's live (non-completed) negotiation, or null when it never negotiated. */
+  liveNegotiationId(opportunityId: string): Promise<string | null>;
+  /** `NegotiationGraph.invoke` with a verdict — the resolve lane. */
+  resolve(input: {
+    negotiationId: string;
+    verdict: 'pending' | 'reject';
+    reasoning: string;
+  }): Promise<{ status: string; error?: string }>;
+}
+
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
@@ -231,20 +276,29 @@ export class OpportunityService {
   private readonly presenterDb: PresenterDatabase;
   private readonly gatherPresentationContext: typeof gatherPresenterContext;
   private readonly deliveryCache: RedisCacheAdapter;
-  private readonly uptakeGuard: UptakeAcceptanceGuardLike;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
+  /** Negotiation-task read path behind the radar's "asking you first" state. */
+  private readonly askingFirstTasks: AskingFirstTaskReader;
   private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
+  /** api-local reopen write; see {@link OpportunityService.reopenOpportunity}. */
+  private readonly reopenDb: OpportunityReopenDatabase;
+  /** Injected only by specs; production resolves the real queue lazily. */
+  private readonly rerunQueue: NegotiationRerunQueue | null;
+  /** Injected only by specs; production resolves the real graph lazily. */
+  private readonly negotiationCloser: OwnerVerdictNegotiationCloser | null;
 
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
-    acceptanceGuard: UptakeAcceptanceGuardLike = uptakeAcceptanceGuard,
     outcomeRecorder: OutcomeFeedbackRecorderLike = outcomeFeedbackRecorder,
     presentation: OpportunityPresentationDeps = {},
+    askingFirstTasks: AskingFirstTaskReader = conversationDatabaseAdapter,
+    reopen: OpportunityReopenDeps = {},
+    negotiationCloser: OwnerVerdictNegotiationCloser | null = null,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
@@ -253,8 +307,83 @@ export class OpportunityService {
       ?? chatDatabaseAdapter as unknown as PresenterDatabase;
     this.gatherPresentationContext = presentation.gatherContext ?? gatherPresenterContext;
     this.deliveryCache = new RedisCacheAdapter();
-    this.uptakeGuard = acceptanceGuard;
     this.outcomeRecorder = outcomeRecorder;
+    this.askingFirstTasks = askingFirstTasks;
+    this.reopenDb = reopen.database ?? new OpportunityDatabaseAdapter();
+    this.rerunQueue = reopen.queue ?? null;
+    this.negotiationCloser = negotiationCloser;
+  }
+
+  /** The re-run queue, imported lazily so loading the service never opens Redis. */
+  private async getRerunQueue(): Promise<NegotiationRerunQueue> {
+    if (this.rerunQueue) return this.rerunQueue;
+    const { negotiationRunExistingQueue } = await import('../queues/negotiations/run-existing.queue');
+    return negotiationRunExistingQueue;
+  }
+
+  /**
+   * The negotiation closer, imported lazily for the same reason as the re-run
+   * queue: loading this service must not compile the negotiation graph or open
+   * the queue connection behind its reflect enqueue.
+   */
+  private async getNegotiationCloser(): Promise<OwnerVerdictNegotiationCloser> {
+    if (this.negotiationCloser) return this.negotiationCloser;
+    const { negotiationGraph } = await import('../lib/negotiation/negotiation-graph');
+    return {
+      liveNegotiationId: async (opportunityId: string) =>
+        (await conversationDatabaseAdapter.getNegotiationTaskForOpportunity(opportunityId))?.id ?? null,
+      resolve: (input) => negotiationGraph.invoke(input),
+    };
+  }
+
+  /**
+   * End the pairing's negotiation, if it still has one, on the owner's verdict.
+   *
+   * `resolve` is the negotiation's only terminal write: it records the outcome
+   * artifact, completes the task, and re-runs the all-paused check so the
+   * round's `reflect:{intentId}:{round}` job can finally be enqueued. It leaves
+   * the opportunity status this method already wrote alone — a terminal status
+   * is the owner's, never overwritten by a verdict (see `resolveNode`).
+   *
+   * A match that never negotiated has no task and nothing happens here.
+   *
+   * Best-effort: the owner's decision is already committed and their request
+   * must not fail because a background trigger could not be re-armed.
+   */
+  private async closeNegotiationForOwnerVerdict(
+    opportunityId: string,
+    action: 'accepted' | 'rejected',
+  ): Promise<void> {
+    try {
+      const closer = await this.getNegotiationCloser();
+      const negotiationId = await closer.liveNegotiationId(opportunityId);
+      if (!negotiationId) return;
+      const result = await closer.resolve({
+        negotiationId,
+        // An accept closes the negotiation on its promotable outcome — the
+        // owner's own `accepted` is the status, already written above. A
+        // reject closes it as a reject. There is no third verdict: the graph's
+        // vocabulary is the negotiation's, not the owner's.
+        verdict: action === 'rejected' ? 'reject' : 'pending',
+        reasoning: action === 'rejected'
+          ? 'Closed by the owner declining this match.'
+          : 'Closed by the owner accepting this match.',
+      });
+      if (result.status === 'error') {
+        updateStatusLogger.error('negotiation resolve failed after owner verdict (non-blocking)', {
+          opportunityId,
+          negotiationId,
+          action,
+          error: result.error,
+        });
+      }
+    } catch (err) {
+      updateStatusLogger.error('negotiation close failed after owner verdict (non-blocking)', {
+        opportunityId,
+        action,
+        error: err,
+      });
+    }
   }
 
   private getPresenter(): OpportunityPresenter {
@@ -277,16 +406,9 @@ export class OpportunityService {
       this.cache as unknown as MaintenanceGraphCache,
       {
         addJob: async (
-          data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string },
+          data: { intentId: string; userId: string; indexIds?: string[] },
           options?: { priority?: number; jobId?: string },
         ) => {
-          if (data.contactUserId) {
-            const { fromIntroducerQueue } = await import('../queues/opportunity/from-introducer.queue');
-            return fromIntroducerQueue.addJob(
-              { userId: data.userId, contactUserId: data.contactUserId, networkIds: data.indexIds },
-              options,
-            );
-          }
           const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
           return fromIntentQueue.addJob(
             { intentId: data.intentId, userId: data.userId },
@@ -307,6 +429,34 @@ export class OpportunityService {
   ): () => void {
     this.events.on(event, handler);
     return () => this.events.off(event, handler);
+  }
+
+  /**
+   * Stamps the radar's "asking you first" state onto the cards it belongs to.
+   *
+   * A pre-contact park (#1445) leaves the opportunity `negotiating`, so without
+   * this the card claims the agents are talking when nothing has been sent and
+   * the only thing outstanding is the viewer's own answer. Derived from the
+   * park, never stored: it resolves when the park does.
+   *
+   * Fails OPEN — a radar that renders without the state is degraded; one that
+   * fails to render because a task query blipped is broken. The question also
+   * still reaches the client through the signal's DM and its notification,
+   * which do not depend on this path.
+   */
+  private async decorateWithAskingFirst(userId: string, items: unknown[]): Promise<unknown[]> {
+    if (items.length === 0) return items;
+    const states = await readAskingFirstStates(this.askingFirstTasks, userId)
+      .catch((e) => {
+        logger.warn('Asking-first projection failed; radar renders without it', { userId, error: e });
+        return null;
+      });
+    if (!states || states.size === 0) return items;
+    return items.map((item) => {
+      const opportunityId = (item as { opportunityId?: unknown }).opportunityId;
+      const askingFirst = typeof opportunityId === 'string' ? states.get(opportunityId) : undefined;
+      return askingFirst ? { ...(item as Record<string, unknown>), askingFirst } : item;
+    });
   }
 
   /**
@@ -334,7 +484,7 @@ export class OpportunityService {
       if (result.error) {
         return { error: result.error };
       }
-      const items = result.items ?? [];
+      const items = await this.decorateWithAskingFirst(userId, result.items ?? []);
       const meta: { totalOpportunities: number; maintenanceTriggered: boolean } = {
         ...(result.meta ?? { totalOpportunities: 0 }),
         maintenanceTriggered: false,
@@ -542,7 +692,6 @@ export class OpportunityService {
 
     const otherPartyInfo = otherPartyIds[0] ? userMap.get(otherPartyIds[0])! : { id: '', name: 'Unknown', avatar: null as string | null };
     const counterpartUser = userRecords[0];
-    const isCounterpartGhost = counterpartUser?.isGhost === true && counterpartUser?.deletedAt == null;
     const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, introducerInfo, 'card');
 
     const otherParties = nonIntroducerActors.map((a) => {
@@ -564,7 +713,6 @@ export class OpportunityService {
       confidence: confidenceNum,
       index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
-      isGhost: isCounterpartGhost,
       primaryActionLabel: getPrimaryActionLabel(myActor.role),
       createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
       expiresAt: opp.expiresAt ? (opp.expiresAt instanceof Date ? opp.expiresAt.toISOString() : opp.expiresAt) : undefined,
@@ -587,7 +735,7 @@ export class OpportunityService {
     status: OpportunityStatus,
     userId: string,
     options?: IntentScopeOptions,
-  ): Promise<OpportunityStatusUpdateResult | UptakeAcceptanceAdvisoryResult | { error: string; status: number }> {
+  ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
     logger.verbose('Updating opportunity status', {
       opportunityId,
       status,
@@ -616,16 +764,6 @@ export class OpportunityService {
     // and they are trying to accept, block them — the other party must accept.
     if (status === 'accepted' && callerActor.actedAt) {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
-    }
-
-    if (status === 'accepted') {
-      const advisory = await this.uptakeGuard.check({
-        opportunityId,
-        userId,
-        networkId: options?.networkScopeId,
-        acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
-      });
-      if (advisory) return advisory;
     }
 
     const counterpart = status === 'accepted'
@@ -685,6 +823,16 @@ export class OpportunityService {
       this.outcomeRecorder.triggerMine(prepared.scope);
     }
 
+    // An owner verdict on a NEGOTIATED pairing has to end the negotiation too.
+    // The round's reflect trigger counts negotiation tasks still in `working`
+    // (`countActiveNegotiationsForRound`), so a reject or accept that flips only
+    // the opportunity leaves its task `working` forever: the round never reaches
+    // zero and `reflect:{intentId}:{round}` is never enqueued — the all-paused
+    // trigger defeated by the most ordinary user action.
+    if (captureAction) {
+      await this.closeNegotiationForOwnerVerdict(opportunityId, captureAction);
+    }
+
     if (!counterpart) {
       return { opportunity: sanitizeOpportunityForResponse(updated) };
     }
@@ -701,25 +849,6 @@ export class OpportunityService {
         });
       });
     }
-
-    // Accepter explicitly acted — restore if previously removed.
-    // Counterpart: add them to the accepter but honour any prior opt-out on their side.
-    await this.db.upsertContactMembership(userId, counterpartUserId, { restore: true }).catch((err) => {
-      updateStatusLogger.error('upsertContactMembership failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId,
-        error: err,
-      });
-    });
-    await this.db.upsertContactMembership(counterpartUserId, userId, { restore: false }).catch((err) => {
-      updateStatusLogger.error('upsertContactMembership (counterpart) failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId,
-        error: err,
-      });
-    });
 
     return {
       opportunity: sanitizeOpportunityForResponse(updated),
@@ -744,9 +873,8 @@ export class OpportunityService {
    *    known, so we never flip status without a destination to navigate to.
    * 3. `acceptSiblingOpportunities` — matches the PATCH /status='accepted'
    *    side effect; already transactional internally.
-   * 4. `upsertContactMembership` — idempotent; safe to re-run.
    *
-   * Steps 3 and 4 are best-effort after the status flip: their failure must
+   * Step 3 is best-effort after the status flip: its failure must
    * not block the user from reaching the chat (the opp is already accepted
    * and the conversation already resolved). Errors are logged for later
    * reconciliation.
@@ -766,7 +894,6 @@ export class OpportunityService {
     options?: IntentScopeOptions,
   ): Promise<
     | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
-    | UptakeAcceptanceAdvisoryResult
     | { error: string; status: number }
   > {
     const opp = await this.db.getOpportunity(opportunityId);
@@ -836,14 +963,6 @@ export class OpportunityService {
       return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
 
-    const advisory = await this.uptakeGuard.check({
-      opportunityId,
-      userId,
-      networkId: options?.networkScopeId,
-      acknowledgedUptakeQuestionIds: options?.acknowledgedUptakeQuestionIds,
-    });
-    if (advisory) return advisory;
-
     const counterpart = resolveCounterpart(opp.actors, userId);
     if (!counterpart) {
       return { error: 'Opportunity has no counterpart to chat with', status: 400 };
@@ -910,8 +1029,8 @@ export class OpportunityService {
     }
 
     // Best-effort side effects — their failure must not block the user from
-    // reaching the chat. The opp is already accepted and the DM already
-    // resolved; these keep the radar and contacts view in sync.
+    // reaching the chat. The opportunity is already accepted and the DM already
+    // resolved.
     if (options?.scopeType !== 'intent') {
       await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
         startChatLogger.error('acceptSiblingOpportunities failed (non-blocking)', {
@@ -922,28 +1041,84 @@ export class OpportunityService {
         });
       });
     }
-    await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true }).catch((err) => {
-      startChatLogger.error('upsertContactMembership failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId: counterpart.userId,
-        error: err,
-      });
-    });
-    await this.db.upsertContactMembership(counterpart.userId, userId, { restore: false }).catch((err) => {
-      startChatLogger.error('upsertContactMembership (counterpart) failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId: counterpart.userId,
-        error: err,
-      });
-    });
-
     return {
       conversationId: conversation.id,
       counterpartUserId: counterpart.userId,
       opportunity: sanitizeOpportunityForResponse(updated),
     };
+  }
+
+
+  /**
+   * Reopen a dead pairing and queue its negotiation re-run.
+   *
+   * The user's lever for a match that died on a bad turn: it resets the
+   * opportunity to `stalled` and enqueues negotiate-existing, which is exactly
+   * the recovery that was being done by hand with SQL. Only an actor on the
+   * opportunity may pull it, and only from a terminal status — a `pending` row
+   * is awaiting its owner's decision and an `accepted` one already connected,
+   * so neither is a dead end to recover from.
+   *
+   * A re-run the outreach screen then vetoes is a correct outcome, not a
+   * failure of this call.
+   *
+   * @param opportunityId - Resolved opportunity ID
+   * @param userId - The calling user, who must be an actor
+   * @param options - Network clamp derived from a network-scoped API-key principal
+   * @returns The 202 payload, or a structured error
+   */
+  async reopenOpportunity(
+    opportunityId: string,
+    userId: string,
+    options?: Pick<IntentScopeOptions, 'networkScopeId'>,
+  ): Promise<
+    | { opportunityId: string; status: 'stalled'; enqueued: true }
+    | { error: string; status: number; taskId?: string }
+  > {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) return { error: 'Opportunity not found', status: 404 };
+    if (!opp.actors.some((actor) => actor.userId === userId)) {
+      return { error: 'Not authorized to reopen this opportunity', status: 403 };
+    }
+    // A network-scoped agent principal may not reach out of its network, and
+    // learns nothing about what is outside it — same 404 as the sibling writes.
+    if (!matchesAgentNetworkScope(opp, userId, options?.networkScopeId)) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+
+    const result = await this.reopenDb.reopenOpportunityForRerun(opportunityId);
+    if (!result) return { error: 'Opportunity not found', status: 404 };
+    if ('conflict' in result) {
+      if (result.conflict === 'active_negotiation') {
+        return {
+          error: 'This match already has a negotiation in flight',
+          status: 409,
+          taskId: result.taskId,
+        };
+      }
+      return {
+        error: `Only a rejected, stalled, or expired match can be reopened (this one is ${result.status})`,
+        status: 409,
+      };
+    }
+
+    try {
+      const queue = await this.getRerunQueue();
+      await queue.addJob({ opportunityId, userId });
+    } catch (err) {
+      // The row is now `stalled`, which is itself reopenable — so a retry of
+      // this same call re-queues cleanly. Say so rather than reporting success
+      // for a re-run that was never queued.
+      reopenLogger.error('Reopen flipped the status but the re-run could not be queued', {
+        opportunityId,
+        userId,
+        error: err,
+      });
+      return { error: 'Match reopened, but the negotiation run could not be queued — retry', status: 500 };
+    }
+
+    reopenLogger.info('Opportunity reopened for re-run', { opportunityId, userId });
+    return { opportunityId, status: 'stalled', enqueued: true };
   }
 
 
@@ -1183,66 +1358,6 @@ export class OpportunityService {
     return { opportunities: opportunityCards };
   }
 
-  /**
-   * Generate an invite message for a ghost user counterpart in an opportunity.
-   * @param opportunityId - The opportunity ID
-   * @param viewerId - The authenticated user requesting the invite
-   * @returns Generated invite message or error
-   */
-  async generateInviteMessage(opportunityId: string, viewerId: string) {
-    const opp = await this.db.getOpportunity(opportunityId);
-    if (!opp) {
-      return { error: 'Opportunity not found', status: 404 };
-    }
-
-    const isActor = opp.actors.some((a) => a.userId === viewerId);
-    if (!isActor) {
-      return { error: 'Not authorized', status: 403 };
-    }
-    if (!canUserSeeOpportunity(opp.actors, opp.status, viewerId)) {
-      return { error: 'Not authorized to view this opportunity', status: 403 };
-    }
-
-    const counterpart = resolveCounterpart(opp.actors, viewerId);
-
-    if (!counterpart) {
-      return { error: 'No counterpart found', status: 400 };
-    }
-
-    const [viewer, recipient] = await Promise.all([
-      this.db.getUser(viewerId),
-      this.db.getUser(counterpart.userId),
-    ]);
-
-    if (!recipient || recipient.deletedAt != null) {
-      return { error: 'Counterpart not available', status: 400 };
-    }
-    if (!recipient.isGhost) {
-      return { error: 'Counterpart is not a ghost user', status: 400 };
-    }
-
-    const introducer = opp.actors.find((a) => a.role === 'introducer');
-    const introducerUser = introducer ? await this.db.getUser(introducer.userId) : null;
-
-    // Gather intents for context
-    const [senderIntents, recipientIntents] = await Promise.all([
-      this.db.getActiveIntents(viewerId).then(intents => intents.map(i => i.payload)),
-      this.db.getActiveIntents(counterpart.userId).then(intents => intents.map(i => i.payload)),
-    ]);
-
-    const { generateInviteMessage: generate } = await import('@indexnetwork/protocol');
-
-    const result = await generate({
-      recipientName: recipient.name ?? 'there',
-      senderName: viewer?.name ?? 'Someone',
-      opportunityInterpretation: opp.interpretation.reasoning,
-      senderIntents,
-      recipientIntents,
-      referrerName: introducerUser?.name ?? undefined,
-    });
-
-    return { message: result.message };
-  }
 
   /**
    * Trigger maintenance for a specific user via the maintenance graph.

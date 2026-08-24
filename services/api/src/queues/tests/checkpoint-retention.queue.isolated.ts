@@ -28,7 +28,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import { CheckpointRetentionCron, resolveRetentionDays, resolveBatchSize } from '../checkpoint/retention.queue';
+import { BATCH_SIZE, CheckpointRetentionCron } from '../checkpoint/retention.queue';
 import type { CheckpointRetentionDeps } from '../checkpoint/retention.queue';
 import type { CheckpointPruneResult } from '../../adapters/checkpointer.adapter';
 
@@ -39,74 +39,10 @@ const emptyBatch: CheckpointPruneResult = { threads: 0, checkpoints: 0, blobs: 0
 const mockPrune = mock(async (_opts: { retentionDays: number; batchSize: number }): Promise<CheckpointPruneResult> => emptyBatch);
 const deps: CheckpointRetentionDeps = { pruneStaleCheckpointThreads: mockPrune };
 
-const ENV_KEYS = ['CHECKPOINT_RETENTION_DAYS', 'CHECKPOINT_PRUNE_BATCH_SIZE'] as const;
-const savedEnv: Record<string, string | undefined> = {};
 
 // ---------------------------------------------------------------------------
 // tests
 // ---------------------------------------------------------------------------
-describe('checkpoint retention config', () => {
-  beforeEach(() => {
-    for (const key of ENV_KEYS) {
-      savedEnv[key] = process.env[key];
-      delete process.env[key];
-    }
-  });
-
-  afterEach(() => {
-    for (const key of ENV_KEYS) {
-      if (savedEnv[key] === undefined) delete process.env[key];
-      else process.env[key] = savedEnv[key];
-    }
-  });
-
-  describe('resolveRetentionDays', () => {
-    it('defaults to 7 days when unset or blank', () => {
-      expect(resolveRetentionDays(undefined)).toBe(7);
-      expect(resolveRetentionDays('')).toBe(7);
-      expect(resolveRetentionDays('   ')).toBe(7);
-    });
-
-    it('parses a positive number of days (floored, min 1)', () => {
-      expect(resolveRetentionDays('14')).toBe(14);
-      expect(resolveRetentionDays('2.9')).toBe(2);
-      expect(resolveRetentionDays('0.5')).toBe(1);
-    });
-
-    it('returns null (disabled) for 0, negatives, and the disable keywords', () => {
-      expect(resolveRetentionDays('0')).toBeNull();
-      expect(resolveRetentionDays('-3')).toBeNull();
-      for (const keyword of ['off', 'none', 'never', 'disabled', 'false', 'OFF', ' Never ']) {
-        expect(resolveRetentionDays(keyword)).toBeNull();
-      }
-    });
-
-    it('falls back to the default for unparseable values', () => {
-      expect(resolveRetentionDays('soon')).toBe(7);
-    });
-
-    it('reads CHECKPOINT_RETENTION_DAYS when no argument is given', () => {
-      process.env.CHECKPOINT_RETENTION_DAYS = '3';
-      expect(resolveRetentionDays()).toBe(3);
-    });
-  });
-
-  describe('resolveBatchSize', () => {
-    it('defaults to 100 when unset or invalid', () => {
-      expect(resolveBatchSize(undefined)).toBe(100);
-      expect(resolveBatchSize('abc')).toBe(100);
-      expect(resolveBatchSize('0')).toBe(100);
-      expect(resolveBatchSize('-5')).toBe(100);
-    });
-
-    it('parses and clamps to [1, 1000]', () => {
-      expect(resolveBatchSize('50')).toBe(50);
-      expect(resolveBatchSize('5000')).toBe(1000);
-      expect(resolveBatchSize('1')).toBe(1);
-    });
-  });
-});
-
 describe('CheckpointRetentionCron', () => {
   beforeEach(() => {
     cronCallbacks.length = 0;
@@ -114,34 +50,13 @@ describe('CheckpointRetentionCron', () => {
     mockCronStop.mockClear();
     mockPrune.mockClear();
     mockPrune.mockImplementation(async () => emptyBatch);
-    for (const key of ENV_KEYS) {
-      savedEnv[key] = process.env[key];
-      delete process.env[key];
-    }
-  });
-
-  afterEach(() => {
-    for (const key of ENV_KEYS) {
-      if (savedEnv[key] === undefined) delete process.env[key];
-      else process.env[key] = savedEnv[key];
-    }
   });
 
   describe('prune', () => {
-    it('returns zeros without touching the DB when retention is disabled', async () => {
-      process.env.CHECKPOINT_RETENTION_DAYS = 'off';
-      const cron = new CheckpointRetentionCron(deps);
-      const totals = await cron.prune();
-      expect(totals).toEqual({ threads: 0, checkpoints: 0, blobs: 0, writes: 0, batches: 0 });
-      expect(mockPrune).not.toHaveBeenCalled();
-    });
-
-    it('passes the resolved retention window and batch size to the delete batch', async () => {
-      process.env.CHECKPOINT_RETENTION_DAYS = '3';
-      process.env.CHECKPOINT_PRUNE_BATCH_SIZE = '25';
+    it('passes the retention window and batch size to the delete batch', async () => {
       const cron = new CheckpointRetentionCron(deps);
       await cron.prune();
-      expect(mockPrune).toHaveBeenCalledWith({ retentionDays: 3, batchSize: 25 });
+      expect(mockPrune).toHaveBeenCalledWith({ retentionDays: 7, batchSize: BATCH_SIZE });
     });
 
     it('stops after one batch when the batch comes back short', async () => {
@@ -153,10 +68,9 @@ describe('CheckpointRetentionCron', () => {
     });
 
     it('keeps draining full batches and aggregates the totals', async () => {
-      process.env.CHECKPOINT_PRUNE_BATCH_SIZE = '2';
       const batches: CheckpointPruneResult[] = [
-        { threads: 2, checkpoints: 20, blobs: 40, writes: 30 },
-        { threads: 2, checkpoints: 10, blobs: 20, writes: 15 },
+        { threads: BATCH_SIZE, checkpoints: 20, blobs: 40, writes: 30 },
+        { threads: BATCH_SIZE, checkpoints: 10, blobs: 20, writes: 15 },
         { threads: 1, checkpoints: 5, blobs: 10, writes: 5 },
       ];
       let call = 0;
@@ -164,17 +78,18 @@ describe('CheckpointRetentionCron', () => {
       const cron = new CheckpointRetentionCron(deps);
       const totals = await cron.prune();
       expect(mockPrune).toHaveBeenCalledTimes(3);
-      expect(totals).toEqual({ threads: 5, checkpoints: 35, blobs: 70, writes: 50, batches: 3 });
+      expect(totals).toEqual({
+        threads: BATCH_SIZE * 2 + 1, checkpoints: 35, blobs: 70, writes: 50, batches: 3,
+      });
     });
 
     it('caps a single run at 10 batches even when every batch is full', async () => {
-      process.env.CHECKPOINT_PRUNE_BATCH_SIZE = '2';
-      mockPrune.mockImplementation(async () => ({ threads: 2, checkpoints: 8, blobs: 16, writes: 12 }));
+      mockPrune.mockImplementation(async () => ({ threads: BATCH_SIZE, checkpoints: 8, blobs: 16, writes: 12 }));
       const cron = new CheckpointRetentionCron(deps);
       const totals = await cron.prune();
       expect(mockPrune).toHaveBeenCalledTimes(10);
       expect(totals.batches).toBe(10);
-      expect(totals.threads).toBe(20);
+      expect(totals.threads).toBe(BATCH_SIZE * 10);
     });
   });
 
@@ -191,13 +106,6 @@ describe('CheckpointRetentionCron', () => {
       cron.start();
       const expr = mockCronSchedule.mock.calls[0]?.[0] as string | undefined;
       expect(expr).toBe('43 * * * *');
-    });
-
-    it('does not schedule anything when retention is disabled', () => {
-      process.env.CHECKPOINT_RETENTION_DAYS = '0';
-      const cron = new CheckpointRetentionCron(deps);
-      cron.start();
-      expect(mockCronSchedule).not.toHaveBeenCalled();
     });
 
     it('cron callback runs prune when triggered', async () => {

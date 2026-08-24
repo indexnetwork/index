@@ -118,7 +118,6 @@ describe("ApiClient — profile methods", () => {
             avatar: "https://example.com/avatar.jpg",
             location: "San Francisco, US",
             socials: [{ label: "linkedin", value: "https://linkedin.com/in/alice" }],
-            isGhost: false,
             createdAt: "2026-01-15T00:00:00Z",
             updatedAt: "2026-03-20T00:00:00Z",
           },
@@ -130,20 +129,19 @@ describe("ApiClient — profile methods", () => {
       expect(user.name).toBe("Alice");
       expect(user.intro).toBe("ML engineer working on robotics");
       expect(user.location).toBe("San Francisco, US");
-      expect(user.isGhost).toBe(false);
     });
 
-    it("sends the authorization header", async () => {
-      let receivedAuth = "";
+    it("sends the x-api-key header", async () => {
+      let receivedApiKey = "";
       mock.on("GET", "/api/users/user-xyz", (req) => {
-        receivedAuth = req.headers.get("authorization") ?? "";
+        receivedApiKey = req.headers.get("x-api-key") ?? "";
         return Response.json({
-          user: { id: "user-xyz", name: "Bob", isGhost: false, createdAt: "2026-01-01" },
+          user: { id: "user-xyz", name: "Bob", createdAt: "2026-01-01" },
         });
       });
 
       await client.getUser("user-xyz");
-      expect(receivedAuth).toBe("Bearer test-token-123");
+      expect(receivedApiKey).toBe("test-token-123");
     });
 
     it("throws on 401", async () => {
@@ -177,14 +175,13 @@ describe("profileCard", () => {
           { label: "linkedin", value: "https://linkedin.com/in/alice" },
           { label: "github", value: "https://github.com/alice" },
         ],
-        isGhost: false,
         createdAt: "2026-01-15T00:00:00Z",
         updatedAt: "2026-03-20T00:00:00Z",
       }),
     ).not.toThrow();
   });
 
-  it("renders without throwing for a ghost user with minimal data", () => {
+  it("renders without throwing for a user with minimal data", () => {
     expect(() =>
       profileCard({
         id: "user-ghost",
@@ -193,7 +190,6 @@ describe("profileCard", () => {
         avatar: null,
         location: null,
         socials: null,
-        isGhost: true,
         createdAt: "2026-01-15T00:00:00Z",
         updatedAt: null,
       }),
@@ -208,7 +204,6 @@ describe("profileCard", () => {
       avatar: null,
       location: "Berlin, DE",
       socials: null,
-      isGhost: false,
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: null,
     });

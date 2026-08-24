@@ -1,4 +1,5 @@
 import type { Job, Queue, Worker } from 'bullmq';
+import type { NegotiationGraphLike } from '@indexnetwork/protocol';
 
 import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../../adapters/conversation.database.adapter';
 import type { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
@@ -26,7 +27,7 @@ interface WatchdogQueueHandle {
 type WatchdogWorkerHandle = Pick<Worker<NegotiationWatchdogJobData>, 'close'>;
 type WatchdogDatabase = Pick<
   ConversationDatabaseAdapter,
-  'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog'
+  'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
 >;
 type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
 
@@ -46,10 +47,10 @@ type WatchdogLogger = {
 export interface NegotiationWatchdogQueueDeps {
   database?: Pick<
     ConversationDatabaseAdapter,
-    'getStaleNegotiationTasks' | 'getTask' | 'transitionNegotiationTaskForWatchdog'
+    'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
   >;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
-  enqueueRunExisting?: (data: { opportunityId: string; userId: string }) => Promise<unknown>;
+  negotiationGraph?: NegotiationGraphLike;
   queue?: WatchdogQueueHandle;
   createWorker?: (
     processor: (job: Job<NegotiationWatchdogJobData>) => Promise<void>,
@@ -58,9 +59,12 @@ export interface NegotiationWatchdogQueueDeps {
   clock?: () => Date;
 }
 
-/** Strict default-off gate for the stale negotiation task reconciliation loop. */
+/**
+ * @returns true — stale-task reconciliation always runs. This path has never
+ * run in production; the `watchdogAttempts` cap is what bounds it.
+ */
 export function isNegotiationWatchdogEnabled(): boolean {
-  return process.env.NEGOTIATION_WATCHDOG_ENABLED === 'true';
+  return true;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -75,8 +79,7 @@ function watchdogAttempts(metadata: Record<string, unknown>): number {
 
 /**
  * Reconciles negotiation tasks whose kickoff or active worker may have been
- * lost. The queue is never constructed or registered while the feature flag is
- * off, preserving the current runtime behavior byte-for-byte.
+ * lost.
  */
 export class NegotiationWatchdogQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
@@ -86,22 +89,23 @@ export class NegotiationWatchdogQueue {
   private readonly clock: () => Date;
   private queueInstance: WatchdogQueueHandle | null = null;
   private worker: WatchdogWorkerHandle | null = null;
+  private negotiationGraph: NegotiationGraphLike | undefined;
 
   constructor(deps: NegotiationWatchdogQueueDeps = {}) {
     this.deps = deps;
     this.logger = deps.logger ?? log.queue.from('NegotiationWatchdogQueue');
     this.clock = deps.clock ?? (() => new Date());
+    this.negotiationGraph = deps.negotiationGraph;
+  }
+
+  /** Wired once at startup by main.ts, after the single NegotiationGraph is compiled. */
+  setNegotiationGraph(graph: NegotiationGraphLike): void {
+    this.negotiationGraph = graph;
   }
 
   private get queue(): WatchdogQueueHandle {
     this.queueInstance ??= this.deps.queue ?? QueueFactory.createQueue<NegotiationWatchdogJobData>(QUEUE_NAME);
     return this.queueInstance;
-  }
-
-  private async enqueueRunExisting(data: { opportunityId: string; userId: string }): Promise<unknown> {
-    if (this.deps.enqueueRunExisting) return this.deps.enqueueRunExisting(data);
-    const { negotiationRunExistingQueue } = await import('./run-existing.queue');
-    return negotiationRunExistingQueue.addJob(data);
   }
 
   /** Register the repeatable sweep and worker when the flag is enabled. */
@@ -171,33 +175,41 @@ export class NegotiationWatchdogQueue {
     }
   }
 
+  /**
+   * A task the watchdog has given up retrying (no opportunity id, or the
+   * retry budget is exhausted) is paused through the graph's own system-pause
+   * input — the same path a routine stale timeout uses — never marked with a
+   * state ('failed') outside the working|paused|completed union. That state
+   * bypassed checkAllPaused entirely (no round reflect) and could never read
+   * back through anything that expects the real union. A paused task drops
+   * out of getStaleNegotiationTasks on its own, so this still stops the sweep
+   * from retrying it — no second state writer needed to get that effect.
+   */
   private async terminalMark(
-    database: WatchdogDatabase,
     task: StaleTaskForWatchdog,
     reason: string,
   ): Promise<void> {
-    const now = this.clock();
-    const metadata = {
-      ...asRecord(task.metadata),
-      watchdogTerminalReason: reason,
-      watchdogTerminalAt: now.toISOString(),
-    };
-    const updated = await database.transitionNegotiationTaskForWatchdog({
-      taskId: task.id,
-      expectedState: task.state,
-      expectedUpdatedAt: task.updatedAt,
-      nextState: 'failed',
-      metadata,
-      statusMessage: { reason: 'negotiation_watchdog_terminal', detail: reason },
-    });
-    if (!updated) {
-      this.logger.info('Negotiation watchdog terminal mark lost a state race', { taskId: task.id, reason });
+    if (!this.negotiationGraph) {
+      this.logger.error('Negotiation watchdog fired before the graph was wired', { taskId: task.id });
       return;
     }
-    this.logger.warn('Negotiation watchdog terminal-marked stale task', {
-      taskId: task.id,
-      reason,
-    });
+    this.logger.warn('Negotiation watchdog pausing a task it will not retry', { taskId: task.id, reason });
+    try {
+      const result = await this.negotiationGraph.invoke({ negotiationId: task.id, pause: 'counterparty_silent' });
+      if (result.status === 'error') {
+        this.logger.error('Negotiation watchdog terminal pause invoke returned an error status', {
+          taskId: task.id,
+          reason,
+          error: result.error,
+        });
+      }
+    } catch (error) {
+      this.logger.error('Negotiation watchdog terminal pause invoke failed', {
+        taskId: task.id,
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async reconcileCandidate(
@@ -231,7 +243,7 @@ export class NegotiationWatchdogQueue {
       ? metadata.opportunityId
       : null;
     if (!opportunityId) {
-      await this.terminalMark(database, staleTask, 'missing_opportunity_id');
+      await this.terminalMark(staleTask, 'missing_opportunity_id');
       return;
     }
 
@@ -247,48 +259,50 @@ export class NegotiationWatchdogQueue {
 
     const attempts = watchdogAttempts(metadata);
     if (attempts >= MAX_WATCHDOG_ATTEMPTS) {
-      await this.terminalMark(database, staleTask, 'watchdog_attempts_exhausted');
+      await this.terminalMark(staleTask, 'watchdog_attempts_exhausted');
       return;
     }
 
-    const sourceUserId = typeof metadata.sourceUserId === 'string' && metadata.sourceUserId.length > 0
-      ? metadata.sourceUserId
-      : null;
-    if (!sourceUserId) {
-      await this.terminalMark(database, staleTask, 'missing_source_user_id');
+    if (!this.negotiationGraph) {
+      this.logger.error('Negotiation watchdog fired before the graph was wired', { taskId: candidate.id });
       return;
     }
 
     const nextAttempt = attempts + 1;
-    const updated = await database.transitionNegotiationTaskForWatchdog({
-      taskId: staleTask.id,
-      expectedState: staleTask.state,
-      expectedUpdatedAt: staleTask.updatedAt,
-      nextState: 'canceled',
-      metadata: {
-        ...metadata,
-        watchdogAttempts: nextAttempt,
-        watchdogLastAttemptAt: this.clock().toISOString(),
-      },
-      statusMessage: { reason: 'watchdog-requeue', attempt: nextAttempt },
-    });
-    if (!updated) {
-      this.logger.info('Negotiation watchdog skipped task after a concurrent state change', { taskId: candidate.id, opportunityId });
-      return;
-    }
-
     const ageMs = Math.max(0, this.clock().getTime() - staleTask.updatedAt.getTime());
-    this.logger.warn('Negotiation watchdog re-enqueuing stale task', {
+    this.logger.warn('Negotiation watchdog pausing stale task', {
       taskId: candidate.id,
       opportunityId,
       state: candidate.state,
       ageMs,
       attempt: nextAttempt,
     });
+
+    // Record the attempt before invoking: the invoke may return a discarded
+    // {status:'error'} instead of throwing, so this counter — not a caught
+    // exception — is what makes MAX_WATCHDOG_ATTEMPTS/terminalMark reachable.
+    const recorded = await database.recordNegotiationWatchdogAttempt({
+      taskId: candidate.id,
+      expectedUpdatedAt: candidate.updatedAt,
+      attempts: nextAttempt,
+    });
+    if (!recorded) {
+      this.logger.info('Negotiation watchdog skipped task changed since sweep', { taskId: candidate.id });
+      return;
+    }
+
     try {
-      await this.enqueueRunExisting({ opportunityId, userId: sourceUserId });
+      const result = await this.negotiationGraph.invoke({ negotiationId: staleTask.id, pause: 'counterparty_silent' });
+      if (result.status === 'error') {
+        this.logger.error('Negotiation watchdog pause invoke returned an error status', {
+          taskId: candidate.id,
+          opportunityId,
+          attempt: nextAttempt,
+          error: result.error,
+        });
+      }
     } catch (error) {
-      this.logger.error('Negotiation watchdog re-enqueue failed after task cancellation', {
+      this.logger.error('Negotiation watchdog pause invoke failed', {
         taskId: candidate.id,
         opportunityId,
         attempt: nextAttempt,

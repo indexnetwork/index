@@ -1,29 +1,23 @@
 /**
- * Intent page questions-block ⇄ negotiator-chat gating (P4.2 / IND-403).
+ * Intent page agent-chat panel.
  *
- * The chat window replaces the static questions block only when the
- * backend-surfaced flag (`features.negotiatorChat` on /auth/me) is on; the
- * fallback (flag off or runtime bootstrap failure) is the unchanged
- * questions block.
+ * The chat window renders unconditionally (the negotiatorChat flag is
+ * deleted); the fallback for a runtime bootstrap failure is a static
+ * Personal Agent panel with the refine input. The old static questions
+ * block is retired with the card questions (conversational-questions plan,
+ * "Retirements").
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentDetailPage from '@/app/i/[intentId]/page';
-import { AnsweredQuestionLog } from '@/components/InjectedQuestions/AnsweredQuestionLog';
-import type { AnsweredThreadEntry } from '@/components/InjectedQuestions/AnsweredQuestionLog';
+import { RADAR_REFRESH_INTERVAL_MS } from '@/hooks/useRadarLiveRefresh';
 
 const mocks = vi.hoisted(() => ({
   authState: {
     features: null as Record<string, unknown> | null,
-  },
-  questionsService: {
-    getPending: vi.fn(),
-    getAnswered: vi.fn(),
-    answer: vi.fn(),
-    dismiss: vi.fn(),
   },
   intentsService: {
     getIntent: vi.fn(),
@@ -34,8 +28,10 @@ const mocks = vi.hoisted(() => ({
   opportunitiesService: {
     getRadarView: vi.fn(),
   },
+  conversationsService: {
+    getNegotiationActivity: vi.fn(),
+  },
   chatStubBehavior: { failBootstrap: false },
-  questionRevision: 'revision-1',
 }));
 
 vi.mock('@/components/ClientLayout', () => ({
@@ -47,53 +43,14 @@ vi.mock('@/components/chat/OpportunityCardInChat', () => ({
   OpportunitySkeleton: () => null,
 }));
 
-vi.mock('@/components/InjectedQuestions/InjectedQuestions', () => ({
-  InjectedQuestions: () => <div data-testid="injected-questions" />,
-}));
-
 vi.mock('@/components/IntentNegotiatorChat', () => ({
-  default: ({
-    answered = [],
-    onAnswerQuestion,
-    onUnavailable,
-    questions = [],
-  }: {
-    answered?: AnsweredThreadEntry[];
-    onAnswerQuestion: (questionId: string, body: { selectedOptions: string[]; freeText?: string }) => Promise<void>;
-    onUnavailable: () => void;
-    questions?: Array<{ id: string; payload: { prompt: string } }>;
-  }) => {
+  default: ({ onUnavailable }: { onUnavailable: () => void }) => {
     if (mocks.chatStubBehavior.failBootstrap) {
       // Simulate a runtime bootstrap failure (e.g. backend flag flipped off).
       setTimeout(onUnavailable, 0);
       return null;
     }
-    return (
-      <div data-testid="intent-negotiator-chat-stub">
-        {answered.length > 0 && (
-          <div data-testid="negotiator-answered-log">
-            {answered.map((entry) => (
-              <span
-                key={entry.id}
-                data-testid={`answered-entry-${entry.id}`}
-                data-message-id={entry.messageId ?? ''}
-                data-answered-at={entry.answeredAt ?? ''}
-              />
-            ))}
-            <AnsweredQuestionLog entries={answered} />
-          </div>
-        )}
-        {questions.map((question) => (
-          <button
-            key={question.id}
-            type="button"
-            onClick={() => void onAnswerQuestion(question.id, { selectedOptions: ['Berlin'] })}
-          >
-            answer-{question.id}
-          </button>
-        ))}
-      </div>
-    );
+    return <div data-testid="intent-negotiator-chat-stub" />;
   },
 }));
 
@@ -116,15 +73,11 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('@/contexts/APIContext', () => ({
   useIntents: () => mocks.intentsService,
   useOpportunities: () => mocks.opportunitiesService,
-  useQuestionsService: () => mocks.questionsService,
+  useConversations: () => mocks.conversationsService,
 }));
 
-
-vi.mock('@/contexts/QuestionsContext', () => ({
-  useQuestions: () => ({
-    refresh: vi.fn(async () => {}),
-    pendingRevision: mocks.questionRevision,
-  }),
+vi.mock('@/contexts/ConversationContext', () => ({
+  useConversation: () => ({ negotiations: [], subscribeQuestionRegeneration: () => () => {} }),
 }));
 
 vi.mock('@/contexts/NotificationContext', () => ({
@@ -138,7 +91,6 @@ vi.mock('@/contexts/NotificationContext', () => ({
 vi.mock('@/hooks/useOpportunityActions', () => ({
   useOpportunityActions: () => ({
     opportunityStatusMap: {},
-    setOpportunityStatusMap: vi.fn(),
     opportunityActionLoading: {},
     handleOpportunityAction: vi.fn(),
     handleStreamingDraftStartChat: vi.fn(),
@@ -156,11 +108,10 @@ function renderIntentPage() {
   );
 }
 
-describe('Intent page — negotiator chat gating', () => {
+describe('Intent page — agent chat panel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authState.features = null;
-    mocks.questionRevision = 'revision-1';
     mocks.intentsService.getIntent.mockResolvedValue({
       id: 'intent-1',
       payload: 'Looking for a technical co-founder',
@@ -169,185 +120,155 @@ describe('Intent page — negotiator chat gating', () => {
     });
     mocks.intentsService.visitIntent.mockResolvedValue(undefined);
     mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
-    mocks.questionsService.getPending.mockResolvedValue([
-      {
-        id: 'q-1',
-        title: 'Which city?',
-        prompt: 'Which city?',
-        payload: {
-          prompt: 'Which city?',
-          title: 'Which city?',
-          options: [],
-          multiSelect: false,
-        },
-        options: [],
-        multiSelect: false,
-        mode: 'intent',
-        sourceType: 'intent',
-        sourceId: 'intent-1',
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-    mocks.questionsService.getAnswered.mockResolvedValue([]);
-    mocks.questionsService.answer.mockReset();
+    mocks.conversationsService.getNegotiationActivity.mockResolvedValue([]);
     mocks.chatStubBehavior.failBootstrap = false;
   });
 
-  test('flag off → static questions block, no chat window', async () => {
-    renderIntentPage();
-
-    await screen.findByText('Looking for a technical co-founder');
-    await screen.findByTestId('injected-questions');
-    expect(screen.queryByTestId('intent-negotiator-chat-stub')).toBeNull();
-    expect(screen.getByText(/^Questions \(/)).toBeInTheDocument();
-  });
-
-  test('flag on → chat window replaces the questions block', async () => {
-    mocks.authState.features = { negotiatorChat: true };
+  test('the chat window renders unconditionally — no flag gates it', async () => {
     renderIntentPage();
 
     await screen.findByText('Looking for a technical co-founder');
     await screen.findByTestId('intent-negotiator-chat-stub');
-    expect(screen.queryByTestId('injected-questions')).toBeNull();
-    // The label now also appears on the mobile sheet trigger and the sr-only
-    // dialog title, so assert presence rather than uniqueness.
+    // The label appears on the panel, the mobile sheet trigger, and the
+    // sr-only dialog title, so assert presence rather than uniqueness.
     expect(screen.getAllByText(/^Personal Agent$/).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/^Questions \(/)).toBeNull();
   });
 
-  test('hydrated answered entries render inside the negotiator branch', async () => {
-    mocks.authState.features = { negotiatorChat: true };
-    mocks.questionsService.getAnswered.mockResolvedValue([{
-      id: 'answered-1',
-      detection: {
-        mode: 'intent',
-        sourceType: 'intent',
-        sourceId: 'intent-1',
-        timestamp: '2026-07-20T10:01:00Z',
-        messageId: 'assistant-anchor-1',
-      },
-      createdAt: '2026-07-20T10:01:00Z',
-      payload: {
-        title: 'What kind of collaborator?',
-        prompt: 'What kind of collaborator?',
-        options: [],
-        multiSelect: false,
-      },
-      answer: {
-        selectedOptions: ['Technical founder'],
-        freeText: 'in Europe',
-        answeredBy: 'user-1',
-        answeredAt: '2026-07-20T10:02:00Z',
-      },
-      status: 'answered',
-    }]);
-    renderIntentPage();
-
-    await waitFor(() => expect(mocks.questionsService.getAnswered).toHaveBeenCalled());
-    expect(await screen.findByTestId('negotiator-answered-log')).toBeInTheDocument();
-    expect(screen.getByTestId('answered-entry-answered-1')).toHaveAttribute('data-message-id', 'assistant-anchor-1');
-    expect(screen.getByText('What kind of collaborator?')).toBeInTheDocument();
-    expect(screen.getByText('Technical founder, in Europe')).toBeInTheDocument();
-  });
-
-  test('answering a pending question keeps prior entries and appends the new answer', async () => {
-    mocks.authState.features = { negotiatorChat: true };
-    const prior = {
-      id: 'answered-1',
-      payload: {
-        title: 'What kind of collaborator?',
-        prompt: 'What kind of collaborator?',
-        options: [],
-        multiSelect: false,
-      },
-      answer: {
-        selectedOptions: ['Technical founder'],
-        answeredBy: 'user-1',
-        answeredAt: new Date().toISOString(),
-      },
-      status: 'answered',
-    };
-    let answeredRows: Array<Record<string, unknown>> = [prior];
-    mocks.questionsService.getAnswered.mockImplementation(async () => answeredRows);
-    mocks.questionsService.answer.mockImplementation(async () => {
-      answeredRows = [prior, {
-        id: 'q-1',
-        payload: { title: 'Which city?', prompt: 'Which city?', options: [], multiSelect: false },
-        answer: { selectedOptions: ['Berlin'], answeredBy: 'user-1', answeredAt: new Date().toISOString() },
-        status: 'answered',
-      }];
-      return { success: true };
-    });
-    const view = renderIntentPage();
-
-    expect(await screen.findByText('Technical founder')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'answer-q-1' }));
-
-    await waitFor(() => expect(screen.getByText('Berlin')).toBeInTheDocument());
-    expect(screen.getByText('Technical founder')).toBeInTheDocument();
-    expect(screen.getByTestId('answered-entry-q-1').getAttribute('data-answered-at')).not.toBe('');
-    expect(mocks.questionsService.answer).toHaveBeenCalledWith('q-1', { selectedOptions: ['Berlin'] });
-
-    mocks.questionsService.getPending.mockClear();
-    mocks.questionsService.getAnswered.mockClear();
-    mocks.questionRevision = 'revision-after-continuation';
-    view.rerender(
-      <MemoryRouter initialEntries={['/i/intent-1']}>
-        <Routes><Route path="/i/:intentId" element={<IntentDetailPage />} /></Routes>
-      </MemoryRouter>,
-    );
-    await waitFor(() => expect(mocks.questionsService.getAnswered).toHaveBeenCalledWith({
-      scopeType: 'intent', scopeId: 'intent-1', passive: true,
-    }));
-    expect(screen.getAllByTestId('answered-entry-q-1')).toHaveLength(1);
-  });
-
-  test('pending-set invalidation performs one passive exact-intent pending+answered refetch', async () => {
-    const view = renderIntentPage();
-    await waitFor(() => expect(mocks.questionsService.getPending).toHaveBeenCalledWith({
-      scopeType: 'intent',
-      scopeId: 'intent-1',
-    }));
-    mocks.questionsService.getPending.mockClear();
-    mocks.questionsService.getAnswered.mockClear();
-
-    mocks.questionRevision = 'revision-2';
-    view.rerender(
-      <MemoryRouter initialEntries={['/i/intent-1']}>
-        <Routes><Route path="/i/:intentId" element={<IntentDetailPage />} /></Routes>
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => expect(mocks.questionsService.getPending).toHaveBeenCalledTimes(1));
-    expect(mocks.questionsService.getPending).toHaveBeenCalledWith({
-      scopeType: 'intent',
-      scopeId: 'intent-1',
-      passive: true,
-    });
-    expect(mocks.questionsService.getAnswered).toHaveBeenCalledWith({
-      scopeType: 'intent',
-      scopeId: 'intent-1',
-      passive: true,
-    });
-
-    view.rerender(
-      <MemoryRouter initialEntries={['/i/intent-1']}>
-        <Routes><Route path="/i/:intentId" element={<IntentDetailPage />} /></Routes>
-      </MemoryRouter>,
-    );
-    await Promise.resolve();
-    expect(mocks.questionsService.getPending).toHaveBeenCalledTimes(1);
-    expect(mocks.questionsService.getAnswered).toHaveBeenCalledTimes(1);
-  });
-
-  test('runtime bootstrap failure → falls back to the questions block', async () => {
-    mocks.authState.features = { negotiatorChat: true };
+  test('runtime bootstrap failure → falls back to the static panel', async () => {
     mocks.chatStubBehavior.failBootstrap = true;
     renderIntentPage();
 
     await screen.findByText('Looking for a technical co-founder');
     await waitFor(() => expect(screen.queryByTestId('intent-negotiator-chat-stub')).toBeNull());
-    await screen.findByTestId('injected-questions');
-    expect(screen.getByText(/^Questions \(/)).toBeInTheDocument();
+    expect(
+      await screen.findByPlaceholderText(/tell the agent anything about this signal/i),
+    ).toBeInTheDocument();
+  });
+
+  test('shows truthful discovery preparation instead of claiming agents are talking', async () => {
+    mocks.intentsService.getIntent.mockResolvedValue({
+      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
+      createdAt: new Date().toISOString(), warming: true,
+      networks: [{ id: 'community-1', title: 'Builders' }],
+      discoveryProgress: {
+        status: 'retrying', attempt: 2, maxAttempts: 3, assignedCommunityCount: 1,
+        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
+        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: '2026-08-19T09:15:00.000Z',
+        completedAt: null, updatedAt: '2026-08-19T09:15:00.000Z',
+      },
+    });
+    renderIntentPage();
+    await screen.findByText('Looking for a technical co-founder');
+    fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
+    expect(await screen.findByText('Finding your first conversations')).toBeInTheDocument();
+    expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('retrying');
+    expect(screen.getByText(/attempt 2 of 3 . retrying/i)).toBeInTheDocument();
+    expect(screen.queryByText(/still talking with theirs/i)).toBeNull();
+  });
+
+  test('reports a completed search with no conversations distinctly from failure', async () => {
+    mocks.intentsService.getIntent.mockResolvedValue({
+      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
+      createdAt: new Date().toISOString(), warming: false,
+      networks: [{ id: 'community-1', title: 'Builders' }],
+      discoveryProgress: {
+        status: 'completed', attempt: 1, maxAttempts: 3, assignedCommunityCount: 1,
+        processedCommunityCount: 1, possibleOverlapCount: 0, conversationsStartedCount: 0,
+        queuedAt: null, startedAt: null, completedAt: new Date().toISOString(), updatedAt: null,
+      },
+    });
+    renderIntentPage();
+    await screen.findByText('Looking for a technical co-founder');
+    fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
+    // A zero-result run still reports its tally; an empty card would read as
+    // though the agent never ran.
+    expect(await screen.findByText('Scanned 1 community — no overlaps yet')).toBeInTheDocument();
+    expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('completed');
+  });
+  test('refreshes the signal snapshot so a finished run lands on the card', async () => {
+    // The SSE-driven radar refresh never carried the intent snapshot, so a
+    // completed run's tallies used to sit unread until the slower progress poll.
+    const warmingIntent = {
+      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
+      createdAt: new Date().toISOString(), warming: true,
+      networks: [{ id: 'community-1', title: 'Builders' }, { id: 'community-2', title: 'Climate' }],
+      discoveryProgress: {
+        status: 'running', attempt: 1, maxAttempts: 3, assignedCommunityCount: 2,
+        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
+        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: '2026-08-19T09:15:00.000Z',
+        completedAt: null, updatedAt: '2026-08-19T09:15:00.000Z',
+      },
+    };
+    mocks.intentsService.getIntent
+      .mockResolvedValueOnce(warmingIntent)
+      .mockResolvedValue({
+        ...warmingIntent,
+        discoveryProgress: {
+          ...warmingIntent.discoveryProgress,
+          status: 'completed', processedCommunityCount: 2, possibleOverlapCount: 3,
+          conversationsStartedCount: 1, completedAt: '2026-08-19T09:21:00.000Z',
+        },
+      });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderIntentPage();
+      await screen.findByText('Looking for a technical co-founder');
+      fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
+      await screen.findByText('Finding your first conversations');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(RADAR_REFRESH_INTERVAL_MS);
+      });
+
+      expect(
+        await screen.findByText('Scanned 2 communities — 3 possible overlaps, 1 conversation started'),
+      ).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a blocked card is not frozen: it observes the signal joining a community', async () => {
+    // `blocked` used to sit outside the poll allowlist, so the card could never
+    // see its own recovery and stayed on "Needs attention" indefinitely.
+    const blockedIntent = {
+      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
+      createdAt: new Date().toISOString(), warming: true, networks: [],
+      discoveryProgress: {
+        status: 'blocked', attempt: 0, maxAttempts: 3, assignedCommunityCount: 0,
+        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
+        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: null,
+        completedAt: '2026-08-19T09:14:00.000Z', updatedAt: '2026-08-19T09:14:00.000Z',
+      },
+    };
+    mocks.intentsService.getIntent
+      .mockResolvedValueOnce(blockedIntent)
+      .mockResolvedValue({
+        ...blockedIntent,
+        networks: [{ id: 'community-1', title: 'Builders' }],
+        discoveryProgress: {
+          ...blockedIntent.discoveryProgress,
+          status: 'running', attempt: 1, assignedCommunityCount: 1,
+          startedAt: '2026-08-19T09:16:00.000Z', completedAt: null,
+        },
+      });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderIntentPage();
+      await screen.findByText('Looking for a technical co-founder');
+      fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
+      await screen.findByText('Scanning is paused');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+
+      expect(await screen.findByText('Finding your first conversations')).toBeInTheDocument();
+      expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('scanning');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

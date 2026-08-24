@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet, ScrollRestoration } from "react-router";
+import { createBrowserRouter, Navigate, Outlet, ScrollRestoration, useLocation, useParams } from "react-router";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
@@ -6,7 +6,6 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 import { DiscoveryFilterProvider } from "@/contexts/DiscoveryFilterContext";
 import { AIChatSessionsProvider } from "@/contexts/AIChatSessionsContext";
 import { AIChatProvider } from "@/contexts/AIChatContext";
-import { QuestionsProvider } from "@/contexts/QuestionsContext";
 
 import ClientWrapper from "@/components/ClientWrapper";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
@@ -24,12 +23,10 @@ function RootLayout() {
           <DiscoveryFilterProvider>
             <AIChatSessionsProvider>
               <AIChatProvider>
-                <QuestionsProvider>
-                  <ClientWrapper>
-                    <ScrollRestoration />
-                    <Outlet />
-                  </ClientWrapper>
-                </QuestionsProvider>
+                <ClientWrapper>
+                  <ScrollRestoration />
+                  <Outlet />
+                </ClientWrapper>
               </AIChatProvider>
             </AIChatSessionsProvider>
           </DiscoveryFilterProvider>
@@ -37,6 +34,13 @@ function RootLayout() {
       </APIProvider>
     </AuthProvider>
   );
+}
+
+/** Preserve legacy negotiation deep links without treating them as Chat pages. */
+function LegacyNegotiationRedirect() {
+  const { conversationId } = useParams();
+  const { search } = useLocation();
+  return <Navigate to={`/negotiations/${conversationId ?? ''}${search}`} replace />;
 }
 
 export const router = createBrowserRouter([
@@ -69,6 +73,27 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/protocol", () => import("@/app/protocol/page")),
       },
       {
+        // Unlisted: reachable only via the token in the path, linked from nowhere.
+        path: "/9db20a5fbe",
+        lazy: lazyRoute("/9db20a5fbe", () => import("@/app/dataroom/page")),
+      },
+      {
+        path: "/9db20a5fbe/demo",
+        lazy: lazyRoute("/9db20a5fbe/demo", () => import("@/app/dataroom-demo/page")),
+      },
+      {
+        path: "/9db20a5fbe/overview",
+        lazy: lazyRoute("/9db20a5fbe/overview", () => import("@/app/dataroom-overview/page")),
+      },
+      {
+        path: "/9db20a5fbe/roadmap",
+        lazy: lazyRoute("/9db20a5fbe/roadmap", () => import("@/app/roadmap/page")),
+      },
+      {
+        path: "/9db20a5fbe/edge-city-metrics",
+        lazy: lazyRoute("/9db20a5fbe/edge-city-metrics", () => import("@/app/edge-city-metrics/page")),
+      },
+      {
         path: "/blog",
         lazy: lazyRoute("/blog", () => import("@/app/blog/page")),
       },
@@ -82,11 +107,15 @@ export const router = createBrowserRouter([
       },
       {
         path: "/chat/:conversationId",
-        lazy: lazyRoute("/chat/:conversationId", () => import("@/app/chat/[conversationId]/page")),
+        element: <LegacyNegotiationRedirect />,
       },
       {
         path: "/negotiations",
         lazy: lazyRoute("/negotiations", () => import("@/app/negotiations/page")),
+      },
+      {
+        path: "/negotiations/:conversationId",
+        lazy: lazyRoute("/negotiations/:conversationId", () => import("@/app/chat/[conversationId]/page")),
       },
       {
         path: "/d/:id",
@@ -137,8 +166,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/networks/:id/*", () => import("@/app/networks/[id]/page")),
       },
       {
-        path: "/mynetwork/*",
-        lazy: lazyRoute("/mynetwork/*", () => import("@/app/mynetwork/page")),
       },
       {
         path: "/pages/privacy-policy",
@@ -151,10 +178,6 @@ export const router = createBrowserRouter([
       {
         path: "/settings",
         lazy: lazyRoute("/settings", () => import("@/app/settings/page")),
-      },
-      {
-        path: "/questions",
-        lazy: lazyRoute("/questions", () => import("@/app/questions/page")),
       },
       {
         path: "/profile",
@@ -183,14 +206,6 @@ export const router = createBrowserRouter([
       {
         path: "/cli-auth",
         lazy: lazyRoute("/cli-auth", () => import("@/app/cli-auth/page")),
-      },
-      {
-        path: "/hermes-authorize",
-        lazy: lazyRoute("/hermes-authorize", () => import("@/app/hermes-authorize/page")),
-      },
-      {
-        path: "/index-app-authorize",
-        lazy: lazyRoute("/index-app-authorize", () => import("@/app/index-app-authorize/page")),
       },
       {
         path: "/login",

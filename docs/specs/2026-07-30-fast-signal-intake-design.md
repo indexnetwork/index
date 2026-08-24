@@ -32,7 +32,7 @@ question wording (`packages/protocol/src/questions/application/question.ask.tool
 Synthesis is a fourth pro turn that calls `create_intent`, which invokes the
 **profile graph** and then the **intent graph** (inference → verification) before
 a proposal card can render
-(`packages/protocol/src/signals/application/intent.tools.ts`).
+(`packages/protocol/src/intents/application/intent.tools.ts`).
 
 Two structural observations drive this design:
 
@@ -154,7 +154,7 @@ the profile-graph invocation in the propose path.
 ### Placement
 
 The generator lives in
-`packages/protocol/src/signals/application/intake.pack.generator.ts` so protocol
+`packages/protocol/src/intents/application/intake.pack.generator.ts` so protocol
 owns synthesis with no host dependencies. The table and queue wiring live in
 `services/api`, preserving the existing protocol/host boundary.
 
@@ -232,9 +232,9 @@ place constraint, and must not be rendered into the `Where constraint:` slot.
 
 ### Modules
 
-- `packages/protocol/src/signals/application/intake.pack.generator.ts` — brief and
+- `packages/protocol/src/intents/application/intake.pack.generator.ts` — brief and
   round-1 question, structured output, no tools.
-- `packages/protocol/src/signals/application/intake.orchestrator.ts` — pure stage
+- `packages/protocol/src/intents/application/intake.orchestrator.ts` — pure stage
   logic: next-question generation, synthesis, `whereText` invalidation. Takes
   ports for pack read, proposal creation, and the intent graph. Owns no I/O.
 - `services/api/src/controllers/intent-intake.controller.ts` — the five endpoints,

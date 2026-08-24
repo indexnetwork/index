@@ -5,13 +5,13 @@
  * explicit, bounded, and leaves a durable run/attempt audit trail.
  *
  * This command is intentionally not a discovery/indexing reconciler. It invokes
- * the canonical SemanticVerifier with the stored intent payload and the same
+ * the canonical intents verifier with the stored intent payload and the same
  * owner profile context used by the intent composition path. Assignment,
  * relevance, opportunity, HyDE, and raw/final score data are never selected.
  */
 import dotenv from 'dotenv';
 import path from 'path';
-import { getModelName, SemanticVerifier } from '@indexnetwork/protocol';
+import { getModelName, Intents } from '@indexnetwork/protocol';
 
 import { intentProposalVerifierOutputSchema } from '../lib/intent/intent-proposal';
 
@@ -86,7 +86,7 @@ export type ValidationOutcome =
   | { kind: 'skip'; code: 'invalid_output' | 'non_actionable' };
 
 export type AttemptStatus = 'updated' | 'skipped' | 'failed' | 'unchanged_control';
-export type VerifierOutput = Awaited<ReturnType<SemanticVerifier['invoke']>>;
+export type VerifierOutput = Awaited<ReturnType<Intents['verifyIntent']>>;
 
 export interface BackfillDeps {
   listCandidates: (limit: number) => Promise<Candidate[]>;
@@ -368,10 +368,10 @@ export async function createRuntimeDeps(
     const chat = new ChatDatabaseAdapter();
     return { sql, db, getProfileContext: (userId: string) => chat.getProfile(userId) };
   });
-  let verifier: SemanticVerifier | undefined;
+  let verifier: Intents | undefined;
   const getVerifier = () => {
     if (options.dryRun) throw new Error('verifier is unavailable in dry-run mode');
-    return verifier ??= new SemanticVerifier();
+    return verifier ??= new Intents();
   };
   return {
     async listCandidates(limit) {
@@ -434,7 +434,7 @@ export async function createRuntimeDeps(
     async getProfileContext(userId) {
       return (await getRuntime()).getProfileContext(userId);
     },
-    verify: (payload, context) => getVerifier().invoke(payload, context),
+    verify: (payload, context) => getVerifier().verifyIntent(payload, context),
     async getAttemptStatus(runId, intentId) {
       const { db, sql } = await getRuntime();
       const rows = await db.execute(sql`SELECT status FROM intent_verification_backfill_attempts WHERE run_id = ${runId} AND intent_id = ${intentId}`);

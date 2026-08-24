@@ -1,6 +1,6 @@
 import { describe, it, expect, spyOn } from "bun:test";
 
-import { profileCard, sessionTable, intentTable, intentCard, opportunityTable, opportunityCard, networkTable, networkCard, memberTable, conversationTable, conversationCard, messageList } from "../src/output/formatters";
+import { profileCard, intentTable, intentCard, opportunityTable, opportunityCard, networkTable, networkCard, memberTable, conversationTable, conversationCard, messageList } from "../src/output/formatters";
 import { stripAnsi } from "../src/output/base";
 import type { Intent, Opportunity, Conversation, ConversationMessage } from "../src/types";
 
@@ -36,7 +36,6 @@ describe("profileCard", () => {
         avatar: null,
         location: "San Francisco",
         socials: [{ label: "twitter", value: "@alice" }],
-        isGhost: false,
         createdAt: "2025-06-15T00:00:00Z",
         updatedAt: null,
       });
@@ -48,47 +47,6 @@ describe("profileCard", () => {
     expect(output).toContain("Member since");
   });
 
-  it("renders ghost badge", () => {
-    const output = captureLogs(() => {
-      profileCard({
-        id: "u2",
-        name: null,
-        intro: null,
-        avatar: null,
-        location: null,
-        socials: null,
-        isGhost: true,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: null,
-      });
-    });
-    expect(output).toContain("(unnamed)");
-    expect(output).toContain("[ghost]");
-  });
-});
-
-// ── sessionTable ────────────────────────────────────────────────────
-
-describe("sessionTable", () => {
-  it("renders sessions with headers", () => {
-    const output = captureLogs(() => {
-      sessionTable([
-        { id: "s1", title: "First chat", createdAt: "2026-01-01T00:00:00Z" },
-        { id: "s2", title: null, createdAt: "2026-01-02T00:00:00Z" },
-      ]);
-    });
-    expect(output).toContain("ID");
-    expect(output).toContain("Title");
-    expect(output).toContain("First chat");
-    expect(output).toContain("(untitled)");
-  });
-
-  it("prints empty message for no sessions", () => {
-    const output = captureLogs(() => {
-      sessionTable([]);
-    });
-    expect(output).toContain("No chat sessions found");
-  });
 });
 
 // ── intentTable ─────────────────────────────────────────────────────

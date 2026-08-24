@@ -6,16 +6,15 @@ import { AuthGuard, SessionOnlyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { cliCredentialService, type CliCredentialService } from '../services/clicredential.service';
 import { userService } from '../services/user.service';
-import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
-import { isWebSignalAgentEnabled } from '../lib/signal-feature';
+import { onboardingService } from '../services/onboarding.service';
+import { agentService } from '../services/agent.service';
 import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
-import { isAgentActionsEnabled, isAgentSurfaceEnabled } from '../lib/agent-surface-feature';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
 
 const createCliCredentialSchema = z.object({
-  protocolVersion: z.union([z.literal(1), z.literal(2)]),
+  protocolVersion: z.literal(2),
 }).strict();
 
 const revokeCliCredentialSchema = z.object({
@@ -40,6 +39,10 @@ const updateProfileSchema = z.object({
     weeklyNewsletter: z.boolean().optional(),
   }).optional(),
 });
+
+const completeOnboardingSchema = z.object({
+  intentId: z.string().min(1).optional(),
+}).strict();
 
 @Controller('/auth')
 export class AuthController {
@@ -79,13 +82,13 @@ export class AuthController {
         ...userFields,
         notificationPreferences,
       },
-      // Feature flags the web app reads off the session bootstrap (no separate
-      // config channel). These gate the negotiator entry and Signal web cutover.
       features: {
-        negotiatorChat: isNegotiatorChatEnabled(),
-        signalAgent: isWebSignalAgentEnabled(),
-        agentSurface: isAgentSurfaceEnabled(),
-        agentActions: isAgentActionsEnabled(),
+        // Legacy shipped-mac-client compat: older mac builds hide the agent
+        // chat pane unless this bit is true. Hardcoded — nothing gates the
+        // surface any more; delete when a gate-free mac build ships.
+        negotiatorChat: true,
+        // Ships on unconditionally. The field stays so the web app keeps
+        // working, and can be removed once the web side stops reading it.
         fastSignalIntake: isFastSignalIntakeEnabled(),
       },
     });
@@ -122,6 +125,42 @@ export class AuthController {
     return Response.json({
       user: { ...userFieldsOut, notificationPreferences: prefs },
     });
+  }
+
+  @Post('/onboarding/confirm-profile')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async confirmOnboardingProfile(_req: Request, user: AuthenticatedUser) {
+    try {
+      const result = await onboardingService.confirmProfile(user.id);
+      return Response.json({ success: true, ...result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return Response.json({ error: message }, { status: 400 });
+    }
+  }
+
+  @Post('/onboarding/complete')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async completeOnboarding(req: Request, user: AuthenticatedUser) {
+    const parsed = completeOnboardingSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return Response.json({ error: 'Invalid onboarding payload' }, { status: 400 });
+    }
+    try {
+      const result = await onboardingService.complete(user.id, parsed.data.intentId);
+      try {
+        await agentService.grantDefaultSystemPermissions(user.id);
+      } catch (grantErr) {
+        logger.warn('Default system agent permission grant failed', {
+          userId: user.id,
+          error: grantErr instanceof Error ? grantErr.message : String(grantErr),
+        });
+      }
+      return Response.json({ success: true, message: 'Onboarding complete.', ...result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return Response.json({ error: message }, { status: 400 });
+    }
   }
 
   /**

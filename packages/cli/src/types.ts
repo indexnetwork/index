@@ -6,27 +6,11 @@
  * focused on rendering.
  */
 
-// ── Chat types ──────────────────────────────────────────────────────
-
-/** A chat session as returned by the API. */
-export interface ChatSession {
-  id: string;
-  title: string | null;
-  createdAt: string;
-  updatedAt?: string;
-}
-
 /** User profile from GET /api/auth/me. */
 export interface UserProfile {
   id: string;
   name: string;
   email: string;
-}
-
-/** Parameters for POST /api/chat/stream. */
-export interface StreamChatParams {
-  message: string;
-  sessionId?: string;
 }
 
 // ── User types ──────────────────────────────────────────────────────
@@ -46,7 +30,6 @@ export interface UserData {
   avatar: string | null;
   location: string | null;
   socials: SocialLink[] | null;
-  isGhost: boolean;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -164,7 +147,6 @@ export interface OpportunityDetail {
   category?: string;
   confidence?: number;
   index?: { id: string; title: string };
-  isGhost?: boolean;
   primaryActionLabel?: string;
   createdAt?: string;
   /** Present when the requested opportunity was superseded by this enriched opportunity. */
@@ -180,7 +162,6 @@ export interface Network {
   title: string;
   prompt?: string | null;
   joinPolicy?: string;
-  isPersonal?: boolean;
   memberCount?: number;
   createdAt?: string;
   owner?: { id: string; name: string; email: string };

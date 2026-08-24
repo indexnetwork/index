@@ -8,7 +8,6 @@
  * and adapters may import adapters; services may not import services).
  *
  * Contract:
- * - `NEGOTIATOR_MEMORY_INJECT !== 'true'` → `[]` (prompts stay byte-identical).
  * - Any failure → `[]` with a log line; memory must never break a negotiation.
  * - Only ever reads the requesting user's OWN agent's memories — the
  *   underlying adapter is (agentId, userId)-scoped, and the agent id is
@@ -46,7 +45,7 @@ export interface NegotiatorMemoryQuery {
   userId: string;
   counterpartyUserId: string;
   queryText: string;
-  scope: 'screen' | 'turn';
+  scope: 'turn';
 }
 
 export type NegotiatorMemoryRetrieveFn = (query: NegotiatorMemoryQuery) => Promise<NegotiatorMemoryEntry[]>;
@@ -62,9 +61,9 @@ const MIN_SIMILARITY = 0.2;
 /** Cap per kind for the chat surface (recency-ordered, no similarity leg). */
 const CHAT_PER_KIND_LIMIT = 5;
 
-/** Whether the P5.3 read path is live (default off; flip per environment). */
+/** @returns true — retrieved memories always shape prompts (P5.3). */
 export function isNegotiatorMemoryInjectEnabled(): boolean {
-  return process.env.NEGOTIATOR_MEMORY_INJECT === 'true';
+  return true;
 }
 
 function toEntry(row: NegotiatorMemory): NegotiatorMemoryEntry {
@@ -89,7 +88,7 @@ export class NegotiatorMemoryRetrievalAdapter {
 
   /**
    * Retrieves the requesting user's own negotiator memories for a
-   * negotiation-facing prompt (screen node, turn agent, polling pickup).
+   * negotiation-facing prompt (turn agent, polling pickup).
    * Never throws; resolves `[]` when the flag is off, the user has no
    * negotiator agent, or anything fails.
    */

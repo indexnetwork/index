@@ -14,7 +14,7 @@ describe('macOS fast signal intake parity with web', () => {
     expect(intakeSource).toContain('where should we look?');
     expect(intakeSource).toContain('Everywhere');
     expect(intakeSource).toContain('Somewhere more specific?');
-    expect(intakeSource).toContain('!network.isPersonal');
+    expect(intakeSource).toContain('const fastCommunities = env.networks || [];');
   });
 
   it('carries the selected where choice through proposal and confirmation', () => {

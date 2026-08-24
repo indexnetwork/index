@@ -20,8 +20,6 @@ function makeService() {
       getAuthUrl: async () => ({ redirectUrl: '' }),
       disconnect: async () => ({ success: true }),
     } as any,
-    // Contact importer fake
-    { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] }), resolveUsers: async () => ({ userIds: [], skipped: 0, details: [] }) } as any,
     // db (ChatDatabaseAdapter) — pass undefined to use default
     undefined,
     // redis injectable

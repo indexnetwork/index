@@ -13,6 +13,13 @@
  * double would make them assert the double instead of the contract.
  */
 import { mock } from "bun:test";
+import { AsyncLocalStorage } from "async_hooks";
+import { setRequestContextStore } from "./src/internal/shared/observability/request-context.js";
+
+// Tests are a host too: each isolated worker provides Node request storage so
+// cancellation and tracing semantics are exercised without shipping that
+// implementation in the package runtime.
+setRequestContextStore(new AsyncLocalStorage());
 
 const modelConfigSpecs = [
   "/shared/agent/tests/model.config.spec.ts",
@@ -21,17 +28,15 @@ const modelConfigSpecs = [
 const localModelMockSpecs = [
   "/chat/tests/chat.agent.persona.spec.ts",
   "/chat/tests/chat.agent.spec.ts",
-  "/contact/tests/contact.inviter.claim-safety.spec.ts",
-  "/enrichment/tests/enrichment.graph.spec.ts",
-  "/intent/tests/intent.clarifier.spec.ts",
-  "/intent/tests/intent.graph.spec.ts",
-  "/intent/tests/intent.inferrer.spec.ts",
-  "/intent/tests/intent.reconciler.spec.ts",
-  "/intent/tests/intent.verifier.spec.ts",
-  "/negotiation/tests/negotiation.agent.spec.ts",
-  "/negotiation/tests/negotiation.summarizer.spec.ts",
-  "/negotiation/tests/negotiator-timeout.spec.ts",
-  "/premise/tests/premise.analyzer.spec.ts",
+  "/intents/tests/intent.clarifier.spec.ts",
+  "/intents/tests/intent.graph.spec.ts",
+  "/intents/tests/intent.inferrer.spec.ts",
+  "/intents/tests/intent.reconciler.spec.ts",
+  "/intents/tests/intent.verifier.spec.ts",
+  "/negotiations/tests/negotiation.agent.spec.ts",
+  "/negotiations/tests/negotiation.summarizer.spec.ts",
+  "/negotiations/tests/negotiator-timeout.spec.ts",
+  "/premises/tests/premise.analyzer.spec.ts",
 ];
 const runsSpec = (spec: string) => process.argv.some((arg) => arg.endsWith(spec));
 const runsModelConfigSpec = modelConfigSpecs.some(runsSpec);
@@ -81,7 +86,6 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
       return { suggestions: [{ label: "Share more context", type: "prompt", followupText: null, prefill: "I am looking for " }] };
     }
     if (agent === "chatTitleGenerator") return { title: "Conversation" };
-    if (agent === "negotiationScreener") return { decision: "continue", evidence: { reasoning: "Deterministic source-test screening." } };
     if (agent === "negotiationReflector") return { memory: "Deterministic source-test reflection.", shouldContinue: true };
     if (agent === "negotiationSummarizer") return { summary: "Deterministic source-test summary." };
     if (agent === "negotiator") return { hasOpportunity: false, agreedRoles: [], reasoning: "Deterministic source-test negotiation.", turnCount: 0 };
@@ -101,7 +105,7 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
     return model;
   };
 
-  mock.module(import.meta.resolve("./src/shared/agent/model.config.js"), () => ({
+  mock.module(import.meta.resolve("./src/internal/shared/agent/model.config.js"), () => ({
     createModel: (agent: string) => modelFor(agent),
     createFallbackModel: () => undefined,
     createStructuredModel: (agent: string) => modelFor(agent),

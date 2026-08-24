@@ -12,6 +12,15 @@ export interface CreateIntentProposalInput {
   analysis: unknown;
 }
 
+export interface ReviseIntentProposalInput {
+  proposalId: string;
+  userId: string;
+  expectedDescription: string;
+  expectedNetworkId: string | null;
+  description: string;
+  analysis: unknown;
+}
+
 /** Default lifetime for a proposal awaiting explicit owner confirmation. */
 export const INTENT_PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -89,6 +98,35 @@ export class IntentProposalDatabaseAdapter {
       ))
       .returning({ id: intentProposals.id });
     return Boolean(updated);
+  }
+
+  /**
+   * Atomically replace the verified payload of a still-pending owner proposal.
+   *
+   * Confirmation cards allow their owner to edit the description directly.
+   * The replacement analysis is produced server-side before this write, and
+   * the compare-and-set predicates prevent a concurrent confirmation, network
+   * attachment, or second edit from being overwritten.
+   */
+  async revisePendingProposal(input: ReviseIntentProposalInput): Promise<IntentProposalRow | null> {
+    const [updated] = await db
+      .update(intentProposals)
+      .set({
+        description: input.description,
+        analysis: intentProposalAnalysisSchema.parse(input.analysis),
+      })
+      .where(and(
+        eq(intentProposals.id, input.proposalId),
+        eq(intentProposals.userId, input.userId),
+        eq(intentProposals.status, 'pending'),
+        gt(intentProposals.expiresAt, this.now()),
+        eq(intentProposals.description, input.expectedDescription),
+        input.expectedNetworkId === null
+          ? isNull(intentProposals.networkId)
+          : eq(intentProposals.networkId, input.expectedNetworkId),
+      ))
+      .returning();
+    return updated ?? null;
   }
 
   /** Resolve a proposal without exposing records owned by another user. */

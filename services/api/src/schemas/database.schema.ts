@@ -17,7 +17,7 @@ export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node',
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
-export const agentActionProposalStatusEnum = pgEnum('agent_action_proposal_status', ['pending', 'executing', 'consumed']);
+export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
 export interface HistoricalQualityBaseAttestation {
@@ -121,8 +121,6 @@ export const users = pgTable('users', {
   timezone: text('timezone').default('UTC'),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
 
-  // Ghost users (imported contacts who haven't signed up yet)
-  isGhost: boolean('is_ghost').default(false).notNull(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -370,31 +368,6 @@ export const premiseNetworks = pgTable('premise_networks', {
   networkIdIdx: index('premise_networks_network_id_idx').on(t.networkId),
 }));
 
-export const userContexts = pgTable('user_contexts', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  // Nullable: a null networkId is the user's single global, profile-replacing
-  // context row. Per-network rows carry a concrete networkId.
-  networkId: text('network_id').references(() => networks.id, { onDelete: 'cascade' }),
-  text: text('text').notNull(),
-  embedding: vector('embedding', { dimensions: 2000 }),
-  premiseHash: text('premise_hash'),
-  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  // One row per (user, network) for concrete networks. A NULL networkId is excluded
-  // here (Postgres treats NULLs as distinct), so the global row is enforced separately.
-  userNetworkUniq: uniqueIndex('user_contexts_user_network_uniq')
-    .on(table.userId, table.networkId)
-    .where(sql`${table.networkId} IS NOT NULL`),
-  // Exactly one global (networkId IS NULL) row per user.
-  userGlobalUniq: uniqueIndex('user_contexts_user_global_uniq')
-    .on(table.userId)
-    .where(sql`${table.networkId} IS NULL`),
-  embeddingIdx: index('user_contexts_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
-  userIdIdx: index('user_contexts_user_id_idx').on(table.userId),
-  networkIdIdx: index('user_contexts_network_id_idx').on(table.networkId),
-}));
-
 /** Durable protected-base fingerprints used to reject stale matrix child runs. */
 export const evalMatrixMetadata = pgTable('eval_matrix_metadata', {
   key: text('key').primaryKey(),
@@ -471,6 +444,7 @@ export const hydeDocuments = pgTable('hyde_documents', {
 }));
 
 export interface OpportunityDetection {
+  /** `introducer_discovery` is read-only history: no path stamps it any more, but existing rows carry it. */
   source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
@@ -560,31 +534,8 @@ export const opportunityDiscoveryRuns = pgTable('opportunity_discovery_runs', {
   expiresAtIdx: index('opportunity_discovery_runs_expires_at_idx').on(table.expiresAt),
 }));
 
-export const enrichmentToolRuns = pgTable('enrichment_tool_runs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
-  operation: text('operation').notNull(),
-  status: discoveryRunStatusEnum('status').notNull().default('queued'),
-  input: jsonb('input').$type<Record<string, unknown>>().notNull(),
-  context: jsonb('context').$type<Record<string, unknown>>().notNull(),
-  progress: jsonb('progress').$type<Record<string, unknown>>(),
-  result: jsonb('result').$type<unknown>(),
-  error: text('error'),
-  cancelRequestedAt: timestamp('cancel_requested_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-}, (table) => ({
-  userCreatedIdx: index('enrichment_tool_runs_user_created_idx').on(table.userId, table.createdAt),
-  statusCreatedIdx: index('enrichment_tool_runs_status_created_idx').on(table.status, table.createdAt),
-  operationCreatedIdx: index('enrichment_tool_runs_operation_created_idx').on(table.operation, table.createdAt),
-  expiresAtIdx: index('enrichment_tool_runs_expires_at_idx').on(table.expiresAt),
-}));
-
 export interface QuestionDetection {
-  mode: 'discovery' | 'intent' | 'enrichment' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
+  mode: 'intent' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
   /** Internal generation purpose; stripped from public API responses. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
   /** Exact negotiation recipient/intent/task routing provenance. Internal only. */
@@ -696,59 +647,6 @@ export const questions = pgTable('questions', {
 export type QuestionRow = typeof questions.$inferSelect;
 export type NewQuestionRow = typeof questions.$inferInsert;
 
-export interface AgentActionProposalSnapshotRecord {
-  status: string;
-  updatedAt?: string;
-  payload?: string;
-  summary?: string | null;
-  assertionText?: string;
-}
-
-interface AgentActionProposalActionBase {
-  entityId: string;
-  currentState: string;
-  proposedOperation: string;
-  evidence?: string;
-  skipped?: boolean;
-  reason?: string;
-  snapshot?: AgentActionProposalSnapshotRecord;
-  description?: string;
-}
-
-export type AgentActionProposalActionRecord =
-  | (AgentActionProposalActionBase & { type: 'retract_premise' })
-  | (AgentActionProposalActionBase & { type: 'narrow_signal' })
-  | (AgentActionProposalActionBase & { type: 'pause_signal' });
-
-export interface AgentActionProposalResultRecord {
-  type: 'retract_premise' | 'narrow_signal' | 'pause_signal';
-  entityId: string;
-  operation: string;
-  previousState: string;
-  resultingState: string;
-  evidence?: string;
-  outcome: 'applied' | 'alreadyDone' | 'skipped' | 'stale';
-  reason?: string;
-}
-
-export const agentActionProposals = pgTable('agent_action_proposals', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  conversationId: text('conversation_id'),
-  actions: jsonb('actions').$type<AgentActionProposalActionRecord[]>().notNull(),
-  status: agentActionProposalStatusEnum('status').notNull().default('pending'),
-  result: jsonb('result').$type<AgentActionProposalResultRecord[]>(),
-  executionLeaseAt: timestamp('execution_lease_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  consumedAt: timestamp('consumed_at', { withTimezone: true }),
-}, (table) => ({
-  userIdIdx: index('agent_action_proposals_user_id_idx').on(table.userId),
-  conversationIdx: index('agent_action_proposals_conversation_id_idx').on(table.conversationId),
-}));
-
-export type AgentActionProposalRow = typeof agentActionProposals.$inferSelect;
-export type NewAgentActionProposalRow = typeof agentActionProposals.$inferInsert;
-
 export interface IntentProposalVerifierOutputRecord {
   reasoning: string;
   classification: 'COMMISSIVE' | 'DIRECTIVE' | 'ASSERTIVE' | 'EXPRESSIVE' | 'DECLARATION' | 'UNKNOWN';
@@ -780,6 +678,26 @@ export const intents = pgTable('intents', {
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   /**
+   * Bumped by NegotiationGraph at every fresh kickoff of a round of
+   * negotiations for this intent. The reflect trigger's key, alongside the
+   * negotiation task's `round` metadata (design doc 2026-08-23).
+   */
+  negotiationRound: integer('negotiation_round').notNull().default(0),
+  /**
+   * How many negotiations the current round actually opened, stamped by
+   * kickoff only after every parallel open has settled. NULL means the round
+   * is still opening, and the all-paused → reflect check is a no-op until the
+   * stamp lands (design doc 2026-08-23, decision D2).
+   */
+  negotiationRoundSize: integer('negotiation_round_size'),
+  /**
+   * When a kickoff for the CURRENT round began — stamped by the round bump,
+   * the one write that begins one. Read with `negotiationRoundSize`: set with
+   * a null size is a kickoff that did not finish; null means no kickoff has
+   * ever run for this signal, which is where every pre-0146 intent starts.
+   */
+  negotiationKickoffStartedAt: timestamp('negotiation_kickoff_started_at', { withTimezone: true }),
+  /**
    * When the intent's first background discovery run completed successfully
    * (any path: web from-intent queue or async MCP discovery-run). Null until
    * then. Read-side "warming" derivation clears as soon as this is stamped,
@@ -808,7 +726,6 @@ export const networks = pgTable('networks', {
   key: text('key'),
   prompt: text('prompt'),
   imageUrl: text('image_url'),
-  isPersonal: boolean('is_personal').default(false).notNull(),
   masterKeyHash: text('master_key_hash'),
   // Non-null only while this row is an unapproved "create a network" request
   // (early access). Cleared to null when a staff reviewer approves it.
@@ -1043,14 +960,6 @@ export const networkMembers = pgTable('network_members', {
   pk: primaryKey({ columns: [table.networkId, table.userId] }),
 }));
 
-export const personalNetworks = pgTable('personal_networks', {
-  userId: text('user_id').notNull().references(() => users.id),
-  networkId: text('network_id').notNull().references(() => networks.id),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.userId] }),
-  networkUnique: uniqueIndex('personal_networks_network_id_unique').on(t.networkId),
-}));
-
 export const networkIntegrations = pgTable('network_integrations', {
   networkId: text('network_id').notNull().references(() => networks.id),
   toolkit: text('toolkit').notNull(),
@@ -1076,6 +985,29 @@ export const files = pgTable('files', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 });
+
+/**
+ * Owner-visible, aggregate-only observability for the ordinary from-intent
+ * worker. Unlike BullMQ retention this survives completed, failed and stale
+ * jobs and deliberately has no error payload or candidate-level data.
+ */
+export const intentDiscoveryProgress = pgTable('intent_discovery_progress', {
+  intentId: text('intent_id').primaryKey().references(() => intents.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: intentDiscoveryProgressStatusEnum('status').notNull().default('queued'),
+  attempt: integer('attempt').notNull().default(0),
+  maxAttempts: integer('max_attempts').notNull().default(3),
+  assignedCommunityCount: integer('assigned_community_count').notNull().default(0),
+  processedCommunityCount: integer('processed_community_count').notNull().default(0),
+  possibleOverlapCount: integer('possible_overlap_count').notNull().default(0),
+  conversationsStartedCount: integer('conversations_started_count').notNull().default(0),
+  queuedAt: timestamp('queued_at', { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  userUpdatedIdx: index('intent_discovery_progress_user_updated_idx').on(table.userId, table.updatedAt),
+}));
 
 export const intentNetworks = pgTable('intent_networks', {
   intentId: text('intent_id').notNull().references(() => intents.id),
@@ -1145,142 +1077,6 @@ export const agents = pgTable('agents', {
   uniqueSelectedNegotiationExecutor: uniqueIndex('uniq_agents_selected_negotiation_executor')
     .on(table.ownerId)
     .where(sql`${table.type} = 'external' AND ${table.handleNegotiations} = true AND ${table.deletedAt} IS NULL`),
-}));
-
-export const indexAppOwnerAuthorizations = pgTable('index_app_owner_authorizations', {
-  requestId: text('request_id').primaryKey(),
-  ownerId: text('owner_id').references(() => users.id, { onDelete: 'cascade' }),
-  installationId: text('installation_id').notNull(),
-  redirectUri: text('redirect_uri').notNull(),
-  state: text('state').notNull(),
-  codeChallenge: text('code_challenge').notNull(),
-  codeChallengeMethod: text('code_challenge_method').notNull(),
-  legacyKeyId: text('legacy_key_id'),
-  codeHash: text('code_hash'),
-  replayReceipt: text('replay_receipt'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  approvedAt: timestamp('approved_at', { withTimezone: true }),
-  consumedAt: timestamp('consumed_at', { withTimezone: true }),
-}, (table) => ({
-  methodS256: check('index_app_owner_authorizations_s256_check', sql`${table.codeChallengeMethod} = 'S256'`),
-  positiveExpiry: check('index_app_owner_authorizations_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
-  stateUnique: uniqueIndex('index_app_owner_authorization_state_unique').on(table.state),
-  codeHashUnique: uniqueIndex('index_app_owner_authorization_code_hash_unique')
-    .on(table.codeHash).where(sql`${table.codeHash} IS NOT NULL`),
-  installationIdx: index('index_app_owner_authorizations_installation_idx').on(table.installationId),
-  expiryIdx: index('index_app_owner_authorizations_expiry_idx').on(table.expiresAt),
-}));
-
-export const indexAppOwnerCredentials = pgTable('index_app_owner_credentials', {
-  id: text('id').primaryKey(),
-  secretHash: text('secret_hash').notNull(),
-  activationProofHash: text('activation_proof_hash'),
-  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  installationId: text('installation_id').notNull(),
-  generation: text('generation').notNull(),
-  audience: text('audience').notNull(),
-  activationState: text('activation_state').notNull().$type<'pending' | 'active' | 'revoked'>(),
-  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  activatedAt: timestamp('activated_at', { withTimezone: true }),
-  revokedAt: timestamp('revoked_at', { withTimezone: true }),
-}, (table) => ({
-  audienceCheck: check('index_app_owner_credentials_audience_check', sql`${table.audience} = 'index-app-owner'`),
-  stateCheck: check('index_app_owner_credentials_state_check', sql`${table.activationState} IN ('pending', 'active', 'revoked')`),
-  positiveExpiry: check('index_app_owner_credentials_expiry_check', sql`${table.expiresAt} > ${table.issuedAt}`),
-  secretHashUnique: uniqueIndex('index_app_owner_credentials_secret_hash_unique').on(table.secretHash),
-  liveInstallationUnique: uniqueIndex('index_app_owner_credentials_live_installation_unique')
-    .on(table.ownerId, table.installationId)
-    .where(sql`${table.activationState} IN ('pending', 'active')`),
-  generationUnique: uniqueIndex('index_app_owner_credentials_generation_unique')
-    .on(table.ownerId, table.installationId, table.generation),
-  expiryIdx: index('index_app_owner_credentials_expiry_idx').on(table.expiresAt),
-}));
-
-export const hermesAuthorizations = pgTable('hermes_authorizations', {
-  requestId: text('request_id').primaryKey(),
-  ownerId: text('owner_id').references(() => users.id, { onDelete: 'cascade' }),
-  agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
-  installationId: text('installation_id').notNull(),
-  redirectUri: text('redirect_uri').notNull(),
-  state: text('state').notNull(),
-  codeChallenge: text('code_challenge').notNull(),
-  codeChallengeMethod: text('code_challenge_method').notNull(),
-  actions: text('actions').array().notNull(),
-  codeHash: text('code_hash'),
-  setupAttemptId: text('setup_attempt_id'),
-  replayReceipt: text('replay_receipt'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  approvedAt: timestamp('approved_at', { withTimezone: true }),
-  consumedAt: timestamp('consumed_at', { withTimezone: true }),
-}, (table) => ({
-  methodS256: check('hermes_authorizations_s256_check', sql`${table.codeChallengeMethod} = 'S256'`),
-  canonicalActions: check('hermes_authorizations_actions_check', sql`${table.actions} = ARRAY['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities', 'manage:negotiations']::text[]`),
-  positiveExpiry: check('hermes_authorizations_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
-  stateUnique: uniqueIndex('hermes_authorization_state_unique').on(table.state),
-  codeHashUnique: uniqueIndex('hermes_authorization_code_hash_unique')
-    .on(table.codeHash)
-    .where(sql`${table.codeHash} IS NOT NULL`),
-  installationIdx: index('hermes_authorizations_installation_idx').on(table.installationId),
-  expiryIdx: index('hermes_authorizations_expiry_idx').on(table.expiresAt),
-}));
-
-export const hermesAgentCredentials = pgTable('hermes_agent_credentials', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  secretHash: text('secret_hash').notNull(),
-  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
-  installationId: text('installation_id').notNull(),
-  setupAttemptId: text('setup_attempt_id').notNull(),
-  audience: text('audience').notNull(),
-  actions: text('actions').array().notNull(),
-  activationState: text('activation_state').notNull().$type<'pending' | 'active' | 'revoked'>(),
-  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  activatedAt: timestamp('activated_at', { withTimezone: true }),
-  revokedAt: timestamp('revoked_at', { withTimezone: true }),
-}, (table) => ({
-  audienceCheck: check('hermes_agent_credentials_audience_check', sql`${table.audience} = 'hermes-agent'`),
-  canonicalActions: check('hermes_agent_credentials_actions_check', sql`${table.actions} = ARRAY['manage:identity', 'manage:premises', 'manage:intents', 'manage:networks', 'manage:opportunities', 'manage:negotiations']::text[]`),
-  stateCheck: check('hermes_agent_credentials_state_check', sql`${table.activationState} IN ('pending', 'active', 'revoked')`),
-  positiveExpiry: check('hermes_agent_credentials_expiry_check', sql`${table.expiresAt} > ${table.issuedAt}`),
-  secretHashUnique: uniqueIndex('hermes_agent_credentials_secret_hash_unique').on(table.secretHash),
-  liveInstallationUnique: uniqueIndex('hermes_agent_credentials_live_installation_unique')
-    .on(table.ownerId, table.installationId)
-    .where(sql`${table.activationState} IN ('pending', 'active')`),
-  liveGenerationUnique: uniqueIndex('hermes_agent_credentials_live_generation_unique')
-    .on(table.agentId, table.setupAttemptId)
-    .where(sql`${table.activationState} IN ('pending', 'active')`),
-  expiryIdx: index('hermes_agent_credentials_expiry_idx').on(table.expiresAt),
-}));
-
-export const hermesEmergencyReceipts = pgTable('hermes_emergency_receipts', {
-  planId: text('plan_id').primaryKey(),
-  audience: text('audience').notNull(),
-  installations: integer('installations').notNull(),
-  credentials: integer('credentials').notNull(),
-  permissions: integer('permissions').notNull(),
-  owners: integer('owners').notNull(),
-  selectedPaused: integer('selected_paused').notNull(),
-  credentialsRevoked: integer('credentials_revoked').notNull(),
-  permissionsRemoved: integer('permissions_removed').notNull(),
-  installationsDisconnected: integer('installations_disconnected').notNull(),
-  resultReason: text('result_reason').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  planIdCheck: check('hermes_emergency_receipts_plan_id_check', sql`${table.planId} ~ '^hecp_[A-Za-z0-9_-]{43}$'`),
-  audienceCheck: check('hermes_emergency_receipts_audience_check', sql`${table.audience} = 'hermes-agent'`),
-  resultCheck: check('hermes_emergency_receipts_result_check', sql`${table.resultReason} = 'executed'`),
-  countsCheck: check('hermes_emergency_receipts_counts_check', sql`
-    ${table.installations} >= 0 AND ${table.credentials} >= 0
-    AND ${table.permissions} >= 0 AND ${table.owners} >= 0
-    AND ${table.selectedPaused} >= 0 AND ${table.selectedPaused} <= ${table.installations}
-    AND ${table.credentialsRevoked} >= 0 AND ${table.credentialsRevoked} <= ${table.credentials}
-    AND ${table.permissionsRemoved} >= 0 AND ${table.permissionsRemoved} <= ${table.permissions}
-    AND ${table.installationsDisconnected} >= 0 AND ${table.installationsDisconnected} <= ${table.installations}
-  `),
 }));
 
 export const agentTransports = pgTable('agent_transports', {
@@ -1504,6 +1300,63 @@ export const opportunityOutcomeEvents = pgTable(
 export type OpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferSelect;
 export type NewOpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferInsert;
 
+/** Where a dossier entry came from (docs/plans/2026-08-21-holistic-intent-agent.md). */
+export const intentDossierSourceEnum = pgEnum('intent_dossier_source', ['user_message', 'answer', 'agent_note']);
+
+/**
+ * The intent dossier — the disclosure boundary of the IntentAgent
+ * (docs/plans/2026-08-21-holistic-intent-agent.md). Negotiation-facing
+ * material may come only from entries here; the raw DM transcript never
+ * feeds a negotiation turn. Entries are retired, never deleted, so the
+ * boundary's history stays auditable.
+ */
+export const intentDossier = pgTable(
+  'intent_dossier',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    source: intentDossierSourceEnum('source').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    retiredAt: timestamp('retired_at', { withTimezone: true }),
+  },
+  (t) => ({
+    scopeIdx: index('idx_intent_dossier_scope').on(t.userId, t.intentId, t.retiredAt),
+  }),
+);
+
+export type IntentDossierEntry = typeof intentDossier.$inferSelect;
+export type NewIntentDossierEntry = typeof intentDossier.$inferInsert;
+
+/**
+ * The IntentAgent's act ledger — append-only accountability substrate
+ * (docs/plans/2026-08-21-holistic-intent-agent.md). Written by the agent
+ * loop, read only by the agent's own context assembly; never a logic input
+ * anywhere else. Provenance ids only, no cascading source FKs beyond the
+ * owning user: the record of what the agent decided must survive routine
+ * intent cleanup.
+ */
+export const intentAgentActs = pgTable(
+  'intent_agent_acts',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    intentId: text('intent_id').notNull(),
+    /** What woke the agent: the triggering event, verbatim. */
+    event: jsonb('event').$type<Record<string, unknown>>().notNull(),
+    /** The tool the agent called and its payload. */
+    act: jsonb('act').$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    scopeIdx: index('idx_intent_agent_acts_scope').on(t.userId, t.intentId, t.createdAt),
+  }),
+);
+
+export type IntentAgentAct = typeof intentAgentActs.$inferSelect;
+export type NewIntentAgentAct = typeof intentAgentActs.$inferInsert;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1588,17 +1441,6 @@ export const networkMembersRelations = relations(networkMembers, ({ one }) => ({
   }),
 }));
 
-export const personalNetworksRelations = relations(personalNetworks, ({ one }) => ({
-  user: one(users, {
-    fields: [personalNetworks.userId],
-    references: [users.id],
-  }),
-  network: one(networks, {
-    fields: [personalNetworks.networkId],
-    references: [networks.id],
-  }),
-}));
-
 export const networkIntegrationsRelations = relations(networkIntegrations, ({ one }) => ({
   network: one(networks, {
     fields: [networkIntegrations.networkId],
@@ -1679,24 +1521,12 @@ export type HydeDocument = typeof hydeDocuments.$inferSelect;
 export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
-export type PersonalNetwork = typeof personalNetworks.$inferSelect;
-export type NewPersonalNetwork = typeof personalNetworks.$inferInsert;
 export type NetworkIntegration = typeof networkIntegrations.$inferSelect;
 export type NewNetworkIntegration = typeof networkIntegrations.$inferInsert;
 export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
 export type AgentTransport = typeof agentTransports.$inferSelect;
 export type NewAgentTransport = typeof agentTransports.$inferInsert;
-export type IndexAppOwnerAuthorization = typeof indexAppOwnerAuthorizations.$inferSelect;
-export type NewIndexAppOwnerAuthorization = typeof indexAppOwnerAuthorizations.$inferInsert;
-export type IndexAppOwnerCredential = typeof indexAppOwnerCredentials.$inferSelect;
-export type NewIndexAppOwnerCredential = typeof indexAppOwnerCredentials.$inferInsert;
-export type HermesAuthorization = typeof hermesAuthorizations.$inferSelect;
-export type NewHermesAuthorization = typeof hermesAuthorizations.$inferInsert;
-export type HermesAgentCredential = typeof hermesAgentCredentials.$inferSelect;
-export type NewHermesAgentCredential = typeof hermesAgentCredentials.$inferInsert;
-export type HermesEmergencyReceiptRow = typeof hermesEmergencyReceipts.$inferSelect;
-export type NewHermesEmergencyReceiptRow = typeof hermesEmergencyReceipts.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
 export type NegotiatorMemory = typeof negotiatorMemories.$inferSelect;
@@ -1705,7 +1535,5 @@ export type Premise = typeof premises.$inferSelect;
 export type NewPremise = typeof premises.$inferInsert;
 export type PremiseNetwork = typeof premiseNetworks.$inferSelect;
 export type NewPremiseNetwork = typeof premiseNetworks.$inferInsert;
-export type UserContext = typeof userContexts.$inferSelect;
-export type NewUserContext = typeof userContexts.$inferInsert;
 
 export * from './conversation.schema';

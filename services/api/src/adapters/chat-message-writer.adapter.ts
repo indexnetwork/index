@@ -1,3 +1,6 @@
+/** Persona literal mirrored locally so the data layer stays protocol-agnostic. */
+const PERSONAL_AGENT_PERSONA = 'personal';
+
 /**
  * Local structural type matching ChatMessageWriter from @indexnetwork/protocol.
  * Defined here to keep adapters free of cross-layer imports.
@@ -18,6 +21,7 @@ interface ChatSessionServiceLike {
     userId: string,
     limit: number,
     persona: string,
+    opts?: { excludeIntentPinned?: boolean },
   ): Promise<Array<{ id: string }>>;
   addMessage(params: {
     sessionId: string;
@@ -38,10 +42,15 @@ export class ChatMessageWriterAdapter implements ChatMessageWriter {
     userId: string,
     content: string,
   ): Promise<{ sessionId: string } | null> {
+    // The one PersonalAgent persona, excluding intent-pinned DMs: an
+    // elicited answer must never land inside a signal's DM (the IntentAgent's
+    // conversation memory), and the retired orchestrator rows stay read-only
+    // history the server refuses to continue.
     const sessions = await this.chatSessionService.getUserSessions(
       userId,
       1,
-      'orchestrator',
+      PERSONAL_AGENT_PERSONA,
+      { excludeIntentPinned: true },
     );
     const mostRecent = sessions[0];
     if (!mostRecent) return null;

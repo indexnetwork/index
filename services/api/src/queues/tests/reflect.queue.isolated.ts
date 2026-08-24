@@ -5,7 +5,7 @@
  * - `reflect`: flag off → distiller never invoked; flag on → BOTH sides get a
  *   reflection pass with perspective-projected transcripts and correct seat
  *   attribution; one side failing never costs the other its memories,
- * - `chat_reflect`: ownership/persona guard (only the negotiator DM reflects),
+ * - `chat_reflect`: ownership guard (only the canonical signal DM reflects),
  *   counterparty_dossier entries are dropped (no subject in chat scope),
  *   sessions without client messages are skipped.
  */
@@ -14,20 +14,19 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? 'test-key';
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
 import type { NegotiationReflectionInput, ChatReflectionInput, DistilledMemory } from '@indexnetwork/protocol';
 
 import { NegotiationReflectQueue, type ReflectJobData } from '../negotiations/reflect.queue';
 
-const origFlag = process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
 
-function turnMessage(senderUserId: string, action: string, message?: string): {
+/** #1494: persisted turn shape is {verb, message, reasoning} — not the pre-rewrite {action, assessment}. */
+function turnMessage(senderUserId: string, verb: string, message?: string): {
   id: string; senderId: string; parts: unknown[]; createdAt: Date;
 } {
   return {
-    id: `msg-${action}-${senderUserId}`,
+    id: `msg-${verb}-${senderUserId}`,
     senderId: `agent:${senderUserId}`,
-    parts: [{ kind: 'data', data: { action, ...(message && { message }), assessment: { reasoning: `${action} reasoning` } } }],
+    parts: [{ kind: 'data', data: { verb, ...(message && { message }), reasoning: `${verb} reasoning` } }],
     createdAt: new Date(),
   };
 }
@@ -53,8 +52,10 @@ const distilled: DistilledMemory[] = [{
 function mkQueue(opts?: {
   reflectNegotiation?: (input: NegotiationReflectionInput) => Promise<DistilledMemory[]>;
   reflectChat?: (input: ChatReflectionInput) => Promise<DistilledMemory[]>;
-  session?: { persona: string } | null;
+  session?: { persona: string; scopeType: string | null; scopeId: string | null } | null;
+  canonicalDmId?: string | null;
   chatMessages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  negotiationMessages?: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }>;
 }) {
   const reflectCalls: NegotiationReflectionInput[] = [];
   const chatCalls: ChatReflectionInput[] = [];
@@ -62,13 +63,17 @@ function mkQueue(opts?: {
 
   const queue = new NegotiationReflectQueue({
     conversations: {
-      getMessagesForConversation: async () => [
+      // #1494: a negotiation is its own conversation now, not a pair-shared
+      // one — the worker reads the negotiation's own conversation directly,
+      // no negotiation-scoped/conversation-scoped distinction left to make.
+      getMessagesForConversation: async () => opts?.negotiationMessages ?? [
         turnMessage('u-alice', 'outreach', 'hello'),
         turnMessage('u-bob', 'accept', 'deal'),
       ],
     },
     chat: {
-      getSession: async () => opts?.session === undefined ? { persona: NEGOTIATOR_PERSONA_ID } : opts.session,
+      getSession: async () => opts?.session === undefined ? { persona: 'personal', scopeType: 'intent', scopeId: 'intent-1' } : opts.session,
+      findNegotiatorIntentSessionId: async () => opts?.canonicalDmId === undefined ? 'sess-1' : opts.canonicalDmId,
       getSessionMessages: async () => opts?.chatMessages ?? [
         { role: 'user', content: 'never share my rate' },
         { role: 'assistant', content: 'understood' },
@@ -100,27 +105,13 @@ describe('NegotiationReflectQueue', () => {
   const queues: NegotiationReflectQueue[] = [];
 
   beforeEach(() => {
-    process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = 'true';
   });
 
   afterEach(async () => {
-    if (origFlag === undefined) delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-    else process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED = origFlag;
     await Promise.all(queues.splice(0).map((q) => q.close().catch(() => undefined)));
   });
 
   describe('reflect', () => {
-    it('flag off → distiller never invoked, zero writes', async () => {
-      delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-      const { queue, reflectCalls, writes } = mkQueue();
-      queues.push(queue);
-
-      await queue.processJob('reflect', reflectJob);
-
-      expect(reflectCalls.length).toBe(0);
-      expect(writes.length).toBe(0);
-    });
-
     it('runs one perspective-projected pass per side with correct seat attribution', async () => {
       const { queue, reflectCalls, writes } = mkQueue();
       queues.push(queue);
@@ -168,22 +159,44 @@ describe('NegotiationReflectQueue', () => {
       expect(writes.length).toBe(1);
       expect(writes[0]).toMatchObject({ userId: 'u-bob' });
     });
+
+    it('projects a pause turn as pause:<reason>, not the pre-rewrite {action,assessment} shape (#1494 round-3 cap-cut d)', async () => {
+      const { queue, reflectCalls } = mkQueue({
+        negotiationMessages: [
+          turnMessage('u-alice', 'outreach', 'hello'),
+          {
+            id: 'msg-pause',
+            senderId: 'agent:u-bob',
+            parts: [{ kind: 'data', data: { verb: 'pause', reason: 'needs_principal' } }],
+            createdAt: new Date(),
+          },
+        ],
+      });
+      queues.push(queue);
+
+      await queue.processJob('reflect', reflectJob);
+
+      const alicePass = reflectCalls.find((c) => c.clientUser.id === 'u-alice')!;
+      expect(alicePass.transcript[1]).toMatchObject({ action: 'pause:needs_principal', speaker: 'counterparty' });
+    });
   });
 
   describe('chat_reflect', () => {
     const chatJob = { sessionId: 'sess-1', userId: 'u-alice' };
 
-    it('flag off → skipped entirely', async () => {
-      delete process.env.NEGOTIATOR_MEMORY_WRITE_ENABLED;
-      const { queue, chatCalls } = mkQueue();
+    it('non-intent-scoped session → skipped (guard)', async () => {
+      const { queue, chatCalls, writes } = mkQueue({ session: { persona: 'personal', scopeType: null, scopeId: null } });
       queues.push(queue);
 
       await queue.processJob('chat_reflect', chatJob);
       expect(chatCalls.length).toBe(0);
+      expect(writes.length).toBe(0);
     });
 
-    it('non-negotiator persona → skipped (guard)', async () => {
-      const { queue, chatCalls, writes } = mkQueue({ session: { persona: 'orchestrator' } });
+    it('intent-scoped but not the canonical DM → skipped (guard)', async () => {
+      // A pre-collapse pinned chat that lost the DM fold-in carries the
+      // intent scope but no registry claim; it never distils.
+      const { queue, chatCalls, writes } = mkQueue({ canonicalDmId: 'sess-other' });
       queues.push(queue);
 
       await queue.processJob('chat_reflect', chatJob);

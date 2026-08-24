@@ -82,7 +82,7 @@ export class AgentService {
   /**
    * Resolve the user's personal negotiator agent row (`type='personal'`),
    * provisioning it when missing — `ensureNegotiatorAgent` is idempotent.
-   * Returns null for ghost or missing users, which callers treat as
+   * Returns null for missing users, which callers treat as
    * "negotiator not available" (404-equivalent).
    */
   async getNegotiatorAgent(userId: string): Promise<AgentRow | null> {

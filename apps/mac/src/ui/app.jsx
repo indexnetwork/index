@@ -454,6 +454,9 @@ function App() {
       setScreen("main");
       seedField();
       void refreshIntents();
+      if (window.IndexApp && window.IndexApp.completeOnboarding) {
+        void window.IndexApp.completeOnboarding(intentId).catch(() => {});
+      }
       return;
     }
 
@@ -509,7 +512,7 @@ function App() {
 
   return (
     <IndexDataContext.Provider value={{ data, me, networks, features, live, refreshNetworks, refreshIntents, patchIntentStatus }}>
-      <AgentRuntimeProvider>      <div style={{
+      <div style={{
         position:"fixed", inset:0,
         overflow:"hidden",
       }} className="mac-desktop">
@@ -522,13 +525,8 @@ function App() {
                                        onNew={goNewIntent}
                                        onSignOut={signOut}/>}
         {screen === "new-intent"  && <NewIntent onDone={finishNewIntent} onBack={() => setScreen("intents")}/>}
-        {/* First run: the getting-started profile review, now backed by real
-            enrichment. Settings drafts via preview_user_context, saves the
-            approved profile through confirm_user_context (which records
-            onboarding.profileConfirmedAt so this screen doesn't reappear), and
-            the profile save enqueues the full enrich.user pipeline. Declining
-            (sign out) leaves the profile unconfirmed, so the review replays on
-            the next sign-in rather than being silently approved. */}
+        {/* First run: profile review backed by enrich prefill; PATCH profile +
+            confirm-profile REST; first signal then POST onboarding/complete. */}
         {screen === "onboarding"  && <Settings
                                        initialTab="profile"
                                        profileOnly
@@ -562,7 +560,6 @@ function App() {
           />
         )}
       </div>
-      </AgentRuntimeProvider>
     </IndexDataContext.Provider>
   );
 }

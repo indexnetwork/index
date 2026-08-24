@@ -23,6 +23,8 @@ interface HomeIntent {
   sourceType?: "file" | "link" | "integration" | "discovery_form" | "enrichment";
   waitingOpportunityCount?: number;
   pendingQuestionCount?: number;
+  /** The signal's agent is holding an unanswered question for the user. */
+  awaitingReply?: boolean;
   status?: string;
   warming?: boolean;
 }
@@ -43,7 +45,7 @@ export default function DiscoverHome() {
   const mountedRef = useRef(true);
 
   // Ambient negotiation presence (Option C): live + your-move counts from the
-  // shared inbox derivation; both link to the /negotiations inbox.
+  // shared inbox derivation; both link to the negotiations inbox.
   const negotiationCounts = useMemo(() => {
     const groups = deriveNegotiationInbox(negotiations, user?.id);
     return { live: groups.inProgress.length, yourMove: groups.yourMove.length };

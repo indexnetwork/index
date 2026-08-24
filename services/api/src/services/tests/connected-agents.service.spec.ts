@@ -52,7 +52,6 @@ describe('ConnectedAgentsService', () => {
     const store = new MemoryStore();
     store.records = [
       base,
-      { ...base, installationId: 'pending', activationState: 'pending', selected: false },
       { ...base, installationId: 'stale', lastHeartbeatAt: new Date('2026-08-09T11:00:00.000Z') },
       { ...base, installationId: 'never', lastHeartbeatAt: null },
       { ...base, installationId: 'expired', expiresAt: new Date('2026-08-09T11:00:00.000Z') },
@@ -62,14 +61,13 @@ describe('ConnectedAgentsService', () => {
 
     const { connections } = await service.list(OWNER);
     expect(connections.map(({ health }) => health)).toEqual([
-      'active', 'pending', 'stale', 'never_seen', 'expired', 'revoked',
+      'active', 'stale', 'never_seen', 'expired', 'revoked',
     ]);
     expect(connections[0]?.installationName).toBe('Hermes on macOS');
     expect(connections[0]?.actions).toEqual(HERMES_CANONICAL_ACTIONS);
     expect(connections[0]?.indexCovering).toBe(false);
     expect(connections[1]?.indexCovering).toBe(true);
-    expect(connections[2]?.indexCovering).toBe(true);
-    expect(connections[4]?.indexCovering).toBe(true);
+    expect(connections[3]?.indexCovering).toBe(true);
   });
 
   it('pauses under the owner store contract and returns a refreshed view without revoking', async () => {

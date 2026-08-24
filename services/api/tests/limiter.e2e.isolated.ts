@@ -2,12 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import Redis from 'ioredis';
 
 import { RateLimit, getRateLimitInfo } from '../src/guards/limiter.guard';
+import { CLASS_CONFIG } from '../src/lib/limiter/config';
 import { RateLimiterError } from '../src/lib/limiter/error';
 import { resolveRedisIntegrationTestUrl } from '../src/lib/redis/test-integration';
 
 const ENV_KEYS = [
-  'LIMITER_READ_PER_MIN',
-  'LIMITER_DISABLE',
   'RAILWAY_ENVIRONMENT',
   'REDIS_URL',
 ] as const;
@@ -16,9 +15,12 @@ const originalEnv: Record<string, string | undefined> = Object.fromEntries(
 );
 const redisUrl = resolveRedisIntegrationTestUrl();
 
-process.env.LIMITER_READ_PER_MIN = '5';
-process.env.LIMITER_DISABLE = '';
 process.env.RAILWAY_ENVIRONMENT = 'test';
+
+// Budgets are constants now, so the test drives the smallest class rather than
+// shrinking a class with an env override.
+const LIMITED_CLASS = 'intake_synthesis' as const;
+const LIMIT = CLASS_CONFIG[LIMITED_CLASS].perMinute;
 if (redisUrl) process.env.REDIS_URL = redisUrl;
 
 let redisAvailable = false;
@@ -44,7 +46,7 @@ let baseUrl: string;
 
 beforeAll(() => {
   if (!redisAvailable) return;
-  const readGuard = RateLimit('read');
+  const readGuard = RateLimit(LIMITED_CLASS);
   server = Bun.serve({
     port: 0,
     async fetch(request) {
@@ -81,28 +83,29 @@ afterAll(() => {
 
 describe.if(redisAvailable)('limiter e2e', () => {
   test(
-    'allows five requests and rate-limits the sixth',
+    'allows the full per-minute budget and rate-limits the next request',
     async () => {
       const ip = `203.0.113.${Math.floor(Math.random() * 254) + 1}`;
       const headers = { 'x-forwarded-for': ip };
       const results: Response[] = [];
-      for (let index = 0; index < 6; index += 1) {
+      for (let index = 0; index < LIMIT + 1; index += 1) {
         results.push(await fetch(baseUrl, { headers }));
       }
 
-      for (let index = 0; index < 5; index += 1) {
+      for (let index = 0; index < LIMIT; index += 1) {
         expect(results[index].status).toBe(200);
-        expect(results[index].headers.get('ratelimit-limit')).toBe('5');
-        expect(results[index].headers.get('ratelimit-remaining')).toBe(String(4 - index));
+        expect(results[index].headers.get('ratelimit-limit')).toBe(String(LIMIT));
+        expect(results[index].headers.get('ratelimit-remaining')).toBe(String(LIMIT - 1 - index));
       }
 
-      expect(results[5].status).toBe(429);
-      expect(results[5].headers.get('retry-after')).toMatch(/^\d+$/);
-      expect(results[5].headers.get('ratelimit-limit')).toBe('5');
-      expect(results[5].headers.get('ratelimit-remaining')).toBe('0');
-      expect((await results[5].json()) as unknown).toMatchObject({
+      const limited = results[LIMIT];
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get('retry-after')).toMatch(/^\d+$/);
+      expect(limited.headers.get('ratelimit-limit')).toBe(String(LIMIT));
+      expect(limited.headers.get('ratelimit-remaining')).toBe('0');
+      expect((await limited.json()) as unknown).toMatchObject({
         code: 'RATE_LIMITED',
-        class: 'read',
+        class: LIMITED_CLASS,
       });
     },
     10_000,

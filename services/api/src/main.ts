@@ -19,16 +19,12 @@ import { UserController } from './controllers/user.controller';
 import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
 import { SubscribeController } from './controllers/subscribe.controller';
-import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
 import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
 import { AgentRuntimeController } from './controllers/agent-runtime.controller';
-import { HermesAuthorizationController } from './controllers/hermes-authorization.controller';
-import { IndexAppOwnerAuthorizationController } from './controllers/index-app-owner-authorization.controller';
 import { ConnectedAgentsController } from './controllers/connected-agents.controller';
-import { AgentActionController } from './controllers/agent-action.controller';
 import { ConversationService } from './services/conversation.service';
 import { NotificationService } from './services/notification.service';
 import { NotificationDeliveryService, loadNotificationIntentLabel } from './services/notification-delivery.service';
@@ -38,10 +34,9 @@ import { WebhooksController } from './controllers/webhooks.controller';
 import { QuestionController } from './controllers/question.controller';
 import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { IntegrationService } from './services/integration.service';
-import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
-import { HermesNegotiatorRouteDeniedError, IndexAppOwnerRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
+import { HermesNegotiatorRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
@@ -56,9 +51,6 @@ import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
-import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
-import { fromEnrichmentQueue } from './queues/opportunity/from-enrichment.queue';
-import { enrichmentRunQueue } from './queues/enrichment-run.queue';
 import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
@@ -68,55 +60,32 @@ import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
-import { enrichmentQueue } from './queues/enrichment.queue';
-import { negotiationTimeoutQueue } from './queues/negotiations/timeout.queue';
-import { negotiationClaimTimeoutQueue } from './queues/negotiations/claim-timeout.queue';
-import { RedisTimeoutUpgradeLease, TimeoutUpgradeReconciler } from './lib/negotiation/timeout-upgrade-reconciliation';
-import { getRedisClient } from './adapters/cache.adapter';
-import { negotiationReflectQueue, reflectEnqueueIfEnabled } from './queues/negotiations/reflect.queue';
-import { negotiatorMemoryRetrieve } from './adapters/negotiator-memory.retrieval.adapter';
-import { negotiatorMemoryWriteService } from './services/negotiator-memory.service';
-import { questionerQueue, questionerEnqueueIfEnabled } from './queues/questioner.queue';
-import { enqueuePoolQuestionPush, poolQuestionPushQueue } from './queues/pool/questionpush.queue';
-import { poolVisitMiningQueue } from './queues/pool/visitmining.queue';
+import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
+import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
+import { questionMessageQueue } from './queues/question-message.queue';
+import { personalAgentQueue } from './queues/personal-agent.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { handleIntentCreatedMaintenance, IntentEvents, intentResumeDiscoveryJobId } from './events/intent.event';
+import { handleIntentCreatedMaintenance, IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
-import { QuestionEvents } from './events/question.event';
 import { OpportunityEvents } from './events/opportunity.event';
-import { uptakeQuestionService } from './services/uptake-question.service';
-import { handleQuestionAnswered } from './events/handlers/question.answer.handler';
-import { handlePoolAnswerFactory } from './events/handlers/question.answer.pool';
-import { beatTwoMessage } from './queues/pool/answer.shared';
-import { stampNewbornOpportunities } from './queues/pool/newborn.shared';
-import { computeIntentFingerprint } from './lib/intent/intent.fingerprint';
-import { emitChatQuestionResolution } from './lib/chat-question.events';
-import { createPremiseFromAnswerFactory } from './events/handlers/question.answer.enrichment';
-import { enqueueIntentRefinementFactory } from './events/handlers/question.answer.intent';
-import { resumeInflightNegotiationFactory } from './events/handlers/question.answer.negotiation-inflight';
-import { QuestionerAdapter } from './adapters/questioner.adapter';
-import { questionerAdapter } from './adapters/questioner.adapter.instance';
+import { evaluateOpportunityTransition } from './lib/question/question-exhaustion.evaluator';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
-import { userContextQueue } from './queues/usercontext.queue';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
-import { AMBIENT_PARK_WINDOW_MS, IntentGraphFactory, NegotiationGraphFactory, PremiseGraphFactory, setLoggerFactory, setTimingWrapper, isQuestionerEnabled } from '@indexnetwork/protocol';
+import { Intents, PremiseGraphFactory, setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
+import { requestContext as hostRequestContext } from './lib/request-context';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
-import { conversationDatabaseAdapter, chatDatabaseAdapter } from './adapters/database.adapter';
+import { chatDatabaseAdapter } from './adapters/database.adapter';
 import { embedderAdapter } from './adapters/embedder.adapter';
-import { agentService } from './services/agent.service';
 import { intentService } from './services/intent.service';
 import { userService } from './services/user.service';
-import { AgentActionService } from './services/agent-action.service';
-import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
-import { agentActionProposalDatabaseAdapter } from './adapters/agent-action-proposal.database.adapter';
 import { publishNotificationStreamEvent } from './lib/notification-stream-events';
 
 // Wire the protocol library's logging into the rich API logger (context colors,
-// emoji, LOG_FILTER/LOG_LEVEL, Sentry, embedding redaction + payload truncation).
+// emoji, LOG_LEVEL, Sentry, embedding redaction + payload truncation).
 // Protocol loggers are late-bound, so this upgrades loggers created at import time too.
 setLoggerFactory(
   (context, source) => log.withContext(context as Parameters<typeof log.withContext>[0], source),
@@ -138,70 +107,39 @@ setTimingWrapper((name, fn) => traceAppOperation(
   fn,
 ));
 
-// Wire negotiation into background discovery so the post-assignment HyDE path
-// negotiates latent opportunities consistently with chat/MCP discovery.
-// Without this, OpportunityGraph's negotiateNode short-circuits and every evaluated
-// candidate is persisted unfiltered.
-const backgroundAgentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
-const backgroundNegotiationGraph = new NegotiationGraphFactory(
-  conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
-  backgroundAgentDispatcher,
-  negotiationTimeoutQueue,
-  // Stalled/capped/timeout negotiations enqueue follow-up questions for the
-  // source user (mode='negotiation', sourceType='opportunity') so the intent
-  // page can surface what would unblock the next attempt.
-  questionerEnqueueIfEnabled(),
-  // Finished negotiations enqueue memory distillation for both sides (P5.2,
-  // gated on NEGOTIATOR_MEMORY_WRITE_ENABLED).
-  reflectEnqueueIfEnabled(),
-  // Screen/turn prompts read the speaker's own negotiator memories (P5.3,
-  // gated on NEGOTIATOR_MEMORY_INJECT).
-  negotiatorMemoryRetrieve(),
-).createGraph();
+setRequestContextStore(hostRequestContext);
+
+// Wire the matches_ready hand-off into background discovery, so the
+// post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
+// discovery does. Without this, the graph's matches_ready node
+// short-circuits and a persisted batch never reaches its agent.
 fromIntentQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
-  agentDispatcher: backgroundAgentDispatcher,
-  stampNewbornOpportunities,
-});
-fromIntroducerQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
-  agentDispatcher: backgroundAgentDispatcher,
-});
-fromEnrichmentQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
+  matchesReady,
   agentDispatcher: backgroundAgentDispatcher,
 });
 negotiationRunExistingQueue.setRuntimeDeps({
-  negotiationGraph: backgroundNegotiationGraph,
+  negotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
+negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph);
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({
-  questioner: questionerAdapter,
   opportunities: notificationOpportunityAdapter,
   getIdentity: (userId) => notificationOpportunityAdapter.getProfile(userId),
   getIntentLabel: loadNotificationIntentLabel,
   publish: publishNotificationStreamEvent,
+  webAppUrl: process.env.WEB_APP_URL || 'https://index.network',
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
-OpportunityEvents.onPending = ({ opportunity }) => uptakeQuestionService.handlePending(opportunity.id);
 OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
-QuestionEvents.onCreated = (payload) => { void notificationDeliveryService.publishQuestionCreated(payload); };
+// Exhaustion evaluator (conversational questions): every committed status
+// transition re-checks both sides' question-messages against the parked set.
+OpportunityEvents.onTransition = ({ opportunity }) =>
+  evaluateOpportunityTransition({ opportunityId: opportunity.id, status: opportunity.status });
 
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
-  enrichmentQueue.addEnsureProfileHydeJob({ userId, networkId, reason: 'network_membership' }).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, networkId, error: err });
-  });
-  // Regenerate per-network user contexts so the newly joined network gets one.
-  // Without this, a user whose premises predate the membership never gets a
-  // context for this network (regen only fired on enrichment/premise changes).
-  // No-op for users with zero active premises; the premiseHash short-circuit
-  // skips networks whose context is already fresh.
-  userContextQueue.addRegenJob({ userId, reason: 'network_membership' }).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue context regen', { userId, networkId, error: err });
-  });
   // Re-evaluate the member's pre-existing intents against the joined network.
   // Intents created before joining never get an assignment pass for this network
   // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
@@ -211,249 +149,29 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   });
 };
 
-enrichmentQueue.onEnrichmentComplete = (userId: string) => {
-  userContextQueue.addRegenJob({ userId, reason: 'enrichment_complete' })
-    .catch(err => log.job.from('UserContext').error('Failed to enqueue context regen after enrichment', { userId, error: err }));
-
-  // KNOWN RESIDUAL: profile-based discovery runs unscoped (no networkId), so for
-  // a user who belongs to more than one network it can still surface matches across
-  // all of them — the same cross-network leak fixed for intent-triggered discovery.
-  // Enrichment completion carries no network/agent context, so scoping this needs a
-  // separate design (derive scope from the user's network-scoped agent, or thread a
-  // scope through the enrichment pipeline). fromEnrichmentQueue already accepts networkId.
-  fromEnrichmentQueue.addJob(
-    { userId },
-    { priority: 20, jobId: `profile-discovery-${userId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
-  ).catch((err) => log.job.from('ProfileEnrichment').error('Failed to enqueue profile-based discovery', { userId, error: err }));
-};
 
 PremiseEvents.onCreated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise created, triggering profile regen', { premiseId, userId });
-  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_created' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
+  log.job.from('PremiseEvents').verbose('Premise created', { premiseId, userId });
 };
 
 PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise updated, triggering profile regen', { premiseId, userId });
-  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_updated' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
+  log.job.from('PremiseEvents').verbose('Premise updated', { premiseId, userId });
 };
 
 PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade + regen', { premiseId, userId });
+  log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade', { premiseId, userId });
   premiseQueue.addCascadeJob({ premiseId, userId, event: 'retracted' })
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
-  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_retracted' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
 };
 
 PremiseEvents.onExpired = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade + regen', { premiseId, userId });
+  log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade', { premiseId, userId });
   premiseQueue.addCascadeJob({ premiseId, userId, event: 'expired' })
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
-  premiseQueue.addProfileRegenJob({ userId, trigger: 'premise_expired' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue profile regen', { premiseId, userId, error: err }));
-};
-
-// ─── Question answer reaction handlers ──────────────────────────────────────
-
-const profileAnswerPremiseDatabase: PremiseGraphDatabase = chatDatabaseAdapter;
-const profileAnswerPremiseGraph = new PremiseGraphFactory(
-  profileAnswerPremiseDatabase,
-  embedderAdapter,
-).createGraph();
-
-const answerQuestionerAdapter = new QuestionerAdapter(db);
-
-const appendPoolNarration = async (input: {
-  userId: string;
-  intentId: string;
-  message: string;
-}): Promise<void> => {
-  const resolved = await chatSessionService.resolveNegotiatorIntentSession(input.userId, input.intentId);
-  if ('error' in resolved) {
-    log.job.from('PoolAnswerNarration').warn('Intent negotiator session unavailable', {
-      userId: input.userId,
-      intentId: input.intentId,
-      error: resolved.error,
-    });
-    return;
-  }
-  await chatSessionService.addMessage({
-    sessionId: resolved.session.id,
-    role: 'assistant',
-    content: input.message,
-  });
-};
-
-// The delayed Tier-1 worker reads every valid answer after the debounce window,
-// so a burst coalesces into one run without dropping later preferences.
-fromIntentQueue.setRuntimeDeps({
-  getPoolAnswerContext: async (userId, intentId) => {
-    const intent = await chatDatabaseAdapter.getIntent(intentId);
-    if (!intent || intent.userId !== userId) return '';
-    const fingerprint = computeIntentFingerprint(intent.payload, intent.summary);
-    const preferences = await answerQuestionerAdapter.listAnsweredPoolPreferences(userId, intentId, fingerprint);
-    if (preferences.length === 0) return '';
-    return [
-      'User-stated matching preferences (apply when finding fresh candidates):',
-      ...preferences.map((preference) => `- ${preference.label}: ${preference.chosenSide}`),
-    ].join('\n');
-  },
-  narratePoolRerun: async ({ userId, intentId, newCandidates }) => {
-    await appendPoolNarration({
-      userId,
-      intentId,
-      message: beatTwoMessage(newCandidates),
-    });
-  },
-});
-
-// Intent graph for answer-driven refinements — same update path as the chat
-// update_intent tool. The graph owns merge, verification, sanitization,
-// re-embedding, persistence, and HyDE regeneration.
-const answerIntentGraph = new IntentGraphFactory(chatDatabaseAdapter, embedderAdapter, intentQueue).createGraph();
-
-const enqueueIntentRefinement = enqueueIntentRefinementFactory({
-  getQuestionPrompt: async (questionId) => {
-    const question = await answerQuestionerAdapter.getById(questionId);
-    return question?.payload.prompt ?? null;
-  },
-  getUserProfile: async (userId) => {
-    const profile = await chatDatabaseAdapter.getProfile(userId);
-    return profile ? JSON.stringify(profile) : '';
-  },
-  runIntentUpdate: async ({
-    userId,
-    userProfile,
-    inputContent,
-    targetIntentIds,
-    expectedIntentFingerprint,
-  }) => {
-    const result = await answerIntentGraph.invoke(
-      {
-        userId,
-        userProfile,
-        operationMode: 'update' as const,
-        inputContent,
-        targetIntentIds,
-        expectedIntentFingerprint,
-      },
-      { recursionLimit: 100 },
-    );
-    const executionResults = (result as {
-      executionResults?: Array<{
-        actionType: 'create' | 'update' | 'expire';
-        success: boolean;
-        intentId?: string;
-        payload?: string;
-      }>;
-    }).executionResults;
-    const targetIds = new Set(targetIntentIds);
-    const appliedUpdate = executionResults?.find((execution) =>
-      execution.success
-      && execution.actionType === 'update'
-      && execution.intentId !== undefined
-      && targetIds.has(execution.intentId));
-    if (!appliedUpdate || appliedUpdate.payload === undefined) return { applied: false };
-    return { applied: true, payload: appliedUpdate.payload };
-  },
-  getIntent: async (intentId) => {
-    const intent = await chatDatabaseAdapter.getIntent(intentId);
-    if (!intent) return null;
-    return {
-      id: intent.id,
-      userId: intent.userId,
-      description: intent.payload,
-      summary: intent.summary,
-      status: (intent.status ?? 'ACTIVE').toLowerCase(),
-    };
-  },
-});
-
-const questionAnswerDeps = {
-  createPremiseFromAnswer: createPremiseFromAnswerFactory({
-    runPremiseLifecycle: async (input) => profileAnswerPremiseGraph.invoke(input),
-    emitPremiseCreated: (premiseId, userId) => PremiseEvents.onCreated(premiseId, userId),
-  }),
-  enqueueIntentRefinement,
-  resumeInflightNegotiation: resumeInflightNegotiationFactory({
-    enqueueResume: async (input) => {
-      await negotiationRunExistingQueue.addJob(input);
-    },
-    // P5.2: the answer is already a distilled disclosure policy — record it
-    // as a negotiator memory (no-op while NEGOTIATOR_MEMORY_WRITE_ENABLED is off).
-    recordDisclosureRule: async ({ userId, questionId, selectedOptions, freeText }) => {
-      const question = await answerQuestionerAdapter.getById(questionId).catch(() => null);
-      await negotiatorMemoryWriteService.recordDisclosureRuleFromAnswer({
-        userId,
-        questionId,
-        ...(question?.payload.prompt && { questionPrompt: question.payload.prompt }),
-        selectedOptions,
-        ...(freeText !== undefined && { freeText }),
-      });
-    },
-  }),
-  resolveChatQuestionWait: ({ questionId, answer }: {
-    questionId: string;
-    answer: { selectedOptions: string[]; freeText?: string; answeredBy: string; answeredAt: string };
-  }) => {
-    emitChatQuestionResolution({ questionId, status: 'answered', answer });
-  },
-  handlePoolAnswer: handlePoolAnswerFactory({
-    adapter: answerQuestionerAdapter,
-    poolQuestionPostPersist: enqueuePoolQuestionPush,
-    refineIntent: enqueueIntentRefinement,
-    getIntentAdmission: async (userId, intentId) => {
-      const intent = await chatDatabaseAdapter.getIntentForIndexing(intentId);
-      if (!intent || intent.userId !== userId || intent.archivedAt) return 'unavailable';
-      if (intent.status === 'PAUSED') return 'paused';
-      return intent.status == null || intent.status === 'ACTIVE' ? 'active' : 'unavailable';
-    },
-    narrateBeatOne: async ({ userId, intentId, message }) => {
-      await appendPoolNarration({ userId, intentId, message });
-    },
-  }),
-};
-
-QuestionEvents.onAnswered = async (payload) => {
-  await handleQuestionAnswered(payload, questionAnswerDeps);
-};
-
-// Chat dismissals unblock the waiting turn. An authoritative inflight
-// dismissal has already conservatively closed exactly its stamped task at the
-// adapter boundary; post-commit work enqueues the deterministic continuation
-// while the original timer remains the durable recovery sweep.
-QuestionEvents.onDismissed = async (payload) => {
-  if (payload.mode === 'chat') {
-    emitChatQuestionResolution({ questionId: payload.questionId, status: 'dismissed' });
-    return;
-  }
-  if (
-    payload.mode === 'negotiation_inflight'
-    && payload.settlement?.authoritative
-    && payload.settlement.resumeClaimed
-    && payload.settlement.taskId
-    && payload.settlement.settlementId
-  ) {
-    await questionAnswerDeps.resumeInflightNegotiation({
-      userId: payload.userId,
-      opportunityId: payload.settlement.opportunityId,
-      questionId: payload.questionId,
-      selectedOptions: [],
-      taskId: payload.settlement.taskId,
-      settlementId: payload.settlement.settlementId,
-      recipientIntentId: payload.settlement.recipientIntentId,
-      networkId: payload.settlement.networkId,
-    });
-  }
 };
 
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
-fromIntroducerQueue.startWorker();
-fromEnrichmentQueue.startWorker();
-enrichmentRunQueue.startWorker();
 negotiationRunExistingQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
   void negotiationWatchdogQueue.start().catch((error) => {
@@ -469,44 +187,13 @@ void frameDriftQueue.start().catch((error) => {
   });
 });
 notificationQueue.startWorker();
-enrichmentQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
-// Upgrade legacy park/claim rows before either timeout worker can consume an
-// old generation-less delayed payload. The database stamps a durable install
-// outbox under row lock; deterministic Bull IDs make rolling-start delivery
-// concurrent and crash-safe. Refuse to start these workers if the explicitly
-// bounded sweep did not drain, rather than processing only part of the legacy
-// cohort unsafely.
-const timeoutUpgrade = new TimeoutUpgradeReconciler(
-  conversationDatabaseAdapter,
-  {
-    enqueueOrdinary: (...args) => negotiationTimeoutQueue.enqueueTimeout(...args),
-    enqueueClaim: (...args) => negotiationClaimTimeoutQueue.enqueueTimeout(...args),
-  },
-  new RedisTimeoutUpgradeLease(getRedisClient()),
-);
-const timeoutUpgradeResult = await timeoutUpgrade.reconcile({
-  parkWindowMs: AMBIENT_PARK_WINDOW_MS,
-  batchSize: 100,
-  maxBatches: 100,
-});
-if (!timeoutUpgradeResult.exhausted) {
-  throw new Error('Negotiation timeout upgrade reconciliation exceeded its bounded startup budget');
-}
-log.queue.from('NegotiationTimeoutUpgrade').info('Timeout upgrade reconciliation complete', { ...timeoutUpgradeResult });
-negotiationTimeoutQueue.startWorker();
-negotiationClaimTimeoutQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
-if (isQuestionerEnabled()) {
-  questionerQueue.startWorker();
-}
-poolQuestionPushQueue.startWorker();
-poolQuestionPushQueue.startRecoveryScheduler();
-poolVisitMiningQueue.startWorker();
+questionMessageQueue.startWorker();
+personalAgentQueue.startWorker();
 premiseQueue.startWorker();
-userContextQueue.startWorker();
 premiseQueue.startCrons();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
@@ -518,33 +205,6 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
     intentId,
     userId,
     (ownerUserId, reason) => opportunityService.triggerMaintenance(ownerUserId, reason),
-  );
-};
-
-IntentEvents.onPaused = (intentId: string, userId: string, lifecycleVersionMs: number) => {
-  log.job.from('IntentEvents').verbose('Intent paused', { intentId, userId, lifecycleVersionMs });
-};
-
-IntentEvents.onMaterialUpdated = async (event) => {
-  const result = await answerQuestionerAdapter.handleMaterialIntentUpdate(event);
-  log.job.from('IntentEvents').verbose('Material intent update reconciled pool lifecycle', {
-    ...event,
-    ...result,
-  });
-};
-
-IntentEvents.onResumed = async (intentId: string, userId: string, lifecycleVersionMs: number) => {
-  log.job.from('IntentEvents').verbose('Intent resumed, triggering discovery', {
-    intentId,
-    userId,
-    lifecycleVersionMs,
-  });
-  await fromIntentQueue.addJob(
-    { intentId, userId, trigger: 'intent_resume' },
-    {
-      priority: 10,
-      jobId: intentResumeDiscoveryJobId(userId, intentId, lifecycleVersionMs),
-    },
   );
 };
 
@@ -619,19 +279,6 @@ const storageAdapter = new S3StorageAdapter({
 // Set storage adapter on fileService for S3 file operations
 fileService.setStorageAdapter(storageAdapter);
 
-const agentActionService = new AgentActionService(agentActionProposalDatabaseAdapter, {
-  getIntent: (intentId, userId) => intentService.getById(intentId, userId),
-  retractPremise: (premiseId, userId, expectedUpdatedAt) => userService.retractPremise(premiseId, userId, expectedUpdatedAt),
-  updateIntentDescription: (intentId, userId, description, expectedUpdatedAt) => userService.updateIntentDescription(intentId, userId, description, expectedUpdatedAt),
-  transitionStatus: async (intentId, userId, status, expectedUpdatedAtMs) => {
-    const result = await intentService.transitionStatus(intentId, userId, status, undefined, expectedUpdatedAtMs);
-    if (result.kind === 'success') return result;
-    if (result.kind === 'conflict') return { kind: 'conflict' as const };
-    if (result.kind === 'stale') return { kind: 'stale' as const };
-    return { kind: 'other' as const };
-  },
-});
-
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(EnrichmentController, new EnrichmentController());
@@ -646,7 +293,6 @@ controllerInstances.set(ConnectLinkController, new ConnectLinkController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
-controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
 controllerInstances.set(
   NotificationController,
@@ -654,16 +300,13 @@ controllerInstances.set(
 );
 controllerInstances.set(AgentController, new AgentController());
 controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
-controllerInstances.set(HermesAuthorizationController, new HermesAuthorizationController());
-controllerInstances.set(IndexAppOwnerAuthorizationController, new IndexAppOwnerAuthorizationController());
 controllerInstances.set(ConnectedAgentsController, new ConnectedAgentsController());
-controllerInstances.set(AgentActionController, new AgentActionController(agentActionService));
 const integrationAdapter = new ComposioIntegrationAdapter();
-const integrationService = new IntegrationService(integrationAdapter, contactService);
+const integrationService = new IntegrationService(integrationAdapter);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
 controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
-const toolService = new ToolService(contactService, integrationService, integrationAdapter);
+const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
 controllerInstances.set(QuestionController, new QuestionController());
 
@@ -706,10 +349,9 @@ const server = Bun.serve({
       async () => {
     try {
     // Sentry smoke-test endpoint. Intentionally throws so the top-level request
-    // boundary captures and reports the error. Disabled in production unless
-    // explicitly enabled for a short operational smoke test.
+    // boundary captures and reports the error. Never reachable in production.
     if (url.pathname === '/throw-error') {
-      if (IS_PRODUCTION && process.env.ENABLE_SENTRY_TEST_ENDPOINT !== 'true') {
+      if (IS_PRODUCTION) {
         return new Response('Not Found', { status: 404, headers: corsHeaders });
       }
       throw new Error('Sentry test error from /throw-error');
@@ -890,7 +532,7 @@ const server = Bun.serve({
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             // Session-only endpoints reject API-key credentials outright
-            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError || error instanceof HermesNegotiatorRouteDeniedError || error instanceof IndexAppOwnerRouteDeniedError) {
+            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError || error instanceof HermesNegotiatorRouteDeniedError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
@@ -981,23 +623,15 @@ logger.info('Server running', { port: PORT });
 const shutdown = async () => {
   logger.info('Shutting down workers...');
   await Promise.allSettled([
-    enrichmentQueue.close(),
     intentQueue.close(),
     fromIntentQueue.close(),
-    fromIntroducerQueue.close(),
-    fromEnrichmentQueue.close(),
-    enrichmentRunQueue.close(),
     negotiationRunExistingQueue.close(),
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
-    negotiationTimeoutQueue.close(),
-    negotiationClaimTimeoutQueue.close(),
-    questionerQueue.close(),
-    poolQuestionPushQueue.close(),
-    poolVisitMiningQueue.close(),
+    questionMessageQueue.close(),
+    personalAgentQueue.close(),
     premiseQueue.close(),
-    userContextQueue.close(),
     frameDriftQueue.close(),
   ]);
   logger.info('Workers closed');

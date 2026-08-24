@@ -36,14 +36,14 @@ Two thesis risks that **don't map** to Index (see §6): reservation-value leakag
 **What exists:** Index has the premise substrate the thesis idealizes.
 
 - `premises` table (`services/api/src/schemas/database.schema.ts:317-334`) stores an `assertion`, `provenance`, `analysis`, `validity`, an `embedding vector(2000)`, and a `status` (`ACTIVE|RETRACTED|EXPIRED`, `:18`).
-- Provenance is source-tagged: `PremiseProvenance.source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'` with a `confidence` number (`:296-301`). Explicit user assertions default to `'explicit'` (`packages/protocol/src/premise/premise.graph.ts:199`); scraped social content is stamped `'integration'`/`'enrichment'` (`packages/protocol/src/enrichment/enrichment.graph.ts:690-700`).
+- Provenance is source-tagged: `PremiseProvenance.source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'` with a `confidence` number (`:296-301`). Explicit user assertions default to `'explicit'` (`packages/protocol/src/premises/premise.graph.ts:199`); scraped social content is stamped `'integration'`/`'enrichment'` (`packages/protocol/src/enrichment/enrichment.graph.ts:690-700`).
 - Confidence is derived, not blanket-1.0: `deriveProvenanceConfidence()` averages the analyzer's felicity scores (authority/sincerity/clarity) (`premise.graph.ts:42-48`).
-- Premises **expire** (contextual/volatile premises carry an LLM-inferred `validUntil`; a cron transitions them to `EXPIRED` and cascades to the opportunities they motivated — `services/api/src/queues/premise.queue.ts:248-266`) and can be **retracted** (`packages/protocol/src/premise/premise.decomposer.ts:61-80`, with a hallucination guard that only honors ids it actually offered, `:208-214`).
+- Premises **expire** (contextual/volatile premises carry an LLM-inferred `validUntil`; a cron transitions them to `EXPIRED` and cascades to the opportunities they motivated — `services/api/src/queues/premise.queue.ts:248-266`) and can be **retracted** (`packages/protocol/src/premises/premise.decomposer.ts:61-80`, with a hallucination guard that only honors ids it actually offered, `:208-214`).
 
 **The seam.** The negotiation agent never sees premises. It's handed a flattened, LLM-*synthesized* view:
 
-- `UserNegotiationContext` (`packages/protocol/src/negotiation/domain/negotiation.state.ts:60-65`) is `{ id, intents:[{id,title,description,confidence}], profile:{name,bio,location,interests,skills} }`.
-- Discovery matches on `user_contexts` embeddings — LLM-written identity paragraphs synthesized *from* premises by `UserContextGenerator` ("Synthesizes context paragraphs from user premises… Uses LLM synthesis", `packages/protocol/src/context/context.generator.ts:1-12`), not on the premises themselves.
+- `UserNegotiationContext` (`packages/protocol/src/negotiations/domain/negotiation.state.ts:60-65`) is `{ id, intents:[{id,title,description,confidence}], profile:{name,bio,location,interests,skills} }`.
+- Discovery matches on `user_contexts` embeddings — LLM-written identity paragraphs synthesized *from* premises by `UserContextGenerator` ("Synthesizes context paragraphs from user premises… Uses LLM synthesis", `packages/protocol/src/contexts/context.generator.ts:1-12`), not on the premises themselves.
 
 So the grounding is real at the **seed** (explicit text → provenance-tagged premises) but **lossy at the point of use**: at negotiation time the agent argues from an LLM projection of you, with the provenance/confidence/expiry metadata stripped off. The thesis's "can only say what you actually gave it, and it's auditable" holds for the premise store and weakens precisely at the negotiation boundary.
 
@@ -55,12 +55,12 @@ So the grounding is real at the **seed** (explicit text → provenance-tagged pr
 
 **What exists:** negotiation is never spontaneous — it's triggered from the opportunity graph when discovery finds overlap.
 
-- The opportunity graph prep node turns the user's active intents into `indexedIntents` and matches on those plus per-network `user_contexts` embeddings (`packages/protocol/src/opportunity/application/opportunity.graph.ts:290-334`); negotiation is invoked from `negotiateNode` (`:2133`) and the discovery path (`:3513`).
-- Every candidate negotiation carries a `seedAssessment.reasoning` — "Why this match was suggested" — surfaced into the negotiator's prompt (`packages/protocol/src/negotiation/application/negotiation.agent.ts:152-160`). That is the thesis's provenance: both sides can trace why their agents are talking.
+- The opportunity graph prep node turns the user's active intents into `indexedIntents` and matches on those plus per-network `user_contexts` embeddings (`packages/protocol/src/opportunities/application/opportunity.graph.ts:290-334`); negotiation is invoked from `negotiateNode` (`:2133`) and the discovery path (`:3513`).
+- Every candidate negotiation carries a `seedAssessment.reasoning` — "Why this match was suggested" — surfaced into the negotiator's prompt (`packages/protocol/src/negotiations/application/negotiation.agent.ts:152-160`). That is the thesis's provenance: both sides can trace why their agents are talking.
 
 **The asterisk on "explicit."** Intents are LLM-*inferred* from content and then labeled explicit:
 
-- `ExplicitIntentInferrer` ("infer the user's current intentions based on their profile and new content", `packages/protocol/src/signals/application/intent.inferrer.ts:46-47`); the graph hardcodes `inferenceType: 'explicit'` and derives `confidence` from a score (`packages/protocol/src/signals/application/intent.graph.ts:549-550`).
+- `ExplicitIntentInferrer` ("infer the user's current intentions based on their profile and new content", `packages/protocol/src/intents/inference/intent.inferrer.ts:46-47`); the graph hardcodes `inferenceType: 'explicit'` and derives `confidence` from a score (`packages/protocol/src/intents/graph/intent.graph.execute.ts`).
 - Those two fields are **not even persisted** — the adapter's `createIntent` drops `confidence` and `inferenceType` (`services/api/src/adapters/intent.database.adapter.ts:31-58`), though the MCP surface still advertises them.
 - A profile-fallback mode infers intents from the profile alone when no content is supplied (`intent.inferrer.ts:104-108`).
 - Ambient/autonomous discovery creates `latent` opportunities with no live user query (`services/api/src/services/opportunity.service.ts:791,799`).
@@ -92,7 +92,7 @@ This is exactly the thesis's "structured scoping reduces reliance on model align
 
 This is Index's strongest alignment, and it's the boundary that makes the B1/B2/B3b weaknesses tolerable: an out-classed or manipulated agent **cannot bind you**.
 
-- The word "accepted" has three meanings; only one is a commitment (`docs/design/opportunity-status-lifecycle.md` §3.C). An agent negotiation "accept" writes opportunity status **`pending`, not `accepted`** — "agents agree this is worth surfacing; a human still has to accept it" (`packages/protocol/src/negotiation/application/negotiation.graph.ts:364-369`; the poller path mirrors the mapping, `services/api/src/services/negotiation-polling.service.ts:399-410`).
+- The word "accepted" has three meanings; only one is a commitment (`docs/design/opportunity-status-lifecycle.md` §3.C). An agent negotiation "accept" writes opportunity status **`pending`, not `accepted`** — "agents agree this is worth surfacing; a human still has to accept it" (`packages/protocol/src/negotiations/application/negotiation.graph.ts:364-369`; the poller path mirrors the mapping, `services/api/src/services/negotiation-polling.service.ts:399-410`).
 - Status `accepted` — which resolves/creates the DM and sets `acceptedBy` — is written **only** on a human accept / "Start Chat", across three guarded paths (`opportunity.service.ts:501-504`, `:728-732`, `opportunity.graph.ts:3287-3293`); `acceptedBy` is set only there (`services/api/src/adapters/database.adapter.ts:5181-5182`).
 - A **self-accept guard** blocks the actor who already `actedAt` from being the accepter (`opportunity.graph.ts:3269-3277`, service `:477-480,691-693`) — forcing the *counterparty* to be the one who commits. No single side's agent can unilaterally bind the other user.
 
@@ -106,7 +106,7 @@ The audit chain the thesis asks for (premises → intent → negotiation → app
 
 The negotiation *engine* shapes how much capability-gap exposure exists before the human gate. Summary (full map in `docs/design/protocol-deep-dive.md` and the negotiation source):
 
-- The dispatcher checks a 90s heartbeat (`FRESHNESS_THRESHOLD_MS`, `services/api/src/services/agent-dispatcher.service.ts:11`). If no personal agent is fresh, the **system negotiator (`IndexNegotiator`) runs inline** (`agent-dispatcher.service.ts:69-76`) — so the baseline counterpart is a uniform system agent, not an arbitrary weak personal one. If a fresh personal agent exists, the turn is **parked** (`waiting_for_agent`) within a bounded park window (`AMBIENT_PARK_WINDOW_MS = 5 min`, `packages/protocol/src/negotiation/application/negotiation.tools.ts:22`) and picked up via `POST /agents/:id/negotiations/pickup` + `/respond`.
+- The dispatcher checks a 90s heartbeat (`FRESHNESS_THRESHOLD_MS`, `services/api/src/services/agent-dispatcher.service.ts:11`). If no personal agent is fresh, the **system negotiator (`IndexNegotiator`) runs inline** (`agent-dispatcher.service.ts:69-76`) — so the baseline counterpart is a uniform system agent, not an arbitrary weak personal one. If a fresh personal agent exists, the turn is **parked** (`waiting_for_agent`) within a bounded park window (`AMBIENT_PARK_WINDOW_MS = 5 min`, `packages/protocol/src/negotiations/application/negotiation.tools.ts:22`) and picked up via `POST /agents/:id/negotiations/pickup` + `/respond`.
 - Turn counts are capped: `NEGOTIATION_MAX_TURNS_CHAT` (4) and `NEGOTIATION_MAX_TURNS_AMBIENT` (6) (`opportunity.graph.ts:1986-1988`). **Exception:** when *both* sides have personal agents, `maxTurns = 0` = unlimited (`negotiation.graph.ts:88-98`). That's the highest capability-gap exposure surface — but B4 still caps the blast radius at "surfaced, not bound."
 
 ## 6. Two thesis risks that don't map to Index

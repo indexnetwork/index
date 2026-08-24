@@ -7,7 +7,6 @@ import IntentList from '@/components/IntentList';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAIChat } from '@/contexts/AIChatContext';
-import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
@@ -28,8 +27,6 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
   const { removeIndex } = useNetworksState();
   const { success, error } = useNotifications();
   const { clearChat, resolveIntentSession } = useAIChat();
-  const { features } = useAuthContext();
-  const signalAgentEnabled = features?.signalAgent === true;
   const { setSelectedNetworkIds } = useNetworkFilter();
   const api = useAuthenticatedAPI();
   const indexesService = useNetworks();
@@ -75,16 +72,13 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
       clearChat({ abortStream: false });
       setSelectedNetworkIds([]);
       const label = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
-      const sessionId = await resolveIntentSession(
-        { id: intent.id, label },
-        signalAgentEnabled ? 'signal' : undefined,
-      );
+      const sessionId = await resolveIntentSession({ id: intent.id, label });
       if (!sessionId) return;
       navigate(`/d/${sessionId}`);
     } catch {
       error('Failed to open signal chat');
     }
-  }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error, signalAgentEnabled]);
+  }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error]);
 
   const handleLeaveNetwork = async () => {
     try {

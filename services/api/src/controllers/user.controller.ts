@@ -1,15 +1,12 @@
 import { z } from 'zod';
 
-import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Delete, Get, Patch, Put, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
-import { ContactsEnabledGuard } from '../guards/contacts.guard';
 import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { userService } from '../services/user.service';
-import { contactService } from '../services/contact.service';
 import { TaskService } from '../services/task.service';
-import { NegotiationService } from '../services/negotiation.service';
 import { negotiatorMemoryInspectionService } from '../services/negotiator-memory-inspection.service';
 import type { NegotiatorMemory, NegotiatorMemoryKind } from '../schemas/database.schema';
 import { NegotiationInsightsGenerator } from '@indexnetwork/protocol';
@@ -18,11 +15,6 @@ import type { NegotiationDigest } from '@indexnetwork/protocol';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('user');
-
-const AddContactBodySchema = z.object({
-  email: z.string().trim().email(),
-  name: z.string().trim().min(1).optional(),
-});
 
 const BATCH_MAX_IDS = 100;
 
@@ -138,7 +130,6 @@ function mapNegotiationThread(
 export class UserController {
   constructor(
     private readonly taskService: TaskService = new TaskService(),
-    private readonly negotiationService: NegotiationService = new NegotiationService(),
   ) {}
 
   @Get('/batch')
@@ -163,113 +154,10 @@ export class UserController {
       avatar: row.avatar,
       location: row.location,
       socials: row.socials,
-      isGhost: row.isGhost,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }));
     return Response.json({ users });
-  }
-
-  /**
-   * POST /users/contacts — manually add a contact by email (creates ghost user if not registered).
-   * @param req - Request with JSON body `{ email: string; name?: string }`
-   * @param user - Authenticated user from AuthGuard
-   * @returns JSON `{ result }` with the import outcome, or 400 if email is invalid
-   */
-  @Post('/contacts')
-  @UseGuards(RateLimit('write'), ContactsEnabledGuard, AuthGuard)
-  async addContact(req: Request, user: AuthenticatedUser) {
-    const parsed = AddContactBodySchema.safeParse(await req.json().catch(() => null));
-    if (!parsed.success) {
-      return Response.json({ error: 'A valid email is required' }, { status: 400 });
-    }
-    logger.verbose('Add contact requested', { userId: user.id });
-    const result = await contactService.addContact(user.id, parsed.data.email, { name: parsed.data.name });
-    return Response.json({ result });
-  }
-
-  /**
-   * DELETE /users/contacts/:contactId — remove a contact from the authenticated user's personal network.
-   * @param _req - Request (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing contactId (the contact's userId)
-   * @returns JSON `{ success: true }` or 404 if not found
-   */
-  @Delete('/contacts/:contactId')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async removeContact(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
-    try {
-      await contactService.removeContact(user.id, params.contactId);
-      return Response.json({ success: true });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('not found') || msg.includes('Not found')) {
-        return Response.json({ error: 'Contact not found' }, { status: 404 });
-      }
-      throw err;
-    }
-  }
-
-  /**
-   * POST /users/:userId/negotiations — trigger a discovery negotiation with the target user.
-   * @param _req - Request (unused)
-   * @param viewer - Authenticated user from AuthGuard
-   * @param params - Route params containing userId (the target)
-   * @returns 201 with negotiation summary, or 409 if negotiations already exist
-   */
-  @Post('/:userId/negotiations')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async triggerNegotiation(_req: Request, viewer: AuthenticatedUser, params: { userId: string }) {
-    if (viewer.id === params.userId) {
-      return Response.json({ error: 'Cannot negotiate with yourself' }, { status: 400 });
-    }
-
-    try {
-      const targetUser = await userService.findById(params.userId);
-      if (!targetUser) {
-        return Response.json({ error: 'User not found' }, { status: 404 });
-      }
-
-      const existing = await this.taskService.getNegotiationsByUser(viewer.id, {
-        limit: 1,
-        mutualWithUserId: params.userId,
-        result: 'in_progress',
-      });
-      if (existing.length > 0) {
-        return Response.json({ error: 'Negotiation already in progress with this user' }, { status: 409 });
-      }
-
-      await this.negotiationService.triggerDiscoveryNegotiation(viewer.id, params.userId);
-
-      const rows = await this.taskService.getNegotiationsByUser(viewer.id, {
-        limit: 1,
-        mutualWithUserId: params.userId,
-      });
-      if (rows.length === 0) {
-        return Response.json({ error: 'Negotiation completed but task not found' }, { status: 500 });
-      }
-
-      const row = rows[0];
-      const taskIds = [row.id];
-      const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);
-
-      const participantIds = new Set<string>();
-      const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
-      if (meta?.sourceUserId) participantIds.add(meta.sourceUserId);
-      if (meta?.candidateUserId) participantIds.add(meta.candidateUserId);
-
-      const participantUsers = participantIds.size > 0
-        ? await userService.findByIds([...participantIds])
-        : [];
-      const userMap = new Map(participantUsers.map((u) => [u.id, u]));
-
-      const negotiation = mapNegotiationThread({ current: row, segmentRows: [row] }, messagesMap, userMap, viewer.id);
-
-      return Response.json({ negotiation }, { status: 201 });
-    } catch (err) {
-      logger.error('Failed to trigger negotiation', { userId: params.userId, error: err instanceof Error ? err.message : String(err) });
-      return Response.json({ error: 'Failed to trigger negotiation' }, { status: 500 });
-    }
   }
 
   /**
@@ -605,7 +493,6 @@ export class UserController {
         avatar: user.avatar,
         location: user.location,
         socials,
-        isGhost: user.isGhost,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },

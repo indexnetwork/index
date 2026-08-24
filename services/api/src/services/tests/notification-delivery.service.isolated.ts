@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { OpportunityRow, UserIdentity } from '../../adapters/database.shared';
-import type { AdapterPersistedQuestion } from '../../adapters/questioner.adapter';
 import type { NotificationStreamEvent } from '../../lib/notification-stream-events';
 import { NotificationDeliveryService } from '../notification-delivery.service';
 
@@ -40,59 +39,6 @@ function opportunity(input: {
   };
 }
 
-function question(input: {
-  id: string;
-  mode?: AdapterPersistedQuestion['detection']['mode'];
-  sourceType?: string;
-  sourceId?: string;
-  triggeredBy?: string;
-  prompt?: string;
-}): AdapterPersistedQuestion {
-  const sourceType = input.sourceType ?? 'intent';
-  const sourceId = input.sourceId ?? 'intent-1';
-  return {
-    id: input.id,
-    detection: {
-      mode: input.mode ?? 'intent',
-      sourceType,
-      sourceId,
-      triggeredBy: input.triggeredBy ?? (sourceType === 'intent' ? sourceId : undefined),
-      timestamp: now.toISOString(),
-      ...(input.mode === 'negotiation_inflight'
-        ? {
-            purpose: 'inflight_consultation' as const,
-            negotiation: {
-              version: 1 as const,
-              purpose: 'inflight_consultation' as const,
-              recipientUserId: 'viewer',
-              recipientIntentId: 'intent-1',
-              opportunityId: sourceId,
-              taskId: 'task-1',
-              networkId: 'network-1',
-              intentFingerprint: 'fingerprint',
-              opportunityStatus: 'negotiating' as const,
-              opportunityUpdatedAt: now.toISOString(),
-              taskState: 'input_required' as const,
-              taskUpdatedAt: now.toISOString(),
-              questionOrdinal: 0,
-            },
-          }
-        : {}),
-    },
-    actors: [{ userId: 'viewer', networkId: 'network-1', role: 'subject' }],
-    payload: {
-      title: 'Question',
-      prompt: input.prompt ?? 'Would you like an introduction?',
-      options: [],
-      multiSelect: false,
-    },
-    status: 'pending',
-    answer: null,
-    expiresAt: '2026-08-17T12:00:00.000Z',
-    createdAt: now.toISOString(),
-    conversationId: null,
-  };
-}
 
 function sortEvents(events: NotificationStreamEvent[]): NotificationStreamEvent[] {
   return [...events].sort((left, right) => `${left.type}:${left.id}`.localeCompare(`${right.type}:${right.id}`));
@@ -100,7 +46,6 @@ function sortEvents(events: NotificationStreamEvent[]): NotificationStreamEvent[
 
 describe('NotificationDeliveryService persisted projection', () => {
   test('realtime and snapshot return identical safe copy and exclude pending opportunities the user acted on', async () => {
-    const pendingQuestion = question({ id: 'question-1', prompt: 'Would a short intro be useful?' });
     const actionableOpportunity = opportunity({
       id: 'opportunity-actionable',
       actors: [
@@ -127,10 +72,6 @@ describe('NotificationDeliveryService persisted projection', () => {
     ]);
     const published: Array<{ userId: string; event: NotificationStreamEvent }> = [];
     const service = new NotificationDeliveryService({
-      questioner: {
-        getById: async (id) => id === pendingQuestion.id ? pendingQuestion : null,
-        findPending: async (userId) => userId === 'viewer' ? [pendingQuestion] : [],
-      },
       opportunities: {
         getOpportunity: async (id) => opportunitiesById.get(id) ?? null,
         getNotificationSnapshotOpportunities: async (userId) => userId === 'viewer'
@@ -139,16 +80,10 @@ describe('NotificationDeliveryService persisted projection', () => {
       },
       getIdentity: async (userId) => identities.get(userId) ?? null,
       getIntentLabel: async (intentId) => intentId === 'intent-1' ? 'privacy collaboration' : undefined,
+      listOpenQuestionMessages: async () => [],
       publish: async (userId, event) => { published.push({ userId, event }); },
     });
 
-    await service.publishQuestionCreated({
-      questionId: pendingQuestion.id,
-      userId: 'viewer',
-      mode: 'intent',
-      sourceType: 'intent',
-      sourceId: 'intent-1',
-    });
     await service.publishOpportunityActionable({ opportunity: { id: actionableOpportunity.id, status: 'pending' } });
     await service.publishOpportunityActionable({ opportunity: { id: actedOpportunity.id, status: 'pending' } });
 
@@ -158,7 +93,7 @@ describe('NotificationDeliveryService persisted projection', () => {
     const snapshot = await service.snapshot('viewer');
 
     expect(sortEvents(snapshot)).toEqual(sortEvents(realtimeForViewer));
-    expect(snapshot.map(({ id }) => id)).toEqual(['question-1', 'opportunity-actionable']);
+    expect(snapshot.map(({ id }) => id)).toEqual(['opportunity-actionable']);
     expect(snapshot.find(({ id }) => id === actionableOpportunity.id)?.body).not.toContain('internal scoring');
   });
 
@@ -200,16 +135,13 @@ describe('NotificationDeliveryService persisted projection', () => {
     ]);
     const published: Array<{ userId: string; event: NotificationStreamEvent }> = [];
     const service = new NotificationDeliveryService({
-      questioner: {
-        getById: async () => null,
-        findPending: async () => [],
-      },
       opportunities: {
         getOpportunity: async (id) => byId.get(id) ?? null,
         getNotificationSnapshotOpportunities: async () => legacyOmitted,
       },
       getIdentity: async (userId) => identities.get(userId) ?? null,
       getIntentLabel: async () => undefined,
+      listOpenQuestionMessages: async () => [],
       publish: async (userId, event) => { published.push({ userId, event }); },
     });
 
@@ -230,128 +162,106 @@ describe('NotificationDeliveryService persisted projection', () => {
     expect(sortEvents(snapshot)).toEqual(sortEvents(realtimeForViewer));
   });
 
-  test('bounds intent and opportunity labels used in question titles', async () => {
-    const longLabel = 'l'.repeat(100);
-    const longName = 'n'.repeat(100);
-    const intentQuestion = question({ id: 'question-intent' });
-    const opportunityQuestion = question({
-      id: 'question-opportunity',
-      sourceType: 'opportunity',
-      sourceId: 'opportunity-label',
-      triggeredBy: 'intent-1',
-    });
-    const labelOpportunity = opportunity({
-      id: 'opportunity-label',
-      actors: [
-        { userId: 'viewer', networkId: 'network-1', role: 'patient' },
-        { userId: 'peer', networkId: 'network-1', role: 'agent' },
-      ],
-    });
-    const published: NotificationStreamEvent[] = [];
-    const service = new NotificationDeliveryService({
-      questioner: {
-        getById: async (id) => id === intentQuestion.id ? intentQuestion : opportunityQuestion,
-        findPending: async () => [],
-      },
-      opportunities: {
-        getOpportunity: async () => labelOpportunity,
-        getNotificationSnapshotOpportunities: async () => [],
-      },
-      getIdentity: async (userId) => userId === 'peer' ? identity('peer', longName) : identity('viewer', 'Viewer'),
-      getIntentLabel: async () => longLabel,
-      publish: async (_userId, event) => { published.push(event); },
-    });
-
-    await service.publishQuestionCreated({
-      questionId: intentQuestion.id,
-      userId: 'viewer',
-      mode: 'intent',
-      sourceType: 'intent',
-      sourceId: 'intent-1',
-    });
-    await service.publishQuestionCreated({
-      questionId: opportunityQuestion.id,
-      userId: 'viewer',
-      mode: 'intent',
-      sourceType: 'opportunity',
-      sourceId: 'opportunity-label',
-    });
-
-    expect(published[0]?.title).toBe(`Your agent has a question about your ${'l'.repeat(80)}`);
-    expect(published[1]?.title).toBe(`Your agent has a question about ${'n'.repeat(80)}'s fit`);
-  });
-
-  test('preserves inflight negotiation attention copy in the unified event shape', async () => {
-    const pendingQuestion = question({
-      id: 'question-attention',
-      mode: 'negotiation_inflight',
-      sourceType: 'opportunity',
-      sourceId: 'opportunity-negotiating',
-    });
-    const negotiatingOpportunity = opportunity({
-      id: 'opportunity-negotiating',
-      status: 'negotiating',
-      actors: [
-        { userId: 'viewer', networkId: 'network-1', role: 'patient' },
-        { userId: 'peer', networkId: 'network-1', role: 'agent' },
-      ],
-    });
-    const published: NotificationStreamEvent[] = [];
-    const service = new NotificationDeliveryService({
-      questioner: {
-        getById: async () => pendingQuestion,
-        findPending: async () => [pendingQuestion],
-      },
-      opportunities: {
-        getOpportunity: async () => negotiatingOpportunity,
-        getNotificationSnapshotOpportunities: async () => [],
-      },
-      getIdentity: async (userId) => userId === 'peer'
-        ? identity('peer', 'Casey Counterpart')
-        : identity('viewer', 'Viewer'),
-      getIntentLabel: async () => undefined,
-      publish: async (_userId, event) => { published.push(event); },
-    });
-
-    await service.publishQuestionCreated({
-      questionId: pendingQuestion.id,
-      userId: 'viewer',
-      mode: 'negotiation_inflight',
-      sourceType: 'opportunity',
-      sourceId: negotiatingOpportunity.id,
-    });
-
-    expect(published).toEqual([{
-      type: 'question.new',
-      id: 'question-attention',
-      title: 'Your agent needs your input',
-      body: 'A negotiation with Casey Counterpart is waiting for your answer.',
-    }]);
-    expect(await service.snapshot('viewer')).toEqual(published);
-  });
-
   test('logs and swallows publish failures at lifecycle boundaries', async () => {
-    const pendingQuestion = question({ id: 'question-failure' });
+    const failingOpportunity = opportunity({
+      id: 'opportunity-failure',
+      actors: [
+        { userId: 'viewer', networkId: 'network-1', role: 'patient' },
+        { userId: 'peer', networkId: 'network-1', role: 'agent' },
+      ],
+    });
     const service = new NotificationDeliveryService({
-      questioner: {
-        getById: async () => pendingQuestion,
-        findPending: async () => [],
+      opportunities: {
+        getOpportunity: async () => failingOpportunity,
+        getNotificationSnapshotOpportunities: async () => [],
       },
+      getIdentity: async () => null,
+      getIntentLabel: async () => undefined,
+      listOpenQuestionMessages: async () => [],
+      publish: async () => { throw new Error('publisher unavailable'); },
+    });
+
+    await expect(service.publishOpportunityActionable({
+      opportunity: { id: failingOpportunity.id, status: 'pending' },
+    })).resolves.toBeUndefined();
+  });
+});
+
+describe('NotificationDeliveryService question-message snapshot', () => {
+  const WEB_APP_URL = 'https://app.example';
+
+  function service(input: {
+    open: Array<{ intentId: string; messageId: string; questionCount: number }> | (() => Promise<never>);
+    label?: string;
+  }) {
+    return new NotificationDeliveryService({
       opportunities: {
         getOpportunity: async () => null,
         getNotificationSnapshotOpportunities: async () => [],
       },
       getIdentity: async () => null,
+      getIntentLabel: async () => input.label,
+      listOpenQuestionMessages: typeof input.open === 'function'
+        ? input.open
+        : async () => input.open as Array<{ intentId: string; messageId: string; questionCount: number }>,
+      webAppUrl: WEB_APP_URL,
+      publish: async () => {},
+    });
+  }
+
+  test('an open question-message projects one frame carrying the live copy and deep link', async () => {
+    const snapshot = await service({
+      open: [{ intentId: 'intent-1', messageId: 'message-1', questionCount: 2 }],
+      label: 'technical co-founder',
+    }).snapshot('viewer');
+
+    expect(snapshot).toEqual([{
+      type: 'question.new',
+      id: 'message-1',
+      title: 'Your agent needs an answer',
+      body: '2 questions about “technical co-founder”.',
+      link: `${WEB_APP_URL}/i/intent-1`,
+    }]);
+  });
+
+  test('answered or closed-out question-messages leave nothing behind', async () => {
+    // Both cases reach the service the same way: the reader derives openness
+    // from the parked set, so a resolved question is simply not in the list.
+    expect(await service({ open: [] }).snapshot('viewer')).toEqual([]);
+  });
+
+  test('a signal with no negotiator DM contributes no frame', async () => {
+    expect(await service({ open: [] }).snapshot('viewer')).toEqual([]);
+  });
+
+  test('a question-message read failure still returns the opportunity half', async () => {
+    const failing = new NotificationDeliveryService({
+      opportunities: {
+        getOpportunity: async () => null,
+        getNotificationSnapshotOpportunities: async () => [opportunity({
+          id: 'opportunity-actionable',
+          actors: [
+            { userId: 'viewer', networkId: 'network-1', role: 'patient' },
+            { userId: 'peer', networkId: 'network-1', role: 'agent' },
+          ],
+        })],
+      },
+      getIdentity: async () => null,
       getIntentLabel: async () => undefined,
-      publish: async () => { throw new Error('publisher unavailable'); },
+      listOpenQuestionMessages: async () => { throw new Error('reader unavailable'); },
+      webAppUrl: WEB_APP_URL,
+      publish: async () => {},
     });
 
-    await expect(service.publishQuestionCreated({
-      questionId: pendingQuestion.id,
-      userId: 'viewer',
-      mode: 'intent',
-      sourceType: 'intent',
-      sourceId: 'intent-1',
-    })).resolves.toBeUndefined();
+    expect((await failing.snapshot('viewer')).map(({ id }) => id)).toEqual(['opportunity-actionable']);
+  });
+
+  test('an unlabelled signal degrades the copy, never the frame', async () => {
+    const [frame] = await service({
+      open: [{ intentId: 'intent-1', messageId: 'message-1', questionCount: 1 }],
+    }).snapshot('viewer');
+
+    expect(frame.body).toBe('1 question about one of your signals.');
+    expect(frame.link).toBe(`${WEB_APP_URL}/i/intent-1`);
   });
 });

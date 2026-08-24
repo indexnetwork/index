@@ -1,7 +1,7 @@
 /**
  * Sync command handler for the Index CLI.
  *
- * Fetches profile, networks, intents, and contacts, then writes
+ * Fetches profile, networks, and intents, then writes
  * the combined context to ~/.index/context.json (or stdout with --json).
  */
 
@@ -14,9 +14,6 @@ import * as output from "./output";
 
 /**
  * Sync all user context to a local file or stdout.
- *
- * @param client - Authenticated API client.
- * @param options - Options: json outputs to stdout instead of file.
  */
 export async function handleSync(
   client: ApiClient,
@@ -24,19 +21,18 @@ export async function handleSync(
 ): Promise<void> {
   if (!options.json) output.info("Syncing context...");
 
-  const [profile, networks, intents, contacts] = await Promise.all([
-    client.readUserContexts(),
+  const me = await client.getMe();
+  const [profile, networks, intents] = await Promise.all([
+    client.getUser(me.id),
     client.callTool("read_networks", {}),
     client.callTool("read_intents", {}),
-    client.callTool("list_contacts", {}),
   ]);
 
   const context = {
     syncedAt: new Date().toISOString(),
-    profile: profile.success ? profile.data : null,
+    profile,
     networks: networks.success ? networks.data : null,
     intents: intents.success ? intents.data : null,
-    contacts: contacts.success ? contacts.data : null,
   };
 
   if (options.json) {

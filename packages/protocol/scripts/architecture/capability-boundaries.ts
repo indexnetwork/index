@@ -1,30 +1,26 @@
 #!/usr/bin/env bun
 /**
- * Enforces the in-place capability seams introduced by IND-528, extended in
- * IND-543 to cover the outer target shells (runtime/foreground,
- * runtime/background, platform, public).
+ * Enforces the capability seams introduced by IND-528.
  *
- * The implementation directories intentionally remain where they are until
- * Phase 3. A capability may therefore depend on another capability only via a
- * narrowly named facade in src/capabilities; direct implementation imports are
- * prohibited. The interaction-composition facade is the one explicit place
- * where all capabilities meet.
+ * One rule: a capability may reach another capability only through that
+ * capability's public module — `capabilities/<name>.ts` for migrated capabilities.
+ * Direct implementation imports are prohibited.
  *
- * IND-543 additions
- * ─────────────────
- * • runtime/foreground  → interaction-composition  (FG adapter + composition)
- * • runtime/background  → ambient-background        (BG ambient adapter)
- * • platform            → neutral-platform          (cross-domain primitives,
- *                                                    must NOT import any
- *                                                    capability internals)
- * • public              → public-compatibility      (curated root assembly,
- *                                                    facades only — no impls)
+ * This replaces the capabilities/*.facade.ts layer, where the contract lived in
+ * a separate directory of re-export files — 24 of them, several two lines long,
+ * layered over a second per-capability `public/index.ts`. Three hops collapsed
+ * to one, and the rule is now checkable by looking at the import path alone.
+ *
+ * interaction-composition is the one explicit all-capability point: the tool
+ * composition root (shared/agent/tool.{registry,factory,helpers}) plus
+ * maintenance. It is a composition root rather than a capability with a public
+ * surface, so it has no barrel and reaching its implementation is permitted.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 
-import { ALLOWED_CAPABILITY_DIRECTIONS, capabilityForSourcePath, DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES, facadeCapabilityForSourcePath, implementationCapabilityForSourcePath } from "./capability-model.ts";
+import { ALLOWED_CAPABILITY_DIRECTIONS, barrelCapabilityForSourcePath, barrelPathForCapability, capabilityForSourcePath, DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES, implementationCapabilityForSourcePath } from "./capability-model.ts";
 
 const packageRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const sourceRoot = resolve(packageRoot, "src");
@@ -93,18 +89,18 @@ for (const filePath of await sourceFiles(sourceRoot)) {
     if (!importedPath) continue;
     const importedPathFromSource = relative(sourceRoot, importedPath);
     const directTarget = implementationCapabilityForSourcePath(importedPathFromSource);
-    const facadeTarget = facadeCapabilityForSourcePath(importedPathFromSource);
-    const target = facadeTarget ?? directTarget;
+    const barrelTarget = barrelCapabilityForSourcePath(importedPathFromSource);
+    const target = barrelTarget ?? directTarget;
     if (!target || target === from) continue;
+    const targetHasBarrel = barrelPathForCapability(target) !== undefined;
 
-    if (isRootIndex) {
-      if (!facadeTarget) {
-        violations.push(
-          `${relative(packageRoot, filePath)} exports ${target} implementation directly via ${specifier}; root exports must use a capability facade`,
-        );
-      }
-      continue;
-    }
+    // interaction-composition is the composition root, not a capability with a
+    // public surface: it has no barrel, so reaching its implementation is the
+    // only way to reach it at all.
+    // The package root is the sole supported consumer entry point. It may
+    // export the concrete owning module directly; requiring another export-only
+    // capability barrel here would recreate the wrapper layer this check bans.
+    if (isRootIndex) continue;
 
     if (!ALLOWED_CAPABILITY_DIRECTIONS[from!].includes(target)) {
       violations.push(
@@ -112,9 +108,9 @@ for (const filePath of await sourceFiles(sourceRoot)) {
       );
       continue;
     }
-    if (!facadeTarget && !DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES.has(from!)) {
+    if (!barrelTarget && targetHasBarrel && !DIRECT_IMPLEMENTATION_EXEMPT_CAPABILITIES.has(from!)) {
       violations.push(
-        `${relative(packageRoot, filePath)} imports ${target} implementation directly via ${specifier}; use its capabilities/*.facade.ts contract`,
+        `${relative(packageRoot, filePath)} imports ${target} implementation directly via ${specifier}; import it via ${barrelPathForCapability(target)}`,
       );
     }
   }

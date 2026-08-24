@@ -19,11 +19,12 @@ export const MAC_APP_DOWNLOAD_SIZE: string =
   import.meta.env.VITE_MAC_APP_DOWNLOAD_SIZE || "";
 
 /**
- * Hermes Desktop / plugin install destination. Defaults to the public Hermes
- * agent site; override with `VITE_HERMES_INSTALL_URL` for staging or docs links.
+ * Hermes Desktop plugin-install deeplink. Override with
+ * `VITE_HERMES_INSTALL_URL` for staging or docs links.
  */
 export const HERMES_INSTALL_URL: string =
-  import.meta.env.VITE_HERMES_INSTALL_URL || "https://hermes-agent.nousresearch.com/";
+  import.meta.env.VITE_HERMES_INSTALL_URL ||
+  "hermes://plugin/install?repo=indexnetwork/hermes-plugin&enable=1";
 
 /** Shown on the Index for Mac card. */
 export const MAC_APP_REQUIREMENTS = "macOS 13+ · Apple silicon";
@@ -105,8 +106,6 @@ export default function Download() {
               <a
                 className="download-btn download-btn--ghost"
                 href={HERMES_INSTALL_URL}
-                target="_blank"
-                rel="noopener noreferrer"
                 aria-label="Install Hermes plugin"
               >
                 INSTALL
