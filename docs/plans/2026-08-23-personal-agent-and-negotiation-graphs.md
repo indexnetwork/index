@@ -273,13 +273,16 @@ NegotiationGraph rewrite:
 
 One branch per problem, each a worktree and a PR into `dev`:
 
-1. **NegotiationGraph rewrite** — the table above, `init` loads from ids,
+Steps 1 and 2 have shipped (#1494, this PR); step 3 remains.
+
+1. **NegotiationGraph rewrite** (shipped, #1494) — the table above, `init` loads from ids,
    `apply` as the single turn sink, pause states, all-paused trigger, owner
    verdict split (`pending`/`reject` from the graph, `accept` untouched).
    Old negotiation code and tests out. Live E2E spec from the graph.
-2. **AgentGraph** — one persona, scope by input shape, IS-A moved into the
-   protocol, kickoff / reflect / negotiator-turn as graph inputs, briefs and
-   strategy. `chat.controller` routes by scope.
+2. **AgentGraph** (shipped) — one persona, scope by input shape, IS-A moved
+   into the protocol, kickoff / reflect / negotiator-turn as graph inputs,
+   briefs and strategy. Discovery emits `matches_ready` instead of opening
+   negotiations itself. See the Decisions appendix, D15-D28.
 3. **Host collapse** — one construction site per graph, thin services, queues
    re-pointed, dead routes and personas removed.
 

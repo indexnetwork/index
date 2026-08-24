@@ -72,7 +72,8 @@ jobs:
           bun test \
             ./src/internal/mcp/tests/mcp.authorization-policy.spec.ts \
             ./src/internal/mcp/tests/mcp.server.spec.ts \
-            ./src/capabilities/tests/negotiations.e2e.spec.ts
+            ./src/capabilities/tests/negotiations.e2e.spec.ts \
+            ./src/capabilities/tests/personal-agent.e2e.spec.ts
           cd ../..
           bun --cwd=packages/protocol run build
           bun test apps/mac/api/task-5-acceptance.spec.ts
