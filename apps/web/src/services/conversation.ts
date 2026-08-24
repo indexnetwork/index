@@ -160,6 +160,14 @@ export interface IntentCycleNegotiationDetail {
   outcome: { verdict: 'pending' | 'reject'; reasoning: string | null } | null;
 }
 
+/** Append-only, owner-scoped record of executed IS-A acts. */
+export interface IntentCycleTimelineEntry {
+  id: string;
+  event: Record<string, unknown>;
+  act: Record<string, unknown>;
+  createdAt: string;
+}
+
 export const createConversationService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   /** List all conversations for the authenticated user. */
   getConversations: async (): Promise<ConversationSummary[]> => {
@@ -178,6 +186,13 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
       `/conversations/negotiations/intent-cycle?intentId=${encodeURIComponent(intentId)}`,
     );
     return response.cycle;
+  },
+
+  getIntentCycleTimeline: async (intentId: string): Promise<IntentCycleTimelineEntry[]> => {
+    const response = await api.get<{ entries: IntentCycleTimelineEntry[] }>(
+      `/conversations/negotiations/intent-cycle/timeline?intentId=${encodeURIComponent(intentId)}`,
+    );
+    return response.entries;
   },
 
   getIntentCycleNegotiation: async (intentId: string, taskId: string): Promise<IntentCycleNegotiationDetail> => {

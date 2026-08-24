@@ -69,6 +69,19 @@ export class ConversationController {
     return Response.json({ cycle });
   }
 
+  /** Append-only PersonalAgent acts for this owner's intent. */
+  @Get('/negotiations/intent-cycle/timeline')
+  @UseGuards(RateLimit('read'), AuthGuard)
+  async getIntentCycleTimeline(req: Request, user: AuthenticatedUser) {
+    const intentId = new URL(req.url).searchParams.get('intentId');
+    if (!intentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(intentId)) {
+      return Response.json({ error: 'A valid intentId is required' }, { status: 400 });
+    }
+    const entries = await this.conversationService.getIntentCycleTimelineForIntent(user.id, intentId);
+    if (entries === null) return Response.json({ error: 'Intent not found' }, { status: 404 });
+    return Response.json({ entries });
+  }
+
   /** Owner-scoped debug detail for one seat of an intent negotiation. */
   @Get('/negotiations/intent-cycle/:taskId')
   @UseGuards(RateLimit('read'), AuthGuard)

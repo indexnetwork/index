@@ -55,4 +55,22 @@ describe('ConversationController intent cycle', () => {
     expect(read).toHaveBeenCalledWith('owner', INTENT_ID);
     expect(await response.json()).toEqual({ cycle });
   });
+
+  it('returns only the owner-scoped act timeline', async () => {
+    const entries = [{ id: 'act-1', event: { kind: 'matches_ready' }, act: { tool: 'kickoff', round: 1 }, createdAt: new Date() }];
+    const read = mock(async () => entries);
+    const controller = new ConversationController(
+      { getIntentCycleTimelineForIntent: read } as unknown as ConversationService,
+      {} as TaskService,
+    );
+    const response = await controller.getIntentCycleTimeline(
+      new Request(`http://localhost/conversations/negotiations/intent-cycle/timeline?intentId=${INTENT_ID}`),
+      { id: 'owner', email: null, name: 'Owner' },
+    );
+    expect(response.status).toBe(200);
+    expect(read).toHaveBeenCalledWith('owner', INTENT_ID);
+    expect(await response.json()).toEqual({
+      entries: [{ ...entries[0], createdAt: entries[0]!.createdAt.toJSON() }],
+    });
+  });
 });

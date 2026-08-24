@@ -2077,6 +2077,43 @@ export class ConversationDatabaseAdapter {
     };
   }
 
+  /**
+   * Recent durable IS-A effects. The ledger is append-only and records the
+   * event that woke the agent with each effect it actually executed; it does
+   * not claim a strategy/reflect phase where no corresponding act exists.
+   */
+  async getIntentCycleTimelineForIntent(userId: string, intentId: string): Promise<Array<{
+    id: string;
+    event: Record<string, unknown>;
+    act: Record<string, unknown>;
+    createdAt: Date;
+  }> | null> {
+    const [ownedIntent] = await db
+      .select({ id: schema.intents.id })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .limit(1);
+    if (!ownedIntent) return null;
+
+    const rows = await db
+      .select({
+        id: schema.intentAgentActs.id,
+        event: schema.intentAgentActs.event,
+        act: schema.intentAgentActs.act,
+        createdAt: schema.intentAgentActs.createdAt,
+      })
+      .from(schema.intentAgentActs)
+      .where(and(eq(schema.intentAgentActs.userId, userId), eq(schema.intentAgentActs.intentId, intentId)))
+      .orderBy(desc(schema.intentAgentActs.createdAt), desc(schema.intentAgentActs.id))
+      .limit(100);
+    return rows.reverse().map((row) => ({
+      id: row.id,
+      event: row.event ?? {},
+      act: row.act ?? {},
+      createdAt: row.createdAt,
+    }));
+  }
+
   /** The owner-only detail read behind the cycle inspector's task rows. */
   async getIntentCycleNegotiationForIntent(userId: string, intentId: string, taskId: string): Promise<{
     intent: { id: string; payload: string };

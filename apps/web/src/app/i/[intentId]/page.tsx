@@ -14,6 +14,7 @@ import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type Neg
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import IntentCycleInspector from "@/components/IntentCycleInspector";
+import PersonalAgentTimeline from "@/components/PersonalAgentTimeline";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversations, useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
@@ -21,7 +22,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
-import type { IntentCycleSnapshot } from "@/services/conversation";
+import type { IntentCycleSnapshot, IntentCycleTimelineEntry } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
@@ -313,6 +314,9 @@ export default function IntentDetailPage() {
   const [intentCycle, setIntentCycle] = useState<IntentCycleSnapshot | null>(null);
   const [intentCycleLoading, setIntentCycleLoading] = useState(true);
   const [intentCycleError, setIntentCycleError] = useState(false);
+  const [intentTimeline, setIntentTimeline] = useState<IntentCycleTimelineEntry[]>([]);
+  const [intentTimelineLoading, setIntentTimelineLoading] = useState(true);
+  const [intentTimelineError, setIntentTimelineError] = useState(false);
   /** Bumps make the intent negotiator reload its stable session after lifecycle changes. */
   const [negotiatorRefreshVersion, setNegotiatorRefreshVersion] = useState(0);
   const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -390,6 +394,7 @@ export default function IntentDetailPage() {
   /** Monotonic load ids guard every intent-scoped feed against stale responses. */
   const loadSeqRef = useRef(0);
   const activityLoadSeqRef = useRef(0);
+  const timelineLoadSeqRef = useRef(0);
 
   const loadIntentCycle = useCallback(async (showLoading = false) => {
     if (!intentId) return;
@@ -406,6 +411,25 @@ export default function IntentDetailPage() {
     } finally {
       if (activeIntentIdRef.current === intentId && activityLoadSeqRef.current === seq) {
         setIntentCycleLoading(false);
+      }
+    }
+  }, [conversationsService, intentId]);
+
+  const loadIntentTimeline = useCallback(async (showLoading = false) => {
+    if (!intentId) return;
+    const seq = ++timelineLoadSeqRef.current;
+    if (showLoading) setIntentTimelineLoading(true);
+    try {
+      const entries = await conversationsService.getIntentCycleTimeline(intentId);
+      if (activeIntentIdRef.current !== intentId || timelineLoadSeqRef.current !== seq) return;
+      setIntentTimeline(entries);
+      setIntentTimelineError(false);
+    } catch {
+      if (activeIntentIdRef.current !== intentId || timelineLoadSeqRef.current !== seq) return;
+      setIntentTimelineError(true);
+    } finally {
+      if (activeIntentIdRef.current === intentId && timelineLoadSeqRef.current === seq) {
+        setIntentTimelineLoading(false);
       }
     }
   }, [conversationsService, intentId]);
@@ -505,10 +529,11 @@ export default function IntentDetailPage() {
   const refreshLiveRadar = useCallback(() => {
     void loadOpportunities(true);
     void loadIntentCycle();
+    void loadIntentTimeline();
     // The SSE feed never carries the intent snapshot, so a finished run's final
     // tallies would otherwise sit unread until the next 15s progress poll.
     if (intentId) void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
-  }, [intentId, intentsService, loadIntentCycle, loadOpportunities]);
+  }, [intentId, intentsService, loadIntentCycle, loadIntentTimeline, loadOpportunities]);
 
   // Refresh only the owner-scoped progress snapshot while work is non-terminal;
   // this intentionally leaves the negotiator chat mounted and untouched.
@@ -549,10 +574,11 @@ export default function IntentDetailPage() {
       });
     void loadOpportunities();
     void loadIntentCycle(true);
+    void loadIntentTimeline(true);
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadOpportunities, loadIntentCycle]);
+  }, [intentId, intentsService, loadOpportunities, loadIntentCycle, loadIntentTimeline]);
 
   const refreshWorkspaceAfterReaction = useCallback(() => {
     setNegotiatorRefreshVersion((version) => version + 1);
@@ -1027,6 +1053,13 @@ export default function IntentDetailPage() {
                       cycle={intentCycle}
                       loading={intentCycleLoading}
                       error={intentCycleError}
+                    />
+                  </div>
+                  <div className="mb-3">
+                    <PersonalAgentTimeline
+                      entries={intentTimeline}
+                      loading={intentTimelineLoading}
+                      error={intentTimelineError}
                     />
                   </div>
                   {intentLiveNegotiations.length > 0 && (
