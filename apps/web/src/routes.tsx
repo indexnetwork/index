@@ -74,6 +74,10 @@ export const router = createBrowserRouter([
       },
       {
         // Unlisted: reachable only via the token in the path, linked from nowhere.
+        path: "/9db20a5fbe",
+        lazy: lazyRoute("/9db20a5fbe", () => import("@/app/dataroom/page")),
+      },
+      {
         path: "/9db20a5fbe/roadmap",
         lazy: lazyRoute("/9db20a5fbe/roadmap", () => import("@/app/roadmap/page")),
       },
