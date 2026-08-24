@@ -48,14 +48,8 @@ export type PersonalAgentInput =
   | { userId: string; intentId: string; event: "matches_ready" }
   /** Every negotiation of `(intentId, round)` has paused. */
   | { userId: string; intentId: string; event: "all_paused"; round: number }
-  /**
-   * One negotiator turn for the given seat. `intentId` is the SPEAKING seat's
-   * own signal and is absent when that seat has not bound one — it appears
-   * only once that seat's own kickoff has opened or re-kicked this
-   * negotiation (D21), and it is never guessed from the opportunity's actor
-   * rows. The routing key is `negotiationId`.
-   */
-  | { userId: string; intentId?: string; negotiationId: string };
+  /** One negotiator turn for the given seat and its own signal. */
+  | { userId: string; intentId: string; negotiationId: string };
 
 export type PersonalAgentScope = "global" | "intent" | "negotiation";
 

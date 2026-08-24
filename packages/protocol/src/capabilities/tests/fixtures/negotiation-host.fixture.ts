@@ -82,8 +82,12 @@ export class FakeNegotiationHost {
 
   readonly database: NegotiationGraphDatabase = {
     getOpportunity: async (id: string) => (this.opportunities.get(id) as never) ?? null,
-    getIntent: async (intentId: string) =>
-      intentId === INTENT_ID ? ({ id: INTENT_ID, userId: SOURCE_USER_ID, payload: "Alice wants a technical co-founder." } as never) : null,
+    getIntent: async (intentId: string) => {
+      const actor = [...this.opportunities.values()]
+        .flatMap((opportunity) => opportunity.actors)
+        .find((candidate) => candidate.intent === intentId);
+      return actor ? ({ id: intentId, userId: actor.userId, payload: `${actor.userId} wants a suitable match.` } as never) : null;
+    },
     getUserContext: async () => null as never,
     openNegotiationTask: async (input) => {
       const existing = [...this.tasks.values()].find((task) =>
