@@ -27,9 +27,11 @@ const MAX_ROWS = 5;
 export default function IntentMemoryStrip({
   intentId,
   userId,
+  liveInvalidation = 0,
 }: {
   intentId: string;
   userId: string;
+  liveInvalidation?: number;
 }) {
   const api = useAuthenticatedAPI();
   const [memories, setMemories] = useState<NegotiatorMemory[]>([]);
@@ -50,7 +52,7 @@ export default function IntentMemoryStrip({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, intentId]);
+  }, [userId, intentId, liveInvalidation]);
 
   if (memories.length === 0) return null;
 

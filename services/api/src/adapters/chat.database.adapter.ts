@@ -13,6 +13,7 @@ import { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 import { ConversationDatabaseAdapter } from './conversation.database.adapter';
 import { _convDb } from './conversation.database.adapter';
+import { publishIntentDiscoveryProgressEvent } from '../lib/conversation-events';
 
 export interface NetworkShareResponseRow {
   id: string;
@@ -954,6 +955,14 @@ export class ChatDatabaseAdapter {
     }).onConflictDoUpdate({ target: schema.intentDiscoveryProgress.intentId, set: {
       status: input.status, attempt: input.attempt, ...counts, updatedAt: now, ...timestamps,
     }});
+    try {
+      await publishIntentDiscoveryProgressEvent(input);
+    } catch (error) {
+      logger.error('Failed to publish intent discovery-progress SSE event', {
+        intentId: input.intentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async getNetworkMemberContext(networkId: string, userId: string) {

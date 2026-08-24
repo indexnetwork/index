@@ -288,7 +288,7 @@ export default function IntentDetailPage() {
   useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
   const { user } = useAuthContext();
-  const { subscribePersonalAgentTurnCompleted } = useConversation();
+  const { subscribePersonalAgentTurnCompleted, subscribeIntentDiscoveryProgress } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -314,6 +314,7 @@ export default function IntentDetailPage() {
   const [intentTimeline, setIntentTimeline] = useState<IntentCycleTimelineEntry[]>([]);
   const [intentTimelineLoading, setIntentTimelineLoading] = useState(true);
   const [intentTimelineError, setIntentTimelineError] = useState(false);
+  const [liveInvalidation, setLiveInvalidation] = useState(0);
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
@@ -500,27 +501,22 @@ export default function IntentDetailPage() {
     if (intentId) void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
   }, [intentId, intentsService, loadIntentCycle, loadIntentTimeline, loadOpportunities]);
 
+  const invalidateLiveIntent = useCallback(() => {
+    setLiveInvalidation((value) => value + 1);
+    refreshLiveRadar();
+  }, [refreshLiveRadar]);
+
   useEffect(() => {
     return subscribePersonalAgentTurnCompleted((event) => {
-      if (event.intentId === intentId) refreshLiveRadar();
+      if (event.intentId === intentId) invalidateLiveIntent();
     });
-  }, [intentId, refreshLiveRadar, subscribePersonalAgentTurnCompleted]);
+  }, [intentId, invalidateLiveIntent, subscribePersonalAgentTurnCompleted]);
 
-  // Refresh only the owner-scoped progress snapshot while work is non-terminal;
-  // this intentionally leaves the negotiator chat mounted and untouched.
-  // `blocked` belongs here: a blocked card can only observe its own recovery
-  // (the signal joining an active community) by polling for it.
-  const discoveryStatus = intent?.discoveryProgress?.status;
   useEffect(() => {
-    // Depend on the status alone, not the whole intent: refetching the intent
-    // replaces the object on every live refresh, which would reset this
-    // interval before it ever fired.
-    if (!intentId || !["queued", "running", "retrying", "blocked"].includes(discoveryStatus ?? "")) return;
-    const timer = window.setInterval(() => {
-      void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
-    }, 15_000);
-    return () => window.clearInterval(timer);
-  }, [intentId, discoveryStatus, intentsService]);
+    return subscribeIntentDiscoveryProgress((event) => {
+      if (event.intentId === intentId) invalidateLiveIntent();
+    });
+  }, [intentId, invalidateLiveIntent, subscribeIntentDiscoveryProgress]);
 
   useEffect(() => {
     if (!intentId) return;
@@ -928,7 +924,7 @@ export default function IntentDetailPage() {
                     className="min-h-0 flex-1"
                   >
                     {user?.id && (
-                      <IntentMemoryStrip intentId={intentId} userId={user.id} />
+                      <IntentMemoryStrip intentId={intentId} userId={user.id} liveInvalidation={liveInvalidation} />
                     )}
                     <IntentNegotiatorChat
                       key={intentId}
@@ -942,6 +938,7 @@ export default function IntentDetailPage() {
                         handleOpportunityAction(id, action, userId, role, name)
                       }
                       onUnavailable={() => setChatUnavailable(true)}
+                      onLiveInvalidation={invalidateLiveIntent}
                     />
                   </Panel>
                 ) : (

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sendMessage = vi.fn(async () => {});
+let conversationMessageHandler: ((event: { conversationId: string; message: { role: string } }) => void) | undefined;
 const chatState = {
   messages: [] as Array<Record<string, unknown>>,
   isLoading: false,
@@ -21,6 +22,10 @@ vi.mock('@/contexts/ConversationContext', () => ({
   useConversation: () => ({
     subscribeQuestionRegeneration: () => () => {},
     subscribePersonalAgentTurnCompleted: () => () => {},
+    subscribeConversationMessage: (handler: typeof conversationMessageHandler) => {
+      conversationMessageHandler = handler;
+      return () => { conversationMessageHandler = undefined; };
+    },
   }),
 }));
 vi.mock('@/lib/api', () => ({
@@ -61,6 +66,7 @@ function renderChat() {
       opportunityActionLoading={{}}
       onOpportunityAction={() => {}}
       onUnavailable={() => {}}
+      onLiveInvalidation={() => {}}
     />,
   );
 }
@@ -75,6 +81,7 @@ describe('IntentNegotiatorChat option chips', () => {
     sendMessage.mockClear();
     chatState.isLoading = false;
     chatState.messages = [agentMessage()];
+    conversationMessageHandler = undefined;
   });
 
   it('sends the tapped chip as an ordinary user message', async () => {
@@ -116,12 +123,41 @@ describe('IntentNegotiatorChat option chips', () => {
         opportunityStatusMap={{}}
         opportunityActionLoading={{}}
         onOpportunityAction={() => {}}
-        onUnavailable={() => {}}
+      onUnavailable={() => {}}
+        onLiveInvalidation={() => {}}
       />,
     );
     const trace = await screen.findByTestId('personal-agent-debug-trace');
     expect(trace).toHaveTextContent('PersonalAgent debug trace');
     expect(trace).toHaveTextContent('matches_ready');
     expect(trace).toHaveTextContent('message_user');
+  });
+
+  it('reconciles an agent SSE message for its session, but ignores another session', async () => {
+    const onLiveInvalidation = vi.fn();
+    render(
+      <IntentNegotiatorChat
+        intentId="intent-1"
+        timelineEntries={[]}
+        timelineLoading={false}
+        timelineError={false}
+        opportunityStatusMap={{}}
+        opportunityActionLoading={{}}
+        onOpportunityAction={() => {}}
+        onUnavailable={() => {}}
+        onLiveInvalidation={onLiveInvalidation}
+      />,
+    );
+    await waitFor(() => expect(conversationMessageHandler).toBeTypeOf('function'));
+    chatState.loadSession.mockClear();
+
+    conversationMessageHandler?.({ conversationId: 'session-other', message: { role: 'agent' } });
+    await Promise.resolve();
+    expect(chatState.loadSession).not.toHaveBeenCalled();
+    expect(onLiveInvalidation).not.toHaveBeenCalled();
+
+    conversationMessageHandler?.({ conversationId: 'session-1', message: { role: 'agent' } });
+    await waitFor(() => expect(chatState.loadSession).toHaveBeenCalledWith('session-1'));
+    expect(onLiveInvalidation).toHaveBeenCalledTimes(1);
   });
 });
