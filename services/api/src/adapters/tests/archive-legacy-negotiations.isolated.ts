@@ -4,7 +4,7 @@
  * Proves:
  *  1. Archived tasks are excluded from: getNegotiationsByUser,
  *     getConversationsForUser (lifecycle join), getStaleNegotiationTasks,
- *     negotiation-polling pickup, and qualifyingNegotiationAttemptTaskWhere.
+ *     and qualifyingNegotiationAttemptTaskWhere.
  *  2. Non-archived tasks and v2 tasks (protocolVersion set) remain fully
  *     visible to every reader.
  *  3. The backfill query stamps exactly the pre-v2 rows (archivedAt IS NULL
@@ -22,17 +22,8 @@ import { eq } from 'drizzle-orm';
 
 import { withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
-// ─── Mock queues before any service imports ──────────────────────────────────
-mock.module('../../queues/negotiations/timeout.queue', () => ({
-  negotiationTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
-}));
-mock.module('../../queues/negotiations/claim-timeout.queue', () => ({
-  negotiationClaimTimeoutQueue: { cancelTimeout: async () => {}, enqueueTimeout: async () => {} },
-}));
-
 const { conversationDatabaseAdapter } = await import('../database.adapter');
 const { agentDatabaseAdapter } = await import('../agent.database.adapter');
-const { negotiationPollingService } = await import('../../services/negotiation-polling.service');
 const { notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere } = await import('../negotiation-attempt.atomic');
 const { default: db } = await import('../../lib/drizzle/drizzle');
 const dbSchema = await import('../../schemas/database.schema');
@@ -111,6 +102,8 @@ interface SeedTaskOpts {
   state?: 'submitted' | 'working' | 'waiting_for_agent' | 'input_required' | 'completed';
   opportunityId?: string;
   createdAt?: Date;
+  /** Rewrite-era round stamp; omitted means a pre-rewrite row. */
+  round?: number;
 }
 
 async function seedNegotiationTask(opts: SeedTaskOpts = {}): Promise<{
@@ -130,6 +123,7 @@ async function seedNegotiationTask(opts: SeedTaskOpts = {}): Promise<{
     ...(opts.opportunityId && { opportunityId: opts.opportunityId }),
     ...(opts.protocolVersion && { protocolVersion: opts.protocolVersion }),
     ...(opts.archivedAt && { archivedAt: opts.archivedAt }),
+    ...(opts.round !== undefined && { round: opts.round }),
   };
 
   const task = await conversationDatabaseAdapter.createTask(conv.id, metadata);
@@ -241,9 +235,11 @@ describe('archive legacy negotiations — getConversationsForUser lifecycle join
 
 describe('archive legacy negotiations — getStaleNegotiationTasks', () => {
   it('excludes archived tasks from stale watchdog sweep', async () => {
-    // Create a genuinely stale submitted task
-    const { taskId: staleId } = await seedNegotiationTask({ state: 'submitted' });
-    const { taskId: archivedStaleId } = await seedNegotiationTask({ state: 'submitted' });
+    // Create a genuinely stale submitted task. Both carry a round stamp so
+    // archivedAt is the only difference the sweep sees — an unstamped row is
+    // pre-rewrite and excluded for a different reason.
+    const { taskId: staleId } = await seedNegotiationTask({ state: 'submitted', round: 1 });
+    const { taskId: archivedStaleId } = await seedNegotiationTask({ state: 'submitted', round: 1 });
 
     // Age both tasks so they qualify as stale
     const stalePast = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago
@@ -271,35 +267,13 @@ describe('archive legacy negotiations — getStaleNegotiationTasks', () => {
   });
 });
 
-describe('archive legacy negotiations — polling pickup', () => {
-  it('pickup skips archived waiting_for_agent tasks', async () => {
-    const { taskId: archivedId } = await seedNegotiationTask({ state: 'waiting_for_agent' });
-    await stampArchivedAt(archivedId, new Date().toISOString());
-
-    // pickup should not return the archived task
-    const result = await negotiationPollingService.pickup(agentA, userA, principalA);
-    if (result) {
-      expect(result.negotiationId).not.toBe(archivedId);
-    }
-    // Either null or a different task — just confirm the archived one isn't picked up
-  });
-
-  it('pickup returns non-archived waiting_for_agent tasks normally', async () => {
-    const { taskId: activeId } = await seedNegotiationTask({ state: 'waiting_for_agent' });
-
-    const result = await negotiationPollingService.pickup(agentA, userA, principalA);
-    // May pick up this or another waiting task; confirm we got one
-    expect(result).not.toBeNull();
-
-    // Clean up: cancel the claimed task so it doesn't affect other tests
-    if (result) {
-      await db
-        .update(convSchema.tasks)
-        .set({ state: 'canceled', updatedAt: new Date() })
-        .where(eq(convSchema.tasks.id, result.negotiationId));
-    }
-  });
-});
+// Negotiation-polling pickup was retired whole-cloth by the negotiation-graph
+// rewrite (#1494, docs/plans/2026-08-23-personal-agent-and-negotiation-graphs.md)
+// — a negotiation can no longer be claimed under the new working-only
+// lifecycle, so the "archived tasks are excluded from pickup" coverage this
+// block used to provide no longer applies. Archive-exclusion for every other
+// reader (getNegotiationsByUser, the lifecycle join, getStaleNegotiationTasks,
+// qualifyingNegotiationAttemptTaskWhere) is still covered above/below.
 
 describe('archive legacy negotiations — qualifyingNegotiationAttemptTaskWhere', () => {
   it('archived input_required task does not block new attempt for its opportunity', async () => {

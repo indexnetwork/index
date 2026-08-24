@@ -1,4 +1,11 @@
-import type { NegotiationCounterpartyBinding } from '@indexnetwork/protocol';
+/**
+ * Locally aligned mirror of the protocol's `NegotiationCounterpartyBinding`
+ * (adapters/lib code must not import from `@indexnetwork/protocol`).
+ */
+type NegotiationCounterpartyBinding =
+  | { kind: 'intent'; id: string }
+  | { kind: 'premise'; id: string };
+
 export type ConsultationExpiryReadinessInput = {
   taskState: string;
   taskClaimedByAgentId: string | null;

@@ -48,7 +48,8 @@ describe("NegotiationActivity", () => {
         id: "m-1",
         opportunityId: "opp-1",
         sender: "yours" as const,
-        action: "ask_user",
+        verb: "pause" as const,
+        pauseReason: "needs_principal" as const,
         text: "What grade do you climb, and can you make weeknights?",
         parts: [],
         createdAt: "2026-07-24T00:00:01.000Z",
@@ -61,7 +62,7 @@ describe("NegotiationActivity", () => {
     expect(screen.getByText(/1 open/)).toBeTruthy();
     expect(screen.getByText("Mutual want")).toBeTruthy();
     expect(screen.getByText("Weekday availability")).toBeTruthy();
-    // The turn renders through its own message field, and its action is labelled.
+    // The turn renders through its own message field, and its verb is labelled.
     expect(screen.getByText("ASKED YOU")).toBeTruthy();
     expect(screen.getByText(/What grade do you climb/)).toBeTruthy();
   });
@@ -86,7 +87,7 @@ describe("NegotiationActivity", () => {
     expect(screen.queryByLabelText("Match checklist")).toBeNull();
   });
 
-  it("never renders a counterparty's private ask_user consultation as an ask to the viewer", () => {
+  it("never renders a counterparty's private needs_principal pause as an ask to the viewer", () => {
     const groups = normalizeNegotiationActivity([{
       correspondentUserId: "ada",
       correspondentLabel: "Ada's agent",
@@ -96,7 +97,8 @@ describe("NegotiationActivity", () => {
           id: "their-private-ask",
           opportunityId: "opp-1",
           sender: "theirs" as const,
-          action: "ask_user",
+          verb: "pause" as const,
+          pauseReason: "needs_principal" as const,
           text: "What stage and industries are you targeting?",
           parts: [],
           createdAt: "2026-07-24T00:00:01.000Z",
@@ -105,7 +107,7 @@ describe("NegotiationActivity", () => {
           id: "public-counter",
           opportunityId: "opp-1",
           sender: "theirs" as const,
-          action: "counter",
+          verb: "counter" as const,
           text: "The opportunity could still be a fit.",
           parts: [],
           createdAt: "2026-07-24T00:00:02.000Z",

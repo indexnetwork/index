@@ -34,7 +34,7 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 
 export type { McpAuthResolver } from "./platform/auth/ports.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
-export type { ChatSummaryReader, InChatNegotiationQuestionDelivery } from "./platform/chat/ports.js";
+export type { ChatSummaryReader } from "./platform/chat/ports.js";
 export type { NegotiationSummaryReader } from "./platform/negotiation/summary.js";
 export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
 export type {
@@ -49,9 +49,6 @@ export type {
   HydeGraphDatabase,
   EnrichmentGraphDatabase,
   PremiseGraphDatabase,
-  NegotiationGraphDatabase,
-  NegotiationContinuationExecution,
-  NegotiationContinuationReceipt,
   Opportunity,
   OpportunityActor,
   OpportunityStatus,
@@ -68,12 +65,7 @@ export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, Hy
 export type { IntentGraphQueue } from "./platform/runtime/queue.js";
 export type { Scraper } from "./platform/discovery/scraper.js";
 export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
-export type {
-  NegotiationTimeoutQueue,
-  AskUserExpiryPayload,
-  NegotiationContinuationTimeoutIdentity,
-} from "./platform/negotiation/events.js";
-export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
+export type { AgentDispatcher } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
 export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────
@@ -109,7 +101,6 @@ export type {
   QuestionVoidedReason,
   UnderspecificationType,
 } from "./protocol/question.js";
-export type { QuestionerEnqueueFn, QuestionerEnqueuePayload, QuestionerInput } from "./protocol/question-input.js";
 export { McpApiKeyMetadataSchema } from "./platform/auth/mcp.js";
 export type {
   McpAuthInput,
@@ -121,7 +112,7 @@ export type { IntentIndexingResult } from "./protocol/core.js";
 export type { HydeTargetCorpus, Lens } from "./protocol/core.js";
 export type { DebugMetaAgent } from "./protocol/core.js";
 export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./internal/shared/assignment/network-assignment.policy.js";
-export { ASK_USER_LOCK_SLACK_MS, ASK_USER_WINDOW_MS, NEGOTIATION_MAX_TURNS_AMBIENT, NEGOTIATION_MAX_TURNS_CHAT } from "./protocol/core.js";
+export { NEGOTIATION_MAX_TURNS_AMBIENT } from "./protocol/core.js";
 
 // ─── Personal agent chat ─────────────────────────────────────────────────────
 
@@ -212,30 +203,55 @@ export type {
   McpCapabilityPolicyOptions,
 } from "./internal/mcp/mcp.authorization-policy.js";
 
-// ─── States (for advanced graph consumers) ────────────────────────────────────
-// @experimental — internal graph-state shapes; may change in a minor release.
-
-export { NegotiationConsultationReasonSchema } from "./protocol/schemas/negotiation-state.schema.js";
-export type { UserNegotiationContext, NegotiationTurn, NegotiationOutcome, SeedAssessment } from "./protocol/schemas/negotiation-state.schema.js";
-export type { NegotiationCounterpartyBinding } from "./platform/database.js";
-export type { NegotiationAction, NegotiationConsultationReason, NegotiationSeat } from "./protocol/schemas/negotiation-state.schema.js";
-
 // ─── Negotiation compatibility exports ─────────────────────────────────────
 /**
  * negotiation — the capability's sole cross-capability surface.
  *
  * Anything outside this capability imports from here and nowhere else.
  */
-export { AMBIENT_PARK_WINDOW_MS, createNegotiationTools } from "./internal/negotiations/negotiation.tools.js";
-export { createNegotiationAnswerTools } from "./internal/negotiations/negotiation.answer.tools.js";
+export { createNegotiationTools } from "./internal/negotiations/negotiation.tools.js";
 export { buildLifecycleNarration, parkLifecycleLabel } from "./internal/negotiations/negotiation.lifecycle-narration.js";
 export type { NegotiationLifecycleNarration, NegotiationParkNarration } from "./internal/negotiations/negotiation.lifecycle-narration.js";
 export { buildFallbackDigest, NegotiationSummarizer } from "./internal/negotiations/negotiation.summarizer.js";
-export { IndexNegotiator } from "./internal/negotiations/negotiation.agent.js";
-export { negotiateCandidates, NegotiationGraphFactory } from "./internal/negotiations/negotiation.graph.js";
-export { resumeParkedNegotiation } from "./internal/negotiations/negotiation.answer-consumption.js";
-export type { NegotiationAnswerConsumptionPorts } from "./internal/negotiations/negotiation.answer-consumption.js";
+export { NegotiationGraphFactory } from "./internal/negotiations/negotiation.graph.js";
+export type {
+  NegotiationGraphInput,
+  NegotiationGraphResult,
+  NegotiationGraphDeps,
+  NegotiationGraphLike,
+} from "./internal/negotiations/negotiation.graph.js";
+export { NegotiationAuthor } from "./internal/negotiations/negotiation.author.js";
+export type { NegotiationAuthorInput } from "./internal/negotiations/negotiation.author.js";
+export {
+  NEGOTIATION_CONTINUE_VERBS,
+  NEGOTIATION_PAUSE_REASONS,
+  NegotiationTurnSchema,
+  NegotiationContinueTurnSchema,
+  NegotiationPauseTurnSchema,
+  NegotiationAuthoredTurnSchema,
+  NegotiationOpeningTurnSchema,
+  NegotiationVerdictSchema,
+  isPauseTurn,
+  isContinueTurn,
+} from "./internal/negotiations/negotiation.turn.js";
+export type {
+  NegotiationTurn,
+  NegotiationContinueVerb,
+  NegotiationPauseReason,
+  NegotiationPauseTurn,
+  NegotiationContinueTurn,
+  NegotiationAuthoredTurn,
+  NegotiationVerdict,
+  NegotiationNeedsPrincipalPayload,
+  NegotiationReadyForVerdictPayload,
+} from "./internal/negotiations/negotiation.turn.js";
+export { negotiationRoundReflectJobId } from "./internal/negotiations/negotiation.round-reflect.js";
+export type {
+  NegotiationRoundReflectJobData,
+  NegotiationRoundReflectEnqueueFn,
+} from "./internal/negotiations/negotiation.round-reflect.js";
 export { NegotiationInsightsGenerator } from "./internal/negotiations/insight.generator.js";
+export type { NegotiationDigest } from "./internal/negotiations/insight.generator.js";
 export { NegotiationReflector } from "./internal/negotiations/negotiation.reflect.js";
 export type {
   ChatReflectionInput,
@@ -245,98 +261,28 @@ export type {
   ReflectEnqueueFn,
   ReflectionTranscriptEntry,
 } from "./internal/negotiations/negotiation.reflect.js";
-export type { NegotiationCandidate, OnNegotiationResolved } from "./internal/negotiations/negotiation.graph.js";
-export type { NegotiationDigest } from "./internal/negotiations/insight.generator.js";
-
-export {
-  DEFAULT_NEGOTIATION_ASK_ROUNDS_CAP,
-  allowedActionsFor,
-  isRejectLikeAction,
-  isTerminalAction,
-  negotiationAskRoundsCap,
-  resolveSeat,
-  seatViolationMessage,
-} from "./internal/negotiations/negotiation.protocol.js";
-export { countNegotiationAskRounds, countPrincipalAskUserTurns } from "./internal/negotiations/negotiation.graph.shared.js";
-export {
-  QUESTION_BUDGET_PER_PRINCIPAL,
-  configuredQuestionBudgetPerPrincipal,
-  MAX_CHECKLIST_DIMENSIONS,
-  MIN_CHECKLIST_DIMENSIONS,
-  NegotiationChecklistSchema,
-  assessAskAdmissibility,
-  authorChecklist,
-  checklistFromTurns,
-  checklistVerdictState,
-  isChecklistAuthored,
-  reconcileChecklist,
-  renderChecklistSection,
-} from "./internal/negotiations/negotiation.checklist.contracts.js";
-export type {
-  Answerhood,
-  AskAdmissibility,
-  AskInadmissibility,
-  ChecklistItem,
-  ChecklistKind,
-  ChecklistResult,
-  NegotiationChecklist,
-} from "./internal/negotiations/negotiation.checklist.contracts.js";
-export { NEGOTIATION_PARK_REASONING, NegotiationStallGapAuthor } from "./internal/negotiations/negotiation.stall-gap.js";
-export type { NegotiationStallGap, NegotiationStallReason, StallGapAuthorInput } from "./internal/negotiations/negotiation.stall-gap.js";
 export {
   HERMES_OWNER_DIRECTIVE,
-  HERMES_SHARED_MESSAGE_TEMPLATES,
   HermesNegotiationActionSchema,
   HermesNegotiationResponseSchema,
   HermesOwnerDirectiveSchema,
-  HermesRoleAlignmentSchema,
-  allowedHermesActionsFor,
   buildHermesNegotiationTurn,
 } from "./internal/negotiations/negotiation.hermes-contract.js";
-export { DEFAULT_NEGOTIATION_MAX_TURNS, isNegotiationTurnCapReached } from "./internal/negotiations/negotiation.turn-cap.js";
-export { MAX_CONSECUTIVE_TURN_FAILURES, appendTurnFailure, isTimeoutFailure, turnFailureBoundReached } from "./internal/negotiations/negotiation.turn-failure.js";
-export type { NegotiationTurnFailure } from "./internal/negotiations/negotiation.turn-failure.js";
-export { expectedNegotiationSpeaker } from "./internal/negotiations/negotiation.expected-speaker.js";
-export { negotiationScopeKey, readNegotiationMessages } from "./internal/negotiations/negotiation.scope.js";
-export {
-  NEGOTIATION_CONSULTATION_POLICY_MODE,
-  assessConsultationEligibility,
-  consultationPromptFor,
-  countOpenPreContactConsults,
-} from "./internal/negotiations/negotiation.consultation-policy.js";
-export {
-  NEGOTIATION_QUESTION_GENERIC_COUNTERPARTY,
-  NEGOTIATION_QUESTION_GENERIC_NETWORK,
-  isSafeAuthoredNegotiationQuestion,
-  isSafeNegotiationQuestionText,
-  negotiationQuestionSettlementId,
-  validateInflightAskUserFields,
-} from "./internal/negotiations/negotiation.question-safety.js";
-export { renderNegotiatorChatMemorySection } from "./internal/negotiations/negotiation.memory.js";
-export type {
-  ConsultationEligibility,
-  ConsultationEligibilityInput,
-  NegotiationConsultationPolicyMode,
-  PreContactConsultTaskRow,
-} from "./internal/negotiations/negotiation.consultation-policy.js";
 export type {
   HermesNegotiationAction,
   HermesNegotiationResponse,
   HermesOwnerDirective,
-  HermesRoleAlignment,
 } from "./internal/negotiations/negotiation.hermes-contract.js";
-export type {
-  NegotiationGraphLike,
-} from "./internal/negotiations/negotiation.state.js";
-export type { NegotiationSpeakerMessage, NegotiationSpeakerParticipants } from "./internal/negotiations/negotiation.expected-speaker.js";
-export type { NegotiationScopeMetadata } from "./internal/negotiations/negotiation.scope.js";
+export { renderNegotiatorChatMemorySection } from "./internal/negotiations/negotiation.memory.js";
 export type { NegotiatorMemoryEntry } from "./internal/negotiations/negotiation.memory.js";
-export type {
-  NegotiatorClientDmMessage,
-  NegotiatorClientDmQuery,
-  NegotiatorClientDmRetrieveFn,
-} from "./internal/negotiations/negotiation.client-dm.js";
 export type { NegotiationToolDeps } from "./internal/negotiations/negotiation.tools.port.js";
+export type {
+  NegotiationGraphDatabase,
+  NegotiationTaskRow,
+  NegotiationTaskMetadata,
+  NegotiationTaskState,
+  NegotiationMessageRow,
+} from "./platform/database/negotiation.js";
 
 // ─── Opportunity compatibility exports ─────────────────────────────────────
 /**

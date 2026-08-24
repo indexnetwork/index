@@ -10,10 +10,10 @@ function conversation(
   input: {
     state?: NonNullable<ConversationSummary['negotiation']>['state'];
     opportunityStatus?: NonNullable<ConversationSummary['negotiation']>['opportunityStatus'];
-    action?: string;
+    verb?: string;
+    pauseReason?: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
     senderId?: string;
     turnCount?: number;
-    outcome?: NonNullable<ConversationSummary['negotiation']>['outcome'];
     acceptedByViewer?: boolean;
     withMessage?: boolean;
     updatedAt?: string;
@@ -22,7 +22,9 @@ function conversation(
     lastMessageTaskId?: string;
   } = {},
 ): ConversationSummary {
-  const action = input.action ?? 'counter';
+  const verb = input.verb ?? (input.pauseReason ? 'pause' : 'counter');
+  const data: Record<string, unknown> = { verb };
+  if (input.pauseReason) data.reason = input.pauseReason;
   return {
     id,
     participants: [
@@ -30,7 +32,7 @@ function conversation(
       { participantId: `agent:${id}-peer`, participantType: 'agent', name: 'Index Negotiator', avatar: null, ownerName: `${id} person` },
     ],
     lastMessage: input.withMessage === false ? null : {
-      parts: [{ kind: 'data', data: { action } }],
+      parts: [{ kind: 'data', data }],
       senderId: input.senderId ?? `agent:${id}-peer`,
       createdAt: '2026-07-24T11:00:00.000Z',
       taskId: input.lastMessageTaskId ?? `${id}-task`,
@@ -43,14 +45,13 @@ function conversation(
     negotiation: {
       taskId: `${id}-task`,
       state: input.state ?? 'working',
+      pause: input.pauseReason ? { reason: input.pauseReason } : null,
       statusTimestamp: '2026-07-24T11:00:00.000Z',
       opportunityId: `${id}-opportunity`,
       opportunityStatus: input.opportunityStatus ?? 'negotiating',
       acceptedByViewer: input.acceptedByViewer ?? false,
       turnCount: input.turnCount ?? 1,
-      maxTurns: 6,
       signalCount: 2,
-      outcome: input.outcome ?? null,
       updatedAt: input.updatedAt ?? '2026-07-24T11:00:00.000Z',
       ...(input.screenDecision ? { screenDecision: input.screenDecision } : {}),
     },
@@ -74,8 +75,8 @@ const OWNER_GATE_DECISION = {
 describe('negotiations inbox presentation', () => {
   it('puts consultations before agent agreements in Your move', () => {
     const groups = deriveNegotiationInbox([
-      conversation('agreement', { state: 'completed', opportunityStatus: 'pending', action: 'accept', outcome: { hasOpportunity: true, reason: null } }),
-      conversation('question', { state: 'input_required', action: 'ask_user', senderId: 'agent:viewer' }),
+      conversation('agreement', { state: 'completed', opportunityStatus: 'pending' }),
+      conversation('question', { state: 'paused', pauseReason: 'needs_principal', senderId: 'agent:viewer' }),
     ], 'viewer', NOW);
 
     expect(groups.yourMove.map((item) => [item.conversationId, item.status])).toEqual([
@@ -83,18 +84,18 @@ describe('negotiations inbox presentation', () => {
       ['agreement', 'awaiting_review'],
     ]);
     expect(countNegotiationsRequiringAction([
-      conversation('question', { state: 'input_required', action: 'ask_user', senderId: 'agent:viewer' }),
-      conversation('agreement', { state: 'completed', opportunityStatus: 'pending', action: 'accept' }),
+      conversation('question', { state: 'paused', pauseReason: 'needs_principal', senderId: 'agent:viewer' }),
+      conversation('agreement', { state: 'completed', opportunityStatus: 'pending' }),
     ], 'viewer')).toBe(2);
     expect(countNegotiationsRequiringAction([
-      conversation('their-question', { state: 'input_required', action: 'ask_user' }),
+      conversation('their-question', { state: 'paused', pauseReason: 'needs_principal' }),
     ], 'viewer')).toBe(0);
   });
 
   it('keeps agent agreement distinct from human acceptance', () => {
     const groups = deriveNegotiationInbox([
-      conversation('pending', { state: 'completed', opportunityStatus: 'pending', action: 'accept' }),
-      conversation('accepted', { state: 'completed', opportunityStatus: 'accepted', action: 'accept', acceptedByViewer: true }),
+      conversation('pending', { state: 'completed', opportunityStatus: 'pending' }),
+      conversation('accepted', { state: 'completed', opportunityStatus: 'accepted', acceptedByViewer: true }),
     ], 'viewer', NOW);
 
     expect(groups.yourMove[0]?.status).toBe('awaiting_review');
@@ -102,7 +103,7 @@ describe('negotiations inbox presentation', () => {
     expect(groups.resolved[0]?.lastAction).toBe('you accepted the connection');
 
     const counterpartStarted = deriveNegotiationInbox([
-      conversation('counterpart-started', { state: 'completed', opportunityStatus: 'accepted', action: 'accept' }),
+      conversation('counterpart-started', { state: 'completed', opportunityStatus: 'accepted' }),
     ], 'viewer', NOW);
     expect(counterpartStarted.resolved[0]?.status).toBe('connection_accepted');
     expect(counterpartStarted.resolved[0]?.lastAction).toBe('the connection was accepted');
@@ -112,21 +113,21 @@ describe('negotiations inbox presentation', () => {
     const groups = deriveNegotiationInbox([
       conversation('live', { turnCount: 3 }),
       conversation('waiting', { turnCount: 0 }),
-      conversation('rejected', { state: 'completed', opportunityStatus: 'rejected', action: 'decline', outcome: { hasOpportunity: false, reason: null } }),
-      conversation('stalled', { state: 'completed', opportunityStatus: 'stalled', outcome: { hasOpportunity: false, reason: 'turn_cap' } }),
+      conversation('rejected', { state: 'completed', opportunityStatus: 'rejected' }),
+      conversation('stalled', { state: 'completed', opportunityStatus: 'stalled' }),
     ], 'viewer', NOW);
 
     expect(groups.inProgress.map((item) => item.status).sort()).toEqual(['negotiating', 'negotiating']);
     expect(groups.resolved.map((item) => item.status).sort()).toEqual(['no_agreement', 'no_match']);
     expect(groups.resolved.find((item) => item.status === 'no_agreement')?.lastAction)
-      .toBe('agents could not reach agreement within the turn limit');
+      .toBe('agents could not reach agreement');
     expect(groups.resolved.find((item) => item.status === 'no_match')?.lastAction)
       .toBe('agents did not recommend moving forward');
   });
 
   it('does not surface zero-turn private or abandoned rows', () => {
     const groups = deriveNegotiationInbox([
-      conversation('screened', { state: 'completed', withMessage: false, outcome: { hasOpportunity: false, reason: 'screened_out' } }),
+      conversation('screened', { state: 'completed', withMessage: false }),
     ], 'viewer', NOW);
 
     expect(groups).toEqual({ yourMove: [], inProgress: [], resolved: [] });
@@ -137,7 +138,6 @@ describe('negotiations inbox presentation', () => {
       conversation('gated', {
         state: 'completed',
         withMessage: false,
-        outcome: { hasOpportunity: false, reason: 'screened_out' },
         screenDecision: OWNER_GATE_DECISION,
       }),
     ], 'viewer', NOW);
@@ -157,11 +157,7 @@ describe('negotiations inbox presentation', () => {
     // Identical negotiation, counterparty's view: the API withheld
     // screenDecision, so nothing here can reconstruct the row.
     const groups = deriveNegotiationInbox([
-      conversation('gated', {
-        state: 'completed',
-        withMessage: false,
-        outcome: { hasOpportunity: false, reason: 'screened_out' },
-      }),
+      conversation('gated', { state: 'completed', withMessage: false }),
     ], 'counterparty', NOW);
 
     expect(groups).toEqual({ yourMove: [], inProgress: [], resolved: [] });
@@ -184,14 +180,12 @@ describe('negotiations inbox presentation', () => {
   describe('person-row rollup (one row per counterparty)', () => {
     it('keeps an awaiting-you row awaiting you when a later dead pairing left the last message', () => {
       // Hye-jin ↔ Deniz: the represented session is the pending approval
-      // (outreach → accept); the conversation's newest message is a decline
-      // from a later session that was screened out.
+      // (outreach → pause ready_for_verdict); the conversation's newest
+      // message is from a later, unrelated session.
       const groups = deriveNegotiationInbox([
         conversation('deniz', {
           state: 'completed',
           opportunityStatus: 'pending',
-          outcome: { hasOpportunity: true, reason: null },
-          action: 'decline',
           lastMessageTaskId: 'deniz-later-task',
           updatedAt: '2026-07-24T11:28:00.000Z',
         }),
@@ -208,14 +202,14 @@ describe('negotiations inbox presentation', () => {
       expect(row.timeAgo).toBe('32m ago');
       // …and the header counts it: "1 your move", matching Radar's "Awaiting you · 1".
       expect(countNegotiationsRequiringAction([conversation('deniz', {
-        state: 'completed', opportunityStatus: 'pending', action: 'decline', lastMessageTaskId: 'deniz-later-task',
+        state: 'completed', opportunityStatus: 'pending', lastMessageTaskId: 'deniz-later-task',
       })], 'viewer')).toBe(1);
     });
 
     it('captions a live row from its own session, not from another session of the same person', () => {
       const groups = deriveNegotiationInbox([
-        conversation('live', { state: 'working', opportunityStatus: 'negotiating', action: 'decline', lastMessageTaskId: 'live-earlier-task' }),
-        conversation('own', { state: 'working', opportunityStatus: 'negotiating', action: 'counter', senderId: 'agent:viewer' }),
+        conversation('live', { state: 'working', opportunityStatus: 'negotiating', lastMessageTaskId: 'live-earlier-task' }),
+        conversation('own', { state: 'working', opportunityStatus: 'negotiating', verb: 'counter', senderId: 'agent:viewer' }),
       ], 'viewer', NOW);
 
       expect(groups.inProgress.map((item) => [item.conversationId, item.status, item.lastAction])).toEqual([
@@ -229,15 +223,13 @@ describe('negotiations inbox presentation', () => {
         conversation('deniz', {
           state: 'completed',
           opportunityStatus: 'rejected',
-          outcome: { hasOpportunity: false, reason: 'screened_out' },
-          action: 'accept',
           lastMessageTaskId: 'deniz-earlier-task',
         }),
       ], 'viewer', NOW);
 
       expect(groups.yourMove).toEqual([]);
       expect(groups.resolved.map((item) => [item.status, item.lastAction])).toEqual([
-        ['no_match', 'agents did not find enough mutual value to continue'],
+        ['no_match', 'agents did not recommend moving forward'],
       ]);
     });
   });
@@ -249,8 +241,6 @@ describe('negotiations inbox presentation', () => {
       const pendingApproval = conversation('approval', {
         state: 'completed',
         opportunityStatus: 'pending',
-        outcome: { hasOpportunity: true, reason: null },
-        action: 'accept',
       });
       expect(countNegotiationsRequiringAction([pendingApproval], 'viewer')).toBe(1);
       expect(deriveNegotiationInbox([pendingApproval], 'viewer', NOW).yourMove[0]?.status).toBe('awaiting_review');
@@ -258,19 +248,19 @@ describe('negotiations inbox presentation', () => {
 
     it('counts a parked question to the viewer and a pending approval as two moves, and nothing resolved', () => {
       expect(countNegotiationsRequiringAction([
-        conversation('question', { state: 'input_required', action: 'ask_user', senderId: 'agent:viewer' }),
-        conversation('approval', { state: 'completed', opportunityStatus: 'pending', action: 'accept' }),
-        conversation('declined', { state: 'completed', opportunityStatus: 'rejected', action: 'decline', outcome: { hasOpportunity: false, reason: null } }),
-        conversation('their-question', { state: 'input_required', action: 'ask_user' }),
+        conversation('question', { state: 'paused', pauseReason: 'needs_principal', senderId: 'agent:viewer' }),
+        conversation('approval', { state: 'completed', opportunityStatus: 'pending' }),
+        conversation('declined', { state: 'completed', opportunityStatus: 'rejected' }),
+        conversation('their-question', { state: 'paused', pauseReason: 'needs_principal' }),
       ], 'viewer')).toBe(2);
     });
   });
 
   it('flattens groups into a last-updated ordering across groups', () => {
     const groups = deriveNegotiationInbox([
-      conversation('agreed', { state: 'completed', opportunityStatus: 'pending', action: 'accept', updatedAt: '2026-07-24T09:00:00.000Z' }),
+      conversation('agreed', { state: 'completed', opportunityStatus: 'pending', updatedAt: '2026-07-24T09:00:00.000Z' }),
       conversation('live', { turnCount: 2, updatedAt: '2026-07-24T11:30:00.000Z' }),
-      conversation('resolved', { state: 'completed', opportunityStatus: 'rejected', action: 'decline', outcome: { hasOpportunity: false, reason: null }, updatedAt: '2026-07-24T10:30:00.000Z' }),
+      conversation('resolved', { state: 'completed', opportunityStatus: 'rejected', updatedAt: '2026-07-24T10:30:00.000Z' }),
     ], 'viewer', NOW);
 
     expect(flattenNegotiationInbox(groups).map((item) => [item.conversationId, item.group])).toEqual([

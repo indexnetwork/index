@@ -1,7 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { NegotiatorMemoryToolsHost, NegotiatorMemoryToolView } from "../../platform/negotiation/memory.js";
-import type { NegotiatorAnswerToolsHost } from "../../platform/negotiation/answer.js";
 import type { NegotiatorVerdictInput, NegotiatorVerdictResult, NegotiatorVerdictToolsHost } from "../../platform/negotiation/verdict.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 
@@ -160,112 +159,6 @@ export function createNegotiatorMemoryTools(opts: {
   );
 
   return [remember, forget];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ANSWER ROUTING TOOL (#1466)
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-// `answer_pending_question` is the LONG TAIL of answer routing, not its spine.
-// The spine is deterministic and upstream of this persona entirely: while a
-// signal's DM has an open question, a free-text reply is offered to the answer
-// evaluator before the orchestrator runs, and an accepted answer never reaches
-// a model with tools at all. What reaches here is what the evaluator declined
-// — an oblique answer, a late one, or one folded into a message that is also
-// doing something else.
-//
-// It exists because before it the persona had exactly one thing it could do
-// with such a message: edit the client's signal. On 2026-08-20 it did, to a
-// two-word reply that was answering a parked negotiation's question.
-//
-// Registered only when the composition root injects the host AND the session
-// is pinned to a signal: an open question lives in one signal's DM, and a
-// number with no scope behind it would route nowhere.
-
-const answerLogger = protocolLogger("NegotiatorAnswerTools");
-
-const AnswerPendingQuestionSchema = z.object({
-  question: z
-    .number()
-    .int()
-    .min(1)
-    .describe("Which open question is being answered, by the number shown in your context."),
-  answer: z
-    .string()
-    .min(1)
-    .max(4000)
-    .describe(
-      "What the client said in answer to it, in their own words, restated only enough to stand alone. Never add a preference, constraint, or detail they did not state.",
-    ),
-});
-
-/**
- * Creates the negotiator persona's `answer_pending_question` tool, bound to
- * the acting client and the signal this session is pinned to.
- */
-export function createNegotiatorAnswerTools(opts: {
-  host: NegotiatorAnswerToolsHost;
-  userId: string;
-  intentId: string;
-}) {
-  const { host, userId, intentId } = opts;
-
-  const answerPendingQuestion = tool(
-    async (query: z.infer<typeof AnswerPendingQuestionSchema>) => {
-      answerLogger.info("Tool invoked", { toolName: "answer_pending_question", userId, question: query.question });
-      try {
-        const result = await host.answerOpenQuestion(userId, {
-          intentId,
-          question: query.question,
-          answer: query.answer,
-        });
-        switch (result.status) {
-          case "routed":
-            return JSON.stringify({
-              status: "routed",
-              question: result.label,
-              message:
-                "The answer is on its way to the negotiation that was waiting on it. Confirm to the client in one short sentence what you took as their answer, and do not also change their signal on the strength of it.",
-            });
-          case "no_open_question":
-            return JSON.stringify({
-              status: "no_open_question",
-              message:
-                "Nothing is waiting on the client for this signal any more — the negotiations moved on. Tell them that plainly rather than implying their answer was recorded.",
-            });
-          case "unknown_question":
-            return JSON.stringify({
-              status: "unknown_question",
-              open: result.open,
-              message:
-                "That number does not name an open question. Re-read the open questions in your context and call this again with the right one, or ask the client which they meant.",
-            });
-          case "error":
-            return JSON.stringify({
-              status: "error",
-              message: "Could not route that answer. Tell the client honestly that it did not go through.",
-            });
-        }
-      } catch (err) {
-        answerLogger.error("Tool failed", {
-          toolName: "answer_pending_question",
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return JSON.stringify({
-          status: "error",
-          message: "Could not route that answer. Tell the client honestly that it did not go through.",
-        });
-      }
-    },
-    {
-      name: "answer_pending_question",
-      description:
-        "Route what the client just said to one of the open questions waiting on them for this signal, resuming the negotiation that was parked on it. Use it whenever their message answers one — even obliquely, even mixed with something else. This is the ONLY thing that resumes a parked negotiation; editing their signal does not.",
-      schema: AnswerPendingQuestionSchema,
-    },
-  );
-
-  return [answerPendingQuestion];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

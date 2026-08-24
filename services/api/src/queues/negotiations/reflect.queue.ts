@@ -25,7 +25,6 @@ import { NegotiationReflector, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/proto
 import type { NegotiationReflectJobData, ReflectEnqueueFn, ReflectionTranscriptEntry, DistilledMemory } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
-import { readNegotiationMessages } from '../../lib/negotiation/expected-speaker';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
 import { chatSessionService } from '../../services/chat.service';
@@ -180,20 +179,19 @@ export class NegotiationReflectQueue {
 
     const conversations: NonNullable<ReflectQueueDeps['conversations']> =
       this.deps?.conversations ?? conversationDatabaseAdapter;
-    // Reflect on THIS negotiation only. Distilling the pair's whole DM would
-    // attribute turns from other matches to this one's memories.
-    const messages = await readNegotiationMessages({
-      byNegotiation: (id) => conversations.getNegotiationMessages(id),
-      byConversation: (id) => conversations.getMessagesForConversation(id),
-    }, {
-      conversationId: data.conversationId,
-      metadata: { opportunityId: data.opportunityId },
-    });
+    // A negotiation is its own conversation now — no pair-shared thread to
+    // scope out of.
+    const messages = await conversations.getMessagesForConversation(data.conversationId);
 
-    // Extract turn data parts (same projection the graph uses).
+    // Extract turn data parts. #1494: the persisted shape is
+    // {verb, message, reasoning} for a continuing turn, or {verb:'pause',
+    // reason} for a pause (redacted — payload is never in the shared
+    // thread). This is dormant until step 2 rewires reflectEnqueue at this
+    // queue, but the shape must be current now, not the pre-rewrite
+    // {action, assessment} one.
     const turns = messages
-      .map((m) => {
-        const dataPart = (m.parts as Array<{ kind?: string; data?: { action?: string; message?: string; assessment?: { reasoning?: string } } }>)
+      .map((m: { senderId: string; parts: unknown[] }) => {
+        const dataPart = (m.parts as Array<{ kind?: string; data?: { verb?: string; message?: string; reasoning?: string; reason?: string } }>)
           .find((p) => p.kind === 'data');
         return dataPart?.data ? { senderId: m.senderId, turn: dataPart.data } : null;
       })
@@ -217,9 +215,9 @@ export class NegotiationReflectQueue {
         const transcript: ReflectionTranscriptEntry[] = turns.map((t, index) => ({
           index,
           speaker: t.senderId === `agent:${user.id}` ? 'client' as const : 'counterparty' as const,
-          action: t.turn.action ?? 'unknown',
+          action: t.turn.verb === 'pause' ? `pause:${t.turn.reason ?? 'unknown'}` : (t.turn.verb ?? 'unknown'),
           ...(t.turn.message && { message: t.turn.message }),
-          ...(t.turn.assessment?.reasoning && { reasoning: t.turn.assessment.reasoning }),
+          ...(t.turn.reasoning && { reasoning: t.turn.reasoning }),
         }));
 
         const entries = await this.getReflector().reflectNegotiation({

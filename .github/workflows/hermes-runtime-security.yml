@@ -73,10 +73,7 @@ jobs:
           bun test \
             ./src/internal/mcp/tests/mcp.authorization-policy.spec.ts \
             ./src/internal/mcp/tests/mcp.server.spec.ts \
-            ./src/internal/negotiations/tests/negotiation.hermes-contract.spec.ts \
-            ./src/internal/negotiations/tests/negotiation.turn-cap.spec.ts \
-            ./src/internal/negotiations/tests/negotiation.tools.spec.ts \
-            ./src/internal/negotiations/tests/negotiator-timeout.spec.ts
+            ./src/capabilities/tests/negotiations.e2e.spec.ts
           cd ../..
           bun --cwd=packages/protocol run build
           bun test apps/mac/api/task-5-acceptance.spec.ts
@@ -95,23 +92,7 @@ jobs:
             src/guards/tests/hermes-negotiator-audience.spec.ts \
             src/lib/agent/tests/hermes-negotiation-run.spec.ts \
             src/lib/negotiation/tests/expected-speaker.spec.ts \
-            src/lib/negotiation/tests/consultation.spec.ts \
-            src/lib/testing/tests/isolated-test-suite.spec.ts \
-            src/services/tests/negotiation-polling.fixture-contract.spec.ts
-
-      - name: Fresh-process pickup, respond, consult, and outbox coverage
-        env:
-          OPENAI_API_KEY: ""
-          OPENROUTER_API_KEY: ""
-          API_TEST_ISOLATED_CHILD: "1"
-        run: |
-          cd services/api
-          harness=./src/lib/testing/isolated-test-import-harness.spec.ts
-          API_TEST_ISOLATED_TARGET=src/controllers/tests/agent.controller.error-sanitization.isolated.ts bun test "$harness"
-          API_TEST_ISOLATED_TARGET=src/services/tests/negotiation-polling.pickup-authority.isolated.ts bun test "$harness"
-          API_TEST_ISOLATED_TARGET=src/services/tests/negotiation-polling.max-turns.isolated.ts bun test "$harness"
-          API_TEST_ISOLATED_TARGET=src/services/tests/negotiation-polling.respond-atomic.isolated.ts bun test "$harness"
-          API_TEST_ISOLATED_TARGET=src/services/tests/negotiation-polling.consult.isolated.ts bun test "$harness"
+            src/lib/testing/tests/isolated-test-suite.spec.ts
 
       - name: Hermetic server-observed heartbeat coverage
         env:

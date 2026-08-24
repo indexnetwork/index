@@ -46,15 +46,16 @@ describe('resolveGateDecision (IND-610)', () => {
     })).toBeNull();
   });
 
-  it('shows the card when the only turn is the client\'s own pre-contact consult', () => {
-    // The consult is a private ask_user turn, not contact — the page computes
+  it('shows the card when the only turn is the client\'s own pre-contact pause', () => {
+    // A needs_principal pause is private, not contact — the page computes
     // turnCount from contactTurns(), not the raw transcript length.
-    const askUserOnly: TranscriptTurn[] = [{
+    const needsPrincipalOnly: TranscriptTurn[] = [{
       id: 't1', sessionId: 's1', senderId: 'agent:own', createdAt: '2026-07-24T12:00:00.000Z',
-      action: 'ask_user', text: 'Does the location constraint bind?', suggestedRoles: null,
+      verb: 'pause', pauseReason: 'needs_principal', pausePayload: { question: 'Does the location constraint bind?' },
+      chipKey: 'needs_principal', text: 'Does the location constraint bind?', suggestedRoles: null,
     }];
     expect(resolveGateDecision({
-      turnCount: contactTurns(askUserOnly).length,
+      turnCount: contactTurns(needsPrincipalOnly).length,
       outcomeReason: 'screened_out',
       screenDecision,
     })).toBe(screenDecision);

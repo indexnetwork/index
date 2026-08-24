@@ -1483,23 +1483,22 @@ function buildNegotiationPromptBlock(context: NegotiationContext | undefined): s
   if (!context || context.status === 'negotiating') return "";
 
   const turnCapLabel = context.turnCap > 0 ? `${context.turnCap}` : "unlimited";
-  const reason = context.outcome?.reason;
-  const reasonLabel = reason === 'turn_cap'
-    ? "agents hit the turn cap without converging"
-    : reason === 'timeout'
-      ? "counterpart went silent before responding"
-      : undefined;
+  const reasonLabel = context.pause?.reason === 'counterparty_silent'
+    ? "counterpart went silent before responding"
+    : context.pause?.reason === 'needs_principal'
+      ? "the negotiator paused, waiting on its own principal"
+      : context.pause?.reason === 'ready_for_verdict'
+        ? "the negotiator paused, believing a decision is possible"
+        : context.pause?.reason === 'turn_cap'
+          ? "the negotiation reached its turn cap"
+          : undefined;
 
-  const turnLines = (context.turns ?? []).map((turn, index) => {
-    const action = turn.action;
-    const reasoning = turn.assessment?.reasoning ?? "(no reasoning)";
-    const message = turn.message ? ` — said: "${turn.message}"` : "";
-    return `Turn ${index + 1} (${action}): ${reasoning}${message}`;
+  const turnLines = context.turns.map((turn, index) => {
+    if (turn.verb === 'pause') {
+      return `Turn ${index + 1} (pause: ${turn.reason})`;
+    }
+    return `Turn ${index + 1} (${turn.verb}): ${turn.reasoning} — said: "${turn.message}"`;
   });
-
-  const outcomeSummary = context.outcome
-    ? `Final outcome: ${context.outcome.hasOpportunity ? "agreed" : "declined"} — ${context.outcome.reasoning}`
-    : "Final outcome: not recorded.";
 
   return `
 NEGOTIATION CONTEXT:
@@ -1507,7 +1506,6 @@ NEGOTIATION CONTEXT:
 - Turns exchanged: ${context.turnCount} of ${turnCapLabel}
 - Transcript:
 ${turnLines.length > 0 ? turnLines.map((l) => `  ${l}`).join("\n") : "  (no turns recorded)"}
-- ${outcomeSummary}
 `;
 }
 

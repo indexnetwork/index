@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
-import { Loader2, ChevronDown, Bot, Radio } from "lucide-react";
+import { Loader2, ChevronDown, Bot } from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
 import { useUsers } from "@/contexts/APIContext";
 import type { NegotiationSummary, NegotiationTurnSummary } from "@/services/users";
@@ -63,41 +63,11 @@ function TurnMessage({ turn, isLast }: { turn: NegotiationTurnSummary; isLast: b
   );
 }
 
-interface EmptyStateProps {
-  onTrigger: () => void;
-  isTriggering?: boolean;
-}
-
-/* Empty state with a trigger button — dashed border, monospace, dark button. */
-function NegotiationEmptyState({ onTrigger, isTriggering }: EmptyStateProps) {
-  return (
-    <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-      <div className="space-y-3">
-        <p>No negotiations yet</p>
-        <button
-          onClick={onTrigger}
-          disabled={isTriggering}
-          className="inline-flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-50"
-        >
-          {isTriggering ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Negotiating...</>
-          ) : (
-            <><Radio className="w-4 h-4" /> Peer Agents</>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-
 interface NegotiationHistoryProps {
   userId: string;
-  onTriggerNegotiation?: () => Promise<NegotiationSummary | void>;
-  isTriggering?: boolean;
 }
 
-export default function NegotiationHistory({ userId, onTriggerNegotiation, isTriggering }: NegotiationHistoryProps) {
+export default function NegotiationHistory({ userId }: NegotiationHistoryProps) {
   const usersService = useUsers();
   const [negotiations, setNegotiations] = useState<NegotiationSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -150,19 +120,9 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
       )}
 
       {!isLoading && negotiations.length === 0 && (
-        onTriggerNegotiation ? (
-          <NegotiationEmptyState
-            onTrigger={async () => {
-              const result = await onTriggerNegotiation();
-              if (result) setNegotiations((prev) => [result, ...prev]);
-            }}
-            isTriggering={isTriggering}
-          />
-        ) : (
-          <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-            <p>No negotiations yet</p>
-          </div>
-        )
+        <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
+          <p>No negotiations yet</p>
+        </div>
       )}
 
       {negotiations.map((neg) => {

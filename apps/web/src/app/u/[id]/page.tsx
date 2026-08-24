@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Loader2, MessageCircle } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -45,22 +45,8 @@ export default function UserProfilePage() {
   const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isTriggering, setIsTriggering] = useState(false);
 
   const isOtherUser = !!user?.id && user.id !== id;
-
-  const handleTriggerNegotiation = useCallback(async () => {
-    if (!id || !isOtherUser) return;
-    const targetId = id;
-    setIsTriggering(true);
-    try {
-      return await usersService.triggerDiscoveryNegotiation(targetId);
-    } catch (err) {
-      logger.error('Failed to trigger negotiation', { error: err });
-    } finally {
-      setIsTriggering(false);
-    }
-  }, [id, isOtherUser, usersService]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -203,11 +189,7 @@ export default function UserProfilePage() {
           {isAuthenticated && id && (
             <div>
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Negotiations</h3>
-              <NegotiationHistory
-                userId={id}
-                onTriggerNegotiation={isOtherUser ? handleTriggerNegotiation : undefined}
-                isTriggering={isTriggering}
-              />
+              <NegotiationHistory userId={id} />
             </div>
           )}
 

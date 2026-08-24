@@ -3,27 +3,32 @@
  * (docs/plans/2026-08-21-holistic-intent-agent.md).
  *
  * Judgment happened upstream (intent-agent.turn.ts); everything here is
- * effects, and every effect leaves a ledger row. The negotiation spine is
- * REUSED, never reimplemented: `answer_negotiation` drives the same
- * `resumeParkedNegotiation` → settle → claim → resume path the card answer
- * and the DM answer always used, through the production consumption ports.
+ * effects, and every effect leaves a ledger row.
+ *
+ * `answer_negotiation` is RETIRED, pending the AgentGraph step of the
+ * negotiation-graph rewrite (docs/plans/2026-08-23-personal-agent-and-
+ * negotiation-graphs.md). It used to drive `resumeParkedNegotiation` →
+ * settle → claim → resume; that whole per-answer resume spine (and the
+ * `needs_principal` pause payload it would resume from) no longer exists on
+ * the protocol side. The design's replacement — `needs_principal` payloads
+ * answered as ordinary DM messages judged by IS-A during reflect phase 1
+ * (ASK) — is not built yet. Until then the executor still records the
+ * answer as a dossier entry (never lost) and reports the honest state: not
+ * resumed, nothing acted on automatically.
  *
  * The disclosure boundary is enforced structurally in ONE place: the answer
- * executor writes the answer as a dossier entry (source 'answer') and feeds
- * the resume from that entry's text. Raw transcript never reaches the
- * negotiation table through code; the prompt carries the rule everywhere
- * structure would be too expensive.
+ * executor writes the answer as a dossier entry (source 'answer') before
+ * anything else. Raw transcript never reaches the negotiation table through
+ * code; the prompt carries the rule everywhere structure would be too
+ * expensive.
  */
-import { resumeParkedNegotiation } from '@indexnetwork/protocol';
-import type { NegotiationAnswerConsumptionPorts } from '@indexnetwork/protocol';
-
 import { chunkReplyText, publishIntentAgentReplyChunk } from './intent-agent-reply.stream';
 import type { NegotiatorVerdictResult } from '../agent/negotiator-verdict.host';
 import { assembleIntentAgentContext } from './intent-agent.context';
 import type { IntentAgentContextDeps, IntentAgentTurnContext } from './intent-agent.context';
 import { IntentAgentTurn } from './intent-agent.turn';
 import type { IntentAgentReply } from './intent-agent.turn';
-import type { IntentAgentDecidedAct, IntentAgentEvent, IntentAgentExecutedAct, IntentAgentInboxEvent, IntentAgentReplyFallbackReason, IntentAgentTurnResult, IntentAgentUserMessageEvent } from './intent-agent.types';
+import type { IntentAgentDecidedAct, IntentAgentEvent, IntentAgentExecutedAct, IntentAgentInboxEvent, IntentAgentReplyFallbackReason, IntentAgentTurnResult, IntentAgentUserMessageEvent, NegotiationAnswerOutcome } from './intent-agent.types';
 import { log } from '../log';
 
 const logger = log.lib.from('intent-agent.host');
@@ -80,7 +85,6 @@ export interface IntentAgentHostDeps {
   ledger?: {
     append(input: { userId: string; intentId: string; event: Record<string, unknown>; act: Record<string, unknown> }): Promise<string>;
   };
-  answerPorts?: NegotiationAnswerConsumptionPorts;
 }
 
 async function resolveChatSessions(deps?: IntentAgentHostDeps): Promise<IntentAgentChatSessions> {
@@ -93,11 +97,6 @@ async function resolveDossier(deps?: IntentAgentHostDeps): Promise<NonNullable<I
 
 async function resolveLedger(deps?: IntentAgentHostDeps): Promise<NonNullable<IntentAgentHostDeps['ledger']>> {
   return deps?.ledger ?? (await import('../../adapters/intent-agent-ledger.adapter')).intentAgentLedgerAdapter;
-}
-
-async function resolveAnswerPorts(deps?: IntentAgentHostDeps): Promise<NegotiationAnswerConsumptionPorts> {
-  return deps?.answerPorts
-    ?? (await import('../question/negotiation-answer.ports')).negotiationAnswerConsumptionPorts();
 }
 
 async function appendLedger(
@@ -116,9 +115,15 @@ async function appendLedger(
 
 /**
  * Execute one `answer_negotiation`: dossier entry first (the boundary), then
- * the existing spine, then the ledger row. Shared verbatim by the turn loop
- * and the tool lane (`answer_pending_question`, persona and MCP alike), so
- * there is exactly one place an answer can enter a negotiation from.
+ * the ledger row.
+ *
+ * RETIRED pending the AgentGraph step (see file header): there is no
+ * `needs_principal` per-answer resume spine to drive any more. The answer is
+ * still durably recorded as a dossier entry — nothing is lost — but nothing
+ * resumes automatically. This is the same honest shape the old
+ * `recorded_unresumable` outcome already gave callers, so the turn loop and
+ * the tool lane need no further change: they deliver the fixed "cannot pick
+ * up where it left off" copy either way.
  */
 export async function executeAnswerNegotiation(
   event: IntentAgentEvent,
@@ -133,13 +138,7 @@ export async function executeAnswerNegotiation(
     source: 'answer',
   });
 
-  const ports = await resolveAnswerPorts(deps);
-  const outcome = await resumeParkedNegotiation(ports, {
-    opportunityId: input.opportunityId,
-    userId: event.userId,
-    answerText: input.answer,
-  });
-
+  const outcome: NegotiationAnswerOutcome = 'recorded_unresumable';
   const act: Extract<IntentAgentExecutedAct, { tool: 'answer_negotiation' }> = {
     tool: 'answer_negotiation',
     opportunityId: input.opportunityId,
@@ -148,12 +147,13 @@ export async function executeAnswerNegotiation(
     outcome,
   };
   await appendLedger(event, act, deps);
-  logger.info('intent_agent_answered_negotiation', {
+  logger.info('intent_agent_answered_negotiation_stub', {
     userId: event.userId,
     intentId: event.intentId,
     opportunityId: input.opportunityId,
     outcome,
     event: event.kind,
+    note: 'answer_negotiation retired pending AgentGraph reflect phase 1 (ASK) — see negotiation-graph-rewrite',
   });
   return act;
 }

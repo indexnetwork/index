@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { authenticateApiKey } from '../../../services/api/src/guards/auth.guard';
-import { NegotiationPollingAuthorization } from '../../../services/api/src/lib/agent/negotiation-polling-authorization';
-import { assessExternalConsultationEligibility, buildExternalConsultationQuestionerPayload } from '../../../services/api/src/lib/negotiation/consultation';
 import { getRequestAuthContext } from '../../../services/api/src/lib/request-auth-context';
-import { AgentDispatcherImpl } from '../../../services/api/src/services/agent-dispatcher.service';
 import { AgentRuntimeService } from '../../../services/api/src/services/agent-runtime.service';
 import { AgentRuntimeTransactionHarness } from '../../../services/api/tests/support/agent-runtime-transaction.harness';
 import { runHermesSelectionSaga, selectIndexRuntime, disconnectHermesSaga } from './agent-runtime-saga.mjs';
@@ -14,11 +11,10 @@ const INSTALLATION = 'task-5-installation';
 const ATTEMPT = 'task-5-attempt';
 
 describe('Task 5 production-boundary acceptance', () => {
-  it('composes the real runtime service, auth, polling authorization, dispatcher, consultation policy, and Mac saga', async () => {
+  it('composes the real runtime service, auth, executor binding, and Mac saga', async () => {
     const persistence = new AgentRuntimeTransactionHarness();
     persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
     const runtime = new AgentRuntimeService(persistence);
-    const polling = new NegotiationPollingAuthorization(persistence);
     let transientKey = '';
     let transientCredentialId = '';
 
@@ -116,90 +112,13 @@ describe('Task 5 production-boundary acceptance', () => {
       audience: 'hermes-negotiator',
       setupAttemptId: ATTEMPT,
     });
-    expect(await polling.isAuthorized(executorId!, OWNER_ID)).toBe(true);
-
-    const timeoutJobs: Array<[string, number, number, string]> = [];
-    const dispatcher = new AgentDispatcherImpl(
-      {
-        findAuthorizedAgents: async () => {
-          if (!await polling.isAuthorized(executorId!, OWNER_ID)) return [];
-          const agent = await persistence.getAgentWithRelations(executorId!);
-          return agent ? [agent] : [];
-        },
-      },
-      {
-        enqueueTimeout: async (negotiationId: string, attempt: number, timeoutMs: number, parkGeneration: string) => {
-          timeoutJobs.push([negotiationId, attempt, timeoutMs, parkGeneration]);
-          return 'timeout-job';
-        },
-      } as ConstructorParameters<typeof AgentDispatcherImpl>[1],
-    );
-    const dispatch = await dispatcher.dispatch(
-      OWNER_ID,
-      { action: 'negotiation.respond', scopeType: 'network', scopeId: 'network-1' },
-      { negotiationId: 'negotiation-1', history: [] },
-      { timeoutMs: 5_000 },
-    );
-    expect(dispatch).toMatchObject({ reason: 'waiting', resumeToken: expect.any(String) });
-    expect(timeoutJobs).toEqual([[
-      'negotiation-1', 0, 5_000, (dispatch as { resumeToken: string }).resumeToken,
-    ]]);
-
-    const consultation = assessExternalConsultationEligibility({
-      task: {
-        id: 'task-1', state: 'claimed', claimedByAgentId: executorId!,
-        metadata: {
-          type: 'negotiation', protocolVersion: 'v2',
-          sourceUserId: 'counterparty', candidateUserId: OWNER_ID,
-          initiatorUserId: 'counterparty', opportunityId: 'opportunity-1',
-          networkId: 'network-1', maxTurns: 6,
-          participantBindings: [
-            { userId: 'counterparty', intentId: 'intent-counterparty', networkId: 'network-1' },
-            { userId: OWNER_ID, intentId: 'intent-owner', networkId: 'network-1' },
-          ],
-        },
-      },
-      messages: [
-        { senderId: `agent:${OWNER_ID}`, turn: { action: 'outreach' } },
-        {
-          senderId: 'agent:counterparty',
-          turn: { action: 'counter', assessment: { suggestedRoles: { ownUser: 'agent', otherUser: 'patient' } } },
-        },
-      ],
-      userId: OWNER_ID, agentId: executorId!, policyMode: 'on',
-      wiring: { askUserEnabled: true, questionerEnabled: true, expiryEnabled: true },
-    });
-    expect(consultation).toMatchObject({
-      eligible: true,
-      structuralEligible: true,
-      policy: { eligible: true, reason: 'consequential_disclosure_permission' },
-    });
-    const consultationPayload = buildExternalConsultationQuestionerPayload({
-      negotiationId: 'task-1',
-      userId: OWNER_ID,
-      coordinates: consultation.coordinates!,
-      reason: consultation.policy.reason!,
-    });
-    expect(consultationPayload.context).toEqual({
-      negotiationId: 'task-1',
-      counterpartyHint: 'the other participant',
-      indexContext: 'the selected network',
-      consultationPolicyReason: 'consequential_disclosure_permission',
-    });
-    expect(consultationPayload.context).not.toHaveProperty('disclosureSubject');
-    expect(consultationPayload.context).not.toHaveProperty('draftQuestion');
+    expect(await persistence.getNegotiationExecutorBinding(OWNER_ID)).not.toBeNull();
 
     await selectIndexRuntime({
       api, nativeRuntime, ownerId: OWNER_ID,
       installationId: INSTALLATION, localState: selected.localState,
     });
-    expect(await polling.isAuthorized(executorId!, OWNER_ID)).toBe(false);
-    expect((await dispatcher.dispatch(
-      OWNER_ID,
-      { action: 'negotiation.respond', scopeType: 'network', scopeId: 'network-1' },
-      { negotiationId: 'negotiation-2', history: [] },
-      { timeoutMs: 5_000 },
-    )).reason).toBe('no_agent');
+    expect(await persistence.getNegotiationExecutorBinding(OWNER_ID)).toBeNull();
 
     await disconnectHermesSaga({
       api, nativeRuntime, ownerId: OWNER_ID, installationId: INSTALLATION,

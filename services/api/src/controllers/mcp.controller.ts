@@ -17,7 +17,6 @@ import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
-import { enqueueParkedQuestion } from '../queues/parked-question.enqueue';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
@@ -30,19 +29,14 @@ import { NegotiationSummaryService } from '../services/negotiation-summary.servi
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
-import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
-import { reflectEnqueue } from '../queues/negotiations/reflect.queue';
-import { negotiatorMemoryRetrieve } from '../adapters/negotiator-memory.retrieval.adapter';
-import { negotiatorClientDmRetrieve } from '../adapters/negotiator-client-dm.retrieval.adapter';
+import { negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
 import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
-import { negotiatorAnswerToolsHost } from '../lib/question/negotiator-answer.host';
-import { negotiationListingParkHost } from '../lib/question/negotiation-listing-park.host';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createSignalPersona, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createSignalPersona, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -65,7 +59,7 @@ type McpToolDeps = ToolDeps & {
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
 const negotiationSummaryService = new NegotiationSummaryService();
-const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
+const agentDispatcher = new AgentDispatcherImpl(agentService);
 
 const apiBaseUrl = resolveProtocolBaseUrl();
 
@@ -82,6 +76,11 @@ const protocolDeps = {
   negotiationSummary: negotiationSummaryService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
+  // The one fully-wired composition (reflectEnqueue included) — chat/MCP
+  // tool.factory.ts must use this instead of building its own reflect-less
+  // instance, or the all-paused -> reflect trigger is silently lost on
+  // every negotiation opened through this surface.
+  negotiationGraph,
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
@@ -96,35 +95,20 @@ const protocolDeps = {
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
   // route; threaded into chat tools by the protocol chat factory.
   opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
-  negotiationTimeoutQueue,
   queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
     await negotiationRunExistingQueue.addJob({ opportunityId, userId });
   },
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
-  // Park-path payloads route to the question-message regeneration job
-  // (conversational-questions delivery spine); retired families are dropped.
-  questionerEnqueue: enqueueParkedQuestion,
   // P5.4 (IND-408): host bridge for the negotiator persona's remember/forget
   // memory tools. Injected only while memory writes are enabled — when the
   // flag is off the tools are simply not registered. Consumed exclusively by
   // createNegotiatorTools; the orchestrator registry never sees these tools.
-  // #1466, repointed by the intent-agent collapse: host bridge for the
-  // `answer_pending_question` tool (persona and MCP). Executes through the
-  // IntentAgent's single answer executor — dossier entry first, then the
-  // settle/claim/resume spine, ledgered. Registered only in intent-pinned
-  // negotiator sessions; the orchestrator registry never sees it.
-  negotiatorAnswerTools: negotiatorAnswerToolsHost,
   // #1471: host bridge for the negotiator persona's `reject_opportunity` /
   // `accept_opportunity` tools — the owner's VERDICT lane, which had no lever
   // in chat before. Registered only in intent-pinned negotiator sessions; the
   // orchestrator registry never sees it.
   negotiatorVerdictTools: negotiatorVerdictToolsHost,
-  // #1472: the open-question record behind `list_negotiations`' park
-  // annotations. The listing was the last surface deriving "what is happening"
-  // from a source other than the shared resolver, so the tool and the context
-  // could disagree — and the tool wins the model's trust every time.
-  negotiationListingPark: negotiationListingParkHost,
   ...(isNegotiatorMemoryWriteEnabled() && {
     negotiatorMemoryTools: {
       remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>
@@ -182,18 +166,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     protocolDeps.hydeCache,
     new LensInferrer(),
     new HydeGenerator(),
-  ).createGraph();
-  const negotiationGraph = new NegotiationGraphFactory(
-    protocolDeps.negotiationDatabase,
-    protocolDeps.agentDispatcher!,
-    protocolDeps.negotiationTimeoutQueue,
-    protocolDeps.questionerEnqueue,
-    // Finished negotiations enqueue memory distillation (P5.2).
-    reflectEnqueue(),
-    // P5.3 memory read path.
-    negotiatorMemoryRetrieve(),
-    // A2H client-DM read path.
-    negotiatorClientDmRetrieve(),
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
@@ -662,17 +634,11 @@ function createMcpServerInstance(): McpServer {
     cache: protocolDeps.cache,
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
+    negotiationGraph,
     agentDispatcher: protocolDeps.agentDispatcher,
-    negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
-    // #1472: same park annotations on the MCP surface — an external agent
-    // reading this listing must not be told "still negotiating" either.
-    negotiationListingPark: protocolDeps.negotiationListingPark,
-    // MCP question flow: the answer lane for parked negotiations (the same
-    // #1466 host, numbering, and consumption queue the chat lane uses) and the
-    // owner-verdict host behind reject/accept_opportunity (the same #1471
-    // Radar Skip/Start-Chat path). The tools register on the MCP surface only;
-    // the capability matrix confines verdicts to session-authenticated owners.
-    negotiatorAnswerTools: protocolDeps.negotiatorAnswerTools,
+    // #1471: owner-verdict host behind reject/accept_opportunity (the Radar
+    // Skip/Start-Chat path). Registered on the MCP surface only; the
+    // capability matrix confines verdicts to session-authenticated owners.
     negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
@@ -696,7 +662,6 @@ function createMcpServerInstance(): McpServer {
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
     intentProposalStore: protocolDeps.intentProposalStore,
-    ...(protocolDeps.questionerEnqueue && { questionerEnqueue: protocolDeps.questionerEnqueue }),
     graphs,
   };
 

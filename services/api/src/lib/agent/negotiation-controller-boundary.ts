@@ -1,69 +1,10 @@
-import { HERMES_NEGOTIATOR_AUDIENCE, type NegotiationCredentialPrincipal } from './hermes-credential';
-import { getRequestAuthContext } from '../request-auth-context';
-import { readHermesRunHeaders } from './hermes-negotiation-run';
-
-export type AgentPrincipalResolver = (request: Request) => Promise<string | null>;
-
-export type NegotiationPickupPort<Result> = {
-  pickup(
-    agentId: string,
-    ownerId: string,
-    principal: NegotiationCredentialPrincipal,
-    runId?: string,
-  ): Promise<Result | null>;
-};
-
-export type NegotiationPickupBoundaryResult<Result> =
-  | { kind: 'forbidden' }
-  | { kind: 'empty' }
-  | { kind: 'authorized'; value: Result };
-
-/**
- * Hermetic controller boundary for negotiation pickup.
- *
- * This seam deliberately has no agent-registry/heartbeat dependency: the only
- * health write belongs to the owner-locked production pickup transaction. A
- * service result can cross the controller boundary only for the exact
- * authenticated agent-bound principal recorded by the auth guard.
- */
-export async function pickupNegotiationAtControllerBoundary<Result>(input: {
-  request: Request;
-  agentId: string;
-  ownerId: string;
-  resolveAgentPrincipal: AgentPrincipalResolver;
-  negotiations: NegotiationPickupPort<Result>;
-}): Promise<NegotiationPickupBoundaryResult<Result>> {
-  if (await input.resolveAgentPrincipal(input.request) !== input.agentId) {
-    return { kind: 'forbidden' };
-  }
-
-  const context = getRequestAuthContext(input.request);
-  if (
-    context?.kind !== 'api_key'
-    || context.agentId !== input.agentId
-    || !context.credentialId
-  ) {
-    return { kind: 'forbidden' };
-  }
-
-  const principal: NegotiationCredentialPrincipal = {
-    credentialId: context.credentialId,
-    agentId: context.agentId,
-    audience: context.audience ?? null,
-    setupAttemptId: context.setupAttemptId ?? null,
-  };
-  const runHeaders = readHermesRunHeaders(input.request);
-  if (principal.audience === HERMES_NEGOTIATOR_AUDIENCE && !runHeaders) {
-    return { kind: 'forbidden' };
-  }
-  const result = await input.negotiations.pickup(
-    input.agentId,
-    input.ownerId,
-    principal,
-    runHeaders?.runId,
-  );
-  return result === null ? { kind: 'empty' } : { kind: 'authorized', value: result };
-}
+// The hermetic negotiation-pickup controller boundary
+// (`pickupNegotiationAtControllerBoundary`, `NegotiationPickupPort`,
+// `NegotiationPickupBoundaryResult`) was retired whole-cloth by the
+// negotiation-graph rewrite (#1494, docs/plans/2026-08-23-personal-agent-
+// and-negotiation-graphs.md): a negotiation can no longer be claimed under
+// the new working-only lifecycle, so the pickup route behind this seam is
+// deleted (agent.controller.ts).
 
 /** Preserve the historical test-message ordering: authorize, fetch, heartbeat. */
 export async function pickupTestMessageAtControllerBoundary<Result>(input: {

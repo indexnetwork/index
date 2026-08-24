@@ -85,7 +85,7 @@ export interface AdapterNegotiationQuestionProvenance extends AdapterNegotiation
   intentFingerprint: string;
   opportunityStatus: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   opportunityUpdatedAt: string;
-  taskState?: 'submitted' | 'working' | 'input_required' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed';
+  taskState?: 'submitted' | 'working' | 'input_required' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed' | 'paused';
   taskUpdatedAt?: string;
   questionOrdinal: number;
 }

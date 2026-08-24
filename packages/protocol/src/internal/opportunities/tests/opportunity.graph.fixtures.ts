@@ -40,7 +40,6 @@ export function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabas
     getOpportunity: async () => null,
     getOpportunitiesForUser: async () => [],
     updateOpportunityStatus: async () => null,
-    compensateTasklessNegotiatingOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
     updateOpportunityActorApproval: async () => null,
     isNetworkMember: async () => false,

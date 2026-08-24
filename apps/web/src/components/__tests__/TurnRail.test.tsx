@@ -10,20 +10,24 @@ vi.mock('@/components/UserAvatar', () => ({
 
 const NOW = new Date('2026-07-24T12:00:00.000Z').getTime();
 
-function turn(id: string, action: string | null, text: string, senderId = 'agent:me'): TranscriptTurn {
+function turn(id: string, chipKey: string | null, text: string, senderId = 'agent:me'): TranscriptTurn {
+  const isPause = chipKey === 'needs_principal' || chipKey === 'ready_for_verdict' || chipKey === 'counterparty_silent';
   return {
     id,
     sessionId: 'session-1',
     senderId,
     createdAt: '2026-07-24T11:00:00.000Z',
-    action,
+    verb: isPause ? 'pause' : chipKey,
+    pauseReason: isPause ? (chipKey as 'needs_principal' | 'ready_for_verdict' | 'counterparty_silent') : null,
+    pausePayload: null,
+    chipKey,
     text,
     suggestedRoles: null,
   };
 }
 
 const turns = [
-  turn('t-ask', 'ask_user', 'Their agent asked about your availability. What should I say?'),
+  turn('t-ask', 'needs_principal', 'Their agent asked about your availability. What should I say?'),
   turn('t-next', 'counter', 'We can offer an async collaboration.', 'agent:peer'),
 ];
 
@@ -51,23 +55,23 @@ describe('TurnRail missed-window decay (IND-559)', () => {
     expect(screen.queryByTestId('consultation-window-missed')).not.toBeInTheDocument();
   });
 
-  it('renders the quiet decay line right after the ask_user turn', () => {
+  it('renders the quiet decay line right after the needs_principal pause', () => {
     renderRail('t-ask');
     const line = screen.getByTestId('consultation-window-missed');
     expect(line).toHaveTextContent('Window missed — negotiation continued without an answer.');
 
-    // Anchored after the consultation turn, before the negotiation continues.
+    // Anchored after the pause turn, before the negotiation continues.
     const askText = screen.getByText(/Their agent asked about your availability/);
     const nextText = screen.getByText(/We can offer an async collaboration/);
     expect(askText.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(line.compareDocumentPosition(nextText) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("does not render the counterparty agent's private ask_user turn", () => {
+  it("does not render the counterparty agent's private needs_principal pause", () => {
     render(
       <TurnRail
         turns={[
-          turn('their-private-ask', 'ask_user', 'What should my client decide?', 'agent:peer'),
+          turn('their-private-ask', 'needs_principal', 'What should my client decide?', 'agent:peer'),
           turn('public-counter', 'counter', 'Here is the public counter.', 'agent:peer'),
         ]}
         ownAgentId="agent:me"

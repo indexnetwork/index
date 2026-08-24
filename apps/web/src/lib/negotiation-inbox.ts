@@ -1,6 +1,9 @@
 import type { ConversationSummary } from '@/services/conversation';
 import { deriveNegotiationPresentation, type NegotiationPresentationStatus } from '@/lib/negotiation-presentation';
 
+/** Mirrors NEGOTIATION_MAX_TURNS_AMBIENT — a fixed safety cap, not a per-negotiation field any more. */
+export const NEGOTIATION_MAX_TURNS = 6;
+
 export type NegotiationInboxGroup = 'your_move' | 'in_progress' | 'resolved';
 export type NegotiationInboxStatus = NegotiationPresentationStatus;
 
@@ -30,7 +33,9 @@ export interface NegotiationInboxGroups {
 }
 
 export interface LastTurnData {
-  action: string | null;
+  /** `outreach` | `counter` | `question` | `pause`. */
+  verb: string | null;
+  pauseReason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | null;
 }
 
 export function readLastTurn(parts: unknown[]): LastTurnData {
@@ -38,10 +43,12 @@ export function readLastTurn(parts: unknown[]): LastTurnData {
     if (typeof part !== 'object' || part === null || Array.isArray(part)) continue;
     const record = part as Record<string, unknown>;
     if (record.kind !== 'data' || typeof record.data !== 'object' || record.data === null || Array.isArray(record.data)) continue;
-    const action = (record.data as Record<string, unknown>).action;
-    return { action: typeof action === 'string' ? action : null };
+    const data = record.data as Record<string, unknown>;
+    const verb = typeof data.verb === 'string' ? data.verb : null;
+    const reason = verb === 'pause' && typeof data.reason === 'string' ? data.reason : null;
+    return { verb, pauseReason: reason as LastTurnData['pauseReason'] };
   }
-  return { action: null };
+  return { verb: null, pauseReason: null };
 }
 
 /**
@@ -50,7 +57,7 @@ export function readLastTurn(parts: unknown[]): LastTurnData {
  * classify a task when its projected task id proves the session relationship.
  */
 export function sessionScopedLastTurn(conversation: ConversationSummary, taskId: string | null | undefined): LastTurnData & { senderId: string | null } {
-  if (!taskId || conversation.lastMessage?.taskId !== taskId) return { action: null, senderId: null };
+  if (!taskId || conversation.lastMessage?.taskId !== taskId) return { verb: null, pauseReason: null, senderId: null };
   return { ...readLastTurn(conversation.lastMessage.parts), senderId: conversation.lastMessage.senderId };
 }
 
@@ -68,47 +75,42 @@ function formatTimeAgo(timestamp: number, now: number): string {
 }
 
 /**
- * The summary line of a live row. `action` is the represented session's own
- * last turn, or null when the conversation's last message belongs to another
- * session with the same person (a later pairing that died, say). A null turn
- * is then described from the row's state, so a dead session's "did not
- * recommend proceeding" can never caption a row whose badge says the viewer
- * is awaited.
+ * The summary line of a live row. `verb`/`pauseReason` describe the
+ * represented session's own last turn, or null when the conversation's last
+ * message belongs to another session with the same person (a later pairing
+ * that died, say). A null turn is then described from the row's state, so a
+ * dead session's "did not recommend proceeding" can never caption a row
+ * whose badge says the viewer is awaited.
  */
-function describeLive(status: NegotiationInboxStatus, action: string | null, isOwnAgent: boolean): string {
-  if (action === null && status === 'awaiting_review') return 'agents recommended moving forward';
-  return describeAction(action, isOwnAgent);
+function describeLive(status: NegotiationInboxStatus, lastTurn: LastTurnData, isOwnAgent: boolean): string {
+  if (lastTurn.verb === null && status === 'awaiting_review') return 'agents recommended moving forward';
+  return describeTurn(lastTurn, isOwnAgent);
 }
 
-function describeAction(action: string | null, isOwnAgent: boolean): string {
+function describeTurn(lastTurn: LastTurnData, isOwnAgent: boolean): string {
   const actor = isOwnAgent ? 'your agent' : 'their agent';
-  switch (action) {
-    case 'ask_user': return `${actor} asked for guidance`;
-    case 'propose': return `${actor} proposed a connection`;
+  if (lastTurn.verb === 'pause') {
+    switch (lastTurn.pauseReason) {
+      case 'needs_principal': return `${actor} asked for guidance`;
+      case 'ready_for_verdict': return `${actor} recommended a decision`;
+      case 'counterparty_silent': return 'waiting on the other side';
+      default: return 'agents exchanged a turn';
+    }
+  }
+  switch (lastTurn.verb) {
     case 'counter': return `${actor} countered`;
     case 'question': return `${actor} asked a question`;
-    case 'accept': return `${actor} recommended moving forward`;
-    case 'reject':
-    case 'decline': return `${actor} did not recommend proceeding`;
-    case 'withdraw': return `${actor} stepped back`;
     case 'outreach': return `${actor} opened the dialogue`;
     default: return 'agents exchanged a turn';
   }
 }
 
-function describeResolved(status: NegotiationInboxStatus, reason: string | null): string {
+function describeResolved(status: NegotiationInboxStatus): string {
   if (status === 'accepted_by_viewer') return 'you accepted the connection';
   if (status === 'connection_accepted') return 'the connection was accepted';
-  if (status === 'no_agreement') {
-    return reason === 'timeout'
-      ? 'the dialogue ended before the agents reached agreement'
-      : 'agents could not reach agreement within the turn limit';
-  }
+  if (status === 'no_agreement') return 'agents could not reach agreement';
   if (status === 'couldnt_complete') return 'the negotiation could not complete';
   if (status === 'expired') return 'the opportunity expired';
-  // `screened_out` = no contact was ever made. Written live by an opening-turn
-  // withdraw, and carried by rows the removed outreach gate stamped.
-  if (reason === 'screened_out') return 'agents did not find enough mutual value to continue';
   return 'agents did not recommend moving forward';
 }
 
@@ -119,7 +121,6 @@ function classifyConversation(conversation: ConversationSummary, viewerUserId: s
   const latestTurn = sessionScopedLastTurn(conversation, conversation.negotiation?.taskId);
   const presentation = deriveNegotiationPresentation({
     lifecycle: conversation.negotiation,
-    latestAction: latestTurn.action,
     latestSenderId: latestTurn.senderId,
     viewerUserId,
   });
@@ -212,7 +213,7 @@ export function deriveNegotiationInbox(
         timeAgo: formatTimeAgo(gateSafeTimestamp, now),
         sortTimestamp: gateSafeTimestamp,
         turnCount: 0,
-        maxTurns: conversation.negotiation?.maxTurns ?? 6,
+        maxTurns: NEGOTIATION_MAX_TURNS,
       }];
     }
 
@@ -229,7 +230,6 @@ export function deriveNegotiationInbox(
         ?? conversation.createdAt,
     ).getTime();
     const safeTimestamp = Number.isFinite(sortTimestamp) ? sortTimestamp : 0;
-    const reason = lifecycle?.outcome?.reason ?? null;
 
     return [{
       conversationId: conversation.id,
@@ -238,12 +238,12 @@ export function deriveNegotiationInbox(
       status: classification.status,
       signalCount: Math.max(lifecycle?.signalCount ?? 0, conversation.via.length),
       lastAction: classification.group === 'resolved'
-        ? describeResolved(classification.status, reason)
-        : describeLive(classification.status, lastTurn.action, lastTurn.senderId === ownAgentId),
+        ? describeResolved(classification.status)
+        : describeLive(classification.status, lastTurn, lastTurn.senderId === ownAgentId),
       timeAgo: formatTimeAgo(safeTimestamp, now),
       sortTimestamp: safeTimestamp,
       turnCount: lifecycle ? lifecycle.turnCount : null,
-      maxTurns: lifecycle?.maxTurns ?? 6,
+      maxTurns: NEGOTIATION_MAX_TURNS,
     }];
   });
 

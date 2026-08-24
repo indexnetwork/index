@@ -71,7 +71,6 @@ function buildFallbackOpportunity(
     title: fallbackSignalTitle(conversation),
     presentation: deriveNegotiationPresentation({
       lifecycle,
-      latestAction: lastTurn.action,
       latestSenderId: lastTurn.senderId,
       viewerUserId,
     }),
@@ -122,7 +121,6 @@ export function groupNegotiationOutline(
           title: opportunity.title,
           presentation: deriveNegotiationPresentation({
             lifecycle: opportunity,
-            latestAction: lastTurn.action,
             latestSenderId: lastTurn.senderId,
             viewerUserId,
           }),

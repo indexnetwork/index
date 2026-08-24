@@ -1,10 +1,9 @@
 import { Annotation } from "@langchain/langgraph";
-import type { Id, NegotiationContinuationExecution, NegotiationContinuationReceipt, OpportunityStatus, Opportunity } from '../../platform/database.js';
+import type { Id, OpportunityStatus, Opportunity } from '../../platform/database.js';
 import type { Lens } from '../../platform/discovery/embedder.js';
 import type { EvaluatorEntity } from './opportunity.evaluator.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
-import type { DiscoveryNegotiation, DiscoverySummary } from "../../protocol/schemas/discovery-question.schema.js";
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -121,8 +120,6 @@ export interface OpportunityPersistenceOutcome {
  * Options passed to the graph
  */
 export interface OpportunityGraphOptions {
-  /** Exact durable ask_user settlement being resumed; internal queue path only. */
-  negotiationContinuation?: NegotiationContinuationExecution;
   /** Initial status for created opportunities (default: 'pending') */
   initialStatus?: OpportunityStatus;
   /** Maximum opportunities to return (default: 20) */
@@ -135,15 +132,6 @@ export interface OpportunityGraphOptions {
   existingOpportunities?: string;
   /** Chat session ID for draft opportunities; stored as context.conversationId for visibility filtering. */
   conversationId?: string;
-  /**
-   * Cap the negotiate-phase wall-clock at this many milliseconds.
-   * When set, `negotiateNode` races `negotiateCandidates(...)` against a timer;
-   * if the timer wins, the node returns early with a `timed_out` trace and the
-   * unawaited negotiation chains finalize each opportunity's DB status in the
-   * background. Foreground callers omit this; background matching supplies it
-   * only where its bounded execution requires it.
-   */
-  negotiateTimeoutMs?: number;
 }
 
 /**
@@ -203,14 +191,12 @@ export const OpportunityGraphState = Annotation.Root({
    * - 'update': Change opportunity status (accept, reject, etc.)
    * - 'delete': Expire/archive an opportunity
    * - 'send': Promote latent opportunity to pending + queue notification
-   * - 'negotiate_existing': Load an existing opportunity by opportunityId and run bilateral negotiation.
-   *   Used after introducer approval to trigger the normal negotiation flow.
    * - 'approve_introduction': Mark the caller as having approved a latent introducer opportunity,
-   *   then enqueue a negotiate_existing job for that opportunity.
+   *   then kick off (or resume) that opportunity's negotiation directly.
    *
    * Defaults to 'create' for backward compatibility.
    */
-  operationMode: Annotation<'create' | 'create_introduction' | 'read' | 'update' | 'delete' | 'send' | 'negotiate_existing' | 'approve_introduction'>({
+  operationMode: Annotation<'create' | 'create_introduction' | 'read' | 'update' | 'delete' | 'send' | 'approve_introduction'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'create' as const,
   }),
@@ -382,12 +368,6 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /** Positive exact-successor receipt for a fenced continuation. */
-  negotiationContinuationReceipt: Annotation<NegotiationContinuationReceipt | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
   /** Error message if any step fails */
   error: Annotation<string | undefined>({
     reducer: (curr, next) => next,
@@ -445,20 +425,4 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /**
-   * Per-candidate negotiation records captured by `negotiateNode`. Populated
-   * regardless of accept/reject so the question generator sees a complete
-   * picture. Empty when the negotiate node was skipped (no opportunities to
-   * negotiate).
-   */
-  discoveryNegotiations: Annotation<DiscoveryNegotiation[]>({
-    reducer: (curr, next) => [...curr, ...(next || [])],
-    default: () => [],
-  }),
-
-  /** Aggregate counters across `discoveryNegotiations`. Built in the negotiate node. */
-  discoverySummary: Annotation<DiscoverySummary | null>({
-    reducer: (_curr, next) => next ?? null,
-    default: () => null,
-  }),
 });

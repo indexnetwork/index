@@ -18,14 +18,12 @@ import type { ChatMessageWriter } from "../../../platform/chat/ports.js";
 import type { NegotiationSummaryReader } from "../../../platform/negotiation/summary.js";
 import type { Embedder } from "../../../platform/discovery/embedder.js";
 import type { AgentDatabase } from "../../agents/agent.repository.port.js";
-import type { NegotiationTimeoutQueue } from "../../../platform/negotiation/events.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../../../platform/runtime/delivery-ledger.js";
 import type { NegotiatorMemoryToolsHost } from "../../../platform/negotiation/memory.js";
-import type { NegotiatorAnswerToolsHost } from "../../../platform/negotiation/answer.js";
 import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
-import type { NegotiationListingParkHost } from "../../../platform/negotiation/listing.js";
 import type { McpActivityCaller } from "./activity-projection.js";
+import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
 
 export type IdentityContext = UserIdentity | null;
 
@@ -168,14 +166,6 @@ interface ToolContextBindings {
    */
   negotiatorMemoryTools?: NegotiatorMemoryToolsHost;
   /**
-   * Host bridge for the negotiator persona's `answer_pending_question` tool —
-   * the long-tail lane of answer routing, for replies the deterministic
-   * precedence gate declined. Injected by the composition root; consumed
-   * exclusively by the negotiator persona's toolset, and only in an
-   * intent-scoped session (the question lives in one signal's DM).
-   */
-  negotiatorAnswerTools?: NegotiatorAnswerToolsHost;
-  /**
    * Host bridge for the negotiator persona's `reject_opportunity` /
    * `accept_opportunity` tools — the owner's VERDICT lane, which had no lever
    * in chat at all before #1471. Injected by the composition root; consumed
@@ -183,27 +173,18 @@ interface ToolContextBindings {
    * intent-scoped session (the counterparties are one signal's).
    */
   negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
-  /**
-   * Host bridge for the park annotations `list_negotiations` renders (#1472).
-   * Resolves a signal's open questions out of the same record the prompt's
-   * open-questions section is built from, so the listing and the context
-   * cannot disagree about whether a negotiation is waiting on the client.
-   * Absent → the listing still says whether a pairing is parked and on whose
-   * side, but cannot name the question's number.
-   */
-  negotiationListingPark?: NegotiationListingParkHost;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
   /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;
+  /** The compiled negotiation graph — every negotiation write goes through it. */
+  negotiationGraph?: NegotiationGraphLike;
   /** Factory for user-scoped database access. */
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
   /** Optional runtime LLM config. Pass to override env vars for API key, model, etc. */
   modelConfig?: ModelConfig;
-  /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
-  negotiationTimeoutQueue?: NegotiationTimeoutQueue;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
   agentDatabase?: AgentDatabase;
   /** Grants the default system-agent permissions after onboarding (optional). */
@@ -445,21 +426,8 @@ interface ToolDepsBindings {
   enricher: ProfileEnricher;
   /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;
-  /**
-   * Host bridge for the park annotations `list_negotiations` renders (#1472).
-   * Resolves a signal's open questions out of the same record the persona's
-   * open-questions context section is built from, so the listing and the
-   * context cannot disagree about whether a negotiation is waiting on the
-   * client. Absent → the listing still says whether a pairing is parked and on
-   * whose side, it just cannot name the question's number.
-   */
-  negotiationListingPark?: NegotiationListingParkHost;
-  /**
-   * Host bridge behind the MCP-surface `answer_pending_question` tool — the
-   * same host, numbering, and consumption path the negotiator persona's chat
-   * tool uses (#1466). Consumed only by the MCP tool registry surface.
-   */
-  negotiatorAnswerTools?: NegotiatorAnswerToolsHost;
+  /** The compiled negotiation graph — every negotiation write goes through it. */
+  negotiationGraph?: NegotiationGraphLike;
   /**
    * Host bridge behind the MCP-surface `reject_opportunity` /
    * `accept_opportunity` owner-verdict tools (#1471, one surface over).
@@ -483,8 +451,6 @@ interface ToolDepsBindings {
   chatMessageWriter?: ChatMessageWriter;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
-  /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
-  negotiationTimeoutQueue?: NegotiationTimeoutQueue;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
   agentDatabase?: AgentDatabase;
   /** Grants the default system-agent permissions after onboarding (optional). */

@@ -217,22 +217,6 @@ export interface DatabaseOpportunityQueries {
   ): Promise<Opportunity | null>;
 
   /**
-   * Atomically restores a taskless negotiation attempt to its pre-negotiation status.
-   * Serializes with exact-attempt task creation, then transitions only the exact
-   * still-current `negotiating` version when no qualifying negotiation task exists.
-   *
-   * @param id - Opportunity ID
-   * @param expectedUpdatedAt - Persistence boundary for this negotiation attempt
-   * @param fallbackStatus - Status restored when the guarded transition succeeds
-   * @returns The compensated opportunity, or null on a status, version, or task race
-   */
-  compensateTasklessNegotiatingOpportunity(
-    id: string,
-    expectedUpdatedAt: Date,
-    fallbackStatus: 'latent' | 'draft',
-  ): Promise<Opportunity | null>;
-
-  /**
    * Stamp `actedAt` on the actor matching `actorUserId` and update the
    * opportunity's status atomically (row-lock + JSONB merge in one txn).
    *

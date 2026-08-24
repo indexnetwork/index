@@ -348,8 +348,8 @@ NEVER dump raw JSON or expose IDs (except actionable ones like conversationId). 
 # Authentication & Opportunity Lifecycle
 API key in \`x-api-key\` header. Opportunities: draft → pending → accepted/rejected. Agent acceptance ≠ owner approval. Only call update_opportunity with accepted after explicit user confirmation.
 
-# Parked Negotiations & Answers
-A negotiation can PARK waiting on a person's answer while its opportunity still reads \`negotiating\` — opportunity status never answers "is anything waiting on the user?". list_negotiations/get_negotiation annotate a parked negotiation with \`park\` (\`waitingOn: "you" | "counterparty"\`, plus the open question's number and label for the user's own side). When \`park.waitingOn\` is "you": relay the question, and route the user's answer with answer_pending_question using the shown question number — the ONLY thing that resumes a parked negotiation. A park on the counterparty's side names no question content.
+# Paused Negotiations
+A negotiation can PAUSE while its opportunity still reads \`negotiating\` — opportunity status never answers "is anything waiting on the user?". list_negotiations/get_negotiation annotate a paused negotiation with \`pause\` (\`reason\`, plus the private question/recommendation \`payload\` when this user's own side is the one paused). There is no separate answer tool: resuming means submitting the next turn via respond_to_negotiation, same as any other turn.
 
 # Tool Guidance
 Read each tool's description for usage rules (when, prerequisites, follow-ups). Tools contain workflow patterns.

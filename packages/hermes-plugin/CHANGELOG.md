@@ -10,6 +10,40 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ### Removed
 - Remove the retired `read_pending_questions` MCP wrapper from the standalone
   Hermes surface, matching Protocol 22.0.0.
+- Remove `negotiation_wake.py` (the conversation-SSE listener that
+  auto-started one Hermes turn per negotiation id, forever). External-agent
+  negotiation dispatch is offline (protocol #1494 round-3, Option A): there
+  is no server-side signal left to wake on, and the listener's own
+  one-start-per-id-per-process design meant a negotiation could get exactly
+  one Hermes turn before getting stuck paused. `index_respond_negotiation`
+  is submitted on explicit instruction only now.
+
+## [0.25.0] - 2026-08-23
+
+### Breaking
+- **Negotiation-graph rewrite (protocol #1494).** `index_pickup_negotiation`
+  and `index_consult_owner` are removed outright — a negotiation is never
+  claimed into a distinct state any more (it just stays `working` until it
+  pauses or resolves), so there is nothing left to poll for or consult
+  about. `index_respond_negotiation` is the only negotiation tool left; its
+  shape changes to `{ agentId, negotiationId, action }` — no `roleAlignment`.
+  `action` is a new closed six-value vocabulary (`outreach`, `counter`,
+  `question`, `ask_principal`, `recommend_pending`, `recommend_reject`)
+  replacing the old `accept`/`decline`/`request_time`/`continue` set; there
+  is no accept, decline, or withdraw any more — a negotiator that wants out
+  submits `recommend_reject` and lets the owner's own agent act on it.
+- The conversation-SSE wake listener no longer polls a pickup heartbeat on
+  keepalive or piggybacks a tick off the desktop inbox list — there is no
+  server-side "poll for anything pending" endpoint left. It only starts a
+  Hermes turn for a negotiation id it actually observes on an SSE message
+  event; there is no periodic catch-up behind it any more (a known,
+  accepted gap — see `negotiation_wake.py`'s docstring).
+- **Known gap, not fixable from this package alone:** the negotiation
+  `/respond` route still requires a server-issued run-bound capability
+  header for the dedicated Hermes credential audience, and pickup was the
+  only thing that ever issued one. `index_respond_negotiation` calls will
+  be rejected with 401 end to end until services/api adds a replacement
+  issuance path.
 
 ## [0.24.0] - 2026-08-17
 ### Added

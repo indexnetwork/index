@@ -1,7 +1,6 @@
 import type { AgentPermissionRow, AgentRow, AgentWithRelations } from '../../src/adapters/agent.database.adapter';
 import type { ApiKeyAuthenticationCredential, ApiKeyAuthenticationStore, AuthenticatedUser } from '../../src/guards/auth.guard';
 import { API_KEY_START_LENGTH, generateApiKey, hashApiKey } from '../../src/lib/apikey/credential';
-import type { NegotiationPollingAuthorizationStore } from '../../src/lib/agent/negotiation-polling-authorization';
 import type { AgentRuntimeStore } from '../../src/services/agent-runtime.service';
 import { HERMES_NEGOTIATOR_AUDIENCE, HERMES_NEGOTIATOR_CREDENTIAL_KIND, HERMES_NEGOTIATOR_CREDENTIAL_TTL_MS, type NegotiationCredentialPrincipal } from '../../src/lib/agent/hermes-credential';
 
@@ -25,8 +24,7 @@ interface HarnessState {
  */
 export class AgentRuntimeTransactionHarness implements
   AgentRuntimeStore,
-  ApiKeyAuthenticationStore,
-  NegotiationPollingAuthorizationStore {
+  ApiKeyAuthenticationStore {
   private state: HarnessState = {
     users: new Map(),
     agents: new Map(),

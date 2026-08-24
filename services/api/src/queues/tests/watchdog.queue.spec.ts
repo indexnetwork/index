@@ -32,20 +32,20 @@ function makeDeps(task: ReturnType<typeof makeTask> | null = makeTask()) {
   const database = {
     getStaleNegotiationTasks: mock(async () => stale),
     getTask: mock(async () => task),
-    transitionNegotiationTaskForWatchdog: mock(async () => task),
+    recordNegotiationWatchdogAttempt: mock(async () => task),
   };
   const opportunities = {
     getOpportunity: mock(async () => ({ id: 'opportunity-1', status: 'negotiating' })),
   };
-  const enqueueRunExisting = mock(async () => undefined);
-  return { database, opportunities, enqueueRunExisting };
+  const negotiationGraph = { invoke: mock(async () => ({ negotiationId: task?.id ?? '', status: 'paused' as const, turns: [] })) };
+  return { database, opportunities, negotiationGraph };
 }
 
 beforeEach(() => {
 });
 
 describe('NegotiationWatchdogQueue', () => {
-  it('re-enqueues stale submitted tasks after a guarded cancellation and increments attempts', async () => {
+  it('pauses stale submitted tasks straight through the negotiation graph', async () => {
     const deps = makeDeps();
     const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
 
@@ -56,19 +56,37 @@ describe('NegotiationWatchdogQueue', () => {
       workingOlderThanMs: WORKING_STALE_AFTER_MS,
       limit: 25,
     });
-    expect(deps.database.transitionNegotiationTaskForWatchdog).toHaveBeenCalledWith(expect.objectContaining({
-      taskId: 'task-1',
-      expectedState: 'submitted',
-      nextState: 'canceled',
-      metadata: expect.objectContaining({ watchdogAttempts: 1 }),
-    }));
-    expect(deps.enqueueRunExisting).toHaveBeenCalledWith({
-      opportunityId: 'opportunity-1',
-      userId: 'user-1',
+    expect(deps.negotiationGraph.invoke).toHaveBeenCalledWith({
+      negotiationId: 'task-1',
+      pause: 'counterparty_silent',
     });
   });
 
-  it('re-enqueues stale working tasks using the working-state threshold', async () => {
+  it('records the attempt before invoking, so a discarded error status still counts toward the retry budget', async () => {
+    const deps = makeDeps();
+    deps.negotiationGraph.invoke.mockResolvedValue({ negotiationId: 'task-1', status: 'error', turns: [], error: 'boom' } as never);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.database.recordNegotiationWatchdogAttempt).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      expectedUpdatedAt: expect.any(Date),
+      attempts: 1,
+    });
+  });
+
+  it('does not invoke the graph when the attempt record loses a race', async () => {
+    const deps = makeDeps();
+    deps.database.recordNegotiationWatchdogAttempt.mockResolvedValue(null as never);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
+  });
+
+  it('pauses stale working tasks using the working-state threshold', async () => {
     const task = makeTask({
       state: 'working',
       createdAt: new Date(now.getTime() - WORKING_STALE_AFTER_MS - 1),
@@ -79,11 +97,7 @@ describe('NegotiationWatchdogQueue', () => {
 
     await queue.sweep();
 
-    expect(deps.database.transitionNegotiationTaskForWatchdog).toHaveBeenCalledWith(expect.objectContaining({
-      expectedState: 'working',
-      nextState: 'canceled',
-    }));
-    expect(deps.enqueueRunExisting).toHaveBeenCalledTimes(1);
+    expect(deps.negotiationGraph.invoke).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing when the task changed state after the stale-list read', async () => {
@@ -93,8 +107,7 @@ describe('NegotiationWatchdogQueue', () => {
 
     await queue.sweep();
 
-    expect(deps.database.transitionNegotiationTaskForWatchdog).not.toHaveBeenCalled();
-    expect(deps.enqueueRunExisting).not.toHaveBeenCalled();
+    expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
   });
 
   it('skips tasks whose opportunity is no longer negotiating', async () => {
@@ -104,11 +117,10 @@ describe('NegotiationWatchdogQueue', () => {
 
     await queue.sweep();
 
-    expect(deps.database.transitionNegotiationTaskForWatchdog).not.toHaveBeenCalled();
-    expect(deps.enqueueRunExisting).not.toHaveBeenCalled();
+    expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
   });
 
-  it('terminal-marks tasks that exhausted the watchdog retry budget without enqueueing', async () => {
+  it('a task that exhausted the watchdog retry budget is paused through the graph, not marked with an out-of-union state', async () => {
     const task = makeTask({ metadata: {
       type: 'negotiation',
       opportunityId: 'opportunity-1',
@@ -120,15 +132,13 @@ describe('NegotiationWatchdogQueue', () => {
 
     await queue.sweep();
 
-    expect(deps.database.transitionNegotiationTaskForWatchdog).toHaveBeenCalledWith(expect.objectContaining({
-      nextState: 'failed',
-      metadata: expect.objectContaining({ watchdogTerminalReason: 'watchdog_attempts_exhausted' }),
-      statusMessage: { reason: 'negotiation_watchdog_terminal', detail: 'watchdog_attempts_exhausted' },
-    }));
-    expect(deps.enqueueRunExisting).not.toHaveBeenCalled();
+    // The exhausted-budget path never records another attempt — it pauses
+    // through the same system-pause input the routine path uses.
+    expect(deps.database.recordNegotiationWatchdogAttempt).not.toHaveBeenCalled();
+    expect(deps.negotiationGraph.invoke).toHaveBeenCalledWith({ negotiationId: task.id, pause: 'counterparty_silent' });
   });
 
-  it('terminal-marks legacy negotiation tasks with no opportunity ID', async () => {
+  it('a legacy negotiation task with no opportunity ID is paused through the graph, not marked with an out-of-union state', async () => {
     const task = makeTask({ metadata: { type: 'negotiation', sourceUserId: 'user-1' } });
     const deps = makeDeps(task);
     const queue = new NegotiationWatchdogQueue(deps);
@@ -136,11 +146,7 @@ describe('NegotiationWatchdogQueue', () => {
     await queue.sweep();
 
     expect(deps.opportunities.getOpportunity).not.toHaveBeenCalled();
-    expect(deps.database.transitionNegotiationTaskForWatchdog).toHaveBeenCalledWith(expect.objectContaining({
-      nextState: 'failed',
-      metadata: expect.objectContaining({ watchdogTerminalReason: 'missing_opportunity_id' }),
-    }));
-    expect(deps.enqueueRunExisting).not.toHaveBeenCalled();
+    expect(deps.negotiationGraph.invoke).toHaveBeenCalledWith({ negotiationId: task.id, pause: 'counterparty_silent' });
   });
 
   it('makes no mutations for a healthy sweep', async () => {
@@ -150,8 +156,7 @@ describe('NegotiationWatchdogQueue', () => {
     await queue.sweep();
 
     expect(deps.database.getTask).not.toHaveBeenCalled();
-    expect(deps.database.transitionNegotiationTaskForWatchdog).not.toHaveBeenCalled();
-    expect(deps.enqueueRunExisting).not.toHaveBeenCalled();
+    expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
   });
 
   it('flag on registers the five-minute scheduler and worker', async () => {

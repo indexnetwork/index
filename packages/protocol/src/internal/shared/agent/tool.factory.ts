@@ -144,13 +144,13 @@ export async function createChatTools(
     lensInferrer,
     hydeGenerator
   ).createGraph();
-  const negotiationGraph = deps.agentDispatcher
-    ? new NegotiationGraphFactory(
-        deps.negotiationDatabase,
-        deps.agentDispatcher,
-        deps.negotiationTimeoutQueue,
-      ).createGraph()
-    : undefined;
+  // Prefer the host's one fully-wired composition (reflectEnqueue included —
+  // the all-paused trigger is lost for good otherwise, since BullMQ's jobId
+  // dedup means that moment doesn't come again) over building a second,
+  // reflect-less instance here.
+  const negotiationGraph = deps.negotiationGraph ?? new NegotiationGraphFactory({
+    database: deps.negotiationDatabase,
+  }).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database,
     embedder,
@@ -189,9 +189,7 @@ export async function createChatTools(
     cache,
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
-    negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
-    // #1472: the open-question record behind the listing's park annotations.
-    ...(deps.negotiationListingPark && { negotiationListingPark: deps.negotiationListingPark }),
+    ...(negotiationGraph && { negotiationGraph }),
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     agentDispatcher: deps.agentDispatcher,
@@ -227,8 +225,8 @@ export async function createChatTools(
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);
   const agentTools = createAgentTools(defineTool, toolDeps);
-  const negotiationTools = deps.agentDispatcher
-    ? createNegotiationTools(defineTool, toolDeps)
+  const negotiationTools = negotiationGraph
+    ? createNegotiationTools(defineTool, { negotiationDatabase: deps.negotiationDatabase, negotiationGraph })
     : [];
   const premiseTools = createPremiseTools(defineTool, toolDeps);
 

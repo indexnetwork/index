@@ -61,6 +61,7 @@ export class ChatDatabaseAdapter {
 
   // Negotiation context methods — required by RadarGraphDatabase
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
+  async bumpIntentNegotiationRound(intentId: string) { return _convDb().bumpIntentNegotiationRound(intentId); }
   async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
   async getNegotiationMessages(opportunityId: string) { return _convDb().getNegotiationMessages(opportunityId); }
@@ -2609,26 +2610,6 @@ export class ChatDatabaseAdapter {
     return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy, outbox);
   }
 
-  /**
-   * Delegates exact-version, active-task-aware compensation for a taskless
-   * `negotiating` opportunity to OpportunityDatabaseAdapter.
-   *
-   * @param id - Opportunity ID
-   * @param expectedUpdatedAt - Persistence boundary for the negotiation attempt
-   * @param fallbackStatus - Status restored when the guarded update succeeds
-   * @returns The compensated opportunity, or null on a status, version, or task race
-   */
-  async compensateTasklessNegotiatingOpportunity(
-    id: string,
-    expectedUpdatedAt: Date,
-    fallbackStatus: 'latent' | 'draft',
-  ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.compensateTasklessNegotiatingOpportunity(
-      id,
-      expectedUpdatedAt,
-      fallbackStatus,
-    );
-  }
 
   /**
    * Delegates network-eligible status compare-and-set reactivation.

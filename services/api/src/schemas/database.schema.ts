@@ -678,6 +678,12 @@ export const intents = pgTable('intents', {
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   /**
+   * Bumped by NegotiationGraph at every fresh kickoff of a round of
+   * negotiations for this intent. The reflect trigger's key, alongside the
+   * negotiation task's `round` metadata (design doc 2026-08-23).
+   */
+  negotiationRound: integer('negotiation_round').notNull().default(0),
+  /**
    * When the intent's first background discovery run completed successfully
    * (any path: web from-intent queue or async MCP discovery-run). Null until
    * then. Read-side "warming" derivation clears as soon as this is stamped,

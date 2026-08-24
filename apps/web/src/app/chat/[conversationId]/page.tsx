@@ -18,7 +18,6 @@ import { contactTurns, deriveSectionLabel, extractTurn, formatRelativeTime, grou
 // `agent_error` joins the stall reasons rather than the reject ones: a run
 // that stopped on repeated agent failures decided nothing, so it must never
 // be presented as a filtered-out match.
-const STALL_REASONS = new Set(['turn_cap', 'timeout', 'agent_error']);
 
 /* eslint-disable react-hooks/preserve-manual-memoization --
    The React Compiler cannot preserve this page's manual memoization (it
@@ -102,7 +101,7 @@ export default function NegotiationDetailPage() {
   const opportunityId = lifecycle?.opportunityId ?? null;
   const localStatus = opportunityId ? opportunityStatusMap[opportunityId] : undefined;
   const effectiveOpportunityStatus = localStatus ?? lifecycle?.opportunityStatus ?? null;
-  const outcomeReason = lifecycle?.outcome?.reason ?? null;
+  const pauseReason = lifecycle?.pause?.reason ?? null;
 
   // IND-566: Per-task turn count — turns in the latest session only, not cumulative
   // across all prior tasks in this dm_pair. lifecycle.turnCount folds in priorTurnCount
@@ -113,19 +112,19 @@ export default function NegotiationDetailPage() {
   );
   const latestTaskTurnCount = latestSessionTurns.length > 0 ? latestSessionTurns.length : null;
 
-  // Resolved-state banner derivation, mirroring lib/negotiation-inbox classification.
+  // Resolved-state banner derivation, mirroring lib/negotiation-presentation
+  // classification. A negotiation only ends via a verdict write (opportunity
+  // status pending/rejected) — there is no more turn-level accept/decline/
+  // withdraw, and `counterparty_silent`/`timeout` is a pause, not an outcome.
   const resolvedVariant = useMemo<ResolvedBannerVariant | null>(() => {
     if (!lifecycle) return null;
     if (effectiveOpportunityStatus === 'rejected') return 'rejected';
     if (effectiveOpportunityStatus === 'stalled' || effectiveOpportunityStatus === 'expired') return 'stalled';
     if (effectiveOpportunityStatus === 'pending' || effectiveOpportunityStatus === 'accepted') return null;
-    if (lifecycle.outcome?.hasOpportunity === false) {
-      return STALL_REASONS.has(outcomeReason ?? '') ? 'stalled' : 'rejected';
-    }
-    if (['failed', 'canceled', 'auth_required'].includes(lifecycle.state)) return 'stalled';
-    if (lifecycle.state === 'rejected') return 'rejected';
+    if (pauseReason === 'counterparty_silent') return 'stalled';
+    if (lifecycle.state === 'completed') return 'stalled';
     return null;
-  }, [lifecycle, effectiveOpportunityStatus, outcomeReason]);
+  }, [lifecycle, effectiveOpportunityStatus, pauseReason]);
 
   const showOutcomeBanner = !resolvedVariant && effectiveOpportunityStatus === 'pending' && !!opportunityId;
 
@@ -161,12 +160,18 @@ export default function NegotiationDetailPage() {
   const gateDecision = useMemo(
     () => resolveGateDecision({
       turnCount: contactedTurns.length,
-      outcomeReason,
+      // `screened_out` was only ever produced by the removed outreach gate
+      // and the opening-turn withdraw, both gone with the negotiation-graph
+      // rewrite (a negotiation always opens with a real outreach turn now).
+      // There is no live field left to source this from, so the IND-610 card
+      // is now unreachable even for rows still carrying an old
+      // `screenDecision` — state this as a known break, not a silent bug.
+      outcomeReason: null,
       // Screen decisions are intentionally only projected for the latest task
       // and its owner; an explicitly selected opportunity cannot inherit one.
       screenDecision: selectedOpportunity ? null : conversation?.negotiation?.screenDecision ?? null,
     }),
-    [contactedTurns.length, outcomeReason, selectedOpportunity, conversation?.negotiation?.screenDecision],
+    [contactedTurns.length, selectedOpportunity, conversation?.negotiation?.screenDecision],
   );
 
   return (
@@ -300,9 +305,9 @@ export default function NegotiationDetailPage() {
                     {isLatest && resolvedVariant && (
                       <ResolvedBanner
                         variant={resolvedVariant}
-                        reason={outcomeReason}
+                        reason={pauseReason}
                         turnCount={latestTaskTurnCount}
-                        maxTurns={lifecycle?.maxTurns ?? null}
+                        maxTurns={null}
                         contactMade={contactMade}
                         terminalAuthor={terminalAuthor}
                         onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}
@@ -338,9 +343,9 @@ export default function NegotiationDetailPage() {
                 {resolvedVariant && !gateDecision && (
                   <ResolvedBanner
                     variant={resolvedVariant}
-                    reason={outcomeReason}
+                    reason={pauseReason}
                     turnCount={latestTaskTurnCount}
-                    maxTurns={lifecycle?.maxTurns ?? null}
+                    maxTurns={null}
                     contactMade={contactMade}
                     terminalAuthor={terminalAuthor}
                     onLetGo={resolvedVariant === 'stalled' ? () => navigate('/negotiations') : undefined}

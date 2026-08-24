@@ -20,7 +20,7 @@ interface TurnItemProps {
 }
 
 function TurnItem({ turn, isLast, seatLabel, avatar, avatarName, roleChip, now }: TurnItemProps) {
-  const verb = verbFor(turn.action);
+  const verb = verbFor(turn.chipKey);
 
   return (
     <div className="relative flex gap-3 py-3">
@@ -64,7 +64,7 @@ interface TurnRailProps {
   now: number;
   /**
    * Turn id after which the missed-window decay line renders (IND-559): the
-   * ask_user consultation lapsed and the negotiation continued unanswered.
+   * needs_principal pause lapsed and the negotiation continued unanswered.
    */
   missedWindowTurnId?: string | null;
 }
@@ -74,11 +74,12 @@ interface TurnRailProps {
  * verb + role chips + reasoning per turn. No DM bubbles, no own/other alignment.
  */
 export function TurnRail({ turns, ownAgentId, participantInfo, counterpartName, now, missedWindowTurnId }: TurnRailProps) {
-  // ask_user is a private, local pause for the sending agent's own principal.
-  // It shares the durable negotiation record for resume bookkeeping, so apply
-  // the viewer boundary before rendering that record as a transcript.
+  // needs_principal is a private, local pause for the sending agent's own
+  // principal. It shares the durable negotiation record for resume
+  // bookkeeping, so apply the viewer boundary before rendering that record
+  // as a transcript.
   const visibleTurns = turns.filter(
-    (turn) => turn.action !== 'ask_user' || turn.senderId === ownAgentId,
+    (turn) => turn.pauseReason !== 'needs_principal' || turn.senderId === ownAgentId,
   );
 
   return (

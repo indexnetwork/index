@@ -657,35 +657,23 @@ function makeNegotiatingContext(turnCount: number, turnCap: number): Negotiation
 
 function makeCompletedContext(
   status: NegotiationContext["status"],
-  opts: { hasOpportunity: boolean; reason?: "turn_cap" | "timeout"; turnCount?: number } = { hasOpportunity: true },
+  opts: { pauseReason?: "counterparty_silent" | "needs_principal" | "ready_for_verdict"; turnCount?: number } = {},
 ): NegotiationContext {
   return {
     status,
     conversationId: "conversation-test",
     turnCount: opts.turnCount ?? 2,
     turnCap: 6,
-    outcome: {
-      hasOpportunity: opts.hasOpportunity,
-      agreedRoles: [{ userId: "u1", role: "peer" }],
-      reasoning: "Agents converged on a shared goal.",
-      turnCount: opts.turnCount ?? 2,
-      ...(opts.reason ? { reason: opts.reason } : {}),
-    },
+    ...(opts.pauseReason ? { pause: { reason: opts.pauseReason } } : {}),
     turns: [
       {
-        action: "propose",
-        assessment: {
-          reasoning: "Start the conversation with the React opening.",
-          suggestedRoles: { ownUser: "peer", otherUser: "peer" },
-        },
+        verb: "outreach",
+        reasoning: "Start the conversation with the React opening.",
         message: "Opening pitch",
       },
       {
-        action: opts.hasOpportunity ? "accept" : "counter",
-        assessment: {
-          reasoning: "Accept because roles align on design systems.",
-          suggestedRoles: { ownUser: "peer", otherUser: "peer" },
-        },
+        verb: "counter",
+        reasoning: "Push back because roles align on design systems.",
         message: "Closing note",
       },
     ],
@@ -760,7 +748,7 @@ describe("OpportunityPresenter – negotiation branch", () => {
     await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "pending",
-      negotiationContext: makeCompletedContext("pending", { hasOpportunity: true }),
+      negotiationContext: makeCompletedContext("pending"),
     });
 
     const human = getLastHumanContent();
@@ -768,37 +756,16 @@ describe("OpportunityPresenter – negotiation branch", () => {
     expect(human!).toContain("NEGOTIATION CONTEXT:");
     expect(human!).toContain("Negotiation status: pending");
     expect(human!).toContain("Turns exchanged: 2 of 6");
-    expect(human!).toContain("Turn 1 (propose):");
-    expect(human!).toContain("Final outcome: agreed");
+    expect(human!).toContain("Turn 1 (outreach):");
   });
 
-  it("includes `agents hit the turn cap` phrasing for stalled/turn_cap", async () => {
+  it("includes `counterpart went silent` phrasing for a counterparty_silent pause", async () => {
     const { presenter, getLastHumanContent } = capturingPresenter();
 
     await presenter.presentCard({
       ...BASE_INPUT,
       opportunityStatus: "stalled",
-      negotiationContext: makeCompletedContext("stalled", {
-        hasOpportunity: false,
-        reason: "turn_cap",
-        turnCount: 6,
-      }),
-    });
-
-    const human = getLastHumanContent();
-    expect(human!).toContain("agents hit the turn cap without converging");
-  });
-
-  it("includes `counterpart went silent` phrasing for stalled/timeout", async () => {
-    const { presenter, getLastHumanContent } = capturingPresenter();
-
-    await presenter.presentCard({
-      ...BASE_INPUT,
-      opportunityStatus: "stalled",
-      negotiationContext: makeCompletedContext("stalled", {
-        hasOpportunity: false,
-        reason: "timeout",
-      }),
+      negotiationContext: makeCompletedContext("stalled", { pauseReason: "counterparty_silent", turnCount: 6 }),
     });
 
     const human = getLastHumanContent();
@@ -815,31 +782,5 @@ describe("OpportunityPresenter – negotiation branch", () => {
 
     const human = getLastHumanContent();
     expect(human!).not.toContain("NEGOTIATION CONTEXT:");
-  });
-
-  it("flags outcome `declined` for `rejected`", async () => {
-    const { presenter, getLastHumanContent } = capturingPresenter();
-
-    await presenter.presentCard({
-      ...BASE_INPUT,
-      opportunityStatus: "rejected",
-      negotiationContext: makeCompletedContext("rejected", { hasOpportunity: false }),
-    });
-
-    const human = getLastHumanContent();
-    expect(human!).toContain("Final outcome: declined");
-  });
-
-  it("includes `agreed` outcome for `accepted`", async () => {
-    const { presenter, getLastHumanContent } = capturingPresenter();
-
-    await presenter.presentCard({
-      ...BASE_INPUT,
-      opportunityStatus: "accepted",
-      negotiationContext: makeCompletedContext("accepted", { hasOpportunity: true }),
-    });
-
-    const human = getLastHumanContent();
-    expect(human!).toContain("Final outcome: agreed");
   });
 });

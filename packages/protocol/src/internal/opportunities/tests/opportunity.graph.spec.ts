@@ -9,7 +9,7 @@ config({ path: '.env.test', override: true });
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import type { Runnable } from '@langchain/core/runnables';
-import { OpportunityGraphFactory, type OpportunityEvaluatorLike, type OpportunityGraphThresholdOverrides, buildDiscovererContext, buildPrioritizedNegotiationIntents } from '../opportunity.graph.js';
+import { OpportunityGraphFactory, type OpportunityEvaluatorLike, type OpportunityGraphThresholdOverrides, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
@@ -29,36 +29,6 @@ type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
-describe('buildPrioritizedNegotiationIntents', () => {
-  test('carries only the exact opportunity-bound intent — never an unrelated fallback', () => {
-    const intents = buildPrioritizedNegotiationIntents(
-      [
-        { id: 'other-1', summary: 'Other 1', payload: 'one' },
-        { id: 'other-2', summary: 'Other 2', payload: 'two' },
-        { id: 'exact-intent', summary: 'Exact active', payload: 'exact active payload' },
-      ],
-      'exact-intent',
-      null,
-    );
-    expect(intents.map((intent) => intent.id)).toEqual(['exact-intent']);
-  });
-
-  test('falls back to the owned exact intent when it is not among the active ones', () => {
-    expect(buildPrioritizedNegotiationIntents(
-      [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
-      'exact-intent',
-      { id: 'exact-intent', summary: 'Exact fallback', payload: 'exact fallback payload' },
-    ).map((intent) => intent.id)).toEqual(['exact-intent']);
-  });
-
-  test('provides nothing at all when there is no exact binding', () => {
-    expect(buildPrioritizedNegotiationIntents(
-      [{ id: 'other-1', summary: 'Other 1', payload: 'one' }],
-      undefined,
-      null,
-    )).toEqual([]);
-  });
-});
 
 const defaultMockEvaluatorResult: EvaluatedOpportunityWithActors[] = [
   {
@@ -2515,9 +2485,8 @@ describe('Opportunity Graph', () => {
       expect(negotiationInvocations).toHaveLength(0);
     });
 
-    test('fresh negotiation isolates both sides to their exact opportunity-bound intent', async () => {
+    test('fresh negotiation kicks off with the opportunity id and the discoverer\'s bound intent', async () => {
       const negotiationInvocations: unknown[] = [];
-      const exactIntentLookups: string[] = [];
 
       const mockNegotiationGraph = {
         invoke: async (input: unknown) => {
@@ -2624,21 +2593,6 @@ describe('Opportunity Graph', () => {
           }),
       };
 
-      mockDb.getIntent = (intentId) => {
-        exactIntentLookups.push(intentId);
-        return Promise.resolve({
-          id: intentId as Id<'intents'>,
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          payload: 'Candidate exact intent',
-          summary: 'Candidate exact',
-          isIncognito: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          archivedAt: null,
-          status: 'ACTIVE',
-        });
-      };
-
       const evaluator = createMockEvaluator([{
         reasoning: 'Candidate intent should be loaded exactly.',
         score: 90,
@@ -2673,194 +2627,10 @@ describe('Opportunity Graph', () => {
       });
 
       expect(negotiationInvocations.length).toBeGreaterThan(0);
-      expect(exactIntentLookups.length).toBeGreaterThan(0);
-      expect(new Set(exactIntentLookups)).toEqual(new Set(['intent-bob']));
-      const invocation = negotiationInvocations[0] as {
-        sourceUser: { intents: Array<{ id: string }> };
-        candidateUser: { intents: Array<{ id: string }> };
-      };
-      expect(invocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-1']);
-      expect(invocation.candidateUser.intents.map((intent) => intent.id)).toEqual(['intent-bob']);
-    });
-  });
-
-  // ─── negotiate_existing mode tests ───────────────────────────────────────────
-
-  describe('negotiate_existing mode', () => {
-    test('normalizes both actor intent fields before exact negotiation reads', async () => {
-      const negotiationInvocations: unknown[] = [];
-      const notifiedUserIds: string[] = [];
-      const exactIntentLookups: string[] = [];
-
-      // Mock negotiation graph that records invocations and returns acceptance
-      const mockNegotiationGraph = {
-        invoke: async (input: unknown) => {
-          negotiationInvocations.push(input);
-          return {
-            outcome: {
-              hasOpportunity: true,
-              agreedRoles: [{ userId: 'patient-user', role: 'patient' as const }, { userId: 'agent-user', role: 'agent' as const }],
-              reasoning: 'Great match.',
-              turnCount: 2,
-            },
-          };
-        },
-      };
-
-      const existingOpportunity = {
-        id: 'opp-existing',
-        detection: { source: 'manual' as const, createdBy: 'introducer-user' as Id<'users'> },
-        actors: [
-          {
-            userId: 'patient-user' as Id<'users'>,
-            role: 'patient' as const,
-            networkId: 'idx-1' as Id<'networks'>,
-            intentId: ' NULL ' as Id<'intents'>,
-            intent: 'intent-patient' as Id<'intents'>,
-            approved: undefined,
-          },
-          {
-            userId: 'agent-user' as Id<'users'>,
-            role: 'agent' as const,
-            networkId: 'idx-1' as Id<'networks'>,
-            intentId: ' undefined ' as Id<'intents'>,
-            intent: 'intent-agent' as Id<'intents'>,
-            approved: undefined,
-          },
-          {
-            userId: 'introducer-user' as Id<'users'>,
-            role: 'introducer' as const,
-            networkId: 'idx-1' as Id<'networks'>,
-            intentId: undefined,
-            approved: true,
-          },
-        ],
-        interpretation: { reasoning: 'Great match.' },
-        context: null,
-        confidence: 0.9,
-        status: 'latent' as const,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-
-      const mockDb: OpportunityGraphDatabase = {
-        ...createOpportunityGraphDatabaseFixture(),
-        getProfile: () => Promise.resolve(null),
-        createOpportunity: (data) =>
-          Promise.resolve({
-            id: 'opp-1',
-            detection: data.detection,
-            actors: data.actors,
-            interpretation: data.interpretation,
-            context: data.context,
-            confidence: data.confidence,
-            status: data.status ?? 'pending',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            expiresAt: null,
-          }),
-        opportunityExistsBetweenActors: () => Promise.resolve(false),
-        findOpportunitiesByActors: () => Promise.resolve([]),
-        getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
-        getNetworkMemberships: () => Promise.resolve([{
-          networkId: 'idx-1',
-          networkTitle: 'Test Index',
-          indexPrompt: null,
-          permissions: ['member'],
-          memberPrompt: null,
-          autoAssign: true,
-          isPersonal: false,
-          joinedAt: new Date(),
-        }]),
-        getActiveIntents: (userId: string) => Promise.resolve(
-          Array.from({ length: 6 }, (_, index) => ({
-            id: `other-${userId}-${index}` as Id<'intents'>,
-            payload: `Other intent ${index} for ${userId}`,
-            summary: `Other ${index}`,
-            createdAt: new Date(),
-          })),
-        ),
-        getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
-        getNetworkMemberCount: () => Promise.resolve(2),
-        getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-        getUser: (userId: string) => Promise.resolve({ id: userId, name: `User ${userId}`, email: `${userId}@example.com`, socials: [] }),
-        isNetworkMember: () => Promise.resolve(true),
-        isIndexOwner: () => Promise.resolve(false),
-        getOpportunity: (id: string) => id === 'opp-existing'
-          ? Promise.resolve(existingOpportunity as unknown as Opportunity)
-          : Promise.resolve(null),
-        getOpportunitiesForUser: () => Promise.resolve([]),
-        updateOpportunityStatus: () => Promise.resolve(null),
-        updateOpportunityActorApproval: () => Promise.resolve(null),
-        getIntent: (intentId: string) => {
-          exactIntentLookups.push(intentId);
-          return Promise.resolve({
-          id: intentId as Id<'intents'>,
-          userId: intentId === 'intent-patient' ? 'patient-user' : 'agent-user',
-          payload: `Exact payload for ${intentId}`,
-          summary: `Exact ${intentId}`,
-          isIncognito: false,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          archivedAt: null,
-          status: 'ACTIVE' as const,
-          });
-        },
-        getIntentIndexScores: async () => [],
-        getNetworkMemberContext: async () => null,
-        getNegotiationTaskForOpportunity: async () => null,
-        stampOpportunityActorAction: async () => null,
-        getPremisesForUser: async () => [],
-        searchPremisesBySimilarity: async () => [],
-      };
-
-      const mockEmbedder: Embedder = {
-        generate: () => Promise.resolve(dummyEmbedding),
-        search: () => Promise.resolve([]),
-        searchWithHydeEmbeddings: () => Promise.resolve([]),
-      } as unknown as Embedder;
-
-      const mockHydeGenerator = {
-        invoke: () => Promise.resolve({ hydeEmbeddings: { mirror: dummyEmbedding } }),
-      };
-
-      const evaluator = createMockEvaluator();
-      const queueNotification = async (oppId: string, userId: string) => {
-        notifiedUserIds.push(userId);
-      };
-
-      const factory = new OpportunityGraphFactory(
-        mockDb,
-        mockEmbedder,
-        mockHydeGenerator,
-        evaluator,
-        queueNotification,
-        mockNegotiationGraph,
-        undefined, // agentDispatcher
-        async () => undefined, // queueNegotiateExisting
-      );
-      await factory.negotiateExisting({
-        userId: 'patient-user' as Id<'users'>,
-        opportunityId: 'opp-existing',
-      });
-
-      // Negotiation should have been invoked with each opportunity actor's exact
-      // intent and nothing else, even though it required fallback loading
-      // outside the active list.
-      expect(negotiationInvocations.length).toBeGreaterThan(0);
-      const invocation = negotiationInvocations[0] as {
-        sourceUser: { intents: Array<{ id: string }> };
-        candidateUser: { intents: Array<{ id: string }> };
-      };
-      expect(invocation.sourceUser.intents.map((intent) => intent.id)).toEqual(['intent-patient']);
-      expect(invocation.candidateUser.intents.map((intent) => intent.id)).toEqual(['intent-agent']);
-      expect(exactIntentLookups).toEqual(['intent-patient', 'intent-agent']);
-
-      // Notifications should be sent to non-introducer actors only
-      expect(notifiedUserIds).toContain('patient-user');
-      expect(notifiedUserIds).toContain('agent-user');
-      expect(notifiedUserIds).not.toContain('introducer-user');
+      const invocation = negotiationInvocations[0] as { opportunityId: string; intentId: string; brief: string };
+      expect(invocation.opportunityId).toBe('opp-approved');
+      expect(invocation.intentId).toBe('intent-1');
+      expect(typeof invocation.brief).toBe('string');
     });
   });
 

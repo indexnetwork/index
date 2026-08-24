@@ -42,16 +42,20 @@ describe('intent-agent wiring', () => {
     expect(service).not.toContain('getNegotiatorGraphFactory');
     expect(service).not.toContain('createNegotiatorPersona');
     const mcp = read('src/controllers/mcp.controller.ts');
-    expect(mcp).toContain('negotiatorAnswerTools');
+    // #1494: the negotiator's chat-side answer-routing tools died with
+    // consult/park-settlement — needs_principal is a pause turn now, not a
+    // question the persona answers out of band. negotiatorVerdictTools (the
+    // owner's accept/reject lever) is untouched.
+    expect(mcp).not.toContain('negotiatorAnswerTools');
     expect(mcp).toContain('negotiatorVerdictTools');
   });
 
-  it('every park wakes the agent through the one enqueue seam, with no reachability fence', () => {
-    const enqueue = read('src/queues/parked-question.enqueue.ts');
-    expect(enqueue).toContain('routeParkedQuestionEnqueue');
-    expect(enqueue).toContain('addNeedsInputEvent');
-    expect(enqueue).not.toContain('PrincipalUnreachable');
-    expect(enqueue).not.toContain('addRegenerateJob');
+  it('#1494: the park-payload enqueue seam is retired, not repointed — a pause is a persisted turn, not a separate wake event', () => {
+    // NegotiationGraph's apply node never calls an injected questioner-enqueue
+    // callback; the routing layer that used to carry one has nothing left to
+    // route. Waking the principal from a pause is IS-A's reflect phase
+    // (step 2 of the personal-agent-and-negotiation-graphs plan), not this.
+    expect(() => read('src/queues/parked-question.enqueue.ts')).toThrow();
   });
 
   it('the inbox worker starts with the other queue workers and closes with them', () => {

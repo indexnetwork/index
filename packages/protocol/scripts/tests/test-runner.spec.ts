@@ -149,7 +149,7 @@ test("discovers specs recursively and classifies live-model files", () => {
   try {
     for (const directory of ["chat/tests", "capabilities/tests", "nested/deeper"]) mkdirSync(join(root, directory), { recursive: true });
     for (const file of [
-      "capabilities/tests/negotiations.spec.ts",
+      "capabilities/tests/intents.spec.ts",
       "chat/tests/chat.logic.spec.ts",
       "nested/deeper/helper.test.ts",
       "nested/deeper/not-a-spec.ts",
@@ -161,7 +161,7 @@ test("discovers specs recursively and classifies live-model files", () => {
       join(root, "chat/tests/chat.logic.spec.ts"),
       join(root, "nested/deeper/helper.test.ts"),
     ]);
-    expect(discovered.liveFiles).toEqual([join(root, "capabilities/tests/negotiations.spec.ts")]);
+    expect(discovered.liveFiles).toEqual([join(root, "capabilities/tests/intents.spec.ts")]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
