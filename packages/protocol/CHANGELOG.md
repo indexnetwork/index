@@ -24,6 +24,9 @@ pin a supported release, use `latest`.
 
 ### Breaking
 
+- **`NegotiationGraph` refuses to open an opportunity whose introducers have
+  not all approved it.** The gate now lives on the write, not only where
+  discovery decides which signals to wake, so no caller can reach past it.
 - **New negotiation pause reason `open_failed`.** `NEGOTIATION_PAUSE_REASONS`
   gains it, and `{ negotiationId, pause }` now accepts
   `NegotiationSystemPauseReason` (`'counterparty_silent' | 'open_failed'`)

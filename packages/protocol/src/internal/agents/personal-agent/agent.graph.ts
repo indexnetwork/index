@@ -25,7 +25,6 @@
 import { END, StateGraph, Annotation } from "@langchain/langgraph";
 
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { maybeEnqueueRoundReflect } from "../../negotiations/negotiation.round-reflect.js";
 import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 import { PersonalAgentModel } from "./agent.judgment.js";
@@ -141,34 +140,34 @@ async function assembleContext(
     ? input.round
     : (await deps.negotiationDatabase.getIntentNegotiationRound(intentId)).round;
 
+  // Only ONE read here degrades, and only because a display name is not what
+  // any of these turns is about. Every other read IS the subject of the turn:
+  // a matches_ready that cannot see its matches, or an all_paused that cannot
+  // see its paused negotiations, must FAIL and be retried — swallowed, it
+  // becomes a successful turn that saw nothing, decided nothing, and (for
+  // reflect) permanently consumed its once-per-round job id.
   const [agentName, intent, allMatches, paused, dossier, recentActs] = await Promise.all([
-    // Identity, read beside the rest of the turn's state. A missing row is
-    // never fatal: this loop negotiates unattended and must not throw a turn
-    // away over a display name.
     deps.identity.readAgentName(userId).catch(() => null),
-    deps.negotiationDatabase.getIntent(intentId).catch(() => null),
-    deps.opportunities.readMatches(userId, intentId).catch(() => [] as PersonalAgentMatch[]),
-    loadPaused(deps, userId, intentId, round).catch(() => [] as PersonalAgentPausedNegotiation[]),
+    deps.negotiationDatabase.getIntent(intentId),
+    deps.opportunities.readMatches(userId, intentId),
+    loadPaused(deps, userId, intentId, round),
     deps.dossier.readActiveEntries(userId, intentId),
     deps.ledger.readRecent(userId, intentId, MAX_LEDGER_ACTS),
   ]);
 
-  // The DM may not exist yet (a background event can fire before the
-  // principal ever opened this signal's conversation). The transcript read
-  // degrades to empty; the executor resolves-or-creates the session only when
-  // the agent actually speaks.
-  const recentDm = await (async () => {
-    try {
-      const sessionId = input.event === "user_message"
-        ? input.sessionId
-        : (await deps.conversation.findSession(userId, intentId))?.id;
-      if (!sessionId) return [];
-      const messages = await deps.conversation.getMessages(sessionId);
-      return messages.slice(-MAX_DM_MESSAGES).map((message) => ({ role: message.role, content: message.content }));
-    } catch {
-      return [];
-    }
-  })();
+  // The DM may legitimately not exist yet — a background event can fire before
+  // the principal ever opened this signal's conversation — and THAT reads as
+  // an empty transcript. A read that fails does not: the conversation is the
+  // agent's memory, and a turn that silently forgot everything would answer
+  // from nothing.
+  const sessionId = input.event === "user_message"
+    ? input.sessionId
+    : (await deps.conversation.findSession(userId, intentId))?.id;
+  const recentDm = sessionId
+    ? (await deps.conversation.getMessages(sessionId))
+      .slice(-MAX_DM_MESSAGES)
+      .map((message) => ({ role: message.role, content: message.content }))
+    : [];
 
   // Bounded, keeping the newest: the agent's numbers are context-relative and
   // its validator resolves them to ids, so truncation renumbers nothing.
@@ -267,17 +266,17 @@ async function say(
  * Strategy into the DM first (the principal sees and can correct the plan),
  * then ONE BRIEF PER MATCH IN PARALLEL, then every match opened together.
  * A round is opened by the bump — which stamps `kickoffStartedAt` in the same
- * write — and SETTLED by the size stamp once the opens are done. Until it
- * settles, the all-paused check is a no-op, so an early pause cannot dedupe
- * away the round's genuine reflect. Kickoff runs the final check itself.
+ * write — and SETTLED once its opens are done: the all-paused check runs and
+ * then the size is stamped. Until it settles, a pause-driven check is a
+ * no-op, so an early pause cannot dedupe away the round's genuine reflect.
  *
- * Retry-safe. A turn runs on a queue that retries it whole, and the durable
- * effects here — a strategy message, a round bump, N opened negotiations —
- * must never happen twice. A begun-but-unsettled round (`kickoffStartedAt`
- * set, `roundSize` still null) is the one signature of a kickoff that died
- * mid-round, so a retry SETTLES that round instead of starting another. An
- * intent that has never kicked off — every intent that predates this
- * mechanism included — has no marker at all and takes the normal path.
+ * A kickoff that died mid-round leaves a begun-but-unsettled round
+ * (`kickoffStartedAt` set, `roundSize` still null). This turn REPAIRS that
+ * round first — stamps it so it is no longer stranded — and then does its own
+ * work. The repair claims nothing: it opened no negotiation, so it pushes no
+ * act, and a principal who asked for a kickoff during an interrupted round
+ * still gets one. An intent that has never kicked off, every intent predating
+ * this mechanism included, has no marker at all and skips the repair.
  */
 async function runKickoff(
   deps: PersonalAgentDeps,
@@ -287,19 +286,19 @@ async function runKickoff(
 ): Promise<void> {
   const judgment = deps.judgment ?? defaultJudgment();
 
-  // ── settle an interrupted kickoff ──────────────────────────────────────
   const lifecycle = await deps.negotiationDatabase.getIntentNegotiationRound(context.intentId);
   if (lifecycle.kickoffStartedAt && lifecycle.roundSize === null) {
-    logger.warn("Settling a kickoff that did not finish its round", { intentId: context.intentId, round: lifecycle.round });
-    // Falls through to a normal kickoff when that round never got a single
-    // negotiation — the bump below clears the stale marker, and stranding the
-    // signal on an empty round would be worse than one extra round number.
-    if (await settleRound(deps, context, accumulator, lifecycle.round, reasoning, [])) return;
+    logger.warn("Repairing a kickoff that did not finish its round", { intentId: context.intentId, round: lifecycle.round });
+    await settleRound(deps, context, lifecycle.round);
   }
 
   // Re-read: verdicts executed earlier this turn already moved statuses, and
   // a promoted or rejected match must not be re-opened.
   const candidates = (await deps.opportunities.readMatches(context.userId, context.intentId))
+    // An introduction nobody has vouched for is not ours to open. The graph
+    // refuses it at the write too; this only keeps a brief from being spent
+    // on something that would be refused.
+    .filter((match) => !match.awaitingIntroducerApproval)
     .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
   const eligibility = await Promise.all(candidates.map(async (match) => ({
     match,
@@ -333,68 +332,89 @@ async function runKickoff(
     return result;
   }));
 
-  // A failed open may still have left a live negotiation behind — `init`
-  // creates (or re-rounds) the task before a turn is ever authored. Left
-  // `working`, it holds the round's active count above zero forever and the
-  // reflect never fires. Compensate it through the graph's own sink, with the
-  // honest reason: the open failed, and unlike a spent budget it can be
-  // re-kicked later.
   await Promise.all(opens.map(async (open, index) => {
-    if (open.status === "fulfilled") return;
-    logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, round, error: open.reason });
-    const match = matches[index]!;
-    const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId).catch(() => null);
-    if (!task || task.state !== "working" || task.metadata.round !== round) return;
-    await deps.negotiations.invoke({ negotiationId: task.id, pause: "open_failed" }).catch((err: unknown) => {
-      logger.error("Failed to compensate a stranded negotiation", { negotiationId: task.id, error: err });
-    });
+    if (open.status === "rejected") await compensateFailedOpen(deps, context, matches[index]!, round, open.reason);
   }));
 
-  if (!await settleRound(deps, context, accumulator, round, reasoning, matches)) {
-    // Not one negotiation exists for this round. Nothing to wait for, so
-    // nothing to reflect on, and the round stays unsettled on purpose: a
-    // settled empty round is instantly "all paused", so reflect would fire and
-    // ACT would kick off again, forever.
-    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened: 0, reasoning });
+  const opened = await settleRound(deps, context, round);
+  await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
+  if (opened > 0) await wakeForNewMatches(deps, context, matches);
+}
+
+/**
+ * A failed open may still have left a live negotiation behind — `init`
+ * creates (or re-rounds) the task before a turn is ever authored. Left
+ * `working`, it holds the round's active count above zero forever and the
+ * round never reflects. Pause it through the graph's own sink, with the
+ * reason that is actually true:
+ *
+ * - nothing was ever said → `open_failed`. The next speaker is our own
+ *   initiating seat, so the pause is recorded against us, which is right: we
+ *   are the ones who failed to open it.
+ * - the thread already has turns → `counterparty_silent`, the same reason the
+ *   stale-negotiation watchdog would give this exact shape hours later. The
+ *   negotiation really did stop mid-flight with someone owing a turn; calling
+ *   that `open_failed` would tell the principal nothing had been said when
+ *   outreach is sitting in the thread, and would blame the seat that owes the
+ *   next turn for a failure that was not theirs.
+ */
+async function compensateFailedOpen(
+  deps: PersonalAgentDeps,
+  context: PersonalAgentTurnContext,
+  match: PersonalAgentMatch,
+  round: number,
+  failure: unknown,
+): Promise<void> {
+  logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, round, error: failure });
+  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId);
+  if (!task || task.state !== "working" || task.metadata.round !== round) return;
+  const spoke = (await deps.negotiationDatabase.getNegotiationMessages(task.id)).length > 0;
+  const result = await deps.negotiations.invoke({
+    negotiationId: task.id,
+    pause: spoke ? "counterparty_silent" : "open_failed",
+  });
+  if (result.status !== "paused") {
+    // Left live, this task holds its round open forever. Fail the turn so the
+    // retry can try again rather than settling a round that is not settled.
+    throw new Error(`Could not pause a stranded negotiation: ${result.error ?? result.status}`);
   }
 }
 
 /**
- * Settle a round that has negotiations: record the act, stamp the size, run
- * the final all-paused check, and pick up anything that arrived meanwhile.
- * Returns false — settling nothing — when the round is empty.
+ * Settle a round: run its all-paused check and stamp its size. Returns how
+ * many negotiations the round actually holds — zero means there is nothing to
+ * settle, and the round is deliberately left unstamped, because a settled
+ * empty round is instantly "all paused" and reflect would kick off again,
+ * forever.
  *
- * The SIZE is read back from the round itself rather than counted from the
- * opens: a compensated open and a re-kicked task that init had already moved
- * into this round both belong to it, and only the database knows which
- * survived. The value is a record; what gates the reflect check is that it is
- * no longer null.
+ * The SIZE is read back from the database rather than counted from the opens:
+ * a compensated task and a re-kicked task that `init` had already moved into
+ * this round both belong to it, and only the database knows which survived.
+ * The value is a record; what gates a pause-driven check is that it is no
+ * longer null.
  *
- * The ledger row is written FIRST and never throws — accountability must not
- * be able to duplicate a real effect — and the stamp is the last durable
- * write, so a failure there leaves exactly the resumable signature the top of
- * `runKickoff` looks for.
+ * The reflect enqueue runs BEFORE the stamp and is allowed to throw. That
+ * ordering is the point: while the round is unstamped the repair path above
+ * can still find it, so a failed enqueue is retryable. Stamp first and a
+ * failed enqueue would leave a settled round that nothing will ever reflect
+ * on — a turn reporting success for the one thing it did not do.
  */
 async function settleRound(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
-  accumulator: TurnAccumulator,
   round: number,
-  reasoning: string,
-  targeted: PersonalAgentMatch[],
-): Promise<boolean> {
+): Promise<number> {
   const tasks = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(context.intentId, round);
-  if (tasks.length === 0) return false;
+  if (tasks.length === 0) return 0;
 
-  await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened: tasks.length, reasoning });
+  if (deps.reflectEnqueue) {
+    const active = await deps.negotiationDatabase.countActiveNegotiationsForRound(context.intentId, round);
+    if (active === 0) {
+      await deps.reflectEnqueue({ userId: context.userId, intentId: context.intentId, round });
+    }
+  }
   await deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, tasks.length);
-  await maybeEnqueueRoundReflect(deps.negotiationDatabase, deps.reflectEnqueue, {
-    userId: context.userId,
-    intentId: context.intentId,
-    round,
-  });
-  await wakeForNewMatches(deps, context, targeted);
-  return true;
+  return tasks.length;
 }
 
 /**
@@ -405,6 +425,9 @@ async function settleRound(
  * has no negotiation at all, and was not one of this kickoff's own targets,
  * wakes the agent again. It cannot loop: a target that failed to open is
  * compensated into a task, so it is never "unopened" on the next pass.
+ *
+ * Best-effort by design, and it runs last: the round is already settled, so a
+ * failure here delays a batch rather than losing the turn's real work.
  */
 async function wakeForNewMatches(
   deps: PersonalAgentDeps,
@@ -415,7 +438,9 @@ async function wakeForNewMatches(
   try {
     const targetedIds = new Set(targeted.map((match) => match.opportunityId));
     const arrivals = (await deps.opportunities.readMatches(context.userId, context.intentId))
-      .filter((match) => !targetedIds.has(match.opportunityId) && !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
+      .filter((match) => !targetedIds.has(match.opportunityId))
+      .filter((match) => !match.awaitingIntroducerApproval)
+      .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
     const unopened = await Promise.all(arrivals.map(async (match) =>
       (await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId)) ? null : match));
     if (!unopened.some((match) => match !== null)) return;
@@ -452,10 +477,11 @@ async function recordKickoff(
  * reads the negotiation's OWN state rather than this round's paused set — a
  * negotiation that capped in an earlier round and was excluded from the last
  * kickoff carries that earlier round in its metadata and is absent from the
- * current round entirely.
+ * current round entirely. An unreadable task is NOT treated as eligible: a
+ * swallowed read here re-opens exactly what the guarantee exists to stop.
  */
 async function spentItsTurnBudget(deps: PersonalAgentDeps, match: PersonalAgentMatch): Promise<boolean> {
-  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId).catch(() => null);
+  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId);
   return task?.state === "paused" && task.metadata.pause?.reason === "turn_cap";
 }
 
@@ -604,13 +630,22 @@ async function publishTurnMessages(
   messages: string[],
 ): Promise<void> {
   if (!deps.replyStream || messages.length === 0) return;
-  let seq = 0;
-  for (const [index, message] of messages.entries()) {
-    const prefixed = index > 0 ? `\n\n${message}` : message;
-    for (const content of chunkReplyText(prefixed)) {
-      seq += 1;
-      await deps.replyStream.publish(messageId, { seq, content });
+  // Purely a latency optimisation: everything here is already checked and
+  // persisted, and the controller falls back to the completed turn if the
+  // channel yields nothing. Failing the turn over it would be the opposite
+  // lie — reporting failure for work that is durably done, and retrying it
+  // into a second reply.
+  try {
+    let seq = 0;
+    for (const [index, message] of messages.entries()) {
+      const prefixed = index > 0 ? `\n\n${message}` : message;
+      for (const content of chunkReplyText(prefixed)) {
+        seq += 1;
+        await deps.replyStream.publish(messageId, { seq, content });
+      }
     }
+  } catch (err) {
+    logger.warn("Failed to stream a turn's reply", { intentId: messageId, error: err });
   }
 }
 

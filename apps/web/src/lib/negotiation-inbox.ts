@@ -1,5 +1,6 @@
 import type { ConversationSummary } from '@/services/conversation';
 import { deriveNegotiationPresentation, type NegotiationPresentationStatus } from '@/lib/negotiation-presentation';
+import type { NegotiationPauseReason } from '@/services/conversation';
 
 /** Mirrors NEGOTIATION_MAX_TURNS_AMBIENT — a fixed safety cap, not a per-negotiation field any more. */
 export const NEGOTIATION_MAX_TURNS = 6;
@@ -35,7 +36,7 @@ export interface NegotiationInboxGroups {
 export interface LastTurnData {
   /** `outreach` | `counter` | `question` | `pause`. */
   verb: string | null;
-  pauseReason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | null;
+  pauseReason: NegotiationPauseReason | null;
 }
 
 export function readLastTurn(parts: unknown[]): LastTurnData {
@@ -94,6 +95,8 @@ function describeTurn(lastTurn: LastTurnData, isOwnAgent: boolean): string {
       case 'needs_principal': return `${actor} asked for guidance`;
       case 'ready_for_verdict': return `${actor} recommended a decision`;
       case 'counterparty_silent': return 'waiting on the other side';
+      case 'turn_cap': return `${actor} reached its limit`;
+      case 'open_failed': return 'this negotiation could not be started';
       default: return 'agents exchanged a turn';
     }
   }

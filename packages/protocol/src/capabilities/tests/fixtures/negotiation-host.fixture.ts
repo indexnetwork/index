@@ -17,7 +17,7 @@ export const OPPORTUNITY_ID = "opportunity-1";
 export interface FakeOpportunity {
   id: string;
   status: string;
-  actors: Array<{ userId: string; intent: string; networkId: string; role: string }>;
+  actors: Array<{ userId: string; intent: string; networkId: string; role: string; approved?: boolean }>;
 }
 
 export interface FakeMessage {
@@ -36,6 +36,7 @@ export class FakeNegotiationHost {
   readonly tasks = new Map<string, NegotiationTaskRow>();
   readonly messages = new Map<string, FakeMessage[]>();
   readonly opportunityStatusUpdates: Array<{ id: string; status: string }> = [];
+  /** Deduped by (intent, round), exactly as the deterministic BullMQ job id does. */
   readonly reflectJobs: Array<{ userId: string; intentId: string; round: number }> = [];
   private taskCounter = 0;
   private messageCounter = 0;
@@ -144,6 +145,12 @@ export class FakeNegotiationHost {
       [...this.tasks.values()].filter((t) =>
         t.metadata.intentId === intentId && t.metadata.round === round && t.state === "working").length,
   };
+
+  /** Records a reflect job the way the queue does: once per (intent, round). */
+  enqueueReflect(job: { userId: string; intentId: string; round: number }): void {
+    if (this.reflectJobs.some((existing) => existing.intentId === job.intentId && existing.round === job.round)) return;
+    this.reflectJobs.push(job);
+  }
 
   taskFor(negotiationId: string): NegotiationTaskRow {
     const task = this.tasks.get(negotiationId);

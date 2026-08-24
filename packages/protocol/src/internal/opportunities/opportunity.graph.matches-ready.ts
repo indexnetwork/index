@@ -39,13 +39,23 @@ export async function matchesReadyNode(state: OpportunityState, deps: Opportunit
     if (intentId) intentIds.add(intentId);
   }
 
-  await Promise.all([...intentIds].map(async (intentId) => {
-    try {
-      await deps.matchesReady!({ userId: discoveryUserId, intentId });
-    } catch (err) {
-      matchesReadyLog.error('Failed to emit matches_ready', { intentId, userId: discoveryUserId, error: err });
-    }
+  // A swallowed failure here is a batch that persisted and an agent that was
+  // never woken — discovery reporting success for the one thing it exists to
+  // hand off. Let it fail so the discovery job retries: persistence dedupes,
+  // and the wake itself coalesces on the signal, so a retry is idempotent.
+  const emitted = await Promise.allSettled([...intentIds].map(async (intentId) => {
+    await deps.matchesReady!({ userId: discoveryUserId, intentId });
   }));
+  const failed = emitted.filter((result) => result.status === 'rejected');
+  if (failed.length > 0) {
+    matchesReadyLog.error('Failed to emit matches_ready', {
+      userId: discoveryUserId,
+      signals: intentIds.size,
+      failed: failed.length,
+      error: (failed[0] as PromiseRejectedResult).reason,
+    });
+    throw new Error(`Could not wake ${failed.length} of ${intentIds.size} signal(s) for their new matches`);
+  }
 
   return {
     trace: [{

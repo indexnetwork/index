@@ -24,6 +24,9 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 
 const logger = protocolLogger("NegotiationRoundReflect");
 
+const ENQUEUE_ATTEMPTS = 3;
+const ENQUEUE_RETRY_DELAY_MS = 100;
+
 export interface NegotiationRoundReflectJobData {
   /** The signal's owner — the principal whose PersonalAgent reflects. */
   userId: string;
@@ -65,9 +68,25 @@ export async function maybeEnqueueRoundReflect(
     // Unstamped, or already superseded by a fresh kickoff: not this round's moment.
     if (stamp.round !== job.round || stamp.roundSize === null) return;
     const active = await database.countActiveNegotiationsForRound(job.intentId, job.round);
-    if (active === 0) await enqueue(job);
+    if (active !== 0) return;
+    // The pause this runs behind is already persisted, so throwing would
+    // report a failure for work that is durably done. But a swallowed enqueue
+    // on the round's LAST pause is a round that never reflects and has no
+    // second chance — nothing pauses again to re-check it. Retry a few times
+    // before giving up, and give up loudly.
+    let failure: unknown;
+    for (let attempt = 0; attempt < ENQUEUE_ATTEMPTS; attempt++) {
+      try {
+        await enqueue(job);
+        return;
+      } catch (err) {
+        failure = err;
+        await new Promise((resolve) => setTimeout(resolve, ENQUEUE_RETRY_DELAY_MS * (attempt + 1)));
+      }
+    }
+    throw failure;
   } catch (err) {
-    logger.warn("Failed to check all-paused / enqueue reflect", {
+    logger.error("Failed to check all-paused / enqueue reflect — this round will not reflect", {
       intentId: job.intentId,
       round: job.round,
       jobId: negotiationRoundReflectJobId(job.intentId, job.round),

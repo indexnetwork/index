@@ -421,30 +421,35 @@ Alternative rejected: keeping the fallbacks — a graph with no turn author
 throws on every turn, and one with no reflect enqueue loses the all-paused
 moment for good.
 
-### D29. An interrupted kickoff SETTLES its round — off an explicit marker
-**Restated after round-2 review; the first version inferred the marker.**
+### D29. An interrupted kickoff is REPAIRED, and claims nothing for it
+**Restated twice; the first two versions were both wrong.**
 
 Chose: the round bump — the one write that begins a kickoff — stamps
-`intents.negotiation_kickoff_started_at` in the same statement, and the size
-stamp settles the round. `startedAt` set with `roundSize` still null is the one
-signature of a kickoff that died mid-round, and a retry settles THAT round
-rather than starting another. A round with no negotiations at all is not
-settled; the turn falls through to a normal kickoff instead.
+`intents.negotiation_kickoff_started_at` in the same statement. A round with
+that marker and no size stamp is one a kickoff began and did not finish, so
+the next kickoff REPAIRS it first: settles it so it is no longer stranded,
+pushes NO act, and then does its own work. A principal who asks for a kickoff
+during an interrupted round gets one.
 
-The first version inferred the same thing from `roundSize === null` alone, and
-that is wrong twice over: every intent alive when the migration lands has a
-round counter and no size stamp, so the FIRST `matches_ready` per existing
-signal would have taken the resume path and silently dropped the batch that
-woke it; and a re-kick whose opens all failed looks identical, because
-`init` moves a task into the new round before any turn is authored. Migration
-0147 adds the marker as NULL for every existing row, so their next
-`matches_ready` runs a normal kickoff. Pinned by a seeded-legacy-intent test.
+Version 1 inferred the marker from `roundSize === null`, which matches every
+intent alive when the migration lands — the first `matches_ready` per existing
+signal would have settled a stale round and dropped the batch that woke it.
+Version 2 fixed the marker but let the repair *stand in for* the kickoff: it
+settled the old round, opened nothing, and still reported
+"you opened N negotiations". A `user_message` turn where the principal said
+"go ahead" rendered a confirmation for work nobody did.
+
+The cost of the current shape is that a genuine retry of a crashed turn runs
+the kickoff again: a second strategy message in the DM. The negotiations
+themselves are RESUMED, not duplicated — an open finds the existing task,
+re-briefs it and re-rounds it — so what repeats is one line of chat, and the
+alternative is a lost action reported as done.
 
 Alternatives rejected: (a) making the whole turn transactional — the effects
-span a model call, a chat message and N negotiation graphs; (b) swallowing a
-stamp failure — the round would then never reflect, which is the failure D2
-exists to prevent; (c) a sentinel value in `negotiation_round_size` — smaller,
-but it makes one column mean three things and reads as a magic number.
+span a model call, a chat message and N negotiation graphs; (b) suppressing
+the kickoff whenever a repair ran (version 2) — indistinguishable from the
+case the principal actually asked for; (c) a sentinel value in
+`negotiation_round_size` — one column meaning three things.
 
 ### D30. One impossible act drops; an emptied list is a real empty turn
 **Amended after round-2 review.**
@@ -532,4 +537,68 @@ Alternative rejected: relying on the model layer's own 60s x retry budget — a
 kickoff self-plays several turns per match in parallel, so a single slow
 provider call stacks far past the chat controller's 90s wait and the principal
 sees a timeout for a turn that is still running.
+
+### D37. The introducer-approval gate lives at the OPEN
+Chose: `NegotiationGraph`'s open path refuses an opportunity whose introducers
+have not all approved. Kickoff also filters those matches out, but only to
+avoid spending a brief on something that would be refused — the gate that
+binds is the one on the write.
+
+Discovery's `matches_ready` node has the same check, and that is the bug: it
+only decides whom to WAKE. A signal with one plain match and one unapproved
+introduction wakes on the plain one, and the kickoff then re-reads the WHOLE
+match list and opens both — flipping the gated opportunity to `negotiating`
+and sending A2A outreach on an introducer's behalf without their approval.
+Same class as the seat mis-binding in #1494: a check one layer away from the
+write it guards.
+Alternative rejected: filtering in the agent only — the next caller of the
+open path would have to remember the rule again.
+
+### D38. A compensating pause tells the truth about what happened
+Chose: an open that failed with nothing said pauses `open_failed`; one that
+failed after outreach was already applied pauses `counterparty_silent`, the
+same reason the stale-negotiation watchdog gives that exact shape hours later.
+Alternative rejected: `open_failed` for both — it would tell the principal
+nothing had been said with the outreach sitting in the thread, and `apply`
+stamps `pausedBy` as the seat that owed the next turn, so the principal would
+read "paused by their agent" for our own failure.
+
+### D39. A turn fails on the reads it is ABOUT
+Chose: only the agent's display name degrades. A `matches_ready` that cannot
+read its matches, an `all_paused` that cannot read its paused negotiations, a
+DM read that errors, the turn-cap eligibility read — all now throw, so the
+queue retries.
+Alternative rejected: `.catch(() => [])` (the shipped behaviour) — it turns a
+transient database error into a SUCCESSFUL turn that saw nothing and decided
+nothing. On reflect that is terminal: the job id is retained forever (D32), so
+the round's one chance to reflect is consumed by a turn that never saw it.
+
+### D40. The reflect enqueue runs BEFORE the size stamp
+Chose: in kickoff's own settle step, run the all-paused check and enqueue
+first, then stamp. While the round is unstamped the repair path can still find
+it, so a failed enqueue is retryable.
+Alternative rejected: stamping first (the shipped order) — a failed enqueue
+then leaves a settled round that nothing will ever reflect on, and the turn
+reports success for the one thing it did not do. The pause-driven check keeps
+its swallow (a pause is already persisted and must not fail behind it) but now
+retries three times and gives up at ERROR.
+
+### D41. The pause-reason union is defined once per codebase, and pinned
+Chose: one `NEGOTIATION_PAUSE_REASONS` in the protocol, one mirror in the API
+adapters (which may not import the protocol), one in the web's API client —
+and a spec that fails when the API mirror drifts from the protocol's.
+Alternative rejected: restating the union at each use site (the shipped
+shape) — losing a member is not a type error anywhere: the value still
+arrives, and each consumer renders it as whatever its default branch says.
+That is how `open_failed` reached the web as "the negotiator recommends a
+decision", and how a `turn_cap` pause — added in #1494 — has been silently
+dropped from A2A threads ever since.
+
+### D42. Discovery fails when it cannot hand a batch off
+Chose: `matchesReadyNode` throws when a wake fails, so the discovery job
+retries. Persistence dedupes and the wake coalesces on the signal, so a retry
+is idempotent.
+Alternative rejected: logging and continuing — the batch persists and nobody
+is ever woken, which is precisely the silent loss the whole hand-off exists to
+prevent.
 

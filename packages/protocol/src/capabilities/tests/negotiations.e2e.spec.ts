@@ -71,7 +71,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     const graph = new Negotiations({
       database: host.database,
       author,
-      reflectEnqueue: async (job) => { host.reflectJobs.push(job); },
+      reflectEnqueue: async (job) => { host.enqueueReflect(job); },
     }).createGraph();
 
     // open: self-play authors the opening turn (alice), loops straight into
@@ -308,7 +308,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     host.opportunity.actors = [
       { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
       { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
-      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer" },
+      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer", approved: true },
     ];
     const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
     const graph = new Negotiations({ database: host.database, author }).createGraph();
@@ -318,6 +318,29 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const task = host.taskFor(opened.negotiationId);
     expect(task.metadata.sourceUserId).toBe(SOURCE_USER_ID);
     expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
+  });
+
+  test("an introduction its introducer has not approved is refused at the OPEN", async () => {
+    // The gate cannot live only where discovery decides whom to WAKE: a
+    // kickoff woken by one plain match re-reads the whole match list, and
+    // without a check here the unapproved introduction is opened too — flipped
+    // to `negotiating` with A2A outreach sent on the introducer's behalf.
+    const host = new FakeNegotiationHost();
+    host.opportunity.actors = [
+      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
+      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
+      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer" },
+    ];
+    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+
+    expect(opened.status).toBe("error");
+    expect(opened.error).toContain("introducer approval");
+    expect([...host.tasks.values()]).toHaveLength(0);
+    expect(host.opportunityStatusUpdates).toEqual([]);
+    expect(author.calls).toHaveLength(0);
   });
 
   test("re-kicking an existing task whose history is entirely pre-rewrite legacy messages does not error forever", async () => {

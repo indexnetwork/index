@@ -357,3 +357,26 @@ describe('groupTurnsBySession', () => {
     expect(groupTurnsBySession([])).toHaveLength(0);
   });
 });
+
+describe('every protocol pause reason survives the thread', () => {
+  // A reason the union does not know is dropped by `isPauseReason`, so the
+  // pause disappears from the transcript the viewer is reading — no error,
+  // no fallback, just a missing turn.
+  it.each(['counterparty_silent', 'needs_principal', 'ready_for_verdict', 'turn_cap', 'open_failed'] as const)(
+    'renders a %s pause',
+    (reason) => {
+      const turn = extractTurn({
+        id: 'm-1',
+        sessionId: null,
+        senderId: 'agent:alice',
+        createdAt: '2026-08-24T00:00:00.000Z',
+        parts: [{ kind: 'data', data: { verb: 'pause', reason } }],
+      } as never);
+      expect(turn).not.toBeNull();
+      expect(turn!.pauseReason).toBe(reason);
+      expect(turn!.text.length).toBeGreaterThan(0);
+      expect(verbFor(turn!.chipKey)!.label).not.toBe('');
+    },
+  );
+});
+

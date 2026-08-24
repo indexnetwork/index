@@ -1,4 +1,22 @@
 /**
+ * Locally aligned mirror of the protocol's `NEGOTIATION_PAUSE_REASONS`.
+ *
+ * Adapters may not import from `@indexnetwork/protocol` (see the lint rule),
+ * so this list is a copy — and a copy that silently loses a member is how a
+ * real pause reason reached the web rendered as its opposite. The drift is
+ * pinned by `tests/negotiation-pause-reason.mirror.spec.ts`, which compares
+ * this array against the protocol's own.
+ */
+export const NEGOTIATION_PAUSE_REASONS = [
+  'counterparty_silent',
+  'needs_principal',
+  'ready_for_verdict',
+  'turn_cap',
+  'open_failed',
+] as const;
+export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
+
+/**
  * Locally aligned mirror of the protocol's `NegotiationCounterpartyBinding`.
  * Adapters must not import from `@indexnetwork/protocol` (see the lint rule);
  * structural compatibility is verified at the composition root via duck
@@ -22,7 +40,7 @@ type NegotiationTaskMetadataMirror = {
   networkId: string;
   intentId: string;
   round: number;
-  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown; pausedBy?: string } | null;
+  pause?: { reason: NegotiationPauseReason; payload?: unknown; pausedBy?: string } | null;
 };
 
 type NegotiationTaskRowMirror = {
@@ -229,7 +247,7 @@ function readNegotiationPause(
   metadata: unknown,
   viewerUserId: string,
   state: string,
-): { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown } | null {
+): { reason: NegotiationPauseReason; payload?: unknown } | null {
   // Same gate `toResult` applies graph-side: a non-paused task's
   // metadata.pause is stale/answered, not current, even if a caller failed to
   // clear it on resume.
@@ -239,7 +257,12 @@ function readNegotiationPause(
   if (typeof pause !== 'object' || pause === null || Array.isArray(pause)) return null;
   const record = pause as { reason?: unknown; payload?: unknown; pausedBy?: unknown };
   if (typeof record.reason !== 'string') return null;
-  const reason = record.reason as 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap';
+  // Validated, not cast: an unknown reason coming back from the database is
+  // a value every downstream union would mis-render, and silently narrowing
+  // it to a member of this union is how `open_failed` reached the web as
+  // "the negotiator recommends a decision".
+  if (!(NEGOTIATION_PAUSE_REASONS as readonly string[]).includes(record.reason)) return null;
+  const reason = record.reason as NegotiationPauseReason;
   return record.pausedBy === viewerUserId ? { reason, payload: record.payload } : { reason };
 }
 

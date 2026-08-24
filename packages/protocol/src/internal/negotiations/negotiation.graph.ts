@@ -171,6 +171,16 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       // (intents are user-owned) — resolve the source seat from that owner
       // and exclude any introducer actor, the same selection the old
       // negotiateNode used.
+      // An introduction nobody vouched for is not a negotiation anyone may
+      // open. Discovery's own gate decides whether to WAKE an agent; this one
+      // decides whether a negotiation may EXIST, and it is the write, so it
+      // binds every caller — a kickoff that re-read the match list and swept
+      // this opportunity up with the others included.
+      const introducers = opportunity.actors.filter((a) => a.role === "introducer");
+      if (introducers.length > 0 && !introducers.every((a) => a.approved === true)) {
+        return { phase: "error", error: "Opportunity is awaiting introducer approval" };
+      }
+
       const intent = await deps.database.getIntent(input.intentId);
       if (!intent) return { phase: "error", error: "Intent not found" };
       const sourceActor = opportunity.actors.find((a) => a.userId === intent.userId && a.role !== "introducer");

@@ -32,6 +32,12 @@ describe("matches_ready", () => {
     expect(emitted).toEqual([{ userId: "alice", intentId: "intent-1" }]);
   });
 
+  test("a failed wake fails the node — a persisted batch nobody was woken for is not a success", async () => {
+    const deps = { matchesReady: async () => { throw new Error("redis unavailable"); } } as unknown as OpportunityGraphDeps;
+    await expect(matchesReadyNode(state([{ id: "opportunity-1", actors: twoActors("intent-1") }]), deps))
+      .rejects.toThrow(/Could not wake 1 of 1/);
+  });
+
   test("without the host callback the batch is silently stranded — no host may leave it unset", async () => {
     const result = await matchesReadyNode(state([{ id: "opportunity-1", actors: twoActors("intent-1") }]), {} as OpportunityGraphDeps);
     // No trace, no event: this is exactly the shape a missing composition wire
