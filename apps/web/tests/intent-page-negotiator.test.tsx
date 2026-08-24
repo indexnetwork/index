@@ -1,11 +1,11 @@
 /**
- * Intent page negotiator-chat gating (P4.2 / IND-403).
+ * Intent page agent-chat panel.
  *
- * The chat window renders only when the backend-surfaced flag
- * (`features.negotiatorChat` on /auth/me) is on; the fallback (flag off or
- * runtime bootstrap failure) is a static Personal Agent panel with the
- * refine input. The old static questions block is retired with the card
- * questions (conversational-questions plan, "Retirements").
+ * The chat window renders unconditionally (the negotiatorChat flag is
+ * deleted); the fallback for a runtime bootstrap failure is a static
+ * Personal Agent panel with the refine input. The old static questions
+ * block is retired with the card questions (conversational-questions plan,
+ * "Retirements").
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
@@ -108,7 +108,7 @@ function renderIntentPage() {
   );
 }
 
-describe('Intent page — negotiator chat gating', () => {
+describe('Intent page — agent chat panel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authState.features = null;
@@ -124,18 +124,7 @@ describe('Intent page — negotiator chat gating', () => {
     mocks.chatStubBehavior.failBootstrap = false;
   });
 
-  test('flag off → static fallback panel, no chat window', async () => {
-    renderIntentPage();
-
-    await screen.findByText('Looking for a technical co-founder');
-    expect(screen.queryByTestId('intent-negotiator-chat-stub')).toBeNull();
-    expect(
-      screen.getByPlaceholderText(/tell the agent anything about this signal/i),
-    ).toBeInTheDocument();
-  });
-
-  test('flag on → chat window renders', async () => {
-    mocks.authState.features = { negotiatorChat: true };
+  test('the chat window renders unconditionally — no flag gates it', async () => {
     renderIntentPage();
 
     await screen.findByText('Looking for a technical co-founder');
@@ -146,7 +135,6 @@ describe('Intent page — negotiator chat gating', () => {
   });
 
   test('runtime bootstrap failure → falls back to the static panel', async () => {
-    mocks.authState.features = { negotiatorChat: true };
     mocks.chatStubBehavior.failBootstrap = true;
     renderIntentPage();
 

@@ -6,21 +6,34 @@ import { error, resolveChatContext, success } from "../shared/agent/tool.helpers
 import type { SystemDatabase, UserDatabase } from "../../platform/database.js";
 import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, scopeFromNetworkId } from "../shared/agent/tool.scope.js";
 import type { ChatPersonaConfig } from "./chat.persona.js";
-import { buildSignalSystemContent, type SignalPromptOptions } from "./signal.prompt.js";
+import { buildPersonalAgentSystemContent, type PersonalAgentPromptOptions } from "./personal-agent.prompt.js";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERSONAL AGENT PERSONA
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The one chat persona. Its identity comes from the user's `type='personal'`
+// agent row, bound per session; what a turn may do is derived from the
+// session's resolved scope context, never from a persona id. The negotiation
+// scope is not a chat persona surface: intent-scoped DM turns are owned by
+// the IntentAgent host-side and never run this graph persona.
 
 /** Public kickoff marker used by New Signal surfaces to enter guided intake. */
-export { SIGNAL_NEW_SIGNAL_KICKOFF } from "./signal.prompt.js";
+export { SIGNAL_NEW_SIGNAL_KICKOFF } from "./personal-agent.prompt.js";
+/** Public kickoff marker used by the restricted web profile phase. */
+export { ONBOARDING_PROFILE_KICKOFF } from "./personal-agent.prompt.js";
 
-/** Stable persona id persisted for restricted Signal Agent conversations. */
-export const SIGNAL_PERSONA_ID = "signal";
+/** Stable persona id persisted for every PersonalAgent conversation. */
+export const PERSONAL_AGENT_PERSONA_ID = "personal";
 
 /**
- * Exact positive tool allowlist for Signal Agent.
+ * Exact positive tool allowlist for the PersonalAgent's global and intent
+ * scopes (the signals-and-profile surface).
  *
  * New tools added to the shared chat registry remain unavailable until they are
  * reviewed and explicitly added here.
  */
-export const SIGNAL_TOOL_NAMES = [
+export const PERSONAL_AGENT_TOOL_NAMES = [
   // Signals and assignment to communities the user already belongs to.
   "read_intents",
   "create_intent",
@@ -42,9 +55,22 @@ export const SIGNAL_TOOL_NAMES = [
   "scrape_url",
 ] as const;
 
-const SIGNAL_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(SIGNAL_TOOL_NAMES);
+/**
+ * Exact positive allowlist for the onboarding flow (selected only by the
+ * host's onboarding-surface marker, not by a persona id or user state).
+ *
+ * Profile confirmation performs the approved premise decomposition internally,
+ * so the flow does not need arbitrary premise writes.
+ */
+export const PERSONAL_AGENT_ONBOARDING_TOOL_NAMES = [
+  "research_profile",
+  "create_intent",
+] as const;
 
-export interface SignalToolBoundary {
+const PERSONAL_AGENT_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(PERSONAL_AGENT_TOOL_NAMES);
+const PERSONAL_AGENT_ONBOARDING_TOOL_ALLOWLIST: ReadonlySet<string> = new Set(PERSONAL_AGENT_ONBOARDING_TOOL_NAMES);
+
+export interface PersonalAgentToolBoundary {
   context: ResolvedToolContext;
   userDb: UserDatabase;
   systemDb: SystemDatabase;
@@ -79,26 +105,31 @@ function matchesIntentText(
 }
 
 /**
- * Filters shared chat tools through Signal Agent's positive allowlist.
+ * Filters shared chat tools through the PersonalAgent's positive allowlist.
  *
  * @param tools - Shared context-bound chat tools
- * @returns Only explicitly approved Signal Agent tools
+ * @returns Only explicitly approved PersonalAgent tools
  */
-export function filterSignalTools<T extends { name: string }>(tools: T[]): T[] {
-  return tools.filter((candidate) => SIGNAL_TOOL_ALLOWLIST.has(candidate.name));
+export function filterPersonalAgentTools<T extends { name: string }>(tools: T[]): T[] {
+  return tools.filter((candidate) => PERSONAL_AGENT_TOOL_ALLOWLIST.has(candidate.name));
+}
+
+/** Filters the shared registry through the onboarding flow's exact allowlist. */
+export function filterOnboardingTools<T extends { name: string }>(tools: T[]): T[] {
+  return tools.filter((candidate) => PERSONAL_AGENT_ONBOARDING_TOOL_ALLOWLIST.has(candidate.name));
 }
 
 /**
  * Narrows schemas and handlers whose shared versions expose broader modes than
- * Signal Agent is allowed to use.
+ * the PersonalAgent chat surface is allowed to use.
  *
  * @param allowed - Name-allowlisted shared chat tools
- * @param boundary - Authoritative context-bound databases for Signal-only checks
- * @returns Signal-safe tools with self-only reads and proposal-only creation
+ * @param boundary - Authoritative context-bound databases for persona-only checks
+ * @returns Narrowed tools with self-only reads and proposal-only creation
  */
-export function narrowSignalTools(
+export function narrowPersonalAgentTools(
   allowed: ChatTools,
-  boundary: SignalToolBoundary,
+  boundary: PersonalAgentToolBoundary,
 ): ChatTools {
   const { context, userDb, systemDb } = boundary;
 
@@ -128,7 +159,7 @@ export function narrowSignalTools(
           return sharedTool.invoke({
             description: query.description,
             ...(effectiveNetworkId ? { networkId: effectiveNetworkId } : {}),
-            // Signal web chats always use the confirmation-safe proposal path.
+            // Personal-agent web chats always use the confirmation-safe proposal path.
             autoApprove: false,
           }) as Promise<string>;
         },
@@ -210,7 +241,7 @@ export function narrowSignalTools(
         },
         {
           name: "search_intents",
-          description: "Search the current user's own active signals by text within the selected Signal scope.",
+          description: "Search the current user's own active signals by text within the selected chat scope.",
           schema: z.object({
             query: z.string().trim().min(1),
             limit: z.number().int().min(1).max(100).optional(),
@@ -337,13 +368,19 @@ export function narrowSignalTools(
 }
 
 /**
- * Creates Signal Agent's context-bound restricted toolset.
+ * Creates the PersonalAgent's context-bound restricted toolset.
  *
+ * The allowlist follows the host's surface marker: the onboarding stream
+ * surface gets the onboarding set; every other turn gets the
+ * signals-and-profile set. Both pass through the same schema narrowing.
+ *
+ * @param onboardingSurface - The host's explicit onboarding-surface marker
  * @param deps - Shared tool dependencies
  * @param preResolvedContext - Optional authoritative resolved context
- * @returns The allowlisted and schema-narrowed Signal Agent tools
+ * @returns The allowlisted and schema-narrowed PersonalAgent tools
  */
-export async function createSignalTools(
+export async function createPersonalAgentTools(
+  onboardingSurface: boolean,
   deps: ToolContext,
   preResolvedContext?: ResolvedToolContext,
 ): Promise<ChatTools> {
@@ -371,34 +408,41 @@ export async function createSignalTools(
   });
   const systemDb = deps.systemDb
     ?? deps.createSystemDatabase(deps.database, resolvedContext.userId, allowedNetworkIds, deps.embedder);
-  const allowed = filterSignalTools(
-    await createChatTools(deps, resolvedContext),
-  ) as ChatTools;
+  const shared = await createChatTools(deps, resolvedContext);
+  const allowed = (onboardingSurface
+    ? filterOnboardingTools(shared)
+    : filterPersonalAgentTools(shared)) as ChatTools;
 
-  return narrowSignalTools(allowed, { context: resolvedContext, userDb, systemDb });
+  return narrowPersonalAgentTools(allowed, { context: resolvedContext, userDb, systemDb });
 }
 
 /** Identity this persona introduces itself with. */
-export type SignalPersonaOptions = SignalPromptOptions;
+export type PersonalAgentPersonaOptions = PersonalAgentPromptOptions;
 
 /**
- * Creates the restricted signals persona on the persona-neutral chat runtime.
+ * Creates the PersonalAgent persona on the persona-neutral chat runtime.
  *
- * A factory rather than a static singleton for the same reason the negotiator
- * is one: the persona's identity comes from the user's `type='personal'` agent
- * row, so it can only be bound per session. Capabilities, allowlist and tool
- * narrowing are identity-independent and unchanged.
+ * A factory rather than a static singleton: the persona's identity comes from
+ * the user's `type='personal'` agent row, so it can only be bound per session.
+ * Prompt fragments and toolset composition follow the resolved scope context,
+ * except the restricted onboarding fragment/toolset, which only the host's
+ * explicit onboarding-surface marker selects.
  *
  * @param opts - Identity from the user's `type='personal'` agent row
+ * @param flow - Surface markers; `onboarding` selects the restricted fragment
  */
-export function createSignalPersona(opts: SignalPersonaOptions = {}): ChatPersonaConfig {
+export function createPersonalAgentPersona(
+  opts: PersonalAgentPersonaOptions = {},
+  flow: { onboarding?: boolean } = {},
+): ChatPersonaConfig {
+  const onboardingSurface = flow.onboarding === true;
   return {
-    id: SIGNAL_PERSONA_ID,
-    buildSystemContent: (ctx, iterCtx) => buildSignalSystemContent(ctx, opts, iterCtx),
-    createTools: (deps, preResolvedContext) => createSignalTools(deps, preResolvedContext),
+    id: PERSONAL_AGENT_PERSONA_ID,
+    buildSystemContent: (ctx, iterCtx) => buildPersonalAgentSystemContent(ctx, opts, onboardingSurface, iterCtx),
+    createTools: (deps, preResolvedContext) => createPersonalAgentTools(onboardingSurface, deps, preResolvedContext),
     loopBehaviors: {
-      // Direct discovery is absent, so its create-intent retry callback must stay off.
-      // create_intent can legitimately return proposal cards; retain recovery/stripping.
+      // create_intent can legitimately return proposal cards; retain
+      // recovery/stripping of unbacked fenced blocks.
       hallucinationRecovery: true,
     },
   };

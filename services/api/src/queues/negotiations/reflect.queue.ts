@@ -21,7 +21,7 @@
 import { Job } from 'bullmq';
 import cron from 'node-cron';
 
-import { NegotiationReflector, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
+import { NegotiationReflector } from '@indexnetwork/protocol';
 import type { NegotiationReflectJobData, ReflectEnqueueFn, ReflectionTranscriptEntry, DistilledMemory } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
@@ -62,7 +62,8 @@ export interface ReflectQueueDeps {
     }>>;
   };
   chat?: {
-    getSession: (sessionId: string, userId: string) => Promise<{ persona: string } | null>;
+    getSession: (sessionId: string, userId: string) => Promise<{ persona: string; scopeType: string | null; scopeId: string | null } | null>;
+    findNegotiatorIntentSessionId: (userId: string, intentId: string) => Promise<string | null>;
     getSessionMessages: (sessionId: string, limit?: number) => Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>>;
   };
   reflector?: Pick<NegotiationReflector, 'reflectNegotiation' | 'reflectChat'>;
@@ -262,11 +263,17 @@ export class NegotiationReflectQueue {
 
     const chat = this.deps?.chat ?? chatSessionService;
 
-    // Ownership + persona guard: only the client's own negotiator DM is
-    // reflected — orchestrator chats teach the negotiator nothing.
+    // Ownership + scope guard: only the client's own signal DM is reflected —
+    // global chats teach the negotiator nothing. Re-keyed from the retired
+    // negotiator persona id to the canonical ('personal-intent', intentId)
+    // registry row, the same authority that routes the DM's turns; a
+    // pre-collapse pinned chat that lost the DM fold-in never distils.
     const session = await chat.getSession(data.sessionId, data.userId);
-    if (!session || session.persona !== NEGOTIATOR_PERSONA_ID) {
-      this.logger.info('Not a negotiator session; skipping chat reflection', {
+    const canonicalId = session?.scopeType === 'intent' && session.scopeId
+      ? await chat.findNegotiatorIntentSessionId(data.userId, session.scopeId)
+      : null;
+    if (!session || canonicalId !== data.sessionId) {
+      this.logger.info('Not a canonical DM session; skipping chat reflection', {
         sessionId: data.sessionId,
         persona: session?.persona ?? 'none',
       });

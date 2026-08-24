@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/contexts/AIChatContext", () => ({
   useAIChat: () => ({
     messages: [], liveQuestions: [], isLoading: false,
-    startSignalSession: vi.fn(), sendWebMessage: mocks.sendWebMessage, clearChat: vi.fn(),
+    sendWebMessage: mocks.sendWebMessage, clearChat: vi.fn(),
   }),
 }));
 vi.mock("@/contexts/AuthContext", () => ({

@@ -1,7 +1,7 @@
 import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
-import { ChatGraphFactory, ChatTitleGenerator, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID, createOnboardingPersona, createSignalPersona } from '@indexnetwork/protocol';
+import { ChatGraphFactory, ChatTitleGenerator, PERSONAL_AGENT_PERSONA_ID, createPersonalAgentPersona } from '@indexnetwork/protocol';
 import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -11,19 +11,14 @@ const logger = log.service.from("ChatSessionService");
 export type ChatStreamSurface = 'web' | 'agent' | 'onboarding';
 
 export type ChatPersonaPolicyCode =
-  | 'WEB_SIGNAL_PERSONA_REQUIRED'
   | 'WEB_SIGNAL_SESSION_REQUIRED'
-  | 'CHAT_PERSONA_REQUIRED'
-  | 'CHAT_PERSONA_MISMATCH'
-  | 'CHAT_PERSONA_UNSUPPORTED'
-  | 'WEB_SIGNAL_PERSONA_FORBIDDEN'
-  | 'WEB_ONBOARDING_PERSONA_FORBIDDEN';
+  | 'CHAT_PERSONA_UNSUPPORTED';
 
 export type ChatPersonaPolicyResult =
   | { ok: true; persona: ChatPersonaId }
   | {
       ok: false;
-      status: 403 | 409;
+      status: 409;
       code: ChatPersonaPolicyCode;
       error: string;
       action?: { type: 'start_signal_session'; href: string };
@@ -49,11 +44,6 @@ const READ_ONLY_CHAT_PERSONAS: ReadonlySet<string> = new Set([
   TELEGRAM_TRANSCRIPT_PERSONA_ID,
 ]);
 
-const KNOWN_CHAT_PERSONAS: ReadonlySet<string> = new Set([
-  SIGNAL_PERSONA_ID,
-  NEGOTIATOR_PERSONA_ID,
-  ONBOARDING_PERSONA_ID,
-]);
 
 /**
  * Generates a Snowflake-like ID for chat messages.
@@ -128,19 +118,18 @@ export class ChatSessionService {
   /**
    * Resolve the persona allowed to create or continue a streamed chat.
    *
-   * Web-surface routes participate in the Signal cutover; non-web routes
-   * retain the orchestrator default. A persisted persona is
-   * authoritative and unknown values always fail closed.
+   * There is one live persona: PersonalAgent. The policy only fails closed on
+   * stored rows that cannot drive a turn — retired read-only personas keep a
+   * product-safe nudge, anything else unknown is refused. What a turn may do
+   * is decided by the session's scope in the controller, never by a persona
+   * id.
    *
-   * @param input - Server-selected route surface plus requested/persisted persona
+   * @param input - The continued session's persisted persona, when present
    * @returns The allowed persona or a typed product-safe denial
    */
   resolveStreamPersonaPolicy(input: {
-    surface: ChatStreamSurface;
-    requestedPersona?: string;
     storedPersona?: string;
-  }): ChatPersonaPolicyResult {
-    const requestedPersona = input.requestedPersona?.trim() || undefined;
+  } = {}): ChatPersonaPolicyResult {
     const storedPersona = input.storedPersona?.trim() || undefined;
 
     // These sessions stay readable; they just cannot drive a turn.
@@ -153,7 +142,7 @@ export class ChatSessionService {
         action: { type: 'start_signal_session', href: '/' },
       };
     }
-    if (storedPersona && !KNOWN_CHAT_PERSONAS.has(storedPersona)) {
+    if (storedPersona && storedPersona !== PERSONAL_AGENT_PERSONA_ID) {
       return {
         ok: false,
         status: 409,
@@ -161,107 +150,8 @@ export class ChatSessionService {
         error: 'This chat cannot be continued safely.',
       };
     }
-    if (requestedPersona && !KNOWN_CHAT_PERSONAS.has(requestedPersona)) {
-      return {
-        ok: false,
-        status: 409,
-        code: 'CHAT_PERSONA_UNSUPPORTED',
-        error: 'This chat type is not supported.',
-      };
-    }
 
-    if (input.surface === 'onboarding') {
-      const onboardingPersona = ONBOARDING_PERSONA_ID;
-      if (
-        (storedPersona && storedPersona !== onboardingPersona)
-        || (requestedPersona && requestedPersona !== onboardingPersona)
-      ) {
-        return {
-          ok: false,
-          status: 409,
-          code: 'CHAT_PERSONA_MISMATCH',
-          error: 'This request does not match the onboarding chat.',
-        };
-      }
-      return { ok: true, persona: onboardingPersona };
-    }
-
-    if (storedPersona) {
-      if (requestedPersona && requestedPersona !== storedPersona) {
-        return {
-          ok: false,
-          status: 409,
-          code: 'CHAT_PERSONA_MISMATCH',
-          error: 'This request does not match the chat that was opened.',
-        };
-      }
-
-      if (storedPersona === ONBOARDING_PERSONA_ID) {
-        return {
-          ok: false,
-          status: 403,
-          code: 'WEB_ONBOARDING_PERSONA_FORBIDDEN',
-          error: 'This chat can only be continued during incomplete web onboarding.',
-        };
-      }
-
-      if (storedPersona === SIGNAL_PERSONA_ID) {
-        if (input.surface !== 'web') {
-          return {
-            ok: false,
-            status: 403,
-            code: 'WEB_SIGNAL_PERSONA_FORBIDDEN',
-            error: 'This chat can only be continued in the web app.',
-          };
-        }
-        return { ok: true, persona: SIGNAL_PERSONA_ID };
-      }
-
-      return { ok: true, persona: storedPersona as ChatPersonaId };
-    }
-
-    if (requestedPersona === ONBOARDING_PERSONA_ID) {
-      return {
-        ok: false,
-        status: 403,
-        code: 'WEB_ONBOARDING_PERSONA_FORBIDDEN',
-        error: 'Onboarding chats can only be started by the onboarding route.',
-      };
-    }
-
-    if (requestedPersona === SIGNAL_PERSONA_ID) {
-      if (input.surface !== 'web') {
-        return {
-          ok: false,
-          status: 403,
-          code: 'WEB_SIGNAL_PERSONA_FORBIDDEN',
-          error: 'Chats with your agent can only be started in the web app.',
-        };
-      }
-      return { ok: true, persona: SIGNAL_PERSONA_ID };
-    }
-
-    if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
-      return { ok: true, persona: NEGOTIATOR_PERSONA_ID };
-    }
-
-    if (input.surface === 'web') {
-      return {
-        ok: false,
-        status: 409,
-        code: 'WEB_SIGNAL_PERSONA_REQUIRED',
-        error: 'Start a new chat with your agent to continue.',
-        action: { type: 'start_signal_session', href: '/' },
-      };
-    }
-
-    // Agent surface with no persona named. There is no default to fall back on.
-    return {
-      ok: false,
-      status: 409,
-      code: 'CHAT_PERSONA_REQUIRED',
-      error: 'This request must name the chat persona to start.',
-    };
+    return { ok: true, persona: PERSONAL_AGENT_PERSONA_ID };
   }
 
   /**
@@ -324,31 +214,6 @@ export class ChatSessionService {
   }
 
   /**
-   * Update the canonical focused scope for a session. Validates ownership.
-   */
-  async updateSessionScope(
-    sessionId: string,
-    userId: string,
-    scope: { scopeType: ChatScopeType; scopeId: string } | null,
-  ): Promise<boolean> {
-    const session = await this.getSession(sessionId, userId);
-    if (!session) {
-      return false;
-    }
-
-    await this.db.updateChatSessionScope(
-      sessionId,
-      userId,
-      scope?.scopeType ?? null,
-      scope?.scopeId ?? null,
-      session.persona,
-    );
-
-    logger.verbose('Session scope updated', { sessionId, scopeType: scope?.scopeType ?? null, scopeId: scope?.scopeId ?? null });
-    return true;
-  }
-
-  /**
    * Validate that a user can scope chat to an index.
    * Requires the index to exist and the user to be a member.
    */
@@ -393,62 +258,19 @@ export class ChatSessionService {
   }
 
   /**
-   * Resolve or create the stable persona-specific session for a scoped entity.
-   */
-  async resolveSessionForScope(
-    userId: string,
-    scope: { scopeType: ChatScopeType; scopeId: string },
-    persona: ChatPersonaId,
-  ) {
-    const normalizedScopeId = scope.scopeId.trim();
-    if (!normalizedScopeId) {
-      return { error: 'scopeId is required', status: 400 as const };
-    }
-
-    let title: string | undefined;
-    if (scope.scopeType === 'network') {
-      const validation = await this.validateIndexScope(userId, normalizedScopeId);
-      if (!validation.ok) return validation;
-    } else {
-      const validation = await this.validateIntentScope(userId, normalizedScopeId);
-      if (!validation.ok) return validation;
-      title = validation.title;
-    }
-
-    const existing = await this.db.getChatSessionByScope(userId, scope.scopeType, normalizedScopeId, persona);
-    if (existing) return { session: existing, created: false };
-
-    try {
-      const id = await this.createSession(
-        userId,
-        title,
-        scope.scopeType === 'network' ? normalizedScopeId : undefined,
-        { scopeType: scope.scopeType, scopeId: normalizedScopeId },
-        persona,
-      );
-      const session = await this.getSession(id, userId);
-      if (!session) return { error: 'Failed to create session', status: 500 as const };
-      return { session, created: true };
-    } catch (err) {
-      if (this.isUniqueViolation(err)) {
-        const raced = await this.db.getChatSessionByScope(userId, scope.scopeType, normalizedScopeId, persona);
-        if (raced) return { session: raced, created: false };
-      }
-      throw err;
-    }
-  }
-
-  /**
-   * Resolve or create the user's negotiator session pinned to one of their
-   * intents (P4.2/IND-403). One session per (user, intent, negotiator
-   * persona): keyed in `chat_session_scopes` as ('negotiator-intent',
-   * intentId), so it never collides with the orchestrator's ('intent',
-   * intentId) session for the same intent. Race-safe via the unique index
-   * (concurrent creates re-read on 23505).
+   * Resolve or create the user's PersonalAgent session pinned to one of their
+   * intents — the signal's DM. One session per (user, intent): keyed in
+   * `chat_session_scopes` as ('personal-intent', intentId). Race-safe via the
+   * unique index (concurrent creates re-read on 23505).
+   *
+   * The name is part of the IntentAgent host's contract
+   * (`lib/intent-agent/intent-agent.host.ts` resolves DM delivery through it),
+   * which the parallel negotiation rewrite owns — so it keeps its historical
+   * name for now.
    *
    * @param userId - The client user (must own the intent)
    * @param intentId - The intent to pin
-   * @returns The session plus the validated intent title (for prompt pinning)
+   * @returns The session plus the validated intent title
    */
   async resolveNegotiatorIntentSession(
     userId: string,
@@ -504,6 +326,20 @@ export class ChatSessionService {
   }
 
   /**
+   * The id of the signal's one canonical DM, straight from the
+   * ('personal-intent', intentId) registry row — the authority every guard
+   * that asks "is this session THE DM?" compares against, in one indexed
+   * select with no session rehydration.
+   *
+   * @param userId - The client user
+   * @param intentId - The pinned intent
+   * @returns The canonical conversation id, or null when no DM exists
+   */
+  async findNegotiatorIntentSessionId(userId: string, intentId: string): Promise<string | null> {
+    return this.db.getPersonalIntentConversationId(userId, intentId.trim());
+  }
+
+  /**
    * True when the error (or any error in its `cause` chain) is a Postgres
    * unique violation. Drizzle wraps driver errors in `DrizzleQueryError`
    * with the pg error on `cause`, so checking only the top level misses the
@@ -550,14 +386,16 @@ export class ChatSessionService {
     userId: string,
     limit = 10,
     persona: string,
+    opts: { excludeIntentPinned?: boolean } = {},
   ) {
     logger.verbose('Getting user sessions', { userId, limit, persona });
-    return this.db.getUserChatSessions(userId, limit, persona);
+    return this.db.getUserChatSessions(userId, limit, persona, opts);
   }
 
   /**
-   * Get ordinary main-web history across the legacy orchestrator and Signal
-   * personas while excluding the pinned negotiator surface.
+   * Get ordinary main-web history: readable retired personas plus global
+   * PersonalAgent chats. Intent-pinned sessions (a signal's DM) are excluded —
+   * they are reached through their signal, not the home history list.
    *
    * @param userId - The user's UUID
    * @param limit - Maximum number of sessions to return
@@ -568,7 +406,8 @@ export class ChatSessionService {
     return this.db.getUserChatSessions(
       userId,
       limit,
-      [RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, SIGNAL_PERSONA_ID],
+      [RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, PERSONAL_AGENT_PERSONA_ID],
+      { excludeIntentPinned: true },
     );
   }
 
@@ -759,37 +598,30 @@ export class ChatSessionService {
   }
 
   /**
-   * Derive the restricted signals graph factory while sharing the
-   * persona-neutral runtime and all injected dependencies.
+   * Derive the PersonalAgent graph factory while sharing the persona-neutral
+   * runtime and all injected dependencies.
    *
-   * Like the negotiator, this persona introduces itself as the client's own
-   * agent, so it is bound per session to their `type='personal'` agent row.
-   * A missing row leaves the name absent and the prompt falls back to a
-   * generic self-description — the chat surface still works.
+   * The persona introduces itself as the client's own agent, so it is bound
+   * per session to their `type='personal'` agent row. A missing row leaves
+   * the name absent and the prompt falls back to a generic self-description —
+   * the chat surface still works.
    *
-   * @param agent - Identity from the user's `type='personal'` agent row
-   * @returns A signals-persona sibling factory
-   */
-  getSignalGraphFactory(agent?: { name?: string | null } | null): ChatGraphFactory {
-    return this.factory.withPersona(createSignalPersona(personaIdentity(agent)));
-  }
-
-  /**
-   * Derive the restricted onboarding graph factory from the shared runtime.
+   * Intent-scoped DM turns never derive a graph factory at all: every turn of
+   * a signal's DM runs the IntentAgent on its serialized inbox, and none of
+   * the retired negotiator-persona chat tool registrations exist any more.
+   * The hosts those tools called stay shared: the MCP surface
+   * (mcp.controller toolDeps) still registers them.
    *
    * @param agent - Identity from the user's `type='personal'` agent row
+   * @param flow - Surface markers; `onboarding` selects the restricted fragment
+   * @returns A PersonalAgent sibling factory
    */
-  getOnboardingGraphFactory(agent?: { name?: string | null } | null): ChatGraphFactory {
-    return this.factory.withPersona(createOnboardingPersona(personaIdentity(agent)));
+  getPersonalAgentGraphFactory(
+    agent?: { name?: string | null } | null,
+    flow: { onboarding?: boolean } = {},
+  ): ChatGraphFactory {
+    return this.factory.withPersona(createPersonalAgentPersona(personaIdentity(agent), flow));
   }
-
-  // The negotiator-persona graph factory retired with phase 2 of the
-  // holistic intent-agent (full chat ownership): every turn of the
-  // negotiator intent DM runs the IntentAgent on its serialized inbox, so no
-  // persona graph — and none of the persona's chat tool registrations
-  // (answer_pending_question, accept/reject_opportunity, remember/forget) —
-  // exists for this scope any more. The hosts those tools called stay
-  // shared: the MCP surface (mcp.controller toolDeps) still registers them.
 
   /**
    * Verify that a message belongs to a session owned by the given user.

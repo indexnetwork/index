@@ -116,12 +116,9 @@ export { NEGOTIATION_MAX_TURNS_AMBIENT } from "./protocol/core.js";
 
 // ─── Personal agent chat ─────────────────────────────────────────────────────
 
-export { PersonalAgentChat } from "./capabilities/agents.js";
-export type { AgentsDeps as PersonalAgentChatDeps } from "./capabilities/agents.js";
 export { ChatGraphFactory } from "./internal/chat/chat.graph.js";
-export { NEGOTIATOR_PERSONA_ID } from "./internal/chat/negotiator.persona.js";
-export { ONBOARDING_PERSONA_ID, createOnboardingPersona } from "./internal/chat/onboarding.persona.js";
-export { SIGNAL_PERSONA_ID, createSignalPersona } from "./internal/chat/signal.persona.js";
+export { PERSONAL_AGENT_PERSONA_ID, createPersonalAgentPersona } from "./internal/chat/personal-agent.persona.js";
+export type { PersonalAgentPersonaOptions } from "./internal/chat/personal-agent.persona.js";
 export { buildAgentSelfIntroduction } from "./internal/chat/agent-identity.prompt.js";
 export type { AgentIdentityOptions } from "./internal/chat/agent-identity.prompt.js";
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";

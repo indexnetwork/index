@@ -1,7 +1,7 @@
 import { conversationDatabaseAdapter } from './database.adapter';
 
 /** Persona literal mirrored locally so the data layer stays protocol-agnostic. */
-const SIGNAL_PERSONA = 'signal';
+const PERSONAL_AGENT_PERSONA = 'personal';
 
 export class ChatSessionAdapter {
   async getSessionMessages(sessionId: string, limit?: number): Promise<Array<{ role: string; content: string }>> {
@@ -11,13 +11,15 @@ export class ChatSessionAdapter {
     return rows.map((m) => ({ role: m.role, content: m.content }));
   }
 
-  // Scoped to Signal, the primary chat persona. This used to read the
-  // orchestrator's sessions, which no longer exist.
+  // Scoped to the one PersonalAgent persona, excluding intent-pinned DMs:
+  // a signal's DM transcript is read through its signal surface, never
+  // through a generic session reader.
   listSessions(userId: string, limit = 25) {
     return conversationDatabaseAdapter.listChatSessionSummaries(
       userId,
       limit,
-      SIGNAL_PERSONA,
+      PERSONAL_AGENT_PERSONA,
+      { excludeIntentPinned: true },
     );
   }
 
@@ -26,7 +28,8 @@ export class ChatSessionAdapter {
       userId,
       sessionId,
       messageLimit,
-      SIGNAL_PERSONA,
+      PERSONAL_AGENT_PERSONA,
+      { excludeIntentPinned: true },
     );
   }
 }

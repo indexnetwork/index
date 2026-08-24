@@ -145,11 +145,9 @@ describe('question retirement static invariants', () => {
       ))).toBe(false);
       expect(read('../../controllers/mcp.controller.ts')).not.toContain('chatQuestions');
       expect(read('../../services/signal-intake.service.ts')).not.toContain('recordAnsweredQuestion');
-      for (const persona of ['signal', 'onboarding']) {
-        expect(read(
-          `../../../../../packages/protocol/src/internal/chat/${persona}.persona.ts`,
-        )).not.toContain('ask_user_question');
-      }
+      expect(read(
+        '../../../../../packages/protocol/src/internal/chat/personal-agent.persona.ts',
+      )).not.toContain('ask_user_question');
     });
 
     it('voids its leftover pending rows with the retired_mode marker', () => {

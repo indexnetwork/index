@@ -292,7 +292,7 @@ export default function IntentDetailPage() {
   const conversationsService = useConversations();
   useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
-  const { user, features } = useAuthContext();
+  const { user } = useAuthContext();
   const { negotiations } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
@@ -335,12 +335,10 @@ export default function IntentDetailPage() {
   const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
-  // Backend-surfaced flag (features on /auth/me): when on, the left column is
-  // the negotiator chat window (P4.2/IND-403). `chatUnavailable` is the
-  // runtime fallback if the bootstrap fails.
+  // The left column is the signal's agent chat window. `chatUnavailable` is
+  // the runtime fallback if the bootstrap fails.
   const [chatUnavailable, setChatUnavailable] = useState(false);
-  const negotiatorChatEnabled = features?.negotiatorChat === true && !chatUnavailable;
-  const showNegotiatorPanel = negotiatorChatEnabled && !!intentId;
+  const showNegotiatorPanel = !chatUnavailable && !!intentId;
   // Mobile (< lg): the Personal Agent column becomes an off-canvas sheet over
   // the Radar; this is its open state. Desktop (lg+) always shows the column.
   const [agentPanelOpen, setAgentPanelOpen] = useState(false);

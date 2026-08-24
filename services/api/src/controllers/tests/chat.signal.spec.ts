@@ -13,6 +13,7 @@ import { agentService } from '../../services/agent.service';
 import { chatSessionService } from '../../services/chat.service';
 import { fileService } from '../../services/file.service';
 import { userService } from '../../services/user.service';
+import type { IntentAgentUserMessageEvent, IntentAgentTurnResult } from '../../lib/intent-agent/intent-agent.types';
 
 const USER: AuthenticatedUser = {
   id: 'signal-user-1',
@@ -20,8 +21,7 @@ const USER: AuthenticatedUser = {
   name: 'Signal User',
 };
 
-const signalInputs: Array<Record<string, unknown>> = [];
-const onboardingInputs: Array<Record<string, unknown>> = [];
+const personalInputs: Array<Record<string, unknown>> = [];
 
 function factoryFor(inputs: Array<Record<string, unknown>>): ChatGraphFactory {
   return {
@@ -32,65 +32,72 @@ function factoryFor(inputs: Array<Record<string, unknown>>): ChatGraphFactory {
   } as unknown as ChatGraphFactory;
 }
 
-const signalFactory = factoryFor(signalInputs);
-const onboardingFactory = factoryFor(onboardingInputs);
+const personalFactory = factoryFor(personalInputs);
 
-function session(id: string, persona: string) {
+function session(id: string, persona: string, scope?: { scopeType: string; scopeId: string }) {
   return {
     id,
     userId: USER.id,
     title: null,
     persona,
     networkId: null,
-    scopeType: null,
-    scopeId: null,
+    scopeType: scope?.scopeType ?? null,
+    scopeId: scope?.scopeId ?? null,
     shareToken: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
 }
 
-async function stream(
-  controller: ChatController,
-  body: Record<string, unknown>,
-  surface: 'web' | 'dual',
-  authKind?: 'session' | 'api_key',
-) {
-  const abortController = new AbortController();
-  const req = new Request('http://localhost/chat/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ useCheckpointer: false, ...body }),
-    signal: abortController.signal,
-  });
-  if (authKind === 'session') {
-    recordRequestAuthContext(req, { kind: 'session' });
-  } else if (authKind === 'api_key') {
-    recordRequestAuthContext(req, { kind: 'api_key', agentId: null });
-  }
-  const response = surface === 'web'
-    ? await controller.webMessageStream(req, USER)
-    : await controller.messageStream(req, USER);
-  abortController.abort();
-  if (response.headers.get('Content-Type')?.includes('text/event-stream')) {
-    await response.text();
-  }
-  return response;
-}
-
-describe('Signal Agent web chat routing (IND-449)', () => {
+describe('PersonalAgent web chat routing', () => {
   let controller: ChatController;
   let createSessionSpy: ReturnType<typeof spyOn>;
   let getSessionSpy: ReturnType<typeof spyOn>;
   let addMessageSpy: ReturnType<typeof spyOn>;
-  let getSignalFactorySpy: ReturnType<typeof spyOn>;
-  let getOnboardingFactorySpy: ReturnType<typeof spyOn>;
+  let getFactorySpy: ReturnType<typeof spyOn>;
   let loadFilesSpy: ReturnType<typeof spyOn>;
+  /** Events the controller handed to the IntentAgent seam. */
+  const agentTurnEvents: IntentAgentUserMessageEvent[] = [];
+  let scriptedAgentTurn: (event: IntentAgentUserMessageEvent) => Promise<IntentAgentTurnResult>;
+
+  async function stream(
+    body: Record<string, unknown>,
+    surface: 'web' | 'dual',
+    authKind?: 'session' | 'api_key',
+  ) {
+    const abortController = new AbortController();
+    const req = new Request('http://localhost/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ useCheckpointer: false, ...body }),
+      signal: abortController.signal,
+    });
+    if (authKind === 'session') {
+      recordRequestAuthContext(req, { kind: 'session' });
+    } else if (authKind === 'api_key') {
+      recordRequestAuthContext(req, { kind: 'api_key', agentId: null });
+    }
+    const response = surface === 'web'
+      ? await controller.webMessageStream(req, USER)
+      : await controller.messageStream(req, USER);
+    abortController.abort();
+    if (response.headers.get('Content-Type')?.includes('text/event-stream')) {
+      await response.text();
+    }
+    return response;
+  }
 
   beforeEach(() => {
-    signalInputs.length = 0;
-    onboardingInputs.length = 0;
-    controller = new ChatController();
+    personalInputs.length = 0;
+    agentTurnEvents.length = 0;
+    scriptedAgentTurn = async () => ({ acts: [], messages: [] });
+    controller = new ChatController(
+      () => ({ generate: async () => [] }) as never,
+      (event) => {
+        agentTurnEvents.push(event);
+        return scriptedAgentTurn(event);
+      },
+    );
 
     createSessionSpy = spyOn(chatSessionService, 'createSession').mockResolvedValue('new-session');
     getSessionSpy = spyOn(chatSessionService, 'getSession').mockResolvedValue(null);
@@ -100,8 +107,7 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     spyOn(chatSessionService, 'getSessionMetadata').mockResolvedValue(undefined);
     spyOn(chatSessionService, 'upsertSessionMetadata').mockResolvedValue();
     spyOn(chatSessionService, 'saveMessageMetadata').mockResolvedValue();
-    getSignalFactorySpy = spyOn(chatSessionService, 'getSignalGraphFactory').mockReturnValue(signalFactory);
-    getOnboardingFactorySpy = spyOn(chatSessionService, 'getOnboardingGraphFactory').mockReturnValue(onboardingFactory);
+    getFactorySpy = spyOn(chatSessionService, 'getPersonalAgentGraphFactory').mockReturnValue(personalFactory);
     loadFilesSpy = spyOn(fileService, 'loadAttachedFileContent').mockResolvedValue('file contents');
   });
 
@@ -109,75 +115,77 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     mock.restore();
   });
 
-  test('web creation explicitly persists Signal and uses its factory', async () => {
-
+  test('web creation persists the one PersonalAgent persona and uses its factory', async () => {
     const response = await stream(
-      controller,
-      { message: 'Help refine my signal', persona: 'signal' },
+      { message: 'Help refine my signal' },
       'web',
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get('X-Session-Id')).toBe('new-session');
-    expect(response.headers.get('X-Chat-Persona')).toBe('signal');
+    expect(response.headers.get('X-Chat-Persona')).toBe('personal');
     expect(createSessionSpy).toHaveBeenCalledWith(
       USER.id,
       undefined,
       undefined,
       undefined,
-      'signal',
+      'personal',
     );
-    expect(getSignalFactorySpy).toHaveBeenCalledTimes(1);
-    expect(signalInputs).toHaveLength(1);
+    expect(getFactorySpy).toHaveBeenCalledTimes(1);
+    expect(personalInputs).toHaveLength(1);
   });
 
-  test('the signals persona is named from the user own personal agent row', async () => {
-    // Every persona introduces itself as the user's agent, so the restricted
-    // surfaces read the same `type='personal'` row the negotiator does.
+  test('a web stream with no persona named resolves the one persona — no default needed', async () => {
+    const response = await stream({ message: 'ordinary chat' }, 'web');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-Chat-Persona')).toBe('personal');
+    expect(createSessionSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('the persona is named from the user own personal agent row', async () => {
     const agentSpy = spyOn(agentService, 'getNegotiatorAgent')
       .mockResolvedValue({ id: 'agent-1', name: "Signal User's Agent" } as never);
 
-    await stream(controller, { message: 'Draft a signal', persona: 'signal' }, 'web');
-    expect(getSignalFactorySpy).toHaveBeenLastCalledWith(
+    await stream({ message: 'Draft a signal' }, 'web');
+    expect(getFactorySpy).toHaveBeenLastCalledWith(
       expect.objectContaining({ name: "Signal User's Agent" }),
+      { onboarding: false },
     );
 
     // A missing row is not fatal here: the prompt falls back to a generic
     // self-description rather than failing the turn or naming a product.
     agentSpy.mockResolvedValue(null as never);
-    await stream(controller, { message: 'Draft another', persona: 'signal' }, 'web');
-    expect(getSignalFactorySpy).toHaveBeenLastCalledWith(null);
+    await stream({ message: 'Draft another' }, 'web');
+    expect(getFactorySpy).toHaveBeenLastCalledWith(null, { onboarding: false });
   });
 
-  test('persisted Signal persona is inherited when the followup omits persona', async () => {
-    getSessionSpy.mockResolvedValue(session('signal-session', 'signal'));
+  test('a persisted session is continued when the followup omits persona', async () => {
+    getSessionSpy.mockResolvedValue(session('personal-session', 'personal'));
 
     const response = await stream(
-      controller,
-      { message: 'Now archive the older one', sessionId: 'signal-session' },
+      { message: 'Now archive the older one', sessionId: 'personal-session' },
       'web',
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('X-Chat-Persona')).toBe('signal');
+    expect(response.headers.get('X-Chat-Persona')).toBe('personal');
     expect(createSessionSpy).not.toHaveBeenCalled();
-    expect(getSignalFactorySpy).toHaveBeenCalledTimes(1);
+    expect(getFactorySpy).toHaveBeenCalledTimes(1);
   });
 
-  test('request/stored persona mismatch fails closed before graph or writes', async () => {
-    getSessionSpy.mockResolvedValue(session('signal-session', 'signal'));
+  test('a stale persona field in the request body is inert — stripped, never routed on', async () => {
+    getSessionSpy.mockResolvedValue(session('personal-session', 'personal'));
 
+    // The persona field left the schema: zod strips unknown keys, so stale
+    // clients still stream and the stored session decides everything.
     const response = await stream(
-      controller,
-      { message: 'spoof', sessionId: 'signal-session', persona: 'negotiator' },
+      { message: 'continue', sessionId: 'personal-session', persona: 'signal' },
       'web',
     );
-    const payload = await response.json() as { code: string };
-
-    expect(response.status).toBe(409);
-    expect(payload.code).toBe('CHAT_PERSONA_MISMATCH');
-    expect(getSignalFactorySpy).not.toHaveBeenCalled();
-    expect(addMessageSpy).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(response.headers.get('X-Chat-Persona')).toBe('personal');
+    expect(getFactorySpy).toHaveBeenCalledTimes(1);
   });
 
   test('legacy orchestrator session loads but a web turn is rejected without side effects', async () => {
@@ -195,7 +203,6 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     expect((await loaded.json() as { session: { persona: string } }).session.persona).toBe('orchestrator');
 
     const response = await stream(
-      controller,
       { sessionId: 'legacy-session', fileIds: ['file-1'] },
       'web',
     );
@@ -209,64 +216,77 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     expect(payload.action).toEqual({ type: 'start_signal_session', href: '/' });
     expect(addMessageSpy).not.toHaveBeenCalled();
     expect(loadFilesSpy).not.toHaveBeenCalled();
-    expect(getSignalFactorySpy).not.toHaveBeenCalled();
+    expect(getFactorySpy).not.toHaveBeenCalled();
   });
 
-  test('unknown persisted persona never falls back to orchestrator', async () => {
-    getSessionSpy.mockResolvedValue(session('unknown-session', 'unknown'));
+  test('unknown and unmigrated persisted personas never fall back to a live one', async () => {
+    for (const persona of ['unknown', 'signal', 'negotiator', 'onboarding']) {
+      getSessionSpy.mockResolvedValue(session(`${persona}-session`, persona));
+
+      const response = await stream(
+        { message: 'continue', sessionId: `${persona}-session` },
+        'web',
+      );
+      const payload = await response.json() as { code: string };
+
+      expect(response.status).toBe(409);
+      expect(payload.code).toBe('CHAT_PERSONA_UNSUPPORTED');
+    }
+    expect(addMessageSpy).not.toHaveBeenCalled();
+  });
+
+  test('an intent scope resolves the signal DM on the web resolver, and the dual-auth twin is gone', async () => {
+    const dm = session('dm-session', 'personal', { scopeType: 'intent', scopeId: 'intent-1' });
+    const resolveSpy = spyOn(chatSessionService, 'resolveNegotiatorIntentSession').mockResolvedValue({
+      session: dm,
+      created: true,
+      intentTitle: 'A signal',
+    } as never);
+    const req = new Request('http://localhost/chat/web/session/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scopeType: 'intent', scopeId: 'intent-1' }),
+    });
+    recordRequestAuthContext(req, { kind: 'session' });
+
+    const webResponse = await controller.webResolveSession(req, USER);
+    expect(webResponse.status).toBe(200);
+    expect(resolveSpy).toHaveBeenLastCalledWith(USER.id, 'intent-1');
+
+    // The byte-identical dual-auth route was deleted with its last caller.
+    const route = RouteRegistry.getRoutes(ChatController).find((c) => c.path === '/session/resolve');
+    expect(route).toBeUndefined();
+  });
+
+  test('a session-auth intent-scoped turn runs the IntentAgent, never the graph persona', async () => {
+    spyOn(agentService, 'getNegotiatorAgent').mockResolvedValue({ id: 'agent-1', name: 'Agent' } as never);
+    spyOn(chatSessionService, 'validateIntentScope').mockResolvedValue({ ok: true, title: 'A signal' });
+    const dm = session('dm-session', 'personal', { scopeType: 'intent', scopeId: 'intent-1' });
+    spyOn(chatSessionService, 'resolveNegotiatorIntentSession').mockResolvedValue({
+      session: dm,
+      created: false,
+      intentTitle: 'A signal',
+    } as never);
+    scriptedAgentTurn = async () => ({ acts: [], messages: ['On it.'] });
 
     const response = await stream(
-      controller,
-      { message: 'continue', sessionId: 'unknown-session' },
-      'web',
+      { message: 'What is happening with this signal?', scopeType: 'intent', scopeId: 'intent-1' },
+      'dual',
+      'session',
     );
-    const payload = await response.json() as { code: string };
 
-    expect(response.status).toBe(409);
-    expect(payload.code).toBe('CHAT_PERSONA_UNSUPPORTED');
-    expect(addMessageSpy).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(agentTurnEvents).toHaveLength(1);
+    expect(agentTurnEvents[0]).toMatchObject({
+      kind: 'user_message',
+      userId: USER.id,
+      intentId: 'intent-1',
+      sessionId: 'dm-session',
+    });
+    expect(getFactorySpy).not.toHaveBeenCalled();
   });
 
-  test('web stream with no persona is refused; there is no default to fall back to', async () => {
-    const response = await stream(controller, { message: 'ordinary chat' }, 'web');
-    const payload = await response.json() as { code: string };
-
-    expect(response.status).toBe(409);
-    expect(payload.code).toBe('WEB_SIGNAL_PERSONA_REQUIRED');
-    expect(createSessionSpy).not.toHaveBeenCalled();
-    expect(addMessageSpy).not.toHaveBeenCalled();
-  });
-
-  test('intent resolvers require an explicit persona off the web surface', async () => {
-    const resolveSpy = spyOn(chatSessionService, 'resolveSessionForScope').mockImplementation(
-      async (_userId, _scope, persona) => ({
-        session: session(`${persona}-intent-session`, persona),
-        created: true,
-      }),
-    );
-    const request = (persona?: 'signal', authKind?: 'session' | 'api_key') => {
-      const req = new Request('http://localhost/chat/session/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scopeType: 'intent', scopeId: 'intent-1', ...(persona ? { persona } : {}) }),
-      });
-      if (authKind === 'session') recordRequestAuthContext(req, { kind: 'session' });
-      else if (authKind === 'api_key') recordRequestAuthContext(req, { kind: 'api_key', agentId: null });
-      return req;
-    };
-
-    const webResponse = await controller.webResolveSession(request('signal'), USER);
-    expect(webResponse.status).toBe(200);
-    expect(resolveSpy).toHaveBeenLastCalledWith(USER.id, { scopeType: 'intent', scopeId: 'intent-1' }, 'signal');
-
-    resolveSpy.mockClear();
-    const apiKeyResponse = await controller.resolveSession(request(undefined, 'api_key'), USER);
-    expect(apiKeyResponse.status).toBe(409);
-    expect((await apiKeyResponse.json() as { code: string }).code).toBe('CHAT_PERSONA_REQUIRED');
-    expect(resolveSpy).not.toHaveBeenCalled();
-  });
-
-  test('onboarding authoritatively persists and inherits its persona while incomplete', async () => {
+  test('onboarding surface streams the one persona and stays restricted while incomplete', async () => {
     const findUserSpy = spyOn(userService, 'findById').mockResolvedValue({
       id: USER.id,
       onboarding: {},
@@ -279,17 +299,18 @@ describe('Signal Agent web chat routing (IND-449)', () => {
 
     const allowed = await controller.onboardingMessageStream(request(), USER);
     expect(allowed.status).toBe(200);
-    expect(allowed.headers.get('X-Chat-Persona')).toBe('onboarding');
+    expect(allowed.headers.get('X-Chat-Persona')).toBe('personal');
     expect(createSessionSpy).toHaveBeenLastCalledWith(
       USER.id,
       undefined,
       undefined,
       undefined,
-      'onboarding',
+      'personal',
     );
-    expect(getOnboardingFactorySpy).toHaveBeenCalledTimes(1);
-    expect(getSignalFactorySpy).not.toHaveBeenCalled();
+    expect(getFactorySpy).toHaveBeenCalledTimes(1);
+    expect(getFactorySpy).toHaveBeenLastCalledWith(null, { onboarding: true });
 
+    // The restricted surface cannot be scoped or client-prefilled.
     const scoped = await controller.onboardingMessageStream(
       request({ scopeType: 'network', scopeId: 'network-1' }),
       USER,
@@ -301,24 +322,16 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     );
     expect(prefilled.status).toBe(400);
     expect(createSessionSpy).toHaveBeenCalledTimes(1);
-    expect(getOnboardingFactorySpy).toHaveBeenCalledTimes(1);
+    expect(getFactorySpy).toHaveBeenCalledTimes(1);
 
-    getSessionSpy.mockResolvedValue(session('onboarding-session', 'onboarding'));
+    getSessionSpy.mockResolvedValue(session('onboarding-session', 'personal'));
     const followup = await controller.onboardingMessageStream(
       request({ sessionId: 'onboarding-session' }),
       USER,
     );
     expect(followup.status).toBe(200);
-    expect(followup.headers.get('X-Chat-Persona')).toBe('onboarding');
     expect(createSessionSpy).toHaveBeenCalledTimes(1);
-    expect(getOnboardingFactorySpy).toHaveBeenCalledTimes(2);
-
-    const spoofed = await controller.onboardingMessageStream(
-      request({ sessionId: 'onboarding-session', persona: 'signal' }),
-      USER,
-    );
-    expect(spoofed.status).toBe(409);
-    expect(getSignalFactorySpy).not.toHaveBeenCalled();
+    expect(getFactorySpy).toHaveBeenCalledTimes(2);
 
     getSessionSpy.mockResolvedValue(null);
 
@@ -328,82 +341,40 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     } as never);
     const completed = await controller.onboardingMessageStream(request(), USER);
     expect(completed.status).toBe(403);
-    expect(getOnboardingFactorySpy).toHaveBeenCalledTimes(2);
+    expect(getFactorySpy).toHaveBeenCalledTimes(2);
 
     const guards = RouteRegistry.getGuards(ChatController, 'onboardingMessageStream');
     expect(guards).toContain(SessionOnlyGuard);
     expect(guards).not.toContain(AuthGuard);
   });
 
-  test('compatibility stream denies a negotiator-persona session before every side effect', async () => {
-    const resolveScopeSpy = spyOn(chatSessionService, 'resolveSessionForScope');
-    const updateScopeSpy = spyOn(chatSessionService, 'updateSessionScope');
-
-    const response = await stream(
-      controller,
-      {
-        message: 'web compatibility chat',
-        fileIds: ['file-1'],
-        scopeType: 'intent',
-        scopeId: 'intent-1',
-      },
-      'dual',
-      'session',
-    );
-    const payload = await response.json() as { code: string };
-
-    expect(response.status).toBe(409);
-    expect(payload.code).toBe('WEB_SIGNAL_PERSONA_REQUIRED');
-    expect(loadFilesSpy).not.toHaveBeenCalled();
-    expect(resolveScopeSpy).not.toHaveBeenCalled();
-    expect(createSessionSpy).not.toHaveBeenCalled();
-    expect(updateScopeSpy).not.toHaveBeenCalled();
-    expect(getSignalFactorySpy).not.toHaveBeenCalled();
-    expect(addMessageSpy).not.toHaveBeenCalled();
-  });
-
   test('compatibility stream derives web policy for session auth', async () => {
-
     const response = await stream(
-      controller,
-      { message: 'web compatibility chat', persona: 'signal' },
+      { message: 'web compatibility chat' },
       'dual',
       'session',
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('X-Chat-Persona')).toBe('signal');
-    expect(getSignalFactorySpy).toHaveBeenCalledTimes(1);
+    expect(response.headers.get('X-Chat-Persona')).toBe('personal');
+    expect(getFactorySpy).toHaveBeenCalledTimes(1);
   });
 
-  test('API-key stream must name a persona; Signal stays web-only', async () => {
-    const unnamed = await stream(controller, { message: 'agent chat' }, 'dual', 'api_key');
-    expect(unnamed.status).toBe(409);
-    expect((await unnamed.json() as { code: string }).code).toBe('CHAT_PERSONA_REQUIRED');
-    expect(getSignalFactorySpy).not.toHaveBeenCalled();
+  test('API-key streams require the intent scope; the global chat stays web-only', async () => {
+    const unscoped = await stream({ message: 'agent chat' }, 'dual', 'api_key');
+    expect(unscoped.status).toBe(403);
+    expect(((await unscoped.json()) as { error: string }).error).toContain('intent scope');
+    expect(getFactorySpy).not.toHaveBeenCalled();
     expect(createSessionSpy).not.toHaveBeenCalled();
 
-    const borrowed = await stream(controller, { message: 'agent chat', persona: 'signal' }, 'dual', 'api_key');
+    getSessionSpy.mockResolvedValue(session('personal-session', 'personal'));
+    const borrowed = await stream(
+      { message: 'agent chat', sessionId: 'personal-session' },
+      'dual',
+      'api_key',
+    );
     expect(borrowed.status).toBe(403);
-    expect((await borrowed.json() as { code: string }).code).toBe('WEB_SIGNAL_PERSONA_FORBIDDEN');
-    expect(getSignalFactorySpy).not.toHaveBeenCalled();
-  });
-
-  test('compatibility resolver denies a negotiator-persona session before scope resolution', async () => {
-    const resolveSpy = spyOn(chatSessionService, 'resolveSessionForScope');
-    const req = new Request('http://localhost/chat/session/resolve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scopeType: 'intent', scopeId: 'intent-1' }),
-    });
-    recordRequestAuthContext(req, { kind: 'session' });
-
-    const response = await controller.resolveSession(req, USER);
-    const payload = await response.json() as { code: string };
-
-    expect(response.status).toBe(409);
-    expect(payload.code).toBe('WEB_SIGNAL_PERSONA_REQUIRED');
-    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(getFactorySpy).not.toHaveBeenCalled();
   });
 
   test('the deprecated /chat/message endpoint is gone', () => {
@@ -419,26 +390,16 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     await controller.getSessions(new Request('http://localhost/chat/sessions'), USER);
     expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, 10, 'orchestrator');
 
-    // The negotiator filter is gone with the unscoped DM it served: every
-    // persona now collapses to the orchestrator compatibility history.
-    await controller.getSessions(
-      new Request('http://localhost/chat/sessions?persona=negotiator'),
-      USER,
-    );
-    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, 10, 'orchestrator');
-
-    await controller.getSessions(
-      new Request('http://localhost/chat/sessions?persona=signal'),
-      USER,
-    );
-    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, 10, 'orchestrator');
-
-    await controller.getSessions(
-      new Request('http://localhost/chat/sessions?persona=future-persona'),
-      USER,
-    );
-    expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, 10, 'orchestrator');
-    expect(compatibilitySpy).toHaveBeenCalledTimes(4);
+    // The persona filter is inert: every value collapses to the orchestrator
+    // compatibility history.
+    for (const persona of ['negotiator', 'signal', 'personal', 'future-persona']) {
+      await controller.getSessions(
+        new Request(`http://localhost/chat/sessions?persona=${persona}`),
+        USER,
+      );
+      expect(compatibilitySpy).toHaveBeenLastCalledWith(USER.id, 10, 'orchestrator');
+    }
+    expect(compatibilitySpy).toHaveBeenCalledTimes(5);
 
     await controller.getWebSessions(new Request('http://localhost/chat/web/sessions'), USER);
     expect(webSpy).toHaveBeenCalledWith(USER.id);
@@ -448,8 +409,8 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     expect(webGuards).not.toContain(AuthGuard);
   });
 
-  test('compatibility detail hides Signal while the session-only web route can load it', async () => {
-    getSessionSpy.mockResolvedValue(session('signal-detail', 'signal'));
+  test('compatibility detail hides PersonalAgent chats while the session-only web route can load them', async () => {
+    getSessionSpy.mockResolvedValue(session('personal-detail', 'personal'));
     const historySpy = spyOn(chatSessionService, 'getConversationSessionHistory').mockResolvedValue({
       messages: [], session: null, hasPreviousSession: false,
     } as never);
@@ -457,7 +418,7 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     const request = () => new Request('http://localhost/chat/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: 'signal-detail' }),
+      body: JSON.stringify({ sessionId: 'personal-detail' }),
     });
 
     const compatibility = await controller.getSession(request(), USER);
@@ -466,14 +427,14 @@ describe('Signal Agent web chat routing (IND-449)', () => {
 
     const web = await controller.getWebSession(request(), USER);
     expect(web.status).toBe(200);
-    expect(historySpy).toHaveBeenCalledWith('signal-detail', undefined);
+    expect(historySpy).toHaveBeenCalledWith('personal-detail', undefined);
 
     const guards = RouteRegistry.getGuards(ChatController, 'getWebSession');
     expect(guards).toContain(SessionOnlyGuard);
     expect(guards).not.toContain(AuthGuard);
   });
 
-  test('session mutations enforce stored persona before writes or sharing', async () => {
+  test('session mutations enforce stored persona and surface before writes or sharing', async () => {
     const shareSpy = spyOn(chatSessionService, 'shareSession').mockResolvedValue('share-token');
     const titleSpy = spyOn(chatSessionService, 'updateSessionTitle').mockResolvedValue(true);
     const request = (path: string, body: Record<string, unknown>, kind: 'session' | 'api_key') => {
@@ -497,20 +458,21 @@ describe('Signal Agent web chat routing (IND-449)', () => {
     expect((await legacyShare.json() as { code: string }).code).toBe('WEB_SIGNAL_SESSION_REQUIRED');
     expect(shareSpy).not.toHaveBeenCalled();
 
-    getSessionSpy.mockResolvedValue(session('signal-session', 'signal'));
+    // API-key principals only hold the DM: a global session is invisible to them.
+    getSessionSpy.mockResolvedValue(session('personal-session', 'personal'));
     const apiKeyShare = await controller.shareSession(
-      request('/session/share', { sessionId: 'signal-session' }, 'api_key'),
+      request('/session/share', { sessionId: 'personal-session' }, 'api_key'),
       USER,
     );
     expect(apiKeyShare.status).toBe(404);
     expect(shareSpy).not.toHaveBeenCalled();
 
-    const signalTitle = await controller.updateSessionTitle(
-      request('/session/title', { sessionId: 'signal-session', title: 'Updated' }, 'session'),
+    const personalTitle = await controller.updateSessionTitle(
+      request('/session/title', { sessionId: 'personal-session', title: 'Updated' }, 'session'),
       USER,
     );
-    expect(signalTitle.status).toBe(200);
-    expect(titleSpy).toHaveBeenCalledWith('signal-session', USER.id, 'Updated');
+    expect(personalTitle.status).toBe(200);
+    expect(titleSpy).toHaveBeenCalledWith('personal-session', USER.id, 'Updated');
   });
 
   test('frontend message metadata mutation is session-only in route metadata', () => {

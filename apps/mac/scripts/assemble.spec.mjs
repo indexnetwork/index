@@ -21,8 +21,8 @@ test('assembled IndexApi facade initializes with every declared export', () => {
 // streamChat is the single chokepoint every chat turn goes through, and its
 // scope handling used to fail open: `if (scopeType && scopeId)` dropped BOTH
 // fields when only one arrived, silently downgrading the turn to unscoped.
-// The negotiator persona has no unscoped surface (the API 400s such a turn),
-// so a half-supplied scope must fail at the caller instead.
+// This app has no unscoped chat surface (the API answers such an api-key
+// turn with 403), so a half-supplied scope must fail at the caller instead.
 test('streamChat rejects a half-supplied scope instead of silently dropping it', async () => {
   const result = Bun.spawnSync(['python3', `${scriptsRoot}assemble.py`], { cwd: macRoot });
   expect(result.exitCode).toBe(0);

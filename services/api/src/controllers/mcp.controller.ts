@@ -30,13 +30,11 @@ import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiationGraph } from '../lib/negotiation/negotiation-graph';
-import { negotiatorMemoryWriteService } from '../services/negotiator-memory.service';
-import { isNegotiatorMemoryWriteEnabled } from '../lib/negotiator-feature';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createSignalPersona, SIGNAL_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createPersonalAgentPersona, PERSONAL_AGENT_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -100,31 +98,21 @@ const protocolDeps = {
   },
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
-  // P5.4 (IND-408): host bridge for the negotiator persona's remember/forget
-  // memory tools. Injected only while memory writes are enabled — when the
-  // flag is off the tools are simply not registered. Consumed exclusively by
-  // createNegotiatorTools; the orchestrator registry never sees these tools.
   // #1471: host bridge for the negotiator persona's `reject_opportunity` /
   // `accept_opportunity` tools — the owner's VERDICT lane, which had no lever
   // in chat before. Registered only in intent-pinned negotiator sessions; the
   // orchestrator registry never sees it.
   negotiatorVerdictTools: negotiatorVerdictToolsHost,
-  ...(isNegotiatorMemoryWriteEnabled() && {
-    negotiatorMemoryTools: {
-      remember: async (userId: string, input: { kind: 'disclosure_rule' | 'playbook' | 'threshold'; content: string; sessionId?: string }) =>
-        negotiatorMemoryWriteService.rememberFromChat({ userId, ...input }),
-      forget: async (userId: string, input: { memoryId?: string; description?: string }) =>
-        negotiatorMemoryWriteService.forgetFromChat({ userId, ...input }),
-    },
-  }),
 };
 
 const chatSessionReader = {
   getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
+  // Intent-pinned DMs are excluded: a signal's DM transcript belongs to its
+  // signal surface, never to a generic MCP session reader.
   listSessions: (userId: string, limit?: number) =>
-    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit ?? 25, SIGNAL_PERSONA_ID),
+    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit ?? 25, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
   getSession: (userId: string, sessionId: string, messageLimit?: number) =>
-    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit ?? 50, SIGNAL_PERSONA_ID),
+    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit ?? 50, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
 };
 /**
  * Composition-root chat factory. Signal is the product's primary chat persona,
@@ -137,7 +125,7 @@ const chatSessionReader = {
 // Every chat surface derives a sibling factory bound to the client's own agent
 // identity (`ChatSessionService.get*GraphFactory`), so the nameless persona
 // here never drives a turn.
-export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, createSignalPersona());
+export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, createPersonalAgentPersona());
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)

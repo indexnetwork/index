@@ -13,7 +13,7 @@
  *   never have one; absence is the normal case.
  * - Any failure → `[]` with a log line; a DM must never break a negotiation.
  * - Only ever reads the requesting user's OWN DM — the `chat_session_scopes`
- *   lookup is (userId, 'negotiator-intent', intentId)-keyed and the query type
+ *   lookup is (userId, 'personal-intent', intentId)-keyed and the query type
  *   carries no counterparty field, so the counterparty's DM is unreachable by
  *   construction rather than by a check that could be forgotten.
  *
@@ -21,7 +21,7 @@
  * (agentId/userId + optional subjectUserId, retrieved by vector similarity), so
  * grounding on it would cross signals silently. The DM is intent-scoped at the
  * database — `chat_session_scopes` unique on (userId, scopeType, scopeId) with
- * scopeType 'negotiator-intent' — which is exactly one DM per signal.
+ * scopeType 'personal-intent' — which is exactly one DM per signal.
  */
 import { and, db, desc, eq, schema } from './database.shared';
 import { log } from '../lib/log';
@@ -51,7 +51,7 @@ export type NegotiatorClientDmRetrieveFn = (query: NegotiatorClientDmQuery) => P
  * the value is the shape of a stored row, and both readers pinning the same
  * literal is what keeps them honest if either is refactored.
  */
-const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
+const PERSONAL_INTENT_SCOPE_TYPE = 'personal-intent';
 
 /**
  * How many trailing DM messages to read.
@@ -110,7 +110,7 @@ export class NegotiatorClientDmRetrievalAdapter {
         .where(
           and(
             eq(schema.chatSessionScopes.userId, query.userId),
-            eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_INTENT_SCOPE_TYPE),
+            eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
             eq(schema.chatSessionScopes.scopeId, intentId),
           ),
         )

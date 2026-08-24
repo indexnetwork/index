@@ -8,7 +8,6 @@ import { cliCredentialService, type CliCredentialService } from '../services/cli
 import { userService } from '../services/user.service';
 import { onboardingService } from '../services/onboarding.service';
 import { agentService } from '../services/agent.service';
-import { isNegotiatorChatEnabled } from '../lib/negotiator-feature';
 import { isFastSignalIntakeEnabled } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 
@@ -83,11 +82,13 @@ export class AuthController {
         ...userFields,
         notificationPreferences,
       },
-      // Both surfaces now ship on unconditionally. The fields stay so the web
-      // app keeps working, and can be removed once the web side stops reading
-      // them (apps/web AuthContext, i/[intentId]/page.tsx).
       features: {
-        negotiatorChat: isNegotiatorChatEnabled(),
+        // Legacy shipped-mac-client compat: older mac builds hide the agent
+        // chat pane unless this bit is true. Hardcoded — nothing gates the
+        // surface any more; delete when a gate-free mac build ships.
+        negotiatorChat: true,
+        // Ships on unconditionally. The field stays so the web app keeps
+        // working, and can be removed once the web side stops reading it.
         fastSignalIntake: isFastSignalIntakeEnabled(),
       },
     });

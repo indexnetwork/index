@@ -20,6 +20,24 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 30.0.0 - 2026-08-24
+
+### Changed
+
+- **One PersonalAgent persona.** The signal, onboarding, and negotiator chat
+  personas collapse into a single `createPersonalAgentPersona(identity)`
+  factory with `PERSONAL_AGENT_PERSONA_ID = 'personal'`. What a turn may do is
+  derived from the session's resolved scope context, never from a persona id;
+  the onboarding prompt/toolset is a fragment selected by incomplete-onboarding
+  session state on truly unscoped sessions only. Removed exports:
+  `SIGNAL_PERSONA_ID`, `createSignalPersona`, `ONBOARDING_PERSONA_ID`,
+  `createOnboardingPersona`, `NEGOTIATOR_PERSONA_ID`, `PersonalAgentChat`,
+  `PersonalAgentChatDeps`. The negotiator persona (prompt, chat toolset, and
+  its `remember`/`forget` chat tools plus the `negotiatorMemoryTools` host
+  port) is deleted outright: every intent-scoped DM turn is IntentAgent-owned
+  host-side, so no chat persona exists for that scope. Tool allowlists and
+  narrowing are unchanged in content.
+
 ## 29.0.0 - 2026-08-23
 
 ### Breaking

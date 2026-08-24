@@ -9,7 +9,7 @@ import type { IntentProposalRow } from '../schemas/database.schema';
 
 
 /** Scope type of the per-signal DM the personal agent speaks into. */
-const NEGOTIATOR_INTENT_SCOPE_TYPE = 'negotiator-intent';
+const PERSONAL_INTENT_SCOPE_TYPE = 'personal-intent';
 
 export class IntentDatabaseAdapter {
   /**
@@ -678,7 +678,7 @@ export class IntentDatabaseAdapter {
 
   /**
    * The signals whose agent is waiting on the owner: the newest message in the
-   * signal's ('negotiator-intent', intentId) DM is agent-authored AND offered
+   * signal's ('personal-intent', intentId) DM is agent-authored AND offered
    * canned replies, so it is a question nobody has answered yet. A later
    * message of any kind — the owner's typed answer or their tapped chip, both
    * ordinary user messages — makes the newest row theirs and clears the flag.
@@ -706,7 +706,7 @@ export class IntentDatabaseAdapter {
       )
       .where(and(
         eq(schema.chatSessionScopes.userId, userId),
-        eq(schema.chatSessionScopes.scopeType, NEGOTIATOR_INTENT_SCOPE_TYPE),
+        eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
         inArray(schema.chatSessionScopes.scopeId, intentIds),
       ))
       .orderBy(

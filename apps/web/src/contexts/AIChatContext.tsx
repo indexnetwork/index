@@ -118,7 +118,6 @@ export interface QueuedMessage {
 export interface ChatSendOptions {
   hidden?: boolean;
   prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
-  persona?: "signal";
   /** @deprecated Product surfaces should use their dedicated send helper. */
   surface?: "web";
   existingMessageId?: string;
@@ -194,10 +193,9 @@ interface AIChatContextType {
   scopeNetworkId: string | null;
   /** Set the current network scope (e.g. from the network filter dropdown in ChatContent). Call with null for "Everywhere". */
   setScopeNetworkId: (networkId: string | null) => void;
-  /** Resolve or create the stable persona session for an intent scope. */
+  /** Resolve or create the stable session for an intent scope — the signal's DM. */
   resolveIntentSession: (
     intent: { id: string; label?: string },
-    persona?: "signal",
   ) => Promise<string | null>;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
@@ -219,10 +217,8 @@ interface AIChatContextType {
     attachmentNames?: string[],
     options?: Omit<ChatSendOptions, "surface">,
   ) => Promise<void>;
-  /** Clear messages and session state. Detached route cleanup may preserve a one-shot forced persona. */
-  clearChat: (options?: { abortStream?: boolean; preserveForcedPersona?: boolean }) => void;
-  /** Clear the current chat and force the next new web session to request Signal. */
-  startSignalSession: () => void;
+  /** Clear messages and session state. */
+  clearChat: (options?: { abortStream?: boolean }) => void;
   /** Load a session, returning false for failed or superseded requests. */
   loadSession: (sessionId: string) => Promise<boolean>;
   /** Load exactly one earlier durable timeline session into display history. */
@@ -368,7 +364,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [sessionPersona, setSessionPersona] = useState<string | null>(null);
   const [turnBlock, setTurnBlock] = useState<ChatTurnBlock | null>(null);
-  const forcePersonaNextSessionRef = useRef<"signal" | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionLoadState, setSessionLoadState] = useState<ChatSessionLoadState>({
@@ -445,17 +440,15 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const resolveIntentSession = useCallback(async (
     intent: { id: string; label?: string },
-    persona?: "signal",
   ): Promise<string | null> => {
     const resolutionToken = Symbol(`resolve-intent-session:${intent.id}`);
     intentResolutionOwnerRef.current = resolutionToken;
     try {
       const response = await apiClient.post<{
         session: { id: string; scopeType?: "intent" | "network" | null; scopeId?: string | null };
-      }>(persona ? "/chat/web/session/resolve" : "/chat/session/resolve", {
+      }>("/chat/web/session/resolve", {
         scopeType: "intent",
         scopeId: intent.id,
-        ...(persona ? { persona } : {}),
       });
       if (intentResolutionOwnerRef.current !== resolutionToken) return null;
       setScopeOverride({ type: "intent", id: intent.id, ...(intent.label ? { label: intent.label } : {}) });
@@ -585,11 +578,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       if (!displayContent) return;
 
       const operationSessionId = targetSessionId ?? sessionId;
-      const requestedPersona = options?.persona
-        ?? (!operationSessionId ? forcePersonaNextSessionRef.current ?? undefined : undefined);
       const effectiveTransport: ChatTransport = transport === "web"
-        || requestedPersona === "signal"
-        || sessionPersona === "signal"
+        || sessionPersona === "personal"
         ? "web"
         : "compatibility";
 
@@ -668,7 +658,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           ...(fileIds?.length ? { fileIds } : {}),
           ...(chatScope ? { scopeType: chatScope.type, scopeId: chatScope.id } : {}),
           ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
-          ...(requestedPersona ? { persona: requestedPersona } : {}),
         };
 
         const streamEndpoint = effectiveTransport === "web"
@@ -718,7 +707,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           // mark it route-ready so the ensuing /d/:id navigation never reloads
           // or briefly replaces it with a loading shell.
           setSessionLoadState({ status: "ready", targetSessionId: newSessionId, error: null });
-          forcePersonaNextSessionRef.current = null;
           // The scope selected at session creation becomes the session's bound scope.
           if (chatScope) {
             setSessionScope(chatScope);
@@ -1204,8 +1192,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     options?: ChatSendOptions,
   ) => {
     const transport: ChatTransport = options?.surface === "web"
-      || options?.persona === "signal"
-      || sessionPersona === "signal"
+      || sessionPersona === "personal"
       ? "web"
       : "compatibility";
     return sendMessageWithTransport(transport, message, fileIds, attachmentNames, options);
@@ -1279,7 +1266,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const clearChat = useCallback((options?: {
     abortStream?: boolean;
-    preserveForcedPersona?: boolean;
   }) => {
     const abortStream = options?.abortStream !== false;
     const active = activeSendRef.current;
@@ -1308,18 +1294,10 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setSessionId(null);
     setSessionTitle(null);
     setSessionPersona(null);
-    if (!options?.preserveForcedPersona) {
-      forcePersonaNextSessionRef.current = null;
-    }
     setTurnBlock(null);
     setSessionScope(null); // Clear session-bound scope so new chat can use UI selection
     setSessionNetworkId(null); // Clear session-bound network so new chat can use UI selection
   }, [invalidateActiveSend]);
-
-  const startSignalSession = useCallback(() => {
-    clearChat();
-    forcePersonaNextSessionRef.current = "signal";
-  }, [clearChat]);
 
   const loadSession = useCallback(async (id: string): Promise<boolean> => {
     invalidateActiveSend("load");
@@ -1341,7 +1319,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setPreviousSessionCursor(null);
     setIsLoadingPreviousMessages(false);
     setSuggestions([]);
-    forcePersonaNextSessionRef.current = null;
 
     interruptTimeoutsRef.current.forEach((t) => clearTimeout(t));
     interruptTimeoutsRef.current.clear();
@@ -1568,7 +1545,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         sendMessage,
         sendWebMessage,
         clearChat,
-        startSignalSession,
         loadSession,
         loadPreviousMessages,
         hasPreviousSession,

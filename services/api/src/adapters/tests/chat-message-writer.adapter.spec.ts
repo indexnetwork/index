@@ -25,7 +25,8 @@ describe("ChatMessageWriterAdapter", () => {
     expect(chatSessionService.getUserSessions).toHaveBeenCalledWith(
       "user-1",
       1,
-      "signal",
+      "personal",
+      { excludeIntentPinned: true },
     );
     expect(chatSessionService.addMessage).toHaveBeenCalledWith({
       sessionId: "session-recent",
@@ -37,7 +38,7 @@ describe("ChatMessageWriterAdapter", () => {
   it("never selects a more-recent Signal session", async () => {
     const chatSessionService = {
       getUserSessions: mock(async (_userId: string, _limit: number, persona: string) => {
-        expect(persona).toBe("signal");
+        expect(persona).toBe("personal");
         return [{ id: "signal-session" }];
       }),
       addMessage: mock(async () => "msg-signal"),

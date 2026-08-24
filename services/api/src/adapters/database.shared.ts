@@ -322,16 +322,15 @@ export type ChatScopeType = 'network' | 'intent';
 /**
  * Value of `conversations.persona`.
  *
- * - `signal` | `negotiator` | `onboarding` — live chat personas.
+ * - `personal` — the one live chat persona (PersonalAgent). The retired
+ *   signal/negotiator/onboarding ids were collapsed into it by migration.
  * - `telegram` — Telegram notification transcript. Not a chat persona: nothing
  *   drives a turn in it, it only collects delivered notifications.
  * - `orchestrator` — retired pre-personafication default. No new rows are
  *   written with it; existing ones stay readable.
  */
 export type ChatPersonaId =
-  | 'signal'
-  | 'negotiator'
-  | 'onboarding'
+  | 'personal'
   | 'telegram'
   | 'orchestrator';
 
@@ -339,7 +338,7 @@ export interface ChatSession {
   id: string;
   userId: string;
   title: string | null;
-  /** Persona this session is persisted under (e.g. 'signal'). */
+  /** Persona this session is persisted under (e.g. 'personal'). */
   persona: string;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId: string | null;

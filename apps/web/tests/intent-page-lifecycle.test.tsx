@@ -53,6 +53,12 @@ vi.mock('@/components/chat/OpportunityCardInChat', () => ({
   OpportunitySkeleton: () => <div data-testid="opportunity-skeleton" />,
 }));
 
+// The agent chat panel renders unconditionally now; these tests exercise the
+// lifecycle column, so the panel is stubbed out.
+vi.mock('@/components/IntentNegotiatorChat', () => ({
+  default: () => <div data-testid="intent-negotiator-chat-stub" />,
+}));
+
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuthContext: () => ({

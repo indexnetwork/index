@@ -30,12 +30,8 @@ mock.module("@indexnetwork/protocol", () => {
     ChatTitleGenerator: class {
       invoke = mockTitleInvoke;
     },
-    SIGNAL_PERSONA_ID: "signal",
-    NEGOTIATOR_PERSONA_ID: "negotiator",
-    ONBOARDING_PERSONA_ID: "onboarding",
-    createSignalPersona: mock((opts?: { agentName?: string }) => ({ id: "signal", ...opts })),
-    createOnboardingPersona: mock((opts?: { agentName?: string }) => ({ id: "onboarding", ...opts })),
-    createNegotiatorPersona: mock(() => ({ id: "negotiator" })),
+    PERSONAL_AGENT_PERSONA_ID: "personal",
+    createPersonalAgentPersona: mock((opts?: { agentName?: string }, scope?: string) => ({ id: "personal", scope, ...opts })),
   };
 });
 
@@ -132,9 +128,7 @@ function createMockDb(overrides: Partial<MockDb> = {}): MockDb {
     createChatMessage: mock(() => Promise.resolve()),
     updateChatSessionTimestamp: mock(() => Promise.resolve()),
     updateChatSessionIndex: mock(() => Promise.resolve()),
-    updateChatSessionScope: mock(() => Promise.resolve()),
     updateChatSessionTitle: mock(() => Promise.resolve()),
-    getChatSessionByScope: mock(() => Promise.resolve(null)),
     deleteChatSession: mock(() => Promise.resolve()),
     setChatShareToken: mock(() => Promise.resolve()),
     getChatSessionByShareToken: mock(() => Promise.resolve(null)),
@@ -149,48 +143,6 @@ function createMockDb(overrides: Partial<MockDb> = {}): MockDb {
 }
 
 // ─── createSession ────────────────────────────────────────────────────────────
-
-describe("ChatSessionService.resolveSessionForScope", () => {
-  it("recovers the winning Signal session after a Drizzle-wrapped 23505", async () => {
-    const session = makeSession({ persona: "signal" });
-    const wrapped = new Error('Failed query: insert into "chat_session_scopes" (...)');
-    (wrapped as { cause?: unknown }).cause = Object.assign(
-      new Error("duplicate key value violates unique constraint"),
-      { code: "23505" },
-    );
-
-    let scopeLookups = 0;
-    const getChatSessionByScope = mock(
-      (_userId: string, _scopeType: string, _scopeId: string, persona: string) => {
-        expect(persona).toBe("signal");
-        scopeLookups += 1;
-        return Promise.resolve(scopeLookups === 1 ? null : session);
-      },
-    );
-    const db = createMockDb({
-      getChatSessionByScope,
-      createChatSession: mock(() => Promise.reject(wrapped)),
-    });
-    const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
-
-    const res = await svc.resolveSessionForScope(
-      USER_ID,
-      { scopeType: "intent", scopeId: "intent-001" },
-      "signal",
-    );
-
-    if ("error" in res) throw new Error(`expected session, got error: ${res.error}`);
-    expect(res.session).toEqual(session);
-    expect(res.created).toBe(false);
-    expect(getChatSessionByScope).toHaveBeenNthCalledWith(
-      2,
-      USER_ID,
-      "intent",
-      "intent-001",
-      "signal",
-    );
-  });
-});
 
 describe("ChatSessionService.resolveNegotiatorIntentSession", () => {
   it("recovers the raced session when create hits a Drizzle-wrapped 23505", async () => {
@@ -265,16 +217,14 @@ describe("ChatSessionService.createSession", () => {
     expect(arg.networkId).toBe("network-42");
   });
 
-  it("persists explicitly selected restricted personas", async () => {
+  it("persists the explicitly selected persona", async () => {
     const db = createMockDb();
     const svc = new ChatSessionService(db as unknown as ConversationDatabaseAdapter);
 
-    await svc.createSession(USER_ID, undefined, undefined, undefined, "signal");
-    await svc.createSession(USER_ID, undefined, undefined, undefined, "onboarding");
+    await svc.createSession(USER_ID, undefined, undefined, undefined, "personal");
 
     const calls = db.createChatSession.mock.calls as Array<[Record<string, unknown>]>;
-    expect(calls[0][0].persona).toBe("signal");
-    expect(calls[1][0].persona).toBe("onboarding");
+    expect(calls[0][0].persona).toBe("personal");
   });
 });
 
@@ -283,164 +233,32 @@ describe("ChatSessionService.createSession", () => {
 describe("ChatSessionService.resolveStreamPersonaPolicy", () => {
   const svc = new ChatSessionService(createMockDb() as unknown as ConversationDatabaseAdapter);
 
-  it("has no default persona: a web turn must name one", () => {
-    expect(svc.resolveStreamPersonaPolicy({ surface: "web" })).toMatchObject({
-      ok: false,
-      status: 409,
-      code: "WEB_SIGNAL_PERSONA_REQUIRED",
-    });
+  it("resolves the one PersonalAgent persona for new and continued chats", () => {
+    expect(svc.resolveStreamPersonaPolicy()).toEqual({ ok: true, persona: "personal" });
+    expect(svc.resolveStreamPersonaPolicy({ storedPersona: "personal" }))
+      .toEqual({ ok: true, persona: "personal" });
   });
 
-  it("has no default persona: an agent turn must name one", () => {
-    expect(svc.resolveStreamPersonaPolicy({ surface: "agent" })).toMatchObject({
-      ok: false,
-      status: 409,
-      code: "CHAT_PERSONA_REQUIRED",
-    });
-  });
-
-  it("selects onboarding authoritatively and unconditionally", () => {
-    expect(svc.resolveStreamPersonaPolicy({ surface: "onboarding" })).toEqual({
-      ok: true,
-      persona: "onboarding",
-    });
-    expect(svc.resolveStreamPersonaPolicy({
-      surface: "onboarding",
-      storedPersona: "onboarding",
-    })).toEqual({ ok: true, persona: "onboarding" });
-    expect(svc.resolveStreamPersonaPolicy({
-      surface: "onboarding",
-      requestedPersona: "signal",
-    })).toMatchObject({
-      ok: false,
-      status: 409,
-      code: "CHAT_PERSONA_MISMATCH",
-    });
-  });
-
-  it("rejects a requested persona that contradicts the persisted one", () => {
-    for (const surface of ["web", "agent"] as const) {
-      expect(svc.resolveStreamPersonaPolicy({
-        surface,
-        storedPersona: "onboarding",
-      })).toMatchObject({
-        ok: false,
-        status: 403,
-        code: "WEB_ONBOARDING_PERSONA_FORBIDDEN",
-      });
-      expect(svc.resolveStreamPersonaPolicy({
-        surface,
-        requestedPersona: "onboarding",
-      })).toMatchObject({
-        ok: false,
-        status: 403,
-        code: "WEB_ONBOARDING_PERSONA_FORBIDDEN",
-      });
+  it("makes retired orchestrator and telegram history read-only", () => {
+    for (const storedPersona of ["orchestrator", "telegram"]) {
+      const result = svc.resolveStreamPersonaPolicy({ storedPersona });
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("expected policy denial");
+      expect(result.code).toBe("WEB_SIGNAL_SESSION_REQUIRED");
+      expect(result.status).toBe(409);
+      expect(result.action).toEqual({ type: "start_signal_session", href: "/" });
     }
   });
 
-  it("requires an explicit Signal assertion for a new web chat", () => {
-
-    const missing = svc.resolveStreamPersonaPolicy({ surface: "web" });
-    expect(missing.ok).toBe(false);
-    if (missing.ok) throw new Error("expected policy denial");
-    expect(missing.code).toBe("WEB_SIGNAL_PERSONA_REQUIRED");
-    expect(missing.action).toEqual({ type: "start_signal_session", href: "/" });
-
-    expect(svc.resolveStreamPersonaPolicy({
-      surface: "web",
-      requestedPersona: "signal",
-    })).toEqual({ ok: true, persona: "signal" });
-  });
-
-  it("inherits a persisted Signal persona without trusting another request assertion", () => {
-
-    expect(svc.resolveStreamPersonaPolicy({
-      surface: "web",
-      storedPersona: "signal",
-    })).toEqual({ ok: true, persona: "signal" });
-
-    const mismatch = svc.resolveStreamPersonaPolicy({
-      surface: "web",
-      storedPersona: "signal",
-      requestedPersona: "negotiator",
-    });
-    expect(mismatch.ok).toBe(false);
-    if (mismatch.ok) throw new Error("expected policy denial");
-    expect(mismatch.code).toBe("CHAT_PERSONA_MISMATCH");
-  });
-
-  it("makes retired orchestrator history read-only", () => {
-    const result = svc.resolveStreamPersonaPolicy({
-      surface: "web",
-      storedPersona: "orchestrator",
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected policy denial");
-    expect(result.code).toBe("WEB_SIGNAL_SESSION_REQUIRED");
-    expect(result.status).toBe(409);
-    expect(result.action).toEqual({ type: "start_signal_session", href: "/" });
-  });
-
-  it("fails closed for unknown persisted personas", () => {
-    const result = svc.resolveStreamPersonaPolicy({
-      surface: "web",
-      storedPersona: "unexpected",
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected policy denial");
-    expect(result.code).toBe("CHAT_PERSONA_UNSUPPORTED");
-  });
-
-  it("keeps Signal web-only for agent-surface callers", () => {
-    const spoofed = svc.resolveStreamPersonaPolicy({
-      surface: "agent",
-      requestedPersona: "signal",
-    });
-    expect(spoofed.ok).toBe(false);
-    if (spoofed.ok) throw new Error("expected policy denial");
-    expect(spoofed.code).toBe("WEB_SIGNAL_PERSONA_FORBIDDEN");
-    expect(spoofed.status).toBe(403);
-  });
-
-  it("continues a persisted Signal session on the web surface", () => {
-    expect(svc.resolveStreamPersonaPolicy({
-      surface: "web",
-      storedPersona: "signal",
-    })).toEqual({ ok: true, persona: "signal" });
-  });
-
-  it("keeps a persisted Signal session off the agent surface", () => {
-    const result = svc.resolveStreamPersonaPolicy({
-      surface: "agent",
-      storedPersona: "signal",
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected policy denial");
-    expect(result.code).toBe("WEB_SIGNAL_PERSONA_FORBIDDEN");
-  });
-
-  // The reporter persona is removed. Migration 0131 deletes its conversations,
-  // but the policy must still fail closed for any row that outlives the code
-  // deploy — an unknown persona can never drive a turn.
-  it("rejects the removed reporter persona on every surface", () => {
-    for (const surface of ["web", "agent", "onboarding"] as const) {
-      expect(svc.resolveStreamPersonaPolicy({
-        surface,
-        requestedPersona: "reporter",
-      })).toMatchObject({ ok: false, status: 409, code: "CHAT_PERSONA_UNSUPPORTED" });
+  // The retired persona rows (signal/negotiator/onboarding) are migrated to
+  // 'personal', and reporter conversations were deleted by migration 0131 —
+  // but the policy must still fail closed for any row that outlives its
+  // migration. An unknown persona can never drive a turn.
+  it("fails closed for unknown or unmigrated persisted personas", () => {
+    for (const storedPersona of ["reporter", "signal", "negotiator", "onboarding", "unexpected"]) {
+      expect(svc.resolveStreamPersonaPolicy({ storedPersona }))
+        .toMatchObject({ ok: false, status: 409, code: "CHAT_PERSONA_UNSUPPORTED" });
     }
-    expect(svc.resolveStreamPersonaPolicy({
-      surface: "web",
-      storedPersona: "reporter",
-    })).toMatchObject({ ok: false, status: 409, code: "CHAT_PERSONA_UNSUPPORTED" });
-  });
-
-  it("leaves the separate negotiator persona unchanged", () => {
-    expect(svc.resolveStreamPersonaPolicy({
-      surface: "agent",
-      requestedPersona: "negotiator",
-    })).toEqual({ ok: true, persona: "negotiator" });
   });
 });
 
@@ -494,7 +312,7 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10, "orchestrator");
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator");
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "orchestrator", {});
   });
 
   it("passes an explicit persona filter through to the adapter", async () => {
@@ -507,11 +325,11 @@ describe("ChatSessionService.getUserSessions", () => {
     const result = await svc.getUserSessions(USER_ID, 10, "negotiator");
 
     expect(result).toEqual(sessions);
-    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "negotiator");
+    expect(db.getUserChatSessions).toHaveBeenCalledWith(USER_ID, 10, "negotiator", {});
   });
 
-  it("lists read-only and Signal sessions for web history", async () => {
-    const sessions = [makeSession(), makeSession({ id: "signal-session", persona: "signal" })];
+  it("lists read-only and global PersonalAgent sessions for web history, excluding intent-pinned DMs", async () => {
+    const sessions = [makeSession(), makeSession({ id: "personal-session", persona: "personal" })];
     const db = createMockDb({
       getUserChatSessions: mock(() => Promise.resolve(sessions)),
     });
@@ -523,7 +341,8 @@ describe("ChatSessionService.getUserSessions", () => {
     expect(db.getUserChatSessions).toHaveBeenCalledWith(
       USER_ID,
       10,
-      ["orchestrator", "telegram", "signal"],
+      ["orchestrator", "telegram", "personal"],
+      { excludeIntentPinned: true },
     );
   });
 });

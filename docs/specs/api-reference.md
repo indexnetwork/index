@@ -413,7 +413,7 @@ Soft-deletes the authenticated user's account.
 
 ### POST /api/chat/stream
 
-Dual-auth SSE endpoint for chat messages with context support. There is no default persona. Session-authenticated callers are classified as the web surface from authenticated credential provenance and receive the same Signal policy (or typed refusal) as the dedicated route, preventing a browser from bypassing the policy by selecting this endpoint. API-key principals are classified as the agent surface and must name a persona explicitly; `signal` stays web-only, so `negotiator` is the one they can start. Omitting the persona returns HTTP 409 with `code: "CHAT_PERSONA_REQUIRED"`. The main web composer uses `/api/chat/web/stream` below.
+Dual-auth SSE endpoint for chat messages with context support. There is one persona (`personal`); requests never name it, and what a turn may do is derived from the session's scope. Session-authenticated callers are classified as the web surface from authenticated credential provenance and receive the same policy (or typed refusal) as the dedicated route, preventing a browser from bypassing the policy by selecting this endpoint. API-key principals are classified as the agent surface and may only drive intent-scoped turns (a signal's DM); anything else returns HTTP 403. The main web composer uses `/api/chat/web/stream` below.
 
 **Auth**: AuthGuard
 
@@ -428,7 +428,6 @@ Dual-auth SSE endpoint for chat messages with context support. There is no defau
   "scopeId": "string | null (required when scopeType is provided)",
   "networkId": "string | null (deprecated alias for scopeType=network)",
   "recipientUserId": "string | null (optional — DM recipient)",
-  "persona": "signal | negotiator | null (optional persona assertion; stored session persona is authoritative)",
   "prefillMessages": [
     { "role": "assistant | user", "content": "string (max 10000 chars)" }
   ]
@@ -455,17 +454,17 @@ API-key Signal assertions are rejected on this compatibility route. A session-au
 
 Main-web SSE endpoint. It accepts the same request and returns the same SSE events/headers as `/api/chat/stream`, but is protected by `SessionOnlyGuard`.
 
-A new ordinary web chat must explicitly request `persona: "signal"`; omitting it returns HTTP 409 with `code: "WEB_SIGNAL_PERSONA_REQUIRED"`. Signal follow-ups may omit the assertion and inherit the persisted persona. Retired `orchestrator` sessions remain readable through `POST /api/chat/session`, but a new turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Explicit persona mismatch and unknown persisted personas also fail closed.
+New web chats persist the one `personal` persona; no request field selects it. Retired `orchestrator` sessions remain readable through `POST /api/chat/session`, but a new turn returns HTTP 409 with `code: "WEB_SIGNAL_SESSION_REQUIRED"` and `action: { "type": "start_signal_session", "href": "/" }`. Unknown or unmigrated persisted personas fail closed with `code: "CHAT_PERSONA_UNSUPPORTED"`.
 
 ### POST /api/chat/onboarding/stream
 
-Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. Sessions are server-selected and persisted as `persona="onboarding"` unconditionally; follow-ups inherit that stored persona, while spoofed/mismatched/unknown personas fail closed. The restricted persona exposes only approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration.
+Session-only onboarding exception using the same SSE request/response shape. The controller authoritatively reloads the user and returns 403 once `onboarding.completedAt` is set. Sessions persist the one `personal` persona; the restricted onboarding fragment is selected by the user's incomplete onboarding record on a truly unscoped session — not by a persona id — and requests on this route may not be scoped or client-prefilled. The fragment exposes only approved self-profile context, the shared guided first-signal intake, proposal-only creation with current-membership validation, and completion. It excludes imports, discovery/opportunities, negotiation, community selection or membership mutation, and administration.
 
 **Auth**: SessionOnlyGuard
 
 ### GET /api/chat/sessions
 
-Compatibility history for the authenticated user. Every request is clamped to the retired `orchestrator` persona, whose sessions stay readable; the `persona` query parameter is inert, since the `persona=negotiator` lookup it once served existed only for the removed unscoped Personal Agent DM. Negotiator sessions are reached through their pinned intent, and Signal sessions are never returned here.
+Compatibility history for the authenticated user. Every request is clamped to the retired `orchestrator` persona, whose sessions stay readable; the `persona` query parameter is inert. A signal's DM is reached through its intent, and `personal` sessions are never returned here.
 
 **Auth**: AuthGuard
 
@@ -478,17 +477,15 @@ Compatibility history for the authenticated user. Every request is clamped to th
 
 ### GET /api/chat/web/sessions
 
-Session-only main-web history. Returns `signal` sessions plus the read-only rows (retired `orchestrator`, `telegram` notification transcripts), and excludes the pinned negotiator conversation.
+Session-only main-web history. Returns global `personal` sessions plus the read-only rows (retired `orchestrator`, `telegram` notification transcripts), and excludes intent-pinned sessions (a signal's DM is reached through its signal).
 
 **Auth**: SessionOnlyGuard
 
 **Response**: same shape as `GET /api/chat/sessions`.
 
-### POST /api/chat/session/resolve
+### POST /api/chat/web/session/resolve
 
-Resolve or create a stable selected-intent chat session. Session-authenticated callers are classified as web and receive Signal policy or a typed refusal before scope validation/session creation. API-key callers are the agent surface and must name a persona; without one the call returns HTTP 409 with `code: "CHAT_PERSONA_REQUIRED"`. Repeated calls by the same user, intent, and persona return the same session. The main web composer uses `/api/chat/web/session/resolve`.
-
-**Auth**: AuthGuard
+Session-only resolver for the stable intent-scoped chat session — the signal's DM. An intent scope names exactly one session per (user, intent), keyed in the registry as `personal-intent`; repeated calls return the same session. (The former dual-auth `/api/chat/session/resolve` twin is deleted.)
 
 **Request body**:
 ```json
@@ -508,18 +505,6 @@ Resolve or create a stable selected-intent chat session. Session-authenticated c
     "title": "..."
   },
   "created": false
-}
-```
-
-### POST /api/chat/web/session/resolve
-
-Session-only main-web variant of `/api/chat/session/resolve`. Add `persona: "signal"`; the returned stable intent-scoped session uses the Signal persona-distinct registry key (`signal-intent`), so it never rewrites or reuses retired orchestrator history.
-
-```json
-{
-  "scopeType": "intent",
-  "scopeId": "intent UUID",
-  "persona": "signal"
 }
 ```
 
@@ -561,7 +546,7 @@ Compatibility detail for a specific retired-`orchestrator` session with its mess
 
 ### POST /api/chat/web/session
 
-Session-only main-web detail endpoint. It permits the readable web persona (`signal`) and the read-only rows (`orchestrator`, `telegram`) plus the pinned negotiator conversation, and fails closed for unknown personas.
+Session-only main-web detail endpoint. It permits the one live persona (`personal`, intent-pinned DMs included) and the read-only rows (`orchestrator`, `telegram`), and fails closed for unknown personas.
 
 Both chat detail endpoints now hydrate one durable timeline session only. The first request sends `{ "sessionId": "..." }`; to reveal exactly one older section, send `{ "sessionId": "...", "beforeSessionId": "<oldest loaded durable session id>" }`. Responses retain `{ session, messages }` and add `sessionId` (the loaded durable session), `hasPreviousSession`, and `previousSessionCursor`. The cursor is opaque; callers must not infer ordering from IDs.
 
@@ -569,7 +554,7 @@ Both chat detail endpoints now hydrate one durable timeline session only. The fi
 
 ### POST /api/chat/session/delete
 
-Delete a chat session. Delete, title, share, and unshare mutations all load the owned session first and enforce its persisted persona: API-key callers may mutate only `negotiator` sessions; session-authenticated Signal sessions follow the web policy; retired orchestrator sessions are read-only and return the typed separate-session action.
+Delete a chat session. Delete, title, share, and unshare mutations all load the owned session first: API-key callers may mutate only intent-scoped sessions (a signal's DM); session-authenticated callers follow the web policy; retired orchestrator sessions are read-only and return the typed separate-session action.
 
 **Auth**: AuthGuard
 

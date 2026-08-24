@@ -206,7 +206,6 @@ vi.mock('@/contexts/AIChatContext', () => {
     sendMessage: vi.fn().mockResolvedValue(undefined),
     sendWebMessage: vi.fn().mockResolvedValue(undefined),
     clearChat: vi.fn(),
-    startSignalSession: vi.fn(),
     loadSession: vi.fn().mockResolvedValue(false),
     loadPreviousMessages: vi.fn().mockResolvedValue(undefined),
     hasPreviousSession: false,
@@ -240,6 +239,9 @@ vi.mock('@/contexts/ConversationContext', () => ({
         sessionHistory: new Map(),
         sessionOpportunityMap: new Map(),
         isConnected: false,
+        // Subscriptions must hand back an unsubscribe: an effect that
+        // returns the subscribe result crashes cleanup otherwise.
+        subscribeQuestionRegeneration: vi.fn(() => () => {}),
       },
       {
         get(target, prop) {

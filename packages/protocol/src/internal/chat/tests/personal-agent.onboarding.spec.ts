@@ -3,9 +3,8 @@ config({ path: ".env.test", override: true });
 
 import { describe, expect, it } from "bun:test";
 
-import { createOnboardingPersona, ONBOARDING_PERSONA_ID, ONBOARDING_TOOL_NAMES, filterOnboardingTools } from "../onboarding.persona.js";
-import { buildOnboardingSystemContent } from "../onboarding.prompt.js";
-import { SIGNAL_NEW_SIGNAL_KICKOFF } from "../signal.prompt.js";
+import { createPersonalAgentPersona, PERSONAL_AGENT_ONBOARDING_TOOL_NAMES, filterOnboardingTools } from "../personal-agent.persona.js";
+import { buildOnboardingSystemContent, SIGNAL_NEW_SIGNAL_KICKOFF } from "../personal-agent.prompt.js";
 import type { ResolvedToolContext } from "../../shared/agent/tool.factory.js";
 
 const EXPECTED_TOOLS = [
@@ -68,38 +67,59 @@ function makeContext(onboarding: Record<string, unknown> = {}): ResolvedToolCont
   } as unknown as ResolvedToolContext;
 }
 
-describe("createOnboardingPersona", () => {
-  it("uses a first-class persisted persona with proposal recovery", () => {
-    const persona = createOnboardingPersona({ agentName: "Alice's Agent" });
-    expect(ONBOARDING_PERSONA_ID).toBe("onboarding");
-    expect(persona.id).toBe(ONBOARDING_PERSONA_ID);
-    expect(persona.loopBehaviors).toEqual({
-      hallucinationRecovery: true,
-    });
+describe("onboarding flow of the PersonalAgent persona", () => {
+  it("is selected only by the host's onboarding-surface marker, never by a persona id or user state", () => {
+    // The marker selects the restricted fragment…
+    const marked = createPersonalAgentPersona({ agentName: "Alice's Agent" }, { onboarding: true })
+      .buildSystemContent(makeContext(), { iteration: 1 } as never);
+    expect(marked).toContain("restricted setup assistant");
+
+    // …and WITHOUT it, an ordinary unscoped web chat gets the FULL signals
+    // fragment even while the durable onboarding record is incomplete.
+    const unmarked = createPersonalAgentPersona({ agentName: "Alice's Agent" })
+      .buildSystemContent(makeContext(), { iteration: 1 } as never);
+    expect(unmarked).toContain("the private signals and profile assistant");
+    expect(unmarked).not.toContain("restricted setup assistant");
+  });
+
+  it("keeps a mid-onboarding network chat on the signals fragment and toolset", () => {
+    const networkScoped = { ...makeContext(), scopeType: "network", scopeId: "22222222-2222-4222-8222-222222222222" } as ResolvedToolContext;
+    const prompt = createPersonalAgentPersona({ agentName: "Alice's Agent" })
+      .buildSystemContent(networkScoped, { iteration: 1 } as never);
+    expect(prompt).toContain("the private signals and profile assistant");
+    expect(prompt).not.toContain("restricted setup assistant");
+  });
+
+  it("composes the onboarding fragment for the marked onboarding surface", () => {
+    const ctx = makeContext();
+    const persona = createPersonalAgentPersona({ agentName: "Alice's Agent" }, { onboarding: true });
+    const prompt = persona.buildSystemContent(ctx, { iteration: 1 } as never);
+    expect(prompt).toContain("restricted setup assistant");
+    expect(prompt).toBe(buildOnboardingSystemContent(ctx, { agentName: "Alice's Agent" }, { iteration: 1 } as never));
   });
 
   it("introduces itself as the user's own agent, never a product noun", () => {
     const ctx = makeContext();
-    const named = createOnboardingPersona({ agentName: "Alice's Agent" })
+    const named = createPersonalAgentPersona({ agentName: "Alice's Agent" }, { onboarding: true })
       .buildSystemContent(ctx, { iteration: 1 } as never);
     expect(named).toContain("You are Alice's Agent, the restricted setup assistant for Alice.");
     expect(named).not.toContain("Onboarding Agent");
 
     // ensureNegotiatorAgent runs at auth, so a nameless row is the unexpected
     // case — it still must not reintroduce a product noun.
-    const nameless = createOnboardingPersona()
+    const nameless = createPersonalAgentPersona({}, { onboarding: true })
       .buildSystemContent(ctx, { iteration: 1 } as never);
     expect(nameless).toContain("You are Alice's personal agent, the restricted setup assistant.");
     expect(nameless).not.toContain("Onboarding Agent");
   });
 
   it("pins the exact positive allowlist and excludes every forbidden family", () => {
-    expect(ONBOARDING_TOOL_NAMES).toEqual(EXPECTED_TOOLS);
+    expect(PERSONAL_AGENT_ONBOARDING_TOOL_NAMES).toEqual(EXPECTED_TOOLS);
     const registry = [...EXPECTED_TOOLS, ...FORBIDDEN_TOOLS, "future_shared_tool"]
       .map((name) => ({ name }));
     expect(filterOnboardingTools(registry).map((tool) => tool.name)).toEqual([...EXPECTED_TOOLS]);
 
-    const allowed = new Set<string>(ONBOARDING_TOOL_NAMES);
+    const allowed = new Set<string>(PERSONAL_AGENT_ONBOARDING_TOOL_NAMES);
     for (const forbidden of FORBIDDEN_TOOLS) expect(allowed.has(forbidden)).toBe(false);
     expect(allowed.has("future_shared_tool")).toBe(false);
   });

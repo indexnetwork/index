@@ -5,7 +5,7 @@
  * - `reflect`: flag off → distiller never invoked; flag on → BOTH sides get a
  *   reflection pass with perspective-projected transcripts and correct seat
  *   attribution; one side failing never costs the other its memories,
- * - `chat_reflect`: ownership/persona guard (only the negotiator DM reflects),
+ * - `chat_reflect`: ownership guard (only the canonical signal DM reflects),
  *   counterparty_dossier entries are dropped (no subject in chat scope),
  *   sessions without client messages are skipped.
  */
@@ -14,7 +14,6 @@ process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? 'test-key';
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
 import type { NegotiationReflectionInput, ChatReflectionInput, DistilledMemory } from '@indexnetwork/protocol';
 
 import { NegotiationReflectQueue, type ReflectJobData } from '../negotiations/reflect.queue';
@@ -53,7 +52,8 @@ const distilled: DistilledMemory[] = [{
 function mkQueue(opts?: {
   reflectNegotiation?: (input: NegotiationReflectionInput) => Promise<DistilledMemory[]>;
   reflectChat?: (input: ChatReflectionInput) => Promise<DistilledMemory[]>;
-  session?: { persona: string } | null;
+  session?: { persona: string; scopeType: string | null; scopeId: string | null } | null;
+  canonicalDmId?: string | null;
   chatMessages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
   negotiationMessages?: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }>;
 }) {
@@ -72,7 +72,8 @@ function mkQueue(opts?: {
       ],
     },
     chat: {
-      getSession: async () => opts?.session === undefined ? { persona: NEGOTIATOR_PERSONA_ID } : opts.session,
+      getSession: async () => opts?.session === undefined ? { persona: 'personal', scopeType: 'intent', scopeId: 'intent-1' } : opts.session,
+      findNegotiatorIntentSessionId: async () => opts?.canonicalDmId === undefined ? 'sess-1' : opts.canonicalDmId,
       getSessionMessages: async () => opts?.chatMessages ?? [
         { role: 'user', content: 'never share my rate' },
         { role: 'assistant', content: 'understood' },
@@ -183,8 +184,19 @@ describe('NegotiationReflectQueue', () => {
   describe('chat_reflect', () => {
     const chatJob = { sessionId: 'sess-1', userId: 'u-alice' };
 
-    it('non-negotiator persona → skipped (guard)', async () => {
-      const { queue, chatCalls, writes } = mkQueue({ session: { persona: 'orchestrator' } });
+    it('non-intent-scoped session → skipped (guard)', async () => {
+      const { queue, chatCalls, writes } = mkQueue({ session: { persona: 'personal', scopeType: null, scopeId: null } });
+      queues.push(queue);
+
+      await queue.processJob('chat_reflect', chatJob);
+      expect(chatCalls.length).toBe(0);
+      expect(writes.length).toBe(0);
+    });
+
+    it('intent-scoped but not the canonical DM → skipped (guard)', async () => {
+      // A pre-collapse pinned chat that lost the DM fold-in carries the
+      // intent scope but no registry claim; it never distils.
+      const { queue, chatCalls, writes } = mkQueue({ canonicalDmId: 'sess-other' });
       queues.push(queue);
 
       await queue.processJob('chat_reflect', chatJob);

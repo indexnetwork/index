@@ -140,7 +140,6 @@ describe('Intent page — responsive Personal Agent / Radar layout (IND-503)', (
     vi.clearAllMocks();
     // Mobile semantics by default; the desktop test re-stubs with `true`.
     stubMatchMedia(false);
-    mocks.authState.features = { negotiatorChat: true };
     primeServices();
   });
 
