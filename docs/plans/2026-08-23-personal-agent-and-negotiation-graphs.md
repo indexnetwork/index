@@ -95,6 +95,7 @@ one of:
 | `pause(counterparty_silent, payload)` | the other side has not answered within the window |
 | `pause(needs_principal, payload)` | cannot continue without something only the principal knows; payload carries the question |
 | `pause(ready_for_verdict, payload)` | believes a decision is possible; payload carries `{ recommendation: 'pending' \| 'reject', reasoning }` |
+| `pause(turn_cap)` | the ambient turn budget ran out mid self-play; no payload. System-emitted, never authored |
 
 No `accept`, `decline`, `withdraw` on the turn surface. A counterparty that
 wants out pauses `ready_for_verdict(reject)` and *its* IS-A rejects. External
@@ -175,11 +176,11 @@ dossier and reply stream become ports the host implements.
 
 | Input | Meaning |
 |---|---|
-| `{ opportunityId, brief }` | open: create the negotiation and take the first turn |
+| `{ opportunityId, brief, intentId, round }` | open: create the negotiation and take the first turn. `intentId` resolves the source seat (its owner) and, with `round`, keys the all-paused trigger; `round` is the caller's batch counter, bumped once per kickoff batch |
 | `{ negotiationId, brief }` | resume after reflect with new context |
-| `{ negotiationId, turn }` | apply a submitted turn — from AgentGraph or an external agent, same verbs, same validation → continue or pause |
+| `{ negotiationId, turn, byUserId }` | apply a submitted turn — from AgentGraph or an external agent, same verbs, same validation → continue or pause. `byUserId` is the submitting seat; `apply` rejects a turn whose `byUserId` is not the speaker it computed |
 | `{ negotiationId, pause: counterparty_silent }` | a timeout fired |
-| `{ negotiationId, verdict: pending \| reject, reasoning }` | resolve — the only terminal write, from IS-A ACT |
+| `{ negotiationId, verdict: pending \| reject, reasoning }` | resolve — the only terminal write on the negotiation, from IS-A ACT. It also closes the negotiation behind an owner verdict on the opportunity, and never writes over an already-terminal opportunity status (D23) |
 | `{ negotiationId }` | read |
 
 `reasoning` is recorded on the outcome artifact and travels with the opportunity status — it is what the Radar card / closed card render. It is private to the resolving side: never persisted as a message into the A2A thread. A reject reason may contain principal-private material; the counterparty only ever sees that the negotiation closed.
@@ -223,7 +224,9 @@ Whole-cloth, with their tests:
   `negotiateExistingOpportunity`, `NegotiationService.buildUserContext`) and
   `POST /users/:id/negotiations`.
 - `SIGNAL_PERSONA_ID` / `NEGOTIATOR_PERSONA_ID` / onboarding persona branches;
-  `conversations.persona` collapses to one value. `PersonalAgentChat`,
+  `conversations.persona` collapses to one value on every agent-authored
+  surface; `'orchestrator'` and `'telegram'` history rows are deliberately
+  left as they are — they are read-only records, not live personas. `PersonalAgentChat`,
   `Negotiations`, the unused `InChatNegotiationQuestionDelivery` port.
 - The pair-shared A2A thread, `priorAttribution`, the conversation lock.
 - `services/api/src/lib/intent-agent/*` (moves, as IS-A, into the protocol).
@@ -233,6 +236,29 @@ Not deleted: owner accept (`PATCH /opportunities/:id/status`, Radar,
 notifications, negotiator memory tables (unused by this loop for now — "later
 we can use global agent context"), the watchdog and claim-timeout queues for
 external agents (re-pointed at `{ negotiationId, pause }`).
+
+## Known gaps after step 1
+
+Real, recorded rather than fixed — each belongs to a later step, not to the
+NegotiationGraph rewrite:
+
+- `reasoning` written by `resolve` has no reader: `negotiation-context.loader`
+  declares `getArtifactsForTask` but never calls it, and it loads through
+  `getNegotiationTaskForOpportunity`, which excludes completed tasks — so a
+  resolved card renders nothing. Belongs with step 2/3 presentation.
+- The questioner/park/continuation spine (`questioner.adapter`'s settlement
+  ladder, `negotiation-continuation.atomic`, `parked-negotiation.reader.adapter`,
+  `negotiation-session-rollup.projection`) is still wired into live surfaces but
+  keys off `input_required` / `stalled` / ask_user gaps — states the rewritten
+  graph never writes — so it is inert, and a `needs_principal` pause currently
+  reaches no principal surface. "What is deleted" lists it as deleted; the
+  replacement surface is step 2.
+- `createNegotiationTaskForAttemptInTransaction` and the pair lock
+  (`conversation.database.adapter.ts`) have no live callers.
+- `run-existing.queue` survives as a no-op stub that callers still enqueue into
+  (discovery re-enqueue, watchdog, the MCP negotiate tool) — step 3.
+- Three `NegotiationGraph` construction sites remain against this doc's one —
+  step 3.
 
 ## Open items
 

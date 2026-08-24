@@ -35,8 +35,6 @@ class IndexTransport(ABC):
         method: str,
         path: str,
         body: dict[str, Any] | None = None,
-        *,
-        hermes_run: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         raise NotImplementedError
 

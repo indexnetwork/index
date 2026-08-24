@@ -134,46 +134,15 @@ INDEX_OPEN_APP = {
 INDEX_RESPOND_NEGOTIATION = {
     "name": "index_respond_negotiation",
     "description": (
-        "Submit one closed action for a specific negotiation. There is no more "
-        "pickup/claim -- a negotiation stays working until it pauses or resolves, "
-        "so the caller must already know which negotiationId to respond to (e.g. "
-        "from the wake event, or from the generic list_negotiations/get_negotiation "
-        "MCP tools). The server maps the action to a fixed template message; no "
-        "model-authored shared prose is ever accepted."
+        "OFFLINE -- always refuses. The negotiation-graph rewrite deleted the REST "
+        "respond route this bridge submitted turns to, and external agents stay "
+        "offline until they are rebuilt on the new auth model. Call it only to be "
+        "told that; there is no turn to submit and no substitute tool."
     ),
     "parameters": {
         "type": "object",
         "additionalProperties": False,
-        "properties": {
-            "agentId": {
-                "type": "string",
-                "description": (
-                    "Optional personal agent UUID. Omit to resolve it from "
-                    "/agents/me using the configured agent-bound API key."
-                ),
-            },
-            "negotiationId": {
-                "type": "string",
-                "description": "Required negotiation UUID.",
-            },
-            "action": {
-                "type": "string",
-                "enum": [
-                    "outreach",
-                    "counter",
-                    "question",
-                    "ask_principal",
-                    "recommend_pending",
-                    "recommend_reject",
-                ],
-                "description": (
-                    "outreach/counter/question continue the negotiation. ask_principal pauses for "
-                    "the owner. recommend_pending/recommend_reject pause with a verdict "
-                    "recommendation for the owner's own agent to act on -- there is no accept, "
-                    "decline, withdraw, or consult."
-                ),
-            },
-        },
-        "required": ["negotiationId", "action"],
+        "properties": {},
+        "required": [],
     },
 }

@@ -203,6 +203,11 @@ async function executeVerdictOn(
     // first-party owner CLICK for outcome capture (IND-434); a verdict spoken to
     // an agent is a real owner decision but a model-mediated one, and a
     // misheard "not this one" must not become a mined preference label.
+    //
+    // Ending the pairing's live negotiation is part of that same call now
+    // (D23): the service closes the negotiation task through the graph's
+    // `resolve` after a terminal flip, so a verdict spoken here can no longer
+    // leave the task `working` and hold its round's reflect trigger open.
     const update = deps?.updateStatus
       ?? ((opportunityId: string, status: OpportunityStatus, uid: string, options: { scopeType: 'intent'; scopeId: string }) =>
         opportunityService.updateOpportunityStatus(opportunityId, status, uid, options));

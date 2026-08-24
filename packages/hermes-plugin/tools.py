@@ -12,13 +12,9 @@ import copy
 import json
 import os
 import platform
-import secrets
 import shutil
 import subprocess
-import threading
-import time
 import urllib.parse
-from collections import OrderedDict
 from typing import Any
 
 from .env_transport import TransportError
@@ -32,45 +28,6 @@ from .transport import get_transport, reset_transport, set_transport_for_tests
 INDEX_APP_BASE_URL = "https://index.network"
 _MAX_APP_URL_WALK_DEPTH = 16
 _OPEN_URL_TIMEOUT_SECONDS = 15
-# Negotiation-graph rewrite (#1494): the closed action vocabulary Hermes may
-# submit. Mirrors packages/protocol/src/internal/negotiations/negotiation.hermes-contract.ts
-# `HermesNegotiationActionSchema` exactly. No accept/decline/withdraw/consult
-# any more -- a negotiator that wants out submits `recommend_reject` and lets
-# its own principal's agent act on it.
-_NEGOTIATION_ACTIONS = {
-    "outreach",
-    "counter",
-    "question",
-    "ask_principal",
-    "recommend_pending",
-    "recommend_reject",
-}
-_NEGOTIATION_ACTIONS_MESSAGE = "outreach, counter, question, ask_principal, recommend_pending, recommend_reject"
-_NEGOTIATION_RUN_LOCK = threading.RLock()
-_NEGOTIATION_RUN_MAX_STATES = 256
-_NEGOTIATION_RUN_STATE_TTL_SECONDS = 6 * 60 * 60
-
-
-class _NegotiationRunState:
-    """Hidden authority for one authoritative Hermes gateway task/session.
-
-    There is no more pickup/claim step (a negotiation is never claimed into a
-    distinct state -- it stays `working` until it pauses or resolves), so
-    this only fences one negotiation-graph mutation per Hermes pass: the
-    first `index_respond_negotiation` call consumes it, and a repeat call
-    with the identical arguments replays the cached result instead of
-    re-dispatching.
-    """
-
-    def __init__(self, run_id: str, touched_at: float) -> None:
-        self.run_id = run_id
-        self.touched_at = touched_at
-        self.mutation_key: str | None = None
-        self.mutation_inflight = False
-        self.mutation_result: dict[str, Any] | None = None
-
-
-_NEGOTIATION_RUN_STATES: OrderedDict[str, _NegotiationRunState] = OrderedDict()
 _FORWARDED_MCP_TOOLS = frozenset(
     {
         "research_profile",
@@ -121,129 +78,6 @@ def _clean_string(value: Any) -> str | None:
         return None
     value = value.strip()
     return value or None
-
-
-def _unexpected_arguments(args: dict[str, Any], allowed: set[str]) -> str | None:
-    unexpected = sorted(str(key) for key in args if key not in allowed)
-    return f"Unexpected arguments: {', '.join(unexpected)}." if unexpected else None
-
-
-def _valid_hermes_task_id(value: Any) -> str | None:
-    task_id = _clean_string(value)
-    if not task_id or len(task_id) > 512 or "\0" in task_id or "\r" in task_id or "\n" in task_id:
-        return None
-    return task_id
-
-
-def _negotiation_run_state_expired(state: _NegotiationRunState, now: float) -> bool:
-    """Treat backward/equal monotonic observations as live, never as elapsed TTL."""
-    return (
-        not state.mutation_inflight
-        and now > state.touched_at
-        and now - state.touched_at > _NEGOTIATION_RUN_STATE_TTL_SECONDS
-    )
-
-
-def _touch_negotiation_run_state(state: _NegotiationRunState, now: float | None = None) -> None:
-    observed = time.monotonic() if now is None else now
-    state.touched_at = max(state.touched_at, observed)
-
-
-def _prune_negotiation_run_states(now: float) -> None:
-    # Capacity is fail-closed: only lifecycle-expired entries are removable.
-    # Every live entry is authoritative, including completed tombstones and
-    # cached receipts; insertion must fail rather than evicting any of them.
-    expired = [
-        task_id
-        for task_id, state in _NEGOTIATION_RUN_STATES.items()
-        if _negotiation_run_state_expired(state, now)
-    ]
-    for task_id in expired:
-        _NEGOTIATION_RUN_STATES.pop(task_id, None)
-
-
-def _negotiation_run_state(kwargs: dict[str, Any]) -> tuple[_NegotiationRunState | None, str | None]:
-    """Resolve only Hermes' hidden handler task_id; model arguments never participate."""
-    hermes_task_id = _valid_hermes_task_id(kwargs.get("task_id"))
-    if not hermes_task_id:
-        return None, "Hermes did not supply a valid authoritative task_id for this negotiation pass."
-    now = time.monotonic()
-    with _NEGOTIATION_RUN_LOCK:
-        state = _NEGOTIATION_RUN_STATES.get(hermes_task_id)
-        if state is not None and _negotiation_run_state_expired(state, now):
-            _NEGOTIATION_RUN_STATES.pop(hermes_task_id, None)
-            state = None
-        if state is None:
-            _prune_negotiation_run_states(now)
-            if len(_NEGOTIATION_RUN_STATES) >= _NEGOTIATION_RUN_MAX_STATES:
-                return None, "Hermes negotiation pass state capacity is temporarily exhausted."
-            state = _NegotiationRunState(secrets.token_urlsafe(32), now)
-            _NEGOTIATION_RUN_STATES[hermes_task_id] = state
-        else:
-            _touch_negotiation_run_state(state, now)
-            _NEGOTIATION_RUN_STATES.move_to_end(hermes_task_id)
-        return state, None
-
-
-def _negotiation_run_authority(state: _NegotiationRunState) -> dict[str, str]:
-    """Project hidden run state into the transport's closed structured shape.
-
-    KNOWN GAP (negotiation-graph rewrite, #1494): this used to carry a
-    server-issued `capability` bound during pickup
-    (`services/api/src/lib/agent/hermes-negotiation-run.ts`'s
-    `issueHermesRunCapability`), and `agent.controller.ts`'s
-    `respondNegotiation` route still hard-requires that capability header for
-    the dedicated `hermes-negotiator` audience (throws `UnauthorizedError`,
-    "requires its run-bound capability", when the header is absent). Pickup, the only
-    place that ever issued one, is deleted. There is currently no
-    replacement issuance path, so `index_respond_negotiation` calls from
-    this plugin will be rejected with 401 end to end until services/api
-    adds one -- not something this plugin can fix on its own. Only `runId`
-    is sent below; there is nothing to bind a capability to any more.
-    """
-    with _NEGOTIATION_RUN_LOCK:
-        return {"runId": state.run_id}
-
-
-def _reset_negotiation_run_for_tests() -> None:
-    """Clear process-local pass authority. Test-only; never registered as a tool."""
-    with _NEGOTIATION_RUN_LOCK:
-        _NEGOTIATION_RUN_STATES.clear()
-
-
-def _begin_negotiation_mutation(
-    state: _NegotiationRunState,
-    kind: str,
-    task_id: str,
-    body: dict[str, Any],
-) -> tuple[str | None, dict[str, Any] | None]:
-    """Consume the pass atomically immediately before its mutation HTTP dispatch."""
-    key = json.dumps([kind, task_id, body], sort_keys=True, separators=(",", ":"))
-    with _NEGOTIATION_RUN_LOCK:
-        if state.mutation_key == key and state.mutation_result is not None:
-            return None, copy.deepcopy(state.mutation_result)
-        if state.mutation_key is not None:
-            return "This Hermes run has already used its one negotiation mutation.", None
-        state.mutation_key = key
-        state.mutation_inflight = True
-        _touch_negotiation_run_state(state)
-    return key, None
-
-
-def _finish_negotiation_mutation(
-    state: _NegotiationRunState,
-    key: str,
-    result: dict[str, Any],
-) -> None:
-    with _NEGOTIATION_RUN_LOCK:
-        if state.mutation_key != key or not state.mutation_inflight:
-            return
-        # Dispatch itself consumes the attempt. Cache every result, including
-        # transport/HTTP failure, so a later model tool call can never switch
-        # operation or body and can never trigger another mutation request.
-        state.mutation_inflight = False
-        state.mutation_result = copy.deepcopy(result)
-        _touch_negotiation_run_state(state)
 
 
 def _positive_int(value: Any, name: str, *, maximum: int | None = None) -> tuple[int | None, str | None]:
@@ -399,12 +233,9 @@ def _api_request(
     body: dict[str, Any] | None = None,
     *,
     no_content_payload: dict[str, Any] | None = None,
-    hermes_run: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     try:
-        result = get_transport().request_rest(
-            method, path, body, hermes_run=hermes_run
-        )
+        result = get_transport().request_rest(method, path, body)
         if result.get("no_content") is True and no_content_payload is not None:
             return no_content_payload
         return result
@@ -412,69 +243,6 @@ def _api_request(
         return exc.as_payload()
     except Exception as exc:  # noqa: BLE001 - Hermes handlers must not raise.
         return _error_payload(f"Index transport response could not be processed: {exc}")
-
-
-_AMBIGUOUS_REPLAY_CODES = {
-    "network_error",
-    "timeout",
-}
-
-
-def _dispatch_negotiation_request(
-    path: str,
-    body: dict[str, Any] | None,
-    authority: dict[str, str],
-    *,
-    no_content_payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Dispatch once, with at most one byte-identical ambiguous replay."""
-    result = _api_request(
-        "POST", path, body, hermes_run=authority,
-        no_content_payload=no_content_payload,
-    )
-    ambiguous = (
-        result.get("success") is False
-        and "status" not in result
-        and result.get("code") in _AMBIGUOUS_REPLAY_CODES
-    )
-    if ambiguous:
-        return _api_request(
-            "POST", path, body, hermes_run=authority,
-            no_content_payload=no_content_payload,
-        )
-    return result
-
-
-def _dispatch_negotiation_mutation(
-    path: str,
-    body: dict[str, Any],
-    authority: dict[str, str],
-) -> dict[str, Any]:
-    """Bounded exact mutation replay under the same hidden run authority."""
-    return _dispatch_negotiation_request(path, body, authority)
-
-
-def _agent_id_from_payload(payload: dict[str, Any]) -> str | None:
-    agent_id = _clean_string(payload.get("id"))
-    if agent_id:
-        return agent_id
-    agent = payload.get("agent")
-    if isinstance(agent, dict):
-        return _clean_string(agent.get("id"))
-    return None
-
-
-def _resolve_agent_id(args: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
-    agent_id = _clean_string(args.get("agentId"))
-    if agent_id:
-        return agent_id, None
-    payload = _api_request("GET", "/agents/me")
-    if payload.get("success") is False:
-        return None, payload
-    resolved = _agent_id_from_payload(payload)
-    if not resolved:
-        return None, _error_payload("Could not resolve agent ID from /agents/me response.", response=payload)
-    return resolved, None
 
 
 def index_forwarded_mcp_tool(tool_name: str, args: dict, **kwargs) -> str:
@@ -615,55 +383,31 @@ def index_agent_me(args: dict, **kwargs) -> str:
 
 
 
+_NEGOTIATION_TURNS_OFFLINE = (
+    "External-agent negotiation turns are offline. The negotiation-graph rewrite "
+    "(#1494) deleted the REST respond route this bridge submitted turns to, and "
+    "external agents stay offline until they are rebuilt on the new auth model. "
+    "There is nothing to submit this turn to: do not retry it, and do not "
+    "substitute another Index tool for it."
+)
+
+
 def index_respond_negotiation(args: dict, **kwargs) -> str:
-    """Submit one closed action for a specific negotiation.
+    """Refuse: submitting a negotiation turn from an external agent is offline.
 
-    There is no more pickup/claim (a negotiation stays `working` until it
-    pauses or resolves -- it is never claimed into a distinct state), so the
-    caller must already know which negotiation to respond to and what to do
-    -- typically from the SSE wake event that triggered this pass, or from
-    the generic MCP `list_negotiations`/`get_negotiation` tools (already
-    forwarded to Hermes -- see `_FORWARDED_MCP_TOOLS`), which this dedicated
-    bridge intentionally does not duplicate. `action` is a closed directive,
-    never model-authored prose: the server maps it to a fixed template
-    message via `buildHermesNegotiationTurn`
-    (packages/protocol/src/internal/negotiations/negotiation.hermes-contract.ts).
-    There is no `accept`, `decline`, `withdraw`, or `consult` any more -- a
-    negotiator that wants out submits `recommend_reject`.
+    The negotiation-graph rewrite (#1494) deleted
+    `POST /agents/{agentId}/negotiations/{negotiationId}/respond`, the only
+    route this bridge ever dispatched to, together with the pickup step that
+    issued its run-bound capability. External agents are deliberately offline
+    until they are rebuilt on the new auth model, so this tool refuses with
+    that explanation rather than calling a URL that answers 404.
+
+    It is deliberately NOT repointed at the MCP `respond_to_negotiation`
+    surface: that lane authorises a turn as the calling principal's own agent,
+    which is a different authority from the one this bridge held.
+
+    The tool stays registered so a negotiator that was woken for a turn is told
+    why it cannot take one, instead of silently reaching for another tool.
     """
-    if not isinstance(args, dict):
-        return _error("Arguments must be an object.")
-    unexpected = _unexpected_arguments(args, {"agentId", "negotiationId", "action"})
-    if unexpected:
-        return _error(unexpected)
-
-    negotiation_id = _clean_string(args.get("negotiationId"))
-    if not negotiation_id:
-        return _error("negotiationId is required.")
-    action = _clean_string(args.get("action"))
-    if action not in _NEGOTIATION_ACTIONS:
-        return _error(f"action must be one of: {_NEGOTIATION_ACTIONS_MESSAGE}.")
-
-    state, state_error = _negotiation_run_state(kwargs)
-    if state_error or state is None:
-        return _error(state_error or "Hermes negotiation pass identity is unavailable.")
-    agent_id, agent_error = _resolve_agent_id(args)
-    if agent_error is not None:
-        return _json(agent_error)
-    if not agent_id:
-        return _error("agentId is required.")
-
-    request_body = {"action": action}
-    key, cached = _begin_negotiation_mutation(state, "respond", negotiation_id, request_body)
-    if cached is not None:
-        return _json(cached)
-    if key is None or key.startswith("This Hermes run"):
-        return _error(key or "Hermes run mutation could not be reserved.")
-
-    result = _dispatch_negotiation_mutation(
-        f"/agents/{agent_id}/negotiations/{negotiation_id}/respond",
-        request_body,
-        _negotiation_run_authority(state),
-    )
-    _finish_negotiation_mutation(state, key, result)
-    return _json(result)
+    del args, kwargs
+    return _error(_NEGOTIATION_TURNS_OFFLINE)

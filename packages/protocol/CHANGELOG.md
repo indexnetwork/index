@@ -20,6 +20,30 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 31.0.0 - 2026-08-24
+
+### Breaking
+
+- **`buildHermesNegotiationTurn` and `HermesNegotiationResponseSchema` /
+  `HermesNegotiationResponse` are removed.** The builder's only consumer was
+  the REST respond route #1494 deleted, and nothing has mapped a Hermes action
+  to a persisted turn since. `HermesNegotiationActionSchema` /
+  `HermesNegotiationAction` stay: they are the vocabulary the hermes-plugin
+  mirrors and that the eventual rebuilt external-agent lane has to honour.
+
+### Fixed
+
+- **`NegotiationGraph`'s `resolve` no longer writes over an already-terminal
+  opportunity status.** An owner verdict (Radar skip/accept,
+  `PATCH /opportunities/:id/status`, the DM's accept/reject tools) writes
+  `accepted` / `rejected` itself — a user action outside the negotiation loop
+  by design — and then calls `resolve` to CLOSE the negotiation, because a
+  terminal opportunity whose task stays `working` holds its round open forever
+  and the round's reflect job never fires. Rewriting the status inside
+  `resolve` would have downgraded that `accepted` back to `pending` and
+  re-fired the actionable notification for a match the owner had already
+  accepted.
+
 ## 30.0.0 - 2026-08-24
 
 ### Changed

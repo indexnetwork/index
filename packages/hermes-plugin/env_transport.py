@@ -82,15 +82,9 @@ class EnvironmentCredentialTransport:
         method: str,
         path: str,
         body: dict[str, Any] | None = None,
-        *,
-        hermes_run: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         data = None if body is None else json.dumps(body).encode("utf-8")
         headers = self._headers()
-        if hermes_run:
-            headers["x-index-hermes-run-id"] = hermes_run["runId"]
-            if hermes_run.get("capability"):
-                headers["x-index-hermes-run-capability"] = hermes_run["capability"]
         request = urllib.request.Request(
             self._api + (path if path.startswith("/") else "/" + path),
             data=data,
