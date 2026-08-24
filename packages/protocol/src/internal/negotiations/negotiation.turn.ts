@@ -13,7 +13,7 @@ import { z } from "zod";
 export const NEGOTIATION_CONTINUE_VERBS = ["outreach", "counter", "question"] as const;
 export type NegotiationContinueVerb = (typeof NEGOTIATION_CONTINUE_VERBS)[number];
 
-export const NEGOTIATION_PAUSE_REASONS = ["counterparty_silent", "needs_principal", "ready_for_verdict"] as const;
+export const NEGOTIATION_PAUSE_REASONS = ["counterparty_silent", "needs_principal", "ready_for_verdict", "turn_cap"] as const;
 export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
 
 export const NegotiationVerdictSchema = z.enum(["pending", "reject"]);
@@ -31,6 +31,12 @@ export type NegotiationContinueTurn = z.infer<typeof NegotiationContinueTurnSche
 export const NegotiationCounterpartySilentPauseSchema = z.object({
   verb: z.literal("pause"),
   reason: z.literal("counterparty_silent"),
+});
+
+/** The ambient turn cap was hit during self-play. System-emitted only. */
+export const NegotiationTurnCapPauseSchema = z.object({
+  verb: z.literal("pause"),
+  reason: z.literal("turn_cap"),
 });
 
 /** Cannot continue without something only the principal knows. */
@@ -73,6 +79,7 @@ const NegotiationReadyForVerdictStoredPauseSchema = NegotiationReadyForVerdictPa
 
 export const NegotiationPauseTurnSchema = z.discriminatedUnion("reason", [
   NegotiationCounterpartySilentPauseSchema,
+  NegotiationTurnCapPauseSchema,
   NegotiationNeedsPrincipalStoredPauseSchema,
   NegotiationReadyForVerdictStoredPauseSchema,
 ]);

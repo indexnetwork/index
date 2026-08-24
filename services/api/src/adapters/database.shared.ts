@@ -655,7 +655,7 @@ export interface NegotiationLifecycleSummary {
    * paused (`pausedBy`) — every other viewer sees `reason` only, the same
    * privacy rule `negotiation.tools.ts`'s `pauseFor` applies A2A-side.
    */
-  pause: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown } | null;
+  pause: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown } | null;
   updatedAt: Date;
   /**
    * IND-610: the owner-facing "did not reach out" decision, named-field

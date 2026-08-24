@@ -1489,7 +1489,9 @@ function buildNegotiationPromptBlock(context: NegotiationContext | undefined): s
       ? "the negotiator paused, waiting on its own principal"
       : context.pause?.reason === 'ready_for_verdict'
         ? "the negotiator paused, believing a decision is possible"
-        : undefined;
+        : context.pause?.reason === 'turn_cap'
+          ? "the negotiation reached its turn cap"
+          : undefined;
 
   const turnLines = context.turns.map((turn, index) => {
     if (turn.verb === 'pause') {

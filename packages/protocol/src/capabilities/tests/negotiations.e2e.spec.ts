@@ -588,6 +588,104 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(host.taskFor(negotiationId).metadata.pause).toBeNull();
   });
 
+  describe("the turn cap counts substantive turns only", () => {
+    /** Each entry's sender is explicit — nextSpeaker's resolution off the LAST entry must be unambiguous. */
+    function seedMessages(host: FakeNegotiationHost, negotiationId: string, shape: Array<{ sender: string; kind: "turn" | "pause" }>) {
+      const list = shape.map(({ sender, kind }, i) => ({
+        id: `seed-${i}`,
+        senderId: `agent:${sender}`,
+        parts: [{
+          kind: "data",
+          data: kind === "turn"
+            ? { verb: "counter", message: `turn ${i}`, reasoning: "r" }
+            : { verb: "pause", reason: "counterparty_silent" },
+        }],
+        createdAt: new Date(),
+      }));
+      host.messages.set(negotiationId, list);
+    }
+
+    test("pause markers mixed into history do not trip the cap early", async () => {
+      const host = new FakeNegotiationHost();
+      const graph = new Negotiations({ database: host.database, dispatcher: host.bothWaitingDispatcher() }).createGraph();
+      const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+      const negotiationId = opened.negotiationId;
+
+      // 2 substantive turns + 4 pause markers = 6 raw messages (the old,
+      // buggy threshold), but only 2 real turns — nowhere near
+      // NEGOTIATION_MAX_TURNS_AMBIENT (6). Last entry is bob's pause, so
+      // nextSpeaker (retry-same-speaker-after-pause) expects bob next.
+      seedMessages(host, negotiationId, [
+        { sender: SOURCE_USER_ID, kind: "turn" },
+        { sender: CANDIDATE_USER_ID, kind: "pause" },
+        { sender: SOURCE_USER_ID, kind: "turn" },
+        { sender: CANDIDATE_USER_ID, kind: "pause" },
+        { sender: SOURCE_USER_ID, kind: "pause" },
+        { sender: CANDIDATE_USER_ID, kind: "pause" },
+      ]);
+
+      const result = await graph.invoke({
+        negotiationId,
+        turn: { verb: "counter", message: "still well under the cap", reasoning: "r" },
+        byUserId: CANDIDATE_USER_ID,
+      });
+      expect(result.status).not.toBe("error");
+      expect(result.pause).toBeUndefined();
+    });
+
+    test("an externally submitted turn that hits the cap is rejected, not silently swapped for a pause", async () => {
+      const host = new FakeNegotiationHost();
+      const graph = new Negotiations({ database: host.database, dispatcher: host.bothWaitingDispatcher() }).createGraph();
+      const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+      const negotiationId = opened.negotiationId;
+
+      // 5 substantive turns already on record, alternating, ending on alice —
+      // bob is next. The 6th (bob's) trips the cap.
+      seedMessages(host, negotiationId, [
+        { sender: SOURCE_USER_ID, kind: "turn" },
+        { sender: CANDIDATE_USER_ID, kind: "turn" },
+        { sender: SOURCE_USER_ID, kind: "turn" },
+        { sender: CANDIDATE_USER_ID, kind: "turn" },
+        { sender: SOURCE_USER_ID, kind: "turn" },
+      ]);
+
+      const submitted = { verb: "counter" as const, message: "the real content the caller sent", reasoning: "r" };
+      const result = await graph.invoke({ negotiationId, turn: submitted, byUserId: CANDIDATE_USER_ID });
+      expect(result.status).toBe("error");
+      // Nothing was persisted — the caller's real turn was never silently
+      // swapped for a fabricated pause and reported as success.
+      expect(host.messages.get(negotiationId)).toHaveLength(5);
+    });
+
+    test("a self-play-authored turn that hits the cap auto-pauses with the honest 'turn_cap' reason", async () => {
+      const host = new FakeNegotiationHost();
+      const author = new ScriptedNegotiationAuthor([
+        { verb: "outreach", message: "Opening.", reasoning: "r" }, // consumed by the initial open() below
+        { verb: "counter", message: "one more thing", reasoning: "r" },
+      ]);
+      const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
+      const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+      const negotiationId = opened.negotiationId;
+
+      // 5 turns ending on bob (candidate) — alice is next. waitingDispatcher
+      // only treats bob as external, so alice's turn is authored internally.
+      seedMessages(host, negotiationId, [
+        { sender: SOURCE_USER_ID, kind: "turn" },
+        { sender: CANDIDATE_USER_ID, kind: "turn" },
+        { sender: SOURCE_USER_ID, kind: "turn" },
+        { sender: CANDIDATE_USER_ID, kind: "turn" },
+        { sender: CANDIDATE_USER_ID, kind: "turn" },
+      ]);
+
+      // A system resume (no byUserId) re-enters turn authoring internally —
+      // the internal author has no caller to reject to, so it auto-pauses.
+      const result = await graph.invoke({ negotiationId, brief: "still brief" });
+      expect(result.status).toBe("paused");
+      expect(result.pause).toEqual({ reason: "turn_cap" });
+      expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({ reason: "turn_cap" });
+    });
+  });
+
   test("a concurrent duplicate submission is fenced, not silently double-applied", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedNegotiationAuthor([{ verb: "outreach", message: "Opening.", reasoning: "r" }]);

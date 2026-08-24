@@ -33,7 +33,7 @@ export interface NegotiationTaskMetadata {
    * generic invoke; only a read scoped to `pausedBy`'s own principal may see
    * it. Everyone else sees the reason only.
    */
-  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown; pausedBy?: string } | null;
+  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown; pausedBy?: string } | null;
 }
 
 export interface NegotiationTaskRow {

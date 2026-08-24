@@ -16,6 +16,7 @@ type NegotiationConnectionState =
   | 'paused_counterparty_silent'
   | 'paused_needs_principal'
   | 'paused_ready_for_verdict'
+  | 'paused_turn_cap'
   | 'unknown';
 
 /** How a negotiation task reads when it is currently paused. */
@@ -44,6 +45,8 @@ export function parkLifecycleLabel(pause: NegotiationParkNarration): string {
       return 'PAUSED — the negotiator needs something only the principal knows before it can continue.';
     case 'ready_for_verdict':
       return 'PAUSED — the negotiator believes a decision is possible and is waiting on its principal to act on its recommendation.';
+    case 'turn_cap':
+      return 'PAUSED — the negotiation reached its turn cap and cannot continue without review.';
   }
 }
 
@@ -68,6 +71,7 @@ export function buildLifecycleNarration(
     const connectionState: NegotiationConnectionState =
       pause.reason === 'counterparty_silent' ? 'paused_counterparty_silent'
       : pause.reason === 'needs_principal' ? 'paused_needs_principal'
+      : pause.reason === 'turn_cap' ? 'paused_turn_cap'
       : 'paused_ready_for_verdict';
     return { ...common, connectionState, lifecycleLabel: parkLifecycleLabel(pause), pause };
   }

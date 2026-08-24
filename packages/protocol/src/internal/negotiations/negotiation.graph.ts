@@ -353,8 +353,23 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
       return { phase: "error", error: "outreach is only legal as the opening turn" };
     }
 
-    const capped = !isPauseTurn(turn) && messages.length + 1 >= NEGOTIATION_MAX_TURNS_AMBIENT;
-    const effectiveTurn: NegotiationTurn = capped ? { verb: "pause", reason: "counterparty_silent" } : turn;
+    // Substantive turns only — messages.length also counts persisted pause
+    // markers (a negotiation with several pause/resume cycles accumulates
+    // one message per pause), which would trip the cap far earlier than the
+    // ambient turn budget actually intends.
+    const substantiveTurnCount = turnsFromMessages(messages).filter((t) => !isPauseTurn(t)).length;
+    const capped = !isPauseTurn(turn) && substantiveTurnCount + 1 >= NEGOTIATION_MAX_TURNS_AMBIENT;
+    // An externally submitted turn that hits the cap is rejected outright —
+    // silently swapping it for a fabricated pause would discard whatever the
+    // caller actually said and report success for content that was never
+    // applied. A self-play-authored turn has no caller to reject to; it
+    // auto-pauses instead, with the honest 'turn_cap' reason rather than the
+    // factually false 'counterparty_silent' (nobody went silent — the budget
+    // ran out).
+    if (capped && state.pendingTurnByUserId) {
+      return { phase: "error", error: "Negotiation has reached its turn cap and cannot continue" };
+    }
+    const effectiveTurn: NegotiationTurn = capped ? { verb: "pause", reason: "turn_cap" } : turn;
 
     // The payload on needs_principal/ready_for_verdict is private to the
     // pausing side's own principal — it is never written into the shared

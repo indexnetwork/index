@@ -22,7 +22,7 @@ type NegotiationTaskMetadataMirror = {
   networkId: string;
   intentId: string;
   round: number;
-  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown; pausedBy?: string } | null;
+  pause?: { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown; pausedBy?: string } | null;
 };
 
 type NegotiationTaskRowMirror = {
@@ -227,7 +227,7 @@ function readNegotiationPause(
   metadata: unknown,
   viewerUserId: string,
   state: string,
-): { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict'; payload?: unknown } | null {
+): { reason: 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap'; payload?: unknown } | null {
   // Same gate `toResult` applies graph-side: a non-paused task's
   // metadata.pause is stale/answered, not current, even if a caller failed to
   // clear it on resume.
@@ -237,7 +237,7 @@ function readNegotiationPause(
   if (typeof pause !== 'object' || pause === null || Array.isArray(pause)) return null;
   const record = pause as { reason?: unknown; payload?: unknown; pausedBy?: unknown };
   if (typeof record.reason !== 'string') return null;
-  const reason = record.reason as 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict';
+  const reason = record.reason as 'counterparty_silent' | 'needs_principal' | 'ready_for_verdict' | 'turn_cap';
   return record.pausedBy === viewerUserId ? { reason, payload: record.payload } : { reason };
 }
 
