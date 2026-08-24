@@ -632,7 +632,7 @@ export default function ChatContent({
         msgContent,
         fileArg,
         nameArg,
-        !sessionId ? { persona: "signal" as const } : undefined,
+        !sessionId ? { persona: "personal" as const } : undefined,
       );
     }
     inputRef.current?.focus();

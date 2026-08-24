@@ -74,7 +74,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
       const label = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
       const sessionId = await resolveIntentSession(
         { id: intent.id, label },
-        'signal',
+        'personal',
       );
       if (!sessionId) return;
       navigate(`/d/${sessionId}`);

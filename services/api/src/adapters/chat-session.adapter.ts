@@ -1,7 +1,7 @@
 import { conversationDatabaseAdapter } from './database.adapter';
 
 /** Persona literal mirrored locally so the data layer stays protocol-agnostic. */
-const SIGNAL_PERSONA = 'signal';
+const PERSONAL_AGENT_PERSONA = 'personal';
 
 export class ChatSessionAdapter {
   async getSessionMessages(sessionId: string, limit?: number): Promise<Array<{ role: string; content: string }>> {
@@ -17,7 +17,7 @@ export class ChatSessionAdapter {
     return conversationDatabaseAdapter.listChatSessionSummaries(
       userId,
       limit,
-      SIGNAL_PERSONA,
+      PERSONAL_AGENT_PERSONA,
     );
   }
 
@@ -26,7 +26,7 @@ export class ChatSessionAdapter {
       userId,
       sessionId,
       messageLimit,
-      SIGNAL_PERSONA,
+      PERSONAL_AGENT_PERSONA,
     );
   }
 }

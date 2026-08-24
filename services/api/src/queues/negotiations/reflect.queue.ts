@@ -21,7 +21,7 @@
 import { Job } from 'bullmq';
 import cron from 'node-cron';
 
-import { NegotiationReflector, NEGOTIATOR_PERSONA_ID } from '@indexnetwork/protocol';
+import { NegotiationReflector } from '@indexnetwork/protocol';
 import type { NegotiationReflectJobData, ReflectEnqueueFn, ReflectionTranscriptEntry, DistilledMemory } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
@@ -62,7 +62,7 @@ export interface ReflectQueueDeps {
     }>>;
   };
   chat?: {
-    getSession: (sessionId: string, userId: string) => Promise<{ persona: string } | null>;
+    getSession: (sessionId: string, userId: string) => Promise<{ persona: string; scopeType: string | null; scopeId: string | null } | null>;
     getSessionMessages: (sessionId: string, limit?: number) => Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>>;
   };
   reflector?: Pick<NegotiationReflector, 'reflectNegotiation' | 'reflectChat'>;
@@ -262,11 +262,13 @@ export class NegotiationReflectQueue {
 
     const chat = this.deps?.chat ?? chatSessionService;
 
-    // Ownership + persona guard: only the client's own negotiator DM is
-    // reflected — orchestrator chats teach the negotiator nothing.
+    // Ownership + scope guard: only the client's own signal DM (an
+    // intent-scoped session) is reflected — global chats teach the
+    // negotiator nothing. Re-keyed from the retired negotiator persona id to
+    // the same scope predicate that routes the DM's turns.
     const session = await chat.getSession(data.sessionId, data.userId);
-    if (!session || session.persona !== NEGOTIATOR_PERSONA_ID) {
-      this.logger.info('Not a negotiator session; skipping chat reflection', {
+    if (!session || session.scopeType !== 'intent' || !session.scopeId) {
+      this.logger.info('Not an intent-scoped DM session; skipping chat reflection', {
         sessionId: data.sessionId,
         persona: session?.persona ?? 'none',
       });

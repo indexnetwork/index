@@ -1,5 +1,5 @@
 /** Persona literal mirrored locally so the data layer stays protocol-agnostic. */
-const SIGNAL_PERSONA = 'signal';
+const PERSONAL_AGENT_PERSONA = 'personal';
 
 /**
  * Local structural type matching ChatMessageWriter from @indexnetwork/protocol.
@@ -48,7 +48,7 @@ export class ChatMessageWriterAdapter implements ChatMessageWriter {
     const sessions = await this.chatSessionService.getUserSessions(
       userId,
       1,
-      SIGNAL_PERSONA,
+      PERSONAL_AGENT_PERSONA,
     );
     const mostRecent = sessions[0];
     if (!mostRecent) return null;

@@ -57,18 +57,15 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
-  // Agent chat runs the negotiator persona, which drops list_opportunities in
-  // intent-pinned chats (the Radar beside this pane owns opportunity listing).
-  // It is named explicitly and unconditionally: api-key callers have no default
-  // persona to fall back on, so an unnamed persona is refused by the server.
-  //
-  // The negotiator is also the ONLY persona this app can start — signal and
-  // reporter are web-only — so when the backend has it switched off there is
-  // nothing to fall back to and the server answers 404. Detect that from the
+  // Agent chat is the one PersonalAgent persona in intent scope — the
+  // signal's DM. This app only ever drives that scope: api-key callers may
+  // not start global chats (those are web-only), so every stream here is
+  // intent-scoped. When the backend has the surface switched off there is
+  // nothing to fall back to and the server answers 404; detect that from the
   // same /auth/me flag the server gates on and say so, rather than firing a
   // request that cannot succeed.
   const { features, patchIntentStatus, refreshIntents } = useIndexEnv();
-  const chatPersona = "negotiator";
+  const chatPersona = "personal";
   const agentChatAvailable = !!(features && features.negotiatorChat);
   // Agent-chat session id per intent, persisted across signal switches. Keyed
   // by persona too: a session created under one persona cannot be continued

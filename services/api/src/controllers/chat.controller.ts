@@ -15,7 +15,7 @@ import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { intentAgentQueue } from "../queues/intent-agent.queue";
 import { subscribeIntentAgentReply } from "../lib/intent-agent/intent-agent-reply.stream";
 import type { IntentAgentTurnResult, IntentAgentUserMessageEvent } from "../lib/intent-agent/intent-agent.types";
-import { SuggestionGenerator, ChatInterruptClassifier, NEGOTIATOR_PERSONA_ID, ONBOARDING_PERSONA_ID, SIGNAL_PERSONA_ID } from '@indexnetwork/protocol';
+import { SuggestionGenerator, ChatInterruptClassifier, PERSONAL_AGENT_PERSONA_ID } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
@@ -103,8 +103,8 @@ const streamBodySchema = z.object({
   scopeId: z.string().nullish(),
   /** The recipient user ID for DM-style chats. */
   recipientUserId: z.string().nullish(),
-  /** Explicit persona assertion for a newly bootstrapped persona chat. */
-  persona: z.enum(['negotiator', 'signal']).nullish(),
+  /** Explicit persona assertion. One persona exists; anything else is refused. */
+  persona: z.enum(['personal']).nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -131,7 +131,6 @@ const negotiatorSessionBodySchema = z.object({
 const resolveSessionBodySchema = z.object({
   scopeType: z.enum(['intent']),
   scopeId: z.string().min(1),
-  persona: z.enum(['signal']).optional(),
 });
 
 const interruptBodySchema = z.object({
@@ -184,12 +183,13 @@ export class ChatController {
     // Sessions with no persona column value predate personafication: they are
     // retired-orchestrator rows, readable but never continuable.
     const storedPersona = session.persona ?? RETIRED_ORCHESTRATOR_PERSONA_ID;
-    if (surface === 'agent' && storedPersona !== NEGOTIATOR_PERSONA_ID) {
+    // API-key clients only ever hold a signal's DM; every other session is
+    // invisible to them, exactly as when the persona id encoded the split.
+    if (surface === 'agent' && sessionScope(session)?.scopeType !== 'intent') {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 
     const policy = chatSessionService.resolveStreamPersonaPolicy({
-      surface,
       storedPersona,
     });
     if (!policy.ok) {
@@ -313,29 +313,17 @@ export class ChatController {
       return undefined;
     };
 
-    const requestedPersona = body.persona ?? undefined;
-    if (requestedPersona === NEGOTIATOR_PERSONA_ID) {
-      if (!isNegotiatorChatEnabled()) {
-        return Response.json({ error: "Not found" }, { status: 404 });
-      }
-      if (requestedScope?.scopeType === 'network') {
-        return Response.json({ error: "Negotiator chat cannot be network-scoped" }, { status: 400 });
-      }
-    }
-
     let currentSessionId = body.sessionId;
-    let loadedSession = currentSessionId
+    const loadedSession = currentSessionId
       ? await chatSessionService.getSession(currentSessionId, user.id)
       : null;
     if (currentSessionId && !loadedSession) {
       return Response.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
-      surface,
-      requestedPersona,
-      ...(loadedSession ? { storedPersona: loadedSession.persona } : {}),
-    });
+    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy(
+      loadedSession ? { storedPersona: loadedSession.persona } : {},
+    );
     if (!personaPolicy.ok) {
       return Response.json(
         {
@@ -349,7 +337,7 @@ export class ChatController {
 
     const sessionPersona = personaPolicy.persona;
     if (
-      sessionPersona === ONBOARDING_PERSONA_ID
+      surface === 'onboarding'
       && (requestedScope || sessionScope(loadedSession) || body.prefillMessages?.length)
     ) {
       return Response.json(
@@ -375,12 +363,16 @@ export class ChatController {
       );
     }
 
-    if (sessionPersona === NEGOTIATOR_PERSONA_ID) {
-      if (!isNegotiatorChatEnabled()) {
-        return Response.json({ error: "Not found" }, { status: 404 });
-      }
-      if (requestedScope?.scopeType === 'network') {
-        return Response.json({ error: "Negotiator chat cannot be network-scoped" }, { status: 400 });
+    // API-key clients only ever drive a signal's DM (the mac app's per-signal
+    // chat); the global chat stays a web surface, exactly as when persona ids
+    // encoded the split.
+    if (surface === 'agent') {
+      const scopeForTurn = currentSessionId ? sessionScope(loadedSession) : requestedScope;
+      if (scopeForTurn?.scopeType !== 'intent') {
+        return Response.json(
+          { error: "Chats with your agent require an intent scope" },
+          { status: 403 },
+        );
       }
     }
 
@@ -388,19 +380,13 @@ export class ChatController {
     if (requestScopeError) return requestScopeError;
 
     let effectiveScope = requestedScope;
-    let negotiatorAgent: Awaited<ReturnType<typeof resolveNegotiatorAgent>> = null;
-    if (!currentSessionId && sessionPersona === NEGOTIATOR_PERSONA_ID) {
-      negotiatorAgent = await resolveNegotiatorAgent(user.id);
-      if (!negotiatorAgent) {
-        return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
-      }
-      // The intent pin is the only negotiator surface. Without the removed
-      // unscoped DM there is nothing to open a new negotiator session on.
-      if (requestedScope?.scopeType !== 'intent') {
-        return Response.json(
-          { error: "Negotiator chat requires an intent scope" },
-          { status: 400 },
-        );
+    if (!currentSessionId && requestedScope?.scopeType === 'intent') {
+      // Intent scope is the signal's DM: one session per (user, intent),
+      // driven by the IntentAgent, introduced by the user's personal agent
+      // row — which therefore must exist.
+      const personalAgent = await resolveNegotiatorAgent(user.id);
+      if (!personalAgent) {
+        return Response.json({ error: "Personal agent not available" }, { status: 404 });
       }
       const resolved = await chatSessionService.resolveNegotiatorIntentSession(
         user.id,
@@ -414,99 +400,65 @@ export class ChatController {
       const initialTitle = body.prefillMessages?.length
         ? "Set Up Your Social Agent"
         : undefined;
-      if (requestedScope?.scopeType === 'intent') {
-        const resolved = await chatSessionService.resolveSessionForScope(
-          user.id,
-          requestedScope,
-          sessionPersona,
-        );
-        if ('error' in resolved) {
-          return Response.json({ error: resolved.error }, { status: resolved.status });
-        }
-        currentSessionId = resolved.session.id;
-      } else {
-        currentSessionId = await chatSessionService.createSession(
-          user.id,
-          initialTitle,
-          requestedScope?.scopeType === 'network' ? requestedScope.scopeId : undefined,
-          requestedScope,
-          sessionPersona,
-        );
-      }
+      currentSessionId = await chatSessionService.createSession(
+        user.id,
+        initialTitle,
+        requestedScope?.scopeType === 'network' ? requestedScope.scopeId : undefined,
+        requestedScope,
+        sessionPersona,
+      );
     } else if (loadedSession) {
-      if (sessionPersona === NEGOTIATOR_PERSONA_ID && !sessionScope(loadedSession)) {
-        // A negotiator session with no scope is a conversation from the
-        // removed unscoped DM. Those rows are deliberately preserved and stay
-        // readable by id, but the surface is gone: they cannot be continued,
-        // and they cannot be retroactively pinned to an intent either.
-        return Response.json(
-          { error: "This negotiator conversation is read-only. Open the signal to continue with your agent." },
-          { status: 400 },
-        );
-      }
       const persistedScope = sessionScope(loadedSession);
       if (requestedScope && persistedScope && !sameScope(requestedScope, persistedScope)) {
         return Response.json({ error: "Session is already scoped differently" }, { status: 409 });
       }
       if (requestedScope && !persistedScope) {
-        if (sessionPersona === SIGNAL_PERSONA_ID) {
+        // Sessions never gain a scope retroactively: an intent focus opens
+        // the signal's own DM, a network focus opens its own chat.
+        return Response.json(
+          {
+            error: 'Start a separate chat with your agent for that focus.',
+            code: 'CHAT_SCOPE_REQUIRES_NEW_SESSION',
+            action: { type: 'start_signal_session', href: '/' },
+          },
+          { status: 409 },
+        );
+      }
+      effectiveScope = requestedScope ?? persistedScope;
+      if (effectiveScope?.scopeType === 'intent') {
+        // Only the signal's one canonical DM can drive intent-scoped turns.
+        // Anything else with an intent scope (e.g. a pre-collapse pinned chat
+        // that lost the fold-in to the DM) stays readable but never streams —
+        // an agent turn here would deliver into the canonical DM instead.
+        const canonical = await chatSessionService.findNegotiatorIntentSession(user.id, effectiveScope.scopeId);
+        if (canonical?.id !== currentSessionId) {
           return Response.json(
-            {
-              error: 'Start a separate chat with your agent for that focus.',
-              code: 'CHAT_SCOPE_REQUIRES_NEW_SESSION',
-              action: { type: 'start_signal_session', href: '/' },
-            },
+            { error: "This conversation is read-only. Open the signal to continue with your agent." },
             { status: 409 },
           );
         }
-        await chatSessionService.updateSessionScope(currentSessionId, user.id, requestedScope);
-        loadedSession = await chatSessionService.getSession(currentSessionId, user.id);
       }
-      effectiveScope = requestedScope ?? sessionScope(loadedSession);
     }
 
     const effectiveScopeError = await validateScope(effectiveScope);
     if (effectiveScopeError) return effectiveScopeError;
 
-    if (sessionPersona === NEGOTIATOR_PERSONA_ID && !negotiatorAgent) {
-      negotiatorAgent = await resolveNegotiatorAgent(user.id);
-      if (!negotiatorAgent) {
-        return Response.json({ error: "Negotiator agent not available" }, { status: 404 });
-      }
-    }
-
     const sessionId = currentSessionId;
-    // ─── Phase 2 (full chat ownership): the negotiator intent DM runs no
-    // persona graph at all — EVERY turn is the signal's IntentAgent's,
-    // decided and executed on its serialized inbox. Negotiator sessions are
-    // intent-scoped by construction (enforced above), so no negotiator
-    // persona factory is derived; other personas and network scope are
-    // untouched.
-    const agentOwnsTurn = sessionPersona === NEGOTIATOR_PERSONA_ID
-      && effectiveScope?.scopeType === 'intent';
-    // The personas that DO run a graph introduce themselves as the client's
-    // own agent, named from the same `type='personal'` row the IntentAgent
-    // belongs to. A missing row is not fatal: the prompt falls back to a
-    // generic self-description rather than a product noun, so the signal and
-    // onboarding chats keep working.
-    const personaNeedsIdentity = !agentOwnsTurn
-      && (sessionPersona === SIGNAL_PERSONA_ID || sessionPersona === ONBOARDING_PERSONA_ID);
-    const identityAgent = personaNeedsIdentity
-      ? await resolveNegotiatorAgent(user.id).catch(() => null)
-      : null;
+    // ─── Phase 2 (full chat ownership): a signal's DM runs no persona graph
+    // at all — EVERY intent-scoped turn is the signal's IntentAgent's,
+    // decided and executed on its serialized inbox. Global and network-scoped
+    // chats run the PersonalAgent graph persona.
+    const agentOwnsTurn = effectiveScope?.scopeType === 'intent';
+    // The graph persona introduces itself as the client's own agent, named
+    // from the same `type='personal'` row the IntentAgent belongs to. A
+    // missing row is not fatal: the prompt falls back to a generic
+    // self-description rather than a product noun, so the chat keeps working.
+    const identityAgent = agentOwnsTurn
+      ? null
+      : await resolveNegotiatorAgent(user.id).catch(() => null);
     const factory = agentOwnsTurn
       ? null
-      : sessionPersona === ONBOARDING_PERSONA_ID
-        ? chatSessionService.getOnboardingGraphFactory(identityAgent)
-        : sessionPersona === SIGNAL_PERSONA_ID
-          ? chatSessionService.getSignalGraphFactory(identityAgent)
-          : null;
-    if (!factory && !agentOwnsTurn) {
-      return Response.json(
-        { error: 'This chat cannot be continued safely.', code: 'CHAT_PERSONA_UNSUPPORTED' },
-        { status: 409 },
-      );
-    }
+      : chatSessionService.getPersonalAgentGraphFactory('global', identityAgent);
     const useCheckpointer = body.useCheckpointer ?? true;
     const runId = crypto.randomUUID();
     const streamAbortController = new AbortController();
@@ -809,11 +761,11 @@ export class ChatController {
             });
           }
 
-          // Negotiator DM turns debounce-schedule a chat reflection (P5.2):
+          // Signal-DM turns debounce-schedule a chat reflection (P5.2):
           // the job fires once the session has been idle for the delay window,
           // distilling stated preferences into negotiator memories. Never
           // blocks the stream.
-          if (sessionPersona === NEGOTIATOR_PERSONA_ID && fullResponse) {
+          if (agentOwnsTurn && fullResponse) {
             negotiationReflectQueue.scheduleChatReflect({ sessionId, userId: user.id })
               .catch((err) => logger.error("Failed to schedule negotiator chat reflection", { sessionId, error: err }));
           }
@@ -1022,19 +974,18 @@ export class ChatController {
   @Post("/web/session/resolve")
   @UseGuards(RateLimit('write'), SessionOnlyGuard)
   async webResolveSession(req: Request, user: AuthenticatedUser) {
-    return this.resolveSessionForSurface(req, user, 'web');
+    return this.resolveSessionForSurface(req, user);
   }
 
   @Post("/session/resolve")
   @UseGuards(RateLimit('write'), AuthGuard)
   async resolveSession(req: Request, user: AuthenticatedUser) {
-    return this.resolveSessionForSurface(req, user, this.streamSurface(req));
+    return this.resolveSessionForSurface(req, user);
   }
 
   private async resolveSessionForSurface(
     req: Request,
     user: AuthenticatedUser,
-    surface: ChatStreamSurface,
   ) {
     let body: z.infer<typeof resolveSessionBodySchema>;
     try {
@@ -1054,25 +1005,8 @@ export class ChatController {
       );
     }
 
-    const personaPolicy = chatSessionService.resolveStreamPersonaPolicy({
-      surface,
-      requestedPersona: body.persona,
-    });
-    if (!personaPolicy.ok) {
-      return Response.json(
-        {
-          error: personaPolicy.error,
-          code: personaPolicy.code,
-          ...(personaPolicy.action ? { action: personaPolicy.action } : {}),
-        },
-        { status: personaPolicy.status },
-      );
-    }
-
-    const result = await chatSessionService.resolveSessionForScope(user.id, {
-      scopeType: body.scopeType,
-      scopeId: body.scopeId,
-    }, personaPolicy.persona);
+    // An intent scope names exactly one session: the signal's DM.
+    const result = await chatSessionService.resolveNegotiatorIntentSession(user.id, body.scopeId);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
     }
@@ -1101,7 +1035,7 @@ export class ChatController {
     return this.getSessionForPersonas(
       req,
       user,
-      new Set([RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, SIGNAL_PERSONA_ID, NEGOTIATOR_PERSONA_ID]),
+      new Set([RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, PERSONAL_AGENT_PERSONA_ID]),
     );
   }
 
