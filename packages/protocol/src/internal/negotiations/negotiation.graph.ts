@@ -49,6 +49,7 @@ export type NegotiationGraphInput =
   /** `byUserId` is the seat submitting this turn; apply rejects a turn whose byUserId isn't the computed next speaker. */
   | { negotiationId: string; turn: NegotiationTurn; byUserId: string }
   | { negotiationId: string; pause: NegotiationSystemPauseReason }
+  | { negotiationId: string; expire: { expectedUpdatedAt: Date; reason: 'counterparty_silent' | 'needs_principal' } }
   /** A verdict is authored by one authenticated seat, never by an anonymous resolver. */
   | { negotiationId: string; verdict: NegotiationVerdict; reasoning: string; byUserId: string }
   | { negotiationId: string };
@@ -93,7 +94,7 @@ const NegotiationGraphState = Annotation.Root({
   pendingTurnByUserId: Annotation<string | null>({ reducer: (c, n) => (n === undefined ? c : n), default: () => null }),
   /** True once this invoke's own author/dispatch has produced `pendingTurn` — vs. one supplied on input. */
   authored: Annotation<boolean>({ reducer: (c, n) => n ?? c, default: () => false }),
-  phase: Annotation<"init" | "turn" | "apply" | "resolve" | "read" | "done" | "error">({
+  phase: Annotation<"init" | "turn" | "apply" | "resolve" | "expire" | "read" | "done" | "error">({
     reducer: (c, n) => n ?? c,
     default: () => "init",
   }),
@@ -147,7 +148,7 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     }
 
     // ── read-only ──
-    if (!("brief" in input) && !("turn" in input) && !("pause" in input)) {
+    if (!("brief" in input) && !("turn" in input) && !("pause" in input) && !("expire" in input)) {
       const task = await deps.database.getNegotiationTask(input.negotiationId);
       if (!task) return { phase: "error", error: "Negotiation not found" };
       const messages = await deps.database.getNegotiationMessages(task.id);
@@ -223,6 +224,8 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     const task = await deps.database.getNegotiationTask(input.negotiationId);
     if (!task) return { phase: "error", error: "Negotiation not found" };
     if (task.state === "completed") return { task, turns: [], phase: "read" };
+
+    if ("expire" in input) return { task, phase: "expire" };
 
     // A pause is one-way at rest, not a dead end: any resume (new brief, a
     // submitted turn, or a timeout) reopens the negotiation — but only once
@@ -489,6 +492,25 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
   }
 }
 
+/** System expiry has no user verdict or outcome artifact. */
+async function expireNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
+  const task = state.task;
+  const input = state.input;
+  if (!task || !("expire" in input)) return { phase: "error", error: "Missing task or expiry" };
+  try {
+    const expired = await deps.database.expirePausedNegotiation({
+      taskId: task.id,
+      expectedUpdatedAt: input.expire.expectedUpdatedAt,
+      reason: input.expire.reason,
+    });
+    if (!expired) return { task, phase: "done", result: toResult(task, []) };
+    await triggerReflectForEverySeat(deps, expired.metadata);
+    return { task: expired, phase: "done", result: { negotiationId: task.id, status: "resolved", turns: [] } };
+  } catch (err) {
+    return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ─── read ────────────────────────────────────────────────────────────────────
 
 function readNode(state: NegotiationState): Partial<NegotiationState> {
@@ -524,6 +546,7 @@ export class NegotiationGraphFactory {
       .addNode("turn", (s: NegotiationState) => turnNode(s, deps))
       .addNode("apply", (s: NegotiationState) => applyNode(s, deps))
       .addNode("resolve", (s: NegotiationState) => resolveNode(s, deps))
+      .addNode("expire", (s: NegotiationState) => expireNode(s, deps))
       .addNode("read", readNode)
       // Named "fail", not "error" — "error" is already the state's own
       // channel name, and LangGraph rejects a node name that collides with
@@ -534,12 +557,14 @@ export class NegotiationGraphFactory {
         turn: "turn",
         apply: "apply",
         resolve: "resolve",
+        expire: "expire",
         read: "read",
         error: "fail",
       })
       .addConditionalEdges("turn", (s: NegotiationState) => s.phase, { apply: "apply", done: END, error: "fail" })
       .addConditionalEdges("apply", (s: NegotiationState) => s.phase, { turn: "turn", done: END, error: "fail" })
       .addEdge("resolve", END)
+      .addEdge("expire", END)
       .addEdge("read", END)
       .addEdge("fail", END)
       .compile();

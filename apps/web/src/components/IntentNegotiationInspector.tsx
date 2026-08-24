@@ -8,6 +8,15 @@ function pauseLabel(reason: string): string {
   return reason.replace(/_/g, " ");
 }
 
+const PAUSED_NEGOTIATION_EXPIRE_AFTER_MS = 12 * 60 * 60 * 1000;
+
+function expiresIn(updatedAt: string): string {
+  const remainingMs = Math.max(0, new Date(updatedAt).getTime() + PAUSED_NEGOTIATION_EXPIRE_AFTER_MS - Date.now());
+  const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+  const minutes = Math.ceil((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
 export default function IntentNegotiationInspector({ detail }: { detail: IntentCycleNegotiationDetail }) {
   return (
     <div className="space-y-4" aria-label="Negotiation inspector">
@@ -32,6 +41,9 @@ export default function IntentNegotiationInspector({ detail }: { detail: IntentC
         {detail.task.pause && (
           <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
             <p className="text-xs font-medium text-amber-900">Paused · {pauseLabel(detail.task.pause.reason)} · {detail.task.pause.by === 'yours' ? 'your agent' : detail.task.pause.by === 'theirs' ? 'their agent' : 'unknown seat'}</p>
+            {(detail.task.pause.reason === 'needs_principal' || detail.task.pause.reason === 'counterparty_silent') && (
+              <p className="mt-1 text-xs text-amber-800">Expires in {expiresIn(detail.task.updatedAt)}</p>
+            )}
             {detail.task.pause.payload !== undefined && (
               <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-ibm-plex-mono text-[11px] text-amber-950">{payload(detail.task.pause.payload)}</pre>
             )}

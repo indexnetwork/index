@@ -33,7 +33,7 @@ type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
 
 type StaleTaskForWatchdog = {
   id: string;
-  state: 'submitted' | 'working';
+  state: 'submitted' | 'working' | 'paused';
   updatedAt: Date;
   metadata: Record<string, unknown> | null;
 };
@@ -236,6 +236,23 @@ export class NegotiationWatchdogQueue {
     const metadata = asRecord(staleTask.metadata);
     if (metadata.type !== 'negotiation') {
       this.logger.info('Negotiation watchdog skipped non-negotiation task', { taskId: candidate.id });
+      return;
+    }
+
+    const pause = asRecord(metadata.pause);
+    if (staleTask.state === 'paused') {
+      if (pause.reason !== 'needs_principal' && pause.reason !== 'counterparty_silent') return;
+      if (!this.negotiationGraph) {
+        this.logger.error('Negotiation watchdog fired before the graph was wired', { taskId: candidate.id });
+        return;
+      }
+      const result = await this.negotiationGraph.invoke({
+        negotiationId: staleTask.id,
+        expire: { expectedUpdatedAt: staleTask.updatedAt, reason: pause.reason },
+      });
+      if (result.status === 'error') {
+        this.logger.error('Negotiation watchdog expiry invoke returned an error status', { taskId: candidate.id, error: result.error });
+      }
       return;
     }
 
