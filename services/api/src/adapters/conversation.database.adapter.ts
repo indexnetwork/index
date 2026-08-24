@@ -2353,24 +2353,31 @@ export class ConversationDatabaseAdapter {
    * Transitions state and, for `paused`, records the reason/payload. Merges
    * into metadata; other keys are untouched.
    */
+  /**
+   * A single-statement jsonb_set, not a read-then-write: the old
+   * select-metadata-then-spread-then-update shape had a lost-update race
+   * between any two concurrent callers (a pause clear racing a round stamp,
+   * a watchdog attempt racing a resume — whichever wrote second silently
+   * discarded the other's change). jsonb_set merges the one key server-side,
+   * so two concurrent callers touching different keys both land.
+   */
   async updateNegotiationTaskState(
     taskId: string,
     state: 'working' | 'paused' | 'completed',
     pause?: NegotiationTaskMetadataMirror['pause'],
   ): Promise<NegotiationTaskRowMirror> {
-    const [current] = await db
-      .select({ metadata: schema.tasks.metadata })
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId))
-      .limit(1);
-    const currentMetadata = (current?.metadata as NegotiationTaskMetadataMirror | null) ?? undefined;
-    const nextMetadata = pause !== undefined ? { ...currentMetadata, pause: pause ?? null } : currentMetadata;
-
     const [row] = await db
       .update(schema.tasks)
-      .set({ state, ...(nextMetadata !== undefined ? { metadata: nextMetadata } : {}), updatedAt: new Date() })
+      .set({
+        state,
+        ...(pause !== undefined ? {
+          metadata: sql`jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{pause}', ${JSON.stringify(pause ?? null)}::jsonb, true)`,
+        } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.tasks.id, taskId))
       .returning();
+    if (!row) throw new Error(`Negotiation task ${taskId} not found`);
     return toNegotiationTaskRow(row);
   }
 
@@ -2379,16 +2386,10 @@ export class ConversationDatabaseAdapter {
     await db.update(schema.tasks).set({ brief, updatedAt: new Date() }).where(eq(schema.tasks.id, taskId));
   }
 
-  /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. */
+  /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. Single-statement jsonb_set — see updateNegotiationTaskState. */
   async setNegotiationRound(taskId: string, round: number): Promise<void> {
-    const [current] = await db
-      .select({ metadata: schema.tasks.metadata })
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId))
-      .limit(1);
-    const currentMetadata = (current?.metadata as NegotiationTaskMetadataMirror | null) ?? {};
     await db.update(schema.tasks).set({
-      metadata: { ...currentMetadata, round },
+      metadata: sql`jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{round}', ${JSON.stringify(round)}::jsonb, true)`,
       updatedAt: new Date(),
     }).where(eq(schema.tasks.id, taskId));
   }

@@ -727,6 +727,41 @@ describe('ConversationDatabaseAdapter', () => {
     });
   });
 
+  describe('updateNegotiationTaskState / setNegotiationRound — no lost updates (#1494 round-3 cap-cut a)', () => {
+    it('two concurrent writers touching different metadata keys both land', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const userId = `concurrent-meta-user-${run}`;
+      const counterpart = `concurrent-meta-counterpart-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+      const task = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        round: 1,
+      });
+
+      // The old select-then-spread-then-update shape had a lost-update race
+      // here: whichever call's UPDATE landed second would overwrite the
+      // whole metadata blob with its own stale read, discarding the other's
+      // key. jsonb_set merges one key server-side, so both survive
+      // regardless of interleaving.
+      await Promise.all([
+        adapter.setNegotiationRound(task.id, 7),
+        adapter.updateNegotiationTaskState(task.id, 'paused', { reason: 'counterparty_silent' }),
+      ]);
+
+      const reread = await adapter.getNegotiationTask(task.id);
+      expect(reread?.metadata.round).toBe(7);
+      expect(reread?.metadata.pause).toMatchObject({ reason: 'counterparty_silent' });
+      expect(reread?.state).toBe('paused');
+    });
+  });
+
   describe('getConversationsForUser — pause projection (#1494 round-2 finding 10)', () => {
     it('projects pause.reason to every viewer, and payload only to the seat that paused', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;
