@@ -15,7 +15,6 @@
 import { END, StateGraph, Annotation } from "@langchain/langgraph";
 
 import type { NegotiationGraphDatabase, NegotiationTaskRow, NegotiationTaskMetadata } from "../../platform/database/negotiation.js";
-import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../../protocol/core.js";
 import { NegotiationAuthor } from "./negotiation.author.js";
@@ -49,7 +48,6 @@ export interface NegotiationGraphResult {
 
 export interface NegotiationGraphDeps {
   database: NegotiationGraphDatabase;
-  dispatcher: AgentDispatcher;
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
   /** Interim internal turn author, standing in for AgentGraph (step 2). */
   author?: NegotiationAuthor;
@@ -283,33 +281,13 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       speaker: (senderId === `agent:${speakerId}` ? "own" : "counterparty") as "own" | "counterparty",
       turn,
     }));
-    const scope = { action: "manage:negotiations", scopeType: "network", scopeId: meta.networkId };
-    const timeoutMs = 5 * 60 * 1000;
 
-    const hasExternal = await deps.dispatcher.hasExternalAgent(speakerId, scope).catch(() => false);
-    let turn: NegotiationTurn | null = null;
-    if (hasExternal) {
-      const dispatched = await deps.dispatcher.dispatch(
-        speakerId,
-        scope,
-        { negotiationId: task.id, brief: task.brief, thread, isOpening },
-        { timeoutMs },
-      );
-      if (dispatched.handled) {
-        turn = dispatched.turn;
-      } else if (dispatched.reason === "waiting") {
-        // Yielded to an external agent; the answer arrives later via `{ negotiationId, turn }`.
-        return { task, turns, phase: "done", result: toResult(task, turns) };
-      }
-      // 'no_agent' / 'timeout' fall through to the internal author below.
-    }
-
-    if (!turn) {
-      const author = deps.author ?? new NegotiationAuthor();
-      turn = isOpening
-        ? NegotiationOpeningTurnSchema.parse(await author.invoke({ brief: task.brief, thread, isOpening: true }))
-        : await author.invoke({ brief: task.brief, thread, isOpening: false });
-    }
+    // External-agent dispatch is offline in this PR (see the PR body) — every
+    // turn is authored internally now, synchronously, within this invoke.
+    const author = deps.author ?? new NegotiationAuthor();
+    const turn: NegotiationTurn = isOpening
+      ? NegotiationOpeningTurnSchema.parse(await author.invoke({ brief: task.brief, thread, isOpening: true }))
+      : await author.invoke({ brief: task.brief, thread, isOpening: false });
 
     return { task, turns, pendingTurn: turn, pendingTurnByUserId: null, authored: true, phase: "apply" };
   } catch (err) {

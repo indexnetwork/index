@@ -65,8 +65,7 @@ export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, Hy
 export type { IntentGraphQueue } from "./platform/runtime/queue.js";
 export type { Scraper } from "./platform/discovery/scraper.js";
 export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
-export type { NegotiationTimeoutQueue } from "./platform/negotiation/events.js";
-export type { AgentDispatcher, AgentDispatchResult, NegotiationTurnPayload } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
+export type { AgentDispatcher } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
 export { SYSTEM_AGENT_IDS } from './internal/agents/agent.types.js';
 
 // ─── Shared schemas ───────────────────────────────────────────────────────────

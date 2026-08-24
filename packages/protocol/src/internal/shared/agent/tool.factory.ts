@@ -148,12 +148,9 @@ export async function createChatTools(
   // the all-paused trigger is lost for good otherwise, since BullMQ's jobId
   // dedup means that moment doesn't come again) over building a second,
   // reflect-less instance here.
-  const negotiationGraph = deps.negotiationGraph ?? (deps.agentDispatcher
-    ? new NegotiationGraphFactory({
-        database: deps.negotiationDatabase,
-        dispatcher: deps.agentDispatcher,
-      }).createGraph()
-    : undefined);
+  const negotiationGraph = deps.negotiationGraph ?? new NegotiationGraphFactory({
+    database: deps.negotiationDatabase,
+  }).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database,
     embedder,
@@ -193,7 +190,6 @@ export async function createChatTools(
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
     ...(negotiationGraph && { negotiationGraph }),
-    negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     agentDispatcher: deps.agentDispatcher,

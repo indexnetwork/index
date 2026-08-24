@@ -18,7 +18,6 @@ import type { ChatMessageWriter } from "../../../platform/chat/ports.js";
 import type { NegotiationSummaryReader } from "../../../platform/negotiation/summary.js";
 import type { Embedder } from "../../../platform/discovery/embedder.js";
 import type { AgentDatabase } from "../../agents/agent.repository.port.js";
-import type { NegotiationTimeoutQueue } from "../../../platform/negotiation/events.js";
 import type { AgentDispatcher } from "../interfaces/agent-dispatcher.interface.js";
 import type { DeliveryLedger } from "../../../platform/runtime/delivery-ledger.js";
 import type { NegotiatorMemoryToolsHost } from "../../../platform/negotiation/memory.js";
@@ -186,8 +185,6 @@ interface ToolContextBindings {
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
   /** Optional runtime LLM config. Pass to override env vars for API key, model, etc. */
   modelConfig?: ModelConfig;
-  /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
-  negotiationTimeoutQueue?: NegotiationTimeoutQueue;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
   agentDatabase?: AgentDatabase;
   /** Grants the default system-agent permissions after onboarding (optional). */
@@ -454,8 +451,6 @@ interface ToolDepsBindings {
   chatMessageWriter?: ChatMessageWriter;
   /** Negotiation-digest summarizer. Optional; consumers fall back to deterministic digests. */
   negotiationSummary?: NegotiationSummaryReader;
-  /** Manages negotiation timeout jobs (optional — enables AI fallback on external agent timeout). */
-  negotiationTimeoutQueue?: NegotiationTimeoutQueue;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
   agentDatabase?: AgentDatabase;
   /** Grants the default system-agent permissions after onboarding (optional). */
