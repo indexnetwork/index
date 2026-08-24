@@ -995,6 +995,13 @@
       "when": 1786886087822,
       "tag": "0144_negotiation_round_and_brief",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1786886087823,
+      "tag": "0145_collapse_chat_personas",
+      "breakpoints": true
     }
   ]
 }
