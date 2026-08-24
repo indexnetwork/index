@@ -6,9 +6,9 @@ describe("canonical all-agent model resolver", () => {
   it("returns every production agent assignment from an explicit empty environment", () => {
     const models = resolveCanonicalAllAgentModels({});
     expect(Object.keys(models)).toEqual([...CANONICAL_MODEL_AGENTS]);
-    expect(models.intentInferrer).toBe("google/gemini-2.5-flash");
-    expect(models.opportunityEvaluator).toBe("google/gemini-2.5-flash");
-    expect(models.chat).toBe("google/gemini-3-pro-preview");
+    expect(models.intentInferrer).toBe("google/gemini-3.7-flash");
+    expect(models.opportunityEvaluator).toBe("google/gemini-3.7-flash");
+    expect(models.chat).toBe("google/gemini-3.7-flash");
   });
 
   it("applies CHAT_MODEL and EVAL_MODEL_OVERRIDES without reading process.env", () => {

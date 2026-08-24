@@ -18,19 +18,19 @@ afterEach(() => {
 describe("EVAL_MODEL_OVERRIDES", () => {
   it("returns the hardcoded default when unset", () => {
     delete process.env.EVAL_MODEL_OVERRIDES;
-    expect(getModelName("opportunityEvaluator")).toBe("google/gemini-2.5-flash");
+    expect(getModelName("opportunityEvaluator")).toBe("google/gemini-3.7-flash");
   });
 
   it("overrides the model for the named agent only", () => {
     process.env.EVAL_MODEL_OVERRIDES = JSON.stringify({ opportunityEvaluator: "anthropic/claude-sonnet-4" });
     expect(getModelName("opportunityEvaluator")).toBe("anthropic/claude-sonnet-4");
-    expect(getModelName("premiseAnalyzer")).toBe("google/gemini-2.5-flash");
+    expect(getModelName("premiseAnalyzer")).toBe("google/gemini-3.7-flash");
   });
 
   it("is ignored entirely in production", () => {
     process.env.NODE_ENV = "production";
     process.env.EVAL_MODEL_OVERRIDES = JSON.stringify({ opportunityEvaluator: "anthropic/claude-sonnet-4" });
-    expect(getModelName("opportunityEvaluator")).toBe("google/gemini-2.5-flash");
+    expect(getModelName("opportunityEvaluator")).toBe("google/gemini-3.7-flash");
   });
 
   it("throws on an unknown agent key rather than silently measuring the default", () => {
@@ -65,7 +65,7 @@ describe("EVAL_MODEL_OVERRIDES", () => {
     // hydeValidator is a non-default agent: temperature 0.0, maxTokens 2048.
     delete process.env.EVAL_MODEL_OVERRIDES;
     const base = createModel("hydeValidator");
-    expect(base.model).toBe("google/gemini-2.5-flash");
+    expect(base.model).toBe("google/gemini-3.7-flash");
     expect(base.temperature).toBe(0.0);
     expect(base.maxTokens).toBe(2048);
 
