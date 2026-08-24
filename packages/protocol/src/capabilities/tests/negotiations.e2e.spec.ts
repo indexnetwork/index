@@ -133,6 +133,11 @@ class FakeNegotiationHost {
       if (!task) throw new Error(`No such task ${taskId}`);
       this.tasks.set(taskId, { ...task, brief, updatedAt: new Date() });
     },
+    setNegotiationRound: async (taskId, round) => {
+      const task = this.tasks.get(taskId);
+      if (!task) throw new Error(`No such task ${taskId}`);
+      this.tasks.set(taskId, { ...task, metadata: { ...task.metadata, round }, updatedAt: new Date() });
+    },
     createNegotiationMessage: async (input) => {
       const list = this.messages.get(input.taskId) ?? [];
       if (list.length !== input.expectedMessageCount) return null; // fenced: a concurrent turn already landed
@@ -383,6 +388,43 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(second.negotiationId).toBe(first.negotiationId);
     expect(host.taskFor(first.negotiationId).brief).toBe("updated brief");
     expect([...host.tasks.values()]).toHaveLength(1);
+    // The second kickoff's round must land on the task, not the round it opened with —
+    // checkAllPaused's round-scoped count and the eventual pause both key off this.
+    expect(host.taskFor(first.negotiationId).metadata.round).toBe(2);
+  });
+
+  test("a turn rejected for the wrong seat does not resume a paused negotiation", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedNegotiationAuthor([
+      { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
+      { verb: "pause", reason: "needs_principal", payload: { question: "What equity split?" } },
+    ]);
+    const graph = new Negotiations({ database: host.database, dispatcher: host.waitingDispatcher(), author }).createGraph();
+
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const negotiationId = opened.negotiationId;
+    const paused = await graph.invoke({
+      negotiationId,
+      turn: { verb: "counter", message: "Interested — terms?", reasoning: "r" },
+      byUserId: CANDIDATE_USER_ID,
+    });
+    expect(paused.status).toBe("paused");
+    expect(paused.pause).toEqual({ reason: "needs_principal" });
+    expect(host.taskFor(negotiationId).state).toBe("paused");
+
+    // Alice's own principal pause — only alice's seat may resume it. Bob submitting
+    // next is the wrong seat and must be rejected without touching the pause.
+    const rejected = await graph.invoke({
+      negotiationId,
+      turn: { verb: "counter", message: "Trying to jump back in.", reasoning: "r" },
+      byUserId: CANDIDATE_USER_ID,
+    });
+    expect(rejected.status).toBe("error");
+
+    // A rejection must never have flipped the negotiation to "working" — that would
+    // strand it with no pause reported and no turn applied.
+    expect(host.taskFor(negotiationId).state).toBe("paused");
+    expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({ reason: "needs_principal", pausedBy: SOURCE_USER_ID });
   });
 
   test("a concurrent duplicate submission is fenced, not silently double-applied", async () => {

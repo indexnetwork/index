@@ -150,9 +150,15 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       const existing = await deps.database.getNegotiationTaskForOpportunity(input.opportunityId);
       if (existing) {
         await deps.database.setNegotiationBrief(existing.id, input.brief);
+        // A fresh kickoff batch bumped `round` before invoking; stamp it onto
+        // the existing task so checkAllPaused's round-scoped count and the
+        // eventual pause both reflect the current round, not a stale one.
+        if (existing.metadata.round !== input.round) {
+          await deps.database.setNegotiationRound(existing.id, input.round);
+        }
         const messages = await deps.database.getNegotiationMessages(existing.id);
         return {
-          task: { ...existing, brief: input.brief },
+          task: { ...existing, brief: input.brief, metadata: { ...existing.metadata, round: input.round } },
           turns: turnsFromMessages(messages),
           phase: existing.state === "completed" ? "read" : "turn",
         };
@@ -186,15 +192,15 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     }
 
     // ── resume with brief, or apply a submitted/system turn ──
-    let task = await deps.database.getNegotiationTask(input.negotiationId);
+    const task = await deps.database.getNegotiationTask(input.negotiationId);
     if (!task) return { phase: "error", error: "Negotiation not found" };
     if (task.state === "completed") return { task, turns: [], phase: "read" };
 
     // A pause is one-way at rest, not a dead end: any resume (new brief, a
-    // submitted turn, or a timeout) reopens the negotiation before it's acted on.
-    if (task.state === "paused") {
-      task = await deps.database.updateNegotiationTaskState(task.id, "working");
-    }
+    // submitted turn, or a timeout) reopens the negotiation — but only once
+    // apply actually persists a turn (see applyNode). Flipping state here,
+    // before validation, would strand a rejected turn's negotiation
+    // "working" with no pause and no applied turn.
 
     if ("brief" in input) {
       await deps.database.setNegotiationBrief(task.id, input.brief);
@@ -330,8 +336,17 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
     }
     const allTurns = [...turnsFromMessages(messages), threadTurn];
 
+    // Resume happens here, after every rejection path (wrong seat, outreach
+    // rule, CAS conflict) has already returned — none of them should flip a
+    // paused negotiation to working. A turn that reaches this point is
+    // persisted, so the resume is real regardless of what happens next.
+    let currentTask = task;
+    if (currentTask.state === "paused") {
+      currentTask = await deps.database.updateNegotiationTaskState(currentTask.id, "working");
+    }
+
     if (isPauseTurn(effectiveTurn)) {
-      const updated = await deps.database.updateNegotiationTaskState(task.id, "paused", {
+      const updated = await deps.database.updateNegotiationTaskState(currentTask.id, "paused", {
         reason: effectiveTurn.reason,
         pausedBy: speakerId,
         ...("payload" in effectiveTurn ? { payload: effectiveTurn.payload } : {}),
@@ -341,7 +356,7 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
     }
 
     // Continue: loop back for the other seat.
-    return { task, turns: allTurns, pendingTurn: null, pendingTurnByUserId: null, authored: false, phase: "turn" };
+    return { task: currentTask, turns: allTurns, pendingTurn: null, pendingTurnByUserId: null, authored: false, phase: "turn" };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }

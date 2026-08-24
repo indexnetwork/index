@@ -2359,6 +2359,20 @@ export class ConversationDatabaseAdapter {
     await db.update(schema.tasks).set({ brief, updatedAt: new Date() }).where(eq(schema.tasks.id, taskId));
   }
 
+  /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. */
+  async setNegotiationRound(taskId: string, round: number): Promise<void> {
+    const [current] = await db
+      .select({ metadata: schema.tasks.metadata })
+      .from(schema.tasks)
+      .where(eq(schema.tasks.id, taskId))
+      .limit(1);
+    const currentMetadata = (current?.metadata as NegotiationTaskMetadataMirror | null) ?? {};
+    await db.update(schema.tasks).set({
+      metadata: { ...currentMetadata, round },
+      updatedAt: new Date(),
+    }).where(eq(schema.tasks.id, taskId));
+  }
+
   /**
    * Persists one turn, fenced against a concurrent duplicate submission: the
    * insert only proceeds if the task's current message count still equals

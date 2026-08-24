@@ -89,6 +89,9 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** Overwrites the brief at resume. */
   setNegotiationBrief(taskId: string, brief: string): Promise<void>;
 
+  /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. */
+  setNegotiationRound(taskId: string, round: number): Promise<void>;
+
   /**
    * Persists one turn, fenced against a concurrent duplicate submission:
    * inserts only if the task's current message count still equals
