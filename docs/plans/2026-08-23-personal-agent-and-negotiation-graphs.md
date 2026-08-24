@@ -1,6 +1,12 @@
 # One PersonalAgent, two graphs
 
-**Status:** design agreed 2026-08-23, not started.
+**Status:** implemented 2026-08-23/24. Step 1 (NegotiationGraph rewrite) shipped in
+#1494, the one-persona collapse in #1495, step 2 (AgentGraph + IS-A) in #1496.
+Follow-ups still open: external agents rebuilt on the new auth model, the
+open-path atomic guard, step 3 host cleanup, and the questioner-substrate
+deletion (owner call). Decisions taken without the owner are in
+[2026-08-24-overnight-decisions](2026-08-24-overnight-decisions.md) and the
+Decisions appendix below.
 **Date:** 2026-08-23
 **Builds on:** [2026-08-21-holistic-intent-agent](2026-08-21-holistic-intent-agent.md)
 (the IntentAgent actor) and the IntentGraph single-write-path refactor (#1489),
