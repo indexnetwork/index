@@ -93,6 +93,10 @@ export class ConversationService {
     return this.db.getIntentCycleForIntent(userId, intentId);
   }
 
+  async getIntentCycleNegotiationForIntent(userId: string, intentId: string, taskId: string) {
+    return this.db.getIntentCycleNegotiationForIntent(userId, intentId, taskId);
+  }
+
   /**
    * Finds an existing DM between two users, or creates one if none exists.
    * @param userA - First user ID

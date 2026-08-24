@@ -136,6 +136,30 @@ export interface IntentCycleSnapshot {
   }>;
 }
 
+/** Owner-only debugging detail for one seat in one negotiation. */
+export interface IntentCycleNegotiationDetail {
+  intent: { id: string; payload: string };
+  task: {
+    id: string;
+    conversationId: string;
+    opportunityId: string;
+    round: number;
+    state: NegotiationTaskState;
+    brief: string | null;
+    pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null; payload?: unknown } | null;
+  };
+  transcript: Array<{
+    id: string;
+    actor: 'yours' | 'theirs';
+    verb: string | null;
+    pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
+    text: string | null;
+    createdAt: string;
+  }>;
+  /** Present only when this owner resolved the negotiation. */
+  outcome: { verdict: 'pending' | 'reject'; reasoning: string | null } | null;
+}
+
 export const createConversationService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   /** List all conversations for the authenticated user. */
   getConversations: async (): Promise<ConversationSummary[]> => {
@@ -154,6 +178,13 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
       `/conversations/negotiations/intent-cycle?intentId=${encodeURIComponent(intentId)}`,
     );
     return response.cycle;
+  },
+
+  getIntentCycleNegotiation: async (intentId: string, taskId: string): Promise<IntentCycleNegotiationDetail> => {
+    const response = await api.get<{ negotiation: IntentCycleNegotiationDetail }>(
+      `/conversations/negotiations/intent-cycle/${encodeURIComponent(taskId)}?intentId=${encodeURIComponent(intentId)}`,
+    );
+    return response.negotiation;
   },
 
   /** Create a new conversation. */

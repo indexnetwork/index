@@ -69,6 +69,20 @@ export class ConversationController {
     return Response.json({ cycle });
   }
 
+  /** Owner-scoped debug detail for one seat of an intent negotiation. */
+  @Get('/negotiations/intent-cycle/:taskId')
+  @UseGuards(RateLimit('read'), AuthGuard)
+  async getIntentCycleNegotiation(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const intentId = new URL(req.url).searchParams.get('intentId');
+    const taskId = params?.taskId;
+    if (!intentId || !taskId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(intentId)) {
+      return Response.json({ error: 'A valid intentId and taskId are required' }, { status: 400 });
+    }
+    const negotiation = await this.conversationService.getIntentCycleNegotiationForIntent(user.id, intentId, taskId);
+    if (!negotiation) return Response.json({ error: 'Negotiation not found' }, { status: 404 });
+    return Response.json({ negotiation });
+  }
+
   /**
    * POST /conversations — create a new conversation with participants.
    *

@@ -128,6 +128,76 @@ function intentCycleLatestActivity(
   return { actor: senderId === `agent:${ownerUserId}` ? 'yours' : 'theirs', verb, text: verb === 'pause' ? null : text, createdAt };
 }
 
+function intentCyclePauseReason(value: unknown): NegotiationPauseReason | null {
+  return typeof value === 'string' && NEGOTIATION_PAUSE_REASONS.includes(value as NegotiationPauseReason)
+    ? value as NegotiationPauseReason
+    : null;
+}
+
+/** One transcript row, stripping another seat's private pause payload. */
+function intentCycleTranscriptTurn(
+  row: { id: string; senderId: string; parts: unknown; createdAt: Date },
+  ownerUserId: string,
+): {
+  id: string;
+  actor: 'yours' | 'theirs';
+  verb: string | null;
+  pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
+  text: string | null;
+  createdAt: Date;
+} {
+  const parts = Array.isArray(row.parts) ? row.parts : [];
+  const own = row.senderId === `agent:${ownerUserId}`;
+  let verb: string | null = null;
+  let reason: NegotiationPauseReason | null = null;
+  let payload: unknown;
+  let text: string | null = null;
+  for (const part of parts) {
+    if (!part || typeof part !== 'object' || Array.isArray(part)) continue;
+    const record = part as Record<string, unknown>;
+    if (typeof record.text === 'string' && record.text.trim()) text = record.text.trim();
+    if (record.kind !== 'data' || !record.data || typeof record.data !== 'object' || Array.isArray(record.data)) continue;
+    const turn = record.data as Record<string, unknown>;
+    if (typeof turn.verb === 'string') verb = turn.verb;
+    if (verb === 'pause') {
+      reason = intentCyclePauseReason(turn.reason);
+      if (own && turn.payload !== undefined) payload = turn.payload;
+    } else if (typeof turn.message === 'string' && turn.message.trim()) {
+      text = turn.message.trim();
+    }
+  }
+  return {
+    id: row.id,
+    actor: own ? 'yours' : 'theirs',
+    verb,
+    pause: reason ? { reason, ...(own && payload !== undefined ? { payload } : {}) } : null,
+    text: verb === 'pause' ? null : text,
+    createdAt: row.createdAt,
+  };
+}
+
+function intentCycleOwnOutcome(
+  artifacts: Array<{ name: string | null; parts: unknown; metadata: unknown }>,
+  ownerUserId: string,
+): { verdict: 'pending' | 'reject'; reasoning: string | null } | null {
+  for (const artifact of artifacts) {
+    if (artifact.name !== 'negotiation_outcome') continue;
+    const metadata = artifact.metadata && typeof artifact.metadata === 'object' && !Array.isArray(artifact.metadata)
+      ? artifact.metadata as Record<string, unknown>
+      : null;
+    if (metadata?.resolvedByUserId !== ownerUserId) continue;
+    for (const part of Array.isArray(artifact.parts) ? artifact.parts : []) {
+      if (!part || typeof part !== 'object' || Array.isArray(part)) continue;
+      const record = part as Record<string, unknown>;
+      if (record.kind !== 'data' || !record.data || typeof record.data !== 'object' || Array.isArray(record.data)) continue;
+      const outcome = record.data as Record<string, unknown>;
+      if (outcome.resolvedByUserId !== ownerUserId || (outcome.verdict !== 'pending' && outcome.verdict !== 'reject')) continue;
+      return { verdict: outcome.verdict, reasoning: typeof outcome.reasoning === 'string' ? outcome.reasoning : null };
+    }
+  }
+  return null;
+}
+
 /** Persona literal mirrored locally so the data layer stays protocol-agnostic. */
 const PERSONAL_AGENT_PERSONA = 'personal';
 const logger = log.lib.from('conversation-database');
@@ -2003,6 +2073,97 @@ export class ConversationDatabaseAdapter {
         paused: currentRound.filter((negotiation) => negotiation.state === 'paused').length,
       },
       negotiations,
+    };
+  }
+
+  /** The owner-only detail read behind the cycle inspector's task rows. */
+  async getIntentCycleNegotiationForIntent(userId: string, intentId: string, taskId: string): Promise<{
+    intent: { id: string; payload: string };
+    task: {
+      id: string;
+      conversationId: string;
+      opportunityId: string;
+      round: number;
+      state: string;
+      brief: string | null;
+      pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null; payload?: unknown } | null;
+    };
+    transcript: Array<{
+      id: string;
+      actor: 'yours' | 'theirs';
+      verb: string | null;
+      pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
+      text: string | null;
+      createdAt: Date;
+    }>;
+    outcome: { verdict: 'pending' | 'reject'; reasoning: string | null } | null;
+  } | null> {
+    const [intent] = await db
+      .select({ id: schema.intents.id, payload: schema.intents.payload })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .limit(1);
+    if (!intent) return null;
+
+    const [task] = await db
+      .select({
+        id: schema.tasks.id,
+        conversationId: schema.tasks.conversationId,
+        state: schema.tasks.state,
+        briefs: schema.tasks.briefs,
+        metadata: schema.tasks.metadata,
+      })
+      .from(schema.tasks)
+      .where(and(
+        eq(schema.tasks.id, taskId),
+        sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+        sql`${schema.tasks.metadata}->'seats' ? ${intentId}`,
+        notArchivedNegotiationTaskWhere(),
+        rewriteEraNegotiationTaskWhere(),
+      ))
+      .limit(1);
+    if (!task) return null;
+    const metadata = task.metadata as NegotiationTaskMetadataMirror;
+    const seat = metadata.seats?.[intentId];
+    if (!seat || seat.userId !== userId || !metadata.opportunityId) return null;
+
+    const [messageRows, artifactRows] = await Promise.all([
+      db.select({ id: schema.messages.id, senderId: schema.messages.senderId, parts: schema.messages.parts, createdAt: schema.messages.createdAt })
+        .from(schema.messages)
+        .where(eq(schema.messages.taskId, task.id))
+        .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id)),
+      db.select({ name: schema.artifacts.name, parts: schema.artifacts.parts, metadata: schema.artifacts.metadata })
+        .from(schema.artifacts)
+        .where(eq(schema.artifacts.taskId, task.id))
+        .orderBy(schema.artifacts.createdAt),
+    ]);
+    const pausedBy = metadata.pause?.pausedBy;
+    const pauseBy: 'yours' | 'theirs' | null = pausedBy
+      ? (pausedBy === `agent:${userId}` ? 'yours' : 'theirs')
+      : null;
+    const pause = metadata.pause
+      ? {
+          reason: metadata.pause.reason,
+          by: pauseBy,
+          ...(pauseBy === 'yours' && metadata.pause.payload !== undefined ? { payload: metadata.pause.payload } : {}),
+        }
+      : null;
+
+    return {
+      intent,
+      task: {
+        id: task.id,
+        conversationId: task.conversationId,
+        opportunityId: metadata.opportunityId,
+        round: seat.round,
+        state: task.state,
+        brief: typeof (task.briefs as Record<string, unknown> | null)?.[intentId] === 'string'
+          ? (task.briefs as Record<string, string>)[intentId]
+          : null,
+        pause,
+      },
+      transcript: messageRows.map((message) => intentCycleTranscriptTurn(message, userId)),
+      outcome: intentCycleOwnOutcome(artifactRows, userId),
     };
   }
 

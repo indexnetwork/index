@@ -1023,6 +1023,7 @@ export default function IntentDetailPage() {
                 >
                   <div className="mb-3">
                     <IntentCycleInspector
+                      intentId={intentId ?? ""}
                       cycle={intentCycle}
                       loading={intentCycleLoading}
                       error={intentCycleError}

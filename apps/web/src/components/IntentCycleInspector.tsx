@@ -29,10 +29,12 @@ function activityLabel(negotiation: IntentCycleSnapshot['negotiations'][number])
 }
 
 export default function IntentCycleInspector({
+  intentId,
   cycle,
   loading,
   error,
 }: {
+  intentId: string;
   cycle: IntentCycleSnapshot | null;
   loading: boolean;
   error: boolean;
@@ -79,7 +81,7 @@ export default function IntentCycleInspector({
                     task {negotiation.taskId.slice(0, 8)} · opportunity {negotiation.opportunityId.slice(0, 8)}
                   </p>
                 </div>
-                <Link to={`/negotiations/${negotiation.conversationId}`} className="text-[11px] font-medium text-[#35799C] hover:underline">Inspect thread</Link>
+                <Link to={`/i/${intentId}/negotiations/${negotiation.taskId}`} className="text-[11px] font-medium text-[#35799C] hover:underline">Inspect</Link>
               </div>
               <p className="mt-2 text-xs leading-relaxed text-gray-700">{activityLabel(negotiation)}</p>
               {negotiation.pause && <p className="mt-1 font-ibm-plex-mono text-[10px] text-amber-700">pause · {pauseLabel(negotiation.pause.reason, negotiation.pause.by)}</p>}
