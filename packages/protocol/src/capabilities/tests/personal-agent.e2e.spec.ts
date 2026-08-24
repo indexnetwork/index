@@ -476,7 +476,7 @@ describe("PersonalAgent — kickoff safety at the edges", () => {
     negotiationHost.round = 4;
     negotiationHost.roundSize = null;
     negotiationHost.kickoffStartedAt = null;
-    await negotiationHost.database.createNegotiationTask({
+    await negotiationHost.createNegotiationTask({
       conversationId: "legacy-conversation",
       brief: "written before this PR",
       metadata: {
@@ -962,7 +962,7 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Alice reaching out." }]]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
     // Bob's agent opened this negotiation first, for Bob's own signal.
-    await negotiationHost.database.createNegotiationTask({
+    await negotiationHost.createNegotiationTask({
       conversationId: "conversation-bob",
       briefs: { [CANDIDATE_USER_ID]: "Bob's own brief, written by Bob's agent." },
       metadata: {
@@ -1014,7 +1014,7 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     // agent to be able to SEE the negotiation. Single ownership hid it.
     const judgment = new ScriptedJudgment([() => []]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
-    const task = await negotiationHost.database.createNegotiationTask({
+    const task = await negotiationHost.createNegotiationTask({
       conversationId: "conversation-bob",
       briefs: {},
       metadata: {

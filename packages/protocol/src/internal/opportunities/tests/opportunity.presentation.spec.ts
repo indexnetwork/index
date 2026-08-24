@@ -155,7 +155,7 @@ describe('truncateAtBoundary', () => {
 // ──────────────────────────────────────────────────────────────────────
 
 describe("opportunity presentation cache namespace", () => {
-  it("versions every presentation key family with v2", () => {
+  it("uses the existing presentation cache namespace", () => {
     expect(OPPORTUNITY_PRESENTATION_CACHE_VERSION).toBe("v2");
     expect(buildRadarCardPresentationCacheKey("opp", "pending", "viewer"))
       .toBe("radar:v2:card:opp:pending:viewer");

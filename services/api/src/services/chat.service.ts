@@ -312,10 +312,7 @@ export class ChatSessionService {
 
   /**
    * The user's negotiator session for an intent if it already exists — the
-   * read-only companion to {@link resolveNegotiatorIntentSession}. Background
-   * work that only wants to rewrite what is already in the DM (the
-   * question-message close-out) uses this so it never conjures an empty
-   * conversation for a signal the client has never opened.
+   * read-only companion to {@link resolveNegotiatorIntentSession}.
    *
    * @param userId - The client user
    * @param intentId - The pinned intent
@@ -452,36 +449,6 @@ export class ChatSessionService {
     await this.db.updateChatSessionTimestamp(params.sessionId);
 
     return id;
-  }
-
-  /**
-   * The newest message in a session, by the same order the session reads use.
-   * Anchor read for the question-message edit rule.
-   *
-   * @param sessionId - The session ID
-   * @returns The newest message, or null for an empty session
-   */
-  async getNewestMessage(sessionId: string) {
-    return this.db.getNewestChatMessage(sessionId);
-  }
-
-  /**
-   * In-place regeneration of an open question-message (the conversational
-   * questions edit rule). The write is guarded inside the data layer: it only
-   * applies to an agent-authored message in the caller's
-   * ('negotiator-intent', intentId) session while that message is still the
-   * newest in its conversation.
-   *
-   * @returns False when the message lost the newest-message race (or is out
-   *   of scope) and the caller should append a fresh message instead.
-   */
-  async updateQuestionMessageInPlace(params: {
-    userId: string;
-    intentId: string;
-    messageId: string;
-    content: string;
-  }): Promise<boolean> {
-    return this.db.updateNewestAgentQuestionMessage({ ...params, regeneratedAt: new Date() });
   }
 
   /**

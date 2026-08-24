@@ -37,6 +37,8 @@ export interface NegotiationContext {
   turns: NegotiationTurn[];
   /** Present once the negotiation has paused. */
   pause?: { reason: string; payload?: unknown };
+  /** The resolve artifact's private reasoning, present only for its resolver. */
+  outcomeReasoning?: string;
 }
 
 const STATUSES_WITH_NO_NEGOTIATION: ReadonlyArray<OpportunityStatus> = ['draft', 'latent', 'expired'];
@@ -51,18 +53,22 @@ export async function loadNegotiationContext(
   db: NegotiationContextDatabase,
   opportunityId: string,
   opportunityStatus: OpportunityStatus,
+  viewerId: string,
 ): Promise<NegotiationContext | null> {
   if (STATUSES_WITH_NO_NEGOTIATION.includes(opportunityStatus)) {
     return null;
   }
 
-  const task = await db.getNegotiationTaskForOpportunity(opportunityId);
+  const task = await db.getNegotiationTaskForOpportunity(opportunityId, { includeCompleted: true });
   if (!task) {
     logger.verbose('No negotiation task found for opportunity', { opportunityId, opportunityStatus });
     return null;
   }
 
-  const messages = await db.getNegotiationMessages(task.id);
+  const [messages, artifacts] = await Promise.all([
+    db.getNegotiationMessages(task.id),
+    task.state === 'completed' ? db.getArtifactsForTask(task.id) : Promise.resolve([]),
+  ]);
   const turns = extractTurns(messages);
 
   return {
@@ -72,7 +78,21 @@ export async function loadNegotiationContext(
     turnCap: NEGOTIATION_MAX_TURNS_AMBIENT,
     turns,
     ...(task.state === 'paused' && task.metadata.pause ? { pause: task.metadata.pause } : {}),
+    ...outcomeReasoningForViewer(artifacts, viewerId),
   };
+}
+
+function outcomeReasoningForViewer(
+  artifacts: Awaited<ReturnType<NegotiationContextDatabase['getArtifactsForTask']>>,
+  viewerId: string,
+): Pick<NegotiationContext, 'outcomeReasoning'> {
+  const outcome = artifacts.find((artifact) => artifact.name === 'negotiation_outcome');
+  if (!outcome || outcome.metadata?.resolvedByUserId !== viewerId) return {};
+  const data = (outcome.parts as Array<{ kind?: string; data?: unknown }>)
+    .find((part) => part.kind === 'data')?.data;
+  if (!data || typeof data !== 'object' || typeof (data as { reasoning?: unknown }).reasoning !== 'string') return {};
+  const reasoning = (data as { reasoning: string }).reasoning.trim();
+  return reasoning ? { outcomeReasoning: reasoning } : {};
 }
 
 function extractTurns(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {

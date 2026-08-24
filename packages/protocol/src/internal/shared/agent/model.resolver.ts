@@ -24,7 +24,6 @@ export const CANONICAL_AGENT_MODEL_DEFAULTS = Object.freeze({
   chatTitleGenerator: "google/gemini-2.5-flash",
   negotiationInsights: "google/gemini-2.5-flash",
   chatContextSummarizer: "google/gemini-2.5-flash",
-  questioner: "google/gemini-2.5-flash",
   signalIntakePack: "google/gemini-2.5-flash",
   negotiationSummarizer: "google/gemini-2.5-flash",
   poolDiscriminatorMiner: "google/gemini-2.5-flash",

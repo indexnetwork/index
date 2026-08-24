@@ -62,7 +62,7 @@ describe("loadNegotiationContext", () => {
       },
     });
 
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "draft");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "draft", "u-source");
 
     expect(result).toBeNull();
     expect(taskLookups).toBe(0);
@@ -70,19 +70,19 @@ describe("loadNegotiationContext", () => {
 
   it("returns null for latent status without querying the database", async () => {
     const db = buildDb();
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "latent");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "latent", "u-source");
     expect(result).toBeNull();
   });
 
   it("returns null for expired status", async () => {
     const db = buildDb();
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "expired");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "expired", "u-source");
     expect(result).toBeNull();
   });
 
   it("returns null when no negotiation task exists for the opportunity", async () => {
     const db = buildDb({ getNegotiationTaskForOpportunity: async () => null });
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "pending");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "pending", "u-source");
     expect(result).toBeNull();
   });
 
@@ -95,7 +95,7 @@ describe("loadNegotiationContext", () => {
       ],
     });
 
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "negotiating");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "negotiating", "u-source");
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe("negotiating");
@@ -114,7 +114,7 @@ describe("loadNegotiationContext", () => {
       getNegotiationMessages: async () => [turnMessage("outreach", "Opening pitch")],
     });
 
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "stalled");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "stalled", "u-source");
 
     expect(result!.pause?.reason).toBe("counterparty_silent");
   });
@@ -128,8 +128,41 @@ describe("loadNegotiationContext", () => {
       ],
     });
 
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "pending");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "pending", "u-source");
 
     expect(result!.turns).toHaveLength(1);
+  });
+
+  it("loads completed outcome reasoning only for the resolving user", async () => {
+    const artifacts = [{
+      id: "artifact-1",
+      name: "negotiation_outcome",
+      metadata: { resolvedByUserId: "u-source" },
+      parts: [{ kind: "data", data: { verdict: "reject", reasoning: "Their budget is not compatible with yours." } }],
+    }];
+    const db = buildDb({
+      getNegotiationTaskForOpportunity: async (_id, options) => {
+        expect(options).toEqual({ includeCompleted: true });
+        return baseTask({ state: "completed" });
+      },
+      getArtifactsForTask: async () => artifacts,
+    });
+
+    const resolverView = await loadNegotiationContext(db, OPPORTUNITY_ID, "rejected", "u-source");
+    const counterpartyView = await loadNegotiationContext(db, OPPORTUNITY_ID, "rejected", "u-candidate");
+
+    expect(resolverView?.outcomeReasoning).toBe("Their budget is not compatible with yours.");
+    expect(counterpartyView?.outcomeReasoning).toBeUndefined();
+  });
+
+  it("gracefully omits outcome reasoning when the artifact has none", async () => {
+    const db = buildDb({
+      getNegotiationTaskForOpportunity: async () => baseTask({ state: "completed" }),
+      getArtifactsForTask: async () => [],
+    });
+
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "rejected", "u-source");
+
+    expect(result?.outcomeReasoning).toBeUndefined();
   });
 });

@@ -303,7 +303,7 @@ Personal agents participate in bilateral negotiation via a small set of MCP tool
 |---|---|
 | `get_negotiation` | Fetch the full turn history and assessment seed for a negotiation |
 | `list_negotiations` | List current and concluded agent negotiations with lifecycle-explicit opportunity and owner-action narration |
-| `respond_to_negotiation` | Submit a turn (propose / counter / accept / reject / question) |
+| `respond_to_negotiation` | Submit `outreach`, `counter`, `question`, or an authored pause; terminal outcomes are resolved only by the signal's PersonalAgent |
 
 ## Publishing
 

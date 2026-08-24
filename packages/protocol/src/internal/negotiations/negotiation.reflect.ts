@@ -88,7 +88,7 @@ export interface NegotiationReflectJobData {
 /**
  * Injected enqueue callback for post-negotiation reflection (P5.2). The
  * protocol package has no BullMQ access — services/api wires this at its
- * composition roots, exactly like `QuestionerEnqueueFn`. Called fire-and-
+ * composition roots. Called fire-and-
  * forget from the finalize node: a reflection failure must never affect the
  * negotiation outcome.
  */

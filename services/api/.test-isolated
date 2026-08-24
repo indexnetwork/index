@@ -23,7 +23,6 @@ src/queues/tests/hyde.queue.isolated.ts
 src/queues/tests/intent.queue.isolated.ts
 src/queues/tests/notification.queue.isolated.ts
 src/queues/tests/premise.queue.isolated.ts
-src/queues/tests/run-existing.queue.isolated.ts
 src/services/tests/network-invitation.service.isolated.ts
 src/services/tests/notification-delivery.service.isolated.ts
 src/services/tests/notification-projection.isolated.ts
@@ -89,7 +88,6 @@ src/lib/limiter/tests/mcp.isolated.ts
 src/lib/limiter/tests/identifier.isolated.ts
 src/services/tests/intent.service.proposal.isolated.ts
 src/controllers/tests/conversation.negotiation-activity.isolated.ts
-src/adapters/tests/archive-legacy-negotiations.isolated.ts
 src/lib/mcp/tests/owner-approval.isolated.ts
 src/controllers/tests/opportunity.owner-approval.isolated.ts
 src/services/tests/intent.service.seed-index.isolated.ts
@@ -100,7 +98,4 @@ src/controllers/tests/network-request.controller.authz.isolated.ts
 src/controllers/tests/webhooks.controller.isolated.ts
 src/lib/testing/tests/fixtures/isolated-import-target.isolated.ts
 src/adapters/tests/embedder.provider-free.isolated.ts
-src/queues/tests/question-message.queue.isolated.ts
 src/queues/tests/personal-agent.queue.isolated.ts
-src/lib/question/tests/question-exhaustion.evaluator.isolated.ts
-src/controllers/tests/opportunity.reopen.controller.isolated.ts

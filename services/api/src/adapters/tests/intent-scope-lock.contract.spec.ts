@@ -99,10 +99,7 @@ describe('intent-scope advisory lock contract', () => {
     expect(activeTask).toContain("metadata}->>'opportunityId' = ${opportunityId}");
     expect(activeTask).toContain('qualifyingFreshNegotiationTaskStateWhere()');
     expect(pairTask).toContain('qualifyingFreshNegotiationTaskStateWhere()');
-    expect(negotiationAttemptSource).toContain(
-      "IN ('submitted', 'working', 'waiting_for_agent', 'claimed')",
-    );
-    expect(negotiationAttemptSource).toContain("state} = 'input_required'");
+    expect(negotiationAttemptSource).toContain("IN ('submitted', 'working', 'paused')");
 
     const acquire = negotiationReactivationSource.indexOf('boundary.acquireAttemptLock()');
     const eligibility = negotiationReactivationSource.indexOf('boundary.validateEligibility()', acquire);

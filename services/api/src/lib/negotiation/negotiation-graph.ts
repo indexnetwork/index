@@ -1,5 +1,6 @@
 /**
- * The one construction site for the two graphs that run the signal cycle.
+ * The host composition root and one construction site for the two graphs that
+ * run the signal cycle.
  *
  * `negotiationGraph` owns every write to a negotiation; `personalAgentGraph`
  * is the one PersonalAgent, in whichever scope its input names. They are
@@ -15,9 +16,9 @@
  * path (`negotiator-verdict.host`), the reply transport, and the agent's own
  * name. Nothing here holds business logic.
  *
- * A shared module (rather than inlining this in main.ts) exists only so every
- * importer gets it at their own module-eval time without a circular import
- * back into main.ts — the same reason `chatFactory` lives in mcp.controller.ts.
+ * This shared module, rather than `main.ts`, lets queues, controllers, and
+ * services consume the same compiled graphs without a circular import back
+ * into process startup.
  */
 import { NegotiationGraphFactory, PersonalAgentGraphFactory } from '@indexnetwork/protocol';
 import type { MatchesReadyFn, PersonalAgentGraphLike } from '@indexnetwork/protocol';

@@ -17,7 +17,7 @@ import { POOL_DISCRIMINATOR_MAX_CANDIDATES } from "./discriminator.env.js";
 import { poolEvidenceMatches } from "./discriminator.miner.js";
 import type { PoolCandidate } from "./discriminator.types.js";
 
-/** QuestionerAdapter caps fresh answered preferences at this count. */
+/** Cap fresh answered preferences used by the discriminator. */
 const MAX_ASSIGNMENT_AXES = 10;
 const logger = protocolLogger("PoolDiscriminatorAssigner");
 

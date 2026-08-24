@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -84,21 +84,14 @@ describe('ChatSidebar unread indicators', () => {
     expect(screen.queryByTestId('chat-unread-conv-1')).toBeNull();
   });
 
-  test('suppresses unread counts on negotiation rows while still listing the negotiation', () => {
+  test('does not render retired negotiation rows or their unread counts', () => {
     mocks.negotiations = [negotiationSummary(4)];
     render(<MemoryRouter><ChatSidebar /></MemoryRouter>);
 
-    fireEvent.click(screen.getByRole('button', { name: /Negotiations/ }));
-
-    // #1444 replaced the inbox-style rows with the counterparty outline, so the
-    // rail no longer renders last-action guidance — but the negotiation must
-    // still be reachable. This summary projects no opportunities, so it lands
-    // in the fallback bucket rather than disappearing.
-    const counterparty = screen.getByRole('button', { name: /Agent negotiation/ });
-    expect(counterparty).toBeInTheDocument();
-    fireEvent.click(counterparty);
-    expect(screen.getByText('No lifecycle status')).toBeInTheDocument();
-
+    // Negotiations are no longer a sidebar surface; resolved opportunity cards
+    // and their signal DMs carry the user-facing outcome instead.
+    expect(screen.queryByRole('button', { name: /Negotiations/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Agent negotiation/ })).toBeNull();
     expect(screen.queryByTestId('chat-unread-neg-1')).toBeNull();
     expect(screen.queryByLabelText('4 unread messages')).toBeNull();
   });

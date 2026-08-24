@@ -3,11 +3,9 @@ import { AgentDispatcherImpl } from '../agent-dispatcher.service';
 import type { AgentWithRelations } from '../../adapters/agent.database.adapter';
 
 /**
- * #1494 round-3 Option A: AgentDispatcherImpl.dispatch (negotiation turn
- * dispatch, its freshness gate, and its timeout arming) is deleted —
- * external agents are offline in this PR (see the PR body). What remains is
- * hasExternalAgent, still used by the opportunity graph for the
- * unlimited-maxTurns rule (IND-410) — an unrelated, still-live concern.
+ * AgentDispatcherImpl only answers external-agent availability for the
+ * opportunity graph's unlimited-maxTurns rule. Negotiation turns are
+ * submitted through MCP and applied by NegotiationGraph.
  */
 
 function makeAgent(overrides: Partial<AgentWithRelations> = {}): AgentWithRelations {

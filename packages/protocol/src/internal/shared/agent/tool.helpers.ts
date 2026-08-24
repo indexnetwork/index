@@ -184,8 +184,6 @@ interface ToolContextBindings {
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
   /** Dispatcher for routing negotiation turns to personal agents (optional — falls back to system AI). */
   agentDispatcher?: AgentDispatcher;
-  /** Enqueue a negotiate_existing job after introducer approval (optional). */
-  queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>;
   /** Host callback for pre-insert newborn pool-preference stamping (optional). */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   /** Delivery ledger for committing opportunity delivery rows (optional — absent in chat context). */

@@ -21,8 +21,8 @@ export interface ActionVerb {
  *
  * A negotiator turn is one of `outreach | counter | question` (continues) or
  * `pause` with a reason (`counterparty_silent | needs_principal |
- * ready_for_verdict`) — there is no `accept`/`decline`/`withdraw`/`ask_user`
- * on the turn surface any more; a negotiation only ever ends via a separate
+ * ready_for_verdict`) — there is no terminal or principal-question action on
+ * the turn surface any more; a negotiation only ever ends via a separate
  * verdict write, never a turn. Pauses use amber/gray, not red — none of them
  * are a decision.
  */

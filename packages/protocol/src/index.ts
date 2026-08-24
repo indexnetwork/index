@@ -88,7 +88,6 @@ export {
   UnderspecificationTypeSchema,
 } from "./protocol/question.js";
 export type {
-  NegotiationQuestionProvenance,
   Question,
   QuestionPoolPush,
   QuestionPoolPushRequestReason,
@@ -289,15 +288,6 @@ export type {
   ReflectEnqueueFn,
   ReflectionTranscriptEntry,
 } from "./internal/negotiations/negotiation.reflect.js";
-export {
-  HERMES_OWNER_DIRECTIVE,
-  HermesNegotiationActionSchema,
-  HermesOwnerDirectiveSchema,
-} from "./internal/negotiations/negotiation.hermes-contract.js";
-export type {
-  HermesNegotiationAction,
-  HermesOwnerDirective,
-} from "./internal/negotiations/negotiation.hermes-contract.js";
 export { renderNegotiatorChatMemorySection } from "./internal/negotiations/negotiation.memory.js";
 export type { NegotiatorMemoryEntry } from "./internal/negotiations/negotiation.memory.js";
 export type { NegotiationToolDeps } from "./internal/negotiations/negotiation.tools.port.js";

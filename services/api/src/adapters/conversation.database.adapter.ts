@@ -17,16 +17,6 @@ export const NEGOTIATION_PAUSE_REASONS = [
 export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
 
 /**
- * Locally aligned mirror of the protocol's `NegotiationCounterpartyBinding`.
- * Adapters must not import from `@indexnetwork/protocol` (see the lint rule);
- * structural compatibility is verified at the composition root via duck
- * typing, which is why this is a mirror rather than an import.
- */
-type NegotiationCounterpartyBinding =
-  | { kind: 'intent'; id: string }
-  | { kind: 'premise'; id: string };
-
-/**
  * Locally aligned mirrors of the protocol's `NegotiationTaskMetadata` /
  * `NegotiationTaskRow` (see `NegotiationCounterpartyBinding` above for why
  * these are duck-typed mirrors, not imports).
@@ -73,16 +63,12 @@ function toNegotiationTaskRow(row: {
   };
 }
 import { projectOwnerScreenDecision } from './negotiation-lifecycle.projection';
-import { selectRepresentedNegotiationSession } from './negotiation-session-rollup.projection';
-import { buildHermesResponseMetadataSql, buildNegotiationParkMetadataSql } from './conversation-hermes-metadata.sql';
+import { buildHermesResponseMetadataSql } from './conversation-hermes-metadata.sql';
 import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, intents, isNull, lt, ne, notInArray, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
-import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { log } from '../lib/log';
 import { projectNegotiationActivity } from '../lib/negotiation-activity';
-import { assertContinuationExecutionEffect, completeContinuationExecutionInTransaction, parkContinuationExecutionInTransaction, readClaimedContinuationExecutionForTimeoutInTransaction, readClaimedContinuationExecutionInTransaction, rotateClaimedContinuationExecutionForTimeoutInTransaction } from './negotiation-continuation.atomic';
-import type { ContinuationExecutionFence, ContinuationReceipt } from './negotiation-continuation.atomic';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
 import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, rewriteEraNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
@@ -269,9 +255,15 @@ function readNegotiationPause(
 type PersistedOpportunity = typeof opportunities.$inferSelect;
 type PersistedOpportunityStatus = PersistedOpportunity['status'];
 
-// 'stalled' admits the post-stall retry: answering a parked negotiation's
-// question re-enters through negotiate-existing, which reads the current
-// opportunity row and passes its status as `expectedStatus`. The exact
+// `pending` belongs to the principal's decision lane.
+const NEGOTIATION_OPEN_STATUSES = new Set<PersistedOpportunityStatus>([
+  'latent',
+  'draft',
+  'negotiating',
+  'stalled',
+]);
+
+// `stalled` remains openable for a later graph-driven retry. The exact
 // status + updatedAt CAS below still applies, so only a caller that observed
 // the stalled row claims the attempt; terminal statuses stay refused.
 const NEGOTIATION_START_STATUSES = new Set<PersistedOpportunityStatus>([
@@ -808,13 +800,8 @@ export class ConversationDatabaseAdapter {
       viaByConv.set(metadataRow.conversationId, via);
     }
 
-    // One row per conversation. A durable A2A conversation carries a task
-    // session per opportunity the pair negotiated; the session that represents
-    // it to this viewer is the most alive one, not the newest one — see
-    // negotiation-session-rollup.projection.ts. A screened-out outreach gate
-    // is private to the client that initiated it and is never the represented
-    // session for the counterparty (the same module applies that rule before
-    // ranking).
+    // One negotiation task owns one A2A conversation under NegotiationGraph.
+    // Historical multi-task conversations remain readable via their newest task.
     const candidatesByConv = new Map<string, Array<typeof negotiationTasks[number] & {
       metadata: Record<string, unknown>;
       outcome: ReturnType<typeof readNegotiationOutcome>;
@@ -829,7 +816,7 @@ export class ConversationDatabaseAdapter {
     }
     const negotiationByConv = new Map<string, NonNullable<ConversationSummary['negotiation']>>();
     for (const [conversationId, candidates] of candidatesByConv) {
-      const row = selectRepresentedNegotiationSession(candidates, viewerUserId);
+      const row = candidates.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0];
       if (!row) continue;
       const { metadata, outcome } = row;
       const priorTurnCount = typeof metadata.priorTurnCount === 'number' && Number.isFinite(metadata.priorTurnCount)
@@ -1070,7 +1057,6 @@ export class ConversationDatabaseAdapter {
     metadata?: Record<string, unknown> | null;
     extensions?: string[];
     referenceTaskIds?: string[];
-    continuationExecution?: ContinuationExecutionFence;
   }): Promise<Message> {
     const message = await this.insertMessageWithConversationSession({
       id: crypto.randomUUID(),
@@ -1082,7 +1068,7 @@ export class ConversationDatabaseAdapter {
       metadata: data.metadata ?? null,
       extensions: data.extensions ?? null,
       referenceTaskIds: data.referenceTaskIds ?? null,
-    }, data.continuationExecution);
+    });
 
     // All message writers (including the protocol negotiation graph) converge
     // here. Publish only after persistence, and only to authenticated owners
@@ -1131,13 +1117,8 @@ export class ConversationDatabaseAdapter {
     metadata: Record<string, unknown> | null;
     extensions: string[] | null;
     referenceTaskIds: string[] | null;
-  }, continuationExecution?: ContinuationExecutionFence): Promise<Message> {
-    return db.transaction(async (tx) => {
-      if (continuationExecution) {
-        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
-      }
-      return this.insertMessageInTransaction(tx, data);
-    });
+  }): Promise<Message> {
+    return db.transaction((tx) => this.insertMessageInTransaction(tx, data));
   }
 
   /**
@@ -1760,212 +1741,16 @@ export class ConversationDatabaseAdapter {
     taskId: string,
     state: string,
     statusMessage?: unknown,
-    continuationExecution?: ContinuationExecutionFence,
-    parkGeneration?: string,
   ): Promise<Task> {
     return db.transaction(async (tx) => {
-      if (continuationExecution) {
-        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
-      }
       const [task] = await tx.update(schema.tasks).set({
         state: state as typeof schema.taskStateEnum.enumValues[number],
         statusMessage: statusMessage ?? null,
         statusTimestamp: new Date(),
         updatedAt: new Date(),
-        ...(state === 'waiting_for_agent' && parkGeneration
-          ? {
-              metadata: buildNegotiationParkMetadataSql(parkGeneration),
-            }
-          : {}),
       }).where(eq(schema.tasks.id, taskId)).returning();
       if (!task) throw new Error(`Task ${taskId} not found`);
       return task;
-    });
-  }
-
-  /**
-   * Capture the exact ask-user material binding and persist it with the turn
-   * context before the timeout is armed. The returned marker is the only
-   * settlement coordinate accepted by timeout/answer continuation paths.
-   */
-  async captureNegotiationAskUserBinding(input: {
-    taskId: string;
-    turnContext: Record<string, unknown>;
-    settlementId: string;
-    recipientUserId: string;
-    recipientIntentId: string;
-    opportunityId: string;
-    networkId: string;
-    continuationExecution?: ContinuationExecutionFence;
-  }): Promise<{
-    version: 2;
-    settlementId: string;
-    recipientUserId: string;
-    recipientIntentId: string;
-    opportunityId: string;
-    networkId: string;
-    intentFingerprint: string;
-    opportunityStatus: string;
-    opportunityUpdatedAt: string;
-    counterpartyUserId: string;
-    counterpartyBinding: NegotiationCounterpartyBinding;
-  }> {
-    return db.transaction(async (tx) => {
-      if (input.continuationExecution) {
-        await assertContinuationExecutionEffect(tx as unknown as typeof db, input.continuationExecution);
-      }
-      const [task] = await tx.select({ metadata: schema.tasks.metadata }).from(schema.tasks)
-        .where(and(eq(schema.tasks.id, input.taskId), eq(schema.tasks.state, 'working')))
-        .limit(1).for('update');
-      const [intent] = await tx.select({
-        userId: schema.intents.userId,
-        payload: schema.intents.payload,
-        summary: schema.intents.summary,
-        status: schema.intents.status,
-        archivedAt: schema.intents.archivedAt,
-      }).from(schema.intents)
-        .innerJoin(schema.intentNetworks, and(
-          eq(schema.intentNetworks.intentId, schema.intents.id),
-          eq(schema.intentNetworks.networkId, input.networkId),
-        ))
-        .where(eq(schema.intents.id, input.recipientIntentId))
-        .limit(1).for('update');
-      const [opportunity] = await tx.select({
-        status: opportunities.status,
-        updatedAt: opportunities.updatedAt,
-        actors: opportunities.actors,
-      }).from(opportunities).where(eq(opportunities.id, input.opportunityId)).limit(1).for('update');
-      if (
-        !task
-        || !intent
-        || intent.userId !== input.recipientUserId
-        || intent.archivedAt !== null
-        || (intent.status !== null && intent.status !== 'ACTIVE')
-        || !opportunity
-      ) throw new Error('Ask-user material binding is no longer valid');
-
-      const actors = opportunity.actors as Array<{ userId?: string; intent?: string; premise?: string; networkId?: string; role?: string }>;
-      const recipient = actors.filter((actor) => actor.role !== 'introducer'
-        && actor.userId === input.recipientUserId
-        && actor.intent === input.recipientIntentId
-        && actor.networkId === input.networkId);
-      // A counterparty actor is bound EITHER by a stated intent or by a
-      // premise — premise discovery produces the second kind, and in dev it
-      // produces most of them. Requiring `intent` here threw "ambiguous" for
-      // every premise-matched counterparty, which failed the turn and ended the
-      // negotiation as a withdrawal: asking was the one move that could not be
-      // made against most of the pool. The recipient side is unchanged — the
-      // person being asked is always bound to the intent under negotiation.
-      const counterparties = actors.filter((actor) => actor.role !== 'introducer'
-        && actor.userId !== input.recipientUserId
-        && actor.networkId === input.networkId
-        && typeof actor.userId === 'string'
-        && (typeof actor.intent === 'string' || typeof actor.premise === 'string'));
-      if (recipient.length !== 1 || counterparties.length !== 1) {
-        throw new Error('Ask-user opportunity actor binding is ambiguous');
-      }
-      const counterpartyUserId = counterparties[0].userId!;
-      // A premise-matched actor's `intent` key names the intent it matched
-      // against (the recipient's), never its own material — so a present
-      // `premise` is the binding, and `intent` binds only in its absence.
-      const counterpartyBinding: NegotiationCounterpartyBinding = typeof counterparties[0].premise === 'string'
-        ? { kind: 'premise', id: counterparties[0].premise }
-        : { kind: 'intent', id: counterparties[0].intent! };
-      const members = await tx.select({ userId: schema.networkMembers.userId }).from(schema.networkMembers)
-        .innerJoin(schema.networks, and(
-          eq(schema.networks.id, schema.networkMembers.networkId),
-          isNull(schema.networks.deletedAt),
-        ))
-        .where(and(
-          eq(schema.networkMembers.networkId, input.networkId),
-          inArray(schema.networkMembers.userId, [input.recipientUserId, counterpartyUserId]),
-          isNull(schema.networkMembers.deletedAt),
-        ));
-      if (new Set(members.map((member) => member.userId)).size !== 2) {
-        throw new Error('Ask-user network membership binding is stale');
-      }
-
-      const binding = {
-        version: 2 as const,
-        settlementId: input.settlementId,
-        recipientUserId: input.recipientUserId,
-        recipientIntentId: input.recipientIntentId,
-        opportunityId: input.opportunityId,
-        networkId: input.networkId,
-        intentFingerprint: computeIntentFingerprint(intent.payload, intent.summary),
-        opportunityStatus: opportunity.status,
-        opportunityUpdatedAt: opportunity.updatedAt.toISOString(),
-        counterpartyUserId,
-        counterpartyBinding,
-      };
-      await tx.update(schema.tasks).set({
-        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('turnContext', ${JSON.stringify({ ...input.turnContext, askUserBinding: binding })}::jsonb)`,
-        updatedAt: new Date(),
-      }).where(eq(schema.tasks.id, input.taskId));
-      return binding;
-    });
-  }
-
-  /**
-   * Merges a `turnContext` object into the task's metadata JSONB under the
-   * `turnContext` key, preserving other metadata keys. Used when a negotiation
-   * turn is parked for polling so the claiming agent sees the same context the
-   * system agent would have run with.
-   *
-   * @param taskId - Task to update
-   * @param turnContext - Absolute source/candidate view of negotiation context
-   */
-  async setTaskTurnContext(
-    taskId: string,
-    turnContext: Record<string, unknown>,
-    continuationExecution?: ContinuationExecutionFence,
-  ): Promise<void> {
-    await db.transaction(async (tx) => {
-      if (continuationExecution) {
-        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
-      }
-      await tx.update(schema.tasks).set({
-        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('turnContext', ${JSON.stringify(turnContext)}::jsonb)`,
-        updatedAt: new Date(),
-      }).where(eq(schema.tasks.id, taskId));
-    });
-  }
-
-  /**
-   * Merges an applied deadlock→bargaining shift record (IND-428) into the
-   * task's metadata JSONB under the `deadlockShift` key, preserving other
-   * metadata keys. Sibling of {@link setTaskTurnContext}. Internal
-   * analytics only — no API surface projects this key.
-   *
-   * @param taskId - Task to update
-   * @param deadlockShift - DeadlockShiftRecord (run length, threshold, turn, seat, timing)
-   */
-  async setTaskDeadlockShift(taskId: string, deadlockShift: Record<string, unknown>, continuationExecution?: ContinuationExecutionFence): Promise<void> {
-    await db.transaction(async (tx) => {
-      if (continuationExecution) await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
-      await tx.update(schema.tasks).set({
-        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('deadlockShift', ${JSON.stringify(deadlockShift)}::jsonb)`,
-        updatedAt: new Date(),
-      }).where(eq(schema.tasks.id, taskId));
-    });
-  }
-
-  /**
-   * Replaces the task's `metadata.failedTurns` with the graph's capped
-   * failure trace, preserving other metadata keys. Sibling of
-   * {@link setTaskDeadlockShift}. Internal diagnostics only — no API surface
-   * projects this key.
-   *
-   * @param taskId - Task to update
-   * @param failedTurns - NegotiationTurnFailure records (at, seat, turnIndex, error)
-   */
-  async setTaskFailedTurns(taskId: string, failedTurns: Array<Record<string, unknown>>, continuationExecution?: ContinuationExecutionFence): Promise<void> {
-    await db.transaction(async (tx) => {
-      if (continuationExecution) await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
-      await tx.update(schema.tasks).set({
-        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('failedTurns', ${JSON.stringify(failedTurns)}::jsonb)`,
-        updatedAt: new Date(),
-      }).where(eq(schema.tasks.id, taskId));
     });
   }
 
@@ -2013,12 +1798,8 @@ export class ConversationDatabaseAdapter {
     description?: string;
     parts: unknown[];
     metadata?: Record<string, unknown> | null;
-    continuationExecution?: ContinuationExecutionFence;
   }): Promise<Artifact> {
     return db.transaction(async (tx) => {
-      if (data.continuationExecution) {
-        await assertContinuationExecutionEffect(tx as unknown as typeof db, data.continuationExecution);
-      }
       const [artifact] = await tx.insert(schema.artifacts).values({
         taskId: data.taskId,
         name: data.name ?? null,
@@ -2245,8 +2026,7 @@ export class ConversationDatabaseAdapter {
   // `NegotiationGraphDatabase` port by duck typing (adapters must not import
   // from `@indexnetwork/protocol`; see the file-top note on
   // `NegotiationCounterpartyBinding`). A negotiation is one `tasks` row, its
-  // own `conversations` row (never pair-shared), and its own messages —
-  // there is no continuation chain any more.
+  // own `conversations` row (never pair-shared), and its own messages.
   // ─────────────────────────────────────────────────────────────────────────
 
   /** `NegotiationGraphDatabase`'s opportunity read — mirrors `OpportunityDatabaseAdapter.getOpportunity`. */
@@ -2302,31 +2082,99 @@ export class ConversationDatabaseAdapter {
     };
   }
 
-  /** Creates the negotiation's own conversation — never a pair-shared DM. */
-  async createNegotiationConversation(sourceUserId: string, candidateUserId: string): Promise<{ id: string }> {
-    const conversation = await this.createConversation([
-      { participantId: sourceUserId, participantType: 'agent' },
-      { participantId: candidateUserId, participantType: 'agent' },
-    ]);
-    return { id: conversation.id };
-  }
+  /**
+   * The graph's open write boundary. The transaction-scoped opportunity lock
+   * makes a concurrent/retried opener observe the task the winner inserted.
+   * The disposition says whether that task was already observed by this
+   * caller, so a real re-kick can take a turn while a race loser cannot author
+   * a second opening turn.
+   */
+  async openNegotiationTask(input: {
+    opportunityId: string;
+    sourceUserId: string;
+    candidateUserId: string;
+    brief: string;
+    intentId: string;
+    round: number;
+    networkId: string;
+    knownTaskId?: string;
+  }): Promise<{ task: NegotiationTaskRowMirror; disposition: 'created' | 'existing' | 'raced' } | null> {
+    const opened = await db.transaction(async (tx) => {
+      await acquireNegotiationAttemptLock(tx, input.opportunityId);
 
-  /** Creates the negotiation task. Called once, at open. */
-  async createNegotiationTask(input: {
-    conversationId: string;
-    briefs: Record<string, string>;
-    metadata: NegotiationTaskMetadataMirror;
-  }): Promise<NegotiationTaskRowMirror> {
-    const [row] = await db
-      .insert(schema.tasks)
-      .values({
-        conversationId: input.conversationId,
+      const [opportunity] = await tx
+        .select({ status: opportunities.status, actors: opportunities.actors })
+        .from(opportunities)
+        .where(eq(opportunities.id, input.opportunityId))
+        .for('update');
+      if (!opportunity || !NEGOTIATION_OPEN_STATUSES.has(opportunity.status)) return null;
+
+      const actors = opportunity.actors.filter((actor) => actor.role !== 'introducer');
+      const introducers = opportunity.actors.filter((actor) => actor.role === 'introducer');
+      if (
+        !introducers.every((actor) => actor.approved === true)
+        || !actors.some((actor) => actor.userId === input.sourceUserId && actor.networkId === input.networkId)
+        || !actors.some((actor) => actor.userId === input.candidateUserId)
+      ) return null;
+
+      const [existing] = await tx
+        .select()
+        .from(schema.tasks)
+        .where(and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${input.opportunityId}`,
+          ne(schema.tasks.state, 'completed'),
+          notArchivedNegotiationTaskWhere(),
+          rewriteEraNegotiationTaskWhere(),
+        ))
+        .orderBy(desc(schema.tasks.createdAt))
+        .limit(1);
+      if (existing) {
+        const disposition: 'existing' | 'raced' = existing.id === input.knownTaskId ? 'existing' : 'raced';
+        return {
+          task: toNegotiationTaskRow(existing),
+          disposition,
+        };
+      }
+
+      const conversationId = crypto.randomUUID();
+      const now = new Date();
+      await tx.insert(schema.conversations).values({ id: conversationId, createdAt: now, updatedAt: now });
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId, participantId: input.sourceUserId, participantType: 'agent' },
+        { conversationId, participantId: input.candidateUserId, participantType: 'agent' },
+      ]);
+      const [task] = await tx.insert(schema.tasks).values({
+        conversationId,
         state: 'working',
-        briefs: input.briefs,
-        metadata: input.metadata,
-      })
-      .returning();
-    return toNegotiationTaskRow(row);
+        briefs: { [input.sourceUserId]: input.brief },
+        metadata: {
+          type: 'negotiation',
+          opportunityId: input.opportunityId,
+          sourceUserId: input.sourceUserId,
+          candidateUserId: input.candidateUserId,
+          initiatorUserId: input.sourceUserId,
+          networkId: input.networkId,
+          seats: { [input.intentId]: { userId: input.sourceUserId, round: input.round } },
+        },
+      }).returning();
+      if (!task) throw new Error('Failed to create negotiation task');
+
+      if (opportunity.status !== 'negotiating') {
+        await tx.update(opportunities)
+          .set({ status: 'negotiating', updatedAt: now })
+          .where(eq(opportunities.id, input.opportunityId));
+      }
+      return { task: toNegotiationTaskRow(task), disposition: 'created' as const };
+    });
+    // The old graph path called updateOpportunityStatus after creating its
+    // task. Keep its committed lifecycle/transition emission without moving a
+    // non-atomic status write back outside this transaction.
+    if (opened?.disposition === 'created') {
+      emitOpportunityLifecycleBestEffort({ id: input.opportunityId, status: 'negotiating' });
+      emitOpportunityTransitionBestEffort({ id: input.opportunityId, status: 'negotiating' });
+    }
+    return opened;
   }
 
   /**
@@ -2334,7 +2182,10 @@ export class ConversationDatabaseAdapter {
    * opportunity, if any. A pre-rewrite row never qualifies, so kickoff opens
    * a fresh task for the opportunity instead of resuming an orphan.
    */
-  async getNegotiationTaskForOpportunity(opportunityId: string): Promise<NegotiationTaskRowMirror | null> {
+  async getNegotiationTaskForOpportunity(
+    opportunityId: string,
+    options?: { includeCompleted?: boolean },
+  ): Promise<NegotiationTaskRowMirror | null> {
     const [row] = await db
       .select()
       .from(schema.tasks)
@@ -2342,7 +2193,7 @@ export class ConversationDatabaseAdapter {
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
           sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
-          ne(schema.tasks.state, 'completed'),
+          ...(options?.includeCompleted ? [] : [ne(schema.tasks.state, 'completed')]),
           notArchivedNegotiationTaskWhere(),
           rewriteEraNegotiationTaskWhere(),
         ),
@@ -2547,11 +2398,16 @@ export class ConversationDatabaseAdapter {
   }
 
   /** Persists the resolve outcome artifact. */
-  async createNegotiationOutcomeArtifact(taskId: string, outcome: { verdict: 'pending' | 'reject'; reasoning?: string }): Promise<void> {
+  async createNegotiationOutcomeArtifact(taskId: string, outcome: {
+    verdict: 'pending' | 'reject';
+    reasoning?: string;
+    resolvedByUserId: string;
+  }): Promise<void> {
     await db.insert(schema.artifacts).values({
       taskId,
       name: 'negotiation_outcome',
       parts: [{ kind: 'data', data: outcome }],
+      metadata: { resolvedByUserId: outcome.resolvedByUserId },
     });
   }
 
@@ -2670,7 +2526,7 @@ export class ConversationDatabaseAdapter {
 
   /**
    * Looks up every negotiation task attached to an opportunity, ordered from
-   * oldest to newest so continuation provenance remains stable.
+   * oldest to newest.
    *
    * @param opportunityId - Opportunity id stored on task metadata
    * @returns All matching task records, oldest first
@@ -2748,35 +2604,6 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Returns user answers collected by the questioner for a given opportunity.
-   * Reads `metadata.userAnswers` from the opportunities table.
-   */
-  async getOpportunityUserAnswers(opportunityId: string): Promise<Array<{
-    questionId: string;
-    selectedOptions: string[];
-    freeText?: string;
-    answeredAt: string;
-  }>> {
-    const [row] = await db
-      .select({ metadata: opportunities.metadata })
-      .from(opportunities)
-      .where(eq(opportunities.id, opportunityId))
-      .limit(1);
-    if (!row?.metadata) return [];
-    const meta = row.metadata as Record<string, unknown>;
-    if (!Array.isArray(meta.userAnswers)) return [];
-    return (meta.userAnswers as Record<string, unknown>[])
-      .filter((a): a is Record<string, unknown> & { questionId: string; answeredAt: string } =>
-        typeof a?.questionId === 'string' && typeof a?.answeredAt === 'string')
-      .map((a) => ({
-        questionId: a.questionId,
-        selectedOptions: Array.isArray(a.selectedOptions) ? (a.selectedOptions as unknown[]).filter((o): o is string => typeof o === 'string') : [],
-        ...(typeof a.freeText === 'string' && { freeText: a.freeText }),
-        answeredAt: a.answeredAt,
-      }));
-  }
-
-  /**
    * Gets all messages for a conversation, ordered by creation time (ascending).
    * Used by negotiation tools to reconstruct turn history.
    * @param conversationId - The conversation to fetch messages for
@@ -2797,8 +2624,7 @@ export class ConversationDatabaseAdapter {
         role: schema.messages.role,
         parts: schema.messages.parts,
         createdAt: schema.messages.createdAt,
-        // IND-569: task attribution so the negotiation graph can label prior
-        // dialogue per opportunity in continuation prompts.
+        // Task attribution keeps negotiation turns scoped to their task.
         taskId: schema.messages.taskId,
       })
       .from(schema.messages)
@@ -2915,7 +2741,7 @@ export class ConversationDatabaseAdapter {
       : opts?.result === 'no_opportunity'
         ? sql`(${schema.artifacts.parts}->0->>'kind' = 'data' AND ((${schema.artifacts.parts}->0->'data'->>'hasOpportunity')::boolean = false OR (${schema.artifacts.parts}->0->'data'->>'consensus')::boolean = false))`
         : opts?.result === 'in_progress'
-          ? and(isNull(schema.artifacts.id), inArray(schema.tasks.state, ['submitted', 'working', 'input_required']))
+          ? and(isNull(schema.artifacts.id), inArray(schema.tasks.state, ['submitted', 'working', 'paused']))
           : undefined;
 
     const sinceFilter = opts?.since
@@ -2954,8 +2780,7 @@ export class ConversationDatabaseAdapter {
       .where(combinedFilter)
       .orderBy(desc(schema.tasks.createdAt));
 
-    // Thread pagination must see every continuation segment before grouping.
-    // The ordinary row-oriented callers retain the existing SQL pagination.
+    // Thread pagination must see every task segment before grouping.
     const rows = opts?.unpaginated
       ? await query
       : await query.limit(limit).offset(offset);
@@ -3608,123 +3433,6 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * The newest message in a chat conversation, by the same (createdAt, id)
-   * order every conversation read uses, or null when it has none. This is the
-   * edit-rule anchor read: the question-message regeneration job uses it to
-   * decide between rewriting the open question-message and appending a fresh
-   * one.
-   *
-   * @param sessionId - Conversation identifier retained for the legacy chat-session API.
-   * @returns The newest chat message, or null for an empty conversation.
-   */
-  async getNewestChatMessage(sessionId: string): Promise<ChatMessage | null> {
-    const [row] = await db.select()
-      .from(schema.messages)
-      .where(eq(schema.messages.conversationId, sessionId))
-      .orderBy(desc(schema.messages.createdAt), desc(schema.messages.id))
-      .limit(1);
-    return row ? this.toChatMessages(sessionId, [row])[0] : null;
-  }
-
-  /**
-   * The newest agent-authored message in each of the user's
-   * ('personal-intent', intentId) DMs — one row per signal that has one.
-   *
-   * The anchor read behind the notification snapshot's question frames: an
-   * open question-message is the newest agent message in the signal's DM whose
-   * block still references a parked negotiation, and this returns the first
-   * half of that. Deliberately no body filtering here — parsing the question
-   * block and re-deriving the parked set are the caller's job, so this stays
-   * one indexed read instead of a per-signal fan-out.
-   *
-   * @param userId - The signal owner
-   * @returns Newest agent message per personal-intent DM, content flattened
-   */
-  async getNewestAgentMessagesForNegotiatorIntents(
-    userId: string,
-  ): Promise<Array<{ intentId: string; sessionId: string; messageId: string; content: string }>> {
-    if (!userId) return [];
-    const rows = await db
-      .selectDistinctOn([schema.chatSessionScopes.scopeId], {
-        intentId: schema.chatSessionScopes.scopeId,
-        sessionId: schema.messages.conversationId,
-        messageId: schema.messages.id,
-        parts: schema.messages.parts,
-      })
-      .from(schema.chatSessionScopes)
-      .innerJoin(
-        schema.messages,
-        eq(schema.messages.conversationId, schema.chatSessionScopes.conversationId),
-      )
-      .where(and(
-        eq(schema.chatSessionScopes.userId, userId),
-        eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
-        eq(schema.messages.role, 'agent'),
-      ))
-      .orderBy(
-        schema.chatSessionScopes.scopeId,
-        desc(schema.messages.createdAt),
-        desc(schema.messages.id),
-      );
-    return rows.map((row) => ({
-      intentId: row.intentId,
-      sessionId: row.sessionId,
-      messageId: row.messageId,
-      content: chatMessageText(row.parts),
-    }));
-  }
-
-  /**
-   * Content update for the question-message edit rule (conversational
-   * questions): rewrite one agent-authored message inside the caller's
-   * ('personal-intent', intentId) session, but only while it is still the
-   * newest message in its conversation.
-   *
-   * All three guards — agent-authored, personal-intent scope, still-newest —
-   * live in the UPDATE statement itself, so a user reply racing the
-   * regeneration wins: once the reply row is visible, the newest check fails,
-   * the statement no-ops, and the caller falls back to appending a fresh
-   * message instead of rewriting text above an answer.
-   *
-   * @returns Whether the update was applied.
-   */
-  async updateNewestAgentQuestionMessage(params: {
-    userId: string;
-    intentId: string;
-    messageId: string;
-    content: string;
-    regeneratedAt: Date;
-  }): Promise<boolean> {
-    const regeneratedMeta = JSON.stringify({ regeneratedAt: params.regeneratedAt.toISOString() });
-    const updated = await db
-      .update(schema.messages)
-      .set({
-        parts: [{ type: 'text', text: params.content }],
-        metadata: sql`coalesce(${schema.messages.metadata}, '{}'::jsonb) || ${regeneratedMeta}::jsonb`,
-      })
-      .where(and(
-        eq(schema.messages.id, params.messageId),
-        eq(schema.messages.role, 'agent'),
-        sql`EXISTS (
-          SELECT 1 FROM ${schema.chatSessionScopes}
-          WHERE ${schema.chatSessionScopes.conversationId} = ${schema.messages.conversationId}
-            AND ${schema.chatSessionScopes.userId} = ${params.userId}
-            AND ${schema.chatSessionScopes.scopeType} = ${PERSONAL_INTENT_SCOPE_TYPE}
-            AND ${schema.chatSessionScopes.scopeId} = ${params.intentId}
-        )`,
-        // The alias hides the inner table, so the qualified "messages" columns
-        // inside resolve to the UPDATE target: newer-than-this-row.
-        sql`NOT EXISTS (
-          SELECT 1 FROM ${schema.messages} newer
-          WHERE newer.conversation_id = ${schema.messages.conversationId}
-            AND (newer.created_at, newer.id) > (${schema.messages.createdAt}, ${schema.messages.id})
-        )`,
-      ))
-      .returning({ id: schema.messages.id });
-    return updated.length > 0;
-  }
-
-  /**
    * Get chat messages for a conversation in chronological order.
    *
    * @param sessionId - Conversation identifier retained for the legacy chat-session API.
@@ -3974,13 +3682,9 @@ export class ConversationDatabaseAdapter {
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
-    continuationExecution?: ContinuationExecutionFence,
   ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
     if (status === 'accepted' && !acceptedBy) throw new Error('acceptedBy is required when status is accepted');
     const row = await db.transaction(async (tx) => {
-      if (continuationExecution) {
-        await assertContinuationExecutionEffect(tx as unknown as typeof db, continuationExecution);
-      }
       const updates: Record<string, unknown> = { status, updatedAt: new Date() };
       updates.acceptedBy = status === 'accepted' ? acceptedBy : null;
       const [updated] = await tx.update(opportunities).set(updates)

@@ -53,8 +53,8 @@ export function presentationForStatus(status: NegotiationPresentationStatus): Ne
  * the only terminal write, so opportunity status stays authoritative over the
  * task snapshot the same way it always was. There is no more `outcome`
  * object, no `turn_cap`/`agent_error`/`timeout` stall reason, and no
- * `ask_user`/`accept`/`reject`/`decline`/`withdraw` turn action — the nearest
- * equivalents are the task's own `pause.reason`.
+ * principal-question or terminal turn action — the nearest equivalents are the
+ * task's own `pause.reason`.
  */
 export function deriveNegotiationPresentation(input: {
   lifecycle: Lifecycle;

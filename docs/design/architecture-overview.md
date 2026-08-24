@@ -451,7 +451,6 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | `opportunity/from-intent` | BullMQ queue: intent-triggered opportunity discovery |
 | `opportunity/from-introducer` | BullMQ queue: introducer-triggered opportunity discovery |
 | `opportunity/expiration` | **node-cron task** (not a BullMQ queue — does not appear in Bull-Board): scans and expires stale opportunities on a schedule |
-| `negotiations/run-existing` | BullMQ queue: enqueue bilateral negotiation for an existing opportunity (e.g. after introducer approval) |
 | `negotiations/timeout` | BullMQ queue: AI fallback when personal agent lacks heartbeat |
 | `negotiations/claim-timeout` | BullMQ queue: expire stale claims stuck in `claimed` state |
 | `enrichment.queue` | User enrichment (premise decomposition) and HyDE document creation |

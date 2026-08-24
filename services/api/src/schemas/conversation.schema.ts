@@ -13,7 +13,6 @@ export const messageRoleEnum = pgEnum('message_role', ['user', 'agent']);
 export const taskStateEnum = pgEnum('task_state', [
   'submitted',
   'working',
-  'input_required',
   'completed',
   'failed',
   'canceled',
@@ -109,12 +108,6 @@ export const tasks = pgTable(
     metadataOpportunityIdIdx: index('tasks_metadata_opportunity_id_idx')
       .on(sql`(${table.metadata}->>'opportunityId')`)
       .where(sql`${table.metadata}->>'type' = 'negotiation'`),
-    continuationSettlementUniq: uniqueIndex('tasks_negotiation_continuation_settlement_uniq')
-      .on(
-        sql`(${table.metadata}->>'resumeFromTaskId')`,
-        sql`(${table.metadata}->>'continuationSettlementId')`,
-      )
-      .where(sql`${table.metadata}->>'isContinuation' = 'true'`),
   }),
 );
 

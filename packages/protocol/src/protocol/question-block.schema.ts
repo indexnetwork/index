@@ -10,9 +10,7 @@
  * opportunity row the negotiation runs on. Task re-resolution from that row
  * is server-side and never encoded here — deliberately, because a snapshotted
  * task id would go stale: answer routing branches on what it re-resolves
- * (an `input_required` task → mid-flight consult, answered via the exact
- * continuation's successor task; a completed task on a stalled opportunity
- * with a trailing ask_user gap → post-stall park, answered via a retry).
+ * It is used for ordinary principal questions in a signal DM.
  *
  * This module must stay browser-safe: it may import zod and nothing else.
  * It is exposed to the web client through the package root (see STABILITY.md).
@@ -28,7 +26,7 @@ export const QUESTION_BLOCK_VERSION = 1;
 /**
  * A negotiation reference: the id of the opportunity row the negotiation runs
  * on. There is no negotiations table — opportunity id is the durable identity
- * used by every negotiation binding (see NegotiationQuestionProvenanceSchema).
+ * used by the owning signal conversation.
  */
 const NegotiationRefSchema = z.string().uuid();
 

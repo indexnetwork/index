@@ -20,7 +20,7 @@ Optional overrides: `INDEX_API_URL` and `INDEX_MCP_URL` (default to production e
 
 `GET /agents/me` needs the agent-bound token, not the CLI owner key. The agent token can be revoked from web settings.
 
-Full-mode wake listens to `GET /conversations/stream`. There is no more pickup/claim — a negotiation is never claimed into a distinct state, it just stays `working` until it pauses or resolves — so wake reacts only to a negotiation message it actually observes on the stream (not this owner's own agent turn), and injects one Hermes chat to reply with `index_respond_negotiation` for that specific negotiation. There is no periodic catch-up poll behind it any more.
+There is no pickup/claim — a negotiation stays `working` until it pauses or resolves. `index_respond_negotiation` forwards one authored turn to MCP's `respond_to_negotiation`, which routes it through `NegotiationGraph` apply. It accepts only `outreach`, `counter`, `question`, or `needs_principal`/`ready_for_verdict` pauses; it cannot accept, decline, withdraw, or resolve a negotiation.
 
 ## Modes and capability boundary
 
@@ -29,7 +29,7 @@ Full-mode wake listens to `GET /conversations/stream`. There is no more pickup/c
 1. `index_agent_me`
 2. `index_respond_negotiation`
 
-The negotiator is a separate server-enforced scheduled-execution boundary: respond requires the selected agent and native hidden one-shot run authority with a closed action vocabulary. `INDEX_PLUGIN_MODE=negotiator` is fail-closed for unknown non-empty values. It has no dashboard, broad MCP wrappers, hook, command, or orchestrator skill.
+The negotiator is a restricted scheduled-execution surface. Its response uses the same authenticated MCP turn contract as other external agents. `INDEX_PLUGIN_MODE=negotiator` is fail-closed for unknown non-empty values. It has no dashboard, broad MCP wrappers, hook, command, or orchestrator skill.
 
 ## Development
 

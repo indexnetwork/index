@@ -68,6 +68,18 @@ function getRespondTool(overrides?: Partial<NegotiationToolDeps>) {
 }
 
 describe("respond_to_negotiation — ready_for_verdict requires a real recommendation", () => {
+  it("schema rejects terminal verbs", () => {
+    const { tool } = getRespondTool();
+    for (const verb of ["accept", "decline", "withdraw"]) {
+      expect(tool.querySchema.safeParse({
+        negotiationId: NEGOTIATION_ID,
+        verb,
+        message: "No terminal turn.",
+        reasoning: "Only IS-A resolves.",
+      }).success).toBe(false);
+    }
+  });
+
   it("schema rejects ready_for_verdict with no recommendation — no default fabricated", () => {
     const { tool } = getRespondTool();
     const parsed = tool.querySchema.safeParse({
@@ -97,7 +109,7 @@ describe("respond_to_negotiation — ready_for_verdict requires a real recommend
     expect(parsed.success).toBe(false);
   });
 
-  it("an explicit recommendation is applied verbatim, not overridden", async () => {
+  it("an external ready_for_verdict pause reaches NegotiationGraph apply verbatim", async () => {
     const { tool, invokeCalls } = getRespondTool();
     const query = tool.querySchema.parse({
       negotiationId: NEGOTIATION_ID,
@@ -108,6 +120,8 @@ describe("respond_to_negotiation — ready_for_verdict requires a real recommend
     const result = parseResult(await tool.handler({ context: { userId: USER_ID }, query }));
     expect(result.success).toBe(true);
     expect(invokeCalls[0]).toMatchObject({
+      negotiationId: NEGOTIATION_ID,
+      byUserId: USER_ID,
       turn: { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "pending" } },
     });
   });

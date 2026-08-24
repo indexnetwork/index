@@ -1,4 +1,6 @@
 import type { Opportunity, OpportunityActor, OpportunityGraphDatabase } from '../../platform/database.js';
+import { resolveOpportunityActorIntent } from './opportunity.actor.js';
+import type { MatchesReadyFn } from './opportunity.graph.shared.js';
 
 /** The mutation result shape returned by opportunity lifecycle graph nodes. */
 export interface OpportunityMutationResult {
@@ -239,11 +241,11 @@ export async function sendOpportunityLifecycle(
   };
 }
 
-/** Approves an introducer gate before enqueuing the existing-opportunity negotiation. */
+/** Approves an introducer gate and wakes the source signal's PersonalAgent. */
 export async function approveOpportunityIntroduction(
   database: OpportunityLifecyclePort,
   input: { opportunityId?: string; actorUserId: string },
-  queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>,
+  matchesReady?: MatchesReadyFn,
 ): Promise<OpportunityMutationResult> {
   if (!input.opportunityId) {
     return { success: false, error: 'opportunityId required for approve_introduction' };
@@ -269,8 +271,18 @@ export async function approveOpportunityIntroduction(
   if (!updated) {
     return { success: false, error: 'Failed to update approval' };
   }
-  if (queueNegotiateExisting) {
-    await queueNegotiateExisting(input.opportunityId, input.actorUserId);
+
+  // The approval makes this already-persisted match eligible; it will not
+  // pass through discovery again. The discovery source is the patient actor,
+  // so wake only that actor's bound signal after every introducer gate opens.
+  if (matchesReady && updated.actors
+    .filter((actor) => actor.role === 'introducer')
+    .every((actor) => actor.approved === true)) {
+    const sourceActor = updated.actors.find((actor) => actor.role === 'patient');
+    const intentId = sourceActor && resolveOpportunityActorIntent(sourceActor);
+    if (sourceActor && intentId) {
+      await matchesReady({ userId: sourceActor.userId, intentId });
+    }
   }
   return { success: true, opportunityId: input.opportunityId };
 }

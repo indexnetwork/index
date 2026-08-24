@@ -51,8 +51,8 @@ const copyChecks: Array<{
   },
   {
     file: 'src/components/settings/SettingsTab.tsx',
-    expected: ['keep every signal', 'your signals auto-assign', 'signals people can share'],
-    legacy: ['keep every intent', 'your intents auto-assign', 'intents people can share'],
+    expected: ['signals people can share'],
+    legacy: ['intents people can share'],
   },
   {
     file: 'src/components/NetworkOverviewPanel.tsx',

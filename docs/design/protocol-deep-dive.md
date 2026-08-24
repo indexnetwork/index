@@ -491,28 +491,12 @@ Replaces the old hardcoded strategy enum (mirror, reciprocal, mentor, etc.) with
 **Output:** indexScore (0.0-1.0), memberScore (0.0-1.0), reasoning
 **Used by:** Premise Graph (index node)
 
-### 4.20 QuestionerAgent
+### 4.20 Principal questions
 
-**File:** `questioner/questioner.agent.ts`
-**Role:** Generates structured questions to elicit missing information from users. Uses mode-specific presets (system prompt + builder) to produce up to 3 questions per invocation.
-**Model:** `google/gemini-2.5-flash`
-**Input:** `QuestionerInput` envelope with mode (`intent` | `negotiation` | `negotiation_inflight` | `chat` | `pool_discovery`), userId, sourceType/sourceId, optional private purpose (`uptake` | `recovery` | `stalled_followup` | `inflight_consultation`), and mode-specific context
-**Output:** Array of `QuestionWithStrategy` (title, prompt, options, multiSelect, strategy)
-**Used by:** QuestionerQueue worker (async, behind `QUESTIONER_ENABLED` flag) and the `ask_user_question` chat tool (synchronous, inline)
-**Presets:** creation-time `intent`, recovery-purpose `intent`, `negotiation`, `negotiation_inflight`, `chat`, and deterministic `pool_discovery`. (The `discovery` and `enrichment` presets were removed once their producers became unreachable; rows predating the removal remain readable and answerable.) The `chat` preset refines orchestrator-authored drafts grounded in the user's own context. Negotiation queue inputs are runtime-discriminated by mode+purpose. Inflight accepts only deterministically validated structured `askUser` fields (never turn/reasoning fallbacks), uptake uses a neutral fixed activity prompt, and every visible generated field passes a final fail-closed safety gate before persistence. Raw counterparty profile/identity/intent, private transcript, evaluator reasoning, match reason, event/community inference, evidence, and internal IDs never enter negotiation Questioner context or public copy.
-**Attachment points:** Intent graph (after creation), negotiation graph (after stall/turn-cap or mid-turn `ask_user`), the pending-opportunity uptake guard, and the post-discovery no-opportunity recovery hook. IND-508's centralized `NEGOTIATION_CONSULTATION_POLICY_MODE` is default-off; `shadow` evaluates a pure action/role/history eligibility policy and emits only stable category telemetry, while `on` also requires `NEGOTIATION_ASK_USER_ENABLED` and replaces an eligible draft with a fixed source-safe `ask_user` input before the ordinary question safety/binding/timer/persistence path. The policy cannot read free-form private material and a consultation remains exactly recipient-seat/task scoped. All queued producers use `questionerEnqueue`; trigger frequency is unchanged and purpose-specific cardinality remains ≤2 ordinary/inflight, ≤1 uptake, and ≤1 recovery per fingerprint. OpportunityGraph threads explicit source/candidate opportunity actor intent IDs into NegotiationGraph and task metadata instead of relying on intent-array ordering. The direct REST `OpportunityService` graph intentionally remains without a negotiation graph, exactly as on the IND-507 base; widening that pre-existing route is out of scope.
-
-**Blocking chat questions (`ask_user_question`).** The chat orchestrator carries a chat-only `ask_user_question` tool (`questioner/questioner.ask.tool.ts`, registered by `createChatTools` only when the host injects a `ChatQuestionsHost` bridge — never in the MCP registry). Mirroring the AskUserQuestion human-in-the-loop pattern: the model states a `purpose` plus optional draft questions; the QuestionerAgent's `chat` preset polishes them synchronously; the tool persists them (mode `chat`, `conversationId = sessionId`), streams a `user_question` SSE event carrying the persisted ids, and then **blocks the turn** on the host's `awaitAnswers` (in-memory per-question wait bus, `services/api/src/lib/chat-question.events.ts` — same single-instance semantics as the steer/queue interrupt emitter). Answers submitted through `POST /api/questions/:id/answer` resolve the bus via `QuestionEvents.onAnswered` (mode `chat` handler); dismissals resolve via the new `QuestionEvents.onDismissed`. The answer endpoint reports `resumed: true` when a waiter consumed the answer. On timeout (`QUESTIONER_CHAT_WAIT_TIMEOUT_MS`, default 4 min — kept under the tool runtime's `interactive` class timeout `MCP_TOOL_TIMEOUT_INTERACTIVE_MS`, default 5 min) the questions stay `pending`, render via the conversation-linked inline fetch, and a later answer re-enters the chat as a new user turn (frontend behavior, gated on `resumed === false`). While blocked, the tool emits `status` heartbeats every 15 s so SSE transports (Bun `idleTimeout: 60`) do not idle out.
-
-**Question delivery pipeline.** Generated questions are persisted with `expiresAt` (default 7 days). Negotiation-family rows additionally carry internal `detection.negotiation` provenance (version, purpose, exact recipient+intent+opportunity+network, exact task when applicable, canonical intent fingerprint, and capture-time opportunity/task markers). `QuestionerAdapter` admits the candidate before generation and revalidates under one canonical lock order: exact-task advisory lock → complete question cohort ordered by ID → intent/assignment/membership/network/opportunity/task. `questions_negotiation_provenance_uniq` makes retries idempotent across statuses without reducing cardinality. Public REST/MCP serialization strips the envelope, purpose, server session binding, lifecycle markers, fingerprints, and actor network IDs.
-
-Pending negotiation rows are freshness-validated on scoped and unscoped reads and counts; legacy/stale/unsafe rows fail closed, so the global pending-ID revision changes on lifecycle drift. Answered inflight history uses a separate validator: current exact recipient ownership/fingerprint/network/opportunity actor binding remains mandatory, while the exact canceled task and its own answer/dismiss settlement may tolerate the expected continuation-driven opportunity transition.
-
-Answer, dismiss, and timeout use the same exact-task settlement protocol. The task metadata is the durable outbox (`questionSettlement`): it records a deterministic settlement ID and `requested|completed` continuation status in the settlement transaction. The original timeout remains armed as recovery even if no question row was generated/persisted or the first Redis enqueue fails. `negotiation-run-existing` uses a deterministic job ID, validates the exact settled task, passes the task+settlement correlation through OpportunityGraph/NegotiationGraph, and idempotently creates or reuses only that settlement's successor under an advisory lock—never a latest task. Bull/process retries resume a submitted/working successor and terminal successors make redelivery a no-op. Uptake answers remain private; ordinary follow-up retains the established shared metadata channel.
-
-MCP/chat/direct `answer_pending_question` composition now injects the same canonical validated answer boundary as REST. The authenticated principal is server-derived; intent visibility is clamped and network-scoped keys are rejected before the host bridge. Internal provenance is never projected.
-
-The application-wide 30-second no-conversation/non-pool poll remains the only permanent poller. Its stable pending-ID revision is an invalidation signal; a mounted intent workspace performs one passive exact-intent pending+answered refetch when it changes. `passive=true` cannot trigger visit-time pool mining. Exact server-proven Personal Agent message/session scope is required for an anchor; otherwise pending and answered cards use deterministic trailing placement. The single mounted `IntentNegotiatorChat` and responsive drawer/region behavior are unchanged.
+The negotiation Questioner/park lifecycle is retired. When a PersonalAgent needs
+principal input, it asks directly in the intent DM and continues on the next
+ordinary user message; negotiations record `pause(needs_principal)` for the
+agent's reflect cycle rather than creating an `ask_user` task or question row.
 
 **Proactive pool-question delivery (IND-421).** Both initial and answer-chained `pool_discovery` producers pass through `persistPoolQuestion` and its injected post-persist enqueue. `PoolQuestionPushQueue` is a dedicated retryable BullMQ worker with settled-job removal and a colon-free deterministic job ID. With `POOL_QUESTIONS_PUSH=on`, pool-question mode on, negotiator chat enabled, and a personal negotiator available, `QuestionerAdapter.claimPoolQuestionPush` takes a per-recipient advisory transaction lock plus question/intent row locks, then enforces lifecycle, strict VoI decay, pool ≥8, explicit `intents.lastVisitedAt`, cycle uniqueness, and the two-claims-per-UTC-day cap. Claim metadata is internal; only successful delivery stamps `detection.pushedAt`.
 
@@ -965,15 +949,10 @@ plus closed server-authored directives. Raw owner context or memory, private
 consultation prose, evaluator/actor prose, and shared-message prose never cross
 the dedicated Hermes boundary.
 
-An exact selected active poller with its exact agent-bound key can call
-`POST /api/agents/:agentId/negotiations/:negotiationId/consult`. Admission binds
-the exact owner, agent, claim, attempt, actor intent, opportunity, task, and
-policy eligibility. Exactly the closed `{reason}` body crosses the endpoint;
-the server derives all disclosure and question copy from fixed templates, then
-authors and persists the `ask_user` turn, arms expiry,
-and transitions the exact task to `input_required`; answering, dismissal, or
-expiry resumes only the settlement-bound successor through the existing
-Questioner continuation pipeline.
+External agents submit the same non-terminal turn verbs through
+`respond_to_negotiation` as the internal negotiator. A missing principal detail
+is `pause(needs_principal, payload)`; the owning PersonalAgent handles it in
+its intent DM rather than through a consultation endpoint or parked task.
 
 The Index macOS JavaScript saga is dependency-injected and has no filesystem or
 server shortcuts. A request-correlated native bridge owns local env/plugin/cron

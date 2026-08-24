@@ -260,18 +260,18 @@ export async function sendOpportunity(
 /**
  * Approve-introduction mode.
  * Called by the introducer to approve a latent introducer-pattern opportunity.
- * Sets approved=true on the introducer actor (status stays latent), then
- * queues a negotiation kickoff so the parties negotiate normally.
+ * Sets approved=true on the introducer actor. Once every introducer approved,
+ * it wakes the source participant's bound PersonalAgent signal with matches_ready.
  */
 export async function approveIntroduction(
-  deps: Pick<OpportunityGraphDeps, 'database' | 'queueNegotiateExisting'>,
+  deps: Pick<OpportunityGraphDeps, 'database' | 'matchesReady'>,
   request: OpportunityMutationRequest,
 ): Promise<OpportunityMutationOutcome> {
   return {
     mutationResult: await approveOpportunityIntroduction(
       deps.database,
       { opportunityId: request.opportunityId, actorUserId: request.userId },
-      deps.queueNegotiateExisting,
+      deps.matchesReady,
     ),
   };
 }
@@ -559,7 +559,6 @@ function introductionState(request: IntroductionRequest): OpportunityState {
     opportunities: [],
     existingBetweenActors: [],
     persistenceOutcome: undefined,
-    negotiationContinuationReceipt: undefined,
     error: undefined,
     readResult: undefined,
     mutationResult: undefined,

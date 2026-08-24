@@ -613,13 +613,13 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           } satisfies RadarCardItem;
         }
         const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
-        const fallbackCard = (): RadarCardItem => ({
+        const fallbackCard = (outcomeReasoning?: string): RadarCardItem => ({
           opportunityId: opportunity.id,
           status: opportunity.status,
           userId: otherActor?.userId ?? '',
           name: userName,
           avatar: userAvatar,
-          mainText: reasoningSnippet,
+          mainText: outcomeReasoning ?? reasoningSnippet,
           cta: isIntroducer
             ? (isPendingIntroducerFallback ? 'Share this introduction to get things started.' : 'Take a look and decide if this is a good match.')
             : 'Take a look and decide whether to reach out.',
@@ -643,7 +643,7 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
               state.userId,
               otherActor?.userId,
             ),
-            loadNegotiationContext(db, opportunity.id, opportunity.status),
+            loadNegotiationContext(db, opportunity.id, opportunity.status, state.userId),
           ]);
           const presenterInput = {
             ...ctx,
@@ -659,7 +659,7 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           agentTimingsAccum.push({ name: 'opportunity.presenter', durationMs: _presenterDuration });
           _traceEmitterPresenter?.({ type: "agent_end", name: "opportunity-presenter", durationMs: _presenterDuration, summary: `Presented: ${userName}` });
           if (presentation.isFallback) {
-            return fallbackCard();
+            return fallbackCard(negotiationContext?.outcomeReasoning);
           }
           let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
           // Only show a person as narrator when they are the introducer and not the display counterpart
@@ -685,7 +685,10 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             userId: otherActor?.userId ?? '',
             name: userName,
             avatar: userAvatar,
-            mainText: presentation.personalizedSummary,
+            // Resolve reasoning is private and already authorization-scoped by
+            // the loader. Rendering it directly makes the resolved card explain
+            // the owner's verdict instead of losing it to a completed task.
+            mainText: negotiationContext?.outcomeReasoning ?? presentation.personalizedSummary,
             cta: presentation.suggestedAction,
             headline: presentation.headline,
             primaryActionLabel: getPrimaryActionLabel(viewerRole),

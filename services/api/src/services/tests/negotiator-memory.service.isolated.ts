@@ -7,7 +7,6 @@
  * - per-kind caps: at cap, lowest-confidence (oldest first) rows are evicted,
  * - dossier upsert: one dossier per (agent, subject) — reinforce (confidence
  *   bump + provenance append), don't duplicate,
- * - ask_user answer → immediate high-confidence disclosure_rule,
  * - embedding failure degrades to an embeddingless row (content preserved),
  * - decay pass delegates to the adapter with the schedule constants.
  */
@@ -245,38 +244,6 @@ describe('NegotiatorMemoryWriteService', () => {
 
     expect(result).toEqual({ written: 1, skipped: 1 });
     expect(created.length).toBe(1);
-  });
-
-  it('recordDisclosureRuleFromAnswer → immediate high-confidence disclosure_rule', async () => {
-    const { service, created } = mkService();
-    await service.recordDisclosureRuleFromAnswer({
-      userId: 'u-1',
-      questionId: 'q-1',
-      questionPrompt: 'Share your day rate with Bob?',
-      selectedOptions: ['Yes, share it'],
-      freeText: 'but only the range',
-    });
-
-    expect(created.length).toBe(1);
-    expect(created[0]).toMatchObject({
-      kind: 'disclosure_rule',
-      confidence: 0.9,
-      sourceRefs: [{ type: 'question_answer', id: 'q-1' }],
-    });
-    const content = (created[0] as { content: string }).content;
-    expect(content).toContain('Share your day rate with Bob?');
-    expect(content).toContain('Yes, share it');
-    expect(content).toContain('but only the range');
-  });
-
-  it('recordDisclosureRuleFromAnswer no-ops on an empty answer', async () => {
-    const { service, memories } = mkService();
-    await service.recordDisclosureRuleFromAnswer({
-      userId: 'u-1',
-      questionId: 'q-1',
-      selectedOptions: [],
-    });
-    expect(memories.create).not.toHaveBeenCalled();
   });
 
   it('runConfidenceDecay delegates to the adapter with the schedule constants', async () => {

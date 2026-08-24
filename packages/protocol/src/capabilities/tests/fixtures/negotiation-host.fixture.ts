@@ -36,6 +36,7 @@ export class FakeNegotiationHost {
   readonly tasks = new Map<string, NegotiationTaskRow>();
   readonly messages = new Map<string, FakeMessage[]>();
   readonly opportunityStatusUpdates: Array<{ id: string; status: string }> = [];
+  readonly outcomeArtifacts = new Map<string, { verdict: 'pending' | 'reject'; reasoning?: string; resolvedByUserId: string }>();
   /** Deduped by (intent, round), exactly as the deterministic BullMQ job id does. */
   readonly reflectJobs: Array<{ userId: string; intentId: string; round: number }> = [];
   private taskCounter = 0;
@@ -60,25 +61,70 @@ export class FakeNegotiationHost {
     return this.opportunities.get(OPPORTUNITY_ID)!;
   }
 
+  async createNegotiationTask(input: {
+    conversationId: string;
+    briefs: Record<string, string>;
+    metadata: NegotiationTaskRow['metadata'];
+  }): Promise<NegotiationTaskRow> {
+    const task: NegotiationTaskRow = {
+      id: `task-${++this.taskCounter}`,
+      conversationId: input.conversationId,
+      state: 'working',
+      briefs: { ...input.briefs },
+      metadata: input.metadata,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.tasks.set(task.id, task);
+    this.messages.set(task.id, []);
+    return task;
+  }
+
   readonly database: NegotiationGraphDatabase = {
     getOpportunity: async (id: string) => (this.opportunities.get(id) as never) ?? null,
     getIntent: async (intentId: string) =>
       intentId === INTENT_ID ? ({ id: INTENT_ID, userId: SOURCE_USER_ID, payload: "Alice wants a technical co-founder." } as never) : null,
     getUserContext: async () => null as never,
-    createNegotiationConversation: async () => ({ id: `conversation-${this.tasks.size + 1}` }),
-    createNegotiationTask: async (input) => {
+    openNegotiationTask: async (input) => {
+      const existing = [...this.tasks.values()].find((task) =>
+        task.metadata.opportunityId === input.opportunityId && task.state !== 'completed');
+      if (existing) {
+        return {
+          task: existing,
+          disposition: existing.id === input.knownTaskId ? 'existing' : 'raced',
+        };
+      }
+      const opportunity = this.opportunities.get(input.opportunityId);
+      if (
+        !opportunity
+        || opportunity.status === 'pending'
+        || ['accepted', 'rejected', 'expired'].includes(opportunity.status)
+        || opportunity.actors.some((actor) => actor.role === 'introducer' && actor.approved !== true)
+      ) return null;
       const task: NegotiationTaskRow = {
         id: `task-${++this.taskCounter}`,
-        conversationId: input.conversationId,
-        state: "working",
-        briefs: { ...input.briefs },
-        metadata: input.metadata,
+        conversationId: `conversation-${this.tasks.size + 1}`,
+        state: 'working',
+        briefs: { [input.sourceUserId]: input.brief },
+        metadata: {
+          type: 'negotiation',
+          opportunityId: input.opportunityId,
+          sourceUserId: input.sourceUserId,
+          candidateUserId: input.candidateUserId,
+          initiatorUserId: input.sourceUserId,
+          networkId: input.networkId,
+          seats: { [input.intentId]: { userId: input.sourceUserId, round: input.round } },
+        },
         createdAt: new Date(),
         updatedAt: new Date(),
       };
       this.tasks.set(task.id, task);
       this.messages.set(task.id, []);
-      return task;
+      if (opportunity.status !== 'negotiating') {
+        this.opportunityStatusUpdates.push({ id: input.opportunityId, status: 'negotiating' });
+        opportunity.status = 'negotiating';
+      }
+      return { task, disposition: 'created' };
     },
     getNegotiationTaskForOpportunity: async (opportunityId) =>
       [...this.tasks.values()].find((t) => t.metadata.opportunityId === opportunityId && t.state !== "completed") ?? null,
@@ -123,7 +169,9 @@ export class FakeNegotiationHost {
     },
     // A snapshot, not the live array — a real DB read would never see a later write reflected back.
     getNegotiationMessages: async (taskId) => [...(this.messages.get(taskId) ?? [])],
-    createNegotiationOutcomeArtifact: async () => {},
+    createNegotiationOutcomeArtifact: async (taskId, outcome) => {
+      this.outcomeArtifacts.set(taskId, outcome);
+    },
     getArtifactsForTask: async () => [],
     updateOpportunityStatus: async (id, status) => {
       this.opportunityStatusUpdates.push({ id, status });
