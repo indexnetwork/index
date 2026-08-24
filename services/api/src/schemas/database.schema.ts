@@ -16,28 +16,8 @@ export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
 export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
-export const discoveryRunStatusEnum = pgEnum('discovery_run_status', ['queued', 'running', 'succeeded', 'failed', 'cancelled']);
 export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
-
-export interface HistoricalQualityBaseAttestation {
-  version: 1;
-  corpusVersion: string;
-  planFingerprint: string;
-  seedProjectionFingerprint: string;
-  documentSetFingerprint: string;
-  embedding: {
-    provider: string;
-    model: string;
-    dimensions: number;
-    configurationFingerprint: string;
-  };
-  vectors: Array<{
-    documentId: string;
-    textFingerprint: string;
-    vectorFingerprint: string;
-  }>;
-}
 
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
@@ -142,35 +122,6 @@ export const userSocials = pgTable('user_socials', {
     .on(table.userId, table.label)
     .where(sql`${table.label} <> 'custom'`),
 }));
-
-export const connectLinks = pgTable(
-  'connect_links',
-  {
-    code: text('code').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    opportunityId: text('opportunity_id')
-      .notNull()
-      .references(() => opportunities.id, { onDelete: 'cascade' }),
-    kind: text('kind').notNull(),
-    greeting: text('greeting'),
-    preferredSurface: text('preferred_surface'), // null = web; 'telegram' activates t.me redirect
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => ({
-    uqKindPerRecipient: uniqueIndex('connect_links_kind_recipient_uq').on(
-      t.opportunityId,
-      t.userId,
-      t.kind,
-    ),
-    idxExpires: index('connect_links_expires_at_idx').on(t.expiresAt),
-  }),
-);
-
-export type ConnectLink = typeof connectLinks.$inferSelect;
-export type NewConnectLink = typeof connectLinks.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Better Auth tables (sessions, accounts, verifications)
@@ -368,15 +319,6 @@ export const premiseNetworks = pgTable('premise_networks', {
   networkIdIdx: index('premise_networks_network_id_idx').on(t.networkId),
 }));
 
-/** Durable protected-base fingerprints used to reject stale matrix child runs. */
-export const evalMatrixMetadata = pgTable('eval_matrix_metadata', {
-  key: text('key').primaryKey(),
-  schemaMigrationFingerprint: text('schema_migration_fingerprint').notNull(),
-  fixtureFingerprint: text('fixture_fingerprint').notNull(),
-  fixtureCorpusVersion: text('fixture_corpus_version').notNull(),
-  seededAt: timestamp('seeded_at', { withTimezone: true }).notNull(),
-  qualityAttestation: jsonb('quality_attestation').$type<HistoricalQualityBaseAttestation>(),
-});
 /** Precomputed fast-intake artifact: one row per user. */
 export const signalIntakePacks = pgTable('signal_intake_packs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -511,27 +453,6 @@ export const opportunities = pgTable('opportunities', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
-}));
-
-export const opportunityDiscoveryRuns = pgTable('opportunity_discovery_runs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  agentId: text('agent_id').references(() => agents.id, { onDelete: 'set null' }),
-  status: discoveryRunStatusEnum('status').notNull().default('queued'),
-  input: jsonb('input').$type<Record<string, unknown>>().notNull(),
-  context: jsonb('context').$type<Record<string, unknown>>().notNull(),
-  progress: jsonb('progress').$type<Record<string, unknown>>(),
-  result: jsonb('result').$type<unknown>(),
-  error: text('error'),
-  cancelRequestedAt: timestamp('cancel_requested_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-}, (table) => ({
-  userCreatedIdx: index('opportunity_discovery_runs_user_created_idx').on(table.userId, table.createdAt),
-  statusCreatedIdx: index('opportunity_discovery_runs_status_created_idx').on(table.status, table.createdAt),
-  expiresAtIdx: index('opportunity_discovery_runs_expires_at_idx').on(table.expiresAt),
 }));
 
 export interface QuestionDetection {
@@ -758,49 +679,6 @@ export const intentProposals = pgTable('intent_proposals', {
 
 export type IntentProposalRow = typeof intentProposals.$inferSelect;
 export type NewIntentProposalRow = typeof intentProposals.$inferInsert;
-
-/**
- * Immutable header for a bounded verification-analysis repair run.  Keeping
- * this separate from `intents` is deliberate: a backfill must not repurpose
- * product timestamps or add opaque metadata to the canonical intent record.
- */
-export const intentVerificationBackfillRuns = pgTable('intent_verification_backfill_runs', {
-  id: text('id').primaryKey(),
-  predicateVersion: text('predicate_version').notNull(),
-  verifierName: text('verifier_name').notNull(),
-  verifierModel: text('verifier_model').notNull(),
-  status: text('status').notNull(),
-  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
-  finishedAt: timestamp('finished_at', { withTimezone: true }),
-}, (table) => ({
-  statusIdx: index('intent_verification_backfill_runs_status_idx').on(table.status),
-  statusCheck: check('intent_verification_backfill_runs_status_check', sql`${table.status} IN ('running', 'completed', 'failed')`),
-}));
-
-/**
- * One durable outcome per run/intent.  A successful row is the resume marker;
- * invalid and failed outcomes are preserved for review rather than fabricated
- * into an intent analysis.
- */
-export const intentVerificationBackfillAttempts = pgTable('intent_verification_backfill_attempts', {
-  runId: text('run_id').notNull().references(() => intentVerificationBackfillRuns.id, { onDelete: 'cascade' }),
-  intentId: text('intent_id').notNull().references(() => intents.id),
-  partition: text('partition').notNull(),
-  status: text('status').notNull(),
-  payloadHash: text('payload_hash').notNull(),
-  contextHash: text('context_hash').notNull(),
-  verifierOutput: jsonb('verifier_output'),
-  errorCode: text('error_code'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  appliedAt: timestamp('applied_at', { withTimezone: true }),
-}, (table) => ({
-  runIntentPk: primaryKey({ columns: [table.runId, table.intentId] }),
-  statusIdx: index('intent_verification_backfill_attempts_status_idx').on(table.runId, table.status),
-  intentIdx: index('intent_verification_backfill_attempts_intent_idx').on(table.intentId),
-  partitionCheck: check('intent_verification_backfill_attempts_partition_check', sql`${table.partition} IN ('proposal_confirm_default_only', 'proposal_confirm_partial_missing', 'legacy_discovery_missing_analysis', 'other_missing_analysis')`),
-  statusCheck: check('intent_verification_backfill_attempts_status_check', sql`${table.status} IN ('updated', 'skipped', 'failed', 'unchanged_control')`),
-}));
 
 export type FrameCentroidCorpus = 'premise' | 'intent' | 'user_context';
 export type FrameDriftExecutionTerminalStatus = 'inserted' | 'duplicate' | 'skipped' | 'failed';
@@ -1135,8 +1013,6 @@ export interface NegotiatorMemorySourceRef {
  * that feed discovery; negotiator memories are private operational knowledge
  * (playbooks, disclosure rules, dossiers, thresholds) and MUST NOT be exposed
  * to discovery, user contexts, or any counterparty-visible surface.
- *
- * Nothing reads or writes this table in production paths yet — adapter + tests only.
  */
 export const negotiatorMemories = pgTable('negotiator_memories', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
