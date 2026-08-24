@@ -11,10 +11,12 @@ import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { intentAgentQueue } from "../queues/intent-agent.queue";
-import { subscribeIntentAgentReply } from "../lib/intent-agent/intent-agent-reply.stream";
-import type { IntentAgentTurnResult, IntentAgentUserMessageEvent } from "../lib/intent-agent/intent-agent.types";
+import { personalAgentQueue } from "../queues/personal-agent.queue";
+import type { PersonalAgentUserMessageEvent } from "../queues/personal-agent.queue";
+import { subscribePersonalAgentReply } from "../lib/agent/personal-agent-reply.stream";
+import type { PersonalAgentReplyChunk } from "../lib/agent/personal-agent-reply.stream";
 import { SuggestionGenerator, ChatInterruptClassifier, PERSONAL_AGENT_PERSONA_ID } from '@indexnetwork/protocol';
+import type { PersonalAgentResult } from '@indexnetwork/protocol';
 import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
@@ -34,12 +36,12 @@ const logger = log.controller.from("chat");
 async function* emptyEventStream(): AsyncGenerator<never, void, unknown> {}
 
 /**
- * Server-owned copy for an intent-agent turn that failed or timed out. The
+ * Server-owned copy for a PersonalAgent turn that failed or timed out. The
  * client's message is already persisted and its event is durable on the
  * agent's inbox, retrying in the background — nothing is lost, so the copy
  * says exactly that instead of asking them to resend.
  */
-export const INTENT_AGENT_TURN_FAILURE_REPLY =
+export const PERSONAL_AGENT_TURN_FAILURE_REPLY =
   'I hit a snag acting on that just now, but your message is saved and I will pick it up shortly — '
   + 'no need to send it again.';
 
@@ -210,9 +212,9 @@ export class ChatController {
   constructor(
     private readonly suggestionGenerator: () => Pick<SuggestionGenerator, 'generate'> = getSuggestionGenerator,
     /** Seam for tests; production awaits the serialized inbox turn. */
-    private readonly runIntentAgentUserTurn: (
-      event: IntentAgentUserMessageEvent,
-    ) => Promise<IntentAgentTurnResult> = (event) => intentAgentQueue.runUserMessageTurn(event),
+    private readonly runPersonalAgentUserTurn: (
+      event: PersonalAgentUserMessageEvent,
+    ) => Promise<PersonalAgentResult> = (event) => personalAgentQueue.runUserMessageTurn(event),
   ) {}
   /**
    * SSE streaming endpoint for chat messages with context support.
@@ -496,7 +498,7 @@ export class ChatController {
     const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "").split(",").map(o => o.trim()).filter(Boolean);
     const originUrl = rawOrigin && trustedOrigins.includes(rawOrigin) ? rawOrigin : undefined;
     const suggestionGenerator = this.suggestionGenerator;
-    const runIntentAgentUserTurn = this.runIntentAgentUserTurn;
+    const runPersonalAgentUserTurn = this.runPersonalAgentUserTurn;
 
     const stream = new ReadableStream({
       start(controller) {
@@ -550,7 +552,7 @@ export class ChatController {
           // channel yields nothing (or only a prefix) but the turn
           // completes, the completed text is emitted as a token event — a
           // turn is never lost to a dropped subscription.
-          let agentTurn: IntentAgentTurnResult | null = null;
+          let agentTurn: PersonalAgentResult | null = null;
           let agentUserMessageId: string | null = null;
           let agentAssistantMessageId: string | undefined;
           /** Canned replies the agent attached to its delivered message. */
@@ -573,7 +575,7 @@ export class ChatController {
             let lastSeq = 0;
             let unsubscribeReply: (() => void) | null = null;
             try {
-              unsubscribeReply = await subscribeIntentAgentReply(agentUserMessageId, (chunk) => {
+              unsubscribeReply = await subscribePersonalAgentReply(agentUserMessageId, (chunk: PersonalAgentReplyChunk) => {
                 if (chunk.seq <= lastSeq) return;
                 lastSeq = chunk.seq;
                 streamedText += chunk.content;
@@ -587,11 +589,11 @@ export class ChatController {
               });
             } catch (subscribeErr) {
               // Degraded to the fallback emission below, never a lost turn.
-              logger.warn('Intent-agent reply subscription failed', { sessionId, error: subscribeErr });
+              logger.warn('PersonalAgent reply subscription failed', { sessionId, error: subscribeErr });
             }
             try {
-              agentTurn = await runIntentAgentUserTurn({
-                kind: 'user_message',
+              agentTurn = await runPersonalAgentUserTurn({
+                event: 'user_message',
                 userId: user.id,
                 intentId: effectiveScope.scopeId,
                 sessionId,
@@ -628,8 +630,8 @@ export class ChatController {
               // The event is durable on the inbox and retries in the
               // background; the client hears honest fixed copy rather than
               // losing the turn.
-              logger.error('Intent-agent turn failed; replying with fixed copy', { sessionId, error: agentErr });
-              fullResponse = INTENT_AGENT_TURN_FAILURE_REPLY;
+              logger.error('PersonalAgent turn failed; replying with fixed copy', { sessionId, error: agentErr });
+              fullResponse = PERSONAL_AGENT_TURN_FAILURE_REPLY;
               try {
                 agentAssistantMessageId = await chatSessionService.addMessage({
                   sessionId,
@@ -637,7 +639,7 @@ export class ChatController {
                   content: fullResponse,
                 });
               } catch (persistErr) {
-                logger.error('Failed to persist intent-agent failure copy', { sessionId, error: persistErr });
+                logger.error('Failed to persist PersonalAgent failure copy', { sessionId, error: persistErr });
               }
               try {
                 controller.enqueue(

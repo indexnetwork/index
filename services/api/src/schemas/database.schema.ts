@@ -684,6 +684,13 @@ export const intents = pgTable('intents', {
    */
   negotiationRound: integer('negotiation_round').notNull().default(0),
   /**
+   * How many negotiations the current round actually opened, stamped by
+   * kickoff only after every parallel open has settled. NULL means the round
+   * is still opening, and the all-paused → reflect check is a no-op until the
+   * stamp lands (design doc 2026-08-23, decision D2).
+   */
+  negotiationRoundSize: integer('negotiation_round_size'),
+  /**
    * When the intent's first background discovery run completed successfully
    * (any path: web from-intent queue or async MCP discovery-run). Null until
    * then. Read-side "warming" derivation clears as soon as this is stamped,

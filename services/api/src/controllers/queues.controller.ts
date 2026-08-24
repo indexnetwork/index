@@ -17,7 +17,7 @@ import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
 import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { emailQueue } from '../queues/email.queue';
 import { questionMessageQueue } from '../queues/question-message.queue';
-import { intentAgentQueue } from '../queues/intent-agent.queue';
+import { personalAgentQueue } from '../queues/personal-agent.queue';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('dev/queues');
@@ -37,7 +37,7 @@ createBullBoard({
     new BullMQAdapter(negotiationRunExistingQueue.queue),
     new BullMQAdapter(emailQueue.queue),
     new BullMQAdapter(questionMessageQueue.queue),
-    new BullMQAdapter(intentAgentQueue.queue),
+    new BullMQAdapter(personalAgentQueue.queue),
   ],
   serverAdapter,
 });

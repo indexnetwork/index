@@ -47,8 +47,19 @@ const logger = log.lib.from('negotiator-verdict.host');
  */
 export const ACTIONABLE_VERDICT_STATUSES: OpportunityStatus[] = ['pending', 'negotiating', 'stalled'];
 
+/**
+ * What the PersonalAgent sees as "this signal's matches": everything not yet
+ * decided. Wider than the verdict set because kickoff reaches out to matches
+ * discovery has only just persisted (`latent`), which no verdict could land
+ * on yet. A verdict named against one of those resolves to
+ * `unknown_counterparty` and is reported honestly.
+ */
+export const PERSONAL_AGENT_MATCH_STATUSES: OpportunityStatus[] = ['latent', 'draft', 'negotiating', 'stalled', 'pending'];
+
 /** How each actionable status reads to the client, in one clause. */
 const STATE_LINE: Record<string, string> = {
+  latent: 'found, not contacted yet',
+  draft: 'found, not contacted yet',
   pending: 'waiting on your decision',
   negotiating: 'your agents are still negotiating',
   stalled: 'parked, waiting on you',
@@ -139,20 +150,22 @@ export async function readActionableCounterparties(
   userId: string,
   intentId: string,
   deps?: NegotiatorVerdictHostDeps,
+  /** Widened by the PersonalAgent, which also reaches out to undecided matches. */
+  statuses: OpportunityStatus[] = ACTIONABLE_VERDICT_STATUSES,
 ): Promise<ActionableCounterparty[]> {
   try {
     const list = deps?.listOpportunities
       ?? ((uid: string, options: { statuses: OpportunityStatus[]; scopeType: 'intent'; scopeId: string }) =>
         opportunityService.getOpportunitiesForUser(uid, options));
     const rows = (await list(userId, {
-      statuses: ACTIONABLE_VERDICT_STATUSES,
+      statuses,
       scopeType: 'intent',
       scopeId: intentId,
     })) as ListedOpportunity[];
 
     return rows
       .filter((row) => {
-        if (!row?.id || !ACTIONABLE_VERDICT_STATUSES.includes(row.status as OpportunityStatus)) return false;
+        if (!row?.id || !statuses.includes(row.status as OpportunityStatus)) return false;
         const own = row.actors?.find((actor) => actor.userId === userId);
         return !own || own.role !== 'introducer';
       })

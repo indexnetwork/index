@@ -29,7 +29,7 @@ import { NegotiationSummaryService } from '../services/negotiation-summary.servi
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
-import { negotiationGraph } from '../lib/negotiation/negotiation-graph';
+import { matchesReady, negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
@@ -157,7 +157,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
-    undefined, undefined, negotiationGraph,
+    undefined, undefined, matchesReady,
     protocolDeps.agentDispatcher,
     protocolDeps.queueNegotiateExisting,
   ).createGraph();

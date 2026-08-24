@@ -2514,14 +2514,61 @@ export class ConversationDatabaseAdapter {
     });
   }
 
-  /** Bumps `intents.negotiation_round` for `intentId` and returns the new value. Called once per kickoff. */
+  /**
+   * Bumps `intents.negotiation_round` and returns the new value. Called once
+   * per kickoff, and it CLEARS the size stamp in the same write: the new
+   * round is "still opening" until kickoff stamps it, and the all-paused
+   * check must not read the previous round's stamp as this one's.
+   */
   async bumpIntentNegotiationRound(intentId: string): Promise<number> {
     const [row] = await db
       .update(schema.intents)
-      .set({ negotiationRound: sql`${schema.intents.negotiationRound} + 1` })
+      .set({ negotiationRound: sql`${schema.intents.negotiationRound} + 1`, negotiationRoundSize: null })
       .where(eq(schema.intents.id, intentId))
       .returning({ negotiationRound: schema.intents.negotiationRound });
     return row?.negotiationRound ?? 0;
+  }
+
+  /** The intent's current round and its size stamp (null while the round is still opening). */
+  async getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null }> {
+    const [row] = await db
+      .select({ round: schema.intents.negotiationRound, roundSize: schema.intents.negotiationRoundSize })
+      .from(schema.intents)
+      .where(eq(schema.intents.id, intentId));
+    return { round: row?.round ?? 0, roundSize: row?.roundSize ?? null };
+  }
+
+  /**
+   * Stamps how many negotiations this round opened. Guarded on the round
+   * itself: a kickoff that lost a race to a newer round must not stamp the
+   * newer one's size with its own count.
+   */
+  async stampIntentNegotiationRoundSize(intentId: string, round: number, size: number): Promise<void> {
+    await db
+      .update(schema.intents)
+      .set({ negotiationRoundSize: size })
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.negotiationRound, round)));
+  }
+
+  /**
+   * Every negotiation task of one intent's round, whatever its state — what
+   * reflect reads. The `round` key is also the rewrite-era predicate: a
+   * pre-rewrite task has no `round` in its metadata and can never match.
+   */
+  async getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRowMirror[]> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'intentId' = ${intentId}`,
+          sql`(${schema.tasks.metadata}->>'round')::int = ${round}`,
+          notArchivedNegotiationTaskWhere(),
+        ),
+      )
+      .orderBy(asc(schema.tasks.createdAt), asc(schema.tasks.id));
+    return rows.map((row) => toNegotiationTaskRow(row));
   }
 
   /** Count of this intent's round-`round` negotiations not yet `paused` or `completed`. */

@@ -26,8 +26,7 @@ import { existsSync, readFileSync } from 'node:fs';
 const read = (relative: string) => readFileSync(new URL(relative, import.meta.url), 'utf8');
 
 const composition = read('../../../controllers/mcp.controller.ts');
-const agentContext = read('../../intent-agent/intent-agent.context.ts');
-const agentHost = read('../../intent-agent/intent-agent.host.ts');
+const agentComposition = read('../../negotiation/negotiation-graph.ts');
 const main = read('../../../main.ts');
 const host = read('../negotiator-verdict.host.ts');
 
@@ -55,11 +54,12 @@ describe('owner-verdict wiring', () => {
   it('feeds the agent context from the same reader the host maps against', () => {
     // One ordering, two consumers. A second enumeration would be a second
     // order, and the number the client's agent read would resolve elsewhere.
-    // Phase 2 (full chat ownership) moved the chat consumer from the retired
-    // persona prompt into the IntentAgent's turn context — same reader, and
-    // the acts execute back through this host's id-keyed lane.
-    expect(agentContext).toContain('.readActionableCounterparties(id, intent)');
-    expect(agentHost).toContain('passVerdictOnOpportunity(userId, input, target');
+    // The AgentGraph step moved both consumers into the one host composition
+    // that binds the PersonalAgent's opportunity port: the same reader feeds
+    // the numbered match list, and accept executes back through this host's
+    // id-keyed lane.
+    expect(agentComposition).toContain('readActionableCounterparties(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)');
+    expect(agentComposition).toContain("passVerdictOnOpportunity(userId, input, 'accepted'");
     expect(host).toContain('export async function readActionableCounterparties');
     expect(host).toContain('export async function passVerdictOnOpportunity');
   });

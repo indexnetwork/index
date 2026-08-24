@@ -5,16 +5,16 @@
 
 import { z } from 'zod';
 
+import { matchesReady } from '../lib/negotiation/negotiation-graph';
 import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { deriveAllowedNetworkIds, Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, NegotiationGraphFactory, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, Intents, EnrichmentGraphFactory, OpportunityGraphFactory, HydeGraphFactory, Networks, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentQueue } from '../queues/intent.queue';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { roundReflectEnqueue } from '../queues/negotiations/round-reflect.queue';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import db from '../lib/drizzle/drizzle';
@@ -236,17 +236,13 @@ export class ToolService {
     const noOpDispatcher: AgentDispatcher = {
       hasExternalAgent: async () => false,
     };
-    const negotiationGraph = new NegotiationGraphFactory({
-      database: conversationDatabaseAdapter,
-      reflectEnqueue: roundReflectEnqueue(),
-    }).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(
       database,
       this.embedder,
       compiledHydeGraph,
       undefined,
       undefined,
-      negotiationGraph,
+      matchesReady,
       noOpDispatcher,
       undefined,
     ).createGraph();

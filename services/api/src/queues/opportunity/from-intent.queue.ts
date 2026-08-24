@@ -4,7 +4,7 @@ import type { DeduplicationOptions } from 'bullmq';
 import { log } from '../../lib/log';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import type { NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
+import type { MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, DISCOVERY_WORKER_CONCURRENCY, type OpportunityGraphDb } from './discovery.shared';
 import { buildIntentDiscoveryTrigger, type FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
@@ -39,7 +39,7 @@ export type FromIntentDatabase = Pick<
 export interface FromIntentDeps {
   database?: FromIntentDatabase;
   invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
-  negotiationGraph?: NegotiationGraphLike;
+  matchesReady?: MatchesReadyFn;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   /** Same-intent overlap guard; defaults to Redis (in-process map under the hermetic test baseline). */
   intentLock?: IntentDiscoveryLock;
@@ -69,7 +69,7 @@ export class FromIntentQueue {
     this.sameIntentDeferDelayMs = deps?.sameIntentDeferDelayMs ?? SAME_INTENT_DEFER_DELAY_MS;
   }
 
-  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
+  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'matchesReady' | 'agentDispatcher'>): void {
     this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
