@@ -687,6 +687,15 @@ describe('ConversationDatabaseAdapter', () => {
         type: 'negotiation',
         sourceUserId: userId,
         candidateUserId: counterpart,
+        round: 1,
+      });
+
+      // A pre-rewrite row (no round stamp) is inert: the graph reads it back as
+      // null, so listing it would offer a negotiation that errors when opened.
+      const legacyTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        sourceUserId: userId,
+        candidateUserId: counterpart,
       });
 
       const archivedConversation = await adapter.createConversation([
@@ -705,6 +714,7 @@ describe('ConversationDatabaseAdapter', () => {
       const ids = tasks.map((t) => t.id);
       expect(ids).toContain(liveTask.id);
       expect(ids).not.toContain(archivedTask.id);
+      expect(ids).not.toContain(legacyTask.id);
     });
   });
 

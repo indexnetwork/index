@@ -2352,6 +2352,9 @@ export class ConversationDatabaseAdapter {
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
           notArchivedNegotiationTaskWhere(),
+          // Pre-rewrite rows are inert: the graph reads them back as null, so
+          // listing them would offer a negotiation that errors when opened.
+          rewriteEraNegotiationTaskWhere(),
           or(
             sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
             sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
