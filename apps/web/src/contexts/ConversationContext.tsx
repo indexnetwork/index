@@ -33,6 +33,11 @@ export interface QuestionRegenerationEvent {
   pending: boolean;
 }
 
+/** A completed durable PersonalAgent turn for one of the owner's intents. */
+export interface PersonalAgentTurnCompletedEvent {
+  intentId: string;
+}
+
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: ConversationSummary[];
@@ -55,6 +60,8 @@ interface ConversationContextType {
    * Returns the unsubscribe function.
    */
   subscribeQuestionRegeneration: (handler: (event: QuestionRegenerationEvent) => void) => () => void;
+  /** Subscribe to durable PersonalAgent completion signals from the SSE stream. */
+  subscribePersonalAgentTurnCompleted: (handler: (event: PersonalAgentTurnCompletedEvent) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -79,12 +86,23 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const questionRegenerationHandlersRef = useRef(new Set<(event: QuestionRegenerationEvent) => void>());
+  const personalAgentTurnCompletedHandlersRef = useRef(new Set<(event: PersonalAgentTurnCompletedEvent) => void>());
 
   const subscribeQuestionRegeneration = useCallback(
     (handler: (event: QuestionRegenerationEvent) => void) => {
       questionRegenerationHandlersRef.current.add(handler);
       return () => {
         questionRegenerationHandlersRef.current.delete(handler);
+      };
+    },
+    [],
+  );
+
+  const subscribePersonalAgentTurnCompleted = useCallback(
+    (handler: (event: PersonalAgentTurnCompletedEvent) => void) => {
+      personalAgentTurnCompletedHandlersRef.current.add(handler);
+      return () => {
+        personalAgentTurnCompletedHandlersRef.current.delete(handler);
       };
     },
     [],
@@ -424,6 +442,12 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               questionRegenerationHandlersRef.current.forEach((handler) => handler(regenerationEvent));
               break;
             }
+            case 'personal_agent_turn_completed': {
+              const intentId = data.intentId as string | undefined;
+              if (!intentId) break;
+              personalAgentTurnCompletedHandlersRef.current.forEach((handler) => handler({ intentId }));
+              break;
+            }
           }
         } catch {
           // Ignore parse errors (e.g. keepalive comments)
@@ -520,6 +544,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         hideConversation,
         getOrCreateDM,
         subscribeQuestionRegeneration,
+        subscribePersonalAgentTurnCompleted,
       }}
     >
       {children}

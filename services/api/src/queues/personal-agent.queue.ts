@@ -24,6 +24,7 @@ import type { NegotiationRoundReflectJobData, PersonalAgentInput, PersonalAgentR
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { personalAgentGraph } from '../lib/negotiation/negotiation-graph';
 import { log } from '../lib/log';
+import { publishPersonalAgentTurnCompletedEvent } from '../lib/conversation-events';
 
 export const QUEUE_NAME = 'personal-agent-queue';
 
@@ -54,11 +55,16 @@ export class PersonalAgentQueue {
 
   private readonly logger = log.queue.from('PersonalAgentQueue');
   private readonly invoke: (input: PersonalAgentInput) => Promise<PersonalAgentResult>;
+  private readonly publishTurnCompleted: (input: { userId: string; intentId: string }) => Promise<void>;
   private worker: ReturnType<typeof QueueFactory.createWorker<PersonalAgentEvent>> | null = null;
   private queueEvents: QueueEvents | null = null;
 
-  constructor(invoke?: (input: PersonalAgentInput) => Promise<PersonalAgentResult>) {
+  constructor(
+    invoke?: (input: PersonalAgentInput) => Promise<PersonalAgentResult>,
+    publishTurnCompleted = publishPersonalAgentTurnCompletedEvent,
+  ) {
     this.invoke = invoke ?? ((input) => personalAgentGraph.invoke(input));
+    this.publishTurnCompleted = publishTurnCompleted;
   }
 
   /** Wake the agent with the principal's message. */
@@ -179,6 +185,17 @@ export class PersonalAgentQueue {
     // A graph-level error is the turn FAILING, not a turn that decided
     // nothing: surface it so BullMQ retries and the controller falls back.
     if (result.error) throw new Error(result.error);
+    try {
+      await this.publishTurnCompleted({ userId: event.userId, intentId: event.intentId });
+    } catch (error) {
+      // The completed turn is already durable. A transient live-update failure
+      // must not retry it into duplicate agent effects.
+      this.logger.warn('Failed to publish completed PersonalAgent turn', {
+        userId: event.userId,
+        intentId: event.intentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     return result;
   }
 

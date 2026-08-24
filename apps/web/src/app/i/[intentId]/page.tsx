@@ -20,13 +20,11 @@ import { useConversations, useIntents, useOpportunities } from "@/contexts/APICo
 import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
-import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
 import type { IntentCycleSnapshot, IntentCycleTimelineEntry } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
-import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
 import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
 
 /** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
@@ -290,7 +288,7 @@ export default function IntentDetailPage() {
   useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
   const { user } = useAuthContext();
-  const { negotiations } = useConversation();
+  const { subscribePersonalAgentTurnCompleted } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -316,19 +314,6 @@ export default function IntentDetailPage() {
   const [intentTimeline, setIntentTimeline] = useState<IntentCycleTimelineEntry[]>([]);
   const [intentTimelineLoading, setIntentTimelineLoading] = useState(true);
   const [intentTimelineError, setIntentTimelineError] = useState(false);
-  /** Bumps make the intent negotiator reload its stable session after lifecycle changes. */
-  const [negotiatorRefreshVersion, setNegotiatorRefreshVersion] = useState(0);
-  const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  const clearReactionTimers = useCallback(() => {
-    for (const timer of reactionTimersRef.current) clearTimeout(timer);
-    reactionTimersRef.current = [];
-  }, []);
-  useEffect(
-    () => () => {
-      clearReactionTimers();
-    },
-    [clearReactionTimers],
-  );
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
@@ -372,8 +357,7 @@ export default function IntentDetailPage() {
     lifecycleMutationRef.current = null;
     setArchiveTargetId(null);
     setArchiving(false);
-    clearReactionTimers();
-  }, [intentId, clearReactionTimers]);
+  }, [intentId]);
 
   const scope = useMemo(
     () =>
@@ -498,11 +482,6 @@ export default function IntentDetailPage() {
     }
   }, [intentId, opportunitiesService]);
 
-  const negotiationActivityRevision = useMemo(
-    () => intentNegotiationActivityRevision(negotiations, intentId),
-    [intentId, negotiations],
-  );
-
   const inspectorHrefByOpportunity = useMemo(() => {
     const hrefs = new Map<string, string>();
     for (const negotiation of intentCycle?.negotiations ?? []) {
@@ -521,6 +500,12 @@ export default function IntentDetailPage() {
     if (intentId) void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
   }, [intentId, intentsService, loadIntentCycle, loadIntentTimeline, loadOpportunities]);
 
+  useEffect(() => {
+    return subscribePersonalAgentTurnCompleted((event) => {
+      if (event.intentId === intentId) refreshLiveRadar();
+    });
+  }, [intentId, refreshLiveRadar, subscribePersonalAgentTurnCompleted]);
+
   // Refresh only the owner-scoped progress snapshot while work is non-terminal;
   // this intentionally leaves the negotiator chat mounted and untouched.
   // `blocked` belongs here: a blocked card can only observe its own recovery
@@ -536,12 +521,6 @@ export default function IntentDetailPage() {
     }, 15_000);
     return () => window.clearInterval(timer);
   }, [intentId, discoveryStatus, intentsService]);
-
-  useRadarLiveRefresh({
-    intentId,
-    activityRevision: negotiationActivityRevision,
-    onRefresh: refreshLiveRadar,
-  });
 
   useEffect(() => {
     if (!intentId) return;
@@ -565,19 +544,6 @@ export default function IntentDetailPage() {
       active = false;
     };
   }, [intentId, intentsService, loadOpportunities, loadIntentCycle, loadIntentTimeline]);
-
-  const refreshWorkspaceAfterReaction = useCallback(() => {
-    setNegotiatorRefreshVersion((version) => version + 1);
-    void loadOpportunities(true);
-  }, [loadOpportunities]);
-
-  const scheduleBoundedWorkspaceRefresh = useCallback(() => {
-    clearReactionTimers();
-    refreshWorkspaceAfterReaction();
-    reactionTimersRef.current = [1_500, 65_000, 90_000, 120_000, 180_000].map((delay) =>
-      setTimeout(() => refreshWorkspaceAfterReaction(), delay),
-    );
-  }, [clearReactionTimers, refreshWorkspaceAfterReaction]);
 
   const handleArchive = useCallback(async () => {
     if (!archiveTargetId || archiving) return;
@@ -613,9 +579,6 @@ export default function IntentDetailPage() {
             ? { ...current, status: updated.status }
             : current,
         );
-        if (status === "ACTIVE" && updated.status === "ACTIVE") {
-          scheduleBoundedWorkspaceRefresh();
-        }
       } catch {
         if (!isCurrentRequest()) return;
         showError(
@@ -630,7 +593,7 @@ export default function IntentDetailPage() {
         }
       }
     },
-    [intentId, intentsService, scheduleBoundedWorkspaceRefresh, showError],
+    [intentId, intentsService, showError],
   );
 
   /** Feed free-form text to the intent's refine flow and reload matches.
@@ -970,7 +933,9 @@ export default function IntentDetailPage() {
                     <IntentNegotiatorChat
                       key={intentId}
                       intentId={intentId}
-                      refreshVersion={negotiatorRefreshVersion}
+                      timelineEntries={intentTimeline}
+                      timelineLoading={intentTimelineLoading}
+                      timelineError={intentTimelineError}
                       opportunityStatusMap={opportunityStatusMap}
                       opportunityActionLoading={opportunityActionLoading}
                       onOpportunityAction={(id, action, userId, role, name) =>

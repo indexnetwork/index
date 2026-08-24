@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
     clearChat: vi.fn(),
   },
   regenerationHandlers: new Set<(event: { intentId: string; pending: boolean }) => void>(),
+  turnCompletedHandlers: new Set<(event: { intentId: string }) => void>(),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -50,6 +51,12 @@ vi.mock('@/contexts/ConversationContext', () => ({
         mocks.regenerationHandlers.delete(handler);
       };
     },
+    subscribePersonalAgentTurnCompleted: (handler: (event: { intentId: string }) => void) => {
+      mocks.turnCompletedHandlers.add(handler);
+      return () => {
+        mocks.turnCompletedHandlers.delete(handler);
+      };
+    },
   }),
 }));
 
@@ -57,6 +64,12 @@ vi.mock('@/contexts/ConversationContext', () => ({
 function emitRegeneration(event: { intentId: string; pending: boolean }) {
   act(() => {
     mocks.regenerationHandlers.forEach((handler) => handler(event));
+  });
+}
+
+function emitTurnCompleted(event: { intentId: string }) {
+  act(() => {
+    mocks.turnCompletedHandlers.forEach((handler) => handler(event));
   });
 }
 
@@ -93,6 +106,9 @@ const SESSION_RESPONSE = {
 function renderChat(overrides: Partial<Parameters<typeof IntentNegotiatorChat>[0]> = {}) {
   const props = {
     intentId: 'intent-1',
+    timelineEntries: [],
+    timelineLoading: false,
+    timelineError: false,
     opportunityStatusMap: {},
     opportunityActionLoading: {},
     onOpportunityAction: vi.fn(),
@@ -106,6 +122,7 @@ describe('IntentNegotiatorChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.regenerationHandlers.clear();
+    mocks.turnCompletedHandlers.clear();
     mocks.chat.messages = [];
     mocks.chat.isLoading = false;
     mocks.chat.sessionId = null;
@@ -174,12 +191,12 @@ describe('IntentNegotiatorChat', () => {
     expect((input as HTMLInputElement).value).toBe('');
   });
 
-  test('reloads the stable session when a bounded pool-reaction checkpoint arrives', async () => {
+  test('reconciles a completed PersonalAgent turn from the durable session', async () => {
     mocks.chat.sessionId = 'neg-intent-sess-1';
-    const { rerender, props } = renderChat({ refreshVersion: 0 });
+    renderChat();
     await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1));
 
-    rerender(<IntentNegotiatorChat {...props} refreshVersion={1} />);
+    emitTurnCompleted({ intentId: 'intent-1' });
     await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(2));
     expect(mocks.chat.loadSession).toHaveBeenLastCalledWith('neg-intent-sess-1');
   });
@@ -264,6 +281,14 @@ describe('IntentNegotiatorChat', () => {
     mocks.chat.isLoading = false;
     rerender(<IntentNegotiatorChat {...props} />);
     await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(2));
+  });
+
+  test('ignores completed turns for another signal', async () => {
+    mocks.chat.sessionId = 'neg-intent-sess-1';
+    renderChat();
+    await waitFor(() => expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1));
+    emitTurnCompleted({ intentId: 'someone-elses-intent' });
+    expect(mocks.chat.loadSession).toHaveBeenCalledTimes(1);
   });
 
   test('tap-to-quote prefills the input with the question being answered', async () => {
