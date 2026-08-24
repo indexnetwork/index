@@ -18,7 +18,10 @@ const chatState = {
 
 vi.mock('@/contexts/AIChatContext', () => ({ useAIChat: () => chatState }));
 vi.mock('@/contexts/ConversationContext', () => ({
-  useConversation: () => ({ subscribeQuestionRegeneration: () => () => {} }),
+  useConversation: () => ({
+    subscribeQuestionRegeneration: () => () => {},
+    subscribePersonalAgentTurnCompleted: () => () => {},
+  }),
 }));
 vi.mock('@/lib/api', () => ({
   apiClient: {
@@ -51,6 +54,9 @@ function renderChat() {
   return render(
     <IntentNegotiatorChat
       intentId="intent-1"
+      timelineEntries={[]}
+      timelineLoading={false}
+      timelineError={false}
       opportunityStatusMap={{}}
       opportunityActionLoading={{}}
       onOpportunityAction={() => {}}
@@ -93,5 +99,29 @@ describe('IntentNegotiatorChat option chips', () => {
     renderChat();
     await screen.findByText('What should I push hardest on?');
     expect(screen.queryByTestId('negotiator-chat-options')).toBeNull();
+  });
+
+  it('shows the owner-scoped PersonalAgent trace inside the DM', async () => {
+    render(
+      <IntentNegotiatorChat
+        intentId="intent-1"
+        timelineEntries={[{
+          id: 'act-1',
+          event: { kind: 'matches_ready' },
+          act: { tool: 'message_user', text: 'I opened the conversation.' },
+          createdAt: '2026-08-21T10:00:00.000Z',
+        }]}
+        timelineLoading={false}
+        timelineError={false}
+        opportunityStatusMap={{}}
+        opportunityActionLoading={{}}
+        onOpportunityAction={() => {}}
+        onUnavailable={() => {}}
+      />,
+    );
+    const trace = await screen.findByTestId('personal-agent-debug-trace');
+    expect(trace).toHaveTextContent('PersonalAgent debug trace');
+    expect(trace).toHaveTextContent('matches_ready');
+    expect(trace).toHaveTextContent('message_user');
   });
 });

@@ -198,6 +198,17 @@ describe('PersonalAgentQueue serialization', () => {
     });
   });
 
+  it('publishes one owner-scoped completion signal only after a successful turn', async () => {
+    const published: Array<{ userId: string; intentId: string }> = [];
+    const queue = new PersonalAgentQueue(async () => idle, async (event) => { published.push(event); });
+    try {
+      await queue.processEvent({ userId: 'user-1', intentId: 'intent-1', event: 'matches_ready' });
+      expect(published).toEqual([{ userId: 'user-1', intentId: 'intent-1' }]);
+    } finally {
+      await queue.close();
+    }
+  });
+
   it('a graph-level error fails the turn — the awaited lane rejects and the job stays retryable', async () => {
     await withQueue(buildQueue(() => ({ scope: 'intent', acts: [], messages: [], error: 'provider down' })), async ({ queue, invocations }) => {
       await expect(queue.runUserMessageTurn({
