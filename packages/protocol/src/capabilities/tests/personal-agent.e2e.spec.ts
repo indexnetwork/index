@@ -1,15 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { AsyncLocalStorage } from "async_hooks";
 
 import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
-import { PersonalAgentGraphFactory, PERSONAL_AGENT_NO_NEXT_STEP, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_STRATEGY_FALLBACK, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
-import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentNegotiationTurnInput, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
+import { PersonalAgentGraphFactory, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_POST_ACTION_FAILURE, PERSONAL_AGENT_STRATEGY_FALLBACK, PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
+import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
 import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
+import { requestContext, setRequestContextStore } from "../../internal/shared/observability/request-context.js";
+
+setRequestContextStore(new AsyncLocalStorage());
 
 /**
  * The whole cycle, end to end: matches_ready → kickoff (strategy + a brief per
- * match, in parallel) → negotiator turns → all paused → reflect ASK → the
- * principal's answers → reflect ACT (promote / reject / re-kick).
+ * match, in parallel) → negotiator turns → all paused → further conversational
+ * turns that can act and respond in the order the current context warrants.
  *
  * Both real graphs run: the PersonalAgent's negotiation scope IS the
  * NegotiationGraph's turn author, so a kickoff genuinely self-plays every
@@ -29,6 +33,7 @@ class FakePrincipalHost {
   readonly ledgerRows: Array<{ event: Record<string, unknown>; act: Record<string, unknown> }> = [];
   readonly publishedChunks: Array<{ messageId: string; seq: number; content: string }> = [];
   readonly accepted: Array<{ opportunityId: string; reason?: string }> = [];
+  readonly retireCalls: string[] = [];
   private messageCounter = 0;
 
   constructor(private readonly negotiations: FakeNegotiationHost) {}
@@ -51,6 +56,7 @@ class FakePrincipalHost {
       return id;
     },
     retireEntry: async ({ entryId }) => {
+      this.retireCalls.push(entryId);
       const index = this.dossierEntries.findIndex((entry) => entry.id === entryId);
       if (index < 0) return false;
       this.dossierEntries.splice(index, 1);
@@ -97,32 +103,52 @@ class FakePrincipalHost {
 /** Scripted judgment: the ONE model seam, driven by the turn's own shape. */
 class ScriptedJudgment implements PersonalAgentJudgment {
   readonly decideCalls: PersonalAgentTurnContext[] = [];
-  readonly briefCalls: Array<{ opportunityId: string; strategy: string }> = [];
+  readonly strategyCalls: PersonalAgentTurnContext[] = [];
+  readonly briefCalls: Array<{ opportunityId: string; strategy: string; dossier: string[] }> = [];
   private cursor = 0;
+  private activeContext: PersonalAgentTurnContext | null = null;
+  private activePlan: PersonalAgentDecidedAct[] = [];
 
   constructor(
     private readonly plans: Array<(context: PersonalAgentTurnContext) => PersonalAgentDecidedAct[]>,
     /** Overrides the default negotiator script; used by the termination tests. */
     private readonly turnScript?: (input: PersonalAgentNegotiationTurnInput) => NegotiationAuthoredTurn,
+    /** Optional next-choice behavior once a turn's scripted actions are spent. */
+    private readonly afterActs?: (
+      context: PersonalAgentTurnContext,
+      executed: PersonalAgentExecutedAct[],
+      nonDurable: PersonalAgentNonDurableObservation[],
+    ) => PersonalAgentDecidedAct | Promise<PersonalAgentDecidedAct>,
   ) {}
 
-  async decide(context: PersonalAgentTurnContext): Promise<PersonalAgentDecidedAct[]> {
-    this.decideCalls.push(context);
-    const plan = this.plans[this.cursor];
-    this.cursor += 1;
-    return plan ? plan(context) : [];
+  async next(
+    context: PersonalAgentTurnContext,
+    executed: PersonalAgentExecutedAct[],
+    nonDurable: PersonalAgentNonDurableObservation[] = [],
+  ): Promise<PersonalAgentDecidedAct> {
+    if (context !== this.activeContext) {
+      this.activeContext = context;
+      if (executed.length === 0) {
+        this.decideCalls.push(context);
+        this.activePlan = this.plans[this.cursor++]?.(context) ?? [];
+      }
+    }
+    return this.activePlan.shift()
+      ?? await this.afterActs?.(context, executed, nonDurable)
+      ?? { tool: "message_user", text: `Here is where things stand after ${executed.length} act(s).` };
   }
 
-  async reply(_context: PersonalAgentTurnContext, executed: PersonalAgentExecutedAct[]): Promise<{ text: string }> {
-    return { text: `Here is where things stand after ${executed.length} act(s).` };
-  }
-
-  async strategy(): Promise<string> {
+  async strategy(context: PersonalAgentTurnContext): Promise<string> {
+    this.strategyCalls.push(context);
     return "I will put your constraints to each of them and find out who can actually move.";
   }
 
-  async brief(_context: PersonalAgentTurnContext, input: { match: PersonalAgentMatch; strategy: string }): Promise<string> {
-    this.briefCalls.push({ opportunityId: input.match.opportunityId, strategy: input.strategy });
+  async brief(context: PersonalAgentTurnContext, input: { match: PersonalAgentMatch; strategy: string }): Promise<string> {
+    this.briefCalls.push({
+      opportunityId: input.match.opportunityId,
+      strategy: input.strategy,
+      dossier: context.dossier.map((entry) => entry.text),
+    });
     return `Brief for ${input.match.opportunityId}: ${input.strategy}`;
   }
 
@@ -131,7 +157,7 @@ class ScriptedJudgment implements PersonalAgentJudgment {
   /**
    * The counterparty's own brief, authored at its first turn. It is written
    * from what THIS side can see — here, whatever the opening turn said — and
-   * never from the initiator's, which is the whole point of D18.
+   * never from the initiator's, which is the whole point of D51.
    */
   async seatBrief(input: PersonalAgentSeatBriefInput): Promise<string> {
     this.seatBriefCalls.push(input);
@@ -216,22 +242,402 @@ const userMessage = (text: string) => ({
   text,
 });
 
-describe("PersonalAgent — the whole cycle", () => {
-  test("matches_ready → ask → kickoff → all paused → reflect ASK → answers → ACT", async () => {
+describe("PersonalAgent — chat-first intent turns", () => {
+  test("acts on one resolved matter and asks about another in the same turn", async () => {
+    const judgment = new ScriptedJudgment([() => [
+      { tool: "note_dossier", text: "Can start in three weeks." },
+      { tool: "message_user", text: "I noted the timing. What compensation range should I use?" },
+    ]]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke(userMessage("I can start in three weeks."));
+
+    expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier", "message_user"]);
+    expect(principal.dossierEntries.map((entry) => entry.text)).toEqual(["Can start in three weeks."]);
+    expect(result.messages).toEqual(["I noted the timing. What compensation range should I use?"]);
+  });
+
+  test("can ask naturally without fabricating work", async () => {
+    const judgment = new ScriptedJudgment([() => [
+      { tool: "message_user", text: "What timing would work for you?" },
+    ]]);
+    const { agent } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(result.acts.map((act) => act.tool)).toEqual(["message_user"]);
+    expect(result.messages).toEqual(["What timing would work for you?"]);
+  });
+
+  test("answers a plain conversation without fabricated work", async () => {
+    const judgment = new ScriptedJudgment([() => [
+      { tool: "message_user", text: "I am here and keeping an eye on this signal." },
+    ]]);
+    const { agent } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke(userMessage("Thanks."));
+
+    expect(result.acts.map((act) => act.tool)).toEqual(["message_user"]);
+    expect(result.messages).toEqual(["I am here and keeping an eye on this signal."]);
+  });
+
+  test("uses the actual executed tool result before choosing the response", async () => {
+    const judgment = new ScriptedJudgment(
+      [() => [{ tool: "note_dossier", text: "Prefers remote." }]],
+      undefined,
+      (_context, executed) => {
+        const note = executed.find((act) => act.tool === "note_dossier");
+        return note?.entryId === "dossier-1"
+          ? { tool: "message_user", text: "I saved your remote preference for the negotiation table." }
+          : { tool: "message_user", text: "I could not save that preference." };
+      },
+    );
+    const { agent } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke(userMessage("Remote is important."));
+
+    expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier", "message_user"]);
+    expect(result.messages).toEqual(["I saved your remote preference for the negotiation table."]);
+  });
+
+  test("refreshes the dossier after note_dossier before kickoff strategy and briefs", async () => {
+    const judgment = new ScriptedJudgment(
+      [() => [{ tool: "note_dossier", text: "Only remote roles." }]],
+      undefined,
+      (context, executed) => {
+        if (!executed.some((act) => act.tool === "kickoff")) {
+          return context.dossier.some((entry) => entry.text === "Only remote roles.")
+            ? { tool: "kickoff", reasoning: "Reach out with the new constraint." }
+            : { tool: "message_user", text: "The new dossier fact was missing." };
+        }
+        return { tool: "message_user", text: "I noted remote-only and used it in the outreach." };
+      },
+    );
+    const { agent } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    await agent.invoke(userMessage("Only remote roles, please."));
+
+    expect(judgment.strategyCalls).toHaveLength(1);
+    expect(judgment.strategyCalls[0]!.dossier.map((entry) => entry.text)).toEqual(["Only remote roles."]);
+    expect(judgment.briefCalls[0]!.dossier).toEqual(["Only remote roles."]);
+  });
+
+  test("refreshes the dossier after retire_dossier before kickoff strategy and briefs", async () => {
+    const judgment = new ScriptedJudgment(
+      [() => [{ tool: "retire_dossier", entryId: "dossier-old" }]],
+      undefined,
+      (context, executed) => {
+        if (!executed.some((act) => act.tool === "kickoff")) {
+          return context.dossier.length === 0
+            ? { tool: "kickoff", reasoning: "Reach out without the withdrawn constraint." }
+            : { tool: "message_user", text: "The retired dossier fact was still present." };
+        }
+        return { tool: "message_user", text: "I retired that constraint before reaching out." };
+      },
+    );
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    principal.dossierEntries.push({
+      id: "dossier-old", text: "Must be in London.", source: "user_message", createdAt: new Date(),
+    });
+
+    await agent.invoke(userMessage("London is no longer required."));
+
+    expect(judgment.strategyCalls).toHaveLength(1);
+    expect(judgment.strategyCalls[0]!.dossier).toEqual([]);
+    expect(judgment.briefCalls[0]!.dossier).toEqual([]);
+  });
+
+  test("does not retire an entry outside the assembled dossier snapshot", async () => {
+    const hiddenEntry = {
+      id: "dossier-hidden", text: "Still active but hidden from this snapshot.", source: "user_message", createdAt: new Date(),
+    };
+    const judgment = new ScriptedJudgment(
+      [() => [{ tool: "retire_dossier", entryId: hiddenEntry.id }]],
+      undefined,
+      (_context, executed) => executed.some((act) => act.tool === "retire_dossier" && !act.retired)
+        ? { tool: "message_user", text: "I could not retire an entry that was not available in this turn." }
+        : { tool: "message_user", text: "I did not see the retirement failure." },
+    );
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    principal.dossierEntries.push(hiddenEntry);
+    principal.dossier.readActiveEntries = async () => [];
+
+    const result = await agent.invoke(userMessage("Remove the hidden dossier fact."));
+
+    expect(principal.retireCalls).toEqual([]);
+    expect(principal.dossierEntries).toEqual([hiddenEntry]);
+    expect(result.acts[0]).toMatchObject({ tool: "retire_dossier", entryId: hiddenEntry.id, retired: false });
+    expect(result.messages).toEqual(["I could not retire an entry that was not available in this turn."]);
+  });
+
+  test("executes an explicit bounded acceptance once and recovers from a repeated call", async () => {
+    const judgment = new ScriptedJudgment(
+      [() => [
+        { tool: "accept_opportunity", opportunityId: OPPORTUNITY_ID, reason: "Client chose the first match." },
+        { tool: "accept_opportunity", opportunityId: OPPORTUNITY_ID, reason: "Duplicate." },
+      ]],
+      undefined,
+      (_context, _executed, nonDurable) => nonDurable.some((observation) =>
+        observation.tool === "accept_opportunity" && observation.opportunityId === OPPORTUNITY_ID)
+        ? { tool: "message_user", text: "I accepted the first match once." }
+        : { tool: "message_user", text: "I did not see the refused duplicate acceptance." },
+    );
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke(userMessage("Let's go with the first one."));
+
+    expect(principal.accepted).toEqual([{ opportunityId: OPPORTUNITY_ID, reason: "Client chose the first match." }]);
+    expect(result.acts.filter((act) => act.tool === "accept_opportunity")).toHaveLength(1);
+    expect(principal.ledgerRows.filter((row) => row.act.tool === "accept_opportunity")).toHaveLength(1);
+    expect(result.messages).toEqual(["I accepted the first match once."]);
+  });
+
+  test("does not accept an older match outside the bounded match snapshot", async () => {
+    const counterparties = Array.from({ length: 13 }, (_, index) => `candidate-${index + 1}`);
+    const judgment = new ScriptedJudgment(
+      [() => [{ tool: "accept_opportunity", opportunityId: OPPORTUNITY_ID, reason: "Injected hidden id." }]],
+      undefined,
+      (_context, executed) => executed.some((act) =>
+        act.tool === "accept_opportunity" && act.outcome === "not_available")
+        ? { tool: "message_user", text: "I could not accept a match outside this turn's available list." }
+        : { tool: "message_user", text: "I did not see the acceptance failure." },
+    );
+    const { agent, principal } = buildCycle(judgment, counterparties);
+
+    const result = await agent.invoke(userMessage("Accept the hidden older match."));
+
+    expect(principal.accepted).toEqual([]);
+    expect(result.acts[0]).toMatchObject({
+      tool: "accept_opportunity", opportunityId: OPPORTUNITY_ID, outcome: "not_available",
+    });
+    expect(result.messages).toEqual(["I could not accept a match outside this turn's available list."]);
+  });
+
+  test("refuses background acceptance and lets the agent recover without calling the host", async () => {
+    const judgment = new ScriptedJudgment(
+      [() => [{ tool: "accept_opportunity", opportunityId: OPPORTUNITY_ID }]],
+      undefined,
+      (_context, _executed, nonDurable) => nonDurable.some((observation) =>
+        observation.tool === "accept_opportunity" && observation.opportunityId === OPPORTUNITY_ID)
+        ? { tool: "message_user", text: "I need your explicit verdict before accepting that match." }
+        : { tool: "message_user", text: "I did not see the refused background acceptance." },
+    );
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke({
+      userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready",
+    });
+
+    expect(principal.accepted).toEqual([]);
+    expect(result.acts.map((act) => act.tool)).toEqual(["message_user"]);
+    expect(result.messages).toEqual(["I need your explicit verdict before accepting that match."]);
+  });
+
+  test("does not accept a match from hedge text", async () => {
+    const judgment = new ScriptedJudgment([() => [
+      { tool: "message_user", text: "It sounds promising. What would settle it for you?" },
+    ]]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke(userMessage("Maybe the first one? I'm not sure."));
+
+    expect(principal.accepted).toEqual([]);
+    expect(result.acts.map((act) => act.tool)).toEqual(["message_user"]);
+  });
+
+  test("does not start the chosen tool after the request signal aborts", async () => {
+    const controller = new AbortController();
+    const judgment = new ScriptedJudgment([() => {
+      controller.abort(new DOMException("deadline", "TimeoutError"));
+      return [{ tool: "note_dossier", text: "Must not be written." }];
+    }]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await requestContext.run(
+      { abortSignal: controller.signal },
+      () => agent.invoke(userMessage("Remember this.")),
+    );
+
+    expect(result.error).toBeDefined();
+    expect(result.acts).toEqual([]);
+    expect(principal.dossierEntries).toEqual([]);
+    expect(principal.ledgerRows).toEqual([]);
+  });
+
+  test("does not deliver strategy or bump the round when the deadline expires during strategy generation", async () => {
+    const controller = new AbortController();
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reach out." }]]);
+    judgment.strategy = async () => {
+      controller.abort(new DOMException("deadline", "TimeoutError"));
+      return "This strategy must not be delivered.";
+    };
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await requestContext.run(
+      { abortSignal: controller.signal },
+      () => agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" }),
+    );
+
+    expect(result.error).toBeDefined();
+    expect(result.acts).toEqual([]);
+    expect(principal.dmMessages).toEqual([]);
+    expect(principal.ledgerRows).toEqual([]);
+    expect(negotiationHost.round).toBe(1);
+  });
+
+  test("does not message, ledger, or wake when an empty kickoff expires during lifecycle reads", async () => {
+    const controller = new AbortController();
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Check for work." }]]);
+    const { agent, negotiationHost, principal, wakes } = buildCycle(judgment, []);
+    const readLifecycle = negotiationHost.database.getIntentNegotiationRound;
+    negotiationHost.database.getIntentNegotiationRound = async (intentId) => {
+      const lifecycle = await readLifecycle.call(negotiationHost.database, intentId);
+      controller.abort(new DOMException("deadline", "TimeoutError"));
+      return lifecycle;
+    };
+
+    const result = await requestContext.run(
+      { abortSignal: controller.signal },
+      () => agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" }),
+    );
+
+    expect(result.error).toBeDefined();
+    expect(result.acts).toEqual([]);
+    expect(principal.dmMessages).toEqual([]);
+    expect(principal.ledgerRows).toEqual([]);
+    expect(wakes).toEqual([]);
+  });
+
+  test("finishes compensation and settlement when the deadline aborts after the round bump", async () => {
+    const controller = new AbortController();
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reach out." }]]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const createMessage = negotiationHost.database.createNegotiationMessage;
+    let rejectedOpening = false;
+    negotiationHost.database.createNegotiationMessage = async (input) => {
+      if (!rejectedOpening) {
+        rejectedOpening = true;
+        controller.abort(new DOMException("deadline", "TimeoutError"));
+        return null;
+      }
+      return createMessage.call(negotiationHost.database, input);
+    };
+
+    const result = await requestContext.run(
+      { abortSignal: controller.signal },
+      () => agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" }),
+    );
+
+    const task = [...negotiationHost.tasks.values()][0]!;
+    expect(result.error).toBeUndefined();
+    expect(task.state).toBe("paused");
+    expect(task.metadata.pause?.reason).toBe("open_failed");
+    expect(negotiationHost.roundSize).toBe(1);
+    expect(principal.dmMessages.at(-1)?.content).toBe(PERSONAL_AGENT_POST_ACTION_FAILURE);
+  });
+
+  test("refuses a repeated kickoff without opening a second round or strategy", async () => {
+    const judgment = new ScriptedJudgment(
+      [() => [
+        { tool: "kickoff", reasoning: "First outreach." },
+        { tool: "kickoff", reasoning: "Try it again." },
+      ]],
+      undefined,
+      (_context, _executed, nonDurable) => nonDurable.some((observation) =>
+        observation.kind === "irreversible_tool_refused" && observation.tool === "kickoff")
+        ? { tool: "message_user", text: "The first outreach is underway; the repeated kickoff was refused." }
+        : { tool: "message_user", text: "I did not see the refused kickoff." },
+    );
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(result.acts.filter((act) => act.tool === "kickoff")).toHaveLength(1);
+    expect(result.messages.at(-1)).toBe("The first outreach is underway; the repeated kickoff was refused.");
+    expect(negotiationHost.round).toBe(2);
+    expect(principal.dmMessages.filter((message) => message.content.includes("find out who can actually move"))).toHaveLength(1);
+    expect(principal.ledgerRows.filter((row) => row.act.tool === "kickoff")).toHaveLength(1);
+  });
+
+  test("refuses a repeated terminal verdict for the same negotiation", async () => {
     const judgment = new ScriptedJudgment([
-      // 1. matches_ready: ask before speaking on the principal's behalf.
-      () => [{ tool: "ask", text: "Before I reach out — what is your timeline?" }],
+      () => [
+        { tool: "kickoff", reasoning: "Open it." },
+        { tool: "message_user", text: "The negotiation is open." },
+      ],
+      (context) => {
+        const negotiationId = context.paused[0]!.negotiationId;
+        return [
+          { tool: "reject", negotiationId, reasoning: "Not a fit." },
+          { tool: "promote", negotiationId, reasoning: "Actually promote it." },
+        ];
+      },
+    ], undefined, (context, _executed, nonDurable) => {
+      const negotiationId = context.paused[0]!.negotiationId;
+      return nonDurable.some((observation) =>
+        observation.kind === "irreversible_tool_refused"
+        && observation.tool === "promote"
+        && observation.negotiationId === negotiationId)
+        ? { tool: "message_user", text: "I closed that negotiation as not a fit; the conflicting verdict was refused." }
+        : { tool: "message_user", text: "I did not see the refused verdict." };
+    });
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: negotiationHost.round });
+
+    expect(result.acts.map((act) => act.tool)).toEqual(["reject", "message_user"]);
+    expect(result.messages).toEqual(["I closed that negotiation as not a fit; the conflicting verdict was refused."]);
+    expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "rejected")).toHaveLength(1);
+    expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "pending")).toHaveLength(0);
+    expect(principal.ledgerRows.filter((row) => row.act.tool === "reject")).toHaveLength(1);
+    expect(principal.ledgerRows.filter((row) => row.act.tool === "promote")).toHaveLength(0);
+  });
+
+  test("delivers the dedicated exhaustion response after kickoff's strategy", async () => {
+    const judgment = new ScriptedJudgment([() => [
+      { tool: "kickoff", reasoning: "Open it." },
+      ...Array.from({ length: 7 }, (_, index): PersonalAgentDecidedAct => ({ tool: "note_dossier", text: `Fact ${index + 1}.` })),
+    ]]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(result.messages.at(-1)).toBe(PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
+    expect(principal.dmMessages.at(-1)?.content).toBe(PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
+    expect(result.acts.filter((act) => act.tool === "kickoff")).toHaveLength(1);
+  });
+
+  test("a strategy message makes a later round-bump failure non-retryable", async () => {
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Open it." }]]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    negotiationHost.database.bumpIntentNegotiationRound = async () => { throw new Error("round bump failed"); };
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(result.error).toBeUndefined();
+    expect(principal.dmMessages.filter((message) => message.content.includes("find out who can actually move"))).toHaveLength(1);
+    expect(principal.dmMessages.at(-1)?.content).toBe(PERSONAL_AGENT_POST_ACTION_FAILURE);
+    expect(negotiationHost.round).toBe(1);
+  });
+});
+
+describe("PersonalAgent — the whole cycle", () => {
+  test("matches_ready → conversation → kickoff → all_paused → further conversation and actions", async () => {
+    const judgment = new ScriptedJudgment([
+      // 1. matches_ready: the agent asks for the missing timing.
+      () => [{ tool: "message_user", text: "Before I reach out — what is your timeline?" }],
       // 2. their answer: note it, then kick every match off.
       () => [
         { tool: "note_dossier", text: "Wants to start within a month." },
         { tool: "kickoff", reasoning: "Timeline is settled; reaching out to all three." },
       ],
-      // 3. all_paused (reflect phase 1): merge what the tables need into one ask.
+      // 3. all_paused: ask what one table still needs.
       (context) => {
         expect(context.paused).toHaveLength(3);
-        return [{ tool: "ask", text: "One of them needs your earliest start date — what should I say?" }];
+        return [{ tool: "message_user", text: "One of them needs your earliest start date — what should I say?" }];
       },
-      // 4. their answer (reflect phase 2 ACT): promote, reject, re-kick the rest.
+      // 4. their answer: promote, reject, and re-kick the rest.
       (context) => {
         const byOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.negotiationId]));
         return [
@@ -245,7 +651,7 @@ describe("PersonalAgent — the whole cycle", () => {
 
     // ── 1. matches_ready: it asks, and reaches out to no one ──────────────
     const asked = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
-    expect(asked.acts.map((act) => act.tool)).toEqual(["ask"]);
+    expect(asked.acts.map((act) => act.tool)).toEqual(["message_user"]);
     expect(negotiationHost.tasks.size).toBe(0);
     expect(principal.dmMessages.at(-1)?.content).toContain("what is your timeline");
 
@@ -255,7 +661,7 @@ describe("PersonalAgent — the whole cycle", () => {
       "note_dossier",
       "message_user", // the strategy, written into the DM before anyone is contacted
       "kickoff",
-      "message_user", // the reply stage
+      "message_user", // the model's natural terminal response
     ]);
     // One brief per match, all derived from the same strategy.
     expect(judgment.briefCalls.map((call) => call.opportunityId).sort())
@@ -277,24 +683,24 @@ describe("PersonalAgent — the whole cycle", () => {
     // duplicate a real effect — which also means a broken one records nothing
     // and says nothing, so it is asserted rather than assumed.
     expect(principal.ledgerRows.map((row) => row.act.tool))
-      .toEqual(["ask", "note_dossier", "message_user", "kickoff", "message_user"]);
+      .toEqual(["message_user", "note_dossier", "message_user", "kickoff", "message_user"]);
     // The principal's reply streamed back as ordered chunks.
     expect(principal.publishedChunks.map((chunk) => chunk.seq)).toEqual([1, 2, 3]);
 
-    // ── 3. reflect phase 1: it asks, and decides nothing ──────────────────
+    // ── 3. reflect: it asks, and decides nothing ──────────────────────────
     const reflectAsk = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round });
-    expect(reflectAsk.acts.map((act) => act.tool)).toEqual(["ask"]);
+    expect(reflectAsk.acts.map((act) => act.tool)).toEqual(["message_user"]);
     expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "pending")).toHaveLength(0);
     expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "rejected")).toHaveLength(0);
 
-    // ── 4. reflect phase 2: promote, reject, re-kick ──────────────────────
+    // ── 4. next turn: promote, reject, re-kick ────────────────────────────
     const acted = await agent.invoke(userMessage("I could start in three weeks."));
     expect(acted.acts.map((act) => act.tool)).toEqual([
       "promote",
       "reject",
       "message_user", // the new round's strategy
       "kickoff",
-      "message_user", // the reply stage
+      "message_user", // the model's natural terminal response
     ]);
     expect(negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.status).toBe("pending");
     expect(negotiationHost.opportunities.get(THIRD_OPPORTUNITY_ID)!.status).toBe("rejected");
@@ -314,7 +720,7 @@ describe("PersonalAgent — the whole cycle", () => {
         const ours = context.paused.find((paused) => paused.opportunityId === OPPORTUNITY_ID)!;
         const theirs = context.paused.find((paused) => paused.opportunityId === THIRD_OPPORTUNITY_ID)!;
         // Our own seat's needs_principal question is exactly what reflect
-        // merges into its ASK.
+        // asks naturally about the independent unresolved matter.
         expect(ours.pausedByUs).toBe(true);
         expect(ours.payload).toEqual({ question: "What is the earliest you could start?" });
         // Their agent's recommendation is theirs to hand to their principal.
@@ -341,12 +747,14 @@ describe("PersonalAgent — the whole cycle", () => {
 
     const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
     // The act names the round it actually looked at, not a placeholder.
-    // A background turn has no reply stage, so a kickoff with nothing to open
-    // must still SAY so — silence there ends the cycle with the principal
+    // A background turn still tells the principal when a kickoff has nothing to open;
+    // silence there ends the cycle with the principal
     // never told (the reflect job is retained and nothing is active).
-    expect(result.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff"]);
-    expect(result.acts.at(-1)).toEqual({ tool: "kickoff", round: negotiationHost.round, opened: 0, reasoning: "Nothing to open." });
-    expect(result.messages).toHaveLength(1);
+    expect(result.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff", "message_user"]);
+    expect(result.acts.find((act) => act.tool === "kickoff")).toEqual({
+      tool: "kickoff", round: negotiationHost.round, opened: 0, attempted: 0, failed: 0, reasoning: "Nothing to open.",
+    });
+    expect(result.messages).toHaveLength(2);
     expect(negotiationHost.roundSize).toBeNull();
     expect(negotiationHost.kickoffStartedAt).toBeNull(); // no round was ever begun
     expect(negotiationHost.reflectJobs).toEqual([]);
@@ -407,14 +815,16 @@ describe("PersonalAgent — termination and retry safety", () => {
     const briefCallsBefore = judgment.briefCalls.length;
     const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: firstRound + 1 });
 
-    expect(acted.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff"]);
-    expect(acted.acts.at(-1)).toEqual({ tool: "kickoff", round: firstRound + 1, opened: 0, reasoning: "Send them out." });
+    expect(acted.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff", "message_user"]);
+    expect(acted.acts.find((act) => act.tool === "kickoff")).toEqual({
+      tool: "kickoff", round: firstRound + 1, opened: 0, attempted: 0, failed: 0, reasoning: "Send them out.",
+    });
     expect(negotiationHost.round).toBe(firstRound + 1); // no further bump
     expect(negotiationHost.tasks.size).toBe(2); // nothing re-opened
-    // No second STRATEGY and no model spend — the only thing added to the DM
-    // is the honest "nothing to open" line.
-    expect(principal.dmMessages).toHaveLength(strategyMessagesBefore + 1);
-    expect(principal.dmMessages.at(-1)!.content).toBe(PERSONAL_AGENT_NOTHING_TO_OPEN);
+    // No second STRATEGY and no extra brief spend — the turn adds the honest
+    // "nothing to open" line and its natural terminal response.
+    expect(principal.dmMessages).toHaveLength(strategyMessagesBefore + 2);
+    expect(principal.dmMessages.at(-2)!.content).toBe(PERSONAL_AGENT_NOTHING_TO_OPEN);
     expect(judgment.briefCalls).toHaveLength(briefCallsBefore); // no model spend
     expect(negotiationHost.reflectJobs).toHaveLength(reflectJobsBefore); // the loop ends here
   });
@@ -456,7 +866,7 @@ describe("PersonalAgent — termination and retry safety", () => {
     // The repair opened nothing, so it claims nothing: the one act reported is
     // the round this turn actually opened.
     expect(retried.acts.filter((act) => act.tool === "kickoff")).toEqual([
-      { tool: "kickoff", round: round + 1, opened: 1, reasoning: "Reaching out." },
+      { tool: "kickoff", round: round + 1, opened: 1, attempted: 1, failed: 0, reasoning: "Reaching out." },
     ]);
     expect(negotiationHost.roundSize).toBe(1);      // the stranded round is settled
     // The negotiation is RESUMED into the new round, never duplicated — the
@@ -497,8 +907,8 @@ describe("PersonalAgent — kickoff safety at the edges", () => {
 
     const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
-    expect(result.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff"]);
-    expect(principal.dmMessages).toHaveLength(1);            // the strategy was written
+    expect(result.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff", "message_user"]);
+    expect(principal.dmMessages).toHaveLength(2);            // strategy, then natural terminal response
     expect(judgment.briefCalls).toHaveLength(1);             // a brief was derived
     expect(negotiationHost.round).toBe(5);                   // a NEW round, not a stamp of the stale one
     expect(negotiationHost.roundSize).toBe(1);
@@ -586,7 +996,7 @@ describe("PersonalAgent — what a turn may open, and what it may claim", () => 
     expect(negotiationHost.opportunityStatusUpdates.map((update) => update.id)).toEqual([OPPORTUNITY_ID]);
     // No brief was spent on it either.
     expect(judgment.briefCalls.map((call) => call.opportunityId)).toEqual([OPPORTUNITY_ID]);
-    expect(principal.dmMessages).toHaveLength(1); // strategy only
+    expect(principal.dmMessages).toHaveLength(2); // strategy, then natural terminal response
   });
 
   test("an open that failed AFTER outreach is not labelled 'nothing has been said'", async () => {
@@ -646,7 +1056,7 @@ describe("PersonalAgent — what a turn may open, and what it may claim", () => 
     expect(judgment.briefCalls.length).toBe(briefsBefore + 1);
     expect(principal.dmMessages.length).toBeGreaterThan(messagesBefore);
     expect(acted.acts.filter((act) => act.tool === "kickoff")).toEqual([
-      { tool: "kickoff", round: stranded + 1, opened: 1, reasoning: "They said go ahead." },
+      { tool: "kickoff", round: stranded + 1, opened: 1, attempted: 1, failed: 0, reasoning: "They said go ahead." },
     ]);
     expect(negotiationHost.roundSize).toBe(1);
   });
@@ -721,26 +1131,30 @@ describe("PersonalAgent — round-4 regressions", () => {
 
     const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
-    expect(acted.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff"]);
-    expect(acted.acts.at(-1)).toEqual({ tool: "kickoff", round: stranded, opened: 0, reasoning: "Nothing left to open." });
+    expect(acted.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff", "message_user"]);
+    expect(acted.acts.find((act) => act.tool === "kickoff")).toEqual({
+      tool: "kickoff", round: stranded, opened: 0, attempted: 0, failed: 0, reasoning: "Nothing left to open.",
+    });
     expect(negotiationHost.round).toBe(stranded);              // no bump
     expect(negotiationHost.roundSize).toBe(1);                 // settled all the same
     expect(negotiationHost.reflectJobs.map((job) => job.round)).toEqual([stranded]);
   });
 
-  test("a reply-stage failure never retries the turn's already-executed acts", async () => {
-    // The acts are durable and the reply may already be on the principal's
-    // screen; a thrown error here fails the job, and the retry re-decides and
-    // re-executes every verdict and kickoff on top of it.
-    const judgment = new ScriptedJudgment([() => [{ tool: "note_dossier", text: "Can start in a week." }]]);
+  test("a model failure after durable work ends with a ledgered fallback instead of retrying", async () => {
+    const judgment = new ScriptedJudgment(
+      [() => [{ tool: "note_dossier", text: "Can start in a week." }]],
+      undefined,
+      async () => { throw new Error("model unavailable after note"); },
+    );
     const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
-    principal.conversation.addMessage = async () => { throw new Error("write failed"); };
 
     const result = await agent.invoke(userMessage("I can start in a week."));
 
     expect(result.error).toBeUndefined();
-    expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier"]);
+    expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier", "message_user"]);
     expect(principal.dossierEntries).toHaveLength(1);
+    expect(principal.dmMessages.at(-1)?.content).toBe(PERSONAL_AGENT_POST_ACTION_FAILURE);
+    expect(principal.ledgerRows.at(-1)?.act.tool).toBe("message_user");
   });
 
   test("an unapproved introduction is filtered before a brief is spent on it", async () => {
@@ -797,13 +1211,14 @@ describe("PersonalAgent — round-5 regressions", () => {
     // Reflecting on the LATER round must still see the one left behind.
     const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: cappedRound + 1 });
 
-    expect(acted.acts).toEqual([{
+    expect(acted.acts[0]).toEqual({
       tool: "reject",
       negotiationId: capped.id,
       opportunityId: OPPORTUNITY_ID,
       reasoning: "Went nowhere.",
       outcome: "resolved",
-    }]);
+    });
+    expect(acted.acts[1]).toMatchObject({ tool: "message_user" });
     expect(negotiationHost.opportunities.get(OPPORTUNITY_ID)!.status).toBe("rejected");
   });
 
@@ -843,14 +1258,14 @@ describe("PersonalAgent — round-5 regressions", () => {
     const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
 
     expect(result.error).toBeUndefined();
-    expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier", "reject"]);
-    expect(result.acts.at(-1)).toMatchObject({ outcome: "error" });
+    expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier", "reject", "message_user"]);
+    expect(result.acts[1]).toMatchObject({ outcome: "error" });
     expect(principal.dossierEntries).toHaveLength(1); // the earlier act stands
   });
 });
 
 describe("PersonalAgent — the three decided design questions", () => {
-  test("D18: each seat negotiates from its OWN brief, authored by its own agent", async () => {
+  test("D51: each seat negotiates from its OWN brief, authored by its own agent", async () => {
     const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
     const { agent, negotiationHost, negotiationInputs } = buildCycle(judgment, [CANDIDATE_USER_ID]);
 
@@ -889,7 +1304,7 @@ describe("PersonalAgent — the three decided design questions", () => {
     expect(negotiationHost.taskFor(task.id).briefs[CANDIDATE_USER_ID]).toBe(theirs);
   });
 
-  test("D18: a seat authors its brief once, then reuses it", async () => {
+  test("D51: a seat authors its brief once, then reuses it", async () => {
     const judgment = new ScriptedJudgment(
       [() => [{ tool: "kickoff", reasoning: "Reaching out." }], () => [{ tool: "kickoff", reasoning: "Again." }]],
       (input) => (input.isOpening
@@ -909,7 +1324,7 @@ describe("PersonalAgent — the three decided design questions", () => {
     expect([...negotiationHost.tasks.values()][0]!.briefs[CANDIDATE_USER_ID]).toBe(authored);
   });
 
-  test("D19: kickoff opens exactly the matches the agent decided from, and the rest wait", async () => {
+  test("D52: kickoff opens exactly the matches the agent decided from, and the rest wait", async () => {
     // Fifteen matches; the prompt showed twelve, so twelve are opened. The
     // other three are not lost and — crucially — do not trigger another wake,
     // or a large signal would kick off over and over inside one round.
@@ -957,7 +1372,9 @@ describe("PersonalAgent — the three decided design questions", () => {
     expect(concurrent.error).toBeUndefined();
     expect(negotiationHost.round).toBe(stranded);      // no bump
     expect(negotiationHost.roundSize).toBeNull();      // and NOT settled out from under it
-    expect(concurrent.acts.at(-1)).toEqual({ tool: "kickoff", round: stranded, opened: 0, reasoning: "Concurrent turn." });
+    expect(concurrent.acts.find((act) => act.tool === "kickoff")).toEqual({
+      tool: "kickoff", round: stranded, opened: 0, attempted: 0, failed: 0, reasoning: "Concurrent turn.",
+    });
 
     // Past the bound the same round reads as abandoned, and is repaired.
     failStamp = false;
@@ -979,7 +1396,7 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
    * seat's slot and stamped its own round over the first seat's — so one side
    * argued the other's constraints and the task belonged to neither round.
    */
-  test("D18/D21: a second seat's kickoff binds its own signal and never touches the first's", async () => {
+  test("D51/D55: a second seat's kickoff binds its own signal and never touches the first's", async () => {
     const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Alice reaching out." }]]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
     // Bob's agent opened this negotiation first, for Bob's own signal.
@@ -1011,22 +1428,20 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     expect(await negotiationHost.database.getNegotiationTasksForIntentRound(INTENT_ID, negotiationHost.round)).toHaveLength(1);
   });
 
-  test("a background turn that decides nothing still says so — no silent end", async () => {
-    // The doc's node is "look, maybe ask, else act"; deciding NEITHER is not a
-    // state that contract has, but the model can return an empty act list. On
-    // a background event there is no reply stage, so silence there ends the
-    // signal — and for reflect it also consumes the round's one retained job.
+  test("a background turn can reply naturally without fabricating work", async () => {
+    // The scripted seam's empty plan falls through to a normal terminal
+    // response, just as the production loop requires the model to choose.
     const judgment = new ScriptedJudgment([() => [], () => []]);
     const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
 
     const reflected = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
     expect(reflected.acts.map((act) => act.tool)).toEqual(["message_user"]);
-    expect(principal.dmMessages.at(-1)!.content).toBe(PERSONAL_AGENT_NO_NEXT_STEP);
+    expect(principal.dmMessages.at(-1)!.content).toBe("Here is where things stand after 0 act(s).");
 
-    // A principal-message turn is unaffected: its reply stage speaks anyway.
+    // Client messages use the same conversational terminal response.
     const replied = await agent.invoke(userMessage("What is happening?"));
     expect(replied.acts.map((act) => act.tool)).toEqual(["message_user"]);
-    expect(replied.acts[0]).toMatchObject({ stage: "reply" });
+    expect(replied.messages).toEqual(["Here is where things stand after 0 act(s)."]);
   });
 
   test("D21: a negotiation the counterparty opened is still decidable by BOTH agents", async () => {
@@ -1064,7 +1479,7 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     expect(judgment.decideCalls.at(-1)!.paused.map((paused) => paused.negotiationId)).toEqual([task.id]);
   });
 
-  test("D19: the agent is shown exactly what a kickoff would open", async () => {
+  test("D52: the agent is shown exactly what a kickoff would open", async () => {
     // Shown one list and opening another meant the agent was offered matches
     // a kickoff would skip and opened matches it had never been shown.
     const judgment = new ScriptedJudgment([(context) => {
@@ -1084,27 +1499,48 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
   });
 
   test("D22: a failed open is recorded and never leaves the round unsettleable", async () => {
-    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
+    const judgment = new ScriptedJudgment(
+      [() => [{ tool: "kickoff", reasoning: "Reaching out." }]],
+      undefined,
+      (_context, executed) => {
+        const kickoff = executed.find((act) => act.tool === "kickoff");
+        return kickoff?.attempted === 2 && kickoff.failed === 1 && kickoff.opened === 2
+          ? { tool: "message_user", text: "I reached one match, but the other failed to open this round." }
+          : { tool: "message_user", text: "I did not receive the partial kickoff result." };
+      },
+    );
     const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
-    // The brief for the second match never generates: no invoke ran, so there
-    // is no task for the compensation to find and the match would otherwise
-    // vanish from the turn entirely.
-    const brief = judgment.brief.bind(judgment);
-    judgment.brief = async (context, input) => {
-      if (input.match.opportunityId === SECOND_OPPORTUNITY_ID) throw new Error("brief model down");
-      return brief(context, input);
+    // The second task is created before its opening turn fails, then paused by
+    // compensation. It therefore counts in `opened` (the settled round size),
+    // making the separate attempted/failed result essential to an honest reply.
+    const createMessage = negotiationHost.database.createNegotiationMessage;
+    let failedSecondOpening = false;
+    negotiationHost.database.createNegotiationMessage = async (input) => {
+      const opportunityId = negotiationHost.tasks.get(input.taskId)?.metadata.opportunityId;
+      if (!failedSecondOpening && opportunityId === SECOND_OPPORTUNITY_ID) {
+        failedSecondOpening = true;
+        return null;
+      }
+      return createMessage.call(negotiationHost.database, input);
     };
 
     const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
     expect(acted.error).toBeUndefined();
-    expect(negotiationHost.tasks.size).toBe(1);
-    // The round still settles on what DID open, so it can still reflect.
-    expect(negotiationHost.roundSize).toBe(1);
+    expect(acted.acts.find((act) => act.tool === "kickoff")).toMatchObject({
+      opened: 2, attempted: 2, failed: 1,
+    });
+    expect(acted.messages.at(-1)).toBe("I reached one match, but the other failed to open this round.");
+    expect(negotiationHost.tasks.size).toBe(2);
+    // The round settles both the successful and compensated task, so it can reflect.
+    expect(negotiationHost.roundSize).toBe(2);
     expect(negotiationHost.reflectJobs).toHaveLength(1);
     // And the loss is on the record, not silent.
     expect(principal.ledgerRows.some((row) => typeof row.act.reasoning === "string"
       && row.act.reasoning.includes("Could not open 1 of 2"))).toBe(true);
+    expect(principal.ledgerRows.filter((row) => row.act.tool === "kickoff").at(-1)?.act).toMatchObject({
+      opened: 2, attempted: 2, failed: 1,
+    });
   });
 
   test("D22: after the round bump nothing throws — the strategy is never re-sent", async () => {
@@ -1118,9 +1554,9 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     const acted = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
     expect(acted.error).toBeUndefined();
-    expect(acted.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff"]);
+    expect(acted.acts.map((act) => act.tool)).toEqual(["message_user", "kickoff", "message_user"]);
     expect(negotiationHost.tasks.size).toBe(1);
-    expect(principal.dmMessages).toHaveLength(1); // one strategy, never two
+    expect(principal.dmMessages).toHaveLength(2); // one strategy, then one natural terminal response
   });
 
   test("F3: a strategy the prose gate keeps refusing falls back instead of losing the wake", async () => {

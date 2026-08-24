@@ -68,14 +68,11 @@ export interface PersonalAgentResult {
 // ─── Decided acts (model output, positions already resolved to ids) ──────────
 
 /**
- * `wait` is gone: a turn that decides nothing simply decides nothing, and
- * reflect is ask-or-act rather than ask-or-act-or-wait. `ask` is the verb
- * that BLOCKS acting — a turn that asks does not also execute verdicts, so
- * an answer to a knowledge question can still change them.
+ * One model choice is one tool call. `message_user` is the natural terminal
+ * response, including a question when more information is needed.
  */
 export type PersonalAgentDecidedAct =
   | { tool: "message_user"; text: string; options?: string[] }
-  | { tool: "ask"; text: string; options?: string[] }
   /** Open (or re-open) every undecided match of this signal with fresh briefs. */
   | { tool: "kickoff"; reasoning: string }
   /** Terminal writes IS-A owns: opportunity → `pending` / `rejected`. */
@@ -88,25 +85,23 @@ export type PersonalAgentDecidedAct =
 
 // ─── Executed acts (decision + durable effects) ──────────────────────────────
 
-/** Why a reply-stage delivery fell back to the fixed server-owned copy. */
-export type PersonalAgentReplyFallbackReason = "safety_check_failed" | "model_error";
-
 export type PersonalAgentExecutedAct =
   | {
-    tool: "message_user" | "ask";
+    tool: "message_user";
     text: string;
     options?: string[];
     sessionId: string;
     messageId: string;
-    /** 'reply' marks the streaming reply stage's delivery. */
-    stage?: "reply";
-    fallback?: PersonalAgentReplyFallbackReason;
   }
   | {
     tool: "kickoff";
     round: number;
-    /** How many negotiations this kickoff actually opened or resumed. */
+    /** How many negotiation tasks the round settled with; preserves the round-size semantics. */
     opened: number;
+    /** How many matches this kickoff tried to open or resume. */
+    attempted: number;
+    /** How many of those attempts failed before or during negotiation opening. */
+    failed: number;
     reasoning: string;
   }
   | {
@@ -124,6 +119,30 @@ export type PersonalAgentExecutedAct =
     outcome: string;
     counterparty?: string;
     reason?: string;
+  };
+
+/**
+ * Feedback from the turn runner about a tool choice it refused before any
+ * write. This helps the next choice recover without pretending that the call
+ * executed or recording it in the act ledger.
+ */
+export type PersonalAgentNonDurableObservation =
+  | {
+    kind: "irreversible_tool_refused";
+    tool: "kickoff";
+    reason: string;
+  }
+  | {
+    kind: "irreversible_tool_refused";
+    tool: "promote" | "reject";
+    negotiationId: string;
+    reason: string;
+  }
+  | {
+    kind: "irreversible_tool_refused";
+    tool: "accept_opportunity";
+    opportunityId: string;
+    reason: string;
   };
 
 // ─── Host ports ──────────────────────────────────────────────────────────────
@@ -178,7 +197,7 @@ export interface PersonalAgentConversationPort {
   }): Promise<string>;
 }
 
-/** Token transport for the streaming reply stage. */
+/** Token transport for completed conversational messages. */
 export interface PersonalAgentReplyStreamPort {
   publish(messageId: string, chunk: { seq: number; content: string }): Promise<void>;
 }
@@ -246,21 +265,17 @@ export interface PersonalAgentDeps {
 
 // ─── Judgment seam ───────────────────────────────────────────────────────────
 
-/** A composed reply: the prose the principal reads, plus optional chips. */
-export interface PersonalAgentReply {
-  text: string;
-  options?: string[];
-}
-
 /**
  * Everything the agent asks a model for. One interface so a host, a test or
  * an eval can drive the whole cycle without a provider.
  */
 export interface PersonalAgentJudgment {
-  /** One intent-scope turn: context in, decided acts out. */
-  decide(context: PersonalAgentTurnContext): Promise<PersonalAgentDecidedAct[]>;
-  /** The conversational reply for a principal-message turn, after the acts ran. */
-  reply(context: PersonalAgentTurnContext, executed: PersonalAgentExecutedAct[]): Promise<PersonalAgentReply | null>;
+  /** One intent-scope choice. Durable results and refused calls inform the next choice. */
+  next(
+    context: PersonalAgentTurnContext,
+    executed: PersonalAgentExecutedAct[],
+    nonDurable?: PersonalAgentNonDurableObservation[],
+  ): Promise<PersonalAgentDecidedAct>;
   /** The plan for a round, written into the DM before any negotiation opens. */
   strategy(context: PersonalAgentTurnContext): Promise<string>;
   /** One negotiation's brief. Called once per match, in parallel. */

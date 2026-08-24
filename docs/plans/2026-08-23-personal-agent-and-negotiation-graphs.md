@@ -49,7 +49,7 @@ acceptance is not owner approval.
 - **Brief** — the per-negotiation, **per-seat** context an IS-A writes for its
   OWN seat. Not memory. The only thing from a DM that reaches a negotiation
   thread. The initiator's kickoff writes its own; the counterparty's agent
-  writes its own at its first turn (D18/D51).
+  writes its own at its first turn (D51).
 - **Strategy** — IS-A's plan for a round of negotiations, written in the DM
   before kickoff, visible to and correctable by the principal.
 - **Round** — one kickoff and the negotiations it started, ending when all of
@@ -61,8 +61,8 @@ acceptance is not owner approval.
 discovery persists matches for intent I          (all of them — no cap)
         │  event: matches_ready
         ▼
-IS-A ── (may ask first) ── strategy in DM ── brief × N in parallel ── kickoff
-                                        (up to MAX_MATCHES; the rest next round)
+IS-A ── conversational tool loop ── strategy in DM ── brief × N in parallel ── kickoff
+                                          (up to MAX_MATCHES; the rest next round)
         ▲                                                     │
         │                                                     │  negotiator turns flow A↔B
         │                                                     │  until every negotiation of
@@ -70,9 +70,8 @@ IS-A ── (may ask first) ── strategy in DM ── brief × N in parallel 
         │                                                     ▼
         └────────────────── reflect ◄────── all paused ───────┘
                       │
-              phase 1 · ASK    questions for the principal, merged across negotiations
-                      │        k = 0 → ACT; else post in DM, wait until all answered
-              phase 2 · ACT    reject / promote to pending / re-kick the rest with new briefs
+              The same conversational loop may ask, act, or do both in
+              context order. Each completed tool result informs the next choice.
 ```
 
 The negotiator never ends a negotiation. IS-A is the only terminator, and it
@@ -83,15 +82,14 @@ learns of it on its next reflect turn, if one triggers.
 
 ### Kickoff
 
-1. `matches_ready(I)` arrives. IS-A takes a DM turn. It may ask the principal
-   before reaching out; if it asks, kickoff waits for the answers and the
-   turn re-enters here.
+1. `matches_ready(I)` arrives. IS-A takes a normal DM turn and chooses whether
+   kickoff is useful in the current context.
 2. IS-A writes the **strategy** into the DM.
 3. IS-A derives one **brief** per match — intent, DM so far, strategy — in
    parallel, a few at a time. That brief is for IS-A's OWN seat; the
-   counterparty's agent writes its own (D18/D51).
+   counterparty's agent writes its own (D51).
 4. IS-A kicks off **every eligible match it was shown** — the same list the
-   prompt rendered, capped at `MAX_MATCHES` (D19/D52). No per-match selection
+   prompt rendered, capped at `MAX_MATCHES` (D52). No per-match selection
    by the agent: the negotiator filters by negotiating, and IS-A judges at
    reflect where it has turns to judge on. Matches over the cap, ones awaiting
    introducer approval, ones already the principal's to decide (`pending`) and
@@ -135,20 +133,15 @@ so an early first pause cannot dedupe away the round's real reflect.
 
 ### Reflect
 
-**Phase 1 — ASK.** Input: every paused negotiation **of the signal** (not just
-of the round — a negotiation a later kickoff left behind must stay decidable),
-with its reason, plus the payload of the pauses OUR OWN seat made, plus the
-DM. A counterparty's payload is theirs to hand to their own principal. IS-A composes the questions the principal must answer
-before anything is decided — `needs_principal` payloads merged and deduped
-across negotiations (one answer often serves several) plus its own gaps. If
-there are none, go to ACT. Otherwise post them in the DM and wait.
+Input is every paused negotiation **of the signal** (not just of the round — a
+negotiation a later kickoff left behind must stay decidable), with its reason,
+the payload of pauses OUR OWN seat made, and the DM. A counterparty's payload
+is theirs to hand to their own principal. IS-A uses that context in the same
+conversational tool loop as any other event. It can ask about a missing fact,
+act on an independent resolved matter, or do both; an executed result is shown
+before it chooses again.
 
-Answers are ordinary DM messages. On each, IS-A judges "all answered?" and
-keeps asking or clarifying until yes. The principal may say "go with what you
-have"; IS-A may then act, and may re-kick a subset when the unanswered
-questions concern only the others.
-
-**Phase 2 — ACT.** Only with the answers in hand:
+When appropriate, the available effects include:
 
 - `reject` — opportunity `rejected`, negotiation closed.
 - `promote` — opportunity `pending`; the principal sees it on the Radar.
@@ -156,8 +149,7 @@ questions concern only the others.
   DM + this negotiation's thread + the answers), in parallel, then kick all
   off together. Round counter bumps.
 
-Verdicts are never executed in phase 1: an answer to a knowledge question may
-change them. "Questions first" is ordering in code, not a prompt rule.
+Questions are ordinary `message_user` prose, not a privileged phase or tool.
 
 ## The two graphs
 
@@ -172,21 +164,19 @@ One LangGraph, one persona, one agent loop (today's persona-neutral
 | Input | Scope | What runs |
 |---|---|---|
 | `{ userId }` | global | deferred — graph-level input error for now |
-| `{ userId, intentId, event: user_message }` | IS-A | DM turn; includes "are my open questions answered? → ACT" |
-| `{ userId, intentId, event: matches_ready }` | IS-A | kickoff turn (may ask → strategy → briefs → open all) |
-| `{ userId, intentId, event: all_paused }` | IS-A | reflect phase 1 (→ phase 2 when nothing to ask) |
+| `{ userId, intentId, event: user_message }` | IS-A | conversational DM turn |
+| `{ userId, intentId, event: matches_ready }` | IS-A | conversational turn with new-match context |
+| `{ userId, intentId, event: all_paused }` | IS-A | conversational turn with paused-negotiation context |
 | `{ userId, negotiationId, intentId? }` | negotiator | one turn: read thread + its OWN brief → one verb or one pause. `intentId` is the speaking seat's signal when it has bound one (D21) |
 
 Scope decides: which conversation is read and written (the signal DM vs the
-negotiation thread), the prompt fragment, the verb set, and who the reply
-goes to (principal vs counterparty). `matches_ready` and `all_paused` are the
-same node — "look at the state, maybe ask, else act" — differing only in what
-ACT does.
+negotiation thread), the prompt fragment, the verb set, and who the reply goes
+to (principal vs counterparty). All intent events enter the same sequential
+conversation loop; background events are context, not a separate workflow state.
 
-IS-A verbs: `message_user` (with optional canned-reply options), `ask`
-(questions that block ACT), `kickoff`, `reject`, `promote`, `note_dossier` /
-`retire_dossier`, `accept_opportunity` on the principal's explicit word
-(unchanged from phase 2 of the IntentAgent plan). Verbs are tools; effects go
+IS-A verbs: `message_user` (with optional canned-reply options, including
+questions), `kickoff`, `reject`, `promote`, `note_dossier` / `retire_dossier`,
+`accept_opportunity` on the principal's explicit word. Verbs are tools; effects go
 through the domain graphs: kickoff/reject/promote/turns → NegotiationGraph;
 accept → the opportunity path.
 
@@ -202,7 +192,7 @@ dossier and reply stream become ports the host implements.
 | `{ negotiationId, brief, byUserId }` | resume with new context for ONE named seat |
 | `{ negotiationId, turn, byUserId }` | apply a submitted turn — from AgentGraph or an external agent, same verbs, same validation → continue or pause. `byUserId` is the submitting seat; `apply` rejects a turn whose `byUserId` is not the speaker it computed |
 | `{ negotiationId, pause: counterparty_silent \| open_failed }` | a timeout fired, or an open failed and left a live task |
-| `{ negotiationId, verdict: pending \| reject, reasoning, byUserId }` | resolve — the only terminal write on the negotiation, from IS-A ACT. `byUserId` is the authenticated resolving seat, which scopes the private outcome reasoning. It also closes the negotiation behind an owner verdict on the opportunity, and never writes over an already-terminal opportunity status (D23) |
+| `{ negotiationId, verdict: pending \| reject, reasoning, byUserId }` | resolve — the only terminal write on the negotiation, chosen by the agent. `byUserId` is the authenticated resolving seat, which scopes the private outcome reasoning. It also closes the negotiation behind an owner verdict on the opportunity, and never writes over an already-terminal opportunity status (D23) |
 | `{ negotiationId }` | read |
 
 `reasoning` is recorded on the outcome artifact and travels with the opportunity status — it is what the Radar card / closed card render. It is private to the resolving side: never persisted as a message into the A2A thread. A reject reason may contain principal-private material; the counterparty only ever sees that the negotiation closed.
@@ -316,7 +306,7 @@ Each step states its breaks in the PR and bumps the protocol major.
 Every solo design call taken while building this plan, with the alternative
 rejected. D1-D14 (the NegotiationGraph rewrite and the persona collapse) live
 in [2026-08-24-overnight-decisions.md](2026-08-24-overnight-decisions.md);
-D15+ below are the AgentGraph step's. D18-D20 in that log are three design
+D15+ below are the AgentGraph step's. D18-D20 in the overnight log are three design
 questions review rounds 2-5 raised and I first deferred; the owner's standing
 rule is that a legitimate design question gets DECIDED with the alternatives
 written down, not handed back, so they are decided there and implemented here
@@ -341,29 +331,31 @@ Alternative rejected: passing the already-loaded `{ brief, thread, isOpening }`
 `{ userId, intentId, negotiationId }` input and gives the graph two ways to
 know a thread.
 
-### D17. `wait` is deleted; an empty act list is the answer
-Chose: a turn that decides nothing returns no acts. The ledger already records
-what woke the turn.
-Alternative rejected: keeping `wait` as an explicit ledgered non-act — one
-more verb for a state the empty list already expresses.
+### D17. Intent scope is a sequential conversational tool loop
+Chose: each turn selects one tool, sees its durable result, then selects the
+next move or a natural `message_user` response. Questions are normal prose and
+may accompany independent work.
+Alternative rejected: a precomputed batch followed by a separate narration
+call — it hid tool outcomes from the next decision and imposed an unnecessary
+conversation policy.
 
-### D18. "Questions block ACT" is enforced in the validator, for every event
-Chose: any `ask` in a decided act list drops the `kickoff`/`promote`/`reject`
-acts beside it, on user_message turns as well as reflect turns.
-Alternative rejected: leaving it to the prompt — the plan says ordering in
-code, not a prompt rule, and the case it protects (an answer that changes the
-verdict) is exactly the one a model is most likely to get wrong.
+### D18. Irreversible calls are bounded within one assembled turn
+Chose: at most one kickoff, one promote/reject verdict per negotiation, and
+one acceptance per opportunity can execute against a turn's snapshot.
+Repeated choices are refused without a write or ledger entry, and a
+non-durable refusal observation lets the agent choose again from changed context.
+Alternative rejected: trusting a static snapshot after an irreversible write
+— it can re-round the same matches or resolve a negotiation twice.
 
-### D19. Kickoff runs last in a turn and re-reads the match list
-Chose: every other act executes in the model's order, then kickoff.
-Alternative rejected: strict model order — a promote or reject moves the
-opportunity's status, and a kickoff reading the turn's stale list would
-re-open the match it had just resolved.
+### D19. Kickoff follows the model's sequential choice
+Chose: kickoff executes when selected and reads the turn's bounded targets;
+the per-turn guard prevents a second kickoff from reusing that snapshot.
+Alternative rejected: graph-level reordering behind a precomputed batch.
 
 ### D20. A kickoff that opens nothing leaves the round unstamped
 Chose: no stamp, no reflect enqueue, `opened: 0` on the ledgered act.
 Alternative rejected: stamping zero — a stamped empty round is instantly
-"all paused", so reflect fires, ACT kicks off again, and the loop never ends.
+"all paused", so reflect fires, the agent kicks off again, and the loop never ends.
 
 ### D21. A capped negotiation is never re-kickable — read from its OWN state
 **Restated after review; the first version of this decision was wrong.**
@@ -399,7 +391,7 @@ mechanisms.
 
 ### D22. A pause payload stays scoped to the seat that paused
 Chose: reflect sees the full payload of OUR seat's pauses (the
-`needs_principal` questions ASK merges) and only the reason for the
+`needs_principal` questions the agent may surface) and only the reason for the
 counterparty's. The shared thread carries everything else.
 Alternative rejected: exposing every payload of the round — the counterparty's
 `needs_principal` question is for THEIR principal, and their
@@ -488,13 +480,9 @@ Chose: the validator drops the offending act and keeps the rest, exactly as
 `normalizeMessageOptions` drops a malformed chip, and returns `null` — the
 retry-then-throw path — only for output that did not parse at all.
 
-The first version also returned `null` when everything dropped, which on a
-client-message turn is the common case: a model that answers with nothing but
-an acts-stage `message_user` had every act dropped, was retried against an
-identical prompt with no feedback, produced the same output, and threw — so the
-client got the failure copy instead of the reply the reply stage writes anyway.
-An emptied list is a turn that decided nothing, and deciding nothing is a real
-answer.
+The pre-chat-first version also treated an empty batch as a retryable failure.
+The sequential loop instead requires a single valid next choice and uses an
+honest terminal fallback only when it cannot safely continue after an effect.
 
 Alternative rejected: refusing the whole round trip on any impossible act (the
 first shipped behaviour) — it discards the client's actual request, a verdict
@@ -668,13 +656,13 @@ queued reflect runs against an empty round and wakes the agent with "every
 negotiation of this round has paused" and nothing listed, inviting a kickoff
 that strands the round holding the actual work.
 
-### D44. The reply stage never throws — the whole stage, not just the model call
-Chose: the delivery and the ledger append inside the reply stage are guarded
-too, the way `recordKickoff` already guards its ledger.
-Alternative rejected: guarding only the model call (the shipped shape) — the
-acts are already executed and the reply may already be on the principal's
-screen, so a database blip after delivery failed the job and the retry
-re-decided and re-executed every verdict and kickoff on top of it.
+### D44. Durable effects terminate safely on later failure
+Chose: after any delivered principal message or durable tool result, a later
+failure ends the turn with an honest fallback rather than retrying the inbox
+job. Delivery and ledger writes are guarded where their effects have landed.
+Alternative rejected: retrying after a later model or database failure — a
+strategy or verdict may already be visible or durable, and replaying it can
+duplicate work.
 
 ### D45. A failed wake is kept, and its slot is not reused
 Chose: `matches_ready` jobs keep failed records, and a slot only accepts a new
@@ -741,7 +729,7 @@ BUNDLED validator bounds the index, and `judgment` is a documented swap seam,
 so a host or fixture implementation would throw mid-turn and abandon (then
 retry) every act already executed above it.
 
-### D51. One brief per SEAT, authored by that seat's own agent (log D18)
+### D51. One brief per SEAT, authored by that seat's own agent (overnight log D18)
 Chose: `brief` stops being one column read by whoever speaks. It is keyed by
 the seat's userId, the initiator's kickoff writes only its own, and a seat that
 arrives without one authors it at its first turn — `negotiationNode` already
@@ -764,7 +752,7 @@ counterparty's principal, so it would invent them. Migration 0148 drops
 `brief` for `briefs` with no backfill: a seat without one authors it, which is
 the new mechanism recovering in-flight rows rather than a migration guessing.
 
-### D52. Kickoff opens exactly the matches the agent decided from (log D19)
+### D52. Kickoff opens exactly the matches the agent decided from (overnight log D19)
 Chose: at most `MAX_MATCHES` (12) — the same cap `assembleContext` uses for
 the prompt — with the opens running three at a time. The agent decided from
 twelve, so it opens those twelve; the rest wait for the next round, which is
@@ -792,8 +780,10 @@ first replica.
 Chose: one policy for the whole kickoff region. Before the bump a failure is
 safe to retry, so it propagates. After it, the turn has done irreversible,
 principal-visible work — a strategy message and a new round — so every failure
-below is logged, ledgered and carried past: the compensation, the round read,
-the size stamp (retried three times first) and the reflect enqueue. A round
+below is logged, ledgered and carried past. Open failures also remain explicit
+in the accumulated kickoff result so the next conversational choice cannot
+mistake a compensated task for a successful open. The compensation, round read,
+size stamp (retried three times first) and reflect enqueue do not throw. A round
 left unsettled by one of them is recovered by the interrupted-round repair
 (D53), which exists for exactly that.
 Alternative rejected: letting the stamp or the compensation throw so a queue
@@ -804,7 +794,7 @@ the two halves of that contradiction; this states one policy for the region.
 
 ### D55. A negotiation binds a signal PER SEAT (log D21)
 Chose: `metadata.intentId` / `metadata.round` become `metadata.seats`, one
-binding per seat keyed by intent id (`{ userId, round }`) — the shape D18
+binding per seat keyed by intent id (`{ userId, round }`) — the shape D51
 already established for briefs. A kickoff binds its own seat and touches no
 other's, so a re-kick from either side can neither overwrite the other's brief
 nor leave the task in neither round: both were guard-able bugs and are now
@@ -843,15 +833,24 @@ to the principal as fact, which is the exact leak the gate exists for. If a
 future change widens it, widen it for every delivered surface at once, not
 here.
 
-### D57. A background turn never ends in silence
-Chose: an intent-scope turn on `matches_ready` or `all_paused` that produced
-no acts at all delivers one fixed line saying so.
-The doc's node is "look at the state, maybe ask, else act" — deciding NEITHER
-is not a state that contract has, but a model can return an empty act list.
-There is no reply stage behind a background event, so the turn would end
-silently; on reflect it would also consume the round's one retained job, and
-nothing would ever wake that signal again. The line keeps the loop reachable:
-the principal's next message is an ordinary turn that can ask or act.
-Alternative rejected: treating an empty list as a failure and retrying — the
-retry runs an identical prompt (D30), so it fails the same way and loses the
-wake instead of ending it honestly.
+### D57. A background turn has an explicit conversational terminal response
+Chose: every intent event, including `matches_ready` and `all_paused`, ends
+with the model's `message_user` response or an honest bounded-loop fallback.
+The terminal choice is tracked independently from earlier strategy messages,
+so a kickoff cannot hide exhaustion. This keeps the principal informed when a
+background wake has no further safe move.
+Alternative rejected: ending after effects merely because a background event
+has no separate narration phase.
+
+### D58. Awaited turns have an execution deadline, not only a controller wait
+Chose: a user-message job gets seventy seconds from its BullMQ enqueue
+timestamp, leaving twenty seconds inside the controller's ninety-second wait;
+an already-stale job is unrecoverable and never invokes the graph. Background
+jobs get a fresh seventy-second budget. The worker installs the remaining
+budget in request context, choice/prose calls add a fifteen-second per-call
+bound, and the intent loop checks cancellation before each new action. A
+kickoff checks again before strategy delivery and the round bump; after the
+bump its existing compensation and settlement region still finishes.
+Alternative rejected: timing out only the waiting controller — the serialized
+worker could continue mutating state or retry after the client had already
+received fixed failure copy.

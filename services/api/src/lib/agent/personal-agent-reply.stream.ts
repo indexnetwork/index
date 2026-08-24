@@ -1,5 +1,5 @@
 /**
- * Token transport for the PersonalAgent's streaming reply stage.
+ * Token transport for the PersonalAgent's completed conversational messages.
  *
  * The turn runs on the inbox worker — serialization stays THE inbox — so the
  * reply's chunks cross back to the waiting chat controller over Redis
@@ -12,9 +12,8 @@
  * channel, because the channel is a latency optimization and the job result
  * is the truth.
  *
- * Chunks are published only AFTER the reply passed the prose-safety check
- * and was persisted (check-then-stream — see the protocol reply stage):
- * nothing unchecked ever crosses this transport.
+ * Chunks are published only after each message passed its prose-safety check
+ * and was persisted; nothing unchecked crosses this transport.
  *
  * In hermetic test mode (the same `useHermeticRedis()` guard the queue
  * factory applies) the transport is an in-process emitter, so controller and
@@ -27,7 +26,7 @@ import { log } from '../log';
 
 const logger = log.lib.from('personal-agent-reply.stream');
 
-/** One ordered slice of the checked reply. `seq` starts at 1 per turn. */
+/** One ordered slice of a checked message. `seq` starts at 1 per turn. */
 export interface PersonalAgentReplyChunk {
   seq: number;
   content: string;

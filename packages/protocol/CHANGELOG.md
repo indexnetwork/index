@@ -20,6 +20,43 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 34.0.0 - 2026-08-24
+
+### Breaking
+
+- **PersonalAgent intent turns use one sequential judgment choice at a time.**
+  `PersonalAgentJudgment.decide(context)` and
+  `PersonalAgentJudgment.reply(context, executed)` are replaced by
+  `next(context, executed, nonDurable?)`. Each call returns one
+  `PersonalAgentDecidedAct`; completed effects and refused irreversible calls
+  inform the next choice before the turn ends with `message_user`.
+- **The dedicated `ask` act is removed.** Questions are ordinary
+  `message_user` responses, so an unresolved question about one matter no
+  longer blocks an independent action on another. `PersonalAgentDecidedAct`
+  and `PersonalAgentExecutedAct` no longer include `ask`, and executed
+  `message_user` acts no longer carry reply-stage `stage` or `fallback`
+  fields.
+- **Executed kickoff results gain required attempt accounting.** Every
+  `PersonalAgentExecutedAct` with `tool: 'kickoff'` now includes `attempted`
+  and `failed` alongside `opened`.
+- **The separate reply-stage API is deleted.** Removed root exports:
+  `PERSONAL_AGENT_REPLY_FALLBACK`, `renderPersonalAgentReplyStage`,
+  `validateDecidedActs`, `PersonalAgentReply`, and
+  `PersonalAgentReplyFallbackReason`. Use the singular `validateDecidedAct`
+  for one choice.
+
+### Added
+
+- `PersonalAgentNonDurableObservation`, the feedback shape for an
+  irreversible tool choice refused before any write or ledger entry.
+
+### Changed
+
+- Intent-scope events now share one bounded, result-informed conversational
+  tool loop. Repeated irreversible calls are refused against the turn's
+  snapshot, and a failure after durable work or tool-budget exhaustion ends
+  with honest terminal copy instead of retrying earlier effects.
+
 ## 33.0.0 - 2026-08-24
 
 ### Breaking

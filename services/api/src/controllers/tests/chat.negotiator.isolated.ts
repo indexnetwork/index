@@ -262,7 +262,7 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     capturedStreamInputs.length = 0;
     agentTurnEvents.length = 0;
     scriptedAgentTurn = async (event) => ({
-      acts: [{ tool: 'message_user', text: 'One match is waiting on you.', sessionId: event.sessionId, messageId: 'assistant-1', stage: 'reply' }],
+      acts: [{ tool: 'message_user', text: 'One match is waiting on you.', sessionId: event.sessionId, messageId: 'assistant-1' }],
       messages: ['One match is waiting on you.'],
     });
 
@@ -309,7 +309,7 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
     capturedPersonas.length = 0;
     agentTurnEvents.length = 0;
     scriptedAgentTurn = async (event) => ({
-      acts: [{ tool: 'message_user', text: 'Still on it.', sessionId: event.sessionId, messageId: 'assistant-2', stage: 'reply' }],
+      acts: [{ tool: 'message_user', text: 'Still on it.', sessionId: event.sessionId, messageId: 'assistant-2' }],
       messages: ['Still on it.'],
     });
 
@@ -334,7 +334,7 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
       await publishPersonalAgentReplyChunk(event.messageId, { seq: 1, content: 'Declined that match. ' });
       await publishPersonalAgentReplyChunk(event.messageId, { seq: 2, content: 'Nothing else needs you.' });
       return {
-        acts: [{ tool: 'message_user', text: 'Declined that match. Nothing else needs you.', sessionId: event.sessionId, messageId: 'assistant-3', stage: 'reply' }],
+        acts: [{ tool: 'message_user', text: 'Declined that match. Nothing else needs you.', sessionId: event.sessionId, messageId: 'assistant-3' }],
         messages: ['Declined that match. Nothing else needs you.'],
       };
     };

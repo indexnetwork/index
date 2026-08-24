@@ -6,9 +6,14 @@
  * overlap. Hermetic BullMQ double, no Redis, no database, no model.
  */
 import { describe, expect, it } from 'bun:test';
+import { requestContext, setRequestContextStore } from '@indexnetwork/protocol';
 import type { PersonalAgentInput, PersonalAgentResult } from '@indexnetwork/protocol';
+import { UnrecoverableError } from 'bullmq';
 
-import { PersonalAgentQueue } from '../personal-agent.queue';
+import { requestContext as hostRequestContext } from '../../lib/request-context';
+import { PERSONAL_AGENT_EXECUTION_BUDGET_MS, PersonalAgentQueue } from '../personal-agent.queue';
+
+setRequestContextStore(hostRequestContext);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -180,7 +185,7 @@ describe('PersonalAgentQueue serialization', () => {
   it('runUserMessageTurn returns what the agent did', async () => {
     const result: PersonalAgentResult = {
       scope: 'intent',
-      acts: [{ tool: 'message_user', text: 'Right here.', sessionId: 'session-1', messageId: 'message-1', stage: 'reply' }],
+      acts: [{ tool: 'message_user', text: 'Right here.', sessionId: 'session-1', messageId: 'message-1' }],
       messages: ['Right here.'],
     };
     await withQueue(buildQueue(() => result), async ({ queue }) => {
@@ -194,11 +199,120 @@ describe('PersonalAgentQueue serialization', () => {
   });
 
   it('a graph-level error fails the turn — the awaited lane rejects and the job stays retryable', async () => {
-    await withQueue(buildQueue(() => ({ scope: 'intent', acts: [], messages: [], error: 'provider down' })), async ({ queue }) => {
+    await withQueue(buildQueue(() => ({ scope: 'intent', acts: [], messages: [], error: 'provider down' })), async ({ queue, invocations }) => {
       await expect(queue.runUserMessageTurn({
         userId: 'user-1', intentId: 'intent-1', event: 'user_message',
         sessionId: 'session-1', messageId: 'reply-3', text: 'hello',
       }, { timeoutMs: 500 })).rejects.toThrow();
+      expect(invocations()).toBe(3);
     });
+  });
+
+  it('a stale queued user message is unrecoverable and never invokes the graph', async () => {
+    const built = buildQueue(() => idle);
+    try {
+      const job = await built.queue.addUserMessageEvent({
+        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
+        sessionId: 'session-1', messageId: 'reply-stale', text: 'hello',
+      });
+      job.timestamp = Date.now() - PERSONAL_AGENT_EXECUTION_BUDGET_MS - 1;
+      built.queue.startWorker();
+
+      await expect(job.waitUntilFinished(undefined as never, 1_000)).rejects.toBeInstanceOf(UnrecoverableError);
+      expect(built.invocations()).toBe(0);
+      expect(job.attemptsMade).toBe(1);
+    } finally {
+      await built.queue.close();
+    }
+  });
+
+  it('a deadline abort that fails invocation becomes unrecoverable', async () => {
+    const queue = new PersonalAgentQueue(async () => {
+      const signal = requestContext.getStore()?.abortSignal;
+      await new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
+      throw new Error('model aborted');
+    });
+    try {
+      const job = await queue.addUserMessageEvent({
+        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
+        sessionId: 'session-1', messageId: 'reply-deadline', text: 'hello',
+      });
+      job.timestamp = Date.now() - PERSONAL_AGENT_EXECUTION_BUDGET_MS + 25;
+
+      await expect(queue.processJob(job)).rejects.toBeInstanceOf(UnrecoverableError);
+    } finally {
+      await queue.close();
+    }
+  });
+
+  it('a background job gets a fresh execution-relative budget and preserves request context', async () => {
+    let captured: ReturnType<typeof requestContext.getStore>;
+    const queue = new PersonalAgentQueue(async () => {
+      captured = requestContext.getStore();
+      return idle;
+    });
+    try {
+      const job = await queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-background' });
+      job.timestamp = Date.now() - PERSONAL_AGENT_EXECUTION_BUDGET_MS * 2;
+
+      const result = await hostRequestContext.run(
+        { originUrl: 'https://queue.example.test' },
+        () => queue.processJob(job),
+      );
+
+      expect(result).toEqual(idle);
+      expect(captured?.originUrl).toBe('https://queue.example.test');
+      expect(captured?.abortSignal).toBeInstanceOf(AbortSignal);
+      expect(captured?.abortSignal?.aborted).toBe(false);
+    } finally {
+      await queue.close();
+    }
+  });
+
+  it('a background deadline failure stays retryable instead of becoming unrecoverable', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout')!;
+    const deadline = new AbortController();
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: () => deadline.signal,
+    });
+    const queue = new PersonalAgentQueue(async () => {
+      const signal = requestContext.getStore()?.abortSignal;
+      await new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
+      throw new Error('background model aborted');
+    });
+    try {
+      const job = await queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-background-deadline' });
+      const processing = queue.processJob(job);
+      deadline.abort(new DOMException('deadline', 'TimeoutError'));
+
+      await expect(processing).rejects.toThrow('background model aborted');
+      await expect(processing).rejects.not.toBeInstanceOf(UnrecoverableError);
+    } finally {
+      Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+      await queue.close();
+    }
+  });
+
+  it('preserves inherited cancellation separately from the queue deadline', async () => {
+    const inherited = new AbortController();
+    const queue = new PersonalAgentQueue(async () => {
+      const signal = requestContext.getStore()?.abortSignal;
+      await new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
+      throw new Error('caller cancelled');
+    });
+    try {
+      const job = await queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-cancelled' });
+      const processing = hostRequestContext.run(
+        { abortSignal: inherited.signal },
+        () => queue.processJob(job),
+      );
+      inherited.abort(new DOMException('caller cancelled', 'AbortError'));
+
+      await expect(processing).rejects.toThrow('caller cancelled');
+      await expect(processing).rejects.not.toBeInstanceOf(UnrecoverableError);
+    } finally {
+      await queue.close();
+    }
   });
 });
