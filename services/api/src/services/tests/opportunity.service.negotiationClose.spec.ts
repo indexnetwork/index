@@ -135,7 +135,7 @@ function createWorld() {
     unhideConversation: mock(async () => {}),
   } as unknown as OpportunityControllerDatabase;
 
-  const service = new OpportunityService(opportunityDb, undefined, undefined, {}, undefined, {}, closer);
+  const service = new OpportunityService(opportunityDb, undefined, undefined, {}, closer);
 
   return { opportunity, task, reflectJobs, artifacts, negotiationDb, service };
 }
@@ -155,7 +155,11 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
     expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);
     expect(world.reflectJobs).toEqual([{ userId: USER_A, intentId: INTENT_ID, round: ROUND }]);
     expect(world.artifacts).toEqual([
-      { verdict: 'reject', reasoning: 'Closed by the owner declining this match.' },
+      {
+        verdict: 'reject',
+        reasoning: 'Closed by the owner declining this match.',
+        resolvedByUserId: USER_A,
+      },
     ]);
   });
 

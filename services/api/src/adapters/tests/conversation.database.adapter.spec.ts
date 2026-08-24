@@ -767,8 +767,7 @@ describe('ConversationDatabaseAdapter', () => {
       });
       await adapter.updateTaskState(current.id, 'working');
 
-      // Pre-rewrite rows: no seat binding, and one of them parked in a state
-      // the three-state lifecycle no longer has.
+      // Pre-rewrite rows have no seat binding.
       const legacyWorking = await adapter.createTask(conversation.id, {
         type: 'negotiation',
         opportunityId: `legacy-inert-working-${run}`,
@@ -784,7 +783,7 @@ describe('ConversationDatabaseAdapter', () => {
         candidateUserId: counterpart,
         intentId,
       });
-      await adapter.updateTaskState(legacyOffContract.id, 'input_required');
+      await adapter.updateTaskState(legacyOffContract.id, 'paused');
 
       // Only the round-3 row counts; a legacy row can neither inflate the
       // count nor sit outside it while still being resumable.

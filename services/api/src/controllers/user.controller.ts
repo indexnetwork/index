@@ -55,7 +55,7 @@ type NegotiationOutcomePart = { kind?: string; data?: { hasOpportunity?: boolean
 
 /**
  * Maps a negotiation thread into the API negotiation DTO.
- * @param thread - Current task and every continuation segment in the thread
+ * @param thread - Current task and every task in the opportunity thread
  * @param messagesMap - Messages keyed by task id (turn data source)
  * @param userMap - Participant users keyed by id (counterparty + speaker resolution)
  * @param selfId - The id treated as "self" for counterparty/role selection

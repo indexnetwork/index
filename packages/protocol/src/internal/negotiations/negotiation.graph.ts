@@ -49,7 +49,8 @@ export type NegotiationGraphInput =
   /** `byUserId` is the seat submitting this turn; apply rejects a turn whose byUserId isn't the computed next speaker. */
   | { negotiationId: string; turn: NegotiationTurn; byUserId: string }
   | { negotiationId: string; pause: NegotiationSystemPauseReason }
-  | { negotiationId: string; verdict: NegotiationVerdict; reasoning: string }
+  /** A verdict is authored by one authenticated seat, never by an anonymous resolver. */
+  | { negotiationId: string; verdict: NegotiationVerdict; reasoning: string; byUserId: string }
   | { negotiationId: string };
 
 export interface NegotiationGraphResult {
@@ -156,47 +157,6 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     // ── open ──
     if ("opportunityId" in input) {
       const existing = await deps.database.getNegotiationTaskForOpportunity(input.opportunityId);
-      if (existing) {
-        // WHICH SEAT is kicking off? Never assume it is `sourceUserId`.
-        // Opportunities are pair-deduped, so the same row is in BOTH actors'
-        // match lists: if Bob's agent opened this negotiation, Alice's later
-        // kickoff arrives here too. Writing the brief to `sourceUserId` would
-        // then overwrite BOB's brief with ALICE's, and his seat would argue
-        // her constraints — exactly what a per-seat brief exists to prevent.
-        // Resolve the seat from the intent's owner, the same way the create
-        // branch below does.
-        const kickingIntent = await deps.database.getIntent(input.intentId);
-        if (!kickingIntent) return { phase: "error", error: "Intent not found" };
-        const seatUserId = kickingIntent.userId;
-        if (seatUserId !== existing.metadata.sourceUserId && seatUserId !== existing.metadata.candidateUserId) {
-          return { phase: "error", error: "Intent owner is not a seat on this negotiation" };
-        }
-
-        const messages = await deps.database.getNegotiationMessages(existing.id);
-        await deps.database.setNegotiationBrief(existing.id, seatUserId, input.brief);
-        // Bind THIS seat's signal and round, and only this seat's. Both sides
-        // negotiate here for their own signal, so both bindings live side by
-        // side: a re-kick from either can no longer overwrite the other's
-        // round, and there is no arrangement in which a task ends up in
-        // neither round. That is structural now, not a guard.
-        const binding = existing.metadata.seats[input.intentId];
-        if (binding?.round !== input.round || binding.userId !== seatUserId) {
-          await deps.database.bindNegotiationSeat(existing.id, input.intentId, { userId: seatUserId, round: input.round });
-        }
-        return {
-          task: {
-            ...existing,
-            briefs: { ...existing.briefs, [seatUserId]: input.brief },
-            metadata: {
-              ...existing.metadata,
-              seats: { ...existing.metadata.seats, [input.intentId]: { userId: seatUserId, round: input.round } },
-            },
-          },
-          turns: turnsFromMessages(messages),
-          phase: existing.state === "completed" ? "read" : "turn",
-        };
-      }
-
       const opportunity = await deps.database.getOpportunity(input.opportunityId);
       if (!opportunity) return { phase: "error", error: "Opportunity not found" };
       // Actor selection cannot key off `actor.intent === input.intentId`: a
@@ -222,24 +182,41 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       const candidateActor = opportunity.actors.find((a) => a.userId !== intent.userId && a.role !== "introducer");
       if (!sourceActor || !candidateActor) return { phase: "error", error: "Opportunity does not have two actors" };
 
-      const conversation = await deps.database.createNegotiationConversation(sourceActor.userId, candidateActor.userId);
-      const task = await deps.database.createNegotiationTask({
-        conversationId: conversation.id,
-        briefs: { [sourceActor.userId]: input.brief },
-        metadata: {
-          type: "negotiation",
-          opportunityId: input.opportunityId,
-          sourceUserId: sourceActor.userId,
-          candidateUserId: candidateActor.userId,
-          initiatorUserId: sourceActor.userId,
-          networkId: sourceActor.networkId,
-          seats: { [input.intentId]: { userId: sourceActor.userId, round: input.round } },
-        },
+      const opened = await deps.database.openNegotiationTask({
+        opportunityId: input.opportunityId,
+        sourceUserId: sourceActor.userId,
+        candidateUserId: candidateActor.userId,
+        brief: input.brief,
+        intentId: input.intentId,
+        round: input.round,
+        networkId: sourceActor.networkId,
+        ...(existing ? { knownTaskId: existing.id } : {}),
       });
-      await deps.database.updateOpportunityStatus(input.opportunityId, "negotiating").catch((err) => {
-        logger.warn("Failed to set opportunity status to negotiating", { opportunityId: input.opportunityId, error: err });
-      });
-      return { task, turns: [], phase: "turn" };
+      if (!opened) return { phase: "error", error: "Opportunity is not eligible to open" };
+
+      if (opened.disposition !== 'created') {
+        // Bind only the kicking seat. A task seen before the transaction is a
+        // genuine re-kick and continues through turn; one first observed by
+        // the transaction raced another opener and must not author opening.
+        await deps.database.setNegotiationBrief(opened.task.id, sourceActor.userId, input.brief);
+        await deps.database.bindNegotiationSeat(opened.task.id, input.intentId, { userId: sourceActor.userId, round: input.round });
+        const messages = await deps.database.getNegotiationMessages(opened.task.id);
+        const task = {
+          ...opened.task,
+          briefs: { ...opened.task.briefs, [sourceActor.userId]: input.brief },
+          metadata: {
+            ...opened.task.metadata,
+            seats: { ...opened.task.metadata.seats, [input.intentId]: { userId: sourceActor.userId, round: input.round } },
+          },
+        };
+        return {
+          task,
+          turns: turnsFromMessages(messages),
+          phase: opened.disposition === 'raced' ? 'read' : 'turn',
+        };
+      }
+
+      return { task: opened.task, turns: [], phase: "turn" };
     }
 
     // ── resume with brief, or apply a submitted/system turn ──
@@ -314,7 +291,7 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     // (pre-rewrite) messages has turns.length === 0 but messages.length > 0.
     // applyNode's outreach guard keys off messages.length too — the two must
     // agree on "is this the opening turn" or a re-kick error forever (turnNode
-    // authors 'outreach' for a legacy task's continuation, applyNode rejects
+    // authors 'outreach' for a legacy task after prior malformed history, applyNode rejects
     // it because history is non-empty).
     const isOpening = messages.length === 0;
 
@@ -477,10 +454,18 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
   const input = state.input;
   if (!task || !("verdict" in input)) return { phase: "error", error: "Missing task or verdict" };
   try {
+    const isSeat = Object.values(task.metadata.seats).some((seat) => seat.userId === input.byUserId)
+      || task.metadata.sourceUserId === input.byUserId
+      || task.metadata.candidateUserId === input.byUserId;
+    if (!isSeat) return { phase: "error", error: "Only a negotiation seat may resolve it" };
     // reasoning is private to the resolving side — recorded on the outcome
     // artifact only, never persisted into the A2A thread as a message; the
     // counterparty sees only that the negotiation closed.
-    await deps.database.createNegotiationOutcomeArtifact(task.id, { verdict: input.verdict, reasoning: input.reasoning });
+    await deps.database.createNegotiationOutcomeArtifact(task.id, {
+      verdict: input.verdict,
+      reasoning: input.reasoning,
+      resolvedByUserId: input.byUserId,
+    });
     const updated = await deps.database.updateNegotiationTaskState(task.id, "completed");
     // The opportunity status is resolve's to write UNLESS the owner has
     // already written a terminal one. An owner verdict (Radar skip/accept,

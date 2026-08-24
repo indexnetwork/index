@@ -10,6 +10,10 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- **Breaking:** remove the retired `negotiation-run-existing` queue and
+  `POST /api/opportunities/:id/reopen`. The old endpoint only enqueued that
+  queue's no-op `negotiate_existing` job; reopening requires a future
+  PersonalAgent re-kick design rather than a false-success compatibility path.
 - **Breaking (API 0.95.0):** remove the Agent reporter feature. `POST
   /api/chat/reporter/session` and the `POST /api/agent/actions/confirm` /
   `GET /api/agent/actions/proposals/:id` endpoints are gone, together with

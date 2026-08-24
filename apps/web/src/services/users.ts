@@ -13,17 +13,7 @@ export interface NegotiationTurnSummary {
   createdAt: string;
 }
 
-export type NegotiationState =
-  | 'submitted'
-  | 'working'
-  | 'input_required'
-  | 'completed'
-  | 'failed'
-  | 'canceled'
-  | 'rejected'
-  | 'auth_required'
-  | 'waiting_for_agent'
-  | 'claimed';
+export type NegotiationState = 'working' | 'paused' | 'completed';
 
 export type NegotiationStatusMessage =
   | string

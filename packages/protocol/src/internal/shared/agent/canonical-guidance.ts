@@ -220,19 +220,14 @@ These gates are independent. Do not conflate them.
 8. Owner approval (human confirms)
 9. Escalation (via native surfaces, not MCP)
 
-### Parked Negotiations (Open Questions)
-A negotiation can pause waiting on a person, in two shapes: a mid-flight consult (its task sits \`input_required\` on the recipient's side) or a post-stall park (the agents stalled and the recipient's agent left a question standing). While parked, the agents are NOT exchanging turns — and the opportunity legitimately still reads \`negotiating\`, so opportunity status alone never answers "is anything waiting on the user?".
-
-- \`list_negotiations\` and \`get_negotiation\` annotate a parked negotiation with \`park\`: \`waitingOn: "you" | "counterparty"\`, and for the user's own side the open question's \`question\` number and \`questionLabel\`.
-- \`park.waitingOn = "you"\` means the user has something to answer RIGHT NOW; relay the question and route their answer with \`answer_pending_question\` (negotiationId + the shown question number). The number shown and the number the answer routes against come from the same record.
-- A park on the counterparty's side names no question content; that question is not this user's to read.
-- One answer can resume several negotiations parked on the same fact.
+### Paused Negotiations
+A negotiation can pause with \`needs_principal\`. Its owning PersonalAgent gathers those questions in the signal DM, then reflects to reject, promote, or re-kick once the principal answers.
 
 ### Rules
 - Track A2A and owner approval separately
 - Never accept without explicit user approval
 - Always surface reasoning to owner
-- A parked negotiation is waiting on a person, not negotiating — say so, and route the answer instead of editing the signal
+- A \`needs_principal\` pause is handled in the owning signal DM
 - Human-to-human messaging is not MCP`,
 
   workflows: `## Common Tool Workflows
@@ -251,7 +246,7 @@ Two agents coordinate on behalf of users to identify, vet, and propose matches.
 
 1. Approved signals for User A are evaluated in the background
 2. Agent B vets match from User B side (A2A negotiation)
-3. The negotiation may PARK on a principal's answer (\`input_required\`); the principal answers via answer_pending_question and it resumes
+3. A \`needs_principal\` pause is handled by the owning PersonalAgent's reflect turn in the signal DM
 4. Agents reach agreement (A2A acceptance)
 5. Both agents present to users with shared reasoning
 6. Both users approve (owner approval required)

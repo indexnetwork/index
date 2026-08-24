@@ -658,13 +658,16 @@ def main() -> None:
     assert ctx.commands[0][2] == "Load Index Network orchestrator guidance"
     assert 'skill_view("index-network:index-orchestrator")' in ctx.commands[0][1]()
 
-    # External-agent negotiation turns are offline: the tool takes no arguments
-    # and always refuses, so no action vocabulary is advertised at all.
+    # Hermes submits the same authored-turn shape as MCP. There is no separate
+    # action vocabulary or terminal verb surface.
     respond_schema = plugin.schemas.INDEX_RESPOND_NEGOTIATION
-    assert respond_schema["parameters"]["properties"] == {}
-    assert respond_schema["parameters"]["required"] == []
-    assert "OFFLINE" in respond_schema["description"]
-    assert not hasattr(plugin.tools, "_NEGOTIATION_ACTIONS")
+    assert set(respond_schema["parameters"]["properties"]) == {
+        "negotiationId", "verb", "message", "reasoning", "pauseReason",
+        "question", "recommendation",
+    }
+    assert respond_schema["parameters"]["required"] == ["negotiationId"]
+    assert respond_schema["parameters"]["properties"]["verb"]["enum"] == ["outreach", "counter", "question"]
+    assert "accept" not in respond_schema["parameters"]["properties"]["verb"]["enum"]
     assert not hasattr(plugin.schemas, "INDEX_PICKUP_NEGOTIATION")
     assert not hasattr(plugin.schemas, "INDEX_CONSULT_OWNER")
 
@@ -672,12 +675,9 @@ def main() -> None:
     assert "index_pickup_negotiation" not in negotiator_skill
     assert "index_consult_owner" not in negotiator_skill
     assert "allowedActions" not in negotiator_skill
-    assert "at most one" in negotiator_skill
-    assert "[SILENT]" in negotiator_skill
-    # Submitting is offline: the skill must not still teach an action vocabulary
-    # for a tool that always refuses, and must not promise a turn can be sent.
-    assert "offline" in negotiator_skill
-    assert "recommend_reject` " not in negotiator_skill
+    assert "ready_for_verdict" in negotiator_skill
+    assert "recommendation: reject" in negotiator_skill
+    assert "accept`, `decline`, or `withdraw`" in negotiator_skill
 
     old_api_key = os.environ.pop("INDEX_API_KEY", None)
     old_api_url = os.environ.pop("INDEX_API_URL", None)
@@ -958,29 +958,47 @@ def main() -> None:
         assert captured[-1]["url"] == "https://api.example.test/api/agents/me"
         assert captured[-1]["headers"]["X-api-key"] == "test-key"
 
-        # External-agent negotiation turns are offline (#1494 deleted the REST
-        # respond route; external agents wait for the new auth model). The tool
-        # stays registered so a woken negotiator is told why, but it never
-        # dispatches: no HTTP call, whatever it is handed.
+        # Hermes forwards the MCP authored-turn shape. MCP is the only write
+        # path and routes the accepted pause through NegotiationGraph apply.
         captured = []
-        install_fake_urlopen([], captured)
-        refusal = json.loads(plugin.tools.index_respond_negotiation(
-            {"agentId": "agent-2", "negotiationId": "neg-1", "action": "counter"},
+        install_fake_urlopen([FakeResponse({
+            "jsonrpc": "2.0", "id": 1, "result": {"content": [{
+                "type": "text", "text": json.dumps({"success": True, "data": {"status": "paused"}}),
+            }]},
+        })], captured)
+        response = json.loads(plugin.tools.index_respond_negotiation(
+            {
+                "negotiationId": "neg-1",
+                "pauseReason": "ready_for_verdict",
+                "recommendation": "reject",
+                "reasoning": "The terms do not work.",
+            },
             task_id="hermes-response-pass",
         ))
-        assert refusal["success"] is False
-        assert "offline" in refusal["error"]
-        assert "rebuilt on the new auth model" in refusal["error"]
-        assert captured == []
-        assert json.loads(plugin.tools.index_respond_negotiation({})) == refusal
+        assert response == {"success": True, "data": {"status": "paused"}}
+        request = captured[-1]["body"]
+        if isinstance(request, str):
+            request = json.loads(request)
+        assert request["method"] == "tools/call"
+        assert request["params"] == {
+            "name": "respond_to_negotiation",
+            "arguments": {
+                "negotiationId": "neg-1",
+                "pauseReason": "ready_for_verdict",
+                "recommendation": "reject",
+                "reasoning": "The terms do not work.",
+            },
+        }
 
-        # Nothing of the deleted dispatch path survives: no run fencing, no
-        # run headers, no REST respond call.
+        # The deleted REST dispatch path does not return: Hermes uses MCP,
+        # without run fencing, run headers, or a parallel persist/finalize path.
         assert "index_pickup_negotiation" not in dir(plugin.tools)
         assert "index_consult_owner" not in dir(plugin.tools)
         assert not hasattr(plugin.tools, "_reset_negotiation_run_for_tests")
         assert not hasattr(plugin.tools, "_dispatch_negotiation_mutation")
         assert "_api_request" not in _respond_source(ROOT)
+        assert "_call_index_mcp" in _respond_source(ROOT)
+        assert "respond_to_negotiation" in _respond_source(ROOT)
         assert "x-index-hermes-run" not in (ROOT / "env_transport.py").read_text()
 
         dashboard_api = load_dashboard_api()

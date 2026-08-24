@@ -14,7 +14,7 @@ export function normalizeOpportunityActorIntent(value: unknown): string | undefi
     || normalized.toLowerCase() === 'undefined'
     // Python's null literal, which evaluators do emit: a candidate actor was
     // persisted with `intent: "None"` in dev and every downstream reader took
-    // it for a real binding — the counterparty seat was granted the ask_user
+    // it for a real binding — the counterparty seat was granted a
     // consultation (whose park writes `recipientIntentId` straight at the
     // intents table) on a signal that does not exist.
     || normalized.toLowerCase() === 'none'

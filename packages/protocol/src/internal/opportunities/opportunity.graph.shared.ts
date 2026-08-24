@@ -98,12 +98,6 @@ export interface OpportunityGraphDeps {
    * (short timeout). Without it, the chat path always uses a short timeout.
    */
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  /**
-   * Callback to enqueue a negotiate_existing job for an opportunity.
-   * When provided, negotiate_existing mode uses this to queue follow-up
-   * negotiations after introducer approval.
-   */
-  queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>;
   /** Host-side P4b stamper. Omitted by manual/introducer/enrichment roots. */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   retrievalMinSimilarity: number;

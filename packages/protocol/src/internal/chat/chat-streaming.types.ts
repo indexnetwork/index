@@ -493,7 +493,7 @@ export interface NegotiationTurnEvent extends ChatStreamEventBase {
   negotiationConversationId: string;
   turnIndex: number;
   actor: "source" | "candidate";
-  action: "accept" | "counter" | "question" | "outreach" | "withdraw" | "decline" | "ask_user";
+      action: "counter" | "question" | "outreach";
   reasoning?: string;
   message?: string;
   suggestedRoles?: { ownUser?: string; otherUser?: string };

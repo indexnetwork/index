@@ -86,12 +86,6 @@ export class OpportunityGraphFactory {
      * (short timeout). Without it, the chat path always uses a short timeout.
      */
     agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>,
-    /**
-     * Callback to enqueue a negotiate_existing job for an opportunity.
-     * When provided, negotiate_existing mode uses this to queue follow-up
-     * negotiations after introducer approval.
-     */
-    queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>,
     /** Host-side P4b stamper. Omitted by manual/introducer/enrichment roots. */
     stampNewbornOpportunities?: StampNewbornOpportunitiesFn,
     /** Eval/test-only overrides; production composition resolves from environment. */
@@ -105,7 +99,6 @@ export class OpportunityGraphFactory {
       queueNotification,
       matchesReady,
       agentDispatcher,
-      queueNegotiateExisting,
       stampNewbornOpportunities,
       retrievalMinSimilarity: thresholdOverrides?.retrievalMinSimilarity === undefined
         ? DISCOVERY_MIN_SIMILARITY

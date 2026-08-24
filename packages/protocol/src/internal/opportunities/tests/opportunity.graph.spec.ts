@@ -24,6 +24,7 @@ import { computeHydeSourceTextHash } from '../../shared/hyde-documents.js';
 import { requestContext, type TraceEmitter } from '../../shared/observability/request-context.js';
 import { setLoggerFactory, type LoggerWithSource } from '../../shared/observability/log.js';
 import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
+import { approveOpportunityIntroduction } from '../opportunity.lifecycle.js';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
@@ -174,7 +175,6 @@ function createMockGraph(deps?: {
     undefined,
     undefined,
     undefined,
-    undefined,
     thresholdOverrides,
   );
   const compiledGraph = factory.createGraph();
@@ -273,7 +273,6 @@ function createMockGraphWithFnOverrides(deps?: {
     mockHyde,
     evaluator,
     queueNotification,
-    undefined,
     undefined,
     undefined,
     undefined,
@@ -2353,19 +2352,11 @@ describe('Opportunity Graph', () => {
     });
   });
 
-  // ─── Introducer gating tests ─────────────────────────────────────────────────
+  // ─── matches_ready introducer gating tests ───────────────────────────────────
 
-  describe('negotiateNode: introducer gating', () => {
-    test('does not invoke the negotiation graph when an introducer actor has approved: false', async () => {
-      const negotiationInvocations: unknown[] = [];
-
-      // Minimal mock negotiation graph that records every invocation.
-      const mockNegotiationGraph = {
-        invoke: async (input: unknown) => {
-          negotiationInvocations.push(input);
-          return { outcome: null };
-        },
-      };
+  describe('matches_ready: introducer gating', () => {
+    test('does not wake a signal while an introducer actor remains unapproved', async () => {
+      const wakes: Array<{ userId: string; intentId: string }> = [];
 
       // Build a full mockDb that mirrors createMockGraph but with a custom
       // createOpportunity that appends an unapproved introducer actor.
@@ -2469,7 +2460,7 @@ describe('Opportunity Graph', () => {
         mockHydeGenerator,
         evaluator,
         async () => undefined,
-        mockNegotiationGraph,
+        async (signal) => { wakes.push(signal); },
       );
       const compiledGraph = factory.createGraph();
 
@@ -2480,20 +2471,11 @@ describe('Opportunity Graph', () => {
         options: { initialStatus: 'latent' as const },
       });
 
-      // The gate should prevent the negotiation graph from being invoked
-      // because the persisted opportunity has an introducer with approved: false.
-      expect(negotiationInvocations).toHaveLength(0);
+      expect(wakes).toEqual([]);
     });
 
-    test('fresh negotiation kicks off with the opportunity id and the discoverer\'s bound intent', async () => {
-      const negotiationInvocations: unknown[] = [];
-
-      const mockNegotiationGraph = {
-        invoke: async (input: unknown) => {
-          negotiationInvocations.push(input);
-          return { outcome: null };
-        },
-      };
+    test('an eligible persisted opportunity wakes the discoverer\'s bound signal', async () => {
+      const wakes: Array<{ userId: string; intentId: string }> = [];
 
       const mockDb: OpportunityGraphDatabase = {
         ...createOpportunityGraphDatabaseFixture(),
@@ -2615,7 +2597,7 @@ describe('Opportunity Graph', () => {
         mockHydeGenerator,
         evaluator,
         async () => undefined,
-        mockNegotiationGraph,
+        async (signal) => { wakes.push(signal); },
       );
       const compiledGraph = factory.createGraph();
 
@@ -2626,27 +2608,23 @@ describe('Opportunity Graph', () => {
         options: { initialStatus: 'latent' as const },
       });
 
-      expect(negotiationInvocations.length).toBeGreaterThan(0);
-      const invocation = negotiationInvocations[0] as { opportunityId: string; intentId: string; brief: string };
-      expect(invocation.opportunityId).toBe('opp-approved');
-      expect(invocation.intentId).toBe('intent-1');
-      expect(typeof invocation.brief).toBe('string');
+      expect(wakes).toEqual([{ userId: 'a0000000-0000-4000-8000-000000000001', intentId: 'intent-1' }]);
     });
   });
 
   // ─── approve_introduction mode tests ─────────────────────────────────────────
 
   describe('approve_introduction mode', () => {
-    test('sets approved=true on introducer actor and enqueues negotiate job', async () => {
+    test('sets approved=true and wakes the source signal once the gate opens', async () => {
       const approvalCalls: Array<[string, string, boolean]> = [];
-      const negotiateJobsEnqueued: Array<{ opportunityId: string; userId: string }> = [];
+      const wakes: Array<{ userId: string; intentId: string }> = [];
 
       const existingOpp = {
         id: 'opp-456',
         status: 'latent' as const,
         actors: [
-          { networkId: 'idx-1' as Id<'networks'>, userId: 'target-user' as Id<'users'>, role: 'patient' as const },
-          { networkId: 'idx-1' as Id<'networks'>, userId: 'candidate-user' as Id<'users'>, role: 'agent' as const },
+          { networkId: 'idx-1' as Id<'networks'>, userId: 'target-user' as Id<'users'>, role: 'patient' as const, intentId: 'target-intent' },
+          { networkId: 'idx-1' as Id<'networks'>, userId: 'candidate-user' as Id<'users'>, role: 'agent' as const, intent: 'candidate-intent' },
           { networkId: 'idx-1' as Id<'networks'>, userId: 'introducer-user' as Id<'users'>, role: 'introducer' as const, approved: false },
         ],
         detection: { source: 'manual' as const, createdBy: 'introducer-user', timestamp: new Date().toISOString() },
@@ -2658,7 +2636,7 @@ describe('Opportunity Graph', () => {
         expiresAt: null,
       };
 
-      // Build the mock db directly (same pattern as negotiate_existing tests)
+      // Build the mock db directly for the standalone lifecycle mode.
       const mockDb: OpportunityGraphDatabase = {
         ...createOpportunityGraphDatabaseFixture(),
         getProfile: () => Promise.resolve(null),
@@ -2699,11 +2677,8 @@ describe('Opportunity Graph', () => {
         mockHyde as any,
         undefined, // evaluator
         undefined, // queueNotification
-        undefined, // negotiationGraph
+        async (signal) => { wakes.push(signal); },
         undefined, // agentDispatcher
-        async (opportunityId: string, userId: string) => {
-          negotiateJobsEnqueued.push({ opportunityId, userId });
-        },
       );
 
       await factory.approveIntroduction({
@@ -2713,8 +2688,30 @@ describe('Opportunity Graph', () => {
 
       expect(approvalCalls).toHaveLength(1);
       expect(approvalCalls[0]).toEqual(['opp-456', 'introducer-user', true]);
-      expect(negotiateJobsEnqueued).toHaveLength(1);
-      expect(negotiateJobsEnqueued[0].opportunityId).toBe('opp-456');
+      expect(wakes).toEqual([{ userId: 'target-user', intentId: 'target-intent' }]);
+    });
+
+    test('does not wake a signal when the approval write fails', async () => {
+      const wakes: Array<{ userId: string; intentId: string }> = [];
+      const opportunity = {
+        id: 'opp-456',
+        actors: [
+          { userId: 'target-user', role: 'patient', intent: 'target-intent' },
+          { userId: 'introducer-user', role: 'introducer', approved: false },
+        ],
+      } as unknown as Opportunity;
+
+      const result = await approveOpportunityIntroduction(
+        {
+          getOpportunity: async () => opportunity,
+          updateOpportunityActorApproval: async () => null,
+        } as never,
+        { opportunityId: 'opp-456', actorUserId: 'introducer-user' },
+        async (signal) => { wakes.push(signal); },
+      );
+
+      expect(result).toEqual({ success: false, error: 'Failed to update approval' });
+      expect(wakes).toEqual([]);
     });
   });
 });

@@ -1030,6 +1030,13 @@
       "when": 1786886087827,
       "tag": "0149_per_seat_negotiation_seats",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1786886087828,
+      "tag": "0150_drop_negotiation_questioner_substrate",
+      "breakpoints": true
     }
   ]
 }

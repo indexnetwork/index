@@ -1,6 +1,8 @@
 /**
  * MCP HTTP Handler — wires the MCP server factory to the Streamable HTTP transport.
- * This is the composition root: all adapter/service wiring lives here.
+ * This is the MCP composition root: its request-local adapter/service wiring
+ * lives here. The process-wide PersonalAgent and Negotiation graphs come from
+ * the host graph composition root.
  */
 
 import { jwtVerify, createRemoteJWKSet } from 'jose';
@@ -12,7 +14,6 @@ import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, 
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
@@ -51,7 +52,7 @@ type McpToolDeps = ToolDeps & {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// COMPOSITION ROOT (was protocol-init.ts)
+// MCP COMPOSITION ROOT (was protocol-init.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
@@ -97,9 +98,6 @@ const protocolDeps = {
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
   // route; threaded into chat tools by the protocol chat factory.
   opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
-  queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
-    await negotiationRunExistingQueue.addJob({ opportunityId, userId });
-  },
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
   // #1471: host bridge for the negotiator persona's `reject_opportunity` /
@@ -162,7 +160,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     database, embedder, compiledHydeGraph,
     undefined, undefined, matchesReadyBestEffort,
     protocolDeps.agentDispatcher,
-    protocolDeps.queueNegotiateExisting,
   ).createGraph();
   const networks = new Networks({ database, indexer: intents });
   const indexGraph = networks.createGraph();

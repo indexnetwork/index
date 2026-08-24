@@ -179,13 +179,9 @@ export function isVisibleNegotiationConversation(
  * Derive user-facing inbox groups without exposing raw task or opportunity
  * states.
  *
- * One row per A2A conversation, i.e. per counterparty person. The API already
- * collapsed that person's several task sessions into `conversation.negotiation`
- * by liveness (awaiting approval › parked › in progress › resolved, recency
- * only within a tier — services/api negotiation-session-rollup.projection.ts),
- * so a person with one live pairing and any number of dead ones is a live row
- * here, and counts toward "your move". Earlier pairings with the same person
- * are deliberately not summarised on the row; the transcript holds them.
+ * One row per A2A negotiation conversation. Its lifecycle is projected on
+ * `conversation.negotiation`; the signal DM and Radar card are the owner-facing
+ * surfaces for questions and verdicts.
  */
 export function deriveNegotiationInbox(
   negotiations: ConversationSummary[],

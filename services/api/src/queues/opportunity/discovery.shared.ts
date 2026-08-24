@@ -5,7 +5,6 @@ import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
 import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
 
-import { negotiationRunExistingQueue } from '../negotiations/run-existing.queue';
 
 /**
  * Worker concurrency shared by the from-intent and from-enrichment discovery
@@ -40,7 +39,7 @@ export function createOpportunityGraphDb(database: object = new ChatDatabaseAdap
 }
 
 /**
- * Assemble the configured opportunity graph (HyDE sub-graph + negotiation re-enqueue wiring).
+ * Assemble the configured opportunity graph (HyDE sub-graph + matches_ready wiring).
  * Identical across from-intent / from-introducer / from-enrichment, so it lives here once.
  */
 export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: OpportunityDiscoveryDeps) {
@@ -57,9 +56,6 @@ export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: Opport
     undefined,
     deps?.matchesReady,
     deps?.agentDispatcher,
-    async (opportunityId: string, userId: string) => {
-      await negotiationRunExistingQueue.addJob({ opportunityId, userId });
-    },
     deps?.stampNewbornOpportunities,
   ).createGraph();
 }

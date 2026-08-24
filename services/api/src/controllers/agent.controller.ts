@@ -398,18 +398,12 @@ export class AgentController {
   // nothing left to pick up.
   //
   // The REST respond route (`POST /:id/negotiations/:negotiationId/respond`)
-  // is retired too, along with the rest of external-agent dispatch (round-3
-  // review, findings 2+8; owner-decided Option A — see the PR body): external
-  // agents are offline in this PR, with no meaningful request/response shape
-  // left for a standalone poller to submit a turn against. The MCP
-  // `respond_to_negotiation` tool is the one remaining way to submit a turn;
-  // it is untouched by this deletion. `NegotiationPollingService` and its
-  // authorization helper are deleted along with this route — this was their
-  // only caller.
+  // remains retired with polling. Authenticated external agents — including
+  // the Hermes bridge — submit authored `respond_to_negotiation` MCP verbs;
+  // the shared NegotiationGraph validates and applies them under the speaking
+  // seat.
   //
-  // Owner consultation (pausing an exact external claim to route a
-  // privacy-minimal question through the Questioner/expiry/continuation
-  // lifecycle) was already retired whole-cloth by the negotiation-graph
+  // Owner consultation was retired whole-cloth by the negotiation-graph
   // rewrite: a negotiator that cannot continue without the principal pauses
   // `needs_principal` instead.
   //

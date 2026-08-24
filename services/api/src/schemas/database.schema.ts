@@ -535,11 +535,9 @@ export const opportunityDiscoveryRuns = pgTable('opportunity_discovery_runs', {
 }));
 
 export interface QuestionDetection {
-  mode: 'intent' | 'negotiation' | 'negotiation_inflight' | 'chat' | 'pool_discovery';
+  mode: 'intent' | 'chat' | 'pool_discovery';
   /** Internal generation purpose; stripped from public API responses. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
-  /** Exact negotiation recipient/intent/task routing provenance. Internal only. */
-  negotiation?: import('@indexnetwork/protocol').NegotiationQuestionProvenance;
   sourceType: string;
   sourceId: string;
   triggeredBy?: string;

@@ -27,11 +27,10 @@ import { AgentRuntimeController } from './controllers/agent-runtime.controller';
 import { ConnectedAgentsController } from './controllers/connected-agents.controller';
 import { ConversationService } from './services/conversation.service';
 import { NotificationService } from './services/notification.service';
-import { NotificationDeliveryService, loadNotificationIntentLabel } from './services/notification-delivery.service';
+import { NotificationDeliveryService } from './services/notification-delivery.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
 import { WebhooksController } from './controllers/webhooks.controller';
-import { QuestionController } from './controllers/question.controller';
 import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { IntegrationService } from './services/integration.service';
 import { RouteRegistry } from './lib/router/router.decorators';
@@ -51,7 +50,6 @@ import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
 import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
-import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
 import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
@@ -62,13 +60,11 @@ import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
-import { questionMessageQueue } from './queues/question-message.queue';
 import { personalAgentQueue } from './queues/personal-agent.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { handleIntentCreatedMaintenance, IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
-import { evaluateOpportunityTransition } from './lib/question/question-exhaustion.evaluator';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
 import { premiseQueue } from './queues/premise.queue';
@@ -117,27 +113,17 @@ fromIntentQueue.setRuntimeDeps({
   matchesReady,
   agentDispatcher: backgroundAgentDispatcher,
 });
-negotiationRunExistingQueue.setRuntimeDeps({
-  negotiationGraph,
-  agentDispatcher: backgroundAgentDispatcher,
-});
 negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph);
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({
   opportunities: notificationOpportunityAdapter,
   getIdentity: (userId) => notificationOpportunityAdapter.getProfile(userId),
-  getIntentLabel: loadNotificationIntentLabel,
   publish: publishNotificationStreamEvent,
-  webAppUrl: process.env.WEB_APP_URL || 'https://index.network',
 });
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
 OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
-// Exhaustion evaluator (conversational questions): every committed status
-// transition re-checks both sides' question-messages against the parked set.
-OpportunityEvents.onTransition = ({ opportunity }) =>
-  evaluateOpportunityTransition({ opportunityId: opportunity.id, status: opportunity.status });
 
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   // Re-evaluate the member's pre-existing intents against the joined network.
@@ -172,7 +158,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
 
 intentQueue.startWorker();
 fromIntentQueue.startWorker();
-negotiationRunExistingQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
   void negotiationWatchdogQueue.start().catch((error) => {
     log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
@@ -191,7 +176,6 @@ hydeQueue.startCrons();
 emailQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
-questionMessageQueue.startWorker();
 personalAgentQueue.startWorker();
 premiseQueue.startWorker();
 premiseQueue.startCrons();
@@ -308,7 +292,6 @@ controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
 const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
-controllerInstances.set(QuestionController, new QuestionController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
@@ -625,11 +608,9 @@ const shutdown = async () => {
   await Promise.allSettled([
     intentQueue.close(),
     fromIntentQueue.close(),
-    negotiationRunExistingQueue.close(),
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
-    questionMessageQueue.close(),
     personalAgentQueue.close(),
     premiseQueue.close(),
     frameDriftQueue.close(),

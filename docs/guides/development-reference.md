@@ -345,7 +345,7 @@ The pool-discriminator mining hook, its `pool_discovery` questions, the proactiv
 
 ### Intent-Page Refinement Questions (retired)
 
-Creation-time intent questions, the post-discovery recovery hooks, and `IntentRecoveryRefinementService` were retired with the card question generators. A signal's open questions now surface as the negotiator's question-message in the signal's DM, derived from the parked negotiation set.
+Creation-time intent questions, the post-discovery recovery hooks, and `IntentRecoveryRefinementService` were retired with the card question generators. PersonalAgent asks its principal directly in the signal DM.
 
 ### Intent Pause/Resume
 
@@ -372,7 +372,7 @@ stored rows either side of the write (post-normalization, ignoring row ids) and 
 early when they match. Contact/ghost creation in `contact.service` is the other
 `enrich.user` trigger.
 
-Events in `src/events/`: `IntentEvents.onCreated/onPaused/onResumed/onArchived`; pause/resume handlers receive `intentId`, `userId`, and `lifecycleVersionMs`, and `onResumed` is async so callers can await enqueue acknowledgement. Network membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `EnrichmentQueue`. `OpportunityEvents.onTransition` drives the conversational-questions exhaustion evaluator. The card question lifecycle (QuestionerAgent generation, `QuestionEvents` reaction dispatch, the blocking `ask_user_question` chat tool and its wait bus, the uptake acceptance guard, and the pending-question read surface) is retired — questions are conversation now: a parked negotiation surfaces as a question-message in the signal's DM (`question-message.queue.ts`), replies route back through the serialized answer consumption seam, and the exact-task settlement machinery lives on in `questioner.adapter.ts` (admission re-resolution, lock ladder, ask_user expiry, DM settle, fenced continuations). Leftover card rows void on contact via `POST /questions/:id/answer|dismiss`. Services emit events after DB transactions; other services/graphs react independently.
+Events in `src/events/`: `IntentEvents.onCreated/onPaused/onResumed/onArchived`; pause/resume handlers receive `intentId`, `userId`, and `lifecycleVersionMs`, and `onResumed` is async so callers can await enqueue acknowledgement. Network membership events in `network_membership.event.ts`. Premise lifecycle events in `premise.event.ts`: `PremiseEvents.onCreated/onUpdated/onRetracted/onExpired` — each enqueues cascade and profile regeneration jobs via `EnrichmentQueue`. Services emit events after DB transactions; other services/graphs react independently.
 
 ### Agent Registry
 
