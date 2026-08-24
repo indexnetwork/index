@@ -35,6 +35,15 @@ describe('matches_ready wiring', () => {
     expect(toolService).toMatch(/negotiationDatabase: conversationDatabaseAdapter[\s\S]*?matchesReady,/);
   });
 
+  it('gives BOTH graphs the reflect enqueue and the agent its re-wake', () => {
+    // A composition missing either is silent: rounds settle and never reflect,
+    // and a batch that lands mid-turn is never picked up. Same class as the
+    // missing matchesReady above — no error, just work that stops happening.
+    expect(composition).toMatch(/NegotiationGraphFactory\(\{[\s\S]*?reflectEnqueue:/);
+    expect(composition).toMatch(/PersonalAgentGraphFactory\(\{[\s\S]*?reflectEnqueue:/);
+    expect(composition).toMatch(/PersonalAgentGraphFactory\(\{[\s\S]*?wakeForMatches:/);
+  });
+
   it('is what the discovery queues pass, so one callback serves every path', () => {
     const main = read('../../../main.ts');
     expect(main).toContain('matchesReady,');
