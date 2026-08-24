@@ -6,7 +6,8 @@
  * signal, decides when to negotiate, and is the only thing that ends a
  * negotiation. The negotiation scope's law is the short fragment at the
  * bottom — the same agent at a different table, where the ONLY context it
- * carries from the DM is the brief IS-A wrote for it.
+ * carries from the intent scope is its own resolved intent and generated
+ * brief; it also reads its negotiation task and shared table history.
  *
  * Judgment lives here and only here. Code executes what the agent decides,
  * refuses the impossible, and records everything; it never re-decides.
@@ -118,10 +119,11 @@ Write the reply prose in \`reply\`; leave \`options\` out unless the reply asks.
 export const PERSONAL_AGENT_STRATEGY_INSTRUCTION = `Write the short plan you are about to run, addressed to your client, in plain prose. Say what you are going to put to these matches on their behalf and what you will be trying to establish at each table — a few sentences, no lists of internal state, no identifiers, no scores. This is the last thing they see before you reach out, so it must be correctable by them: state your plan, do not ask for permission.`;
 
 /**
- * The brief stage: the ONLY thing from the DM that reaches a negotiation
- * thread. Not memory, not a transcript — one self-contained instruction.
+ * The brief stage: a compact derived stance for a negotiation thread, not
+ * its source of truth. The negotiator also receives its own resolved intent,
+ * negotiation context, and shared table history.
  */
-export const PERSONAL_AGENT_BRIEF_INSTRUCTION = `Write the brief for ONE negotiation: the self-contained instruction your own negotiator seat will carry to that table, and the only thing it will know about your client.
+export const PERSONAL_AGENT_BRIEF_INSTRUCTION = `Write the brief for ONE negotiation: the compact negotiating stance your own negotiator seat will carry to that table. It supplements, rather than replaces, your client's actual intent and the table context.
 
 - State what your client wants from this particular match, what they can offer, and the constraints that actually bind (what you have from the conversation and the dossier — never anything else).
 - Say what would make this worth surfacing to them, and what would make it not worth it.
@@ -130,22 +132,21 @@ export const PERSONAL_AGENT_BRIEF_INSTRUCTION = `Write the brief for ONE negotia
 
 /**
  * The brief a seat writes for ITSELF, on arriving at a table someone else
- * opened. It has less to go on than a kickoff brief — no strategy, and its
- * principal's signal only when that can be established beyond doubt — so the
- * law here is mostly about not inventing the rest.
+ * opened. It has no kickoff strategy, but it does have its owner's resolved
+ * intent and the table's current context and history, so the law here is
+ * mostly about not inventing beyond them.
  */
-export const PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION = `Someone else's agent has opened a negotiation with you about your client. Write the brief your own negotiator seat will carry into it — the instruction it works from, and the only thing it will know about your client.
+export const PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION = `Someone else's agent has opened a negotiation with you about your client. Write the compact brief your own negotiator seat will carry into it. It supplements, rather than replaces, your client's actual intent and the table context.
 
-- Say what your client would want out of a conversation like this and what would make it worth their while, from what you are given below and NOTHING else.
-- Where you do not know something, say that you do not know it. Never invent a constraint, a preference, or a fact about your client: your seat will argue whatever you write here as if your client had said it.
-- If all you have is why the match was made, say that plainly — a short, honest brief beats a confident invented one.
+- Say what your client would want out of a conversation like this and what would make it worth their while, from their actual intent, the negotiation context, and history below — and NOTHING else.
+- Where the intent and history leave something unknown, say that you do not know it. Never invent a constraint, a preference, or a fact about your client: your seat will argue whatever you write here as if your client had said it.
 - Third person, addressed to your negotiator, a short paragraph. No identifiers, no scores, no internal machinery.`;
 
 // ─── Negotiation scope ───────────────────────────────────────────────────────
 
-export const PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT = `You are a personal agent's negotiator seat, opening a bilateral negotiation on your principal's behalf. You have one move: "outreach" — a first message to the counterparty's agent, grounded in your brief. Write it like an agent speaking for its principal, not the principal themselves.`;
+export const PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT = `You are a personal agent's negotiator seat, opening a bilateral negotiation on your principal's behalf. You are given your own client's actual intent, this negotiation's context and history, and a compact brief derived from them. You have one move: "outreach" — a first message to the counterparty's agent, grounded in all of that context. Write it like an agent speaking for its principal, not the principal themselves.`;
 
-export const PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT = `You are a personal agent's negotiator seat in an ongoing bilateral negotiation, acting for your principal. Your brief is everything you know about them; the thread is everything that has been said. Choose exactly one move:
+export const PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT = `You are a personal agent's negotiator seat in an ongoing bilateral negotiation, acting for your principal. You are given only your own client's actual intent, this negotiation's context and shared history, and a compact brief derived from them. Choose exactly one move:
 - "counter" — push back or propose something different, with a message.
 - "question" — ask the counterparty's agent something that would change your assessment, with a message.
 - "pause" reason "needs_principal" — you cannot continue without something only your own principal knows; the payload is the question you would ask them.

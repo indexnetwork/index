@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
 import { PersonalAgentGraphFactory, PERSONAL_AGENT_NO_NEXT_STEP, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_STRATEGY_FALLBACK, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
-import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
+import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentNegotiationTurnInput, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
 import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
 
@@ -103,7 +103,7 @@ class ScriptedJudgment implements PersonalAgentJudgment {
   constructor(
     private readonly plans: Array<(context: PersonalAgentTurnContext) => PersonalAgentDecidedAct[]>,
     /** Overrides the default negotiator script; used by the termination tests. */
-    private readonly turnScript?: (input: { brief: string; thread: unknown[]; isOpening: boolean }) => NegotiationAuthoredTurn,
+    private readonly turnScript?: (input: PersonalAgentNegotiationTurnInput) => NegotiationAuthoredTurn,
   ) {}
 
   async decide(context: PersonalAgentTurnContext): Promise<PersonalAgentDecidedAct[]> {
@@ -136,7 +136,7 @@ class ScriptedJudgment implements PersonalAgentJudgment {
   async seatBrief(input: PersonalAgentSeatBriefInput): Promise<string> {
     this.seatBriefCalls.push(input);
     const opening = input.thread.find((entry) => (entry.turn as { verb?: string }).verb === "outreach");
-    const heard = opening ? (opening.turn as { message?: string }).message ?? "" : (input.matchReasoning ?? "");
+    const heard = opening ? (opening.turn as { message?: string }).message ?? "" : input.intent.payload;
     return `Seat brief from what we were told: ${heard}`;
   }
 
@@ -144,7 +144,10 @@ class ScriptedJudgment implements PersonalAgentJudgment {
    * Deterministic by thread depth and brief, not by call order: a kickoff
    * opens every match in parallel, so a positional script would be a race.
    */
-  async negotiationTurn(input: { brief: string; thread: unknown[]; isOpening: boolean }): Promise<NegotiationAuthoredTurn> {
+  readonly negotiationTurnCalls: PersonalAgentNegotiationTurnInput[] = [];
+
+  async negotiationTurn(input: PersonalAgentNegotiationTurnInput): Promise<NegotiationAuthoredTurn> {
+    this.negotiationTurnCalls.push(input);
     if (this.turnScript) return this.turnScript(input);
     if (input.isOpening) return { verb: "outreach", message: `Opening on ${input.brief}`, reasoning: "Kickoff." };
     const depth = input.thread.length;
@@ -863,15 +866,24 @@ describe("PersonalAgent — the three decided design questions", () => {
     expect(theirs).toBeDefined();
     expect(theirs).not.toBe(ours);
     expect(judgment.seatBriefCalls).toHaveLength(1);
-    expect(judgment.seatBriefCalls[0]!.signalText).toBe("bob wants a suitable match.");
+    expect(judgment.seatBriefCalls[0]!.intent.payload).toBe("bob wants a suitable match.");
     expect(task.metadata.seats).toEqual({ [INTENT_ID]: { userId: SOURCE_USER_ID, round: negotiationHost.round } });
     expect(negotiationInputs.find((input) => input.userId === CANDIDATE_USER_ID)).toEqual({
       userId: CANDIDATE_USER_ID,
       intentId: "intent-bob-1",
       negotiationId: task.id,
     });
-    // It was authored from what THAT side could see, not handed the other's.
+    const bobFirstTurn = judgment.negotiationTurnCalls.find((input) => input.intent.userId === CANDIDATE_USER_ID)!;
+    // Bob gets only Bob's resolved intent, the task context that still has
+    // Alice as its sole metadata seat, the history, and Bob's generated brief.
+    expect(bobFirstTurn.intent).toMatchObject({ id: "intent-bob-1", payload: "bob wants a suitable match." });
+    expect(bobFirstTurn.negotiation).toMatchObject({ id: task.id, metadata: { seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: negotiationHost.round } } } });
+    expect(bobFirstTurn.thread.length).toBeGreaterThan(0);
+    expect(bobFirstTurn.brief).toBe(theirs);
+    // The brief had the same own intent and actual history available when it
+    // was authored; it was not inferred from the task's seat metadata.
     expect(judgment.seatBriefCalls[0]!.thread.length).toBeGreaterThan(0);
+    expect(judgment.seatBriefCalls[0]!.negotiation.metadata.seats).toEqual({ [INTENT_ID]: { userId: SOURCE_USER_ID, round: negotiationHost.round } });
     // And a re-kick rewrites only the initiator's half.
     await negotiationHost.database.setNegotiationBrief(task.id, SOURCE_USER_ID, "a fresh brief");
     expect(negotiationHost.taskFor(task.id).briefs[CANDIDATE_USER_ID]).toBe(theirs);

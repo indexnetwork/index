@@ -27,6 +27,7 @@ import { END, StateGraph, Annotation } from "@langchain/langgraph";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
+import type { IntentRecord } from "../../../platform/database/entities.js";
 import { PersonalAgentModel } from "./agent.judgment.js";
 import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentPausedNegotiation, PersonalAgentReply, PersonalAgentReplyFallbackReason, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
@@ -145,6 +146,12 @@ async function loadThread(
   seatUserId: string,
 ): Promise<PersonalAgentThreadEntry[]> {
   return threadFromMessages(await deps.negotiationDatabase.getNegotiationMessages(taskId), seatUserId);
+}
+
+/** The task context a seat may show its model: never the other seat's brief. */
+function taskForSeat(task: NegotiationTaskRow, seatUserId: string): NegotiationTaskRow {
+  const brief = task.briefs[seatUserId];
+  return { ...task, briefs: brief === undefined ? {} : { [seatUserId]: brief } };
 }
 
 /**
@@ -980,9 +987,10 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
 
 /**
  * The negotiation scope: the same PersonalAgent at the A2A table. It reads
- * the thread and ITS OWN brief — the brief is the only thing from a DM that
- * reaches a negotiation — and answers with exactly one verb or one pause. It
- * never ends a negotiation; NegotiationGraph's `apply` is the sink.
+ * the resolved intent of its own seat, task context, thread, and ITS OWN
+ * brief — a compact derived stance, not the source of truth — and answers
+ * with exactly one verb or one pause. It never ends a negotiation;
+ * NegotiationGraph's `apply` is the sink.
  *
  * A seat with no brief yet — the counterparty, always, since only the
  * initiator's kickoff wrote one — authors its own here, from what THIS side
@@ -994,11 +1002,16 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
   try {
     const task = await deps.negotiationDatabase.getNegotiationTask(input.negotiationId);
     if (!task) return { phase: "error", error: "Negotiation not found" };
+    const intent = await deps.negotiationDatabase.getIntent(input.intentId);
+    if (!intent) return { phase: "error", error: "Intent not found" };
     const messages = await deps.negotiationDatabase.getNegotiationMessages(task.id);
     const judgment = deps.judgment ?? defaultJudgment();
     const thread = threadFromMessages(messages, input.userId);
-    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, task, input.userId, input.intentId, thread);
+    const negotiation = taskForSeat(task, input.userId);
+    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, negotiation, input.userId, intent, thread);
     const turn: NegotiationAuthoredTurn = await judgment.negotiationTurn({
+      intent,
+      negotiation,
       brief,
       thread,
       // Raw message count, not parsed-turn count: the negotiation graph's
@@ -1015,22 +1028,21 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
 /**
  * Author and persist the brief for a seat that has none.
  *
- * The negotiation-scope input carries this seat's own signal, resolved by the
- * NegotiationGraph from the persisted opportunity actor.
+ * The negotiation node resolves this seat's own intent once from the
+ * persisted opportunity actor and provides the same intent plus the actual
+ * task history to both brief authoring and the negotiation turn.
  */
 async function authorSeatBrief(
   deps: PersonalAgentDeps,
   judgment: NonNullable<PersonalAgentDeps["judgment"]>,
   task: NegotiationTaskRow,
   seatUserId: string,
-  intentId: string,
+  intent: IntentRecord,
   thread: PersonalAgentThreadEntry[],
 ): Promise<string> {
-  const intent = await deps.negotiationDatabase.getIntent(intentId).catch(() => null);
-
   const brief = await judgment.seatBrief({
-    signalText: intent ? (intent.summary ?? intent.payload ?? null) : null,
-    matchReasoning: null,
+    intent,
+    negotiation: task,
     thread,
   });
   await deps.negotiationDatabase.setNegotiationBrief(task.id, seatUserId, brief);
