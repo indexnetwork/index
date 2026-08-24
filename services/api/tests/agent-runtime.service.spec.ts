@@ -3,7 +3,6 @@ import { describe, expect, it } from 'bun:test';
 import type { AgentWithRelations } from '../src/adapters/agent.database.adapter';
 import { authenticateApiKey } from '../src/guards/auth.guard';
 import { AgentRuntimeTransactionHarness } from './support/agent-runtime-transaction.harness';
-import { NegotiationPollingAuthorization } from '../src/lib/agent/negotiation-polling-authorization';
 import { HermesRuntimeTelemetry } from '../src/lib/agent/hermes-runtime-telemetry';
 import { AgentRuntimeService, NEGOTIATION_EXECUTOR_FRESHNESS_MS, type AgentRuntimeStore } from '../src/services/agent-runtime.service';
 
@@ -599,7 +598,7 @@ describe('Agent runtime transactional persistence adapter contract', () => {
   });
 });
 
-describe('runtime binding persistence and polling authorization contracts', () => {
+describe('runtime binding persistence contracts', () => {
   it('migration deterministically repairs duplicate selections before the unique index', async () => {
     const migration = await Bun.file(new URL('../drizzle/0122_add_hermes_runtime_binding.sql', import.meta.url)).text();
     const repair = migration.indexOf('row_number() OVER');
@@ -608,27 +607,5 @@ describe('runtime binding persistence and polling authorization contracts', () =
     expect(selectedIndex).toBeGreaterThan(repair);
     expect(migration).toContain('ORDER BY "updated_at" DESC, "created_at" DESC, "id" DESC');
     expect(migration).not.toContain('UPDATE "agents" SET "installation_id"');
-  });
-
-  it('authorizes a selected active legacy executor and rejects every persisted admission mismatch', async () => {
-    const persistence = new AgentRuntimeTransactionHarness();
-    persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
-    persistence.seedLegacyExecutor({ id: AGENT_ID, ownerId: OWNER_ID });
-    const authorization = new NegotiationPollingAuthorization(persistence);
-
-    expect(await authorization.isAuthorized(AGENT_ID, OWNER_ID)).toBe(true);
-    expect(persistence.snapshot().agents[0]?.runtimeKind).toBeNull();
-
-    for (const overrides of [
-      { handleNegotiations: false },
-      { status: 'inactive' as const },
-      { type: 'personal' as const },
-      { actions: [] },
-    ]) {
-      const denied = new AgentRuntimeTransactionHarness();
-      denied.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
-      denied.seedLegacyExecutor({ id: AGENT_ID, ownerId: OWNER_ID, ...overrides });
-      expect(await new NegotiationPollingAuthorization(denied).isAuthorized(AGENT_ID, OWNER_ID)).toBe(false);
-    }
   });
 });

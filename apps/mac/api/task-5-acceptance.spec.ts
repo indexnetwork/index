@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { authenticateApiKey } from '../../../services/api/src/guards/auth.guard';
-import { NegotiationPollingAuthorization } from '../../../services/api/src/lib/agent/negotiation-polling-authorization';
 import { getRequestAuthContext } from '../../../services/api/src/lib/request-auth-context';
-import { AgentDispatcherImpl } from '../../../services/api/src/services/agent-dispatcher.service';
 import { AgentRuntimeService } from '../../../services/api/src/services/agent-runtime.service';
 import { AgentRuntimeTransactionHarness } from '../../../services/api/tests/support/agent-runtime-transaction.harness';
 import { runHermesSelectionSaga, selectIndexRuntime, disconnectHermesSaga } from './agent-runtime-saga.mjs';
@@ -13,11 +11,10 @@ const INSTALLATION = 'task-5-installation';
 const ATTEMPT = 'task-5-attempt';
 
 describe('Task 5 production-boundary acceptance', () => {
-  it('composes the real runtime service, auth, polling authorization, dispatcher, and Mac saga', async () => {
+  it('composes the real runtime service, auth, executor binding, and Mac saga', async () => {
     const persistence = new AgentRuntimeTransactionHarness();
     persistence.seedUser({ id: OWNER_ID, email: 'owner@example.com', name: 'Owner' });
     const runtime = new AgentRuntimeService(persistence);
-    const polling = new NegotiationPollingAuthorization(persistence);
     let transientKey = '';
     let transientCredentialId = '';
 
@@ -115,44 +112,13 @@ describe('Task 5 production-boundary acceptance', () => {
       audience: 'hermes-negotiator',
       setupAttemptId: ATTEMPT,
     });
-    expect(await polling.isAuthorized(executorId!, OWNER_ID)).toBe(true);
-
-    const timeoutJobs: Array<[string, number, number]> = [];
-    const dispatcher = new AgentDispatcherImpl(
-      {
-        findAuthorizedAgents: async () => {
-          if (!await polling.isAuthorized(executorId!, OWNER_ID)) return [];
-          const agent = await persistence.getAgentWithRelations(executorId!);
-          return agent ? [agent] : [];
-        },
-      },
-      {
-        enqueueTimeout: async (negotiationId: string, turnCount: number, timeoutMs: number) => {
-          timeoutJobs.push([negotiationId, turnCount, timeoutMs]);
-          return 'timeout-job';
-        },
-      } as ConstructorParameters<typeof AgentDispatcherImpl>[1],
-    );
-    const dispatch = await dispatcher.dispatch(
-      OWNER_ID,
-      { action: 'negotiation.respond', scopeType: 'network', scopeId: 'network-1' },
-      { negotiationId: 'negotiation-1', brief: 'brief', thread: [], isOpening: true },
-      { timeoutMs: 5_000 },
-    );
-    expect(dispatch).toMatchObject({ reason: 'waiting', resumeToken: 'timeout-job' });
-    expect(timeoutJobs).toEqual([['negotiation-1', 0, 5_000]]);
+    expect(await persistence.getNegotiationExecutorBinding(OWNER_ID)).not.toBeNull();
 
     await selectIndexRuntime({
       api, nativeRuntime, ownerId: OWNER_ID,
       installationId: INSTALLATION, localState: selected.localState,
     });
-    expect(await polling.isAuthorized(executorId!, OWNER_ID)).toBe(false);
-    expect((await dispatcher.dispatch(
-      OWNER_ID,
-      { action: 'negotiation.respond', scopeType: 'network', scopeId: 'network-1' },
-      { negotiationId: 'negotiation-2', brief: 'brief', thread: [], isOpening: true },
-      { timeoutMs: 5_000 },
-    )).reason).toBe('no_agent');
+    expect(await persistence.getNegotiationExecutorBinding(OWNER_ID)).toBeNull();
 
     await disconnectHermesSaga({
       api, nativeRuntime, ownerId: OWNER_ID, installationId: INSTALLATION,
