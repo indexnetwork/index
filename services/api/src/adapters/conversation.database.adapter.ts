@@ -2044,6 +2044,7 @@ export class ConversationDatabaseAdapter {
       const latest = latestByTask.get(task.id);
       const latestTurn = latest ? intentCycleLatestActivity(latest.parts as unknown[], latest.senderId, userId, latest.createdAt) : null;
       const pausedBy = task.metadata.pause?.pausedBy;
+      const pauseReason = intentCyclePauseReason(task.metadata.pause?.reason);
       const pauseBy: 'yours' | 'theirs' | null = pausedBy
         ? (pausedBy === `agent:${userId}` ? 'yours' : 'theirs')
         : null;
@@ -2055,8 +2056,8 @@ export class ConversationDatabaseAdapter {
         counterpartLabel: counterpartById.get(counterpartId ?? '')?.name?.trim() || 'Unknown counterpart',
         round: task.seat.round,
         state: task.state,
-        pause: task.metadata.pause
-          ? { reason: task.metadata.pause.reason, by: pauseBy }
+        pause: pauseReason
+          ? { reason: pauseReason, by: pauseBy }
           : null,
         latestActivity: latestTurn,
         updatedAt: task.updatedAt,
@@ -2137,15 +2138,17 @@ export class ConversationDatabaseAdapter {
         .where(eq(schema.artifacts.taskId, task.id))
         .orderBy(schema.artifacts.createdAt),
     ]);
-    const pausedBy = metadata.pause?.pausedBy;
+    const taskPause = metadata.pause ?? null;
+    const pausedBy = taskPause?.pausedBy;
+    const pauseReason = intentCyclePauseReason(taskPause?.reason);
     const pauseBy: 'yours' | 'theirs' | null = pausedBy
       ? (pausedBy === `agent:${userId}` ? 'yours' : 'theirs')
       : null;
-    const pause = metadata.pause
+    const pause = pauseReason
       ? {
-          reason: metadata.pause.reason,
+          reason: pauseReason,
           by: pauseBy,
-          ...(pauseBy === 'yours' && metadata.pause.payload !== undefined ? { payload: metadata.pause.payload } : {}),
+          ...(pauseBy === 'yours' && taskPause?.payload !== undefined ? { payload: taskPause.payload } : {}),
         }
       : null;
 
@@ -2157,8 +2160,8 @@ export class ConversationDatabaseAdapter {
         opportunityId: metadata.opportunityId,
         round: seat.round,
         state: task.state,
-        brief: typeof (task.briefs as Record<string, unknown> | null)?.[intentId] === 'string'
-          ? (task.briefs as Record<string, string>)[intentId]
+        brief: typeof (task.briefs as Record<string, unknown> | null)?.[userId] === 'string'
+          ? (task.briefs as Record<string, string>)[userId]
           : null,
         pause,
       },
