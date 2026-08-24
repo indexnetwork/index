@@ -102,6 +102,8 @@ interface SeedTaskOpts {
   state?: 'submitted' | 'working' | 'waiting_for_agent' | 'input_required' | 'completed';
   opportunityId?: string;
   createdAt?: Date;
+  /** Rewrite-era round stamp; omitted means a pre-rewrite row. */
+  round?: number;
 }
 
 async function seedNegotiationTask(opts: SeedTaskOpts = {}): Promise<{
@@ -121,6 +123,7 @@ async function seedNegotiationTask(opts: SeedTaskOpts = {}): Promise<{
     ...(opts.opportunityId && { opportunityId: opts.opportunityId }),
     ...(opts.protocolVersion && { protocolVersion: opts.protocolVersion }),
     ...(opts.archivedAt && { archivedAt: opts.archivedAt }),
+    ...(opts.round !== undefined && { round: opts.round }),
   };
 
   const task = await conversationDatabaseAdapter.createTask(conv.id, metadata);
@@ -232,9 +235,11 @@ describe('archive legacy negotiations — getConversationsForUser lifecycle join
 
 describe('archive legacy negotiations — getStaleNegotiationTasks', () => {
   it('excludes archived tasks from stale watchdog sweep', async () => {
-    // Create a genuinely stale submitted task
-    const { taskId: staleId } = await seedNegotiationTask({ state: 'submitted' });
-    const { taskId: archivedStaleId } = await seedNegotiationTask({ state: 'submitted' });
+    // Create a genuinely stale submitted task. Both carry a round stamp so
+    // archivedAt is the only difference the sweep sees — an unstamped row is
+    // pre-rewrite and excluded for a different reason.
+    const { taskId: staleId } = await seedNegotiationTask({ state: 'submitted', round: 1 });
+    const { taskId: archivedStaleId } = await seedNegotiationTask({ state: 'submitted', round: 1 });
 
     // Age both tasks so they qualify as stale
     const stalePast = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago

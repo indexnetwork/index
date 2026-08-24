@@ -244,26 +244,32 @@ describe('ConversationDatabaseAdapter', () => {
       createdIds.push(conv.id);
 
       const staleSubmitted = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user',
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user', round: 1,
       });
       const staleWorking = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user',
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user', round: 1,
       });
       await adapter.updateTaskState(staleWorking.id, 'working');
       const freshSubmitted = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user',
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', round: 1,
       });
       const completed = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user',
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user', round: 1,
       });
       await adapter.updateTaskState(completed.id, 'completed');
       const nonNegotiation = await adapter.createTask(conv.id, { type: 'chat' });
+      // Pre-rewrite row: no round stamp. The watchdog must never sweep it —
+      // sweeping SSE-publishes a pause into a conversation this lifecycle
+      // never opened.
+      const legacySubmitted = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-legacy', sourceUserId: 'watchdog-user',
+      });
 
       const oldSubmitted = new Date(Date.now() - 11 * 60 * 1000);
       const oldWorking = new Date(Date.now() - 13 * 60 * 60 * 1000);
       await db.update(schema.tasks)
         .set({ createdAt: oldSubmitted, updatedAt: oldSubmitted })
-        .where(inArray(schema.tasks.id, [staleSubmitted.id]));
+        .where(inArray(schema.tasks.id, [staleSubmitted.id, legacySubmitted.id]));
       await db.update(schema.tasks)
         .set({ createdAt: oldWorking, updatedAt: oldWorking })
         .where(inArray(schema.tasks.id, [staleWorking.id]));
@@ -286,6 +292,7 @@ describe('ConversationDatabaseAdapter', () => {
       expect(staleIds).not.toContain(freshSubmitted.id);
       expect(staleIds).not.toContain(completed.id);
       expect(staleIds).not.toContain(nonNegotiation.id);
+      expect(staleIds).not.toContain(legacySubmitted.id);
       expect(stale.every((task) => task.metadata && (task.metadata as Record<string, unknown>).type === 'negotiation')).toBe(true);
     }, 10000);
   });
@@ -724,6 +731,60 @@ describe('ConversationDatabaseAdapter', () => {
       const found = await adapter.getNegotiationTaskForOpportunity(opportunityId);
       expect(found?.id).not.toBe(archivedTask.id);
       expect(found).toBeNull();
+    });
+  });
+
+  describe('pre-rewrite negotiations are inert to the new lifecycle (#1494 round-4)', () => {
+    it('a legacy row without a round stamp is invisible to the round count and to every graph lookup', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const intentId = `legacy-inert-intent-${run}`;
+      const userId = `legacy-inert-user-${run}`;
+      const counterpart = `legacy-inert-counterpart-${run}`;
+      const legacyOpportunityId = `legacy-inert-opportunity-${run}`;
+
+      const conversation = await adapter.createConversation([
+        { participantId: `agent:${userId}`, participantType: 'agent' as const },
+        { participantId: `agent:${counterpart}`, participantType: 'agent' as const },
+      ]);
+      createdIds.push(conversation.id);
+
+      const current = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId: `legacy-inert-current-${run}`,
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        intentId,
+        round: 3,
+      });
+      await adapter.updateTaskState(current.id, 'working');
+
+      // Pre-rewrite rows: no round stamp, and one of them parked in a state
+      // the three-state lifecycle no longer has.
+      const legacyWorking = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId: `legacy-inert-working-${run}`,
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        intentId,
+      });
+      await adapter.updateTaskState(legacyWorking.id, 'working');
+      const legacyOffContract = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId: legacyOpportunityId,
+        sourceUserId: userId,
+        candidateUserId: counterpart,
+        intentId,
+      });
+      await adapter.updateTaskState(legacyOffContract.id, 'input_required');
+
+      // Only the round-3 row counts; a legacy row can neither inflate the
+      // count nor sit outside it while still being resumable.
+      expect(await adapter.countActiveNegotiationsForRound(intentId, 3)).toBe(1);
+
+      expect((await adapter.getNegotiationTask(current.id))?.id).toBe(current.id);
+      expect(await adapter.getNegotiationTask(legacyWorking.id)).toBeNull();
+      expect(await adapter.getNegotiationTask(legacyOffContract.id)).toBeNull();
+      expect(await adapter.getNegotiationTaskForOpportunity(legacyOpportunityId)).toBeNull();
     });
   });
 

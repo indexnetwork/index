@@ -67,7 +67,7 @@ import { assertContinuationExecutionEffect, completeContinuationExecutionInTrans
 import type { ContinuationExecutionFence, ContinuationReceipt } from './negotiation-continuation.atomic';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
-import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, rewriteEraNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
 /**
  * In-transaction read of ONE negotiation's turn history, for the locked floor
@@ -1672,6 +1672,7 @@ export class ConversationDatabaseAdapter {
       .where(and(
         sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
         notArchivedNegotiationTaskWhere(),
+        rewriteEraNegotiationTaskWhere(),
         or(
           and(eq(schema.tasks.state, 'submitted'), lt(schema.tasks.createdAt, submittedCutoff)),
           and(eq(schema.tasks.state, 'working'), lt(schema.tasks.updatedAt, workingCutoff)),
@@ -2304,7 +2305,9 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * The one open (non-completed) negotiation task for an opportunity, if any.
+   * The one open (non-completed) rewrite-era negotiation task for an
+   * opportunity, if any. A pre-rewrite row never qualifies, so kickoff opens
+   * a fresh task for the opportunity instead of resuming an orphan.
    */
   async getNegotiationTaskForOpportunity(opportunityId: string): Promise<NegotiationTaskRowMirror | null> {
     const [row] = await db
@@ -2316,6 +2319,7 @@ export class ConversationDatabaseAdapter {
           sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
           ne(schema.tasks.state, 'completed'),
           notArchivedNegotiationTaskWhere(),
+          rewriteEraNegotiationTaskWhere(),
         ),
       )
       .orderBy(desc(schema.tasks.createdAt))
@@ -2324,8 +2328,17 @@ export class ConversationDatabaseAdapter {
     return toNegotiationTaskRow(row);
   }
 
+  /**
+   * A rewrite-era negotiation task by id. Pre-rewrite rows read back as null:
+   * this is the graph's only entry for read, resume, turn, pause, and verdict,
+   * so an orphaned legacy row is inert to the whole lifecycle.
+   */
   async getNegotiationTask(taskId: string): Promise<NegotiationTaskRowMirror | null> {
-    const [row] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).limit(1);
+    const [row] = await db
+      .select()
+      .from(schema.tasks)
+      .where(and(eq(schema.tasks.id, taskId), rewriteEraNegotiationTaskWhere()))
+      .limit(1);
     if (!row) return null;
     return toNegotiationTaskRow(row);
   }

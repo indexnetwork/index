@@ -111,6 +111,18 @@ export function notArchivedNegotiationTaskWhere() {
 }
 
 /**
+ * Reusable SQL predicate that keeps only rewrite-era negotiation tasks.
+ * Every task the negotiation graph opens stamps `metadata.round` (the
+ * kickoff batch counter); pre-rewrite rows have no such key. Anything the
+ * working|paused|completed lifecycle acts on must carry it, so a legacy row
+ * can never be swept, resumed, or acted on while staying invisible to the
+ * round-scoped active count.
+ */
+export function rewriteEraNegotiationTaskWhere() {
+  return sql`${schema.tasks.metadata}->>'round' IS NOT NULL`;
+}
+
+/**
  * Qualifying tasks that prove an attempt is already owned or still active.
  * Historical stale non-input-required tasks deliberately do not qualify.
  * Archived tasks (metadata->>'archivedAt' IS NOT NULL) are excluded so a
