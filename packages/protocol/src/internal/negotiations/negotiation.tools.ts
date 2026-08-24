@@ -76,7 +76,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
 
         const negotiations = tasks
           .filter((task) => !scopedNetworkId || task.metadata.networkId === scopedNetworkId)
-          .filter((task) => effectiveScope !== 'signal' || task.metadata.intentId === pinnedIntentId)
+          .filter((task) => effectiveScope !== 'signal' || (pinnedIntentId !== undefined && pinnedIntentId in task.metadata.seats))
           .map((task) => {
             const isSource = task.metadata.sourceUserId === context.userId;
             const counterpartyId = isSource ? task.metadata.candidateUserId : task.metadata.sourceUserId;

@@ -125,8 +125,11 @@ async function seedNegotiationTask(opts: SeedTaskOpts = {}): Promise<{
     ...(opts.opportunityId && { opportunityId: opts.opportunityId }),
     ...(opts.protocolVersion && { protocolVersion: opts.protocolVersion }),
     ...(opts.archivedAt && { archivedAt: opts.archivedAt }),
-    ...(opts.round !== undefined && { round: opts.round }),
-    ...(opts.intentId && { intentId: opts.intentId }),
+    // Per-seat binding (D21): the round and the signal live together, one
+    // entry per seat, so a rewrite-era row is one that HAS `seats`.
+    ...(opts.round !== undefined && {
+      seats: { [opts.intentId ?? 'intent-seed']: { userId: userA, round: opts.round } },
+    }),
   };
 
   const task = await conversationDatabaseAdapter.createTask(conv.id, metadata);

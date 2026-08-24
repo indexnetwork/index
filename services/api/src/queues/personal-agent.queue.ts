@@ -74,14 +74,22 @@ export class PersonalAgentQueue {
    * Discovery persisted matches for a signal; the agent decides what to do.
    *
    * Coalescing is deliberate — a burst of discovery batches should produce one
-   * kickoff turn, not one per batch — but it must never LOSE a batch. BullMQ
-   * silently returns the existing job for a duplicate id, so a batch that
-   * arrives while a kickoff turn is already running (turns take minutes) would
-   * vanish into a turn that had already read its match list. Two slots fix
-   * that: batches coalesce onto the primary id while it is still queued, and
-   * onto a single follow-up id while the primary is running. If both are
-   * somehow running (more than one worker process), the batch is enqueued
-   * without an id rather than dropped.
+   * kickoff turn, not one per batch. BullMQ silently returns the existing job
+   * for a duplicate id, so a batch arriving while a kickoff turn is already
+   * running (turns take minutes) would vanish into a turn that had already
+   * read its match list. Two slots narrow that: batches coalesce onto the
+   * primary id while it is still queued, onto a single follow-up while the
+   * primary runs, and unkeyed if both are occupied.
+   *
+   * It does NOT close the race, and this comment will not claim it does.
+   * Reading a slot's state and then adding is two operations, so two callers
+   * — two API processes, or a discovery batch racing the agent's own re-wake
+   * — can both see the primary free, and the second add is swallowed. Closing
+   * that needs an atomic check-and-add BullMQ does not expose. What makes the
+   * batch recoverable anyway is the agent's END-OF-TURN RE-CHECK (D31): every
+   * kickoff turn re-reads the match list and wakes this signal again for any
+   * undecided match it did not already know about. That is the authority
+   * here; these two slots are only an optimisation in front of it.
    */
   async addMatchesReadyEvent(input: { userId: string; intentId: string }): Promise<Job<PersonalAgentEvent>> {
     const data: PersonalAgentEvent = { ...input, event: 'matches_ready' };

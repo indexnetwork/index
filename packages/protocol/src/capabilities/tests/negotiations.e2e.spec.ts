@@ -103,7 +103,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     // the same privileged path IS-A will use — never from the graph's own public result).
     // Bob's own seat resumes (retry-same-speaker-after-pause), then self-play
     // continues straight to alice's next (scripted) pause.
-    const resumed = await graph.invoke({ negotiationId, brief: "Alice wants a technical co-founder; she is open to 15-20% equity." });
+    const resumed = await graph.invoke({ negotiationId, brief: "Alice wants a technical co-founder; she is open to 15-20% equity.", byUserId: SOURCE_USER_ID });
     expect(resumed.status).toBe("paused");
     expect(resumed.pause).toEqual({ reason: "ready_for_verdict" });
     expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({
@@ -382,7 +382,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect([...host.tasks.values()]).toHaveLength(1);
     // The second kickoff's round must land on the task, not the round it opened with —
     // checkAllPaused's round-scoped count and the eventual pause both key off this.
-    expect(host.taskFor(first.negotiationId).metadata.round).toBe(2);
+    expect(host.taskFor(first.negotiationId).metadata.seats[INTENT_ID]!.round).toBe(2);
   });
 
   test("a turn rejected for the wrong seat does not resume a paused negotiation", async () => {
@@ -525,8 +525,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
           candidateUserId: CANDIDATE_USER_ID,
           initiatorUserId: SOURCE_USER_ID,
           networkId: NETWORK_ID,
-          intentId: INTENT_ID,
-          round: 1,
+          seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
         },
       });
       const negotiationId = task.id;
@@ -545,7 +544,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
 
       // A system resume (no byUserId) re-enters turn authoring internally —
       // the internal author has no caller to reject to, so it auto-pauses.
-      const result = await graph.invoke({ negotiationId, brief: "still brief" });
+      const result = await graph.invoke({ negotiationId, brief: "still brief", byUserId: SOURCE_USER_ID });
       expect(result.status).toBe("paused");
       expect(result.pause).toEqual({ reason: "turn_cap" });
       expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({ reason: "turn_cap" });
@@ -599,8 +598,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
         candidateUserId: CANDIDATE_USER_ID,
         initiatorUserId: SOURCE_USER_ID,
         networkId: NETWORK_ID,
-        intentId: INTENT_ID,
-        round: 1,
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
       },
     });
     const graph = new Negotiations({ database: host.database, author: new ScriptedTurnAuthor(host, []) }).createGraph();

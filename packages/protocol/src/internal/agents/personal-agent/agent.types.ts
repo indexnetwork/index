@@ -333,7 +333,21 @@ export interface PersonalAgentTurnContext {
   round?: number;
   agentName?: string;
   signalText: string | null;
+  /** Everything undecided on this signal — what the principal may act on. */
   matches: PersonalAgentMatch[];
+  /**
+   * The subset of `matches` a kickoff would actually open, computed once with
+   * the context. The prompt renders it and `runKickoff` opens exactly it: a
+   * second, separately-filtered read meant the agent was shown one set and
+   * opened another.
+   */
+  kickoffTargets: PersonalAgentMatch[];
+  /**
+   * Every undecided match as this turn read it, ids only — including the ones
+   * the display cap held back. The end-of-turn re-check compares against this
+   * so a signal's own remainder is never mistaken for a new arrival.
+   */
+  knownMatchIds: string[];
   paused: PersonalAgentPausedNegotiation[];
   dossier: PersonalAgentDossierEntry[];
   recentDm: Array<{ role: string; content: string }>;

@@ -228,3 +228,59 @@ a new failure mode (a held lock after a crash) for a race the bound already
 closes; (b) rely on single-worker serialization — the queue's own code
 contemplates several workers, so this is an assumption that fails silently at
 the first replica.
+
+## D21. A negotiation binds a signal PER SEAT (metadata.intentId becomes per-seat)
+Surfaced by the round-6 finding-1 attempt: `metadata.intentId` is single-valued,
+but a negotiation genuinely belongs to two signals — one per seat — exactly the
+shape D18 already established for briefs. Today the single value is the opening
+signal's, so a re-kick from the other side either overwrites the wrong seat's
+data or is refused.
+Chosen: per-seat intent binding, same keyed shape as `briefs`.
+Why this is forced rather than preferred: the design doc states "a counterparty
+that wants out pauses ready_for_verdict(reject) and ITS IS-A rejects", and an
+IS-A can only decide a negotiation its own signal can see. With one owning
+intent the counterparty's agent can participate but never promote or reject —
+which contradicts the doc's central claim that IS-A is the only terminator and
+that both sides have one.
+Alternatives rejected: (a) opening signal owns, counterparty learns via the
+opportunity status — simpler, and what the discarded patch did, but it silently
+removes half the loop's terminators; (b) resolve the seat's intent by lookup at
+each turn — no schema change, but it re-derives on every read something the
+task should simply record, and the lookup is exactly the ambiguous
+premise-matched case #1494 documented as unreliable.
+
+## D22. Round-6 findings 2, 4, 5, 8 are fixed as ONE region, not four patches
+They share one policy question (what may throw after the round bump) and one
+data question (which match list is authoritative). The discarded round-6 patch
+rewrote `runKickoff` as a unit for this reason. Fixing them separately
+reintroduces the contradiction finding 4 names.
+Alternative rejected: four independent patches — smaller diffs, but the region
+would keep oscillating between policies, which is what rounds 4-6 were.
+
+## D23. A user reject/accept must close the negotiation (fixes the live all-paused defeat)
+Found by the dev spec-conformance pass, not by six adversarial rounds: the DM
+and Radar verdict paths write opportunity status via
+opportunityService.updateOpportunityStatus and never touch the negotiation
+task. countActiveNegotiationsForRound counts state='working', so an ordinary
+user reject leaves its task working forever, the round never reaches zero, and
+reflect is NEVER enqueued for it. The doc's central trigger is silently
+defeated by the most ordinary user action there is. Live on dev today.
+Chosen: when the opportunity has a live negotiation task, the verdict goes
+through NegotiationGraph.resolve — which closes the task AND writes the status,
+keeping "resolve is the only terminal write" true; when there is no negotiation
+(e.g. a pending match never negotiated), the opportunity service writes status
+directly as it does now.
+Alternatives rejected: (a) a hook that closes the task on terminal opportunity
+status — smaller, but leaves two terminal writers for the same fact, which is
+the exact shape this whole rewrite exists to remove; (b) making the count
+ignore tasks whose opportunity is terminal — hides the inconsistency instead of
+removing it, and leaves a 'working' task that the watchdog will later sweep.
+
+## D24. The hermes-plugin's respond tool is disabled, not repointed
+tools.py still POSTs /agents/{id}/negotiations/{id}/respond, a route #1494
+deleted — a live 404 in a package published to a public repo. External agents
+are offline by D1 until they are rebuilt on the new auth model, so the honest
+fix is for the tool to refuse with that message rather than call a dead URL.
+Alternative rejected: repointing it at the MCP respond_to_negotiation surface —
+that would quietly re-enable external turns before the auth model they need
+exists, which is exactly what D1 deferred.

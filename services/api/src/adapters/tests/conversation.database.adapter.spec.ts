@@ -244,17 +244,17 @@ describe('ConversationDatabaseAdapter', () => {
       createdIds.push(conv.id);
 
       const staleSubmitted = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user', round: 1,
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       const staleWorking = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user', round: 1,
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       await adapter.updateTaskState(staleWorking.id, 'working');
       const freshSubmitted = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', round: 1,
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       const completed = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user', round: 1,
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       await adapter.updateTaskState(completed.id, 'completed');
       const nonNegotiation = await adapter.createTask(conv.id, { type: 'chat' });
@@ -687,10 +687,10 @@ describe('ConversationDatabaseAdapter', () => {
         type: 'negotiation',
         sourceUserId: userId,
         candidateUserId: counterpart,
-        round: 1,
+        seats: { 'intent-live': { userId, round: 1 } },
       });
 
-      // A pre-rewrite row (no round stamp) is inert: the graph reads it back as
+      // A pre-rewrite row (no seat binding) is inert: the graph reads it back as
       // null, so listing it would offer a negotiation that errors when opened.
       const legacyTask = await adapter.createTask(conversation.id, {
         type: 'negotiation',
@@ -745,7 +745,7 @@ describe('ConversationDatabaseAdapter', () => {
   });
 
   describe('pre-rewrite negotiations are inert to the new lifecycle (#1494 round-4)', () => {
-    it('a legacy row without a round stamp is invisible to the round count and to every graph lookup', async () => {
+    it('a legacy row without a seat binding is invisible to the round count and to every graph lookup', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;
       const intentId = `legacy-inert-intent-${run}`;
       const userId = `legacy-inert-user-${run}`;
@@ -763,12 +763,11 @@ describe('ConversationDatabaseAdapter', () => {
         opportunityId: `legacy-inert-current-${run}`,
         sourceUserId: userId,
         candidateUserId: counterpart,
-        intentId,
-        round: 3,
+        seats: { [intentId]: { userId, round: 3 } },
       });
       await adapter.updateTaskState(current.id, 'working');
 
-      // Pre-rewrite rows: no round stamp, and one of them parked in a state
+      // Pre-rewrite rows: no seat binding, and one of them parked in a state
       // the three-state lifecycle no longer has.
       const legacyWorking = await adapter.createTask(conversation.id, {
         type: 'negotiation',
@@ -798,7 +797,7 @@ describe('ConversationDatabaseAdapter', () => {
     });
   });
 
-  describe('updateNegotiationTaskState / setNegotiationRound — no lost updates (#1494 round-3 cap-cut a)', () => {
+  describe('updateNegotiationTaskState / bindNegotiationSeat — no lost updates (#1494 round-3 cap-cut a)', () => {
     it('two concurrent writers touching different metadata keys both land', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;
       const userId = `concurrent-meta-user-${run}`;
@@ -813,7 +812,7 @@ describe('ConversationDatabaseAdapter', () => {
         type: 'negotiation',
         sourceUserId: userId,
         candidateUserId: counterpart,
-        round: 1,
+        seats: { 'intent-a': { userId, round: 1 } },
       });
 
       // The old select-then-spread-then-update shape had a lost-update race
@@ -822,12 +821,12 @@ describe('ConversationDatabaseAdapter', () => {
       // key. jsonb_set merges one key server-side, so both survive
       // regardless of interleaving.
       await Promise.all([
-        adapter.setNegotiationRound(task.id, 7),
+        adapter.bindNegotiationSeat(task.id, 'intent-a', { userId, round: 7 }),
         adapter.updateNegotiationTaskState(task.id, 'paused', { reason: 'counterparty_silent' }),
       ]);
 
       const reread = await adapter.getNegotiationTask(task.id);
-      expect(reread?.metadata.round).toBe(7);
+      expect(reread?.metadata.seats['intent-a']).toEqual({ userId, round: 7 });
       expect(reread?.metadata.pause).toMatchObject({ reason: 'counterparty_silent' });
       expect(reread?.state).toBe('paused');
     });

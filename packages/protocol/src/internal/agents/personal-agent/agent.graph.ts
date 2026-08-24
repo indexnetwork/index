@@ -61,6 +61,10 @@ const KICKOFF_CONCURRENCY = 3;
  */
 const KICKOFF_STALE_AFTER_MS = 10 * 60 * 1000;
 
+/** Attempts for a post-bump write before it is given up on loudly (D54). */
+const POST_BUMP_WRITE_ATTEMPTS = 3;
+const POST_BUMP_WRITE_RETRY_MS = 100;
+
 /** Runs `work` over `items` with at most `limit` in flight, settling every one. */
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -214,6 +218,21 @@ async function assembleContext(
   // Bounded, keeping the newest: the agent's numbers are context-relative and
   // its validator resolves them to ids, so truncation renumbers nothing.
   const matches = allMatches.slice(-MAX_MATCHES);
+  // The kickoff targets are computed HERE, once, from that same bounded list —
+  // never re-derived later from a second read. Shown one set and opening
+  // another meant the agent was offered matches a kickoff would skip and
+  // opened matches it had never been shown, and the divergence was invisible
+  // to the end-of-turn re-check, which believed everything was accounted for.
+  // The full `matches` list stays for what the PRINCIPAL may act on: a match
+  // waiting on their decision is not kickoff-able, but it is exactly what
+  // `accept_opportunity` is for.
+  const eligibility = await Promise.all(matches.map(async (match) => ({
+    match,
+    eligible: !match.awaitingIntroducerApproval
+      && !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
+      && !(await spentItsTurnBudget(deps, match)),
+  })));
+  const kickoffTargets = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
   const name = agentName?.trim();
   return {
     userId,
@@ -226,6 +245,12 @@ async function assembleContext(
     ...(name ? { agentName: name } : {}),
     signalText: intent ? (intent.summary ?? intent.payload ?? null) : null,
     matches,
+    kickoffTargets,
+    // Every undecided match as this turn read it — including the ones the
+    // display cap held back. The re-check compares against THIS, or a signal
+    // with more matches than a round opens would read its own remainder as
+    // new arrivals and wake itself for them, round after round.
+    knownMatchIds: allMatches.map((match) => match.opportunityId),
     paused,
     dossier,
     recentDm,
@@ -297,10 +322,53 @@ async function say(
     ...(options ? { options } : {}),
     ...delivered,
   };
-  await appendLedger(deps, context, executed);
+  // Guarded, like every other post-delivery ledger write: the message is on
+  // the principal's screen, and failing the turn over the accountability row
+  // would retry it into a second copy of the same message.
+  await ledgerOrLog(deps, context, executed);
   accumulator.acts.push(executed);
   accumulator.messages.push(text);
 }
+
+/**
+ * Append a ledger row for work that is already done. NEVER throws: an
+ * unrecorded act is bad, a duplicated one is worse, and everything that calls
+ * this has already had its effect.
+ */
+async function ledgerOrLog(
+  deps: PersonalAgentDeps,
+  context: PersonalAgentTurnContext,
+  executed: PersonalAgentExecutedAct,
+): Promise<void> {
+  try {
+    await appendLedger(deps, context, executed);
+  } catch (err) {
+    logger.error("Failed to ledger an executed act", { intentId: context.intentId, tool: executed.tool, error: err });
+  }
+}
+
+/**
+ * Fixed, server-owned copy for a kickoff that has no one to reach out to.
+ * A background turn has no reply stage behind it, so without this the
+ * principal is told nothing at all and — with no negotiation left active and
+ * the round's reflect job retained forever — nothing can wake the agent for
+ * this signal again.
+ */
+export const PERSONAL_AGENT_NOTHING_TO_OPEN =
+  "There is nothing new for me to put to anyone on this signal right now — what I have is either "
+  + "waiting on your decision or has run as far as it can. Tell me if you want me to change tack.";
+
+export const PERSONAL_AGENT_NO_MATCHES_YET =
+  "Nothing has come up for this signal yet. I will pick it up as soon as it does.";
+
+/**
+ * Fixed, server-owned strategy copy. Used only when the model could not write
+ * one the prose gate would pass, twice — the principal still learns that the
+ * agent is about to reach out, and the round still opens.
+ */
+export const PERSONAL_AGENT_STRATEGY_FALLBACK =
+  "I am reaching out to this signal's matches now. I could not write up my plan cleanly just "
+  + "this once — ask me what I am putting to them and I will lay it out.";
 
 /**
  * Kickoff / re-kick: the ACT both event turns can reach.
@@ -308,17 +376,19 @@ async function say(
  * Strategy into the DM first (the principal sees and can correct the plan),
  * then ONE BRIEF PER MATCH IN PARALLEL, then every match opened together.
  * A round is opened by the bump — which stamps `kickoffStartedAt` in the same
- * write — and SETTLED once its opens are done: the all-paused check runs and
- * then the size is stamped. Until it settles, a pause-driven check is a
+ * write — and SETTLED once its opens are done: the all-paused check runs on
+ * both sides of the size stamp. Until it settles, a pause-driven check is a
  * no-op, so an early pause cannot dedupe away the round's genuine reflect.
  *
- * A kickoff that died mid-round leaves a begun-but-unsettled round
- * (`kickoffStartedAt` set, `roundSize` still null). This turn REPAIRS that
- * round first — stamps it so it is no longer stranded — and then does its own
- * work. The repair claims nothing: it opened no negotiation, so it pushes no
- * act, and a principal who asked for a kickoff during an interrupted round
- * still gets one. An intent that has never kicked off, every intent predating
- * this mechanism included, has no marker at all and skips the repair.
+ * ONE POST-BUMP POLICY (D54): once the round is bumped, this turn has done
+ * irreversible, principal-visible work — a strategy message and a new round —
+ * so NOTHING below it throws. Every failure is logged, ledgered and carried
+ * past; a retry would only produce a second strategy message and a second
+ * round. A round left unsettled by such a failure is recovered by the
+ * interrupted-round repair (D53), which exists for exactly that.
+ *
+ * Before the bump the opposite holds: those failures are safe to retry, so
+ * they propagate.
  */
 async function runKickoff(
   deps: PersonalAgentDeps,
@@ -329,51 +399,25 @@ async function runKickoff(
   const judgment = deps.judgment ?? defaultJudgment();
 
   const lifecycle = await deps.negotiationDatabase.getIntentNegotiationRound(context.intentId);
-  // Begun-and-unsettled says a kickoff STARTED this round, not that it died.
-  // Under the staleness bound it is very likely still running — on another
-  // worker, or on this one a moment ago — and settling it would stamp a round
-  // whose opens are still landing, exactly the race the stamp exists to stop.
   const interruptedRound = lifecycle.kickoffStartedAt
     && lifecycle.roundSize === null
     && Date.now() - lifecycle.kickoffStartedAt.getTime() >= KICKOFF_STALE_AFTER_MS
     ? lifecycle.round
     : null;
 
-  // Re-read: verdicts executed earlier this turn already moved statuses, and
-  // a promoted or rejected match must not be re-opened.
-  const candidates = (await deps.opportunities.readMatches(context.userId, context.intentId))
-    // An introduction nobody has vouched for is not ours to open. The graph
-    // refuses it at the write too; this only keeps a brief from being spent
-    // on something that would be refused.
-    .filter((match) => !match.awaitingIntroducerApproval)
-    .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
-  const eligibility = await Promise.all(candidates.map(async (match) => ({
-    match,
-    eligible: !(await spentItsTurnBudget(deps, match)),
-  })));
-  const eligible = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
-  // Exactly the set the agent decided from: `assembleContext` showed it the
-  // newest MAX_MATCHES, so those are the ones it opens. The remainder is not
-  // lost — the next round picks it up, and `wakeForNewMatches` deliberately
-  // does not re-wake for it, or a signal with forty matches would kick off
-  // over and over inside one round.
-  const matches = eligible.slice(-MAX_MATCHES);
-  if (eligible.length > matches.length) {
-    logger.info("Kickoff bounded to this round's share of the matches", {
-      intentId: context.intentId,
-      eligible: eligible.length,
-      opening: matches.length,
-    });
-  }
+  // Exactly the set the agent was shown, minus anything THIS turn resolved a
+  // moment ago — a promote or reject completed that negotiation, and opening
+  // it again would create a second one. No re-read: a second, separately
+  // filtered list is how the shown set and the opened set drifted apart.
+  const resolvedHere = new Set(accumulator.acts
+    .filter((act): act is Extract<PersonalAgentExecutedAct, { tool: "promote" | "reject" }> =>
+      (act.tool === "promote" || act.tool === "reject") && act.outcome === "resolved")
+    .map((act) => act.opportunityId));
+  const matches = context.kickoffTargets.filter((match) => !resolvedHere.has(match.opportunityId));
 
-  // A round a kickoff began and never finished has to be settled, and it has
-  // to be settled BEFORE this turn bumps: the size stamp is guarded on the
-  // intent's current round, so once the counter moves that round can never be
-  // stamped again. Whether it also gets its reflect depends on what happens
-  // next — with matches to open, this turn is about to carry its negotiations
-  // into the next round, and a reflect queued for a round whose tasks then
-  // move away wakes the agent with "every negotiation of this round has
-  // paused" and nothing listed.
+  // A round a kickoff began and never finished has to be settled, and BEFORE
+  // this turn bumps: the size stamp is guarded on the intent's current round,
+  // so once the counter moves that round can never be stamped again.
   let repairedRound: number | null = null;
   if (interruptedRound !== null) {
     logger.warn("Repairing a kickoff that did not finish its round", { intentId: context.intentId, round: interruptedRound });
@@ -382,14 +426,30 @@ async function runKickoff(
   }
 
   if (matches.length === 0) {
+    // Say so. A background turn has no reply stage, and with nothing active
+    // and the reflect job retained forever, silence here ends the cycle for
+    // this signal with the principal never told.
+    if (context.event !== "user_message") {
+      await say(deps, context, accumulator, "message_user",
+        context.matches.length === 0 ? PERSONAL_AGENT_NO_MATCHES_YET : PERSONAL_AGENT_NOTHING_TO_OPEN);
+    }
     await recordKickoff(deps, context, accumulator, { tool: "kickoff", round: lifecycle.round, opened: 0, reasoning });
+    // Runs on this path too: it is the authoritative recovery for a batch the
+    // inbox could not coalesce, and a turn with nothing to open is exactly
+    // when a batch that landed mid-turn would otherwise be waited on forever.
+    await wakeForNewMatches(deps, context);
     return;
   }
 
-  const strategy = await judgment.strategy(context);
+  // Pre-bump: nothing irreversible has happened, so a failure here is safe to
+  // retry and propagates. The strategy itself falls back rather than throwing
+  // — losing a whole wake because the prose gate disliked one sentence, three
+  // times over an identical prompt, is not a trade worth making.
+  const strategy = await strategyOrFallback(judgment, context);
   await say(deps, context, accumulator, "message_user", strategy);
 
   const round = await deps.negotiationDatabase.bumpIntentNegotiationRound(context.intentId);
+  // ─── from here down, nothing throws (D54) ───────────────────────────────
   const threadByOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.thread]));
 
   const opens = await mapWithConcurrency(matches, KICKOFF_CONCURRENCY, async (match) => {
@@ -408,19 +468,51 @@ async function runKickoff(
     return result;
   });
 
-  await Promise.all(opens.map(async (open, index) => {
-    if (open.status === "rejected") await compensateFailedOpen(deps, context, matches[index]!, round, open.reason);
-  }));
+  const failed: PersonalAgentMatch[] = [];
+  for (const [index, open] of opens.entries()) {
+    if (open.status !== "rejected") continue;
+    const match = matches[index]!;
+    failed.push(match);
+    await compensateFailedOpen(deps, context, match, round, open.reason);
+  }
+  if (failed.length > 0) {
+    // Recorded, not silent: a brief that never generated leaves no task for
+    // the compensation to find, so without this the match would simply vanish
+    // from the turn — and from the re-check, which believes every target is
+    // accounted for.
+    await ledgerOrLog(deps, context, {
+      tool: "kickoff",
+      round,
+      opened: 0,
+      reasoning: `Could not open ${failed.length} of ${matches.length} match(es) this round.`,
+    });
+  }
 
   const opened = await settleRound(deps, context, round, { triggerReflect: true });
-  // The new round opened nothing, so it carried nothing away from the repaired
-  // one: that round is still the current state and still needs its reflect.
   if (opened === 0 && repairedRound !== null) await triggerRoundReflect(deps, context, repairedRound);
   await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
-  // `eligible`, not `matches`: everything this turn KNEW about is accounted
-  // for, whether it opened now or waits for the next round. Only something
-  // that arrived while the turn was running deserves another wake.
-  if (opened > 0) await wakeForNewMatches(deps, context, eligible);
+  if (opened > 0) await wakeForNewMatches(deps, context);
+}
+
+/**
+ * The strategy, or fixed copy. Retried like every other model stage, and it
+ * does NOT throw: the prose gate rejects on claim families that ordinary
+ * scheduling language ("approach all three at the same time") trips, and a
+ * throw here loses the wake terminally after three attempts against an
+ * identical prompt.
+ */
+async function strategyOrFallback(
+  judgment: NonNullable<PersonalAgentDeps["judgment"]>,
+  context: PersonalAgentTurnContext,
+): Promise<string> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await judgment.strategy(context);
+    } catch (err) {
+      logger.warn("Strategy rejected or unavailable", { intentId: context.intentId, attempt: attempt + 1, error: err });
+    }
+  }
+  return PERSONAL_AGENT_STRATEGY_FALLBACK;
 }
 
 /**
@@ -448,17 +540,26 @@ async function compensateFailedOpen(
   failure: unknown,
 ): Promise<void> {
   logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, round, error: failure });
-  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId);
-  if (!task || task.state !== "working" || task.metadata.round !== round) return;
-  const spoke = (await deps.negotiationDatabase.getNegotiationMessages(task.id)).length > 0;
+  // Post-bump: a read that fails here must not fail the turn either.
+  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId).catch((err: unknown) => {
+    logger.error("Could not look up a failed open's task", { opportunityId: match.opportunityId, error: err });
+    return null;
+  });
+  if (!task || task.state !== "working" || task.metadata.seats[context.intentId]?.round !== round) return;
+  const spoke = (await deps.negotiationDatabase.getNegotiationMessages(task.id).catch(() => [])).length > 0;
   const result = await deps.negotiations.invoke({
     negotiationId: task.id,
     pause: spoke ? "counterparty_silent" : "open_failed",
   });
   if (result.status !== "paused") {
-    // Left live, this task holds its round open forever. Fail the turn so the
-    // retry can try again rather than settling a round that is not settled.
-    throw new Error(`Could not pause a stranded negotiation: ${result.error ?? result.status}`);
+    // Left live, this task holds its round open — but the round bump has
+    // already happened, so throwing would retry the whole turn into a second
+    // strategy message and a second round (D54). Recorded instead: the round
+    // stays unsettled, and the interrupted-round repair picks it up.
+    logger.error("Could not pause a stranded negotiation", {
+      negotiationId: task.id,
+      outcome: result.error ?? result.status,
+    });
   }
 }
 
@@ -490,15 +591,46 @@ async function settleRound(
   round: number,
   options: { triggerReflect: boolean },
 ): Promise<number> {
-  const tasks = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(context.intentId, round);
+  const tasks = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(context.intentId, round)
+    .catch((err: unknown) => {
+      logger.error("Could not read a round's tasks to settle it", { intentId: context.intentId, round, error: err });
+      return [] as NegotiationTaskRow[];
+    });
   if (tasks.length === 0) return 0;
 
   if (options.triggerReflect) await triggerRoundReflect(deps, context, round);
-  await deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, tasks.length);
+  // Retried, then given up on loudly: this is the one post-bump write whose
+  // loss matters, and it must not throw (D54). An unstamped round is not
+  // lost — the interrupted-round repair settles it once it goes stale.
+  await retryWrite(
+    () => deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, tasks.length),
+    "stamp a round's size",
+    { intentId: context.intentId, round },
+  );
   // The window the stamp opens: anything that paused since the count above saw
   // a null stamp and bailed, and would be waited on forever.
   if (options.triggerReflect) await triggerRoundReflect(deps, context, round);
   return tasks.length;
+}
+
+/** Three attempts, then an error log. Never throws — see D54. */
+async function retryWrite(
+  write: () => Promise<void>,
+  what: string,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  for (let attempt = 0; attempt < POST_BUMP_WRITE_ATTEMPTS; attempt++) {
+    try {
+      await write();
+      return;
+    } catch (err) {
+      if (attempt === POST_BUMP_WRITE_ATTEMPTS - 1) {
+        logger.error(`Failed to ${what}`, { ...detail, error: err });
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, POST_BUMP_WRITE_RETRY_MS * (attempt + 1)));
+    }
+  }
 }
 
 /** Enqueue this round's reflect if every negotiation in it has stopped. */
@@ -507,10 +639,13 @@ async function triggerRoundReflect(
   context: PersonalAgentTurnContext,
   round: number,
 ): Promise<void> {
-  if (!deps.reflectEnqueue) return;
-  const active = await deps.negotiationDatabase.countActiveNegotiationsForRound(context.intentId, round);
-  if (active !== 0) return;
-  await deps.reflectEnqueue({ userId: context.userId, intentId: context.intentId, round });
+  const enqueue = deps.reflectEnqueue;
+  if (!enqueue) return;
+  await retryWrite(async () => {
+    const active = await deps.negotiationDatabase.countActiveNegotiationsForRound(context.intentId, round);
+    if (active !== 0) return;
+    await enqueue({ userId: context.userId, intentId: context.intentId, round });
+  }, "enqueue a round's reflect", { intentId: context.intentId, round });
 }
 
 /**
@@ -518,9 +653,13 @@ async function triggerRoundReflect(
  * match list was assembled at the top of the turn. The inbox coalesces such a
  * batch onto a follow-up job, but that add races the turn going active, so
  * this is the authoritative recovery — a match that exists, is undecided and
- * has no negotiation at all, and was not one this turn already knew about,
- * wakes the agent again. Matches merely held back by the round's cap are NOT
- * new — the next round picks them up. It cannot loop: a target that failed to open is
+ * has no negotiation at all, and was NOT in the set this turn read at its
+ * start, wakes the agent again. Matches merely held back by the round's cap
+ * were in that set, so they are not new — the next round picks them up.
+ *
+ * This is also the authoritative recovery for a batch the inbox's two-slot
+ * coalescing could not take (its check-then-add is not atomic), which is why
+ * it runs whatever the kickoff opened. It cannot loop: a target that failed to open is
  * compensated into a task, so it is never "unopened" on the next pass.
  *
  * Best-effort by design, and it runs last: the round is already settled, so a
@@ -529,13 +668,12 @@ async function triggerRoundReflect(
 async function wakeForNewMatches(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
-  targeted: PersonalAgentMatch[],
 ): Promise<void> {
   if (!deps.wakeForMatches) return;
   try {
-    const targetedIds = new Set(targeted.map((match) => match.opportunityId));
+    const known = new Set(context.knownMatchIds);
     const arrivals = (await deps.opportunities.readMatches(context.userId, context.intentId))
-      .filter((match) => !targetedIds.has(match.opportunityId))
+      .filter((match) => !known.has(match.opportunityId))
       .filter((match) => !match.awaitingIntroducerApproval)
       .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
     const unopened = await Promise.all(arrivals.map(async (match) =>
@@ -559,11 +697,7 @@ async function recordKickoff(
   accumulator: TurnAccumulator,
   executed: Extract<PersonalAgentExecutedAct, { tool: "kickoff" }>,
 ): Promise<void> {
-  try {
-    await appendLedger(deps, context, executed);
-  } catch (err) {
-    logger.error("Failed to ledger a kickoff act", { intentId: context.intentId, round: executed.round, error: err });
-  }
+  await ledgerOrLog(deps, context, executed);
   accumulator.acts.push(executed);
 }
 
@@ -616,7 +750,7 @@ async function executeAct(
           reasoning: act.reasoning,
           outcome: "error",
         };
-        await appendLedger(deps, context, missing);
+        await ledgerOrLog(deps, context, missing);
         accumulator.acts.push(missing);
         return;
       }
@@ -632,7 +766,7 @@ async function executeAct(
         reasoning: act.reasoning,
         outcome: result.status === "resolved" ? "resolved" : "error",
       };
-      await appendLedger(deps, context, executed);
+      await ledgerOrLog(deps, context, executed);
       accumulator.acts.push(executed);
       return;
     }
@@ -652,7 +786,7 @@ async function executeAct(
         ...(outcome.counterparty ? { counterparty: outcome.counterparty } : {}),
         ...(act.reason ? { reason: act.reason } : {}),
       };
-      await appendLedger(deps, context, executed);
+      await ledgerOrLog(deps, context, executed);
       accumulator.acts.push(executed);
       return;
     }
@@ -664,14 +798,14 @@ async function executeAct(
         source: "agent_note",
       });
       const executed: PersonalAgentExecutedAct = { tool: "note_dossier", text: act.text, entryId };
-      await appendLedger(deps, context, executed);
+      await ledgerOrLog(deps, context, executed);
       accumulator.acts.push(executed);
       return;
     }
     case "retire_dossier": {
       const retired = await deps.dossier.retireEntry({ userId: context.userId, entryId: act.entryId });
       const executed: PersonalAgentExecutedAct = { tool: "retire_dossier", entryId: act.entryId, retired };
-      await appendLedger(deps, context, executed);
+      await ledgerOrLog(deps, context, executed);
       accumulator.acts.push(executed);
       return;
     }
@@ -734,11 +868,7 @@ async function runReplyStage(
     stage: "reply",
     ...(fallback ? { fallback } : {}),
   };
-  try {
-    await appendLedger(deps, context, executed);
-  } catch (err) {
-    logger.error("Failed to ledger a turn's reply", { intentId: context.intentId, error: err });
-  }
+  await ledgerOrLog(deps, context, executed);
   accumulator.acts.push(executed);
   accumulator.messages.push(content);
 }
@@ -877,11 +1007,13 @@ async function authorSeatBrief(
   thread: PersonalAgentThreadEntry[],
 ): Promise<string> {
   const opportunity = await deps.negotiationDatabase.getOpportunity(task.metadata.opportunityId).catch(() => null);
-  const seatIntentId = seatUserId === task.metadata.sourceUserId
-    ? task.metadata.intentId
-    : ((opportunity?.actors ?? []) as Array<{ userId: string; intent?: string | null; role?: string }>)
-      .find((actor) => actor.userId === seatUserId && actor.role !== "introducer" && actor.intent
-        && actor.intent !== task.metadata.intentId)?.intent ?? null;
+  // The seat's OWN binding, recorded when its own kickoff opened or re-kicked
+  // this negotiation. Never inferred from the opportunity's actor rows: a
+  // premise-matched actor's `intent` names the intent it matched AGAINST, so
+  // it cannot be trusted to name the seat's own signal. A seat that has not
+  // kicked off here yet simply has no signal to show, and the brief says so.
+  const seatIntentId = Object.entries(task.metadata.seats)
+    .find(([, binding]) => binding.userId === seatUserId)?.[0] ?? null;
   const intent = seatIntentId ? await deps.negotiationDatabase.getIntent(seatIntentId).catch(() => null) : null;
 
   const brief = await judgment.seatBrief({

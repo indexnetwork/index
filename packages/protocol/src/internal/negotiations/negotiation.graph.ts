@@ -40,8 +40,12 @@ export type NegotiationGraphInput =
    * seat's own agent authors at its first turn.
    */
   | { opportunityId: string; brief: string; intentId: string; round: number }
-  /** Resume with a fresh brief for the seat that owns this negotiation's intent. */
-  | { negotiationId: string; brief: string }
+  /**
+   * Resume with a fresh brief for ONE seat, named explicitly. `byUserId` is
+   * not optional and is not inferred: the same "assume it is `sourceUserId`"
+   * shortcut on the open path wrote one seat's brief into the other's slot.
+   */
+  | { negotiationId: string; brief: string; byUserId: string }
   /** `byUserId` is the seat submitting this turn; apply rejects a turn whose byUserId isn't the computed next speaker. */
   | { negotiationId: string; turn: NegotiationTurn; byUserId: string }
   | { negotiationId: string; pause: NegotiationSystemPauseReason }
@@ -153,22 +157,40 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     if ("opportunityId" in input) {
       const existing = await deps.database.getNegotiationTaskForOpportunity(input.opportunityId);
       if (existing) {
-        // The kickoff acts for the seat that owns `intentId`, and writes only
-        // that seat's brief. `existing.metadata.sourceUserId` IS that seat:
-        // `init` resolved it from the intent's owner when the task was made.
-        await deps.database.setNegotiationBrief(existing.id, existing.metadata.sourceUserId, input.brief);
-        // A fresh kickoff batch bumped `round` before invoking; stamp it onto
-        // the existing task so checkAllPaused's round-scoped count and the
-        // eventual pause both reflect the current round, not a stale one.
-        if (existing.metadata.round !== input.round) {
-          await deps.database.setNegotiationRound(existing.id, input.round);
+        // WHICH SEAT is kicking off? Never assume it is `sourceUserId`.
+        // Opportunities are pair-deduped, so the same row is in BOTH actors'
+        // match lists: if Bob's agent opened this negotiation, Alice's later
+        // kickoff arrives here too. Writing the brief to `sourceUserId` would
+        // then overwrite BOB's brief with ALICE's, and his seat would argue
+        // her constraints — exactly what a per-seat brief exists to prevent.
+        // Resolve the seat from the intent's owner, the same way the create
+        // branch below does.
+        const kickingIntent = await deps.database.getIntent(input.intentId);
+        if (!kickingIntent) return { phase: "error", error: "Intent not found" };
+        const seatUserId = kickingIntent.userId;
+        if (seatUserId !== existing.metadata.sourceUserId && seatUserId !== existing.metadata.candidateUserId) {
+          return { phase: "error", error: "Intent owner is not a seat on this negotiation" };
         }
+
         const messages = await deps.database.getNegotiationMessages(existing.id);
+        await deps.database.setNegotiationBrief(existing.id, seatUserId, input.brief);
+        // Bind THIS seat's signal and round, and only this seat's. Both sides
+        // negotiate here for their own signal, so both bindings live side by
+        // side: a re-kick from either can no longer overwrite the other's
+        // round, and there is no arrangement in which a task ends up in
+        // neither round. That is structural now, not a guard.
+        const binding = existing.metadata.seats[input.intentId];
+        if (binding?.round !== input.round || binding.userId !== seatUserId) {
+          await deps.database.bindNegotiationSeat(existing.id, input.intentId, { userId: seatUserId, round: input.round });
+        }
         return {
           task: {
             ...existing,
-            briefs: { ...existing.briefs, [existing.metadata.sourceUserId]: input.brief },
-            metadata: { ...existing.metadata, round: input.round },
+            briefs: { ...existing.briefs, [seatUserId]: input.brief },
+            metadata: {
+              ...existing.metadata,
+              seats: { ...existing.metadata.seats, [input.intentId]: { userId: seatUserId, round: input.round } },
+            },
           },
           turns: turnsFromMessages(messages),
           phase: existing.state === "completed" ? "read" : "turn",
@@ -211,8 +233,7 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
           candidateUserId: candidateActor.userId,
           initiatorUserId: sourceActor.userId,
           networkId: sourceActor.networkId,
-          intentId: input.intentId,
-          round: input.round,
+          seats: { [input.intentId]: { userId: sourceActor.userId, round: input.round } },
         },
       });
       await deps.database.updateOpportunityStatus(input.opportunityId, "negotiating").catch((err) => {
@@ -233,10 +254,13 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     // "working" with no pause and no applied turn.
 
     if ("brief" in input) {
-      await deps.database.setNegotiationBrief(task.id, task.metadata.sourceUserId, input.brief);
+      if (input.byUserId !== task.metadata.sourceUserId && input.byUserId !== task.metadata.candidateUserId) {
+        return { phase: "error", error: "Brief submitted for a user who is not a seat on this negotiation" };
+      }
+      await deps.database.setNegotiationBrief(task.id, input.byUserId, input.brief);
       const messages = await deps.database.getNegotiationMessages(task.id);
       return {
-        task: { ...task, briefs: { ...task.briefs, [task.metadata.sourceUserId]: input.brief } },
+        task: { ...task, briefs: { ...task.briefs, [input.byUserId]: input.brief } },
         turns: turnsFromMessages(messages),
         phase: "turn",
       };
@@ -300,7 +324,11 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     const authored = await deps.author.authorTurn({
       negotiationId: task.id,
       userId: speakerId,
-      intentId: meta.intentId,
+      // The SPEAKING seat's own signal, when it has bound one. A seat that has
+      // not kicked this negotiation off yet has no binding, and guessing one
+      // from the opportunity's actor rows is exactly the premise-matched
+      // ambiguity that field cannot be trusted for.
+      ...(seatIntentOf(meta, speakerId) ? { intentId: seatIntentOf(meta, speakerId)! } : {}),
     });
     const turn: NegotiationTurn = isOpening ? NegotiationOpeningTurnSchema.parse(authored) : authored;
 
@@ -407,11 +435,9 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
         pausedBy: speakerId,
         ...("payload" in effectiveTurn ? { payload: effectiveTurn.payload } : {}),
       });
-      await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
-        userId: meta.sourceUserId,
-        intentId: meta.intentId,
-        round: meta.round,
-      });
+      // EVERY bound seat: a pause can complete either side's round, and each
+      // side's IS-A reflects on its own.
+      await triggerReflectForEverySeat(deps, meta);
       return { task: updated, turns: allTurns, phase: "done", result: toResult(updated, allTurns) };
     }
 
@@ -419,6 +445,28 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
     return { task: currentTask, turns: allTurns, pendingTurn: null, pendingTurnByUserId: null, authored: false, phase: "turn" };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** The signal a seat has bound to this negotiation, if it has bound one. */
+export function seatIntentOf(meta: NegotiationTaskMetadata, userId: string): string | undefined {
+  return Object.entries(meta.seats).find(([, binding]) => binding.userId === userId)?.[0];
+}
+
+/**
+ * Run the all-paused check for every seat bound to this negotiation.
+ *
+ * Both sides batch their own rounds, so one pause can be the last one of
+ * either side's — checking only the opener's would leave the counterparty's
+ * round waiting on a negotiation that had already stopped.
+ */
+async function triggerReflectForEverySeat(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<void> {
+  for (const [intentId, binding] of Object.entries(meta.seats)) {
+    await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
+      userId: binding.userId,
+      intentId,
+      round: binding.round,
+    });
   }
 }
 
@@ -454,11 +502,7 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
     // A round whose last active negotiation ends by direct verdict (not a
     // pause) must still trigger the all-paused check — apply isn't the only
     // way a round finishes.
-    await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
-      userId: task.metadata.sourceUserId,
-      intentId: task.metadata.intentId,
-      round: task.metadata.round,
-    });
+    await triggerReflectForEverySeat(deps, task.metadata);
     return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", verdict: input.verdict, reasoning: input.reasoning, turns: [] } };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };

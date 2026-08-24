@@ -21,8 +21,12 @@ export interface NegotiationTurnAuthorInput {
   negotiationId: string;
   /** The seat speaking — the graph's computed next speaker. */
   userId: string;
-  /** The intent this negotiation belongs to. */
-  intentId: string;
+  /**
+   * The SPEAKING seat's own signal, when it has bound one. Absent for a seat
+   * that has not kicked this negotiation off yet — its signal is not
+   * guessable from the opportunity's actor rows.
+   */
+  intentId?: string;
 }
 
 export interface NegotiationTurnAuthor {

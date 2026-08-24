@@ -103,10 +103,15 @@ export class FakeNegotiationHost {
       if (!task) throw new Error(`No such task ${taskId}`);
       this.tasks.set(taskId, { ...task, briefs: { ...task.briefs, [userId]: brief }, updatedAt: new Date() });
     },
-    setNegotiationRound: async (taskId, round) => {
+    // Per SEAT: binding one must never disturb the other's.
+    bindNegotiationSeat: async (taskId, intentId, binding) => {
       const task = this.tasks.get(taskId);
       if (!task) throw new Error(`No such task ${taskId}`);
-      this.tasks.set(taskId, { ...task, metadata: { ...task.metadata, round }, updatedAt: new Date() });
+      this.tasks.set(taskId, {
+        ...task,
+        metadata: { ...task.metadata, seats: { ...task.metadata.seats, [intentId]: binding } },
+        updatedAt: new Date(),
+      });
     },
     createNegotiationMessage: async (input) => {
       const list = this.messages.get(input.taskId) ?? [];
@@ -127,11 +132,11 @@ export class FakeNegotiationHost {
       return { id, status };
     },
     getNegotiationTasksForIntentRound: async (intentId, round) =>
-      [...this.tasks.values()].filter((t) => t.metadata.intentId === intentId && t.metadata.round === round),
+      [...this.tasks.values()].filter((t) => t.metadata.seats[intentId]?.round === round),
     // Signal-scoped on purpose: a negotiation a later round left behind must
     // stay visible, or it can never be promoted or rejected.
     getPausedNegotiationTasksForIntent: async (intentId) =>
-      [...this.tasks.values()].filter((t) => t.metadata.intentId === intentId && t.state === "paused"),
+      [...this.tasks.values()].filter((t) => intentId in t.metadata.seats && t.state === "paused"),
     // One write: the bump clears the stamp AND marks the kickoff as begun.
     bumpIntentNegotiationRound: async () => {
       this.roundSize = null;
@@ -148,7 +153,7 @@ export class FakeNegotiationHost {
     },
     countActiveNegotiationsForRound: async (intentId, round) =>
       [...this.tasks.values()].filter((t) =>
-        t.metadata.intentId === intentId && t.metadata.round === round && t.state === "working").length,
+        t.metadata.seats[intentId]?.round === round && t.state === "working").length,
   };
 
   /**

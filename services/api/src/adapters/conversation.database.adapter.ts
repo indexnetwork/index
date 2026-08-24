@@ -38,8 +38,8 @@ type NegotiationTaskMetadataMirror = {
   candidateUserId: string;
   initiatorUserId: string;
   networkId: string;
-  intentId: string;
-  round: number;
+  /** One binding per seat, keyed by intent id — the protocol's `seats`. */
+  seats: Record<string, { userId: string; round: number }>;
   pause?: { reason: NegotiationPauseReason; payload?: unknown; pausedBy?: string } | null;
 };
 
@@ -2434,10 +2434,21 @@ export class ConversationDatabaseAdapter {
     }).where(eq(schema.tasks.id, taskId));
   }
 
-  /** Stamps metadata.round when an open re-targets an existing task into a freshly bumped round. Single-statement jsonb_set — see updateNegotiationTaskState. */
-  async setNegotiationRound(taskId: string, round: number): Promise<void> {
+  /**
+   * Binds ONE seat's signal and round, leaving every other seat's untouched.
+   * Single-statement `jsonb_set` for the same reason `setNegotiationBrief` is:
+   * both sides write here, and a read-modify-write would let one seat's
+   * kickoff clobber the other's binding — the very thing per-seat exists to
+   * make impossible.
+   */
+  async bindNegotiationSeat(taskId: string, intentId: string, binding: { userId: string; round: number }): Promise<void> {
     await db.update(schema.tasks).set({
-      metadata: sql`jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{round}', ${JSON.stringify(round)}::jsonb, true)`,
+      metadata: sql`jsonb_set(
+        jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{seats}', coalesce(${schema.tasks.metadata}->'seats', '{}'::jsonb), true),
+        ARRAY['seats', ${intentId}],
+        ${JSON.stringify(binding)}::jsonb,
+        true
+      )`,
       updatedAt: new Date(),
     }).where(eq(schema.tasks.id, taskId));
   }
@@ -2557,7 +2568,7 @@ export class ConversationDatabaseAdapter {
       .where(
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-          sql`${schema.tasks.metadata}->>'intentId' = ${intentId}`,
+          sql`${schema.tasks.metadata}->'seats' ? ${intentId}`,
           eq(schema.tasks.state, 'paused'),
           notArchivedNegotiationTaskWhere(),
           rewriteEraNegotiationTaskWhere(),
@@ -2629,8 +2640,7 @@ export class ConversationDatabaseAdapter {
       .where(
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-          sql`${schema.tasks.metadata}->>'intentId' = ${intentId}`,
-          sql`(${schema.tasks.metadata}->>'round')::int = ${round}`,
+          sql`(${schema.tasks.metadata}->'seats'->${intentId}->>'round')::int = ${round}`,
           notArchivedNegotiationTaskWhere(),
         ),
       )
@@ -2646,8 +2656,7 @@ export class ConversationDatabaseAdapter {
       .where(
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-          sql`${schema.tasks.metadata}->>'intentId' = ${intentId}`,
-          sql`(${schema.tasks.metadata}->>'round')::int = ${round}`,
+          sql`(${schema.tasks.metadata}->'seats'->${intentId}->>'round')::int = ${round}`,
           eq(schema.tasks.state, 'working'),
           // The same predicate `getNegotiationTasksForIntentRound` applies:
           // an archived task stuck in 'working' would hold this count above

@@ -1023,6 +1023,13 @@
       "when": 1786886087826,
       "tag": "0148_per_seat_negotiation_briefs",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1786886087827,
+      "tag": "0149_per_seat_negotiation_seats",
+      "breakpoints": true
     }
   ]
 }
