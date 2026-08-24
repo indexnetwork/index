@@ -62,14 +62,18 @@ describe('SANDBOX_PERSONAS', () => {
 });
 
 describe('SANDBOX_MINIMAL_PERSONAS', () => {
-  it('is exactly five fully authored people on a distinct address family', () => {
+  it('is exactly five fully authored people with name-based fixture emails', () => {
     expect(SANDBOX_MINIMAL_PERSONAS).toHaveLength(5);
     // One shared market: the supporting people carry two focused signals each.
     assertPopulationShape(SANDBOX_MINIMAL_PERSONAS, { minIntents: 2 });
-    for (const persona of SANDBOX_MINIMAL_PERSONAS) {
-      expect(persona.email).toMatch(/^sandbox-minimal-\d{2}@index-network\.test$/);
-      expect(persona.fixedIds).toBeUndefined();
-    }
+    expect(SANDBOX_MINIMAL_PERSONAS.map((persona) => persona.email).sort()).toEqual([
+      'aisha-okafor@sandbox.test',
+      'daniel-ruiz@sandbox.test',
+      'ethan-brooks@sandbox.test',
+      'maya-chen@sandbox.test',
+      'sofia-martinez@sandbox.test',
+    ]);
+    for (const persona of SANDBOX_MINIMAL_PERSONAS) expect(persona.fixedIds).toBeUndefined();
   });
 
   it('does not collide with the full population', () => {

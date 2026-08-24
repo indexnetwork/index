@@ -1941,6 +1941,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
   people: [
     {
       name: 'Maya Chen', role: 'Technical Co-founder', location: 'New York, NY',
+      email: 'maya-chen@sandbox.test',
       bio: 'Technical co-founder of a developer-tools startup building observability software for AI agents.',
       skills: ['product engineering', 'AI infrastructure', 'developer tools'], interests: ['B2B SaaS', 'agent reliability', 'seed-stage startups'],
       premises: [
@@ -1957,6 +1958,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
     },
     {
       name: 'Daniel Ruiz', role: 'Founding Engineer', location: 'Brooklyn, NY',
+      email: 'daniel-ruiz@sandbox.test',
       bio: 'Backend and infrastructure engineer who has built multi-tenant data platforms at two B2B SaaS startups.',
       skills: ['distributed systems', 'TypeScript', 'Postgres', 'cloud infrastructure'], interests: ['developer tools', 'early-stage teams', 'data systems'],
       premises: [
@@ -1972,6 +1974,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
     },
     {
       name: 'Aisha Okafor', role: 'Seed Investor', location: 'New York, NY',
+      email: 'aisha-okafor@sandbox.test',
       bio: 'Partner at an early-stage fund investing in developer tools, data infrastructure, and enterprise software.',
       skills: ['seed investing', 'enterprise GTM', 'fundraising'], interests: ['developer tools', 'AI infrastructure', 'B2B SaaS'],
       premises: [
@@ -1987,6 +1990,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
     },
     {
       name: 'Sofia Martinez', role: 'SaaS Founder', location: 'Austin, TX',
+      email: 'sofia-martinez@sandbox.test',
       bio: 'Founder of a workflow-automation company for independent healthcare practices.',
       skills: ['customer discovery', 'healthcare operations', 'B2B product'], interests: ['vertical SaaS', 'enterprise sales', 'founder communities'],
       premises: [
@@ -2002,6 +2006,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
     },
     {
       name: 'Ethan Brooks', role: 'Product-Led Growth Advisor', location: 'San Francisco, CA',
+      email: 'ethan-brooks@sandbox.test',
       bio: 'Former product leader who now advises seed-stage B2B founders on activation, onboarding, and early go-to-market systems.',
       skills: ['product strategy', 'activation', 'B2B growth'], interests: ['developer tools', 'vertical SaaS', 'founder coaching'],
       premises: [
