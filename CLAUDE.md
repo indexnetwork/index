@@ -77,17 +77,37 @@ Bun monorepo. Overview: `docs/design/architecture-overview.md`; commands and con
 
 ## Session roles: root orchestrates, worktrees implement
 
-We work via worktrees, one Zed window and one agent session per worktree.
+We work via worktrees, one Zed window and one agent session per worktree. The separation is
+for isolation, not for disappearing with the task: implementation happens in short,
+collaborative iterations so the user can react while the direction is still easy to change.
 
 - **Root session** (working directory is the repo root): orchestrate, never implement.
-  1. Create the worktree with the script — `bun run worktree:new <type>/<description>` —
-     which validates the branch name, bases it on `origin/dev`, and runs the mandatory setup.
-  2. Write a handoff prompt for the task and copy it to the clipboard (`pbcopy`), then give
-     the user the worktree path (`.worktrees/<type>-<description>`) so they can open it in
-     Zed, start a session there, and paste the handoff.
-- **Worktree session**: implement the change and finish by opening a PR into `dev`.
-- **Follow-up changes go through a handoff too**: if the PR or worktree needs more work
-  (review feedback, failing checks, scope additions), the root session writes another
-  clipboard handoff for that worktree — it does not make the changes itself.
+  1. Before creating anything, check whether the task already has a worktree. Continue in
+     that worktree and its existing Zed session whenever possible; do not create a parallel
+     or replacement worktree for follow-up work.
+  2. Only for a genuinely new task, create the worktree with
+     `bun run worktree:new <type>/<description>`, which validates the branch name, bases it
+     on `origin/dev`, and runs the mandatory setup.
+  3. Write a handoff prompt for the next small outcome and copy it to the clipboard
+     (`pbcopy`), then give the user the worktree path (`.worktrees/<type>-<description>`) so
+     they can open it in Zed, start a session there, and paste the handoff.
+- **Worktree session**: work in small, visible slices. For each iteration:
+  1. State the next small outcome.
+  2. Inspect only what is needed for that outcome.
+  3. Implement the smallest useful slice and run focused verification.
+  4. Report the result and wait for the user's reaction before expanding it, unless the
+     user explicitly asked for uninterrupted execution.
+- **Keep iterations short.** A useful result should arrive in minutes, not hours. If a
+  slice is likely to take a long time, split it before starting. Surface discoveries that
+  could change the direction immediately, while they are still cheap to act on.
+- **Stay on the requested path.** Do not investigate incidental issues, redesign adjacent
+  code, run broad checks prematurely, or chase optional improvements. Mention a
+  non-blocking discovery in one sentence and keep moving. Do not silently turn a working
+  first slice into refactoring, polish, exhaustive tests, or PR preparation.
+- **Finish after the direction is agreed.** Once the user is happy with the solution,
+  complete the necessary broader checks and open a PR into `dev`.
+- **Follow-ups stay in the same worktree and session.** If the session is no longer open,
+  the root session writes a new clipboard handoff for that existing worktree; it does not
+  implement the changes or create another worktree.
 - **Merging the PR is the root session's responsibility** — the worktree session never
   merges, and merge approval from the user is always explicit.
