@@ -30,6 +30,7 @@ type NegotiationTaskMetadataMirror = {
   networkId: string;
   /** One binding per seat, keyed by intent id — the protocol's `seats`. */
   seats: Record<string, { userId: string; round: number }>;
+  drainGeneration: number;
   pause?: { reason: NegotiationPauseReason; payload?: unknown; pausedBy?: string } | null;
 };
 
@@ -2438,8 +2439,7 @@ export class ConversationDatabaseAdapter {
     sourceUserId: string;
     candidateUserId: string;
     brief: string;
-    intentId: string;
-    round: number;
+    seats: Record<string, { userId: string; round: number }>;
     networkId: string;
     knownTaskId?: string;
   }): Promise<{ task: NegotiationTaskRowMirror; disposition: 'created' | 'existing' | 'raced' } | null> {
@@ -2459,6 +2459,8 @@ export class ConversationDatabaseAdapter {
         !introducers.every((actor) => actor.approved === true)
         || !actors.some((actor) => actor.userId === input.sourceUserId && actor.networkId === input.networkId)
         || !actors.some((actor) => actor.userId === input.candidateUserId)
+        || !Object.values(input.seats).some((seat) => seat.userId === input.sourceUserId)
+        || !Object.values(input.seats).some((seat) => seat.userId === input.candidateUserId)
       ) return null;
 
       const [existing] = await tx
@@ -2499,7 +2501,8 @@ export class ConversationDatabaseAdapter {
           candidateUserId: input.candidateUserId,
           initiatorUserId: input.sourceUserId,
           networkId: input.networkId,
-          seats: { [input.intentId]: { userId: input.sourceUserId, round: input.round } },
+          seats: input.seats,
+          drainGeneration: 0,
         },
       }).returning();
       if (!task) throw new Error('Failed to create negotiation task');
@@ -2606,7 +2609,19 @@ export class ConversationDatabaseAdapter {
       .update(schema.tasks)
       .set({
         state,
-        ...(pause !== undefined ? {
+        ...(state === 'working' ? {
+          metadata: sql`jsonb_set(
+            jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{pause}', 'null'::jsonb, true),
+            '{drainGeneration}',
+            to_jsonb(
+              CASE WHEN ${schema.tasks.state} = 'paused'
+                THEN coalesce((${schema.tasks.metadata}->>'drainGeneration')::int, 0) + 1
+                ELSE coalesce((${schema.tasks.metadata}->>'drainGeneration')::int, 0)
+              END
+            ),
+            true
+          )`,
+        } : pause !== undefined ? {
           metadata: sql`jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{pause}', ${JSON.stringify(pause ?? null)}::jsonb, true)`,
         } : {}),
         updatedAt: new Date(),

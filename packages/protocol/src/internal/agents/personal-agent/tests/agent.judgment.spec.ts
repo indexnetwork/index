@@ -80,9 +80,53 @@ describe("validateDecidedAct", () => {
       context({ event: "matches_ready", message: undefined }),
     )).toBeNull();
   });
+
+  test("counterparty deciding state cannot become invented response or review narration", () => {
+    const deciding = context({
+      event: "all_paused",
+      message: undefined,
+      round: 1,
+      paused: [{
+        negotiationId: "task-1",
+        opportunityId: "opportunity-1",
+        reason: "ready_for_verdict",
+        pausedByUs: false,
+        thread: [],
+      }],
+    });
+
+    expect(validateDecidedAct({
+      act: "message_user",
+      text: "They still have not responded and are reviewing the pricing details.",
+    }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "There is no response yet." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "They are assessing the pricing." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "The other side is deciding." }, deciding))
+      .toEqual({ tool: "message_user", text: "The other side is deciding." });
+  });
 });
 
 describe("PersonalAgentModel", () => {
+  test("counterparty pause rendering exposes only public state, not thread topics", async () => {
+    const model = new CapturingPersonalAgentModel();
+    await model.next(context({
+      event: "all_paused",
+      message: undefined,
+      round: 1,
+      paused: [{
+        negotiationId: "task-1",
+        opportunityId: "opportunity-1",
+        reason: "ready_for_verdict",
+        pausedByUs: false,
+        thread: [{ speaker: "counterparty", turn: { verb: "counter", message: "SECRET_PRICING_TOPIC", reasoning: "private" } }],
+      }],
+    }), []);
+
+    const prompt = model.lastMessages.find((message) => message.role === "user")?.content;
+    expect(prompt).toContain("The counterpart side is deciding");
+    expect(prompt).not.toContain("SECRET_PRICING_TOPIC");
+  });
+
   test("renders refused irreversible calls as non-durable observations", async () => {
     const model = new CapturingPersonalAgentModel();
     const observation: PersonalAgentNonDurableObservation = {

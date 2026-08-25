@@ -37,6 +37,13 @@ pin a supported release, use `latest`.
 
 ### Breaking
 
+- **Negotiation drains are keyed by durable task generations and tasks bind
+  both seats at creation.** `NegotiationTaskMetadata` gains
+  `drainGeneration`; `NegotiationGraphDatabase.openNegotiationTask` accepts
+  the complete `seats` map; `NegotiationRoundReflectJobData` gains
+  `generation`; and `negotiationRoundReflectJobId` now requires it. Reopening
+  a paused task advances its generation, so one pause is deduplicated exactly
+  once without suppressing a later pause in the same round.
 - **PersonalAgent questions use the canonical structured question contract.**
   `message_user.options` is replaced by `message_user.questions` on decided
   and executed acts and on the conversation delivery port. Questions are
@@ -49,6 +56,12 @@ pin a supported release, use `latest`.
 - `PersonalAgentActivity` and `PersonalAgentActivityPort` provide bounded,
   user-facing progress updates for live intent turns without exposing internal
   identifiers, model reasoning, or private context.
+
+### Changed
+
+- PersonalAgent intent turns reload durable negotiation state after each
+  action, cannot finish while an own `ready_for_verdict` pause remains, and
+  expose counterparty pauses only through their public reason.
 
 ## 34.0.1 - 2026-08-24
 

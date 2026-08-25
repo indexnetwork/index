@@ -51,6 +51,13 @@ export interface NegotiationTaskMetadata {
    */
   seats: Record<string, NegotiationSeatBinding>;
   /**
+   * Monotonic generation of this task's paused lifecycle. The opening run is
+   * generation 0; the first persisted turn after each pause increments it.
+   * An all-paused drain is deduplicated by the durable vector of these values,
+   * so reopening a task creates a new drain without duplicating one pause.
+   */
+  drainGeneration: number;
+  /**
    * `payload` is private to `pausedBy` — the seat whose turn produced this
    * pause. It is never persisted into a shared message or returned from a
    * generic invoke; only a read scoped to `pausedBy`'s own principal may see
@@ -104,8 +111,7 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
     sourceUserId: string;
     candidateUserId: string;
     brief: string;
-    intentId: string;
-    round: number;
+    seats: Record<string, NegotiationSeatBinding>;
     networkId: string;
     knownTaskId?: string;
   }): Promise<{ task: NegotiationTaskRow; disposition: 'created' | 'existing' | 'raced' } | null>;
@@ -118,7 +124,10 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** Every negotiation task where the given user is source or candidate. */
   getNegotiationTasksForUser(userId: string): Promise<NegotiationTaskRow[]>;
 
-  /** Transitions state and, for `paused`, records the reason/payload. Merges into metadata; other keys are untouched. */
+  /**
+   * Transitions state and, for `paused`, records the reason/payload. Moving a
+   * paused task back to `working` also increments its durable drain generation.
+   */
   updateNegotiationTaskState(
     taskId: string,
     state: NegotiationTaskState,

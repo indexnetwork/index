@@ -4,6 +4,7 @@ import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, NETWORK_ID, OPPORTUN
 import type { NegotiationTurnAuthor, NegotiationTurnAuthorInput } from "../../internal/negotiations/negotiation.turn-author.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema } from "../../internal/negotiations/negotiation.turn.js";
 import type { NegotiationAuthoredTurn, NegotiationTurn } from "../../internal/negotiations/negotiation.turn.js";
+import { maybeEnqueueRoundReflect } from "../../internal/negotiations/negotiation.round-reflect.js";
 import { Negotiations } from "../negotiations.js";
 
 /**
@@ -102,6 +103,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       author,
       reflectEnqueue: async (job) => { host.enqueueReflect(job); },
     }).createGraph();
+    host.kickoffStartedAt = new Date();
 
     // open: self-play authors the opening turn (alice), loops straight into
     // the reply seat (bob), which immediately pauses per the script —
@@ -120,13 +122,21 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       payload: { question: "What equity split are you open to?" },
     });
     expect(host.taskFor(negotiationId).state).toBe("paused");
-    // The round is not stamped yet, so the all-paused trigger is deliberately
-    // silent: kickoff opens a round's negotiations in parallel and stamps its
-    // size only once they have all settled, and an early first pause seeing
-    // zero working tasks would otherwise dedupe away the round's real reflect.
-    expect(host.reflectJobs).toEqual([]);
+    // The initiating round waits for its size stamp, while Bob's passive seat
+    // is already durably bound and wakes immediately.
+    expect(host.reflectJobs).toEqual([{
+      userId: CANDIDATE_USER_ID,
+      intentId: "intent-bob-1",
+      round: 0,
+      generation: "task-1.0",
+    }]);
     // Kickoff's own post-settle stamp, replayed here by hand.
     await host.database.stampIntentNegotiationRoundSize(INTENT_ID, 1, 1);
+    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, {
+      userId: SOURCE_USER_ID,
+      intentId: INTENT_ID,
+      round: 1,
+    });
 
     // resume with brief: IS-A answered the equity question (read from the task directly,
     // the same privileged path IS-A will use — never from the graph's own public result).
@@ -140,9 +150,12 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       pausedBy: SOURCE_USER_ID,
       payload: { recommendation: "pending" },
     });
-    // Stamped now, and every negotiation of round 1 has stopped: exactly one
-    // reflect job, carrying the signal's owner.
-    expect(host.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1 }]);
+    // The reopened pause is a new durable generation for both bound seats.
+    expect(host.reflectJobs).toEqual(expect.arrayContaining([
+      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1, generation: "task-1.0" },
+      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1, generation: "task-1.1" },
+      { userId: CANDIDATE_USER_ID, intentId: "intent-bob-1", round: 0, generation: "task-1.1" },
+    ]));
 
     // verdict: IS-A promotes to pending — the only terminal write
     const resolved = await graph.invoke({ negotiationId, verdict: "pending", reasoning: "Both sides converged on terms.", byUserId: SOURCE_USER_ID });
@@ -335,13 +348,11 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(author.calls[2]).toMatchObject({ userId: SOURCE_USER_ID, isOpening: false });
   });
 
-  test("a premise-matched counterparty (same `intent` field as the source) still resolves to the correct seats", async () => {
+  test("refuses to open when a premise-matched counterparty has no owning intent", async () => {
     // The real shape a premise match produces: the counterparty actor's own
     // `intent` field names the intent it matched AGAINST (the source's), not
     // one it owns — so both actors can carry the exact same intent value.
-    // Selecting by `actor.intent === input.intentId` would resolve BOTH
-    // seats to the source, or none at all. Selection must key off who owns
-    // `input.intentId` (via getIntent) and exclude the introducer role.
+    // The source intent cannot be reused as Bob's private signal context.
     const host = new FakeNegotiationHost();
     host.opportunity.actors = [
       { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
@@ -351,10 +362,8 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
-    expect(opened.status).toBe("paused"); // outreach, then bob's fallback pause
-    const task = host.taskFor(opened.negotiationId);
-    expect(task.metadata.sourceUserId).toBe(SOURCE_USER_ID);
-    expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
+    expect(opened).toMatchObject({ status: "error", error: "Counterparty actor intent is not owned by that seat" });
+    expect(host.tasks.size).toBe(0);
   });
 
   test("an introducer actor is never picked as a negotiation seat", async () => {

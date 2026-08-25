@@ -10,6 +10,7 @@ function task(state: 'paused' | 'completed' = 'paused') {
     metadata: {
       type: 'negotiation' as const, opportunityId: 'opportunity-1', sourceUserId: 'user-1', candidateUserId: 'user-2',
       initiatorUserId: 'user-1', networkId: 'network-1', seats: { 'intent-1': { userId: 'user-1', round: 2 } },
+      drainGeneration: 0,
       pause: { reason: 'needs_principal' as const },
     },
   };
@@ -21,7 +22,7 @@ function graph(overrides: Record<string, unknown> = {}) {
     expirePausedNegotiation: mock(async () => ({ ...task(), state: 'completed' as const })),
     createNegotiationOutcomeArtifact: mock(async () => undefined),
     getIntentNegotiationRound: mock(async () => ({ round: 2, roundSize: 1, kickoffStartedAt: updatedAt })),
-    countActiveNegotiationsForRound: mock(async () => 0),
+    getNegotiationTasksForIntentRound: mock(async () => [task('completed')]),
     ...overrides,
   };
   const reflectEnqueue = mock(async () => undefined);
@@ -43,7 +44,9 @@ describe('NegotiationGraph system expiry', () => {
     expect(result.status).toBe('resolved');
     expect(fixture.database.expirePausedNegotiation).toHaveBeenCalledWith({ taskId: 'task-1', expectedUpdatedAt: updatedAt, reason: 'needs_principal' });
     expect(fixture.database.createNegotiationOutcomeArtifact).not.toHaveBeenCalled();
-    expect(fixture.reflectEnqueue).toHaveBeenCalledWith({ userId: 'user-1', intentId: 'intent-1', round: 2 });
+    expect(fixture.reflectEnqueue).toHaveBeenCalledWith({
+      userId: 'user-1', intentId: 'intent-1', round: 2, generation: 'task-1.0',
+    });
   });
 
   it('leaves a changed task uncompleted and does not trigger round reflection', async () => {

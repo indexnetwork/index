@@ -66,7 +66,7 @@ describe('PersonalAgentQueue serialization', () => {
     await withQueue(buildQueue(() => idle), async ({ queue, spans }) => {
       const jobs = await Promise.all([
         queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' }),
-        queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', round: 3 }),
+        queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', round: 3, generation: 'task-1.0' }),
         queue.addUserMessageEvent({
           userId: 'user-1', intentId: 'intent-1', event: 'user_message',
           sessionId: 'session-1', messageId: 'reply-1', text: 'hello',
@@ -97,13 +97,20 @@ describe('PersonalAgentQueue serialization', () => {
     });
   });
 
-  it('a round reflects exactly once — ten pauses of one round collapse to one job', async () => {
+  it('one durable drain reflects exactly once, while a reopened generation runs again', async () => {
     await withQueue(buildQueue(() => idle), async ({ queue, invocations }) => {
       const jobs = await Promise.all(Array.from({ length: 10 }, () =>
-        queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', round: 7 })));
+        queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', round: 7, generation: 'task-1.0' })));
       expect(new Set(jobs.map((job) => job.id)).size).toBe(1);
       await jobs[0]!.waitUntilFinished(undefined as never, 10_000);
       expect(invocations()).toBe(1);
+
+      const reopened = await queue.addAllPausedEvent({
+        userId: 'user-1', intentId: 'intent-1', round: 7, generation: 'task-1.1',
+      });
+      expect(reopened.id).not.toBe(jobs[0]!.id);
+      await reopened.waitUntilFinished(undefined as never, 10_000);
+      expect(invocations()).toBe(2);
     });
   });
 
@@ -172,9 +179,9 @@ describe('PersonalAgentQueue serialization', () => {
     }
   });
 
-  it('a reflect job is retained on completion so the round can never reflect twice', async () => {
+  it('a reflect job is retained on completion so one generation cannot reflect twice', async () => {
     await withQueue(buildQueue(() => idle), async ({ queue }) => {
-      const job = await queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', round: 4 });
+      const job = await queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', round: 4, generation: 'task-1.0' });
       // The queue default is removeOnComplete { age: 24h }, which would free
       // the id and let a late pause on a stale negotiation re-wake the agent
       // for a round it already closed out.

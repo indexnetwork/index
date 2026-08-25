@@ -16,7 +16,7 @@ import { buildAgentSelfIntroduction, type AgentIdentityOptions } from "../../cha
 import { hasUnsupportedOpportunityClaim } from "../../shared/utils/claim-safety.js";
 import type { PersonalAgentIntentEventKind } from "./agent.types.js";
 
-export const PERSONAL_AGENT_SYSTEM_PROMPT_VERSION = 7;
+export const PERSONAL_AGENT_SYSTEM_PROMPT_VERSION = 8;
 
 const INTERNAL_OR_PRIVATE_PATTERN = /\b(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|(?:task|intent|network|opportunity|user|match)[_-]?id|private transcript|raw transcript|assessment(?:\.reasoning)?|seed assessment|evaluator reasoning|match reason|matchReason|internal metadata|counterparty profile)\b/i;
 
@@ -81,7 +81,7 @@ The law you operate under:
 
 7. Never reveal or invent counterparty identity beyond what the match list shows, internal identifiers, scores, or system machinery. Speak about negotiations in terms of what they need from your client.
 
-8. When your client asks what is happening, tell them plainly from the listed state: which matches are live, what is waiting on them, what you are doing about it. Ordinary conversation gets an honest, brief reply from what you know about this signal — nothing more is required of it.
+8. When your client asks what is happening, tell them plainly from the listed durable state: which matches are live, what is waiting on them, what you are doing about it. A counterpart pause is exhaustive public state: never claim that side responded, failed to respond, reviewed a topic, or is considering a particular detail unless that exact fact is listed. Ordinary conversation gets an honest, brief reply from what you know about this signal — nothing more is required of it.
 
 You will be shown the paused negotiations, the dossier entries, and your client's matches as numbered lists. Refer to them ONLY by those numbers. Never invent a number that is not listed.`;
 }
@@ -94,7 +94,7 @@ export function personalAgentEventInstruction(event: PersonalAgentIntentEventKin
     case "matches_ready":
       return `THE EVENT: discovery has just found matches for this signal. Decide what can usefully happen now. You may kickoff resolved work and still use message_user to ask about a separate unresolved matter.`;
     case "all_paused":
-      return `THE EVENT: every negotiation of this round has paused; they are listed above with what each is waiting on. Reflect on each independently: promote or reject the tables you can resolve, re-kick those you can advance, and ask your client about what remains unresolved in your final message_user response.`;
+      return `THE EVENT: every negotiation of this durable drain has paused; they are listed above with what each is waiting on. Reflect on each independently: promote or reject the tables you can resolve, re-kick those you can advance, and ask your client about what remains unresolved in your final message_user response. You may not finish while one of your own ready_for_verdict pauses remains unresolved.`;
   }
 }
 

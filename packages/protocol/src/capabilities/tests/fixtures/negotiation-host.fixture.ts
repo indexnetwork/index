@@ -37,8 +37,8 @@ export class FakeNegotiationHost {
   readonly messages = new Map<string, FakeMessage[]>();
   readonly opportunityStatusUpdates: Array<{ id: string; status: string }> = [];
   readonly outcomeArtifacts = new Map<string, { verdict: 'pending' | 'reject'; reasoning?: string; resolvedByUserId: string }>();
-  /** Deduped by (intent, round), exactly as the deterministic BullMQ job id does. */
-  readonly reflectJobs: Array<{ userId: string; intentId: string; round: number }> = [];
+  /** Deduped by one durable drain generation, exactly as BullMQ does. */
+  readonly reflectJobs: Array<{ userId: string; intentId: string; round: number; generation: string }> = [];
   private taskCounter = 0;
   private messageCounter = 0;
 
@@ -71,7 +71,7 @@ export class FakeNegotiationHost {
       conversationId: input.conversationId,
       state: 'working',
       briefs: { ...input.briefs },
-      metadata: input.metadata,
+      metadata: { drainGeneration: 0, ...input.metadata },
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -117,7 +117,8 @@ export class FakeNegotiationHost {
           candidateUserId: input.candidateUserId,
           initiatorUserId: input.sourceUserId,
           networkId: input.networkId,
-          seats: { [input.intentId]: { userId: input.sourceUserId, round: input.round } },
+          seats: input.seats,
+          drainGeneration: 0,
         },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -141,7 +142,13 @@ export class FakeNegotiationHost {
       const updated: NegotiationTaskRow = {
         ...task,
         state,
-        metadata: { ...task.metadata, pause: pause ?? null },
+        metadata: {
+          ...task.metadata,
+          ...(state === "working" && task.state === "paused"
+            ? { drainGeneration: task.metadata.drainGeneration + 1 }
+            : {}),
+          ...(pause !== undefined || state === "working" ? { pause: pause ?? null } : {}),
+        },
         updatedAt: new Date(),
       };
       this.tasks.set(taskId, updated);
@@ -195,10 +202,16 @@ export class FakeNegotiationHost {
       this.kickoffStartedAt = new Date();
       return (this.round += 1);
     },
-    getIntentNegotiationRound: async () => ({
+    getIntentNegotiationRound: async (intentId) => intentId === INTENT_ID ? ({
       round: this.round,
       roundSize: this.roundSize,
       kickoffStartedAt: this.kickoffStartedAt,
+    }) : ({
+      // A counterparty that did not initiate a kickoff still owns a durable
+      // drain. Its passive round has no in-progress size gate.
+      round: 0,
+      roundSize: null,
+      kickoffStartedAt: null,
     }),
     stampIntentNegotiationRoundSize: async (_intentId, round, size) => {
       if (round === this.round) this.roundSize = size;
@@ -216,9 +229,10 @@ export class FakeNegotiationHost {
     if (this.kickoffStartedAt) this.kickoffStartedAt = new Date(this.kickoffStartedAt.getTime() - byMs);
   }
 
-  /** Records a reflect job the way the queue does: once per (intent, round). */
-  enqueueReflect(job: { userId: string; intentId: string; round: number }): void {
-    if (this.reflectJobs.some((existing) => existing.intentId === job.intentId && existing.round === job.round)) return;
+  /** Records a reflect job the way the queue does: once per durable generation. */
+  enqueueReflect(job: { userId: string; intentId: string; round: number; generation: string }): void {
+    if (this.reflectJobs.some((existing) =>
+      existing.intentId === job.intentId && existing.round === job.round && existing.generation === job.generation)) return;
     this.reflectJobs.push(job);
   }
 

@@ -1,10 +1,9 @@
 /**
  * The owner verdict must END the pairing's negotiation (D23).
  *
- * The round's reflect trigger counts negotiation tasks still in `working`
- * (`countActiveNegotiationsForRound`). Before this fix an ordinary user reject
- * flipped only the opportunity, so its task stayed `working` forever: the round
- * never reached zero and `reflect:{intentId}:{round}` was never enqueued.
+ * The reflect trigger waits for every task in a bound seat's round to stop
+ * working. Before this fix an ordinary user reject flipped only the opportunity,
+ * so its task stayed `working` forever and neither seat's drain was enqueued.
  *
  * The test drives the REAL `NegotiationGraph` over a fake database — the same
  * `resolve` production runs — rather than asserting that a mock was called, so
@@ -25,6 +24,7 @@ const USER_A = 'user-a-001';
 const USER_B = 'user-b-002';
 const OPP_ID = 'opp-negotiated-001';
 const INTENT_ID = 'intent-001';
+const COUNTERPART_INTENT_ID = 'intent-002';
 const NEGOTIATION_ID = 'task-negotiation-001';
 const ROUND = 3;
 
@@ -35,7 +35,7 @@ function negotiatedOpportunity(): Opportunity {
     detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: INTENT_ID },
     actors: [
       { networkId: 'idx-1', userId: USER_A, role: 'patient', intent: INTENT_ID },
-      { networkId: 'idx-1', userId: USER_B, role: 'agent' },
+      { networkId: 'idx-1', userId: USER_B, role: 'agent', intent: COUNTERPART_INTENT_ID },
     ],
     interpretation: { category: 'collaboration', reasoning: 'Shared interests.', confidence: 0.85, signals: [] },
     context: { networkId: 'idx-1' },
@@ -60,7 +60,11 @@ function negotiationTask(): NegotiationTaskRow {
       candidateUserId: USER_B,
       initiatorUserId: USER_A,
       networkId: 'idx-1',
-      seats: { [INTENT_ID]: { userId: USER_A, round: ROUND } },
+      seats: {
+        [INTENT_ID]: { userId: USER_A, round: ROUND },
+        [COUNTERPART_INTENT_ID]: { userId: USER_B, round: 0 },
+      },
+      drainGeneration: 0,
     },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -101,6 +105,8 @@ function createWorld() {
       roundSize: 1,
       kickoffStartedAt: null,
     }),
+    getNegotiationTasksForIntentRound: async (intentId: string, round: number) =>
+      task.metadata.seats[intentId]?.round === round ? [task] : [],
   } as unknown as NegotiationGraphDatabase;
 
   const graph = new NegotiationGraphFactory({
@@ -153,7 +159,10 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
     expect(world.opportunity.status).toBe('rejected');
     expect(world.task.state).toBe('completed');
     expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);
-    expect(world.reflectJobs).toEqual([{ userId: USER_A, intentId: INTENT_ID, round: ROUND }]);
+    expect(world.reflectJobs).toEqual([
+      { userId: USER_A, intentId: INTENT_ID, round: ROUND, generation: `${NEGOTIATION_ID}.0` },
+      { userId: USER_B, intentId: COUNTERPART_INTENT_ID, round: 0, generation: `${NEGOTIATION_ID}.0` },
+    ]);
     expect(world.artifacts).toEqual([
       {
         verdict: 'reject',
@@ -173,7 +182,10 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
     expect(world.opportunity.status).toBe('accepted');
     expect(world.task.state).toBe('completed');
     expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);
-    expect(world.reflectJobs).toEqual([{ userId: USER_A, intentId: INTENT_ID, round: ROUND }]);
+    expect(world.reflectJobs).toEqual([
+      { userId: USER_A, intentId: INTENT_ID, round: ROUND, generation: `${NEGOTIATION_ID}.0` },
+      { userId: USER_B, intentId: COUNTERPART_INTENT_ID, round: 0, generation: `${NEGOTIATION_ID}.0` },
+    ]);
   });
 
   it('a match that never negotiated is unaffected', async () => {

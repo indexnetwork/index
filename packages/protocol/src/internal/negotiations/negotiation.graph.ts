@@ -182,14 +182,23 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       const sourceActor = opportunity.actors.find((a) => a.userId === intent.userId && a.role !== "introducer");
       const candidateActor = opportunity.actors.find((a) => a.userId !== intent.userId && a.role !== "introducer");
       if (!sourceActor || !candidateActor) return { phase: "error", error: "Opportunity does not have two actors" };
+      if (!candidateActor.intent) return { phase: "error", error: "Counterparty actor has no owning intent" };
+      const candidateIntent = await deps.database.getIntent(candidateActor.intent);
+      if (!candidateIntent || candidateIntent.userId !== candidateActor.userId) {
+        return { phase: "error", error: "Counterparty actor intent is not owned by that seat" };
+      }
+      const candidateRound = await deps.database.getIntentNegotiationRound(candidateIntent.id);
+      const seats = {
+        [input.intentId]: { userId: sourceActor.userId, round: input.round },
+        [candidateIntent.id]: { userId: candidateActor.userId, round: candidateRound.round },
+      };
 
       const opened = await deps.database.openNegotiationTask({
         opportunityId: input.opportunityId,
         sourceUserId: sourceActor.userId,
         candidateUserId: candidateActor.userId,
         brief: input.brief,
-        intentId: input.intentId,
-        round: input.round,
+        seats,
         networkId: sourceActor.networkId,
         ...(existing ? { knownTaskId: existing.id } : {}),
       });
@@ -207,7 +216,7 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
           briefs: { ...opened.task.briefs, [sourceActor.userId]: input.brief },
           metadata: {
             ...opened.task.metadata,
-            seats: { ...opened.task.metadata.seats, [input.intentId]: { userId: sourceActor.userId, round: input.round } },
+            seats: { ...opened.task.metadata.seats, [input.intentId]: seats[input.intentId]! },
           },
         };
         return {
@@ -298,9 +307,8 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     // it because history is non-empty).
     const isOpening = messages.length === 0;
 
-    const opportunity = await deps.database.getOpportunity(task.metadata.opportunityId);
-    const actor = opportunity?.actors.find((candidate) => candidate.userId === speakerId && candidate.role !== "introducer");
-    if (!actor?.intent) return { task, turns, phase: "error", error: "Speaking opportunity actor has no intent" };
+    const intentId = Object.entries(meta.seats).find(([, seat]) => seat.userId === speakerId)?.[0];
+    if (!intentId) return { task, turns, phase: "error", error: "Speaking seat has no bound intent" };
 
     // Every turn is authored in-process, synchronously, within this invoke:
     // the author is the speaking seat's own PersonalAgent in negotiation
@@ -308,7 +316,7 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     const authored = await deps.author.authorTurn({
       negotiationId: task.id,
       userId: speakerId,
-      intentId: actor.intent,
+      intentId,
     });
     const turn: NegotiationTurn = isOpening ? NegotiationOpeningTurnSchema.parse(authored) : authored;
 

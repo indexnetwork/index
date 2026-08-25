@@ -75,6 +75,18 @@ export function normalizeMessageQuestions(raw: unknown): Question[] | undefined 
   return questions.length > 0 ? questions : undefined;
 }
 
+const UNSUPPORTED_COUNTERPART_STATUS_PATTERN = /\b(?:respond(?:ed|ing)?|responses?|repl(?:y|ied|ying)|heard back|got(?:ten)? back|review(?:ed|ing)?|look(?:ed|ing)?\s+(?:at|over|through)|evaluat(?:ed|ing)?|assess(?:ed|ing)?|examin(?:ed|ing)?|check(?:ed|ing)?|consider(?:ed|ing)?|weigh(?:ed|ing)?|asked|questioned)\b/i;
+
+/** Fail closed on details the public counterpart pause state cannot prove. */
+export function isSupportedPersonalAgentStatusProse(
+  text: string,
+  context: PersonalAgentTurnContext,
+): boolean {
+  const counterpartIsOnlyDeciding = context.paused.some((paused) =>
+    !paused.pausedByUs && paused.reason === "ready_for_verdict");
+  return !counterpartIsOnlyDeciding || !UNSUPPORTED_COUNTERPART_STATUS_PATTERN.test(text);
+}
+
 // ─── Rendering ───────────────────────────────────────────────────────────────
 
 function renderThread(thread: PersonalAgentThreadEntry[], indent = ""): string {
@@ -90,6 +102,16 @@ function renderThread(thread: PersonalAgentThreadEntry[], indent = ""): string {
 function renderPaused(context: PersonalAgentTurnContext): string {
   if (context.paused.length === 0) return "Paused negotiations: none.";
   const lines = context.paused.map((paused, index) => {
+    if (!paused.pausedByUs) {
+      const publicState = paused.reason === "ready_for_verdict"
+        ? "The counterpart side is deciding. That is the complete public state: do not claim what it reviewed, whether it responded, or what it is deciding about."
+        : paused.reason === "needs_principal"
+          ? "The counterpart side is waiting on its principal. Their question is private."
+          : paused.reason === "counterparty_silent"
+            ? "The counterpart side is waiting for a response."
+            : `The counterpart side paused (${paused.reason}).`;
+      return `${index + 1}. ${publicState}`;
+    }
     const parts = [`${index + 1}. Paused (${paused.reason}) by ${paused.pausedByUs ? "your own seat" : "their agent"}`];
     const payload = paused.payload as { question?: string; recommendation?: string; reasoning?: string } | undefined;
     if (payload?.question) parts.push(`   Needs from your client: ${truncate(payload.question, MAX_TEXT_CHARS)}`);
@@ -196,6 +218,7 @@ function renderNonDurableObservations(
 ): string {
   if (observations.length === 0) return "";
   const lines = observations.map((observation) => {
+    if (observation.kind === "terminal_message_refused") return `- Refused message_user: ${observation.reason}`;
     if (observation.tool === "kickoff") return `- Refused kickoff: ${observation.reason}`;
     if (observation.tool === "accept_opportunity") {
       const position = context.matches.findIndex((match) => match.opportunityId === observation.opportunityId);
@@ -420,6 +443,7 @@ export function validateDecidedAct(
       {
         const text = act.text?.trim();
         if (!text || !isSafeAgentMessageProse(text)) return null;
+        if (!isSupportedPersonalAgentStatusProse(text, context)) return null;
         const questions = normalizeMessageQuestions(act.questions);
         // Questions belong in the structured field. Keeping them out of prose
         // prevents the same ask rendering twice and guarantees widget delivery.

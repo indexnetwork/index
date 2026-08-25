@@ -129,6 +129,10 @@ export type PersonalAgentExecutedAct =
  */
 export type PersonalAgentNonDurableObservation =
   | {
+    kind: "terminal_message_refused";
+    reason: string;
+  }
+  | {
     kind: "irreversible_tool_refused";
     tool: "kickoff";
     reason: string;

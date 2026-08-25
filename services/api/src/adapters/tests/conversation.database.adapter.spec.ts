@@ -888,6 +888,7 @@ describe('ConversationDatabaseAdapter', () => {
         sourceUserId: userId,
         candidateUserId: counterpart,
         seats: { 'intent-a': { userId, round: 1 } },
+        drainGeneration: 0,
       });
 
       // The old select-then-spread-then-update shape had a lost-update race
@@ -904,7 +905,69 @@ describe('ConversationDatabaseAdapter', () => {
       expect(reread?.metadata.seats['intent-a']).toEqual({ userId, round: 7 });
       expect(reread?.metadata.pause).toMatchObject({ reason: 'counterparty_silent' });
       expect(reread?.state).toBe('paused');
+
+      const firstResume = await adapter.updateNegotiationTaskState(task.id, 'working', null);
+      expect(firstResume.metadata.drainGeneration).toBe(1);
+      expect(firstResume.metadata.pause).toBeNull();
+      await adapter.updateNegotiationTaskState(task.id, 'paused', { reason: 'counterparty_silent' });
+      const secondResume = await adapter.updateNegotiationTaskState(task.id, 'working', null);
+      expect(secondResume.metadata.drainGeneration).toBe(2);
     });
+  });
+
+  describe('openNegotiationTask — durable seat binding', () => {
+    it('creates the task with both actor intents and generation zero in one write', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const ownerId = `open-owner-${run}`;
+      const counterpartId = `open-counterpart-${run}`;
+      const ownerIntentId = `open-owner-intent-${run}`;
+      const counterpartIntentId = `open-counterpart-intent-${run}`;
+      const opportunityId = `open-opportunity-${run}`;
+
+      await db.insert(schema.users).values([
+        { id: ownerId, email: `${ownerId}@test.local`, name: 'Open Owner' },
+        { id: counterpartId, email: `${counterpartId}@test.local`, name: 'Open Counterpart' },
+      ]);
+      createdUserIds.push(ownerId, counterpartId);
+      await db.insert(schema.intents).values([
+        { id: ownerIntentId, userId: ownerId, payload: 'Owner intent' },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Counterpart intent' },
+      ]);
+      createdIntentIds.push(ownerIntentId, counterpartIntentId);
+      await db.insert(schema.opportunities).values({
+        id: opportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'open-network', userId: ownerId, role: 'peer', intent: ownerIntentId },
+          { networkId: 'open-network', userId: counterpartId, role: 'peer', intent: counterpartIntentId },
+        ],
+        interpretation: { category: 'test', reasoning: 'Two-seat open.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status: 'latent',
+      });
+      createdOpportunityIds.push(opportunityId);
+
+      const opened = await adapter.openNegotiationTask({
+        opportunityId,
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        brief: 'Owner brief',
+        seats: {
+          [ownerIntentId]: { userId: ownerId, round: 3 },
+          [counterpartIntentId]: { userId: counterpartId, round: 5 },
+        },
+        networkId: 'open-network',
+      });
+
+      expect(opened?.disposition).toBe('created');
+      expect(opened?.task.metadata.seats).toEqual({
+        [ownerIntentId]: { userId: ownerId, round: 3 },
+        [counterpartIntentId]: { userId: counterpartId, round: 5 },
+      });
+      expect(opened?.task.metadata.drainGeneration).toBe(0);
+      if (opened) createdIds.push(opened.task.conversationId);
+    }, 30000);
   });
 
   describe('getConversationsForUser — pause projection (#1494 round-2 finding 10)', () => {

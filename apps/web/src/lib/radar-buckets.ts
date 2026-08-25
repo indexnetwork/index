@@ -43,10 +43,8 @@ export function radarBucketForOpportunity(
   }
 
   if (negotiation?.state === "paused") {
-    if (negotiation.pause?.reason === "needs_principal") {
-      return negotiation.pause.by === "yours" ? "needs-you" : "waiting";
-    }
-    if (negotiation.pause?.reason === "counterparty_silent") return "waiting";
+    if (negotiation.pause?.by === "theirs") return "waiting";
+    if (negotiation.pause?.reason === "needs_principal") return "needs-you";
     return "agent-handling";
   }
 

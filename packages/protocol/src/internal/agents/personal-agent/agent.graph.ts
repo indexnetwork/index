@@ -25,13 +25,16 @@ import { END, StateGraph, Annotation } from "@langchain/langgraph";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
+import { maybeEnqueueRoundReflect } from "../../negotiations/negotiation.round-reflect.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 import type { IntentRecord } from "../../../platform/database/entities.js";
-import { normalizeMessageQuestions, PersonalAgentModel } from "./agent.judgment.js";
+import { isSupportedPersonalAgentStatusProse, normalizeMessageQuestions, PersonalAgentModel } from "./agent.judgment.js";
 import type { Question } from "../../../protocol/question.js";
 import type { PersonalAgentActivity, PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgentGraph");
+
+class UnresolvedOwnedPauseError extends Error {}
 
 /** How much conversation memory a turn reads. */
 const MAX_DM_MESSAGES = 20;
@@ -93,6 +96,12 @@ const NOT_KICKOFF_ELIGIBLE_STATUSES = new Set(["pending"]);
 
 /** Bounded tool steps keep a faulty model from holding a serialized inbox forever. */
 const MAX_INTENT_TOOL_STEPS = 8;
+
+function hasUnresolvedOwnedPause(context: PersonalAgentTurnContext): boolean {
+  return context.paused.some((paused) => paused.pausedByUs && (
+    paused.reason === "ready_for_verdict" || paused.reason === "needs_principal"
+  ));
+}
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -191,7 +200,7 @@ async function assembleContext(
   // a matches_ready that cannot see its matches, or an all_paused that cannot
   // see its paused negotiations, must FAIL and be retried — swallowed, it
   // becomes a successful turn that saw nothing, decided nothing, and (for
-  // reflect) permanently consumed its once-per-round job id.
+  // reflect) permanently consumed that drain generation's job id.
   const [agentName, intent, allMatches, paused, dossier, recentActs] = await Promise.all([
     deps.identity.readAgentName(userId).catch(() => null),
     deps.negotiationDatabase.getIntent(intentId),
@@ -431,9 +440,9 @@ async function ledgerTerminalFallback(
 
 /**
  * Fixed, server-owned copy for a kickoff that has no one to reach out to.
- * Without this, the principal is told nothing at all and — with no negotiation left active and
- * the round's reflect job retained forever — nothing can wake the agent for
- * this signal again.
+ * Without this, the principal is told nothing at all and — with no negotiation
+ * left active and that drain generation's reflect job retained forever —
+ * nothing can wake the agent for this signal again.
  */
 export const PERSONAL_AGENT_NOTHING_TO_OPEN =
   "There is nothing new for me to put to anyone on this signal right now — what I have is either "
@@ -519,7 +528,7 @@ async function runKickoff(
   if (matches.length === 0) {
     throwIfIntentAborted();
     // Say so. With nothing active
-    // and the reflect job retained forever, silence here ends the cycle for
+    // and this drain's reflect job retained forever, silence here ends the cycle for
     // this signal with the principal never told.
     if (context.event !== "user_message") {
       await say(deps, context, accumulator, "message_user",
@@ -748,11 +757,11 @@ async function triggerRoundReflect(
 ): Promise<void> {
   const enqueue = deps.reflectEnqueue;
   if (!enqueue) return;
-  await retryWrite(async () => {
-    const active = await deps.negotiationDatabase.countActiveNegotiationsForRound(context.intentId, round);
-    if (active !== 0) return;
-    await enqueue({ userId: context.userId, intentId: context.intentId, round });
-  }, "enqueue a round's reflect", { intentId: context.intentId, round });
+  await maybeEnqueueRoundReflect(deps.negotiationDatabase, enqueue, {
+    userId: context.userId,
+    intentId: context.intentId,
+    round,
+  });
 }
 
 /**
@@ -1062,6 +1071,28 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
         tool: act.tool,
         judgmentDurationMs: Date.now() - judgmentStartedAt,
       });
+      if (act.tool === "message_user") {
+        const ownReady = context.paused.some((paused) =>
+          paused.pausedByUs && paused.reason === "ready_for_verdict");
+        const ownNeedsPrincipal = context.paused.some((paused) =>
+          paused.pausedByUs && paused.reason === "needs_principal");
+        const refusal = !isSupportedPersonalAgentStatusProse(act.text, context)
+          ? "Counterparty status prose must stay within the public pause reason."
+          : ownReady
+          ? "Resolve every own ready_for_verdict pause with promote or reject before replying."
+          : ownNeedsPrincipal && !act.questions?.length
+            ? "An own needs_principal pause must be delivered as structured questions before replying."
+            : null;
+        if (refusal) {
+          logger.warn("PersonalAgent refused a terminal message while owning unresolved work", {
+            intentId: context.intentId,
+            event: context.event,
+            reason: refusal,
+          });
+          accumulator.nonDurable.push({ kind: "terminal_message_refused", reason: refusal });
+          continue;
+        }
+      }
       if (act.tool === "accept_opportunity" && context.event !== "user_message") {
         logger.warn("PersonalAgent refused acceptance without a client message", {
           intentId: context.intentId,
@@ -1097,12 +1128,6 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
         } else {
           await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS[act.tool].before });
           await executeAct(deps, context, accumulator, act);
-          if (act.tool === "note_dossier" || act.tool === "retire_dossier") {
-            context = {
-              ...context,
-              dossier: await deps.dossier.readActiveEntries(context.userId, context.intentId),
-            };
-          }
           await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS[act.tool].after });
         }
       } catch (err) {
@@ -1124,9 +1149,15 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
         durationMs: Date.now() - toolStartedAt,
       });
       if (act.tool === "message_user") break;
+      // Every next choice — especially the final narration — reads the state
+      // the action actually persisted, not the turn's opening snapshot.
+      context = await assembleContext(deps, input);
     }
     if (!accumulator.finalMessageChosen) {
       if (accumulator.acts.length === 0) throwIfIntentAborted();
+      if (hasUnresolvedOwnedPause(context)) {
+        throw new UnresolvedOwnedPauseError("PersonalAgent exhausted its tool budget with an unresolved owned pause");
+      }
       logger.warn("PersonalAgent exhausted its intent tool budget", { intentId: context.intentId, event: context.event });
       await publishActivity(deps, input, { phase: "preparing_response", label: "Preparing a response" });
       await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
@@ -1138,6 +1169,14 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
       result: { scope: "intent", acts: accumulator.acts, messages: accumulator.messages },
     };
   } catch (err) {
+    if (err instanceof UnresolvedOwnedPauseError) {
+      return { phase: "error", error: err.message };
+    }
+    // A generic terminal fallback would silently consume this drain without
+    // deciding the owned verdict or delivering its structured question.
+    if (context && hasUnresolvedOwnedPause(context)) {
+      return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+    }
     // An outer queue retry repeats the entire turn. Once a durable tool has
     // completed, a later invalid model choice must therefore terminate this
     // turn rather than replaying its earlier effects.

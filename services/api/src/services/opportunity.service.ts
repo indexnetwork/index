@@ -229,7 +229,7 @@ interface OpportunityPresentationDeps {
  * negotiation loop — but the pairing it decides may still have a live
  * negotiation, and `NegotiationGraph`'s `resolve` is the only terminal write
  * on a negotiation task: it records the outcome artifact, completes the task,
- * and re-runs the all-paused check that arms the round's reflect job.
+ * and re-runs the all-paused check that arms each seat's drain-generation job.
  *
  * Production composes the conversation adapter's task read with the single
  * compiled graph; specs pass a fake pair.
@@ -299,8 +299,8 @@ export class OpportunityService {
    * End the pairing's negotiation, if it still has one, on the owner's verdict.
    *
    * `resolve` is the negotiation's only terminal write: it records the outcome
-   * artifact, completes the task, and re-runs the all-paused check so the
-   * round's `reflect:{intentId}:{round}` job can finally be enqueued. It leaves
+   * artifact, completes the task, and re-runs the all-paused check so each
+   * bound seat's current drain-generation job can finally be enqueued. It leaves
    * the opportunity status this method already wrote alone — a terminal status
    * is the owner's, never overwritten by a verdict (see `resolveNode`).
    *
@@ -757,11 +757,9 @@ export class OpportunityService {
     }
 
     // An owner verdict on a NEGOTIATED pairing has to end the negotiation too.
-    // The round's reflect trigger counts negotiation tasks still in `working`
-    // (`countActiveNegotiationsForRound`), so a reject or accept that flips only
-    // the opportunity leaves its task `working` forever: the round never reaches
-    // zero and `reflect:{intentId}:{round}` is never enqueued — the all-paused
-    // trigger defeated by the most ordinary user action.
+    // The reflect trigger waits for every task in each bound seat's round to
+    // stop working, so a reject or accept that flips only the opportunity
+    // leaves its task `working` forever and prevents that drain from enqueueing.
     if (captureAction) {
       await this.closeNegotiationForOwnerVerdict(opportunityId, captureAction, userId);
     }
