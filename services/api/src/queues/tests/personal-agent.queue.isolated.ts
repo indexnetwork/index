@@ -130,6 +130,27 @@ describe('PersonalAgentQueue serialization', () => {
     });
   });
 
+  it('delivers one retained needs-principal notification per pause generation', async () => {
+    await withQueue(buildQueue(() => idle), async ({ queue, invocations }) => {
+      const event = {
+        userId: 'user-1', intentId: 'intent-1', event: 'needs_principal' as const,
+        negotiationId: 'task-1', generation: 0,
+      };
+      const [first, duplicate] = await Promise.all([
+        queue.addNeedsPrincipalEvent(event),
+        queue.addNeedsPrincipalEvent(event),
+      ]);
+      expect(duplicate.id).toBe(first.id);
+      expect(first.opts.lifo).toBe(true);
+      await first.waitUntilFinished(undefined as never, 10_000);
+      expect(invocations()).toBe(1);
+
+      const reopened = await queue.addNeedsPrincipalEvent({ ...event, generation: 1 });
+      await reopened.waitUntilFinished(undefined as never, 10_000);
+      expect(invocations()).toBe(2);
+    });
+  });
+
   it('a matches_ready batch arriving while a turn is running is queued, never swallowed', async () => {
     // The coalescing that makes a burst of discovery batches one kickoff must
     // not eat a batch the running turn has already read past: BullMQ silently

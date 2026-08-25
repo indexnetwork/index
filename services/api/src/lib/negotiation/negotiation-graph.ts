@@ -49,6 +49,10 @@ export const negotiationGraph = new NegotiationGraphFactory({
     const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
     await personalAgentQueue.addAllPausedEvent(job);
   },
+  needsPrincipalEnqueue: async (input) => {
+    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
+    await personalAgentQueue.addNeedsPrincipalEvent({ ...input, event: 'needs_principal' });
+  },
   resolutionEnqueue: async (input) => {
     const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
     await personalAgentQueue.addCounterpartyResolvedEvent({ ...input, event: 'counterparty_resolved' });

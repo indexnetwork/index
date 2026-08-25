@@ -61,6 +61,10 @@ export function personalAgentCounterpartyResolvedJobId(
   return `personal-agent-counterparty-resolved.${negotiationId}.${intentId}.${verdict}`;
 }
 
+export function personalAgentNeedsPrincipalJobId(negotiationId: string, intentId: string, generation: number): string {
+  return `personal-agent-needs-principal.${negotiationId}.${intentId}.${generation}`;
+}
+
 export class PersonalAgentQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
@@ -183,6 +187,19 @@ export class PersonalAgentQueue {
   addAllPausedEvent(job: NegotiationRoundReflectJobData): Promise<Job<PersonalAgentEvent>> {
     return this.queue.add('all_paused', { ...job, event: 'all_paused' }, {
       jobId: negotiationRoundReflectJobId(job.intentId, job.round, job.generation),
+      removeOnComplete: false,
+    });
+  }
+
+  /** One owned question per negotiation pause generation, without waiting for the batch to drain. */
+  addNeedsPrincipalEvent(input: Extract<PersonalAgentEvent, { event: 'needs_principal' }> & { generation: number }): Promise<Job<PersonalAgentEvent>> {
+    const { generation, ...event } = input;
+    return this.queue.add('needs_principal', event, {
+      jobId: personalAgentNeedsPrincipalJobId(event.negotiationId, event.intentId, generation),
+      // The inbox has one worker to serialize each signal's effects. A newly
+      // blocked principal must be the next background turn, not wait behind
+      // an initial market-wide kickoff flood.
+      lifo: true,
       removeOnComplete: false,
     });
   }

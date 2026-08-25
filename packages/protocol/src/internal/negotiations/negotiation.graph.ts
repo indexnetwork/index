@@ -66,6 +66,8 @@ export interface NegotiationGraphResult {
 export interface NegotiationGraphDeps {
   database: NegotiationGraphDatabase;
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
+  /** Delivers an owned needs-principal pause immediately; batch reflection remains separate. */
+  needsPrincipalEnqueue?: (input: { userId: string; intentId: string; negotiationId: string; generation: number }) => Promise<void>;
   /** Delivers the other agent's terminal verdict to each opposing PersonalAgent. */
   resolutionEnqueue?: (input: { userId: string; intentId: string; negotiationId: string; verdict: "pending" | "reject" }) => Promise<void>;
   /**
@@ -431,6 +433,27 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
         pausedBy: speakerId,
         ...("payload" in effectiveTurn ? { payload: effectiveTurn.payload } : {}),
       });
+      if (effectiveTurn.reason === "needs_principal") {
+        const intentId = Object.entries(meta.seats).find(([, seat]) => seat.userId === speakerId)?.[0];
+        if (intentId && deps.needsPrincipalEnqueue) {
+          try {
+            await deps.needsPrincipalEnqueue({
+              userId: speakerId,
+              intentId,
+              negotiationId: updated.id,
+              generation: updated.metadata.drainGeneration,
+            });
+          } catch (error) {
+            // The pause is already durable. A missed wake must not undo it or
+            // misreport the turn as failed; the all-paused reflect still retries later.
+            logger.error("Failed to enqueue needs-principal notification", {
+              negotiationId: updated.id,
+              intentId,
+              error,
+            });
+          }
+        }
+      }
       // EVERY bound seat: a pause can complete either side's round, and each
       // side's IS-A reflects on its own.
       await triggerReflectForEverySeat(deps, meta);

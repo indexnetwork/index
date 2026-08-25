@@ -124,8 +124,11 @@ type PersonalAgentState = typeof PersonalAgentGraphState.State;
 function routeNode(state: PersonalAgentState): Partial<PersonalAgentState> {
   const input = state.input;
   if ("event" in input && input.event === "counterparty_resolved") return { scope: "intent", phase: "counterparty_resolved" };
-  if ("negotiationId" in input) return { scope: "negotiation", phase: "negotiation" };
+  // An intent event may name the negotiation that woke it. Events still
+  // belong to the principal's signal inbox; only an event-less input enters
+  // the negotiator seat.
   if ("event" in input) return { scope: "intent", phase: "intent" };
+  if ("negotiationId" in input) return { scope: "negotiation", phase: "negotiation" };
   return {
     scope: "global",
     phase: "error",
