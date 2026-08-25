@@ -48,6 +48,8 @@ export type NegotiationGraphInput =
   | { negotiationId: string; verdict: NegotiationVerdict; reasoning: string; byUserId: string }
   /** Close a task after the host has already committed its owner's terminal opportunity action. */
   | { negotiationId: string; close: { reason: "owner_verdict"; verdict: NegotiationVerdict; reasoning: string }; byUserId: string }
+  /** Close an active task after the host has expired its opportunity. */
+  | { negotiationId: string; close: { reason: "opportunity_expired" } }
   | { negotiationId: string };
 
 export interface NegotiationGraphResult {
@@ -507,12 +509,24 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
   }
 }
 
-/** Host-only closure after OpportunityService has committed the owner's terminal action. */
+/** Host-only closure after a terminal opportunity action. */
 async function closeNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
   const task = state.task;
   const input = state.input;
   if (!task || !("close" in input)) return { phase: "error", error: "Missing task or close action" };
   try {
+    if (input.close.reason === "opportunity_expired") {
+      const updated = await deps.database.completeNegotiation({
+        taskId: task.id,
+        kind: "opportunity_expired",
+      });
+      if (!updated) return { phase: "error", error: "Expiry closure requires a live task and expired opportunity" };
+      if (await triggerReflectForEverySeat(deps, task.metadata)) {
+        await clearReflectPendingBestEffort(deps, task.id);
+      }
+      return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", turns: [] } };
+    }
+    if (!("byUserId" in input)) return { phase: "error", error: "Missing owner-verdict resolver" };
     const isSeat = Object.values(task.metadata.seats).some((seat) => seat.userId === input.byUserId)
       || task.metadata.sourceUserId === input.byUserId
       || task.metadata.candidateUserId === input.byUserId;

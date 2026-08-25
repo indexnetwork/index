@@ -319,6 +319,32 @@ export class NegotiationWatchdogQueue {
     }
 
     const opportunity = await opportunities.getOpportunity(opportunityId);
+    if (opportunity?.status === 'expired') {
+      if (!this.negotiationGraph) {
+        this.logger.error('Negotiation watchdog cannot recover an expired opportunity', {
+          taskId: candidate.id,
+          opportunityId,
+        });
+      } else {
+        const result = await this.negotiationGraph.invoke({
+          negotiationId: staleTask.id,
+          close: { reason: 'opportunity_expired' },
+        });
+        if (result.status === 'error') {
+          this.logger.error('Negotiation watchdog expiry recovery returned an error status', {
+            taskId: candidate.id,
+            opportunityId,
+            error: result.error,
+          });
+        }
+      }
+      await database.recordNegotiationWatchdogRecoveryCheck({
+        taskId: staleTask.id,
+        expectedUpdatedAt: staleTask.updatedAt,
+        checkedAt: this.clock(),
+      });
+      return;
+    }
     if (opportunity?.status === 'accepted' || opportunity?.status === 'rejected') {
       const byUserId = typeof metadata.sourceUserId === 'string'
         ? metadata.sourceUserId

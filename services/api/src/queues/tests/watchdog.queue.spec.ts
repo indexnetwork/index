@@ -187,6 +187,22 @@ describe('NegotiationWatchdogQueue', () => {
     expect(deps.database.recordNegotiationWatchdogAttempt).not.toHaveBeenCalled();
   });
 
+  it('recovers an active task left behind after its opportunity expired', async () => {
+    const task = makeTask({ state: 'working' });
+    const deps = makeDeps(task);
+    deps.opportunities.getOpportunity.mockResolvedValue({ id: 'opportunity-1', status: 'expired' } as never);
+    deps.negotiationGraph.invoke.mockResolvedValue({ negotiationId: task.id, status: 'resolved', turns: [] } as never);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.negotiationGraph.invoke).toHaveBeenCalledWith({
+      negotiationId: task.id,
+      close: { reason: 'opportunity_expired' },
+    });
+    expect(deps.database.recordNegotiationWatchdogAttempt).not.toHaveBeenCalled();
+  });
+
   it('keeps a completed verdict durable until its reflect check succeeds', async () => {
     const task = makeTask({
       state: 'completed',

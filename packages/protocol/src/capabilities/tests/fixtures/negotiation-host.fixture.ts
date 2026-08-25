@@ -185,25 +185,30 @@ export class FakeNegotiationHost {
     completeNegotiation: async (input) => {
       const task = this.tasks.get(input.taskId);
       if (!task || task.state === 'completed') return null;
-      const isSeat = Object.values(task.metadata.seats).some((seat) => seat.userId === input.resolvedByUserId)
-        || task.metadata.sourceUserId === input.resolvedByUserId
-        || task.metadata.candidateUserId === input.resolvedByUserId;
-      if (!isSeat) return null;
-      if (input.kind === 'pause_verdict' && (
-        task.state !== 'paused'
-        || task.metadata.pause?.reason !== 'ready_for_verdict'
-        || task.metadata.pause.pausedBy !== input.resolvedByUserId
-      )) return null;
+      if (input.kind !== 'opportunity_expired') {
+        const isSeat = Object.values(task.metadata.seats).some((seat) => seat.userId === input.resolvedByUserId)
+          || task.metadata.sourceUserId === input.resolvedByUserId
+          || task.metadata.candidateUserId === input.resolvedByUserId;
+        if (!isSeat) return null;
+        if (input.kind === 'pause_verdict' && (
+          task.state !== 'paused'
+          || task.metadata.pause?.reason !== 'ready_for_verdict'
+          || task.metadata.pause.pausedBy !== input.resolvedByUserId
+        )) return null;
+      }
       this.beforeCompleteNegotiation?.();
       const opportunity = this.opportunities.get(task.metadata.opportunityId);
       if (!opportunity) return null;
       const terminal = ['accepted', 'rejected', 'expired'].includes(opportunity.status);
       if (input.kind === 'owner_verdict' && !terminal) return null;
-      this.outcomeArtifacts.set(task.id, {
-        verdict: input.verdict,
-        reasoning: input.reasoning,
-        resolvedByUserId: input.resolvedByUserId,
-      });
+      if (input.kind === 'opportunity_expired' && opportunity.status !== 'expired') return null;
+      if (input.kind !== 'opportunity_expired') {
+        this.outcomeArtifacts.set(task.id, {
+          verdict: input.verdict,
+          reasoning: input.reasoning,
+          resolvedByUserId: input.resolvedByUserId,
+        });
+      }
       const updated = {
         ...task,
         state: 'completed' as const,

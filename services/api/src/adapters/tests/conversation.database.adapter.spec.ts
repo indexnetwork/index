@@ -268,6 +268,21 @@ describe('ConversationDatabaseAdapter', () => {
         type: 'negotiation', opportunityId: terminalOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
       await adapter.updateTaskState(terminalActive.id, 'working');
+      const expiredOpportunityId = `watchdog-expired-${crypto.randomUUID()}`;
+      await db.insert(schema.opportunities).values({
+        id: expiredOpportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [{ networkId: 'watchdog-network', userId: 'watchdog-user', role: 'peer' }],
+        interpretation: { category: 'test', reasoning: 'Scheduled expiry recovery.', confidence: 1 },
+        context: {},
+        confidence: '1',
+        status: 'expired',
+      });
+      createdOpportunityIds.push(expiredOpportunityId);
+      const expiredActive = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: expiredOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+      });
+      await adapter.updateTaskState(expiredActive.id, 'working');
       const readyForVerdict = await adapter.createTask(conv.id, {
         type: 'negotiation', opportunityId: 'watchdog-opportunity-ready', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
@@ -312,6 +327,7 @@ describe('ConversationDatabaseAdapter', () => {
       expect(staleIds).toContain(staleWorking.id);
       expect(staleIds).toContain(readyForVerdict.id);
       expect(staleIds).toContain(terminalActive.id);
+      expect(staleIds).toContain(expiredActive.id);
       expect(staleIds).not.toContain(freshSubmitted.id);
       expect(staleIds).not.toContain(completed.id);
       expect(staleIds).not.toContain(nonNegotiation.id);
@@ -529,6 +545,41 @@ describe('ConversationDatabaseAdapter', () => {
       expect(pendingReflect.map((candidate) => candidate.id)).toContain(task.id);
       await adapter.clearNegotiationReflectPending(task.id);
       expect((await adapter.getTask(task.id))?.metadata?.watchdogReflectPending).toBe(false);
+
+      const expiredOpportunityId = `expired-negotiation-${crypto.randomUUID()}`;
+      await db.insert(schema.opportunities).values({
+        id: expiredOpportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'pause-network', userId: ownerId, role: 'peer', intent: ownerIntentId },
+          { networkId: 'pause-network', userId: counterpartId, role: 'peer', intent: counterpartIntentId },
+        ],
+        interpretation: { category: 'test', reasoning: 'Scheduled expiry.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status: 'expired',
+      });
+      createdOpportunityIds.push(expiredOpportunityId);
+      const expiredTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId: expiredOpportunityId,
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        initiatorUserId: ownerId,
+        networkId: 'pause-network',
+        seats: {
+          [ownerIntentId]: { userId: ownerId, round: 1 },
+          [counterpartIntentId]: { userId: counterpartId, round: 1 },
+        },
+        drainGeneration: 0,
+      });
+      await adapter.updateTaskState(expiredTask.id, 'working');
+      const expiredClosed = await adapter.completeNegotiation({
+        taskId: expiredTask.id,
+        kind: 'opportunity_expired',
+      });
+      expect(expiredClosed?.state).toBe('completed');
+      expect(await adapter.getArtifactsForTask(expiredTask.id)).toEqual([]);
     }, 30000);
 
     it('projects the latest task, opportunity, turn, and signal lifecycle', async () => {

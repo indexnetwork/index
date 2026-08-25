@@ -1757,7 +1757,7 @@ export class ConversationDatabaseAdapter {
             sql`EXISTS (
               SELECT 1 FROM ${opportunities}
               WHERE ${opportunities.id} = ${schema.tasks.metadata}->>'opportunityId'
-                AND ${opportunities.status} IN ('accepted', 'rejected')
+                AND ${opportunities.status} IN ('accepted', 'rejected', 'expired')
             )`,
           ),
           and(
@@ -2683,11 +2683,15 @@ export class ConversationDatabaseAdapter {
 
   async completeNegotiation(input: {
     taskId: string;
-    kind: 'pause_verdict' | 'owner_verdict';
-    verdict: 'pending' | 'reject';
-    reasoning?: string;
-    resolvedByUserId: string;
-  }): Promise<NegotiationTaskRowMirror | null> {
+  } & (
+    | {
+      kind: 'pause_verdict' | 'owner_verdict';
+      verdict: 'pending' | 'reject';
+      reasoning?: string;
+      resolvedByUserId: string;
+    }
+    | { kind: 'opportunity_expired' }
+  )): Promise<NegotiationTaskRowMirror | null> {
     const result = await db.transaction(async (tx) => {
       const [task] = await tx.select().from(schema.tasks)
         .where(eq(schema.tasks.id, input.taskId)).for('update');
@@ -2695,32 +2699,37 @@ export class ConversationDatabaseAdapter {
 
       const metadata = task.metadata as NegotiationTaskMetadataMirror | null;
       if (!metadata || metadata.type !== 'negotiation') return null;
-      const isSeat = Object.values(metadata.seats).some((seat) => seat.userId === input.resolvedByUserId)
-        || metadata.sourceUserId === input.resolvedByUserId
-        || metadata.candidateUserId === input.resolvedByUserId;
-      if (!isSeat) return null;
-      if (input.kind === 'pause_verdict' && (
-        task.state !== 'paused'
-        || metadata.pause?.reason !== 'ready_for_verdict'
-        || metadata.pause.pausedBy !== input.resolvedByUserId
-      )) return null;
+      if (input.kind !== 'opportunity_expired') {
+        const isSeat = Object.values(metadata.seats).some((seat) => seat.userId === input.resolvedByUserId)
+          || metadata.sourceUserId === input.resolvedByUserId
+          || metadata.candidateUserId === input.resolvedByUserId;
+        if (!isSeat) return null;
+        if (input.kind === 'pause_verdict' && (
+          task.state !== 'paused'
+          || metadata.pause?.reason !== 'ready_for_verdict'
+          || metadata.pause.pausedBy !== input.resolvedByUserId
+        )) return null;
+      }
 
       const [opportunity] = await tx.select({ status: opportunities.status }).from(opportunities)
         .where(eq(opportunities.id, metadata.opportunityId)).for('update');
       if (!opportunity) return null;
       const terminal = ['accepted', 'rejected', 'expired'].includes(opportunity.status);
       if (input.kind === 'owner_verdict' && !terminal) return null;
+      if (input.kind === 'opportunity_expired' && opportunity.status !== 'expired') return null;
 
-      await tx.insert(schema.artifacts).values({
-        taskId: task.id,
-        name: 'negotiation_outcome',
-        parts: [{ kind: 'data', data: {
-          verdict: input.verdict,
-          reasoning: input.reasoning,
-          resolvedByUserId: input.resolvedByUserId,
-        } }],
-        metadata: { resolvedByUserId: input.resolvedByUserId },
-      });
+      if (input.kind !== 'opportunity_expired') {
+        await tx.insert(schema.artifacts).values({
+          taskId: task.id,
+          name: 'negotiation_outcome',
+          parts: [{ kind: 'data', data: {
+            verdict: input.verdict,
+            reasoning: input.reasoning,
+            resolvedByUserId: input.resolvedByUserId,
+          } }],
+          metadata: { resolvedByUserId: input.resolvedByUserId },
+        });
+      }
       const now = new Date();
       const [completed] = await tx.update(schema.tasks)
         .set({

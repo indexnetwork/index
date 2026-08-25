@@ -318,6 +318,36 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     expect(host.opportunityStatusUpdates).not.toContainEqual({ id: OPPORTUNITY_ID, status: "rejected" });
   });
 
+  test("an expired opportunity closes its active task without inventing an owner verdict", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedTurnAuthor(host, []);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const task = await host.createNegotiationTask({
+      conversationId: "conversation-expired",
+      briefs: {},
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: NETWORK_ID,
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        drainGeneration: 0,
+      },
+    });
+    host.opportunity.status = "expired";
+
+    const result = await graph.invoke({
+      negotiationId: task.id,
+      close: { reason: "opportunity_expired" },
+    });
+
+    expect(result).toMatchObject({ status: "resolved", turns: [] });
+    expect(host.taskFor(task.id).state).toBe("completed");
+    expect(host.outcomeArtifacts.get(task.id)).toBeUndefined();
+  });
+
   test("a system pause (stale-negotiation timeout) does not invoke the author", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, [

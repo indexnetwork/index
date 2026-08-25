@@ -173,17 +173,21 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /**
    * Atomically records an outcome and completes its task. A pause verdict also
    * locks the opportunity and updates it only while it is still non-terminal;
-   * an owner verdict instead requires the host's opportunity write to already
-   * be terminal. Returns null when the task or opportunity changed before the
-   * transaction acquired its locks.
+   * an owner verdict requires a terminal host write, while expiry requires the
+   * opportunity to be expired and records no owner outcome. Returns null when
+   * the task or opportunity changed before the transaction acquired its locks.
    */
   completeNegotiation(input: {
     taskId: string;
-    kind: 'pause_verdict' | 'owner_verdict';
-    verdict: 'pending' | 'reject';
-    reasoning?: string;
-    resolvedByUserId: string;
-  }): Promise<NegotiationTaskRow | null>;
+  } & (
+    | {
+      kind: 'pause_verdict' | 'owner_verdict';
+      verdict: 'pending' | 'reject';
+      reasoning?: string;
+      resolvedByUserId: string;
+    }
+    | { kind: 'opportunity_expired' }
+  )): Promise<NegotiationTaskRow | null>;
 
   /** Clears the durable post-verdict reflect marker after a successful check. */
   clearNegotiationReflectPending(taskId: string): Promise<void>;

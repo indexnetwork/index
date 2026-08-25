@@ -58,6 +58,9 @@ pin a supported release, use `latest`.
   delivery remains durably marked until it succeeds, terminal owner actions
   left beside active tasks are recovered by the watchdog, and bounded sweeps
   rotate checked rows so newer pauses cannot starve.
+- Scheduled opportunity expiry now closes any active negotiation through a
+  distinct system lane, without fabricating an owner verdict, so expired work
+  cannot hold either seat's round open.
 
 ## 35.0.0 - 2026-08-24
 
