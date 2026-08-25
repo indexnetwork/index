@@ -1,255 +1,44 @@
 import { config } from 'dotenv';
 import path from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
-import { eq } from 'drizzle-orm';
 
 config({ path: path.resolve(import.meta.dir, '../../../.env.development'), override: true });
+const databaseUrl = new URL(process.env.DATABASE_URL!); databaseUrl.pathname = '/protocol_sandbox';
+const redisUrl = new URL(process.env.REDIS_URL!); redisUrl.pathname = '/14';
+process.env.DATABASE_URL = databaseUrl.toString(); process.env.REDIS_URL = redisUrl.toString(); process.env.NODE_ENV = 'development';
+const BASE = 'http://localhost:3101';
+const BROWSER_ORIGIN = 'http://localhost:3000';
+const enabled = process.env.RUN_SANDBOX_E2E === '1' && process.env.RUN_PAID_INTEGRATION_TESTS === '1' && !!process.env.OPENROUTER_API_KEY;
+let server: ReturnType<typeof Bun.spawn> | null = null;
+let serverLogs = '';
+let serverLogDrain: Promise<void> | null = null;
 
-const configuredUrl = process.env.DATABASE_URL;
-const sandboxUrl = configuredUrl ? new URL(configuredUrl) : null;
-if (sandboxUrl) sandboxUrl.pathname = '/protocol_sandbox';
-if (sandboxUrl) process.env.DATABASE_URL = sandboxUrl.toString();
-process.env.NODE_ENV = 'development';
+async function seed(mode: 'minimal' | 'twenty') { const p = Bun.spawn(['bun', 'src/cli/db-seed-sandbox.ts', '--confirm', `--${mode}`], { cwd: path.resolve(import.meta.dir, '..'), stdout: 'pipe', stderr: 'pipe', env: process.env }); const [code, out, err] = await Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]); if (code) throw new Error(`seed failed: ${out}${err}`); }
+async function start() { server = Bun.spawn(['bun', '--preload', './src/instrument.ts', 'src/main.ts'], { cwd: path.resolve(import.meta.dir, '..'), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, PORT: '3101', API_URL: BASE } }); serverLogDrain = Promise.all([new Response(server.stdout).text(), new Response(server.stderr).text()]).then(outputs => { serverLogs += outputs.join(''); }); for (let i = 0; i < 150; i++) { if (await fetch(`${BASE}/health`).then(r => r.ok).catch(() => false)) return; await Bun.sleep(200); } throw new Error(`sandbox API did not start:\n${serverLogs}`); }
+async function login(email: string) { const signIn = await fetch(`${BASE}/api/auth/sign-in/email`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: BROWSER_ORIGIN }, body: JSON.stringify({ email, password: 'sandbox-sandbox' }) }); if (!signIn.ok) throw new Error(`sign in ${email}: ${await signIn.text()}`); const cookie = signIn.headers.getSetCookie().map(v => v.split(';')[0]!).join('; '); const response = await fetch(`${BASE}/api/auth/token`, { headers: { Cookie: cookie, Origin: BROWSER_ORIGIN } }); const token = (await response.json() as { token?: string }).token; if (!token) throw new Error(`no session JWT for ${email}`); return token; }
+async function api<T>(jwt: string, url: string, init: RequestInit = {}) { const request = fetch(`${BASE}${url}`, { ...init, signal: init.signal ?? AbortSignal.timeout(20_000), headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) } }).then(async (r) => { if (!r.ok) throw new Error(`${init.method ?? 'GET'} ${url}: ${r.status} ${await r.text()}`); return r.json() as Promise<T>; }); let timer!: ReturnType<typeof setTimeout>; try { return await Promise.race([request, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`${init.method ?? 'GET'} ${url}: timed out after 20s`)), 20_000); })]); } finally { clearTimeout(timer); } }
+async function waitFor<T>(read: () => Promise<T | undefined>, label: string | (() => string)) { for (let i = 0; i < 240; i++) { const value = await read(); if (value) return value; await Bun.sleep(500); } throw new Error(`timed out after two minutes: ${typeof label === 'function' ? label() : label}`); }
 
-// This is deliberately paid and stateful. It is never part of the normal test
-// command: it resets only protocol_sandbox, requires the local Redis used by
-// production graph composition, and calls the configured OpenRouter model.
-const RUN_LIVE_SANDBOX = process.env.RUN_SANDBOX_E2E === '1'
-  && process.env.RUN_PAID_INTEGRATION_TESTS === '1'
-  && !!process.env.OPENROUTER_API_KEY
-  && !!process.env.REDIS_URL
-  && sandboxUrl?.pathname === '/protocol_sandbox';
-
-type Mode = 'minimal' | 'twenty';
-
-let closeLiveResources: (() => Promise<void>) | null = null;
-
-async function seed(mode: Mode): Promise<void> {
-  const child = Bun.spawn([
-    'bun', 'src/cli/db-seed-sandbox.ts', '--confirm', `--${mode}`,
-  ], {
-    cwd: path.resolve(import.meta.dir, '..'),
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: process.env,
-  });
-  const [code, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  if (code !== 0) throw new Error(`sandbox seed failed (${code})\n${stdout}\n${stderr}`);
-}
-
-async function liveHarness(mode: Mode) {
-  await seed(mode);
-  const [{ default: db }, schema, personas, { buildOpportunityGraph, createOpportunityGraphDb }, { buildIntentDiscoveryTrigger }, { personalAgentGraph, negotiationGraph }, { chatSessionService }, { conversationDatabaseAdapter }] = await Promise.all([
-    import('../src/lib/drizzle/drizzle'),
-    import('../src/schemas/database.schema'),
-    import('../src/cli/sandbox-personas'),
-    import('../src/queues/opportunity/discovery.shared'),
-    import('../src/queues/opportunity/discovery-trigger.builders'),
-    import('../src/lib/negotiation/negotiation-graph'),
-    import('../src/services/chat.service'),
-    import('../src/adapters/database.adapter'),
-  ]);
-  closeLiveResources ??= async () => {
-    const [{ closeDb }, { closeRedisConnection }, { personalAgentQueue }] = await Promise.all([
-      import('../src/lib/drizzle/drizzle'),
-      import('../src/adapters/cache.adapter'),
-      import('../src/queues/personal-agent.queue'),
-    ]);
-    await personalAgentQueue.close();
-    await closeRedisConnection();
-    await closeDb();
-  };
-
-  const resolve = async (email: string, intentIndex: number) => {
-    const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
-    if (!user) throw new Error(`missing seeded user ${email}`);
-    const intents = await db.select().from(schema.intents).where(eq(schema.intents.userId, user.id));
-    const intent = intents.sort((a, b) => a.id.localeCompare(b.id))[intentIndex];
-    // Seed ids are UUIDv5 by email/index, so lexical ordering is not intent
-    // order. Resolve the authored payload rather than expose those ids.
-    const persona = [...personas.SANDBOX_MINIMAL_PERSONAS, ...personas.SANDBOX_TWENTY_PERSONAS]
-      .find((candidate) => candidate.email === email)!;
-    const expectedPayload = persona.intents[intentIndex]!;
-    const selected = intents.find((candidate) => candidate.payload === expectedPayload);
-    if (!selected) throw new Error(`missing seeded intent ${email}[${intentIndex}]`);
-    return { user, intent: selected };
-  };
-
-  const discover = async (
-    seat: { user: { id: string }; intent: { id: string; payload: string } },
-    targetUserId?: string,
-  ) => {
-    const graph = buildOpportunityGraph(createOpportunityGraphDb(), {
-      matchesReady: async ({ userId, intentId }: { userId: string; intentId: string }) => {
-        await personalAgentGraph.invoke({ userId, intentId, event: 'matches_ready' });
-      },
-    });
-    const [network] = await db.select().from(schema.intentNetworks)
-      .where(eq(schema.intentNetworks.intentId, seat.intent.id));
-    if (!network) throw new Error(`missing network for ${seat.intent.id}`);
-    return graph.invoke({
-      ...buildIntentDiscoveryTrigger({
-      userId: seat.user.id,
-      searchQuery: seat.intent.payload,
-      networkIds: [network.networkId],
-      triggerIntentId: seat.intent.id,
-      }),
-      ...(targetUserId ? { targetUserId } : {}),
-    });
-  };
-
-  const messagePrincipal = async (seat: { user: { id: string }; intent: { id: string } }, text: string) => {
-    const resolved = await chatSessionService.resolveNegotiatorIntentSession(seat.user.id, seat.intent.id);
-    if ('error' in resolved) throw new Error(resolved.error);
-    const messageId = await chatSessionService.addMessage({ sessionId: resolved.session.id, role: 'user', content: text });
-    return personalAgentGraph.invoke({
-      userId: seat.user.id, intentId: seat.intent.id, event: 'user_message',
-      sessionId: resolved.session.id, messageId, text,
-    });
-  };
-
-  return { db, schema, personas, resolve, discover, messagePrincipal, negotiationGraph, conversationDatabaseAdapter };
-}
-
-function hasSeats(row: { actors: Array<{ userId: string; intent?: string }> }, first: { user: { id: string }; intent: { id: string } }, second: { user: { id: string }; intent: { id: string } }) {
-  return row.actors.some((actor) => actor.userId === first.user.id && actor.intent === first.intent.id)
-    && row.actors.some((actor) => actor.userId === second.user.id && actor.intent === second.intent.id);
-}
-
-describe.skipIf(!RUN_LIVE_SANDBOX)('PersonalAgent + negotiation live sandbox E2E', () => {
-  async function exerciseDesignatedLifecycle(mode: Mode): Promise<void> {
-    const h = await liveHarness(mode);
-    const mayaDaniel = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaDaniel.source.email, h.personas.SANDBOX_E2E_CASES.mayaDaniel.source.intentIndex);
-    const daniel = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaDaniel.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaDaniel.candidate.intentIndex);
-    const mayaAisha = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaAisha.source.email, h.personas.SANDBOX_E2E_CASES.mayaAisha.source.intentIndex);
-    const aisha = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaAisha.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaAisha.candidate.intentIndex);
-    const sofia = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaSofia.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaSofia.candidate.intentIndex);
-
-    const discoverPair = async (source: typeof mayaDaniel, candidate: typeof daniel) => {
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        await h.discover(source, candidate.user.id);
-        const opportunity = (await h.db.select().from(h.schema.opportunities))
-          .find((row) => hasSeats(row, source, candidate));
-        if (opportunity) return opportunity;
-      }
-      return undefined;
-    };
-
-    // Only the two designated signals enter discovery. These are explicit
-    // introductions, so target the intended counterparty through the same
-    // production direct-connection graph path a principal uses.
-    const mayaAishaOpportunity = await discoverPair(mayaAisha, aisha);
-    const mayaDanielOpportunity = await discoverPair(mayaDaniel, daniel);
-    const opportunities = await h.db.select().from(h.schema.opportunities);
-    expect(mayaDanielOpportunity).toBeDefined();
-    expect(mayaAishaOpportunity).toBeDefined();
-    expect(Number(mayaDanielOpportunity!.confidence)).toBeGreaterThanOrEqual(0.4);
-    expect(Number(mayaAishaOpportunity!.confidence)).toBeGreaterThanOrEqual(0.4);
-    expect(opportunities.some((row) => hasSeats(row, mayaDaniel, sofia) && ['negotiating', 'pending'].includes(row.status))).toBe(false);
-
-    // These are messages to each owner's own intent-scoped DM, never A2A turns.
-    await h.messagePrincipal(mayaDaniel, 'For Daniel, I can offer meaningful founding equity and want to discuss ownership and start date.');
-    await h.messagePrincipal(daniel, 'I am interested if the role has clear technical ownership and meaningful equity.');
-    await h.messagePrincipal(mayaAisha, 'For Maya Chen, our six design partners and two annual conversions support a focused seed conversation.');
-
-    const tasks = await h.db.select().from(h.schema.tasks);
-    const taskFor = (opportunityId: string) => tasks.find((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === opportunityId);
-    const mayaDanielTask = taskFor(mayaDanielOpportunity!.id);
-    const mayaAishaTask = taskFor(mayaAishaOpportunity!.id);
-    expect(mayaDanielTask).toBeDefined();
-    expect(mayaAishaTask).toBeDefined();
-    expect([mayaDanielTask, mayaAishaTask].some((task) => task!.state === 'paused')).toBe(true);
-    for (const [task, first, second] of [[mayaDanielTask!, mayaDaniel, daniel], [mayaAishaTask!, mayaAisha, aisha]] as const) {
-      expect(Object.keys(task.briefs)).toEqual(expect.arrayContaining([first.user.id, second.user.id]));
-      const a2a = await h.conversationDatabaseAdapter.getNegotiationMessages(task.id);
-      expect(a2a.length).toBeGreaterThan(0);
-      for (const message of a2a) {
-        const data = (message.parts as Array<{ kind?: string; data?: { verb?: string } }>).find((part) => part.kind === 'data')?.data;
-        if (data?.verb) expect(['outreach', 'counter', 'question', 'pause', 'withdraw']).toContain(data.verb);
-      }
-      expect(a2a.some((message) => [first.user.id, second.user.id].includes(message.senderId))).toBe(false);
-    }
-    expect((await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, mayaDanielOpportunity!.id)))[0]!.status).not.toBe('accepted');
-    expect((await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, mayaAishaOpportunity!.id)))[0]!.status).not.toBe('accepted');
-
-    // This row is intentionally an unapproved introduction. It exercises the
-    // production graph's admission guard with real persistence, not a fake
-    // host: an introducer's approval is required before a task can open.
-    const [mayaNetwork] = await h.db.select().from(h.schema.intentNetworks)
-      .where(eq(h.schema.intentNetworks.intentId, mayaDaniel.intent.id));
-    const blockedOpportunityId = crypto.randomUUID();
-    await h.db.insert(h.schema.opportunities).values({
-      id: blockedOpportunityId,
-      detection: { source: 'manual', timestamp: new Date().toISOString() },
-      actors: [
-        { userId: mayaDaniel.user.id, intent: mayaDaniel.intent.id, networkId: mayaNetwork!.networkId, role: 'peer' },
-        { userId: daniel.user.id, intent: daniel.intent.id, networkId: mayaNetwork!.networkId, role: 'peer' },
-        { userId: aisha.user.id, networkId: mayaNetwork!.networkId, role: 'introducer', approved: false },
-      ],
-      interpretation: { category: 'introduction', reasoning: 'Requires introducer approval.', confidence: 1 },
-      context: { networkId: mayaNetwork!.networkId }, confidence: '1', status: 'latent',
-    });
-    try {
-      await h.negotiationGraph.invoke({ opportunityId: blockedOpportunityId, intentId: mayaDaniel.intent.id, brief: 'Do not open until the introducer approves.', round: 1 });
-      const [blocked] = await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, blockedOpportunityId));
-      expect(blocked!.status).toBe('latent');
-      expect((await h.db.select().from(h.schema.tasks)).some((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === blockedOpportunityId)).toBe(false);
-    } finally {
-      await h.db.delete(h.schema.opportunities).where(eq(h.schema.opportunities.id, blockedOpportunityId));
-    }
-
-    // The agents have exchanged real turns and pause whenever they need the
-    // principal's context. Resume each needs-principal pause through the same
-    // production NegotiationGraph using the answer from that owner. A later
-    // ready-for-verdict pause may be promoted to pending.
-    const principalContext = new Map([
-      [mayaDaniel.user.id, 'I am Maya Chen, the technical co-founder. We are building AI-agent observability for customer cloud environments, have six active design partners, converted two to annual contracts, are raising a $1.5m seed, and can offer meaningful founding equity with clear technical ownership.'],
-      [daniel.user.id, 'I have built multi-tenant data platforms and distributed systems at two B2B SaaS startups. I am available to begin a founding-engineer role within 30 days, want clear technical ownership, and need meaningful equity.'],
-      [mayaAisha.user.id, 'I invest $500k to $1.5m at pre-seed and seed in developer tools, data infrastructure, and enterprise software. I want to assess the initial buyer, painful workflow, and changes after design-partner usage before a formal process.'],
-    ]);
-    for (const opportunity of [mayaDanielOpportunity!, mayaAishaOpportunity!]) {
-      let freshTask = (await h.db.select().from(h.schema.tasks))
-        .find((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === opportunity.id);
-      expect(freshTask).toBeDefined();
-      let pause = (freshTask!.metadata as { pause?: { reason?: string; pausedBy?: string } } | null)?.pause;
-      for (let answerCount = 0; freshTask!.state === 'paused' && pause?.reason === 'needs_principal'; answerCount += 1) {
-        expect(answerCount).toBeLessThan(3);
-        const brief = principalContext.get(pause.pausedBy!);
-        expect(brief).toBeDefined();
-        const resumed = await h.negotiationGraph.invoke({
-          negotiationId: freshTask!.id,
-          brief: brief!,
-          byUserId: pause.pausedBy!,
-        });
-        expect(resumed.status).not.toBe('error');
-        freshTask = (await h.db.select().from(h.schema.tasks))
-          .find((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === opportunity.id);
-        pause = (freshTask!.metadata as { pause?: { reason?: string; pausedBy?: string } } | null)?.pause;
-      }
-      if (freshTask!.state === 'paused') {
-        expect(pause?.pausedBy).toBeDefined();
-        expect(pause?.reason).toBe('ready_for_verdict');
-        await h.negotiationGraph.invoke({ negotiationId: freshTask!.id, verdict: 'pending', reasoning: 'Both owners supplied the needed context.', byUserId: pause!.pausedBy! });
-      }
-      const [pending] = await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, opportunity.id));
-      expect(pending!.status).toBe('pending');
-      expect(pending!.acceptedBy).toBeNull();
-    }
+describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => {
+  async function run(mode: 'minimal' | 'twenty') {
+    console.log(`[sandbox-e2e] ${mode}: reset and boot API`);
+    await seed(mode); await start();
+    const { SANDBOX_E2E_CASES, SANDBOX_MINIMAL_PERSONAS, SANDBOX_TWENTY_PERSONAS } = await import('../src/cli/sandbox-personas');
+    const people = [...SANDBOX_MINIMAL_PERSONAS, ...SANDBOX_TWENTY_PERSONAS];
+    const mayaJwt = await login('maya.chen@sandbox.test'); const danielJwt = await login('daniel.ruiz@sandbox.test'); const aishaJwt = await login('aisha.okafor@sandbox.test');
+    const intent = async (jwt: string, email: string, index: number) => { const person = people.find(p => p.email === email)!; const list = await api<{ intents: { id: string; payload: string }[] }>(jwt, '/api/intents/list', { method: 'POST', body: '{}' }); const found = list.intents.find(i => i.payload === person.intents[index]); if (!found) throw new Error(`missing ${email}[${index}]`); return found; };
+    const mayaDaniel = await intent(mayaJwt, 'maya.chen@sandbox.test', SANDBOX_E2E_CASES.mayaDaniel.source.intentIndex); const daniel = await intent(danielJwt, 'daniel.ruiz@sandbox.test', SANDBOX_E2E_CASES.mayaDaniel.candidate.intentIndex); const mayaAisha = await intent(aishaJwt, 'aisha.okafor@sandbox.test', SANDBOX_E2E_CASES.mayaAisha.source.intentIndex); const mayaAishaCandidate = await intent(mayaJwt, 'maya.chen@sandbox.test', SANDBOX_E2E_CASES.mayaAisha.candidate.intentIndex);
+    console.log(`[sandbox-e2e] ${mode}: resume designated discovery`);
+    for (const [jwt, item] of [[mayaJwt, mayaDaniel], [danielJwt, daniel], [aishaJwt, mayaAisha], [mayaJwt, mayaAishaCandidate]] as const) { await api(jwt, `/api/intents/${item.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'ACTIVE' }) }); console.log(`[sandbox-e2e] ${mode}: resumed ${item.id}`); }
+    const radar = (jwt: string, id: string) => api<{ items: { opportunityId: string; name: string; status?: string }[] }>(jwt, `/api/opportunities/radar?scopeType=intent&scopeId=${id}&statuses=latent,draft,negotiating,stalled,pending&presentation=skeleton`);
+    let radarSnapshot: unknown;
+    const mayaDanielCard = await waitFor(async () => { radarSnapshot = await radar(mayaJwt, mayaDaniel.id); return (radarSnapshot as { items: { opportunityId: string; name: string; status?: string }[] }).items.find(c => c.name === 'Daniel Ruiz'); }, () => `Maya/Daniel; radar=${JSON.stringify(radarSnapshot)}`); console.log(`[sandbox-e2e] ${mode}: Maya/Daniel discovered`);
+    const mayaAishaCard = await waitFor(async () => { radarSnapshot = await radar(aishaJwt, mayaAisha.id); return (radarSnapshot as { items: { opportunityId: string; name: string; status?: string }[] }).items.find(c => c.name === 'Maya Chen'); }, () => `Maya/Aisha; radar=${JSON.stringify(radarSnapshot)}`); console.log(`[sandbox-e2e] ${mode}: Maya/Aisha discovered`); expect(mayaDanielCard.status).not.toBe('accepted'); expect(mayaAishaCard.status).not.toBe('accepted');
+    const send = async (jwt: string, id: string, message: string) => { try { console.log(`[sandbox-e2e] ${mode}: send principal context`); const r = await fetch(`${BASE}/api/chat/web/stream`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message, scopeType: 'intent', scopeId: id }), signal: AbortSignal.timeout(120_000) }); expect(r.ok).toBe(true); await r.text(); } catch (error) { server?.kill(); await server?.exited; await serverLogDrain; throw new Error(`principal message failed: ${error}\nserver log:\n${serverLogs}`, { cause: error }); } };
+    await send(mayaJwt, mayaDaniel.id, 'For Daniel, I can offer meaningful founding equity and clear technical ownership.'); await send(danielJwt, daniel.id, 'I am interested if the role has clear technical ownership and meaningful equity.'); await send(aishaJwt, mayaAisha.id, 'For Maya Chen, our six design partners and two annual conversions support a focused seed conversation.');
+    await waitFor(async () => (await radar(mayaJwt, mayaDaniel.id)).items.find(c => c.name === 'Daniel Ruiz' && ['negotiating', 'pending', 'rejected'].includes(c.status ?? '')), 'post-context lifecycle');
   }
-
-  test('minimal market discovers, pauses for principals, and reaches pending only through an owner action', async () => {
-    await exerciseDesignatedLifecycle('minimal');
-  }, 600_000);
-
-  test('twenty-person market bounds discovery to designated signals and keeps the same lifecycle boundaries', async () => {
-    await exerciseDesignatedLifecycle('twenty');
-  }, 600_000);
+  test('minimal market uses only the running API, queues, and provider', () => run('minimal'), 600_000);
+  test('twenty-person market uses only the running API, queues, and provider', () => run('twenty'), 600_000);
 });
-
-afterAll(async () => {
-  await closeLiveResources?.();
-});
+afterAll(async () => { if (server) { server.kill(); await server.exited; } });

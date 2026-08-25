@@ -254,7 +254,7 @@ async function main(): Promise<void> {
       }
 
       for (const fixture of personaFixtures) {
-        const { persona, userId, context, premiseTexts, networkKeys } = fixture;
+        const { persona, userId, premiseTexts, networkKeys } = fixture;
         await tx.insert(schema.users).values({
           id: userId,
           email: persona.email,
@@ -345,10 +345,13 @@ async function main(): Promise<void> {
             felicityAuthority: 1,
             felicitySincerity: 1,
             felicityClarity: 1,
-            status: 'ACTIVE',
+            // A reset sandbox must be inert until its owner explicitly
+            // resumes an intent. Otherwise booting the API starts every
+            // fixture's discovery at once and drowns the first real user turn.
+            status: 'PAUSED',
           }).onConflictDoUpdate({
             target: schema.intents.id,
-            set: { payload, summary: payload, embedding: embeddings.get(payload)!, status: 'ACTIVE' },
+            set: { payload, summary: payload, embedding: embeddings.get(payload)!, status: 'PAUSED' },
           });
 
           const relevantKeys: NetworkKey[] = networkKeys.filter((key) => key !== 'commons' && key !== 'vault');
@@ -367,11 +370,8 @@ async function main(): Promise<void> {
       }
     });
 
-    // The discovery queue dedups by `rediscovery-<userId>-<intentId>-<6h bucket>`
-    // and keeps completed jobs for 24h. Fixture ids are deterministic, so a
-    // re-seed inside the same bucket re-enqueues under an id BullMQ already
-    // holds as completed — the add is silently dropped and the intent shows
-    // WARMING forever. Best-effort: an unreachable Redis must not fail the seed.
+    // Remove stale discovery jobs for fixture owners. A reset stays paused;
+    // normal intent resume is the only thing that starts discovery.
     const currentFixtureUserIds = personaFixtures.map((fixture) => fixture.userId);
     if (wipedFixtureUserIds.length > 0 || minimal) {
       try {
@@ -385,33 +385,8 @@ async function main(): Promise<void> {
             removed += 1;
           }
         }
-        // In the focused fixture every active signal is deliberately sent to
-        // discovery. That gives the local sandbox real agent-to-agent traffic
-        // immediately instead of requiring someone to manually re-submit each
-        // intent after a reset.
-        let queued = 0;
-        if (minimal) {
-          const launch = networkByKey.get('launch')!;
-          for (const fixture of personaFixtures) {
-            for (const [intentIndex] of fixture.persona.intents.entries()) {
-              const intentId = fixture.persona.fixedIds?.intentIds[intentIndex]
-                ?? fixtureId('intent', `${fixture.persona.email}:${intentIndex}`);
-              await fromIntentQueue.addJob({
-                userId: fixture.userId,
-                intentId,
-                networkIds: [launch.id],
-              }, {
-                jobId: `sandbox-launch-${fixture.userId}-${intentId}`,
-                removeOnComplete: true,
-                removeOnFail: true,
-              });
-              queued += 1;
-            }
-          }
-        }
         await fromIntentQueue.queue.close();
         if (removed > 0) console.log(`Removed ${removed} stale discovery job(s) for wiped fixture users.`);
-        if (queued > 0) console.log(`Queued ${queued} Launch intent(s) for discovery and negotiation.`);
       } catch (error) {
         console.warn(`Discovery queue sweep skipped: ${error instanceof Error ? error.message : String(error)}`);
       }

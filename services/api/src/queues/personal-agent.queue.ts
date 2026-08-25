@@ -95,6 +95,10 @@ export class PersonalAgentQueue {
   addUserMessageEvent(event: PersonalAgentUserMessageEvent): Promise<Job<PersonalAgentEvent>> {
     return this.queue.add('user_message', event, {
       jobId: personalAgentUserMessageJobId(event.messageId),
+      // A principal is waiting on this turn over HTTP. Put it ahead of
+      // background discovery and reflect work that has not started yet;
+      // running turns remain intentionally non-preemptive.
+      lifo: true,
       removeOnComplete: true,
       removeOnFail: true,
     });

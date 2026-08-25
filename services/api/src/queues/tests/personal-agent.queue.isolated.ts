@@ -251,6 +251,11 @@ describe('PersonalAgentQueue serialization', () => {
       messages: ['Right here.'],
     };
     await withQueue(buildQueue(() => result), async ({ queue }) => {
+      const queued = await queue.addUserMessageEvent({
+        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
+        sessionId: 'session-1', messageId: 'reply-priority', text: 'priority please',
+      });
+      expect(queued.opts.lifo).toBe(true);
       const turn = await queue.runUserMessageTurn({
         userId: 'user-1', intentId: 'intent-1', event: 'user_message',
         sessionId: 'session-1', messageId: 'reply-2', text: 'where are we?',
