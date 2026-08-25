@@ -40,6 +40,9 @@ export const PERSONAL_AGENT_TURN_WAIT_MS = 90_000;
 /** Leave the controller twenty seconds to finish its own 90-second response path. */
 export const PERSONAL_AGENT_EXECUTION_BUDGET_MS = 70_000;
 
+/** A kickoff may author several briefs and A2A turns; it is not constrained by an HTTP response. */
+export const PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS = 5 * 60_000;
+
 /** What the agent is woken with — the graph's own intent-scope input shapes. */
 export type PersonalAgentEvent = Extract<PersonalAgentInput, { event: string }>;
 
@@ -260,7 +263,7 @@ export class PersonalAgentQueue {
     try {
       const remaining = isUserMessage
         ? job.timestamp + PERSONAL_AGENT_EXECUTION_BUDGET_MS - Date.now()
-        : PERSONAL_AGENT_EXECUTION_BUDGET_MS;
+        : PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS;
       if (remaining <= 0) {
         throw new UnrecoverableError('PersonalAgent user-message execution deadline expired before pickup');
       }

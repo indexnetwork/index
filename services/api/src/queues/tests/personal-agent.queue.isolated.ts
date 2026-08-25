@@ -11,7 +11,7 @@ import type { PersonalAgentInput, PersonalAgentResult } from '@indexnetwork/prot
 import { UnrecoverableError } from 'bullmq';
 
 import { requestContext as hostRequestContext } from '../../lib/request-context';
-import { PERSONAL_AGENT_EXECUTION_BUDGET_MS, PersonalAgentQueue } from '../personal-agent.queue';
+import { PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS, PERSONAL_AGENT_EXECUTION_BUDGET_MS, PersonalAgentQueue } from '../personal-agent.queue';
 
 setRequestContextStore(hostRequestContext);
 
@@ -301,6 +301,15 @@ describe('PersonalAgentQueue serialization', () => {
   });
 
   it('a background job gets a fresh execution-relative budget and preserves request context', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout')!;
+    let timeoutMs: number | undefined;
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: (ms: number) => {
+        timeoutMs = ms;
+        return new AbortController().signal;
+      },
+    });
     let captured: ReturnType<typeof requestContext.getStore>;
     const queue = new PersonalAgentQueue(async () => {
       captured = requestContext.getStore();
@@ -319,7 +328,9 @@ describe('PersonalAgentQueue serialization', () => {
       expect(captured?.originUrl).toBe('https://queue.example.test');
       expect(captured?.abortSignal).toBeInstanceOf(AbortSignal);
       expect(captured?.abortSignal?.aborted).toBe(false);
+      expect(timeoutMs).toBe(PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS);
     } finally {
+      Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
       await queue.close();
     }
   });
