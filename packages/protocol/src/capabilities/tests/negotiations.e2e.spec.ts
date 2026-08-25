@@ -61,6 +61,55 @@ class ScriptedTurnAuthor implements NegotiationTurnAuthor {
 }
 
 describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
+  test("a submitted passive-round sibling prevents an early all-paused wake", async () => {
+    const host = new FakeNegotiationHost();
+    const passiveIntentId = "intent-bob-1";
+    const metadata = (opportunityId: string) => ({
+      type: "negotiation" as const,
+      opportunityId,
+      sourceUserId: SOURCE_USER_ID,
+      candidateUserId: CANDIDATE_USER_ID,
+      initiatorUserId: SOURCE_USER_ID,
+      networkId: NETWORK_ID,
+      seats: { [passiveIntentId]: { userId: CANDIDATE_USER_ID, round: 0 } },
+      drainGeneration: 0,
+    });
+    const paused = await host.createNegotiationTask({
+      conversationId: "conversation-paused",
+      briefs: {},
+      metadata: metadata("opportunity-paused"),
+    });
+    const submitted = await host.createNegotiationTask({
+      conversationId: "conversation-submitted",
+      briefs: {},
+      metadata: metadata("opportunity-submitted"),
+    });
+    await host.database.updateNegotiationTaskState(paused.id, "paused", {
+      reason: "needs_principal",
+      pausedBy: CANDIDATE_USER_ID,
+    });
+    host.tasks.set(submitted.id, { ...submitted, state: "submitted" });
+
+    const check = { userId: CANDIDATE_USER_ID, intentId: passiveIntentId, round: 0 };
+    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, check);
+    expect(host.reflectJobs).toEqual([]);
+
+    host.tasks.set(submitted.id, {
+      ...host.taskFor(submitted.id),
+      state: "paused",
+      metadata: {
+        ...host.taskFor(submitted.id).metadata,
+        pause: { reason: "needs_principal", pausedBy: CANDIDATE_USER_ID },
+      },
+    });
+    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, check);
+
+    expect(host.reflectJobs).toEqual([{
+      ...check,
+      generation: "task-1.0_task-2.0",
+    }]);
+  });
+
   test("concurrent opens that both miss the pre-read create one task and one opening outreach", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, [

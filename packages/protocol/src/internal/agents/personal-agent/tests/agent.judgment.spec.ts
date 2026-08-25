@@ -8,7 +8,7 @@ class CapturingPersonalAgentModel extends PersonalAgentModel {
 
   protected override async callActsModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
     this.lastMessages = messages;
-    return { act: "message_user", text: "I chose a different next step." };
+    return { act: "message_user", text: "The other side is deciding." };
   }
 }
 
@@ -101,6 +101,9 @@ describe("validateDecidedAct", () => {
     }, deciding)).toBeNull();
     expect(validateDecidedAct({ act: "message_user", text: "There is no response yet." }, deciding)).toBeNull();
     expect(validateDecidedAct({ act: "message_user", text: "They are assessing the pricing." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "They are deliberating over the pricing terms." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "They are thinking through your proposed timeline." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "The other side is deciding. I will keep you posted." }, deciding)).toBeNull();
     expect(validateDecidedAct({ act: "message_user", text: "The other side is deciding." }, deciding))
       .toEqual({ tool: "message_user", text: "The other side is deciding." });
   });
@@ -123,7 +126,7 @@ describe("PersonalAgentModel", () => {
     }), []);
 
     const prompt = model.lastMessages.find((message) => message.role === "user")?.content;
-    expect(prompt).toContain("The counterpart side is deciding");
+    expect(prompt).toContain("CANONICAL COUNTERPART STATUS RESPONSE:\nThe other side is deciding.");
     expect(prompt).not.toContain("SECRET_PRICING_TOPIC");
   });
 

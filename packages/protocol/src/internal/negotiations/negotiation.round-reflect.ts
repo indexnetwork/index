@@ -75,7 +75,7 @@ export async function maybeEnqueueRoundReflect(
     // already have their complete durable task sets and need no size gate.
     if (stamp.round === check.round && stamp.roundSize === null && stamp.kickoffStartedAt !== null) return;
     const tasks = await database.getNegotiationTasksForIntentRound(check.intentId, check.round);
-    if (tasks.length === 0 || tasks.some((task) => task.state === "working")) return;
+    if (tasks.length === 0 || tasks.some((task) => task.state !== "paused" && task.state !== "completed")) return;
     const generation = tasks
       .map((task) => `${task.id}.${task.metadata.drainGeneration}`)
       .sort()

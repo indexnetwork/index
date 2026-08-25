@@ -13,7 +13,7 @@ import type { Opportunity, OpportunityStatus } from './entities.js';
 import type { Database } from '../database.js';
 
 /** Negotiation task lifecycle. `paused` carries a reason in `metadata.pause`. */
-export type NegotiationTaskState = 'working' | 'paused' | 'completed';
+export type NegotiationTaskState = 'submitted' | 'working' | 'paused' | 'completed';
 
 /** One seat's binding to a signal, and that signal's kickoff round. */
 export interface NegotiationSeatBinding {
@@ -44,10 +44,8 @@ export interface NegotiationTaskMetadata {
    * terminators — and a re-kick from that side would either overwrite the
    * opener's round or be refused.
    *
-   * A seat appears here when its own kickoff opens or re-kicks this
-   * negotiation, never by guessing: an actor's `intent` field names the
-   * intent it matched AGAINST for a premise match, so it cannot be trusted to
-   * name the seat's own signal.
+   * Creation binds both seats after verifying each actor's intent ownership;
+   * a later kickoff updates only its own seat's round.
    */
   seats: Record<string, NegotiationSeatBinding>;
   /**
@@ -130,7 +128,7 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
    */
   updateNegotiationTaskState(
     taskId: string,
-    state: NegotiationTaskState,
+    state: 'working' | 'paused' | 'completed',
     pause?: NegotiationTaskMetadata['pause'],
   ): Promise<NegotiationTaskRow>;
 

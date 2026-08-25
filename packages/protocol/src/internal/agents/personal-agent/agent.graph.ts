@@ -1077,7 +1077,7 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
         const ownNeedsPrincipal = context.paused.some((paused) =>
           paused.pausedByUs && paused.reason === "needs_principal");
         const refusal = !isSupportedPersonalAgentStatusProse(act.text, context)
-          ? "Counterparty status prose must stay within the public pause reason."
+          ? "Counterparty status prose must match the canonical public response exactly."
           : ownReady
           ? "Resolve every own ready_for_verdict pause with promote or reject before replying."
           : ownNeedsPrincipal && !act.questions?.length

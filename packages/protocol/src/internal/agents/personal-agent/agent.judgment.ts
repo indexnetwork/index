@@ -75,16 +75,40 @@ export function normalizeMessageQuestions(raw: unknown): Question[] | undefined 
   return questions.length > 0 ? questions : undefined;
 }
 
-const UNSUPPORTED_COUNTERPART_STATUS_PATTERN = /\b(?:respond(?:ed|ing)?|responses?|repl(?:y|ied|ying)|heard back|got(?:ten)? back|review(?:ed|ing)?|look(?:ed|ing)?\s+(?:at|over|through)|evaluat(?:ed|ing)?|assess(?:ed|ing)?|examin(?:ed|ing)?|check(?:ed|ing)?|consider(?:ed|ing)?|weigh(?:ed|ing)?|asked|questioned)\b/i;
+function canonicalCounterpartyPauseProse(
+  reason: PersonalAgentTurnContext["paused"][number]["reason"],
+): string {
+  switch (reason) {
+    case "ready_for_verdict":
+      return "The other side is deciding.";
+    case "needs_principal":
+      return "The other side is waiting on its principal.";
+    case "counterparty_silent":
+      return "The other side is waiting for a response.";
+    case "turn_cap":
+      return "The negotiation reached its turn limit.";
+    case "open_failed":
+      return "The negotiation could not be opened.";
+    default:
+      return "The other side is paused.";
+  }
+}
 
-/** Fail closed on details the public counterpart pause state cannot prove. */
+/** The complete server-owned narration for every public counterpart pause. */
+export function canonicalCounterpartyStatusProse(context: PersonalAgentTurnContext): string | null {
+  const statuses = [...new Set(context.paused
+    .filter((paused) => !paused.pausedByUs)
+    .map((paused) => canonicalCounterpartyPauseProse(paused.reason)))];
+  return statuses.length > 0 ? statuses.join(" ") : null;
+}
+
+/** Counterparty state is server-owned, never inferred from model vocabulary. */
 export function isSupportedPersonalAgentStatusProse(
   text: string,
   context: PersonalAgentTurnContext,
 ): boolean {
-  const counterpartIsOnlyDeciding = context.paused.some((paused) =>
-    !paused.pausedByUs && paused.reason === "ready_for_verdict");
-  return !counterpartIsOnlyDeciding || !UNSUPPORTED_COUNTERPART_STATUS_PATTERN.test(text);
+  const canonical = canonicalCounterpartyStatusProse(context);
+  return canonical === null || text.trim() === canonical;
 }
 
 // ─── Rendering ───────────────────────────────────────────────────────────────
@@ -103,14 +127,7 @@ function renderPaused(context: PersonalAgentTurnContext): string {
   if (context.paused.length === 0) return "Paused negotiations: none.";
   const lines = context.paused.map((paused, index) => {
     if (!paused.pausedByUs) {
-      const publicState = paused.reason === "ready_for_verdict"
-        ? "The counterpart side is deciding. That is the complete public state: do not claim what it reviewed, whether it responded, or what it is deciding about."
-        : paused.reason === "needs_principal"
-          ? "The counterpart side is waiting on its principal. Their question is private."
-          : paused.reason === "counterparty_silent"
-            ? "The counterpart side is waiting for a response."
-            : `The counterpart side paused (${paused.reason}).`;
-      return `${index + 1}. ${publicState}`;
+      return `${index + 1}. ${canonicalCounterpartyPauseProse(paused.reason)}`;
     }
     const parts = [`${index + 1}. Paused (${paused.reason}) by ${paused.pausedByUs ? "your own seat" : "their agent"}`];
     const payload = paused.payload as { question?: string; recommendation?: string; reasoning?: string } | undefined;
@@ -166,6 +183,7 @@ function renderEvent(context: PersonalAgentTurnContext): string {
 
 /** What judgment sees, rendered; exported for the live eval's transparency. */
 export function renderPersonalAgentTurn(context: PersonalAgentTurnContext): string {
+  const canonicalCounterpartyStatus = canonicalCounterpartyStatusProse(context);
   return [
     context.signalText ? `Your client's signal: ${truncate(context.signalText, 800)}` : "Your client's signal text is unavailable.",
     "",
@@ -177,6 +195,10 @@ export function renderPersonalAgentTurn(context: PersonalAgentTurnContext): stri
     renderLedger(context),
     "",
     renderDm(context),
+    "",
+    canonicalCounterpartyStatus
+      ? `CANONICAL COUNTERPART STATUS RESPONSE:\n${canonicalCounterpartyStatus}\nBecause counterpart status is present, message_user text must be exactly this server-owned response. Put any questions in the structured questions field.`
+      : "",
     "",
     renderEvent(context),
   ].join("\n");

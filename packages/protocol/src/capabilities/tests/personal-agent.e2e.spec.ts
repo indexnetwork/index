@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "async_hooks";
 
 import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
 import { PersonalAgentGraphFactory, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_POST_ACTION_FAILURE, PERSONAL_AGENT_STRATEGY_FALLBACK, PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
+import { canonicalCounterpartyStatusProse } from "../../internal/agents/personal-agent/agent.judgment.js";
 import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
 import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
@@ -167,6 +168,10 @@ class ScriptedJudgment implements PersonalAgentJudgment {
             multiSelect: false,
           }],
         };
+      }
+      const canonicalCounterpartyStatus = canonicalCounterpartyStatusProse(context);
+      if (canonicalCounterpartyStatus) {
+        decided = { ...decided, text: canonicalCounterpartyStatus };
       }
     }
     if (fromPlan) this.activePlan.shift();

@@ -841,6 +841,9 @@ describe('ConversationDatabaseAdapter', () => {
         candidateUserId: counterpart,
         seats: { [intentId]: { userId, round: 3 } },
       });
+      // A just-created negotiation is submitted, and still holds the round
+      // active until its worker starts and eventually pauses or completes it.
+      expect(await adapter.countActiveNegotiationsForRound(intentId, 3)).toBe(1);
       await adapter.updateTaskState(current.id, 'working');
 
       // Pre-rewrite rows have no seat binding.

@@ -37,7 +37,7 @@ type NegotiationTaskMetadataMirror = {
 type NegotiationTaskRowMirror = {
   id: string;
   conversationId: string;
-  state: 'working' | 'paused' | 'completed';
+  state: 'submitted' | 'working' | 'paused' | 'completed';
   briefs: Record<string, string>;
   metadata: NegotiationTaskMetadataMirror;
   createdAt: Date;
@@ -2923,9 +2923,9 @@ export class ConversationDatabaseAdapter {
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
           sql`(${schema.tasks.metadata}->'seats'->${intentId}->>'round')::int = ${round}`,
-          eq(schema.tasks.state, 'working'),
+          notInArray(schema.tasks.state, ['paused', 'completed']),
           // The same predicate `getNegotiationTasksForIntentRound` applies:
-          // an archived task stuck in 'working' would hold this count above
+          // an archived task stuck in an active state would hold this count above
           // zero forever, stalling the signal's cycle, while being invisible
           // in the paused set the agent actually reasons over.
           notArchivedNegotiationTaskWhere(),

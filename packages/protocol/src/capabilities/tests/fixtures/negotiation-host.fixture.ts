@@ -218,7 +218,7 @@ export class FakeNegotiationHost {
     },
     countActiveNegotiationsForRound: async (intentId, round) =>
       [...this.tasks.values()].filter((t) =>
-        t.metadata.seats[intentId]?.round === round && t.state === "working").length,
+        t.metadata.seats[intentId]?.round === round && t.state !== "paused" && t.state !== "completed").length,
   };
 
   /**
