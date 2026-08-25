@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { MemoryRouter } from 'react-router';
 
 import IntentCycleInspector from '../IntentCycleInspector';
 import type { IntentCycleSnapshot } from '@/services/conversation';
@@ -10,7 +11,7 @@ const cycle = (number: number): IntentCycleSnapshot => ({
     number,
     size: number === 0 ? null : 2,
     kickoffStartedAt: number === 0 ? null : '2026-08-24T12:00:00.000Z',
-    working: number === 0 ? 0 : 2,
+    active: number === 0 ? 0 : 2,
     paused: 0,
   },
   negotiations: [],
@@ -93,5 +94,27 @@ describe('IntentCycleInspector discovery progress', () => {
     expect(screen.queryByTestId('discovery-warmup')).toBeNull();
     expect(screen.getByText('Round 1 negotiating')).toBeInTheDocument();
     expect(screen.getByText('2 active · 0 paused')).toBeInTheDocument();
+  });
+
+  it('keeps a round negotiating while a submitted task is active', () => {
+    render(
+      <MemoryRouter><IntentCycleInspector
+        intentId="intent-1"
+        cycle={{
+          round: { number: 1, size: 1, kickoffStartedAt: null, active: 1, paused: 0 },
+          negotiations: [{
+            taskId: 'task-1', conversationId: 'conversation-1', opportunityId: 'opportunity-1',
+            opportunityStatus: 'negotiating', counterpartLabel: 'Counterpart', round: 1,
+            state: 'submitted', pause: null, latestActivity: null,
+            updatedAt: '2026-08-24T12:00:00.000Z',
+          }],
+        }}
+        loading={false}
+        error={false}
+      /></MemoryRouter>,
+    );
+
+    expect(screen.getByText('Round 1 negotiating')).toBeInTheDocument();
+    expect(screen.queryByText('Round 1 ready to reflect')).toBeNull();
   });
 });

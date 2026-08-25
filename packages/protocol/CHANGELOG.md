@@ -46,6 +46,12 @@ pin a supported release, use `latest`.
 - PersonalAgent intent turns reload durable negotiation state after each
   action, cannot finish while an own `ready_for_verdict` pause remains, and
   expose counterparty pauses only through canonical public status prose.
+- Only the seat owning a `ready_for_verdict` pause may resolve it;
+  counterparty-owned pauses cannot be re-opened, and kickoff strategy copy
+  cannot bypass canonical public status narration.
+- The negotiation watchdog retries reflect delivery for durable
+  `ready_for_verdict` pauses, and intent-cycle projections count both
+  `submitted` and `working` tasks as active.
 
 ## 35.0.0 - 2026-08-24
 

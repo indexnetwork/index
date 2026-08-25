@@ -41,7 +41,7 @@ describe('ConversationController intent cycle', () => {
   });
 
   it('returns the exact owned cycle response', async () => {
-    const cycle = { round: { number: 1, size: 1, kickoffStartedAt: null, working: 1, paused: 0 }, negotiations: [] };
+    const cycle = { round: { number: 1, size: 1, kickoffStartedAt: null, active: 1, paused: 0 }, negotiations: [] };
     const read = mock(async () => cycle);
     const controller = new ConversationController(
       { getIntentCycleForIntent: read } as unknown as ConversationService,

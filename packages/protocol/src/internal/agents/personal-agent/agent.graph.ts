@@ -28,7 +28,7 @@ import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiatio
 import { maybeEnqueueRoundReflect } from "../../negotiations/negotiation.round-reflect.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 import type { IntentRecord } from "../../../platform/database/entities.js";
-import { isSupportedPersonalAgentStatusProse, normalizeMessageQuestions, PersonalAgentModel } from "./agent.judgment.js";
+import { canonicalCounterpartyStatusProse, isSupportedPersonalAgentStatusProse, normalizeMessageQuestions, PersonalAgentModel } from "./agent.judgment.js";
 import type { Question } from "../../../protocol/question.js";
 import type { PersonalAgentActivity, PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
@@ -101,6 +101,10 @@ function hasUnresolvedOwnedPause(context: PersonalAgentTurnContext): boolean {
   return context.paused.some((paused) => paused.pausedByUs && (
     paused.reason === "ready_for_verdict" || paused.reason === "needs_principal"
   ));
+}
+
+function isOwnedReadyPause(paused: PersonalAgentPausedNegotiation): boolean {
+  return paused.pausedByUs && paused.reason === "ready_for_verdict";
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -239,6 +243,7 @@ async function assembleContext(
     match,
     eligible: !match.awaitingIntroducerApproval
       && !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
+      && !paused.some((entry) => entry.opportunityId === match.opportunityId && !entry.pausedByUs)
       && !(await spentItsTurnBudget(deps, match)),
   })));
   const kickoffTargets = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
@@ -554,7 +559,10 @@ async function runKickoff(
   };
   const strategy = await strategyOrFallback(judgment, kickoffContext);
   throwIfIntentAborted();
-  await say(deps, context, accumulator, "message_user", strategy);
+  const publicStrategy = isSupportedPersonalAgentStatusProse(strategy, kickoffContext)
+    ? strategy
+    : canonicalCounterpartyStatusProse(kickoffContext) ?? PERSONAL_AGENT_STRATEGY_FALLBACK;
+  await say(deps, context, accumulator, "message_user", publicStrategy);
 
   throwIfIntentAborted();
   const round = await deps.negotiationDatabase.bumpIntentNegotiationRound(context.intentId);
@@ -847,20 +855,19 @@ async function executeAct(
       return;
     case "promote":
     case "reject": {
-      // `judgment` is a documented swap seam, so this id is only as bounded as
-      // whatever produced it. A ref that names nothing skips with a ledgered
-      // failure rather than throwing mid-turn, which would abandon the acts
-      // already executed above it and retry them all.
+      // `judgment` is a documented swap seam, so enforce both visibility and
+      // pause ownership again at the effects boundary. A refused ref is
+      // ledgered rather than thrown so earlier durable acts are not retried.
       const paused = context.paused.find((entry) => entry.negotiationId === act.negotiationId);
-      if (!paused) {
-        logger.warn("Decided a verdict on a negotiation this turn cannot see", {
+      if (!paused || !isOwnedReadyPause(paused)) {
+        logger.warn("Decided a verdict without an owned ready_for_verdict pause", {
           intentId: context.intentId,
           negotiationId: act.negotiationId,
         });
         const missing: PersonalAgentExecutedAct = {
           tool: act.tool,
           negotiationId: act.negotiationId,
-          opportunityId: "",
+          opportunityId: paused?.opportunityId ?? "",
           reasoning: act.reasoning,
           outcome: "error",
         };

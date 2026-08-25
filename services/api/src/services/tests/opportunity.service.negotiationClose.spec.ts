@@ -6,7 +6,7 @@
  * so its task stayed `working` forever and neither seat's drain was enqueued.
  *
  * The test drives the REAL `NegotiationGraph` over a fake database — the same
- * `resolve` production runs — rather than asserting that a mock was called, so
+ * owner-close lane production runs — rather than asserting that a mock was called, so
  * the count and the enqueue are observed, not stipulated.
  */
 /** Config */
@@ -119,7 +119,11 @@ function createWorld() {
   const closer: OwnerVerdictNegotiationCloser = {
     liveNegotiationId: async (opportunityId) =>
       (await negotiationDb.getNegotiationTaskForOpportunity(opportunityId))?.id ?? null,
-    resolve: (input) => graph.invoke(input),
+    close: (input) => graph.invoke({
+      negotiationId: input.negotiationId,
+      close: { reason: 'owner_verdict', verdict: input.verdict, reasoning: input.reasoning },
+      byUserId: input.byUserId,
+    }),
   };
 
   const opportunityDb = {
@@ -178,7 +182,7 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
     const result = await world.service.updateOpportunityStatus(OPP_ID, 'accepted', USER_A);
     expect('error' in result).toBe(false);
 
-    // resolve never writes over a terminal status the owner just set.
+    // Owner-close never writes over the terminal status the owner just set.
     expect(world.opportunity.status).toBe('accepted');
     expect(world.task.state).toBe('completed');
     expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);

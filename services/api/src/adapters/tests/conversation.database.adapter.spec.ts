@@ -236,7 +236,7 @@ describe('ConversationDatabaseAdapter', () => {
   });
 
   describe('getStaleNegotiationTasks', () => {
-    it('returns only stale submitted/working negotiation tasks', async () => {
+    it('returns stale active tasks and durable ready-for-verdict recovery markers', async () => {
       const conv = await adapter.createConversation([
         { participantId: 'agent:watchdog-a', participantType: 'agent' as const },
         { participantId: 'agent:watchdog-b', participantType: 'agent' as const },
@@ -252,6 +252,12 @@ describe('ConversationDatabaseAdapter', () => {
       await adapter.updateTaskState(staleWorking.id, 'working');
       const freshSubmitted = await adapter.createTask(conv.id, {
         type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+      });
+      const readyForVerdict = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-ready', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+      });
+      await adapter.updateNegotiationTaskState(readyForVerdict.id, 'paused', {
+        reason: 'ready_for_verdict', pausedBy: 'watchdog-user',
       });
       const completed = await adapter.createTask(conv.id, {
         type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
@@ -289,6 +295,7 @@ describe('ConversationDatabaseAdapter', () => {
 
       expect(staleIds).toContain(staleSubmitted.id);
       expect(staleIds).toContain(staleWorking.id);
+      expect(staleIds).toContain(readyForVerdict.id);
       expect(staleIds).not.toContain(freshSubmitted.id);
       expect(staleIds).not.toContain(completed.id);
       expect(staleIds).not.toContain(nonNegotiation.id);
@@ -405,10 +412,14 @@ describe('ConversationDatabaseAdapter', () => {
           pausedBy: ownerId,
         },
       });
+      const submittedCycle = await adapter.getIntentCycleForIntent(ownerId, ownerIntentId);
+      expect(submittedCycle?.round.active).toBe(1);
+      expect(submittedCycle?.negotiations[0]?.state).toBe('submitted');
       await adapter.updateTaskState(task.id, 'paused');
 
       const ownerCycle = await adapter.getIntentCycleForIntent(ownerId, ownerIntentId);
       const counterpartCycle = await adapter.getIntentCycleForIntent(counterpartId, counterpartIntentId);
+      expect(ownerCycle?.round.active).toBe(0);
       expect(ownerCycle?.negotiations[0]?.pause?.by).toBe('yours');
       expect(counterpartCycle?.negotiations[0]?.pause?.by).toBe('theirs');
 

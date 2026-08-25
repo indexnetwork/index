@@ -1,5 +1,5 @@
 import type { Job, Queue, Worker } from 'bullmq';
-import type { NegotiationGraphLike } from '@indexnetwork/protocol';
+import { maybeEnqueueRoundReflect, type NegotiationGraphLike, type NegotiationRoundReflectEnqueueFn } from '@indexnetwork/protocol';
 
 import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../../adapters/conversation.database.adapter';
 import type { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
@@ -28,6 +28,7 @@ type WatchdogWorkerHandle = Pick<Worker<NegotiationWatchdogJobData>, 'close'>;
 type WatchdogDatabase = Pick<
   ConversationDatabaseAdapter,
   'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
+  | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
 >;
 type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
 
@@ -48,6 +49,7 @@ export interface NegotiationWatchdogQueueDeps {
   database?: Pick<
     ConversationDatabaseAdapter,
     'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
+    | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
   >;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
   negotiationGraph?: NegotiationGraphLike;
@@ -57,6 +59,7 @@ export interface NegotiationWatchdogQueueDeps {
   ) => WatchdogWorkerHandle;
   logger?: WatchdogLogger;
   clock?: () => Date;
+  reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
 }
 
 /**
@@ -90,17 +93,24 @@ export class NegotiationWatchdogQueue {
   private queueInstance: WatchdogQueueHandle | null = null;
   private worker: WatchdogWorkerHandle | null = null;
   private negotiationGraph: NegotiationGraphLike | undefined;
+  private reflectEnqueue: NegotiationRoundReflectEnqueueFn | undefined;
 
   constructor(deps: NegotiationWatchdogQueueDeps = {}) {
     this.deps = deps;
     this.logger = deps.logger ?? log.queue.from('NegotiationWatchdogQueue');
     this.clock = deps.clock ?? (() => new Date());
     this.negotiationGraph = deps.negotiationGraph;
+    this.reflectEnqueue = deps.reflectEnqueue;
   }
 
   /** Wired once at startup by main.ts, after the single NegotiationGraph is compiled. */
   setNegotiationGraph(graph: NegotiationGraphLike): void {
     this.negotiationGraph = graph;
+  }
+
+  /** Wired once at startup so durable ready pauses can retry their reflect enqueue. */
+  setReflectEnqueue(enqueue: NegotiationRoundReflectEnqueueFn): void {
+    this.reflectEnqueue = enqueue;
   }
 
   private get queue(): WatchdogQueueHandle {
@@ -241,6 +251,19 @@ export class NegotiationWatchdogQueue {
 
     const pause = asRecord(metadata.pause);
     if (staleTask.state === 'paused') {
+      if (pause.reason === 'ready_for_verdict') {
+        const seats = asRecord(metadata.seats);
+        for (const [intentId, rawBinding] of Object.entries(seats)) {
+          const binding = asRecord(rawBinding);
+          if (typeof binding.userId !== 'string' || typeof binding.round !== 'number') continue;
+          await maybeEnqueueRoundReflect(database, this.reflectEnqueue, {
+            userId: binding.userId,
+            intentId,
+            round: binding.round,
+          });
+        }
+        return;
+      }
       if (pause.reason !== 'needs_principal' && pause.reason !== 'counterparty_silent') return;
       if (!this.negotiationGraph) {
         this.logger.error('Negotiation watchdog fired before the graph was wired', { taskId: candidate.id });

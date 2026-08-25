@@ -33,12 +33,15 @@ function makeDeps(task: ReturnType<typeof makeTask> | null = makeTask()) {
     getStaleNegotiationTasks: mock(async () => stale),
     getTask: mock(async () => task),
     recordNegotiationWatchdogAttempt: mock(async () => task),
+    getIntentNegotiationRound: mock(async () => ({ round: 1, roundSize: 1, kickoffStartedAt: null })),
+    getNegotiationTasksForIntentRound: mock(async () => task ? [task as never] : []),
   };
   const opportunities = {
     getOpportunity: mock(async () => ({ id: 'opportunity-1', status: 'negotiating' })),
   };
   const negotiationGraph = { invoke: mock(async () => ({ negotiationId: task?.id ?? '', status: 'paused' as const, turns: [] })) };
-  return { database, opportunities, negotiationGraph };
+  const reflectEnqueue = mock(async () => undefined);
+  return { database, opportunities, negotiationGraph, reflectEnqueue };
 }
 
 beforeEach(() => {
@@ -117,6 +120,43 @@ describe('NegotiationWatchdogQueue', () => {
       negotiationId: task.id,
       expire: { expectedUpdatedAt: task.updatedAt, reason: 'needs_principal' },
     });
+  });
+
+  it('retries a failed durable reflect generation on the next ready_for_verdict sweep', async () => {
+    const task = makeTask({
+      state: 'paused',
+      metadata: {
+        type: 'negotiation',
+        opportunityId: 'opportunity-1',
+        sourceUserId: 'user-1',
+        candidateUserId: 'user-2',
+        initiatorUserId: 'user-1',
+        networkId: 'network-1',
+        seats: { 'intent-1': { userId: 'user-1', round: 1 } },
+        drainGeneration: 0,
+        pause: { reason: 'ready_for_verdict', pausedBy: 'user-1' },
+      },
+    });
+    const deps = makeDeps(task);
+    deps.reflectEnqueue
+      .mockRejectedValueOnce(new Error('redis unavailable'))
+      .mockRejectedValueOnce(new Error('redis unavailable'))
+      .mockRejectedValueOnce(new Error('redis unavailable'));
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+    expect(deps.reflectEnqueue).toHaveBeenCalledTimes(3);
+
+    await queue.sweep();
+
+    expect(deps.reflectEnqueue).toHaveBeenLastCalledWith({
+      userId: 'user-1',
+      intentId: 'intent-1',
+      round: 1,
+      generation: 'task-1.0',
+    });
+    expect(deps.reflectEnqueue).toHaveBeenCalledTimes(4);
+    expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
   });
 
   it('does not expire a paused task changed after the stale-list read', async () => {

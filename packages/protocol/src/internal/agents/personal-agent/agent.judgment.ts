@@ -324,7 +324,7 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
       { role: "user", content: renderPersonalAgentTurn(context) },
     ]));
     const text = parsed.success ? parsed.data.text.trim() : "";
-    if (!text || !isSafeAgentMessageProse(text)) {
+    if (!text || !isSafeAgentMessageProse(text) || !isSupportedPersonalAgentStatusProse(text, context)) {
       throw new Error("PersonalAgent produced no usable strategy");
     }
     return text;
@@ -479,9 +479,11 @@ export function validateDecidedAct(
       case "promote":
       case "reject": {
         if (!act.negotiation || act.negotiation > context.paused.length) return null;
+        const paused = context.paused[act.negotiation - 1]!;
+        if (!paused.pausedByUs || paused.reason !== "ready_for_verdict") return null;
         return {
           tool: act.act,
-          negotiationId: context.paused[act.negotiation - 1]!.negotiationId,
+          negotiationId: paused.negotiationId,
           reasoning: act.reasoning?.trim() || (act.act === "promote" ? "Worth surfacing." : "Not a match."),
         };
       }

@@ -241,7 +241,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       payload: { recommendation: "reject" },
     });
 
-    const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject", reasoning: "Not a fit.", byUserId: SOURCE_USER_ID });
+    const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject", reasoning: "Not a fit.", byUserId: CANDIDATE_USER_ID });
     expect(resolved.status).toBe("resolved");
     expect(resolved.verdict).toBe("reject");
     expect(host.opportunityStatusUpdates.at(-1)).toEqual({ id: OPPORTUNITY_ID, status: "rejected" });
@@ -265,6 +265,31 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
 
     expect(result).toMatchObject({ status: "error", error: "Only a negotiation seat may resolve it" });
     expect(host.outcomeArtifacts.get(opened.negotiationId)).toBeUndefined();
+    expect(host.taskFor(opened.negotiationId).state).toBe("paused");
+  });
+
+  test("rejects a verdict from the seat that does not own the ready pause", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedTurnAuthor(host, [
+      { verb: "outreach", message: "Opening.", reasoning: "r" },
+      { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
+    ]);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    expect(host.taskFor(opened.negotiationId).metadata.pause?.pausedBy).toBe(CANDIDATE_USER_ID);
+    host.opportunity.status = "accepted";
+
+    const result = await graph.invoke({
+      negotiationId: opened.negotiationId,
+      verdict: "reject",
+      reasoning: "The other seat cannot decide this pause.",
+      byUserId: SOURCE_USER_ID,
+    });
+
+    expect(result).toMatchObject({
+      status: "error",
+      error: "Only the seat owning a ready_for_verdict pause may resolve it",
+    });
     expect(host.taskFor(opened.negotiationId).state).toBe("paused");
   });
 

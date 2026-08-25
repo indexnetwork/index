@@ -2,8 +2,8 @@
  * Conversation service — typed API client for the conversations endpoints.
  */
 
-/** A negotiation task's lifecycle is now exactly these three states (negotiation-graph rewrite, #1494). */
-export type NegotiationTaskState = 'working' | 'paused' | 'completed';
+/** A negotiation task's lifecycle, including the queued state before its worker starts. */
+export type NegotiationTaskState = 'submitted' | 'working' | 'paused' | 'completed';
 
 /**
  * Every reason the protocol may pause a negotiation on — the wire vocabulary,
@@ -112,7 +112,7 @@ export interface IntentCycleSnapshot {
     number: number;
     size: number | null;
     kickoffStartedAt: string | null;
-    working: number;
+    active: number;
     paused: number;
   };
   negotiations: Array<{

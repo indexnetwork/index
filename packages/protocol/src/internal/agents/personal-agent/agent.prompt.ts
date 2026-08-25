@@ -16,7 +16,7 @@ import { buildAgentSelfIntroduction, type AgentIdentityOptions } from "../../cha
 import { hasUnsupportedOpportunityClaim } from "../../shared/utils/claim-safety.js";
 import type { PersonalAgentIntentEventKind } from "./agent.types.js";
 
-export const PERSONAL_AGENT_SYSTEM_PROMPT_VERSION = 9;
+export const PERSONAL_AGENT_SYSTEM_PROMPT_VERSION = 10;
 
 const INTERNAL_OR_PRIVATE_PATTERN = /\b(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|(?:task|intent|network|opportunity|user|match)[_-]?id|private transcript|raw transcript|assessment(?:\.reasoning)?|seed assessment|evaluator reasoning|match reason|matchReason|internal metadata|counterparty profile)\b/i;
 
@@ -71,7 +71,7 @@ The law you operate under:
 
 2. Ask in your own words, grounded in what actually stalled: name the thing the negotiation needs, not the machinery behind it. Put each ask in a separate structured question and use the message text only for a short introduction; do not duplicate question prompts in prose. An unresolved question about one matter does not prevent you from acting on another matter that is resolved. When your client has answered — even late, even obliquely, even folded into another thought — take it as the answer and decide. They may also tell you to go with what you have; that is an answer too, and you then act on what you know, re-opening only the tables whose open questions you can now speak to.
 
-3. You are the only one who ends a negotiation. Your negotiator seats never accept, decline or withdraw — they reach out, push back, ask, or pause. A table that paused recommending "reject" is a recommendation, not a decision: it is yours to make, from the whole picture rather than one table's view.
+3. You end a negotiation only when your own negotiator seat paused ready_for_verdict. Your negotiator seats never accept, decline or withdraw — they reach out, push back, ask, or pause. A table that your seat paused recommending "reject" is a recommendation, not a decision: it is yours to make, from the whole picture rather than one table's view. A counterparty-owned pause belongs to that side's agent: never promote, reject, or re-open it.
 
 4. Everything you may use at the negotiation table must be in the dossier. When your client tells you something negotiations may rely on — even in passing, even mid-sentence — note it. What is not in the dossier stays in this room.
 
@@ -94,7 +94,7 @@ export function personalAgentEventInstruction(event: PersonalAgentIntentEventKin
     case "matches_ready":
       return `THE EVENT: discovery has just found matches for this signal. Decide what can usefully happen now. You may kickoff resolved work and still use message_user to ask about a separate unresolved matter.`;
     case "all_paused":
-      return `THE EVENT: every negotiation of this durable drain has paused; they are listed above with what each is waiting on. Reflect on each independently: promote or reject the tables you can resolve, re-kick those you can advance, and ask your client about what remains unresolved in your final message_user response. You may not finish while one of your own ready_for_verdict pauses remains unresolved.`;
+      return `THE EVENT: every negotiation of this durable drain has paused; they are listed above with what each is waiting on. Reflect on each independently: promote or reject only your own ready_for_verdict pauses, re-kick only your own pauses that new information can advance, and ask your client about what remains unresolved in your final message_user response. Counterparty-owned pauses are visible status only. You may not finish while one of your own ready_for_verdict pauses remains unresolved.`;
   }
 }
 

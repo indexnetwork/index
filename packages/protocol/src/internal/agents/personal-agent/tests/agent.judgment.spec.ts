@@ -35,6 +35,12 @@ class SignalCapturingPersonalAgentModel extends PersonalAgentModel {
   }
 }
 
+class UnsupportedStrategyModel extends PersonalAgentModel {
+  protected override async callProseModel(): Promise<unknown> {
+    return { text: "They are deliberating over the pricing terms while I contact another match." };
+  }
+}
+
 function context(overrides: Partial<PersonalAgentTurnContext> = {}): PersonalAgentTurnContext {
   return {
     userId: "alice", intentId: "intent-1", event: "user_message",
@@ -70,6 +76,17 @@ describe("validateDecidedAct", () => {
 
   test("keeps references bounded to the state the model was shown", () => {
     expect(validateDecidedAct({ act: "reject", negotiation: 2 }, context())).toBeNull();
+  });
+
+  test("permits verdicts only for an owned ready_for_verdict pause", () => {
+    expect(validateDecidedAct({ act: "promote", negotiation: 1 }, context()))
+      .toEqual({ tool: "promote", negotiationId: "task-1", reasoning: "Worth surfacing." });
+    expect(validateDecidedAct({ act: "reject", negotiation: 1 }, context({
+      paused: [{ negotiationId: "task-1", opportunityId: "opportunity-1", reason: "needs_principal", pausedByUs: true, thread: [] }],
+    }))).toBeNull();
+    expect(validateDecidedAct({ act: "reject", negotiation: 1 }, context({
+      paused: [{ negotiationId: "task-1", opportunityId: "opportunity-1", reason: "ready_for_verdict", pausedByUs: false, thread: [] }],
+    }))).toBeNull();
   });
 
   test("accepts only a bounded user-message verdict and rejects background acceptance", () => {
@@ -110,6 +127,19 @@ describe("validateDecidedAct", () => {
 });
 
 describe("PersonalAgentModel", () => {
+  test("rejects kickoff strategy prose that bypasses canonical counterpart status", async () => {
+    const model = new UnsupportedStrategyModel();
+    await expect(model.strategy(context({
+      paused: [{
+        negotiationId: "task-1",
+        opportunityId: "opportunity-1",
+        reason: "ready_for_verdict",
+        pausedByUs: false,
+        thread: [],
+      }],
+    }))).rejects.toThrow("PersonalAgent produced no usable strategy");
+  });
+
   test("counterparty pause rendering exposes only public state, not thread topics", async () => {
     const model = new CapturingPersonalAgentModel();
     await model.next(context({

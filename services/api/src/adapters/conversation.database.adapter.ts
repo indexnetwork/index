@@ -1727,6 +1727,7 @@ export class ConversationDatabaseAdapter {
     return task;
   }
 
+  /** Stale active tasks plus durable paused states that require watchdog recovery. */
   async getStaleNegotiationTasks({
     submittedOlderThanMs,
     workingOlderThanMs,
@@ -1755,6 +1756,10 @@ export class ConversationDatabaseAdapter {
             eq(schema.tasks.state, 'paused'),
             inArray(sql`${schema.tasks.metadata}->'pause'->>'reason'`, ['needs_principal', 'counterparty_silent']),
             lt(schema.tasks.updatedAt, workingCutoff),
+          ),
+          and(
+            eq(schema.tasks.state, 'paused'),
+            sql`${schema.tasks.metadata}->'pause'->>'reason' = 'ready_for_verdict'`,
           ),
         ),
       ))
@@ -1952,7 +1957,7 @@ export class ConversationDatabaseAdapter {
    * payload never leave the graph boundary through this read.
    */
   async getIntentCycleForIntent(userId: string, intentId: string): Promise<{
-    round: { number: number; size: number | null; kickoffStartedAt: Date | null; working: number; paused: number };
+    round: { number: number; size: number | null; kickoffStartedAt: Date | null; active: number; paused: number };
     negotiations: Array<{
       taskId: string;
       conversationId: string;
@@ -2058,7 +2063,7 @@ export class ConversationDatabaseAdapter {
         number: ownedIntent.round,
         size: ownedIntent.roundSize,
         kickoffStartedAt: ownedIntent.kickoffStartedAt,
-        working: currentRound.filter((negotiation) => negotiation.state === 'working').length,
+        active: currentRound.filter((negotiation) => negotiation.state === 'submitted' || negotiation.state === 'working').length,
         paused: currentRound.filter((negotiation) => negotiation.state === 'paused').length,
       },
       negotiations,
