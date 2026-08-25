@@ -69,7 +69,7 @@ export async function loadNegotiationContext(
     db.getNegotiationMessages(task.id),
     task.state === 'completed' ? db.getArtifactsForTask(task.id) : Promise.resolve([]),
   ]);
-  const turns = extractTurns(messages);
+  const turns = extractTurns(messages, viewerId);
 
   return {
     status: opportunityStatus,
@@ -77,9 +77,24 @@ export async function loadNegotiationContext(
     turnCount: turns.length,
     turnCap: NEGOTIATION_MAX_TURNS_AMBIENT,
     turns,
-    ...(task.state === 'paused' && task.metadata.pause ? { pause: task.metadata.pause } : {}),
+    ...(task.state === 'paused' && task.metadata.pause
+      ? { pause: pauseForViewer(task.metadata.pause, viewerId) }
+      : {}),
     ...outcomeReasoningForViewer(artifacts, viewerId),
   };
+}
+
+/** Pause payload is private to the pausing seat — other viewers see the reason only. */
+function pauseForViewer(
+  pause: { reason: string; payload?: unknown; pausedBy?: string },
+  viewerId: string,
+): { reason: string; payload?: unknown } {
+  if (pause.pausedBy === viewerId) {
+    return pause.payload !== undefined
+      ? { reason: pause.reason, payload: pause.payload }
+      : { reason: pause.reason };
+  }
+  return { reason: pause.reason };
 }
 
 function outcomeReasoningForViewer(
@@ -95,12 +110,24 @@ function outcomeReasoningForViewer(
   return reasoning ? { outcomeReasoning: reasoning } : {};
 }
 
-function extractTurns(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
+/** Strip counterparty continue-turn reasoning; the authoring seat keeps its own. */
+function extractTurns(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+  viewerId: string,
+): NegotiationTurn[] {
   const turns: NegotiationTurn[] = [];
+  const viewerAgentId = `agent:${viewerId}`;
   for (const message of messages) {
     const dataPart = (message.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === 'data');
     const parsed = dataPart ? NegotiationTurnSchema.safeParse(dataPart.data) : undefined;
-    if (parsed?.success) turns.push(parsed.data);
+    if (!parsed?.success) continue;
+    const turn = parsed.data;
+    if (turn.verb !== 'pause' && message.senderId !== viewerAgentId && 'reasoning' in turn) {
+      const { reasoning: _reasoning, ...rest } = turn;
+      turns.push(rest as NegotiationTurn);
+    } else {
+      turns.push(turn);
+    }
   }
   return turns;
 }

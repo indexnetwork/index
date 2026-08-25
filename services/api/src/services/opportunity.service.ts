@@ -994,14 +994,18 @@ export class OpportunityService {
 
     // IND-254: the network list had no status filtering at all, so it leaked
     // draft/latent and terminal-stale expired/rejected into the community view.
-    // Default to live community statuses (no latent — there's no per-actor
-    // visibility guard here) unless an explicit status/statuses filter is given.
+    // Default to live community statuses (no latent) unless an explicit
+    // status/statuses filter is given. Non-owner members only see opportunities
+    // they are an actor on; owners keep the full curator list.
     const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
     const rows = await this.db.getOpportunitiesForNetwork(
       networkId,
       hasExplicitStatus ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
     );
-    return rows.map((opp) => sanitizeOpportunityForResponse(opp));
+    const visible = isOwner
+      ? rows
+      : rows.filter((opp) => opp.actors.some((actor) => actor.userId === userId));
+    return visible.map((opp) => sanitizeOpportunityForResponse(opp));
   }
 
   /**

@@ -31,6 +31,7 @@ function makeDeps(overrides?: {
   premiseGraph?: { invoke: (...args: unknown[]) => Promise<unknown> } | undefined;
   getPremise?: (id: string) => Promise<unknown>;
   getPremisesForUser?: (userId: string, status?: string) => Promise<unknown[]>;
+  getAssignmentNetworkIdsForUser?: (userId: string) => Promise<string[]>;
   updatePremise?: (id: string, data: unknown) => Promise<unknown>;
 }) {
   // Use `in` to distinguish "not provided" from "explicitly undefined"
@@ -43,6 +44,7 @@ function makeDeps(overrides?: {
     database: {
       getPremise: overrides?.getPremise ?? (async () => null),
       getPremisesForUser: overrides?.getPremisesForUser ?? (async () => []),
+      getAssignmentNetworkIdsForUser: overrides?.getAssignmentNetworkIdsForUser ?? (async () => []),
       updatePremise: overrides?.updatePremise ?? (async () => {}),
     } as unknown as PremiseGraphDatabase,
     graphs: {
@@ -267,6 +269,66 @@ describe('createPremiseTools - read_premises', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid userId format');
+  });
+
+  const otherUserId = '00000000-0000-4000-8000-000000000002';
+
+  it('returns another member\'s premises when they share a network', async () => {
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremisesForUser: async (uid: string) => (uid === otherUserId ? [activePremise] : []),
+      getAssignmentNetworkIdsForUser: async (uid: string) =>
+        uid === userId || uid === otherUserId ? ['net-1'] : [],
+    }));
+
+    const result = await call('read_premises', { userId: otherUserId }) as {
+      success: boolean;
+      data: { count: number; premises: Array<{ text: string }> };
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.data.count).toBe(1);
+    expect(result.data.premises[0].text).toBe('I am a software engineer');
+  });
+
+  it('denies cross-user read when there is no shared network', async () => {
+    let fetched = false;
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremisesForUser: async () => {
+        fetched = true;
+        return [activePremise];
+      },
+      getAssignmentNetworkIdsForUser: async (uid: string) =>
+        uid === userId ? ['net-1'] : ['net-2'],
+    }));
+
+    const result = await call('read_premises', { userId: otherUserId }) as { success: boolean; error: string };
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('no shared network');
+    expect(fetched).toBe(false);
+  });
+
+  it('rejects includeRetracted for cross-user reads', async () => {
+    let fetched = false;
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremisesForUser: async () => {
+        fetched = true;
+        return [activePremise];
+      },
+      getAssignmentNetworkIdsForUser: async () => ['net-1'],
+    }));
+
+    const result = await call('read_premises', {
+      userId: otherUserId,
+      includeRetracted: true,
+    }) as { success: boolean; error: string };
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('includeRetracted is only allowed for your own premises');
+    expect(fetched).toBe(false);
   });
 });
 

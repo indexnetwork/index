@@ -98,20 +98,39 @@ export function createPremiseTools(defineTool: DefineTool, deps: PremiseToolDeps
       "Premises represent stable identity facts (assertive) and temporal context (contextual).\n\n" +
       "**Usage modes:**\n" +
       "- No parameters: returns the caller's own active premises.\n" +
-      "- With `userId`: returns that user's premises (use when reviewing another member's context).\n" +
-      "- With `includeRetracted: true`: returns all premises regardless of status (active, retracted, expired) for history review.\n\n" +
+      "- With `userId`: returns that user's active premises when you share at least one network. " +
+      "History (`includeRetracted`) is own-only.\n" +
+      "- With `includeRetracted: true` (own premises only): returns all premises regardless of status " +
+      "(active, retracted, expired) for history review.\n\n" +
       "**When to use:** Call before creating a premise to check if it already exists. " +
       "Call when the user asks what they have shared about themselves, or to review their current context. " +
       "Each premise includes: id, text, tier, status, analysis summary, and validity range.",
     querySchema: z.object({
       userId: z.string().optional().describe("User ID to fetch premises for. Omit to fetch the current user's own premises."),
-      includeRetracted: z.boolean().default(false).describe("When true, returns all premises regardless of status (active, retracted, expired). Defaults to false (active only)."),
+      includeRetracted: z.boolean().default(false).describe("When true, returns all premises regardless of status (active, retracted, expired). Own premises only. Defaults to false (active only)."),
     }),
     handler: async ({ context, query }) => {
       const targetUserId = query.userId?.trim() || context.userId;
+      const isCrossUser = targetUserId !== context.userId;
 
       if (query.userId?.trim() && !UUID_REGEX.test(query.userId.trim())) {
         return error("Invalid userId format.");
+      }
+
+      if (isCrossUser && query.includeRetracted) {
+        return error("includeRetracted is only allowed for your own premises.");
+      }
+
+      if (isCrossUser) {
+        const [callerNetworks, targetNetworks] = await Promise.all([
+          database.getAssignmentNetworkIdsForUser(context.userId),
+          database.getAssignmentNetworkIdsForUser(targetUserId),
+        ]);
+        const targetSet = new Set(targetNetworks);
+        const sharesNetwork = callerNetworks.some((id) => targetSet.has(id));
+        if (!sharesNetwork) {
+          return error("Access denied: no shared network with user.");
+        }
       }
 
       readPremisesLog.verbose('Fetching premises for user', { userId: targetUserId });

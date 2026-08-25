@@ -165,6 +165,55 @@ describe("OpportunityService list status filtering (IND-254)", () => {
       expect(rows[0]?.interpretation.reasoning).toBe('Connection opportunity');
       expect(JSON.stringify(rows[0])).not.toContain('attendee');
     });
+
+    it('filters non-owner members to opportunities they are an actor on', async () => {
+      const own = unsafeOpportunity();
+      const thirdParty: Opportunity = {
+        ...unsafeOpportunity(),
+        id: 'opp-third-party',
+        actors: [
+          { userId: 'user-a' as never, networkId: 'net-1' as never, role: 'peer' },
+          { userId: 'user-b' as never, networkId: 'net-1' as never, role: 'peer' },
+        ],
+      };
+      const db = {
+        getOpportunitiesForNetwork: mock(async () => [own, thirdParty]),
+        isIndexOwner: mock(async () => false),
+        isNetworkMember: mock(async () => true),
+      } as unknown as OpportunityControllerDatabase;
+      const service = new OpportunityService(db);
+
+      const rows = await service.getOpportunitiesForNetwork('net-1', 'user-1');
+
+      expect(Array.isArray(rows)).toBe(true);
+      if (!Array.isArray(rows)) throw new Error('Expected opportunity rows');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.id).toBe('opp-unsafe');
+    });
+
+    it('keeps the full list for network owners', async () => {
+      const own = unsafeOpportunity();
+      const thirdParty: Opportunity = {
+        ...unsafeOpportunity(),
+        id: 'opp-third-party',
+        actors: [
+          { userId: 'user-a' as never, networkId: 'net-1' as never, role: 'peer' },
+          { userId: 'user-b' as never, networkId: 'net-1' as never, role: 'peer' },
+        ],
+      };
+      const db = {
+        getOpportunitiesForNetwork: mock(async () => [own, thirdParty]),
+        isIndexOwner: mock(async () => true),
+        isNetworkMember: mock(async () => true),
+      } as unknown as OpportunityControllerDatabase;
+      const service = new OpportunityService(db);
+
+      const rows = await service.getOpportunitiesForNetwork('net-1', 'user-1');
+
+      expect(Array.isArray(rows)).toBe(true);
+      if (!Array.isArray(rows)) throw new Error('Expected opportunity rows');
+      expect(rows).toHaveLength(2);
+    });
   });
 
 

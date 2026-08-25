@@ -30,16 +30,27 @@ function pauseFor(task: NegotiationTaskRow, viewerId: string): (NegotiationTaskM
 export function createNegotiationTools(defineTool: DefineTool, deps: NegotiationToolDeps) {
   const { negotiationDatabase, negotiationGraph } = deps;
 
-  function turnsOf(task: NegotiationTaskRow, messages: Array<{ senderId: string; parts: unknown[]; createdAt: Date }>) {
+  function turnsOf(
+    task: NegotiationTaskRow,
+    messages: Array<{ senderId: string; parts: unknown[]; createdAt: Date }>,
+    viewerId: string,
+  ) {
+    const viewerAgentId = `agent:${viewerId}`;
     return messages.map((m, i) => {
       const part = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === 'data');
       const parsed = part ? NegotiationTurnSchema.safeParse(part.data) : undefined;
       const speaker = m.senderId === `agent:${task.metadata.sourceUserId}` ? 'source' : 'candidate';
+      let turn = parsed?.success ? parsed.data : null;
+      // Counterparty continue-turn reasoning is seat-private; keep message only.
+      if (turn && turn.verb !== 'pause' && m.senderId !== viewerAgentId && 'reasoning' in turn) {
+        const { reasoning: _reasoning, ...rest } = turn;
+        turn = rest as typeof turn;
+      }
       return {
         turnNumber: i + 1,
         speaker,
         senderId: m.senderId,
-        turn: parsed?.success ? parsed.data : null,
+        turn,
         createdAt: m.createdAt,
       };
     });
@@ -148,7 +159,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           // A seat sees ITS OWN brief and never the counterparty's: a brief is
           // what that side's agent was told about its own principal.
           brief: task.briefs[context.userId] ?? null,
-          turns: turnsOf(task, messages),
+          turns: turnsOf(task, messages, context.userId),
           ...(scopedPause ? { pause: scopedPause } : {}),
           lifecycle: buildLifecycleNarration(
             task.state,

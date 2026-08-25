@@ -1499,7 +1499,12 @@ function buildNegotiationPromptBlock(context: NegotiationContext | undefined): s
     if (turn.verb === 'pause') {
       return `Turn ${index + 1} (pause: ${turn.reason})`;
     }
-    return `Turn ${index + 1} (${turn.verb}): ${turn.reasoning} — said: "${turn.message}"`;
+    const reasoning = 'reasoning' in turn && typeof turn.reasoning === 'string' && turn.reasoning.trim()
+      ? turn.reasoning
+      : undefined;
+    return reasoning
+      ? `Turn ${index + 1} (${turn.verb}): ${reasoning} — said: "${turn.message}"`
+      : `Turn ${index + 1} (${turn.verb}): "${turn.message}"`;
   });
 
   return `
