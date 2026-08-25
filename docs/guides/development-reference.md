@@ -474,6 +474,14 @@ working branch's endpoint and connection URL, so start the API again afterward.
 The template is deliberately not reset by this command. Rebuild it only when
 the schema or authored fixtures change, then create a fresh `playground` child.
 
+The template begins paused. When ready to run the whole market, resume every
+playground intent through the normal lifecycle path (which also enqueues each
+intent's discovery run):
+
+```bash
+bun run db:playground:resume -- --confirm
+```
+
 Automated tests continue to use the disposable local `index_test` database
 through `.env.test`.
 
