@@ -65,6 +65,7 @@ describe('intent-scope advisory lock contract', () => {
     expect(opportunity).toContain('participantIntentNetworkBindings');
     expect(opportunity).toContain('isNull(schema.intents.archivedAt)');
     expect(opportunity).toContain("eq(schema.intents.status, 'ACTIVE')");
+    expect(opportunity).not.toContain('isNull(schema.intents.status)');
     expect(participantAssignments).toBeGreaterThanOrEqual(0);
     expect(participantShareLock).toBeGreaterThan(participantAssignments);
     expect(opportunityDedupRead).toBeGreaterThan(participantShareLock);

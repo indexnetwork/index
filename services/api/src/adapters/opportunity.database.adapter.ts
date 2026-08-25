@@ -478,7 +478,7 @@ export class OpportunityDatabaseAdapter {
             eq(schema.intentNetworks.networkId, binding.networkId),
           ))),
           isNull(schema.intents.archivedAt),
-          or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+          eq(schema.intents.status, 'ACTIVE'),
         ))
         .for('share');
       const activeAssignedIntentKeys = new Set(activeAssignedIntents.map((intent) =>

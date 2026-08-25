@@ -1426,6 +1426,10 @@ describe('OpportunityDatabaseAdapter', () => {
 
       const inactive = await persist('inactive');
       await db.update(intents)
+        .set({ status: null })
+        .where(eq(intents.id, candidateIntentId));
+      const unsetStatus = await persist('unset-status');
+      await db.update(intents)
         .set({ status: 'ACTIVE', archivedAt: new Date() })
         .where(eq(intents.id, candidateIntentId));
       const archived = await persist('archived');
@@ -1442,7 +1446,7 @@ describe('OpportunityDatabaseAdapter', () => {
         .from(opportunities)
         .where(sql`${opportunities.detection}->>'createdBy' LIKE ${`${markerPrefix}%`}`);
 
-      expect([inactive, archived, unassigned]).toEqual([null, null, null]);
+      expect([inactive, unsetStatus, archived, unassigned]).toEqual([null, null, null, null]);
       expect(inserted).toEqual([]);
     });
 
