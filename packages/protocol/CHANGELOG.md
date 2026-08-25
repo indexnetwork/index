@@ -21,6 +21,7 @@ prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
 ## 36.0.0 - 2026-08-24
+
 ### Breaking
 
 - **Intent matches and negotiations are isolated by their exact intent pair.**
@@ -52,6 +53,11 @@ pin a supported release, use `latest`.
 - The negotiation watchdog retries reflect delivery for durable
   `ready_for_verdict` pauses, and intent-cycle projections count both
   `submitted` and `working` tasks as active.
+- Verdict completion now atomically records the outcome, completes the task,
+  and preserves any concurrent terminal human decision. Post-verdict reflect
+  delivery remains durably marked until it succeeds, terminal owner actions
+  left beside active tasks are recovered by the watchdog, and bounded sweeps
+  rotate checked rows so newer pauses cannot starve.
 
 ## 35.0.0 - 2026-08-24
 

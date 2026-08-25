@@ -293,6 +293,31 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     expect(host.taskFor(opened.negotiationId).state).toBe("paused");
   });
 
+  test("a concurrent human verdict wins over PersonalAgent resolution", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedTurnAuthor(host, [
+      { verb: "outreach", message: "Opening.", reasoning: "r" },
+      { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
+    ]);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    host.beforeCompleteNegotiation = () => {
+      host.opportunity.status = "accepted";
+    };
+
+    const result = await graph.invoke({
+      negotiationId: opened.negotiationId,
+      verdict: "reject",
+      reasoning: "The agent's stale decision must not replace the human's.",
+      byUserId: CANDIDATE_USER_ID,
+    });
+
+    expect(result.status).toBe("resolved");
+    expect(host.taskFor(opened.negotiationId).state).toBe("completed");
+    expect(host.opportunity.status).toBe("accepted");
+    expect(host.opportunityStatusUpdates).not.toContainEqual({ id: OPPORTUNITY_ID, status: "rejected" });
+  });
+
   test("a system pause (stale-negotiation timeout) does not invoke the author", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, [

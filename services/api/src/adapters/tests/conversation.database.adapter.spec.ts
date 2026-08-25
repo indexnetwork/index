@@ -253,6 +253,21 @@ describe('ConversationDatabaseAdapter', () => {
       const freshSubmitted = await adapter.createTask(conv.id, {
         type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
+      const terminalOpportunityId = `watchdog-terminal-${crypto.randomUUID()}`;
+      await db.insert(schema.opportunities).values({
+        id: terminalOpportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [{ networkId: 'watchdog-network', userId: 'watchdog-user', role: 'peer' }],
+        interpretation: { category: 'test', reasoning: 'Owner verdict recovery.', confidence: 1 },
+        context: {},
+        confidence: '1',
+        status: 'accepted',
+      });
+      createdOpportunityIds.push(terminalOpportunityId);
+      const terminalActive = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: terminalOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+      });
+      await adapter.updateTaskState(terminalActive.id, 'working');
       const readyForVerdict = await adapter.createTask(conv.id, {
         type: 'negotiation', opportunityId: 'watchdog-opportunity-ready', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
       });
@@ -296,12 +311,64 @@ describe('ConversationDatabaseAdapter', () => {
       expect(staleIds).toContain(staleSubmitted.id);
       expect(staleIds).toContain(staleWorking.id);
       expect(staleIds).toContain(readyForVerdict.id);
+      expect(staleIds).toContain(terminalActive.id);
       expect(staleIds).not.toContain(freshSubmitted.id);
       expect(staleIds).not.toContain(completed.id);
       expect(staleIds).not.toContain(nonNegotiation.id);
       expect(staleIds).not.toContain(legacySubmitted.id);
       expect(stale.every((task) => task.metadata && (task.metadata as Record<string, unknown>).type === 'negotiation')).toBe(true);
     }, 10000);
+
+    it('rotates checked ready pauses behind never-checked rows when the sweep is bounded', async () => {
+      const conv = await adapter.createConversation([
+        { participantId: 'agent:watchdog-rotation-a', participantType: 'agent' },
+        { participantId: 'agent:watchdog-rotation-b', participantType: 'agent' },
+      ]);
+      createdIds.push(conv.id);
+      const tasks = [];
+      for (let index = 0; index < 26; index++) {
+        const task = await adapter.createTask(conv.id, {
+          type: 'negotiation',
+          opportunityId: `watchdog-rotation-opportunity-${index}`,
+          sourceUserId: 'watchdog-rotation-user',
+          candidateUserId: 'watchdog-rotation-peer',
+          seats: { 'watchdog-rotation-intent': { userId: 'watchdog-rotation-user', round: 1 } },
+          drainGeneration: 0,
+        });
+        await adapter.updateNegotiationTaskState(task.id, 'paused', {
+          reason: 'ready_for_verdict', pausedBy: 'watchdog-rotation-user',
+        });
+        tasks.push(task.id);
+      }
+      await db.update(schema.tasks)
+        .set({ createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) })
+        .where(inArray(schema.tasks.id, tasks));
+
+      const first = await adapter.getStaleNegotiationTasks({
+        submittedOlderThanMs: 10 * 60 * 1000,
+        workingOlderThanMs: 12 * 60 * 60 * 1000,
+        limit: 25,
+      });
+      const rotationFirst = first.filter((task) => tasks.includes(task.id));
+      expect(rotationFirst).toHaveLength(25);
+      const neverCheckedId = tasks.find((id) => !rotationFirst.some((task) => task.id === id));
+      expect(neverCheckedId).toBeDefined();
+      const checkedAt = new Date();
+      for (const task of rotationFirst) {
+        await adapter.recordNegotiationWatchdogRecoveryCheck({
+          taskId: task.id,
+          expectedUpdatedAt: task.updatedAt,
+          checkedAt,
+        });
+      }
+
+      const second = await adapter.getStaleNegotiationTasks({
+        submittedOlderThanMs: 10 * 60 * 1000,
+        workingOlderThanMs: 12 * 60 * 60 * 1000,
+        limit: 25,
+      });
+      expect(second.map((task) => task.id)).toContain(neverCheckedId!);
+    }, 30000);
   });
 
   describe('getOpportunityLifecyclesForNegotiations', () => {
@@ -406,6 +473,7 @@ describe('ConversationDatabaseAdapter', () => {
           [ownerIntentId]: { userId: ownerId, round: 1 },
           [counterpartIntentId]: { userId: counterpartId, round: 1 },
         },
+        drainGeneration: 0,
         pause: {
           reason: 'ready_for_verdict',
           payload: { recommendation: 'pending', reasoning: 'Owner recommends proceeding.' },
@@ -436,6 +504,31 @@ describe('ConversationDatabaseAdapter', () => {
         payload: { recommendation: 'pending', reasoning: 'Owner recommends proceeding.' },
       });
       expect(counterpartDetail?.task.pause).toEqual({ reason: 'ready_for_verdict', by: 'theirs' });
+
+      // A human action that commits before the agent's transaction acquires
+      // the opportunity lock must remain authoritative.
+      await db.update(schema.opportunities).set({ status: 'accepted', acceptedBy: ownerId })
+        .where(eq(schema.opportunities.id, opportunityId));
+      const completed = await adapter.completeNegotiation({
+        taskId: task.id,
+        kind: 'pause_verdict',
+        verdict: 'reject',
+        reasoning: 'Stale agent verdict.',
+        resolvedByUserId: ownerId,
+      });
+      expect(completed?.state).toBe('completed');
+      expect(completed?.metadata.watchdogReflectPending).toBe(true);
+      const [preserved] = await db.select({ status: schema.opportunities.status }).from(schema.opportunities)
+        .where(eq(schema.opportunities.id, opportunityId));
+      expect(preserved?.status).toBe('accepted');
+      const pendingReflect = await adapter.getStaleNegotiationTasks({
+        submittedOlderThanMs: 10 * 60 * 1000,
+        workingOlderThanMs: 12 * 60 * 60 * 1000,
+        limit: 1000,
+      });
+      expect(pendingReflect.map((candidate) => candidate.id)).toContain(task.id);
+      await adapter.clearNegotiationReflectPending(task.id);
+      expect((await adapter.getTask(task.id))?.metadata?.watchdogReflectPending).toBe(false);
     }, 30000);
 
     it('projects the latest task, opportunity, turn, and signal lifecycle', async () => {

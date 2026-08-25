@@ -37,6 +37,8 @@ export class FakeNegotiationHost {
   readonly messages = new Map<string, FakeMessage[]>();
   readonly opportunityStatusUpdates: Array<{ id: string; status: string }> = [];
   readonly outcomeArtifacts = new Map<string, { verdict: 'pending' | 'reject'; reasoning?: string; resolvedByUserId: string }>();
+  /** Test-only interleave immediately before the atomic completion snapshot. */
+  beforeCompleteNegotiation?: () => void;
   /** Deduped by one durable drain generation, exactly as BullMQ does. */
   readonly reflectJobs: Array<{ userId: string; intentId: string; round: number; generation: string }> = [];
   private taskCounter = 0;
@@ -180,16 +182,51 @@ export class FakeNegotiationHost {
     },
     // A snapshot, not the live array — a real DB read would never see a later write reflected back.
     getNegotiationMessages: async (taskId) => [...(this.messages.get(taskId) ?? [])],
-    createNegotiationOutcomeArtifact: async (taskId, outcome) => {
-      this.outcomeArtifacts.set(taskId, outcome);
+    completeNegotiation: async (input) => {
+      const task = this.tasks.get(input.taskId);
+      if (!task || task.state === 'completed') return null;
+      const isSeat = Object.values(task.metadata.seats).some((seat) => seat.userId === input.resolvedByUserId)
+        || task.metadata.sourceUserId === input.resolvedByUserId
+        || task.metadata.candidateUserId === input.resolvedByUserId;
+      if (!isSeat) return null;
+      if (input.kind === 'pause_verdict' && (
+        task.state !== 'paused'
+        || task.metadata.pause?.reason !== 'ready_for_verdict'
+        || task.metadata.pause.pausedBy !== input.resolvedByUserId
+      )) return null;
+      this.beforeCompleteNegotiation?.();
+      const opportunity = this.opportunities.get(task.metadata.opportunityId);
+      if (!opportunity) return null;
+      const terminal = ['accepted', 'rejected', 'expired'].includes(opportunity.status);
+      if (input.kind === 'owner_verdict' && !terminal) return null;
+      this.outcomeArtifacts.set(task.id, {
+        verdict: input.verdict,
+        reasoning: input.reasoning,
+        resolvedByUserId: input.resolvedByUserId,
+      });
+      const updated = {
+        ...task,
+        state: 'completed' as const,
+        metadata: { ...task.metadata, watchdogReflectPending: true },
+        updatedAt: new Date(),
+      };
+      this.tasks.set(task.id, updated);
+      if (input.kind === 'pause_verdict' && !terminal) {
+        const status = input.verdict === 'pending' ? 'pending' : 'rejected';
+        this.opportunityStatusUpdates.push({ id: opportunity.id, status });
+        opportunity.status = status;
+      }
+      return updated;
+    },
+    clearNegotiationReflectPending: async (taskId) => {
+      const task = this.tasks.get(taskId);
+      if (!task) return;
+      this.tasks.set(taskId, {
+        ...task,
+        metadata: { ...task.metadata, watchdogReflectPending: false },
+      });
     },
     getArtifactsForTask: async () => [],
-    updateOpportunityStatus: async (id, status) => {
-      this.opportunityStatusUpdates.push({ id, status });
-      const opportunity = this.opportunities.get(id);
-      if (opportunity) opportunity.status = status;
-      return { id, status };
-    },
     getNegotiationTasksForIntentRound: async (intentId, round) =>
       [...this.tasks.values()].filter((t) => t.metadata.seats[intentId]?.round === round),
     // Signal-scoped on purpose: a negotiation a later round left behind must

@@ -9,7 +9,7 @@
  * kickoff and resume.
  */
 
-import type { Opportunity, OpportunityStatus } from './entities.js';
+import type { Opportunity } from './entities.js';
 import type { Database } from '../database.js';
 
 /** Negotiation task lifecycle. `paused` carries a reason in `metadata.pause`. */
@@ -55,6 +55,10 @@ export interface NegotiationTaskMetadata {
    * so reopening a task creates a new drain without duplicating one pause.
    */
   drainGeneration: number;
+  /** True between atomic verdict completion and a successful round-reflect check. */
+  watchdogReflectPending?: boolean;
+  /** Fairness cursor for bounded watchdog sweeps; ISO-8601 when last checked. */
+  watchdogRecoveryCheckedAt?: string;
   /**
    * `payload` is private to `pausedBy` — the seat whose turn produced this
    * pause. It is never persisted into a shared message or returned from a
@@ -166,18 +170,26 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** This negotiation's own turns, oldest first. */
   getNegotiationMessages(taskId: string): Promise<NegotiationMessageRow[]>;
 
-  /** Persists the resolve outcome artifact. */
-  createNegotiationOutcomeArtifact(taskId: string, outcome: {
+  /**
+   * Atomically records an outcome and completes its task. A pause verdict also
+   * locks the opportunity and updates it only while it is still non-terminal;
+   * an owner verdict instead requires the host's opportunity write to already
+   * be terminal. Returns null when the task or opportunity changed before the
+   * transaction acquired its locks.
+   */
+  completeNegotiation(input: {
+    taskId: string;
+    kind: 'pause_verdict' | 'owner_verdict';
     verdict: 'pending' | 'reject';
     reasoning?: string;
-    /** The only user allowed to read the private verdict reasoning. */
     resolvedByUserId: string;
-  }): Promise<void>;
+  }): Promise<NegotiationTaskRow | null>;
+
+  /** Clears the durable post-verdict reflect marker after a successful check. */
+  clearNegotiationReflectPending(taskId: string): Promise<void>;
 
   /** Reads back artifacts persisted for a task (e.g. the resolve outcome). */
   getArtifactsForTask(taskId: string): Promise<Array<{ id: string; name: string | null; parts: unknown[]; metadata: Record<string, unknown> | null }>>;
-
-  updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<{ id: string; status: OpportunityStatus } | null>;
 
   /** Every negotiation task bound to one intent's given round, whatever its state. The round-settling read. */
   getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRow[]>;

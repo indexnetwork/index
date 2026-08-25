@@ -80,23 +80,30 @@ function createWorld() {
   const opportunity = negotiatedOpportunity();
   const task = negotiationTask();
   const reflectJobs: NegotiationRoundReflectJobData[] = [];
-  const artifacts: Array<{ verdict: string; reasoning?: string }> = [];
+  const artifacts: Array<{ verdict: string; reasoning?: string; resolvedByUserId?: string }> = [];
 
   const negotiationDb = {
     getOpportunity: async () => opportunity,
     getNegotiationTask: async (id: string) => (id === task.id ? task : null),
     getNegotiationTaskForOpportunity: async (opportunityId: string) =>
       opportunityId === OPP_ID && task.state !== 'completed' ? task : null,
-    createNegotiationOutcomeArtifact: async (_taskId: string, outcome: { verdict: string; reasoning?: string }) => {
-      artifacts.push(outcome);
+    completeNegotiation: async (input: { verdict: string; reasoning?: string; resolvedByUserId: string }) => {
+      if (!['accepted', 'rejected', 'expired'].includes(opportunity.status) || task.state === 'completed') return null;
+      artifacts.push({
+        verdict: input.verdict,
+        reasoning: input.reasoning,
+        resolvedByUserId: input.resolvedByUserId,
+      });
+      task.state = 'completed';
+      task.metadata.watchdogReflectPending = true;
+      return task;
+    },
+    clearNegotiationReflectPending: async () => {
+      task.metadata.watchdogReflectPending = false;
     },
     updateNegotiationTaskState: async (_taskId: string, state: NegotiationTaskRow['state']) => {
       task.state = state;
       return task;
-    },
-    updateOpportunityStatus: async (id: string, status: OpportunityStatus) => {
-      opportunity.status = status;
-      return { id, status };
     },
     countActiveNegotiationsForRound: async (intentId: string, round: number) =>
       task.metadata.seats[intentId]?.round === round && task.state === 'working' ? 1 : 0,
@@ -162,6 +169,7 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
 
     expect(world.opportunity.status).toBe('rejected');
     expect(world.task.state).toBe('completed');
+    expect(world.task.metadata.watchdogReflectPending).toBe(false);
     expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);
     expect(world.reflectJobs).toEqual([
       { userId: USER_A, intentId: INTENT_ID, round: ROUND, generation: `${NEGOTIATION_ID}.0` },

@@ -378,7 +378,7 @@ export interface StaleNegotiationTasksInput {
 export interface StaleNegotiationTask {
   id: string;
   conversationId: string;
-  state: 'submitted' | 'working' | 'paused';
+  state: 'submitted' | 'working' | 'paused' | 'completed';
   createdAt: Date;
   updatedAt: Date;
   metadata: Record<string, unknown> | null;
@@ -1753,6 +1753,14 @@ export class ConversationDatabaseAdapter {
           and(eq(schema.tasks.state, 'submitted'), lt(schema.tasks.createdAt, submittedCutoff)),
           and(eq(schema.tasks.state, 'working'), lt(schema.tasks.updatedAt, workingCutoff)),
           and(
+            inArray(schema.tasks.state, ['submitted', 'working']),
+            sql`EXISTS (
+              SELECT 1 FROM ${opportunities}
+              WHERE ${opportunities.id} = ${schema.tasks.metadata}->>'opportunityId'
+                AND ${opportunities.status} IN ('accepted', 'rejected')
+            )`,
+          ),
+          and(
             eq(schema.tasks.state, 'paused'),
             inArray(sql`${schema.tasks.metadata}->'pause'->>'reason'`, ['needs_principal', 'counterparty_silent']),
             lt(schema.tasks.updatedAt, workingCutoff),
@@ -1761,14 +1769,21 @@ export class ConversationDatabaseAdapter {
             eq(schema.tasks.state, 'paused'),
             sql`${schema.tasks.metadata}->'pause'->>'reason' = 'ready_for_verdict'`,
           ),
+          and(
+            eq(schema.tasks.state, 'completed'),
+            sql`${schema.tasks.metadata}->>'watchdogReflectPending' = 'true'`,
+          ),
         ),
       ))
-      .orderBy(asc(schema.tasks.createdAt))
+      .orderBy(
+        asc(sql`coalesce(${schema.tasks.metadata}->>'watchdogRecoveryCheckedAt', '')`),
+        asc(schema.tasks.createdAt),
+      )
       .limit(Math.max(1, Math.floor(limit)));
 
     return rows.map((row) => ({
       ...row,
-      state: row.state as 'submitted' | 'working' | 'paused',
+      state: row.state as 'submitted' | 'working' | 'paused' | 'completed',
       metadata: (row.metadata as Record<string, unknown> | null) ?? null,
     }));
   }
@@ -1806,6 +1821,35 @@ export class ConversationDatabaseAdapter {
       .returning();
 
     return task ?? null;
+  }
+
+  /**
+   * Moves a durable recovery check behind never-checked rows, so one bounded
+   * sweep cannot starve newer candidates indefinitely.
+   * `updatedAt` deliberately stays unchanged: this is watchdog bookkeeping,
+   * not a negotiation lifecycle transition.
+   */
+  async recordNegotiationWatchdogRecoveryCheck(input: {
+    taskId: string;
+    expectedUpdatedAt: Date;
+    checkedAt: Date;
+  }): Promise<boolean> {
+    const [task] = await db
+      .update(schema.tasks)
+      .set({
+        metadata: sql`jsonb_set(
+          coalesce(${schema.tasks.metadata}, '{}'::jsonb),
+          '{watchdogRecoveryCheckedAt}',
+          ${JSON.stringify(input.checkedAt.toISOString())}::jsonb,
+          true
+        )`,
+      })
+      .where(and(
+        eq(schema.tasks.id, input.taskId),
+        eq(schema.tasks.updatedAt, input.expectedUpdatedAt),
+      ))
+      .returning({ id: schema.tasks.id });
+    return Boolean(task);
   }
 
   /**
@@ -2637,6 +2681,93 @@ export class ConversationDatabaseAdapter {
     return toNegotiationTaskRow(row);
   }
 
+  async completeNegotiation(input: {
+    taskId: string;
+    kind: 'pause_verdict' | 'owner_verdict';
+    verdict: 'pending' | 'reject';
+    reasoning?: string;
+    resolvedByUserId: string;
+  }): Promise<NegotiationTaskRowMirror | null> {
+    const result = await db.transaction(async (tx) => {
+      const [task] = await tx.select().from(schema.tasks)
+        .where(eq(schema.tasks.id, input.taskId)).for('update');
+      if (!task || task.state === 'completed') return null;
+
+      const metadata = task.metadata as NegotiationTaskMetadataMirror | null;
+      if (!metadata || metadata.type !== 'negotiation') return null;
+      const isSeat = Object.values(metadata.seats).some((seat) => seat.userId === input.resolvedByUserId)
+        || metadata.sourceUserId === input.resolvedByUserId
+        || metadata.candidateUserId === input.resolvedByUserId;
+      if (!isSeat) return null;
+      if (input.kind === 'pause_verdict' && (
+        task.state !== 'paused'
+        || metadata.pause?.reason !== 'ready_for_verdict'
+        || metadata.pause.pausedBy !== input.resolvedByUserId
+      )) return null;
+
+      const [opportunity] = await tx.select({ status: opportunities.status }).from(opportunities)
+        .where(eq(opportunities.id, metadata.opportunityId)).for('update');
+      if (!opportunity) return null;
+      const terminal = ['accepted', 'rejected', 'expired'].includes(opportunity.status);
+      if (input.kind === 'owner_verdict' && !terminal) return null;
+
+      await tx.insert(schema.artifacts).values({
+        taskId: task.id,
+        name: 'negotiation_outcome',
+        parts: [{ kind: 'data', data: {
+          verdict: input.verdict,
+          reasoning: input.reasoning,
+          resolvedByUserId: input.resolvedByUserId,
+        } }],
+        metadata: { resolvedByUserId: input.resolvedByUserId },
+      });
+      const now = new Date();
+      const [completed] = await tx.update(schema.tasks)
+        .set({
+          state: 'completed',
+          metadata: sql`jsonb_set(
+            coalesce(${schema.tasks.metadata}, '{}'::jsonb),
+            '{watchdogReflectPending}',
+            'true'::jsonb,
+            true
+          )`,
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.id, task.id))
+        .returning();
+      if (!completed) throw new Error(`Negotiation task ${task.id} not found`);
+
+      let opportunityUpdatedTo: 'pending' | 'rejected' | null = null;
+      if (input.kind === 'pause_verdict' && !terminal) {
+        opportunityUpdatedTo = input.verdict === 'pending' ? 'pending' : 'rejected';
+        await tx.update(opportunities)
+          .set({ status: opportunityUpdatedTo, acceptedBy: null, updatedAt: now })
+          .where(eq(opportunities.id, metadata.opportunityId));
+      }
+      return { task: toNegotiationTaskRow(completed), opportunityUpdatedTo };
+    });
+
+    if (result?.opportunityUpdatedTo) {
+      const event = { id: result.task.metadata.opportunityId, status: result.opportunityUpdatedTo };
+      emitOpportunityLifecycleBestEffort(event);
+      emitOpportunityTransitionBestEffort(event);
+    }
+    return result?.task ?? null;
+  }
+
+  async clearNegotiationReflectPending(taskId: string): Promise<void> {
+    await db.update(schema.tasks)
+      .set({
+        metadata: sql`jsonb_set(
+          coalesce(${schema.tasks.metadata}, '{}'::jsonb),
+          '{watchdogReflectPending}',
+          'false'::jsonb,
+          true
+        )`,
+      })
+      .where(eq(schema.tasks.id, taskId));
+  }
+
   async expirePausedNegotiation(input: {
     taskId: string;
     expectedUpdatedAt: Date;
@@ -2810,20 +2941,6 @@ export class ConversationDatabaseAdapter {
       .where(eq(schema.messages.taskId, taskId))
       .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
     return rows.map((r) => ({ ...r, parts: (r.parts as unknown[]) ?? [] }));
-  }
-
-  /** Persists the resolve outcome artifact. */
-  async createNegotiationOutcomeArtifact(taskId: string, outcome: {
-    verdict: 'pending' | 'reject';
-    reasoning?: string;
-    resolvedByUserId: string;
-  }): Promise<void> {
-    await db.insert(schema.artifacts).values({
-      taskId,
-      name: 'negotiation_outcome',
-      parts: [{ kind: 'data', data: outcome }],
-      metadata: { resolvedByUserId: outcome.resolvedByUserId },
-    });
   }
 
   /**

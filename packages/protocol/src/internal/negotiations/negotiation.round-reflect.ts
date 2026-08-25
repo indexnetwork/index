@@ -60,22 +60,24 @@ export type NegotiationRoundReflectDatabase = Pick<
 /**
  * Enqueue exactly one reflect job if this round's task set is complete and
  * every negotiation in it has stopped. Never throws: the caller's own transition is
- * already durable and must not fail over a trigger.
+ * already durable and must not fail over a trigger. Returns false only when
+ * the check or enqueue exhausted its retries, so a durable recovery marker
+ * can remain pending.
  */
 export async function maybeEnqueueRoundReflect(
   database: NegotiationRoundReflectDatabase,
   enqueue: NegotiationRoundReflectEnqueueFn | undefined,
   check: NegotiationRoundReflectCheck,
-): Promise<void> {
-  if (!enqueue) return;
+): Promise<boolean> {
+  if (!enqueue) return true;
   try {
     const stamp = await database.getIntentNegotiationRound(check.intentId);
     // A current kickoff has not finished binding all of its tasks yet. A
     // passive/counterparty seat (no kickoff marker) and a superseded round
     // already have their complete durable task sets and need no size gate.
-    if (stamp.round === check.round && stamp.roundSize === null && stamp.kickoffStartedAt !== null) return;
+    if (stamp.round === check.round && stamp.roundSize === null && stamp.kickoffStartedAt !== null) return true;
     const tasks = await database.getNegotiationTasksForIntentRound(check.intentId, check.round);
-    if (tasks.length === 0 || tasks.some((task) => task.state !== "paused" && task.state !== "completed")) return;
+    if (tasks.length === 0 || tasks.some((task) => task.state !== "paused" && task.state !== "completed")) return true;
     const generation = tasks
       .map((task) => `${task.id}.${task.metadata.drainGeneration}`)
       .sort()
@@ -90,7 +92,7 @@ export async function maybeEnqueueRoundReflect(
     for (let attempt = 0; attempt < ENQUEUE_ATTEMPTS; attempt++) {
       try {
         await enqueue(job);
-        return;
+        return true;
       } catch (err) {
         failure = err;
         await new Promise((resolve) => setTimeout(resolve, ENQUEUE_RETRY_DELAY_MS * (attempt + 1)));
@@ -103,5 +105,6 @@ export async function maybeEnqueueRoundReflect(
       round: check.round,
       error: err,
     });
+    return false;
   }
 }

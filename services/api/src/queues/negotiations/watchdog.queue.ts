@@ -27,14 +27,15 @@ interface WatchdogQueueHandle {
 type WatchdogWorkerHandle = Pick<Worker<NegotiationWatchdogJobData>, 'close'>;
 type WatchdogDatabase = Pick<
   ConversationDatabaseAdapter,
-  'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
+  'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
+  | 'clearNegotiationReflectPending'
   | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
 >;
 type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
 
 type StaleTaskForWatchdog = {
   id: string;
-  state: 'submitted' | 'working' | 'paused';
+  state: 'submitted' | 'working' | 'paused' | 'completed';
   updatedAt: Date;
   metadata: Record<string, unknown> | null;
 };
@@ -48,7 +49,8 @@ type WatchdogLogger = {
 export interface NegotiationWatchdogQueueDeps {
   database?: Pick<
     ConversationDatabaseAdapter,
-    'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
+    'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
+    | 'clearNegotiationReflectPending'
     | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
   >;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
@@ -250,6 +252,30 @@ export class NegotiationWatchdogQueue {
     }
 
     const pause = asRecord(metadata.pause);
+    if (staleTask.state === 'completed') {
+      const seats = asRecord(metadata.seats);
+      let succeeded = true;
+      for (const [intentId, rawBinding] of Object.entries(seats)) {
+        const binding = asRecord(rawBinding);
+        if (typeof binding.userId !== 'string' || typeof binding.round !== 'number') continue;
+        const checked = await maybeEnqueueRoundReflect(database, this.reflectEnqueue, {
+          userId: binding.userId,
+          intentId,
+          round: binding.round,
+        });
+        succeeded &&= checked;
+      }
+      if (succeeded) {
+        await database.clearNegotiationReflectPending(staleTask.id);
+      } else {
+        await database.recordNegotiationWatchdogRecoveryCheck({
+          taskId: staleTask.id,
+          expectedUpdatedAt: staleTask.updatedAt,
+          checkedAt: this.clock(),
+        });
+      }
+      return;
+    }
     if (staleTask.state === 'paused') {
       if (pause.reason === 'ready_for_verdict') {
         const seats = asRecord(metadata.seats);
@@ -262,6 +288,11 @@ export class NegotiationWatchdogQueue {
             round: binding.round,
           });
         }
+        await database.recordNegotiationWatchdogRecoveryCheck({
+          taskId: staleTask.id,
+          expectedUpdatedAt: staleTask.updatedAt,
+          checkedAt: this.clock(),
+        });
         return;
       }
       if (pause.reason !== 'needs_principal' && pause.reason !== 'counterparty_silent') return;
@@ -288,11 +319,50 @@ export class NegotiationWatchdogQueue {
     }
 
     const opportunity = await opportunities.getOpportunity(opportunityId);
+    if (opportunity?.status === 'accepted' || opportunity?.status === 'rejected') {
+      const byUserId = typeof metadata.sourceUserId === 'string'
+        ? metadata.sourceUserId
+        : typeof metadata.candidateUserId === 'string' ? metadata.candidateUserId : null;
+      if (!this.negotiationGraph || !byUserId) {
+        this.logger.error('Negotiation watchdog cannot recover terminal owner verdict', {
+          taskId: candidate.id,
+          opportunityId,
+        });
+      } else {
+        const result = await this.negotiationGraph.invoke({
+          negotiationId: staleTask.id,
+          close: {
+            reason: 'owner_verdict',
+            verdict: opportunity.status === 'rejected' ? 'reject' : 'pending',
+            reasoning: 'Recovered after the owner verdict committed before negotiation closure.',
+          },
+          byUserId,
+        });
+        if (result.status === 'error') {
+          this.logger.error('Negotiation watchdog owner-verdict recovery returned an error status', {
+            taskId: candidate.id,
+            opportunityId,
+            error: result.error,
+          });
+        }
+      }
+      await database.recordNegotiationWatchdogRecoveryCheck({
+        taskId: staleTask.id,
+        expectedUpdatedAt: staleTask.updatedAt,
+        checkedAt: this.clock(),
+      });
+      return;
+    }
     if (!opportunity || opportunity.status !== 'negotiating') {
       this.logger.info('Negotiation watchdog skipped task whose opportunity is not negotiating', {
         taskId: candidate.id,
         opportunityId,
         opportunityStatus: opportunity?.status ?? 'missing',
+      });
+      await database.recordNegotiationWatchdogRecoveryCheck({
+        taskId: staleTask.id,
+        expectedUpdatedAt: staleTask.updatedAt,
+        checkedAt: this.clock(),
       });
       return;
     }

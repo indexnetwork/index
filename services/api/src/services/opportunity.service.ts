@@ -309,8 +309,10 @@ export class OpportunityService {
    *
    * A match that never negotiated has no task and nothing happens here.
    *
-   * Best-effort: the owner's decision is already committed and their request
-   * must not fail because a background trigger could not be re-armed.
+   * Best-effort immediately: the owner's decision is already committed and
+   * their request must not fail because this follow-up is unavailable. Any
+   * active task left behind beside an accepted/rejected opportunity remains a
+   * durable watchdog candidate and is retried on the next bounded sweep.
    */
   private async closeNegotiationForOwnerVerdict(
     opportunityId: string,

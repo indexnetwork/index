@@ -24,13 +24,6 @@ import type { NegotiationTurnAuthor } from "./negotiation.turn-author.js";
 
 const logger = protocolLogger("NegotiationGraph");
 
-/**
- * Opportunity statuses that are already decided. `resolve` never writes over
- * one: the decision behind them is the owner's, and this graph's verdict is
- * only ever the negotiation's own.
- */
-const TERMINAL_OPPORTUNITY_STATUSES = new Set(["accepted", "rejected", "expired"]);
-
 // ─── Invoke contract ─────────────────────────────────────────────────────────
 
 export type NegotiationGraphInput =
@@ -452,13 +445,24 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
  * either side's — checking only the opener's would leave the counterparty's
  * round waiting on a negotiation that had already stopped.
  */
-async function triggerReflectForEverySeat(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<void> {
+async function triggerReflectForEverySeat(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<boolean> {
+  let succeeded = true;
   for (const [intentId, binding] of Object.entries(meta.seats)) {
-    await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
+    const checked = await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
       userId: binding.userId,
       intentId,
       round: binding.round,
     });
+    succeeded &&= checked;
+  }
+  return succeeded;
+}
+
+async function clearReflectPendingBestEffort(deps: NegotiationGraphDeps, taskId: string): Promise<void> {
+  try {
+    await deps.database.clearNegotiationReflectPending(taskId);
+  } catch (error) {
+    logger.error("Failed to clear durable reflect marker; watchdog will retry", { taskId, error });
   }
 }
 
@@ -479,30 +483,24 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
     if (!ownsReadyPause) {
       return { phase: "error", error: "Only the seat owning a ready_for_verdict pause may resolve it" };
     }
-    const opportunity = await deps.database.getOpportunity(task.metadata.opportunityId);
-    // reasoning is private to the resolving side — recorded on the outcome
-    // artifact only, never persisted into the A2A thread as a message; the
-    // counterparty sees only that the negotiation closed.
-    await deps.database.createNegotiationOutcomeArtifact(task.id, {
+    // The database rechecks pause ownership and locks the task + opportunity
+    // before writing. That makes completion, the private outcome, and the
+    // non-terminal opportunity transition one transaction, so a concurrent
+    // human verdict cannot be overwritten after an earlier status read.
+    const updated = await deps.database.completeNegotiation({
+      taskId: task.id,
+      kind: "pause_verdict",
       verdict: input.verdict,
       reasoning: input.reasoning,
       resolvedByUserId: input.byUserId,
     });
-    const updated = await deps.database.updateNegotiationTaskState(task.id, "completed");
-    // A pause-owner verdict normally writes the opportunity status here. If a
-    // concurrent owner action already made it terminal, preserve that action;
-    // the host's explicit owner-close lane handles the ordinary owner-verdict
-    // path without granting this public verdict input broader authority.
-    if (!opportunity || !TERMINAL_OPPORTUNITY_STATUSES.has(opportunity.status)) {
-      await deps.database.updateOpportunityStatus(
-        task.metadata.opportunityId,
-        input.verdict === "pending" ? "pending" : "rejected",
-      );
-    }
+    if (!updated) return { phase: "error", error: "Negotiation changed before its verdict committed" };
     // A round whose last active negotiation ends by direct verdict (not a
     // pause) must still trigger the all-paused check — apply isn't the only
     // way a round finishes.
-    await triggerReflectForEverySeat(deps, task.metadata);
+    if (await triggerReflectForEverySeat(deps, task.metadata)) {
+      await clearReflectPendingBestEffort(deps, task.id);
+    }
     return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", verdict: input.verdict, reasoning: input.reasoning, turns: [] } };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
@@ -519,17 +517,17 @@ async function closeNode(state: NegotiationState, deps: NegotiationGraphDeps): P
       || task.metadata.sourceUserId === input.byUserId
       || task.metadata.candidateUserId === input.byUserId;
     if (!isSeat) return { phase: "error", error: "Only a negotiation seat may close it" };
-    const opportunity = await deps.database.getOpportunity(task.metadata.opportunityId);
-    if (!opportunity || !TERMINAL_OPPORTUNITY_STATUSES.has(opportunity.status)) {
-      return { phase: "error", error: "Owner-verdict closure requires a terminal opportunity" };
-    }
-    await deps.database.createNegotiationOutcomeArtifact(task.id, {
+    const updated = await deps.database.completeNegotiation({
+      taskId: task.id,
+      kind: "owner_verdict",
       verdict: input.close.verdict,
       reasoning: input.close.reasoning,
       resolvedByUserId: input.byUserId,
     });
-    const updated = await deps.database.updateNegotiationTaskState(task.id, "completed");
-    await triggerReflectForEverySeat(deps, task.metadata);
+    if (!updated) return { phase: "error", error: "Owner-verdict closure requires a live task and terminal opportunity" };
+    if (await triggerReflectForEverySeat(deps, task.metadata)) {
+      await clearReflectPendingBestEffort(deps, task.id);
+    }
     return {
       task: updated,
       phase: "done",
