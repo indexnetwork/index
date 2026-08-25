@@ -459,40 +459,23 @@ re-running the command.
 
 #### Immutable local playground
 
-Seed the desired playground population once, then freeze it as the local
-template:
+The local playground uses Neon branches: `playground-template` is the fixed,
+20-person seed and `playground` is its child working branch. The local
+`DATABASE_URL` points only to `playground`, never to the template. To discard
+all playground activity and clone the template again, stop the API first and
+run:
 
 ```bash
-bun run db:seed:sandbox -- --confirm --twenty
-bun run db:playground:freeze -- --confirm
+NEON_API_KEY=... bun run db:playground:reset -- --confirm
 ```
 
-Use a fresh working copy whenever you want to use the playground. This replaces
-only `protocol_sandbox` with a clone of the immutable local template, without
-regenerating embeddings or recreating fixtures:
+The reset is Neon copy-on-write branching, not a dump/restore. It retains the
+working branch's endpoint and connection URL, so start the API again afterward.
+The template is deliberately not reset by this command. Rebuild it only when
+the schema or authored fixtures change, then create a fresh `playground` child.
 
-```bash
-bun run db:playground:clone -- --confirm
-```
-
-The template lives at `.cache/index/playground-template.dump` and is ignored by
-Git. `freeze` refuses to overwrite it, so normal playground use cannot mutate
-the initial data. After deliberately reseeding for a schema or fixture change,
-replace the template explicitly:
-
-```bash
-bun run db:playground:freeze -- --confirm --replace
-```
-
-Cloning replaces the whole `protocol_sandbox` database, so stop the local API
-server before cloning.
-
-The command derives the sandbox connection from the repo-root
-`.env.development`, refuses unrelated source database names, always replaces
-the URL database component with `protocol_sandbox`, and writes directly to
-Postgres without publishing jobs to shared Redis. It requires
-`OPENROUTER_API_KEY` to generate the fixture embeddings. Automated tests must
-continue to use the disposable local `index_test` database through `.env.test`.
+Automated tests continue to use the disposable local `index_test` database
+through `.env.test`.
 
 ### Required Environment Variables
 
