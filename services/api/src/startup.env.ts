@@ -117,6 +117,12 @@ const envSchema = z.object({
   SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().optional(),
   SENTRY_RELEASE: z.string().optional(),
+  LANGSMITH_API_KEY: z.string().optional(),
+  LANGSMITH_TRACING: optionalBoolean,
+  LANGSMITH_PROJECT: z.string().optional(),
+  LANGCHAIN_CALLBACKS_BACKGROUND: optionalBoolean,
+  LANGSMITH_ENDPOINT: optionalUrl,
+  LANGSMITH_WORKSPACE_ID: z.string().optional(),
   LOG_LEVEL: z.union([z.literal(''), z.enum(['verbose', 'debug', 'info', 'warn', 'error'])]).optional(),
 
   // 12b. LangGraph checkpoint retention
