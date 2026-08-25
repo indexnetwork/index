@@ -92,7 +92,7 @@
       "version": "36.0.0",
       "dependencies": {
         "@langchain/core": "1.1.48",
-        "@langchain/langgraph": "1.3.6",
+        "@langchain/langgraph": "1.4.12",
         "@langchain/openai": "1.4.7",
         "@modelcontextprotocol/server": "2.0.0",
         "@noble/hashes": "2.2.0",
@@ -117,7 +117,7 @@
         "@composio/langchain": "^0.6.3",
         "@indexnetwork/protocol": "workspace:*",
         "@langchain/core": "^1.1.17",
-        "@langchain/langgraph": "^1.3.6",
+        "@langchain/langgraph": "^1.4.12",
         "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
         "@langchain/openai": "^1.2.3",
         "@modelcontextprotocol/server": "2.0.0",
@@ -445,7 +445,7 @@
 
     "@langchain/core": ["@langchain/core@1.1.48", "", { "dependencies": { "@cfworker/json-schema": "^4.0.2", "@standard-schema/spec": "^1.1.0", "js-tiktoken": "^1.0.12", "langsmith": ">=0.5.0 <1.0.0", "mustache": "^4.2.0", "p-queue": "^6.6.2", "zod": "^3.25.76 || ^4" } }, "sha512-fQU6Guyb1pwc2fEplmA8FPbKfOMAofjnyJzExevro0FxEiuGHE18Ov/ZHmT9trWCDTZRI9eW1VIc6aChxV8pAQ=="],
 
-    "@langchain/langgraph": ["@langchain/langgraph@1.3.6", "", { "dependencies": { "@langchain/langgraph-checkpoint": "^1.0.4", "@langchain/langgraph-sdk": "~1.9.17", "@langchain/protocol": "^0.0.16", "@standard-schema/spec": "1.1.0", "uuid": "^14.0.0" }, "peerDependencies": { "@langchain/core": "^1.1.48", "zod": "^3.25.32 || ^4.2.0", "zod-to-json-schema": "^3.x" }, "optionalPeers": ["zod-to-json-schema"] }, "sha512-OlpIhaMYs2IlN5hCGUMF9B/jgVacLK5nYbwri1AQatB+CcFIk1xVi9jHcD+fkAtn+7ExFbwiOAAdhuGeWQA9BA=="],
+    "@langchain/langgraph": ["@langchain/langgraph@1.4.12", "", { "dependencies": { "@langchain/langgraph-checkpoint": "^1.1.5", "@langchain/langgraph-sdk": "~1.9.30", "@langchain/protocol": "^0.0.18", "@standard-schema/spec": "1.1.0" }, "peerDependencies": { "@langchain/core": "^1.1.48", "zod": "^3.25.32 || ^4.2.0" } }, "sha512-63iH/igH5Fh5fHqmWp09YYWaDKKB9v4RCmYNJBrnQ224rFRbjebgyYW6o5RCczN5FZxIhQj+xT51rrNmG0zi5A=="],
 
     "@langchain/langgraph-api": ["@langchain/langgraph-api@1.4.5", "", { "dependencies": { "@babel/code-frame": "^7.26.2", "@hono/node-server": "^2.1.0", "@hono/node-ws": "^1.3.0", "@hono/zod-validator": "^0.7.6", "@langchain/langgraph-ui": "1.4.5", "@langchain/protocol": "^0.0.18", "@types/json-schema": "^7.0.15", "@typescript/vfs": "^1.6.0", "dedent": "^1.5.3", "dotenv": "^16.4.7", "exit-hook": "^4.0.0", "hono": "^4.12.34", "langsmith": ">=0.5.19 <1.0.0", "open": "^10.1.0", "semver": "^7.7.1", "stacktrace-parser": "^0.1.10", "superjson": "^2.2.2", "tsx": "^4.19.3", "winston": "^3.17.0", "winston-console-format": "^1.0.8", "zod": "^3.25.76 || ^4" }, "peerDependencies": { "@langchain/core": "^1.1.48", "@langchain/langgraph": "^1.3.6", "@langchain/langgraph-checkpoint": "^1.1.4", "@langchain/langgraph-sdk": "^1.9.3-rc.0", "ts-node": "^10.9.2", "typescript": "^5.5.4" }, "optionalPeers": ["@langchain/langgraph-sdk", "ts-node"] }, "sha512-OEM4JMTEUl44ObxTIlyy7PRFuh5pA+8m45YJamDsmVLYqP3RMoQ7fGsKMVmc11Dyd/BW2afEOnrgQ6gdYwEBbg=="],
 
@@ -461,7 +461,7 @@
 
     "@langchain/openai": ["@langchain/openai@1.4.7", "", { "dependencies": { "js-tiktoken": "^1.0.12", "openai": "^6.37.0", "zod": "^3.25.76 || ^4" }, "peerDependencies": { "@langchain/core": "^1.1.48" } }, "sha512-i1YLV4pWbGC6W8m0ZNpLObJuf1nyU4o8aWyX4AF9fHn7eM67HfIJWQ5n5XzcCpuSa41otrxA9jvH5XRKwI1qDA=="],
 
-    "@langchain/protocol": ["@langchain/protocol@0.0.16", "", {}, "sha512-ws+J7MaHyhO5dG7f0vdyHQiUn9hoCnki0f3crJPa4MCTGzcRC39jYSCghyrGtBPYQnZbUQiGyRVpW3z3M8IpJg=="],
+    "@langchain/protocol": ["@langchain/protocol@0.0.18", "", {}, "sha512-XW1egQtPfsGI41w2AMZNFZrUIwFSQHTjVMZs0OaTpCAvht/QLoaPN8FQcsysMVypOhupG28J29yOorrc70otBQ=="],
 
     "@modelcontextprotocol/core": ["@modelcontextprotocol/core@2.0.0", "", { "dependencies": { "zod": "^4.2.0" } }, "sha512-pJCEwGG7Lfr/+PQp9ZTwKXNeO5wzbfKL7H3MYpCorM4oFBoQrdjnBgEoqG+RjhsvS1FKrDbKux+M1HhlnGWqcA=="],
 
@@ -1935,10 +1935,6 @@
 
     "@langchain/core/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
 
-    "@langchain/langgraph/uuid": ["uuid@14.0.2", "", { "bin": { "uuid": "dist-node/bin/uuid" } }, "sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ=="],
-
-    "@langchain/langgraph-api/@langchain/protocol": ["@langchain/protocol@0.0.18", "", {}, "sha512-XW1egQtPfsGI41w2AMZNFZrUIwFSQHTjVMZs0OaTpCAvht/QLoaPN8FQcsysMVypOhupG28J29yOorrc70otBQ=="],
-
     "@langchain/langgraph-api/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
 
     "@langchain/langgraph-cli/commander": ["commander@13.1.0", "", {}, "sha512-/rFeCpNJQbhSZjGVwO9RFV3xPqbnERS8MmIQzCtD/zl6gpJuV/bMLuN92oG3F7d8oDEHHRrujSXNUr8fpjntKw=="],
@@ -1946,8 +1942,6 @@
     "@langchain/langgraph-cli/ignore": ["ignore@7.0.5", "", {}, "sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg=="],
 
     "@langchain/langgraph-cli/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
-
-    "@langchain/langgraph-sdk/@langchain/protocol": ["@langchain/protocol@0.0.18", "", {}, "sha512-XW1egQtPfsGI41w2AMZNFZrUIwFSQHTjVMZs0OaTpCAvht/QLoaPN8FQcsysMVypOhupG28J29yOorrc70otBQ=="],
 
     "@langchain/langgraph-sdk/p-queue": ["p-queue@9.3.0", "", { "dependencies": { "eventemitter3": "^5.0.4", "p-timeout": "^7.0.0" } }, "sha512-7NED7xhQ74Ngp4JP/2e0VZHp7vSWfJfqeiR92jPgxsz6m0Se4P03YoTKa9dDXyZ3r6P616gUXttrB6nnHYKang=="],
 
