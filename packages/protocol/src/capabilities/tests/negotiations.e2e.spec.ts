@@ -71,7 +71,10 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     const result = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
 
     expect(result).toMatchObject({ status: "paused", pause: { reason: "open_failed" } });
-    expect(host.taskFor(result.negotiationId).metadata.pause).toMatchObject({ reason: "open_failed" });
+    expect(host.taskFor(result.negotiationId).metadata.pause).toMatchObject({
+      reason: "open_failed",
+      failure: "provider_unavailable",
+    });
   });
 
   test("a submitted passive-round sibling prevents an early all-paused wake", async () => {

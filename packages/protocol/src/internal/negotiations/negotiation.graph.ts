@@ -102,9 +102,21 @@ const NegotiationGraphState = Annotation.Root({
   }),
   result: Annotation<NegotiationGraphResult | null>({ reducer: (c, n) => n ?? c, default: () => null }),
   error: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
+  /** A safe, private classification of a failed in-process turn author. */
+  authorFailure: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
 });
 
 type NegotiationState = typeof NegotiationGraphState.State;
+
+function classifyAuthorFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  if (error instanceof DOMException && error.name === "TimeoutError") return "author_timeout";
+  if (/\btimeout\b|\babort(?:ed)?\b/.test(message)) return "author_timeout";
+  if (/\b429\b|rate.?limit|too many requests/.test(message)) return "provider_rate_limited";
+  if (/\b5\d\d\b|provider unavailable|service unavailable|internal server error/.test(message)) return "provider_unavailable";
+  if (/zod|schema|structured output|parse/.test(message)) return "invalid_author_output";
+  return "author_failed";
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -338,6 +350,7 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       // agent went silent. Persist the recoverable system failure honestly.
       pendingTurn: { verb: "pause", reason: "open_failed" },
       pendingTurnByUserId: null,
+      authorFailure: classifyAuthorFailure(err),
       authored: true,
       phase: "apply",
     };
@@ -432,6 +445,7 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
         reason: effectiveTurn.reason,
         pausedBy: speakerId,
         ...("payload" in effectiveTurn ? { payload: effectiveTurn.payload } : {}),
+        ...(effectiveTurn.reason === "open_failed" && state.authorFailure ? { failure: state.authorFailure } : {}),
       });
       if (effectiveTurn.reason === "needs_principal") {
         const intentId = Object.entries(meta.seats).find(([, seat]) => seat.userId === speakerId)?.[0];
