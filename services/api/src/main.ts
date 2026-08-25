@@ -113,6 +113,9 @@ fromIntentQueue.setRuntimeDeps({
   agentDispatcher: backgroundAgentDispatcher,
 });
 negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph);
+negotiationWatchdogQueue.setReflectEnqueue(async (job) => {
+  await personalAgentQueue.addAllPausedEvent(job);
+});
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({

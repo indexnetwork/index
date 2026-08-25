@@ -1,5 +1,5 @@
 import type { Job, Queue, Worker } from 'bullmq';
-import type { NegotiationGraphLike } from '@indexnetwork/protocol';
+import { maybeEnqueueRoundReflect, type NegotiationGraphLike, type NegotiationRoundReflectEnqueueFn } from '@indexnetwork/protocol';
 
 import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../../adapters/conversation.database.adapter';
 import type { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
@@ -27,13 +27,15 @@ interface WatchdogQueueHandle {
 type WatchdogWorkerHandle = Pick<Worker<NegotiationWatchdogJobData>, 'close'>;
 type WatchdogDatabase = Pick<
   ConversationDatabaseAdapter,
-  'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
+  'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
+  | 'clearNegotiationReflectPending'
+  | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
 >;
 type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
 
 type StaleTaskForWatchdog = {
   id: string;
-  state: 'submitted' | 'working' | 'paused';
+  state: 'submitted' | 'working' | 'paused' | 'completed';
   updatedAt: Date;
   metadata: Record<string, unknown> | null;
 };
@@ -47,7 +49,9 @@ type WatchdogLogger = {
 export interface NegotiationWatchdogQueueDeps {
   database?: Pick<
     ConversationDatabaseAdapter,
-    'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt'
+    'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
+    | 'clearNegotiationReflectPending'
+    | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
   >;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
   negotiationGraph?: NegotiationGraphLike;
@@ -57,6 +61,7 @@ export interface NegotiationWatchdogQueueDeps {
   ) => WatchdogWorkerHandle;
   logger?: WatchdogLogger;
   clock?: () => Date;
+  reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
 }
 
 /**
@@ -90,17 +95,24 @@ export class NegotiationWatchdogQueue {
   private queueInstance: WatchdogQueueHandle | null = null;
   private worker: WatchdogWorkerHandle | null = null;
   private negotiationGraph: NegotiationGraphLike | undefined;
+  private reflectEnqueue: NegotiationRoundReflectEnqueueFn | undefined;
 
   constructor(deps: NegotiationWatchdogQueueDeps = {}) {
     this.deps = deps;
     this.logger = deps.logger ?? log.queue.from('NegotiationWatchdogQueue');
     this.clock = deps.clock ?? (() => new Date());
     this.negotiationGraph = deps.negotiationGraph;
+    this.reflectEnqueue = deps.reflectEnqueue;
   }
 
   /** Wired once at startup by main.ts, after the single NegotiationGraph is compiled. */
   setNegotiationGraph(graph: NegotiationGraphLike): void {
     this.negotiationGraph = graph;
+  }
+
+  /** Wired once at startup so durable ready pauses can retry their reflect enqueue. */
+  setReflectEnqueue(enqueue: NegotiationRoundReflectEnqueueFn): void {
+    this.reflectEnqueue = enqueue;
   }
 
   private get queue(): WatchdogQueueHandle {
@@ -240,7 +252,49 @@ export class NegotiationWatchdogQueue {
     }
 
     const pause = asRecord(metadata.pause);
+    if (staleTask.state === 'completed') {
+      const seats = asRecord(metadata.seats);
+      let succeeded = true;
+      for (const [intentId, rawBinding] of Object.entries(seats)) {
+        const binding = asRecord(rawBinding);
+        if (typeof binding.userId !== 'string' || typeof binding.round !== 'number') continue;
+        const checked = await maybeEnqueueRoundReflect(database, this.reflectEnqueue, {
+          userId: binding.userId,
+          intentId,
+          round: binding.round,
+        });
+        succeeded &&= checked;
+      }
+      if (succeeded) {
+        await database.clearNegotiationReflectPending(staleTask.id);
+      } else {
+        await database.recordNegotiationWatchdogRecoveryCheck({
+          taskId: staleTask.id,
+          expectedUpdatedAt: staleTask.updatedAt,
+          checkedAt: this.clock(),
+        });
+      }
+      return;
+    }
     if (staleTask.state === 'paused') {
+      if (pause.reason === 'ready_for_verdict') {
+        const seats = asRecord(metadata.seats);
+        for (const [intentId, rawBinding] of Object.entries(seats)) {
+          const binding = asRecord(rawBinding);
+          if (typeof binding.userId !== 'string' || typeof binding.round !== 'number') continue;
+          await maybeEnqueueRoundReflect(database, this.reflectEnqueue, {
+            userId: binding.userId,
+            intentId,
+            round: binding.round,
+          });
+        }
+        await database.recordNegotiationWatchdogRecoveryCheck({
+          taskId: staleTask.id,
+          expectedUpdatedAt: staleTask.updatedAt,
+          checkedAt: this.clock(),
+        });
+        return;
+      }
       if (pause.reason !== 'needs_principal' && pause.reason !== 'counterparty_silent') return;
       if (!this.negotiationGraph) {
         this.logger.error('Negotiation watchdog fired before the graph was wired', { taskId: candidate.id });
@@ -265,11 +319,76 @@ export class NegotiationWatchdogQueue {
     }
 
     const opportunity = await opportunities.getOpportunity(opportunityId);
+    if (opportunity?.status === 'expired') {
+      if (!this.negotiationGraph) {
+        this.logger.error('Negotiation watchdog cannot recover an expired opportunity', {
+          taskId: candidate.id,
+          opportunityId,
+        });
+      } else {
+        const result = await this.negotiationGraph.invoke({
+          negotiationId: staleTask.id,
+          close: { reason: 'opportunity_expired' },
+        });
+        if (result.status === 'error') {
+          this.logger.error('Negotiation watchdog expiry recovery returned an error status', {
+            taskId: candidate.id,
+            opportunityId,
+            error: result.error,
+          });
+        }
+      }
+      await database.recordNegotiationWatchdogRecoveryCheck({
+        taskId: staleTask.id,
+        expectedUpdatedAt: staleTask.updatedAt,
+        checkedAt: this.clock(),
+      });
+      return;
+    }
+    if (opportunity?.status === 'accepted' || opportunity?.status === 'rejected') {
+      const byUserId = typeof metadata.sourceUserId === 'string'
+        ? metadata.sourceUserId
+        : typeof metadata.candidateUserId === 'string' ? metadata.candidateUserId : null;
+      if (!this.negotiationGraph || !byUserId) {
+        this.logger.error('Negotiation watchdog cannot recover terminal owner verdict', {
+          taskId: candidate.id,
+          opportunityId,
+        });
+      } else {
+        const result = await this.negotiationGraph.invoke({
+          negotiationId: staleTask.id,
+          close: {
+            reason: 'owner_verdict',
+            verdict: opportunity.status === 'rejected' ? 'reject' : 'pending',
+            reasoning: 'Recovered after the owner verdict committed before negotiation closure.',
+          },
+          byUserId,
+        });
+        if (result.status === 'error') {
+          this.logger.error('Negotiation watchdog owner-verdict recovery returned an error status', {
+            taskId: candidate.id,
+            opportunityId,
+            error: result.error,
+          });
+        }
+      }
+      await database.recordNegotiationWatchdogRecoveryCheck({
+        taskId: staleTask.id,
+        expectedUpdatedAt: staleTask.updatedAt,
+        checkedAt: this.clock(),
+      });
+      return;
+    }
     if (!opportunity || opportunity.status !== 'negotiating') {
       this.logger.info('Negotiation watchdog skipped task whose opportunity is not negotiating', {
         taskId: candidate.id,
         opportunityId,
         opportunityStatus: opportunity?.status ?? 'missing',
+      });
+      await database.recordNegotiationWatchdogRecoveryCheck({
+        taskId: staleTask.id,
+        expectedUpdatedAt: staleTask.updatedAt,
+        checkedAt: this.clock(),
       });
       return;
     }

@@ -8,7 +8,7 @@ function cyclePhase(cycle: IntentCycleSnapshot): { label: string; detail: string
   const { round } = cycle;
   if (round.number === 0) return { label: "Waiting for kickoff", detail: "", active: 1 };
   if (round.size === null) return { label: `Opening round ${round.number}`, detail: "The agent is creating this round's negotiations.", active: 3 };
-  if (round.working > 0) return { label: `Round ${round.number} negotiating`, detail: `${round.working} active · ${round.paused} paused`, active: 4 };
+  if (round.active > 0) return { label: `Round ${round.number} negotiating`, detail: `${round.active} active · ${round.paused} paused`, active: 4 };
   return { label: `Round ${round.number} ready to reflect`, detail: `${round.paused} paused · the intent agent decides the next step`, active: 5 };
 }
 

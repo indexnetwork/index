@@ -151,6 +151,30 @@ interface OpportunityCardProps {
   currentStatus?: string;
   /** Owner-seat inspector for a negotiating opportunity, if task state is known. */
   negotiationInspectorHref?: string;
+  /** Current owner-relative task state, used for truthful responsibility copy. */
+  negotiationState?: {
+    state: string;
+    pause: { reason: string; by: "yours" | "theirs" } | null;
+  };
+}
+
+function negotiationStatusCopy(negotiation: OpportunityCardProps["negotiationState"]): string {
+  if (!negotiation) return "This negotiation is in progress.";
+  if (negotiation.state !== "paused" || !negotiation.pause) {
+    return "Your PersonalAgent is handling this negotiation.";
+  }
+  if (negotiation.pause.by === "theirs") {
+    if (negotiation.pause.reason === "ready_for_verdict") return "The other side is deciding.";
+    if (negotiation.pause.reason === "needs_principal") return "The other side is waiting on its principal.";
+    return "Waiting for the other side.";
+  }
+  if (negotiation.pause.reason === "needs_principal") {
+    return "Your PersonalAgent needs your input. Questions appear in this intent's DM.";
+  }
+  if (negotiation.pause.reason === "ready_for_verdict") {
+    return "Your PersonalAgent is deciding what to do next.";
+  }
+  return "Your PersonalAgent is handling this negotiation.";
 }
 
 /**
@@ -204,6 +228,7 @@ export default function OpportunityCard({
   showScore = false,
   currentStatus,
   negotiationInspectorHref,
+  negotiationState,
 }: OpportunityCardProps) {
   const navigate = useNavigate();
   const [actionTaken, setActionTaken] = useState<
@@ -456,7 +481,7 @@ export default function OpportunityCard({
 
       {effectiveStatus === "negotiating" && (
         <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">
-          <p>Your PersonalAgent is handling this negotiation. Questions for you appear in this intent&apos;s DM.</p>
+          <p>{negotiationStatusCopy(negotiationState)}</p>
           {negotiationInspectorHref && (
             <Link
               to={negotiationInspectorHref}

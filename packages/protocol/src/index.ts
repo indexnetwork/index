@@ -239,6 +239,7 @@ export type {
 export { negotiationRoundReflectJobId, maybeEnqueueRoundReflect } from "./internal/negotiations/negotiation.round-reflect.js";
 export type {
   NegotiationRoundReflectJobData,
+  NegotiationRoundReflectCheck,
   NegotiationRoundReflectEnqueueFn,
 } from "./internal/negotiations/negotiation.round-reflect.js";
 // ─── PersonalAgent (AgentGraph) ─────────────────────────────────────────────

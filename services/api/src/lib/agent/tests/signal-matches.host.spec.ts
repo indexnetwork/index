@@ -7,8 +7,8 @@ import { ACTIONABLE_VERDICT_STATUSES, PERSONAL_AGENT_MATCH_STATUSES, passVerdict
  * must FAIL the turn. Making the protocol seam throw achieved nothing while
  * the only host binding behind it caught everything and returned `[]`: a
  * transient database error still produced a reflect that saw no negotiations,
- * decided nothing, succeeded — and permanently consumed the round's one
- * retained reflect job.
+ * decided nothing, succeeded — and permanently consumed that drain
+ * generation's retained job.
  *
  * These run at the HOST binding, which is where the swallow actually lived.
  */

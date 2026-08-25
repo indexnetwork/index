@@ -43,8 +43,8 @@ export const agentDispatcher = new AgentDispatcherImpl(agentService);
 
 export const negotiationGraph = new NegotiationGraphFactory({
   database: conversationDatabaseAdapter,
-  // All-paused → reflect: the trigger is gated on the round's size stamp, so
-  // this fires exactly once per round, when kickoff's opens have all settled.
+  // All-paused → reflect: the trigger waits for an in-flight kickoff to finish,
+  // then deduplicates the durable task-generation vector for every bound seat.
   reflectEnqueue: async (job) => {
     const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
     await personalAgentQueue.addAllPausedEvent(job);
@@ -75,8 +75,8 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
     // `readSignalMatches`, NOT the degrading `readActionableCounterparties`:
     // every one of the agent's turns is about this list, and a read that
     // failed must fail the turn. Swallowed to `[]` it becomes a reflect that
-    // saw no negotiations, decided nothing, succeeded — and burned the round's
-    // one retained reflect job.
+    // saw no negotiations, decided nothing, succeeded — and burned that drain
+    // generation's one retained job.
     readMatches: async (userId, intentId) => (
       await readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)
     ).map((match) => ({

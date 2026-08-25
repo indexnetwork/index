@@ -197,7 +197,7 @@ export async function readSignalMatches(
  *
  * This swallow is NOT for the PersonalAgent. Its turns are ABOUT this list —
  * a reflect that reads `[]` from a transient database error decides nothing,
- * succeeds, and permanently consumes the round's one retained reflect job.
+ * succeeds, and permanently consumes that drain generation's retained job.
  * That lane calls {@link readSignalMatches} and lets the error propagate.
  */
 export async function readActionableCounterparties(

@@ -227,9 +227,9 @@ interface OpportunityPresentationDeps {
  *
  * An owner accept/reject is a user action on the OPPORTUNITY, outside the
  * negotiation loop — but the pairing it decides may still have a live
- * negotiation, and `NegotiationGraph`'s `resolve` is the only terminal write
+ * negotiation, and `NegotiationGraph`'s owner-close lane is the terminal write
  * on a negotiation task: it records the outcome artifact, completes the task,
- * and re-runs the all-paused check that arms the round's reflect job.
+ * and re-runs the all-paused check that arms each seat's drain-generation job.
  *
  * Production composes the conversation adapter's task read with the single
  * compiled graph; specs pass a fake pair.
@@ -237,8 +237,8 @@ interface OpportunityPresentationDeps {
 export interface OwnerVerdictNegotiationCloser {
   /** The opportunity's live (non-completed) negotiation, or null when it never negotiated. */
   liveNegotiationId(opportunityId: string): Promise<string | null>;
-  /** `NegotiationGraph.invoke` with a verdict — the resolve lane. */
-  resolve(input: {
+  /** Close the task after this service has committed the owner's opportunity verdict. */
+  close(input: {
     negotiationId: string;
     verdict: 'pending' | 'reject';
     reasoning: string;
@@ -291,23 +291,28 @@ export class OpportunityService {
     return {
       liveNegotiationId: async (opportunityId: string) =>
         (await conversationDatabaseAdapter.getNegotiationTaskForOpportunity(opportunityId))?.id ?? null,
-      resolve: (input) => negotiationGraph.invoke(input),
+      close: (input) => negotiationGraph.invoke({
+        negotiationId: input.negotiationId,
+        close: { reason: 'owner_verdict', verdict: input.verdict, reasoning: input.reasoning },
+        byUserId: input.byUserId,
+      }),
     };
   }
 
   /**
    * End the pairing's negotiation, if it still has one, on the owner's verdict.
    *
-   * `resolve` is the negotiation's only terminal write: it records the outcome
-   * artifact, completes the task, and re-runs the all-paused check so the
-   * round's `reflect:{intentId}:{round}` job can finally be enqueued. It leaves
-   * the opportunity status this method already wrote alone — a terminal status
-   * is the owner's, never overwritten by a verdict (see `resolveNode`).
+   * The graph's owner-close lane records the outcome artifact, completes the
+   * task, and re-runs the all-paused check so each
+   * bound seat's current drain-generation job can finally be enqueued. It leaves
+   * the opportunity status this method already wrote alone.
    *
    * A match that never negotiated has no task and nothing happens here.
    *
-   * Best-effort: the owner's decision is already committed and their request
-   * must not fail because a background trigger could not be re-armed.
+   * Best-effort immediately: the owner's decision is already committed and
+   * their request must not fail because this follow-up is unavailable. Any
+   * active task left behind beside an accepted/rejected opportunity remains a
+   * durable watchdog candidate and is retried on the next bounded sweep.
    */
   private async closeNegotiationForOwnerVerdict(
     opportunityId: string,
@@ -318,7 +323,7 @@ export class OpportunityService {
       const closer = await this.getNegotiationCloser();
       const negotiationId = await closer.liveNegotiationId(opportunityId);
       if (!negotiationId) return;
-      const result = await closer.resolve({
+      const result = await closer.close({
         negotiationId,
         // An accept closes the negotiation on its promotable outcome — the
         // owner's own `accepted` is the status, already written above. A
@@ -331,7 +336,7 @@ export class OpportunityService {
         byUserId,
       });
       if (result.status === 'error') {
-        updateStatusLogger.error('negotiation resolve failed after owner verdict (non-blocking)', {
+        updateStatusLogger.error('negotiation close failed after owner verdict (non-blocking)', {
           opportunityId,
           negotiationId,
           action,
@@ -757,11 +762,9 @@ export class OpportunityService {
     }
 
     // An owner verdict on a NEGOTIATED pairing has to end the negotiation too.
-    // The round's reflect trigger counts negotiation tasks still in `working`
-    // (`countActiveNegotiationsForRound`), so a reject or accept that flips only
-    // the opportunity leaves its task `working` forever: the round never reaches
-    // zero and `reflect:{intentId}:{round}` is never enqueued — the all-paused
-    // trigger defeated by the most ordinary user action.
+    // The reflect trigger waits for every task in each bound seat's round to
+    // stop working, so a reject or accept that flips only the opportunity
+    // leaves its task `working` forever and prevents that drain from enqueueing.
     if (captureAction) {
       await this.closeNegotiationForOwnerVerdict(opportunityId, captureAction, userId);
     }

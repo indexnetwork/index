@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "async_hooks";
 
 import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
 import { PersonalAgentGraphFactory, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_POST_ACTION_FAILURE, PERSONAL_AGENT_STRATEGY_FALLBACK, PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
+import { canonicalCounterpartyStatusProse } from "../../internal/agents/personal-agent/agent.judgment.js";
 import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
 import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
@@ -138,9 +139,43 @@ class ScriptedJudgment implements PersonalAgentJudgment {
         this.activePlan = this.plans[this.cursor++]?.(context) ?? [];
       }
     }
-    return this.activePlan.shift()
+    const fromPlan = this.activePlan[0];
+    let decided = fromPlan
       ?? await this.afterActs?.(context, executed, nonDurable)
-      ?? { tool: "message_user", text: `Here is where things stand after ${executed.length} act(s).` };
+      ?? { tool: "message_user" as const, text: `Here is where things stand after ${executed.length} act(s).` };
+    if (decided.tool === "message_user") {
+      const ready = context.paused.find((paused) => paused.pausedByUs && paused.reason === "ready_for_verdict");
+      if (ready) {
+        const recommendation = (ready.payload as { recommendation?: string } | undefined)?.recommendation;
+        return {
+          tool: recommendation === "reject" ? "reject" : "promote",
+          negotiationId: ready.negotiationId,
+          reasoning: "Resolving the owned verdict pause before replying.",
+        };
+      }
+      const needs = context.paused.find((paused) => paused.pausedByUs && paused.reason === "needs_principal");
+      if (needs && !decided.questions?.length) {
+        const prompt = (needs.payload as { question?: string } | undefined)?.question ?? "What should I tell the other side?";
+        decided = {
+          ...decided,
+          questions: [{
+            title: "Your input",
+            prompt,
+            options: [
+              { label: "Proceed", description: "Continue with the current direction." },
+              { label: "Hold", description: "Wait before continuing." },
+            ],
+            multiSelect: false,
+          }],
+        };
+      }
+      const canonicalCounterpartyStatus = canonicalCounterpartyStatusProse(context);
+      if (canonicalCounterpartyStatus) {
+        decided = { ...decided, text: canonicalCounterpartyStatus };
+      }
+    }
+    if (fromPlan) this.activePlan.shift();
+    return decided;
   }
 
   async strategy(context: PersonalAgentTurnContext): Promise<string> {
@@ -611,10 +646,6 @@ describe("PersonalAgent — chat-first intent turns", () => {
 
   test("refuses a repeated terminal verdict for the same negotiation", async () => {
     const judgment = new ScriptedJudgment([
-      () => [
-        { tool: "kickoff", reasoning: "Open it." },
-        { tool: "message_user", text: "The negotiation is open." },
-      ],
       (context) => {
         const negotiationId = context.paused[0]!.negotiationId;
         return [
@@ -623,18 +654,35 @@ describe("PersonalAgent — chat-first intent turns", () => {
         ];
       },
     ], undefined, (context, _executed, nonDurable) => {
-      const negotiationId = context.paused[0]!.negotiationId;
       return nonDurable.some((observation) =>
         observation.kind === "irreversible_tool_refused"
         && observation.tool === "promote"
-        && observation.negotiationId === negotiationId)
+      )
         ? { tool: "message_user", text: "I closed that negotiation as not a fit; the conflicting verdict was refused." }
         : { tool: "message_user", text: "I did not see the refused verdict." };
     });
     const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const task = await negotiationHost.createNegotiationTask({
+      conversationId: "conversation-repeated-verdict",
+      briefs: {},
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: "network-1",
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        drainGeneration: 0,
+      },
+    });
+    await negotiationHost.database.updateNegotiationTaskState(task.id, "paused", {
+      reason: "ready_for_verdict",
+      pausedBy: SOURCE_USER_ID,
+      payload: { recommendation: "reject", reasoning: "Not a fit." },
+    });
 
-    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
-    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: negotiationHost.round });
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
 
     expect(result.acts.map((act) => act.tool)).toEqual(["reject", "message_user"]);
     expect(result.messages).toEqual(["I closed that negotiation as not a fit; the conflicting verdict was refused."]);
@@ -644,7 +692,7 @@ describe("PersonalAgent — chat-first intent turns", () => {
     expect(principal.ledgerRows.filter((row) => row.act.tool === "promote")).toHaveLength(0);
   });
 
-  test("delivers the dedicated exhaustion response after kickoff's strategy", async () => {
+  test("tool exhaustion cannot bypass an owned verdict pause", async () => {
     const judgment = new ScriptedJudgment([() => [
       { tool: "kickoff", reasoning: "Open it." },
       ...Array.from({ length: 7 }, (_, index): PersonalAgentDecidedAct => ({ tool: "note_dossier", text: `Fact ${index + 1}.` })),
@@ -653,9 +701,9 @@ describe("PersonalAgent — chat-first intent turns", () => {
 
     const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
-    expect(result.messages.at(-1)).toBe(PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
-    expect(principal.dmMessages.at(-1)?.content).toBe(PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
-    expect(result.acts.filter((act) => act.tool === "kickoff")).toHaveLength(1);
+    expect(result.error).toBe("PersonalAgent exhausted its tool budget with an unresolved owned pause");
+    expect(principal.dmMessages.at(-1)?.content).not.toBe(PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
+    expect(principal.ledgerRows.filter((row) => row.act.tool === "kickoff")).toHaveLength(1);
   });
 
   test("a strategy message makes a later round-bump failure non-retryable", async () => {
@@ -696,7 +744,7 @@ describe("PersonalAgent — the whole cycle", () => {
       ],
       // 3. all_paused: ask what one table still needs.
       (context) => {
-        expect(context.paused).toHaveLength(3);
+        expect(context.paused).toHaveLength(2);
         return [{
           tool: "message_user",
           text: "One of them needs your earliest start date.",
@@ -711,15 +759,8 @@ describe("PersonalAgent — the whole cycle", () => {
           }],
         }];
       },
-      // 4. their answer: promote, reject, and re-kick the rest.
-      (context) => {
-        const byOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.negotiationId]));
-        return [
-          { tool: "promote", negotiationId: byOpportunity.get(SECOND_OPPORTUNITY_ID)!, reasoning: "They can move now." },
-          { tool: "reject", negotiationId: byOpportunity.get(THIRD_OPPORTUNITY_ID)!, reasoning: "Not a fit." },
-          { tool: "kickoff", reasoning: "Sending the rest back out with the start date." },
-        ];
-      },
+      // 4. their answer: re-kick the table that needed the principal.
+      () => [{ tool: "kickoff", reasoning: "Sending the answer back out." }],
     ]);
     const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol", "dave"]);
 
@@ -735,6 +776,7 @@ describe("PersonalAgent — the whole cycle", () => {
       "note_dossier",
       "message_user", // the strategy, written into the DM before anyone is contacted
       "kickoff",
+      "promote", // an own ready_for_verdict pause is resolved before replying
       "message_user", // the model's natural terminal response
     ]);
     // One brief per match, all derived from the same strategy.
@@ -743,7 +785,7 @@ describe("PersonalAgent — the whole cycle", () => {
     expect(new Set(judgment.briefCalls.map((call) => call.strategy)).size).toBe(1);
     expect(negotiationHost.tasks.size).toBe(3);
     for (const task of negotiationHost.tasks.values()) {
-      expect(task.state).toBe("paused");
+      expect(task.state).toBe(task.metadata.opportunityId === SECOND_OPPORTUNITY_ID ? "completed" : "paused");
       expect(task.briefs[SOURCE_USER_ID]).toBe(`Brief for ${task.metadata.opportunityId}: ${judgment.briefCalls[0]!.strategy}`);
       // The counterparty seat wrote its OWN, and never read the initiator's.
       expect(task.briefs[task.metadata.candidateUserId]).toMatch(/^Seat brief from what we were told:/);
@@ -752,39 +794,50 @@ describe("PersonalAgent — the whole cycle", () => {
     // check then fires exactly once for it.
     const round = negotiationHost.round;
     expect(negotiationHost.roundSize).toBe(3);
-    expect(negotiationHost.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round }]);
+    expect(negotiationHost.reflectJobs).toHaveLength(4);
+    expect(negotiationHost.reflectJobs).toEqual(expect.arrayContaining([
+      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round, generation: "task-1.0_task-2.0_task-3.0" },
+      { userId: CANDIDATE_USER_ID, intentId: "intent-bob-1", round: 0, generation: "task-1.0" },
+      { userId: "carol", intentId: "intent-carol-1", round: 0, generation: "task-2.0" },
+      { userId: "dave", intentId: "intent-dave-1", round: 0, generation: "task-3.0" },
+    ]));
     // Every act is on the ledger. The appends are guarded so a failure cannot
     // duplicate a real effect — which also means a broken one records nothing
     // and says nothing, so it is asserted rather than assumed.
     expect(principal.ledgerRows.map((row) => row.act.tool))
-      .toEqual(["message_user", "note_dossier", "message_user", "kickoff", "message_user"]);
+      .toEqual(["message_user", "note_dossier", "message_user", "kickoff", "promote", "message_user"]);
     // The principal's reply streamed back as ordered chunks.
     expect(principal.publishedChunks.map((chunk) => chunk.seq)).toEqual([1, 2, 3]);
 
     // ── 3. reflect: it asks, and decides nothing ──────────────────────────
     const reflectAsk = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round });
+    expect(reflectAsk.error).toBeUndefined();
     expect(reflectAsk.acts.map((act) => act.tool)).toEqual(["message_user"]);
-    expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "pending")).toHaveLength(0);
+    expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "pending")).toHaveLength(1);
     expect(negotiationHost.opportunityStatusUpdates.filter((update) => update.status === "rejected")).toHaveLength(0);
 
     // ── 4. next turn: promote, reject, re-kick ────────────────────────────
     const acted = await agent.invoke(userMessage("I could start in three weeks."));
     expect(acted.acts.map((act) => act.tool)).toEqual([
-      "promote",
-      "reject",
       "message_user", // the new round's strategy
       "kickoff",
+      "promote", // the reopened own verdict is resolved before replying
       "message_user", // the model's natural terminal response
     ]);
     expect(negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.status).toBe("pending");
-    expect(negotiationHost.opportunities.get(THIRD_OPPORTUNITY_ID)!.status).toBe("rejected");
-    // Only the undecided one was sent back out, with a brief of its own.
+    expect(negotiationHost.opportunities.get(THIRD_OPPORTUNITY_ID)!.status).toBe("negotiating");
+    // Only the own needs_principal pause was sent back out. The already
+    // promoted match and the counterparty-owned verdict pause were not reopened.
     const rekick = acted.acts.find((act) => act.tool === "kickoff")!;
     expect(rekick).toMatchObject({ tool: "kickoff", opened: 1 });
-    expect(judgment.briefCalls.at(-1)!.opportunityId).toBe(OPPORTUNITY_ID);
     expect(negotiationHost.tasks.size).toBe(3); // re-kick resumed, never duplicated
     expect(negotiationHost.round).toBe(round + 1);
-    expect(negotiationHost.reflectJobs.at(-1)).toEqual({ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: round + 1 });
+    expect(negotiationHost.reflectJobs.at(-1)).toEqual({
+      userId: SOURCE_USER_ID,
+      intentId: INTENT_ID,
+      round: round + 1,
+      generation: "task-1.1",
+    });
   });
 
   test("a pause payload is readable only by the seat that paused", async () => {
@@ -859,8 +912,9 @@ describe("PersonalAgent — termination and retry safety", () => {
         if (input.isOpening) return { verb: "outreach", message: `Opening on ${input.brief}`, reasoning: "Kickoff." };
         // Opportunity 2 stalls on its principal at the first reply, then plays
         // on when re-kicked — so it, too, eventually spends its budget.
-        if (input.brief.includes(SECOND_OPPORTUNITY_ID) && input.thread.length === 1) {
-          return { verb: "pause", reason: "needs_principal", payload: { question: "How soon?" } };
+        if (input.brief.includes(SECOND_OPPORTUNITY_ID)) {
+          if (input.thread.length === 1) return { verb: "counter", message: "How soon?", reasoning: "Asking." };
+          if (input.thread.length === 2) return { verb: "pause", reason: "needs_principal", payload: { question: "How soon?" } };
         }
         return { verb: "counter", message: "Pushing back.", reasoning: "Still talking." };
       },
@@ -986,7 +1040,9 @@ describe("PersonalAgent — kickoff safety at the edges", () => {
     expect(judgment.briefCalls).toHaveLength(1);             // a brief was derived
     expect(negotiationHost.round).toBe(5);                   // a NEW round, not a stamp of the stale one
     expect(negotiationHost.roundSize).toBe(1);
-    expect(negotiationHost.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 5 }]);
+    expect(negotiationHost.reflectJobs).toEqual([{
+      userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 5, generation: "task-1.0",
+    }]);
   });
 
   test("an open that fails leaves no live negotiation holding the round open", async () => {
@@ -1013,7 +1069,7 @@ describe("PersonalAgent — kickoff safety at the edges", () => {
     expect(await negotiationHost.database.countActiveNegotiationsForRound(INTENT_ID, negotiationHost.round)).toBe(0);
     // The round still settles, so its reflect fires instead of hanging.
     expect(negotiationHost.roundSize).toBe(1);
-    expect(negotiationHost.reflectJobs).toHaveLength(1);
+    expect(negotiationHost.reflectJobs.filter((job) => job.intentId === INTENT_ID)).toHaveLength(1);
   });
 
   test("a match that arrived during the turn wakes the agent again", async () => {
@@ -1136,8 +1192,8 @@ describe("PersonalAgent — what a turn may open, and what it may claim", () => 
   });
 
   test("a reflect turn whose reads fail does not report a successful empty turn", async () => {
-    // With the reflect job id retained forever, a swallowed read here would
-    // consume the round's one chance to reflect and stall the cycle for good.
+    // With this drain generation's job id retained forever, a swallowed read
+    // would consume that durable pause without deciding it.
     const judgment = new ScriptedJudgment([() => []]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
     negotiationHost.database.getPausedNegotiationTasksForIntent = async () => {
@@ -1177,8 +1233,10 @@ describe("PersonalAgent — round-4 regressions", () => {
 
     await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
-    // Only the round that actually holds the negotiations is reflected on.
-    expect(negotiationHost.reflectJobs.map((job) => job.round)).toEqual([stranded + 1]);
+    // The superseded round's newly durable drain and the later reopened
+    // generation are distinct moments, so both are reflected exactly once.
+    expect(negotiationHost.reflectJobs.filter((job) => job.intentId === INTENT_ID).map((job) => job.round))
+      .toEqual([stranded + 1]);
     expect([...negotiationHost.tasks.values()][0]!.metadata.seats[INTENT_ID]!.round).toBe(stranded + 1);
   });
 
@@ -1249,11 +1307,10 @@ describe("PersonalAgent — round-4 regressions", () => {
 });
 
 describe("PersonalAgent — round-5 regressions", () => {
-  test("a capped negotiation a later round left behind is still listed, and still rejectable", async () => {
-    // Being spent makes a negotiation ineligible for RE-KICK. It must not also
-    // make it invisible: conflating the two meant a table a later round left
-    // behind could never be promoted or rejected, so its opportunity sat
-    // `negotiating` forever and its principal never heard an outcome.
+  test("a capped negotiation left behind stays visible but is not verdict-actionable", async () => {
+    // Being spent makes a negotiation ineligible for RE-KICK, while the
+    // effects boundary also refuses a verdict unless this seat owns a
+    // ready_for_verdict pause. Visibility alone grants neither authority.
     const kickoff = (): PersonalAgentDecidedAct[] => [{ tool: "kickoff", reasoning: "Send them out." }];
     const judgment = new ScriptedJudgment(
       [kickoff, kickoff, (context) => {
@@ -1263,8 +1320,9 @@ describe("PersonalAgent — round-5 regressions", () => {
       }],
       (input) => {
         if (input.isOpening) return { verb: "outreach", message: `Opening on ${input.brief}`, reasoning: "Kickoff." };
-        if (input.brief.includes(SECOND_OPPORTUNITY_ID) && input.thread.length === 1) {
-          return { verb: "pause", reason: "needs_principal", payload: { question: "How soon?" } };
+        if (input.brief.includes(SECOND_OPPORTUNITY_ID)) {
+          if (input.thread.length === 1) return { verb: "counter", message: "How soon?", reasoning: "Asking." };
+          if (input.thread.length === 2) return { verb: "pause", reason: "needs_principal", payload: { question: "How soon?" } };
         }
         return { verb: "counter", message: "Pushing back.", reasoning: "Still talking." };
       },
@@ -1290,10 +1348,10 @@ describe("PersonalAgent — round-5 regressions", () => {
       negotiationId: capped.id,
       opportunityId: OPPORTUNITY_ID,
       reasoning: "Went nowhere.",
-      outcome: "resolved",
+      outcome: "error",
     });
     expect(acted.acts[1]).toMatchObject({ tool: "message_user" });
-    expect(negotiationHost.opportunities.get(OPPORTUNITY_ID)!.status).toBe("rejected");
+    expect(negotiationHost.opportunities.get(OPPORTUNITY_ID)!.status).toBe("negotiating");
   });
 
   test("a negotiation that pauses between the count and the stamp still gets its reflect", async () => {
@@ -1314,8 +1372,8 @@ describe("PersonalAgent — round-5 regressions", () => {
     await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
     expect(negotiationHost.roundSize).toBe(1);
-    expect(negotiationHost.reflectJobs).toEqual([
-      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: negotiationHost.round },
+    expect(negotiationHost.reflectJobs.filter((job) => job.intentId === INTENT_ID)).toEqual([
+      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: negotiationHost.round, generation: "task-1.0" },
     ]);
   });
 
@@ -1356,23 +1414,26 @@ describe("PersonalAgent — the three decided design questions", () => {
     expect(theirs).not.toBe(ours);
     expect(judgment.seatBriefCalls).toHaveLength(1);
     expect(judgment.seatBriefCalls[0]!.intent.payload).toBe("bob wants a suitable match.");
-    expect(task.metadata.seats).toEqual({ [INTENT_ID]: { userId: SOURCE_USER_ID, round: negotiationHost.round } });
+    expect(task.metadata.seats).toEqual({
+      [INTENT_ID]: { userId: SOURCE_USER_ID, round: negotiationHost.round },
+      "intent-bob-1": { userId: CANDIDATE_USER_ID, round: 0 },
+    });
     expect(negotiationInputs.find((input) => input.userId === CANDIDATE_USER_ID)).toEqual({
       userId: CANDIDATE_USER_ID,
       intentId: "intent-bob-1",
       negotiationId: task.id,
     });
     const bobFirstTurn = judgment.negotiationTurnCalls.find((input) => input.intent.userId === CANDIDATE_USER_ID)!;
-    // Bob gets only Bob's resolved intent, the task context that still has
-    // Alice as its sole metadata seat, the history, and Bob's generated brief.
+    // Bob gets only Bob's resolved intent, the durable two-seat task context,
+    // the history, and Bob's generated brief.
     expect(bobFirstTurn.intent).toMatchObject({ id: "intent-bob-1", payload: "bob wants a suitable match." });
-    expect(bobFirstTurn.negotiation).toMatchObject({ id: task.id, metadata: { seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: negotiationHost.round } } } });
+    expect(bobFirstTurn.negotiation).toMatchObject({ id: task.id, metadata: { seats: task.metadata.seats } });
     expect(bobFirstTurn.thread.length).toBeGreaterThan(0);
     expect(bobFirstTurn.brief).toBe(theirs);
     // The brief had the same own intent and actual history available when it
     // was authored; it was not inferred from the task's seat metadata.
     expect(judgment.seatBriefCalls[0]!.thread.length).toBeGreaterThan(0);
-    expect(judgment.seatBriefCalls[0]!.negotiation.metadata.seats).toEqual({ [INTENT_ID]: { userId: SOURCE_USER_ID, round: negotiationHost.round } });
+    expect(judgment.seatBriefCalls[0]!.negotiation.metadata.seats).toEqual(task.metadata.seats);
     // And a re-kick rewrites only the initiator's half.
     await negotiationHost.database.setNegotiationBrief(task.id, SOURCE_USER_ID, "a fresh brief");
     expect(negotiationHost.taskFor(task.id).briefs[CANDIDATE_USER_ID]).toBe(theirs);
@@ -1456,12 +1517,264 @@ describe("PersonalAgent — the three decided design questions", () => {
     await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
     expect(negotiationHost.roundSize).toBe(1);
-    expect(negotiationHost.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: stranded }]);
+    expect(negotiationHost.reflectJobs.filter((job) => job.intentId === INTENT_ID)).toEqual([{
+      userId: SOURCE_USER_ID, intentId: INTENT_ID, round: stranded, generation: "task-1.0",
+    }]);
   });
 });
 
 describe("PersonalAgent — round-6: per-seat binding and the kickoff region", () => {
   const BOB_INTENT = "intent-bob-1";
+
+  test("a counterparty-owned pause is neither verdict-actionable nor kickoff-eligible", async () => {
+    const judgment = new ScriptedJudgment([(context) => {
+      expect(context.paused[0]).toMatchObject({ pausedByUs: false, reason: "ready_for_verdict" });
+      expect(context.kickoffTargets).toEqual([]);
+      return [{
+        tool: "reject",
+        negotiationId: context.paused[0]!.negotiationId,
+        reasoning: "An injected judgment must still be fenced.",
+      }];
+    }]);
+    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const task = await negotiationHost.createNegotiationTask({
+      conversationId: "conversation-counterparty-owned",
+      briefs: {},
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: "network-1",
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        drainGeneration: 0,
+      },
+    });
+    await negotiationHost.database.updateNegotiationTaskState(task.id, "paused", {
+      reason: "ready_for_verdict",
+      pausedBy: CANDIDATE_USER_ID,
+    });
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
+
+    expect(result.acts).toContainEqual(expect.objectContaining({ tool: "reject", outcome: "error" }));
+    expect(negotiationHost.taskFor(task.id).state).toBe("paused");
+    expect(negotiationHost.outcomeArtifacts.has(task.id)).toBe(false);
+  });
+
+  test("kickoff replaces model strategy narration with canonical counterparty status", async () => {
+    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Open only the fresh match." }]]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
+    const task = await negotiationHost.createNegotiationTask({
+      conversationId: "conversation-counterparty-strategy",
+      briefs: {},
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: "network-1",
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        drainGeneration: 0,
+      },
+    });
+    await negotiationHost.database.updateNegotiationTaskState(task.id, "paused", {
+      reason: "ready_for_verdict",
+      pausedBy: CANDIDATE_USER_ID,
+    });
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    expect(judgment.strategyCalls[0]!.kickoffTargets.map((match) => match.opportunityId)).toEqual([SECOND_OPPORTUNITY_ID]);
+    expect(judgment.briefCalls[0]).toMatchObject({
+      opportunityId: SECOND_OPPORTUNITY_ID,
+      strategy: "I will put your constraints to each of them and find out who can actually move.",
+    });
+    expect(principal.dmMessages[0]?.content).toBe("The other side is deciding.");
+    expect(principal.dmMessages.some((message) => message.content.includes("put your constraints"))).toBe(false);
+  });
+
+  test("message_user is refused until an own ready_for_verdict pause is resolved", async () => {
+    class ResolveBeforeReplyJudgment extends ScriptedJudgment {
+      calls = 0;
+      override async next(
+        context: PersonalAgentTurnContext,
+        _executed: PersonalAgentExecutedAct[],
+        nonDurable: PersonalAgentNonDurableObservation[] = [],
+      ): Promise<PersonalAgentDecidedAct> {
+        this.calls += 1;
+        if (this.calls === 1) return { tool: "message_user", text: "I am done." };
+        if (this.calls === 2) {
+          expect(nonDurable).toContainEqual(expect.objectContaining({ kind: "terminal_message_refused" }));
+          return { tool: "reject", negotiationId: context.paused[0]!.negotiationId, reasoning: "Not a fit." };
+        }
+        expect(context.paused).toHaveLength(0);
+        return { tool: "message_user", text: "I dismissed the match." };
+      }
+    }
+    const judgment = new ResolveBeforeReplyJudgment([]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const task = await negotiationHost.createNegotiationTask({
+      conversationId: "conversation-owned-verdict",
+      briefs: {},
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: "network-1",
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        drainGeneration: 0,
+      },
+    });
+    await negotiationHost.database.updateNegotiationTaskState(task.id, "paused", {
+      reason: "ready_for_verdict",
+      pausedBy: SOURCE_USER_ID,
+      payload: { recommendation: "reject", reasoning: "Not a fit." },
+    });
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
+
+    expect(result.acts.map((act) => act.tool)).toEqual(["reject", "message_user"]);
+    expect(result.messages).toEqual(["I dismissed the match."]);
+    expect(principal.dmMessages.some((message) => message.content === "I am done.")).toBe(false);
+  });
+
+  test("a post-action failure cannot fall back to a terminal message over an own verdict pause", async () => {
+    class FailAfterDurableActJudgment extends ScriptedJudgment {
+      calls = 0;
+      override async next(): Promise<PersonalAgentDecidedAct> {
+        this.calls += 1;
+        if (this.calls === 1) return { tool: "note_dossier", text: "The client prefers a short engagement." };
+        throw new Error("model unavailable before verdict");
+      }
+    }
+    const judgment = new FailAfterDurableActJudgment([]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const task = await negotiationHost.createNegotiationTask({
+      conversationId: "conversation-owned-verdict-failure",
+      briefs: {},
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: "network-1",
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        drainGeneration: 0,
+      },
+    });
+    await negotiationHost.database.updateNegotiationTaskState(task.id, "paused", {
+      reason: "ready_for_verdict",
+      pausedBy: SOURCE_USER_ID,
+    });
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
+
+    expect(result.error).toBe("model unavailable before verdict");
+    expect(principal.ledgerRows.map((row) => row.act.tool)).toEqual(["note_dossier"]);
+    expect(principal.dmMessages.some((message) => message.content === PERSONAL_AGENT_POST_ACTION_FAILURE)).toBe(false);
+  });
+
+  test("needs_principal remains paused and is delivered as structured questions", async () => {
+    class AskStructurallyJudgment extends ScriptedJudgment {
+      calls = 0;
+      override async next(
+        _context: PersonalAgentTurnContext,
+        _executed: PersonalAgentExecutedAct[],
+        nonDurable: PersonalAgentNonDurableObservation[] = [],
+      ): Promise<PersonalAgentDecidedAct> {
+        this.calls += 1;
+        if (this.calls === 1) return { tool: "message_user", text: "I need one detail." };
+        expect(nonDurable).toContainEqual(expect.objectContaining({ kind: "terminal_message_refused" }));
+        return {
+          tool: "message_user",
+          text: "I need one detail.",
+          questions: [{
+            title: "Timing",
+            prompt: "When can you start?",
+            options: [
+              { label: "This month", description: "Start within a few weeks." },
+              { label: "Later", description: "Wait until next quarter." },
+            ],
+            multiSelect: false,
+          }],
+        };
+      }
+    }
+    const judgment = new AskStructurallyJudgment([]);
+    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const task = await negotiationHost.createNegotiationTask({
+      conversationId: "conversation-owned-question",
+      briefs: {},
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: "network-1",
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        drainGeneration: 0,
+      },
+    });
+    await negotiationHost.database.updateNegotiationTaskState(task.id, "paused", {
+      reason: "needs_principal",
+      pausedBy: SOURCE_USER_ID,
+      payload: { question: "When can you start?" },
+    });
+
+    const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
+
+    expect(result.acts.map((act) => act.tool)).toEqual(["message_user"]);
+    expect(principal.dmMessages.at(-1)?.questions?.[0]?.prompt).toBe("When can you start?");
+    expect(negotiationHost.taskFor(task.id).state).toBe("paused");
+  });
+
+  test("a counterparty-owned verdict pause wakes that seat and its reject closes the opportunity", async () => {
+    const judgment = new ScriptedJudgment(
+      [
+        () => [{ tool: "kickoff", reasoning: "Daniel opens the match." }],
+        (context) => {
+          expect(context.userId).toBe(CANDIDATE_USER_ID);
+          expect(context.intentId).toBe(BOB_INTENT);
+          const ownVerdict = context.paused.find((paused) =>
+            paused.pausedByUs && paused.reason === "ready_for_verdict")!;
+          return [{ tool: "reject", negotiationId: ownVerdict.negotiationId, reasoning: "Not a fit for this side." }];
+        },
+      ],
+      (input) => input.isOpening
+        ? { verb: "outreach", message: "Would this be useful?", reasoning: "Opening." }
+        : { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
+    );
+    const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+
+    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
+
+    const task = [...negotiationHost.tasks.values()][0]!;
+    expect(task.metadata.seats[BOB_INTENT]).toEqual({ userId: CANDIDATE_USER_ID, round: 0 });
+    const wake = negotiationHost.reflectJobs.find((job) => job.intentId === BOB_INTENT);
+    expect(wake).toEqual({
+      userId: CANDIDATE_USER_ID,
+      intentId: BOB_INTENT,
+      round: 0,
+      generation: `${task.id}.0`,
+    });
+
+    const drained = await agent.invoke({
+      userId: wake!.userId,
+      intentId: wake!.intentId,
+      event: "all_paused",
+      round: wake!.round,
+    });
+    expect(drained.acts.map((act) => act.tool)).toEqual(["reject", "message_user"]);
+    expect(negotiationHost.opportunities.get(OPPORTUNITY_ID)!.status).toBe("rejected");
+    expect(negotiationHost.taskFor(task.id).state).toBe("completed");
+  });
 
   /**
    * The pair-dedup case. Opportunities appear in BOTH actors' match lists, so
@@ -1518,10 +1831,9 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     expect(replied.messages).toEqual(["Here is where things stand after 0 act(s)."]);
   });
 
-  test("D21: a negotiation the counterparty opened is still decidable by BOTH agents", async () => {
-    // The design doc's terminator rule — a side that wants out pauses
-    // ready_for_verdict(reject) and ITS OWN IS-A rejects — needs the seat's
-    // agent to be able to SEE the negotiation. Single ownership hid it.
+  test("D21: a negotiation the counterparty opened is visible to both agents but actionable only by its pause owner", async () => {
+    // Both seats need visibility, while only the seat whose negotiator paused
+    // ready_for_verdict may act on that recommendation.
     const judgment = new ScriptedJudgment([() => []]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
     const task = await negotiationHost.createNegotiationTask({
@@ -1549,8 +1861,9 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
 
     await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "all_paused", round: 1 });
 
-    // Alice's agent sees it, so it can promote or reject it.
-    expect(judgment.decideCalls.at(-1)!.paused.map((paused) => paused.negotiationId)).toEqual([task.id]);
+    const context = judgment.decideCalls.at(-1)!;
+    expect(context.paused).toEqual([expect.objectContaining({ negotiationId: task.id, pausedByUs: false })]);
+    expect(context.kickoffTargets).toEqual([]);
   });
 
   test("D52: the agent is shown exactly what a kickoff would open", async () => {
@@ -1608,7 +1921,7 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     expect(negotiationHost.tasks.size).toBe(2);
     // The round settles both the successful and compensated task, so it can reflect.
     expect(negotiationHost.roundSize).toBe(2);
-    expect(negotiationHost.reflectJobs).toHaveLength(1);
+    expect(negotiationHost.reflectJobs.filter((job) => job.intentId === INTENT_ID)).toHaveLength(1);
     // And the loss is on the record, not silent.
     expect(principal.ledgerRows.some((row) => typeof row.act.reasoning === "string"
       && row.act.reasoning.includes("Could not open 1 of 2"))).toBe(true);

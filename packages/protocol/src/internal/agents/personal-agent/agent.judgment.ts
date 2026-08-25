@@ -75,6 +75,42 @@ export function normalizeMessageQuestions(raw: unknown): Question[] | undefined 
   return questions.length > 0 ? questions : undefined;
 }
 
+function canonicalCounterpartyPauseProse(
+  reason: PersonalAgentTurnContext["paused"][number]["reason"],
+): string {
+  switch (reason) {
+    case "ready_for_verdict":
+      return "The other side is deciding.";
+    case "needs_principal":
+      return "The other side is waiting on its principal.";
+    case "counterparty_silent":
+      return "The other side is waiting for a response.";
+    case "turn_cap":
+      return "The negotiation reached its turn limit.";
+    case "open_failed":
+      return "The negotiation could not be opened.";
+    default:
+      return "The other side is paused.";
+  }
+}
+
+/** The complete server-owned narration for every public counterpart pause. */
+export function canonicalCounterpartyStatusProse(context: PersonalAgentTurnContext): string | null {
+  const statuses = [...new Set(context.paused
+    .filter((paused) => !paused.pausedByUs)
+    .map((paused) => canonicalCounterpartyPauseProse(paused.reason)))];
+  return statuses.length > 0 ? statuses.join(" ") : null;
+}
+
+/** Counterparty state is server-owned, never inferred from model vocabulary. */
+export function isSupportedPersonalAgentStatusProse(
+  text: string,
+  context: PersonalAgentTurnContext,
+): boolean {
+  const canonical = canonicalCounterpartyStatusProse(context);
+  return canonical === null || text.trim() === canonical;
+}
+
 // ─── Rendering ───────────────────────────────────────────────────────────────
 
 function renderThread(thread: PersonalAgentThreadEntry[], indent = ""): string {
@@ -90,6 +126,9 @@ function renderThread(thread: PersonalAgentThreadEntry[], indent = ""): string {
 function renderPaused(context: PersonalAgentTurnContext): string {
   if (context.paused.length === 0) return "Paused negotiations: none.";
   const lines = context.paused.map((paused, index) => {
+    if (!paused.pausedByUs) {
+      return `${index + 1}. ${canonicalCounterpartyPauseProse(paused.reason)}`;
+    }
     const parts = [`${index + 1}. Paused (${paused.reason}) by ${paused.pausedByUs ? "your own seat" : "their agent"}`];
     const payload = paused.payload as { question?: string; recommendation?: string; reasoning?: string } | undefined;
     if (payload?.question) parts.push(`   Needs from your client: ${truncate(payload.question, MAX_TEXT_CHARS)}`);
@@ -144,6 +183,7 @@ function renderEvent(context: PersonalAgentTurnContext): string {
 
 /** What judgment sees, rendered; exported for the live eval's transparency. */
 export function renderPersonalAgentTurn(context: PersonalAgentTurnContext): string {
+  const canonicalCounterpartyStatus = canonicalCounterpartyStatusProse(context);
   return [
     context.signalText ? `Your client's signal: ${truncate(context.signalText, 800)}` : "Your client's signal text is unavailable.",
     "",
@@ -155,6 +195,10 @@ export function renderPersonalAgentTurn(context: PersonalAgentTurnContext): stri
     renderLedger(context),
     "",
     renderDm(context),
+    "",
+    canonicalCounterpartyStatus
+      ? `CANONICAL COUNTERPART STATUS RESPONSE:\n${canonicalCounterpartyStatus}\nBecause counterpart status is present, message_user text must be exactly this server-owned response. Put any questions in the structured questions field.`
+      : "",
     "",
     renderEvent(context),
   ].join("\n");
@@ -196,6 +240,7 @@ function renderNonDurableObservations(
 ): string {
   if (observations.length === 0) return "";
   const lines = observations.map((observation) => {
+    if (observation.kind === "terminal_message_refused") return `- Refused message_user: ${observation.reason}`;
     if (observation.tool === "kickoff") return `- Refused kickoff: ${observation.reason}`;
     if (observation.tool === "accept_opportunity") {
       const position = context.matches.findIndex((match) => match.opportunityId === observation.opportunityId);
@@ -279,7 +324,7 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
       { role: "user", content: renderPersonalAgentTurn(context) },
     ]));
     const text = parsed.success ? parsed.data.text.trim() : "";
-    if (!text || !isSafeAgentMessageProse(text)) {
+    if (!text || !isSafeAgentMessageProse(text) || !isSupportedPersonalAgentStatusProse(text, context)) {
       throw new Error("PersonalAgent produced no usable strategy");
     }
     return text;
@@ -420,6 +465,7 @@ export function validateDecidedAct(
       {
         const text = act.text?.trim();
         if (!text || !isSafeAgentMessageProse(text)) return null;
+        if (!isSupportedPersonalAgentStatusProse(text, context)) return null;
         const questions = normalizeMessageQuestions(act.questions);
         // Questions belong in the structured field. Keeping them out of prose
         // prevents the same ask rendering twice and guarantees widget delivery.
@@ -433,9 +479,11 @@ export function validateDecidedAct(
       case "promote":
       case "reject": {
         if (!act.negotiation || act.negotiation > context.paused.length) return null;
+        const paused = context.paused[act.negotiation - 1]!;
+        if (!paused.pausedByUs || paused.reason !== "ready_for_verdict") return null;
         return {
           tool: act.act,
-          negotiationId: context.paused[act.negotiation - 1]!.negotiationId,
+          negotiationId: paused.negotiationId,
           reasoning: act.reasoning?.trim() || (act.act === "promote" ? "Worth surfacing." : "Not a match."),
         };
       }

@@ -33,6 +33,35 @@ pin a supported release, use `latest`.
   from authoritative discovery candidates rather than evaluator-generated
   intent IDs, and intent-scoped persistence fails closed on an unbound seat.
 
+- **Negotiation drains are keyed by durable task generations and tasks bind
+  both seats at creation.** `NegotiationTaskMetadata` gains
+  `drainGeneration`; `NegotiationGraphDatabase.openNegotiationTask` accepts
+  the complete `seats` map; `NegotiationRoundReflectJobData` gains
+  `generation`; `NegotiationTaskState` includes the active `submitted` state;
+  and `negotiationRoundReflectJobId` now requires its generation. Reopening a
+  paused task advances its generation, so one pause is deduplicated exactly
+  once without suppressing a later pause in the same round.
+
+### Changed
+
+- PersonalAgent intent turns reload durable negotiation state after each
+  action, cannot finish while an own `ready_for_verdict` pause remains, and
+  expose counterparty pauses only through canonical public status prose.
+- Only the seat owning a `ready_for_verdict` pause may resolve it;
+  counterparty-owned pauses cannot be re-opened, and kickoff strategy copy
+  cannot bypass canonical public status narration.
+- The negotiation watchdog retries reflect delivery for durable
+  `ready_for_verdict` pauses, and intent-cycle projections count both
+  `submitted` and `working` tasks as active.
+- Verdict completion now atomically records the outcome, completes the task,
+  and preserves any concurrent terminal human decision. Post-verdict reflect
+  delivery remains durably marked until it succeeds, terminal owner actions
+  left beside active tasks are recovered by the watchdog, and bounded sweeps
+  rotate checked rows so newer pauses cannot starve.
+- Scheduled opportunity expiry now closes any active negotiation through a
+  distinct system lane, without fabricating an owner verdict, so expired work
+  cannot hold either seat's round open.
+
 ## 35.0.0 - 2026-08-24
 
 ### Breaking

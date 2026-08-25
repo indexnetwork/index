@@ -29,8 +29,9 @@ describe("Radar responsibility buckets", () => {
     ["needs_principal", "theirs", "waiting"],
     ["counterparty_silent", "theirs", "waiting"],
     ["ready_for_verdict", "yours", "agent-handling"],
+    ["ready_for_verdict", "theirs", "waiting"],
     ["turn_cap", "yours", "agent-handling"],
-    ["open_failed", "theirs", "agent-handling"],
+    ["open_failed", "theirs", "waiting"],
   ] as const)("maps paused %s owned by %s to %s", (reason, by, bucket) => {
     expect(radarBucketForOpportunity(
       "negotiating",

@@ -236,7 +236,7 @@ describe('ConversationDatabaseAdapter', () => {
   });
 
   describe('getStaleNegotiationTasks', () => {
-    it('returns only stale submitted/working negotiation tasks', async () => {
+    it('returns stale active tasks and durable ready-for-verdict recovery markers', async () => {
       const conv = await adapter.createConversation([
         { participantId: 'agent:watchdog-a', participantType: 'agent' as const },
         { participantId: 'agent:watchdog-b', participantType: 'agent' as const },
@@ -252,6 +252,42 @@ describe('ConversationDatabaseAdapter', () => {
       await adapter.updateTaskState(staleWorking.id, 'working');
       const freshSubmitted = await adapter.createTask(conv.id, {
         type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+      });
+      const terminalOpportunityId = `watchdog-terminal-${crypto.randomUUID()}`;
+      await db.insert(schema.opportunities).values({
+        id: terminalOpportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [{ networkId: 'watchdog-network', userId: 'watchdog-user', role: 'peer' }],
+        interpretation: { category: 'test', reasoning: 'Owner verdict recovery.', confidence: 1 },
+        context: {},
+        confidence: '1',
+        status: 'accepted',
+      });
+      createdOpportunityIds.push(terminalOpportunityId);
+      const terminalActive = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: terminalOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+      });
+      await adapter.updateTaskState(terminalActive.id, 'working');
+      const expiredOpportunityId = `watchdog-expired-${crypto.randomUUID()}`;
+      await db.insert(schema.opportunities).values({
+        id: expiredOpportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [{ networkId: 'watchdog-network', userId: 'watchdog-user', role: 'peer' }],
+        interpretation: { category: 'test', reasoning: 'Scheduled expiry recovery.', confidence: 1 },
+        context: {},
+        confidence: '1',
+        status: 'expired',
+      });
+      createdOpportunityIds.push(expiredOpportunityId);
+      const expiredActive = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: expiredOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+      });
+      await adapter.updateTaskState(expiredActive.id, 'working');
+      const readyForVerdict = await adapter.createTask(conv.id, {
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-ready', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+      });
+      await adapter.updateNegotiationTaskState(readyForVerdict.id, 'paused', {
+        reason: 'ready_for_verdict', pausedBy: 'watchdog-user',
       });
       const completed = await adapter.createTask(conv.id, {
         type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
@@ -289,12 +325,66 @@ describe('ConversationDatabaseAdapter', () => {
 
       expect(staleIds).toContain(staleSubmitted.id);
       expect(staleIds).toContain(staleWorking.id);
+      expect(staleIds).toContain(readyForVerdict.id);
+      expect(staleIds).toContain(terminalActive.id);
+      expect(staleIds).toContain(expiredActive.id);
       expect(staleIds).not.toContain(freshSubmitted.id);
       expect(staleIds).not.toContain(completed.id);
       expect(staleIds).not.toContain(nonNegotiation.id);
       expect(staleIds).not.toContain(legacySubmitted.id);
       expect(stale.every((task) => task.metadata && (task.metadata as Record<string, unknown>).type === 'negotiation')).toBe(true);
     }, 10000);
+
+    it('rotates checked ready pauses behind never-checked rows when the sweep is bounded', async () => {
+      const conv = await adapter.createConversation([
+        { participantId: 'agent:watchdog-rotation-a', participantType: 'agent' },
+        { participantId: 'agent:watchdog-rotation-b', participantType: 'agent' },
+      ]);
+      createdIds.push(conv.id);
+      const tasks = [];
+      for (let index = 0; index < 26; index++) {
+        const task = await adapter.createTask(conv.id, {
+          type: 'negotiation',
+          opportunityId: `watchdog-rotation-opportunity-${index}`,
+          sourceUserId: 'watchdog-rotation-user',
+          candidateUserId: 'watchdog-rotation-peer',
+          seats: { 'watchdog-rotation-intent': { userId: 'watchdog-rotation-user', round: 1 } },
+          drainGeneration: 0,
+        });
+        await adapter.updateNegotiationTaskState(task.id, 'paused', {
+          reason: 'ready_for_verdict', pausedBy: 'watchdog-rotation-user',
+        });
+        tasks.push(task.id);
+      }
+      await db.update(schema.tasks)
+        .set({ createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) })
+        .where(inArray(schema.tasks.id, tasks));
+
+      const first = await adapter.getStaleNegotiationTasks({
+        submittedOlderThanMs: 10 * 60 * 1000,
+        workingOlderThanMs: 12 * 60 * 60 * 1000,
+        limit: 25,
+      });
+      const rotationFirst = first.filter((task) => tasks.includes(task.id));
+      expect(rotationFirst).toHaveLength(25);
+      const neverCheckedId = tasks.find((id) => !rotationFirst.some((task) => task.id === id));
+      expect(neverCheckedId).toBeDefined();
+      const checkedAt = new Date();
+      for (const task of rotationFirst) {
+        await adapter.recordNegotiationWatchdogRecoveryCheck({
+          taskId: task.id,
+          expectedUpdatedAt: task.updatedAt,
+          checkedAt,
+        });
+      }
+
+      const second = await adapter.getStaleNegotiationTasks({
+        submittedOlderThanMs: 10 * 60 * 1000,
+        workingOlderThanMs: 12 * 60 * 60 * 1000,
+        limit: 25,
+      });
+      expect(second.map((task) => task.id)).toContain(neverCheckedId!);
+    }, 30000);
   });
 
   describe('getOpportunityLifecyclesForNegotiations', () => {
@@ -399,16 +489,21 @@ describe('ConversationDatabaseAdapter', () => {
           [ownerIntentId]: { userId: ownerId, round: 1 },
           [counterpartIntentId]: { userId: counterpartId, round: 1 },
         },
+        drainGeneration: 0,
         pause: {
           reason: 'ready_for_verdict',
           payload: { recommendation: 'pending', reasoning: 'Owner recommends proceeding.' },
           pausedBy: ownerId,
         },
       });
+      const submittedCycle = await adapter.getIntentCycleForIntent(ownerId, ownerIntentId);
+      expect(submittedCycle?.round.active).toBe(1);
+      expect(submittedCycle?.negotiations[0]?.state).toBe('submitted');
       await adapter.updateTaskState(task.id, 'paused');
 
       const ownerCycle = await adapter.getIntentCycleForIntent(ownerId, ownerIntentId);
       const counterpartCycle = await adapter.getIntentCycleForIntent(counterpartId, counterpartIntentId);
+      expect(ownerCycle?.round.active).toBe(0);
       expect(ownerCycle?.negotiations[0]?.pause?.by).toBe('yours');
       expect(counterpartCycle?.negotiations[0]?.pause?.by).toBe('theirs');
 
@@ -425,6 +520,66 @@ describe('ConversationDatabaseAdapter', () => {
         payload: { recommendation: 'pending', reasoning: 'Owner recommends proceeding.' },
       });
       expect(counterpartDetail?.task.pause).toEqual({ reason: 'ready_for_verdict', by: 'theirs' });
+
+      // A human action that commits before the agent's transaction acquires
+      // the opportunity lock must remain authoritative.
+      await db.update(schema.opportunities).set({ status: 'accepted', acceptedBy: ownerId })
+        .where(eq(schema.opportunities.id, opportunityId));
+      const completed = await adapter.completeNegotiation({
+        taskId: task.id,
+        kind: 'pause_verdict',
+        verdict: 'reject',
+        reasoning: 'Stale agent verdict.',
+        resolvedByUserId: ownerId,
+      });
+      expect(completed?.state).toBe('completed');
+      expect(completed?.metadata.watchdogReflectPending).toBe(true);
+      const [preserved] = await db.select({ status: schema.opportunities.status }).from(schema.opportunities)
+        .where(eq(schema.opportunities.id, opportunityId));
+      expect(preserved?.status).toBe('accepted');
+      const pendingReflect = await adapter.getStaleNegotiationTasks({
+        submittedOlderThanMs: 10 * 60 * 1000,
+        workingOlderThanMs: 12 * 60 * 60 * 1000,
+        limit: 1000,
+      });
+      expect(pendingReflect.map((candidate) => candidate.id)).toContain(task.id);
+      await adapter.clearNegotiationReflectPending(task.id);
+      expect((await adapter.getTask(task.id))?.metadata?.watchdogReflectPending).toBe(false);
+
+      const expiredOpportunityId = `expired-negotiation-${crypto.randomUUID()}`;
+      await db.insert(schema.opportunities).values({
+        id: expiredOpportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'pause-network', userId: ownerId, role: 'peer', intent: ownerIntentId },
+          { networkId: 'pause-network', userId: counterpartId, role: 'peer', intent: counterpartIntentId },
+        ],
+        interpretation: { category: 'test', reasoning: 'Scheduled expiry.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status: 'expired',
+      });
+      createdOpportunityIds.push(expiredOpportunityId);
+      const expiredTask = await adapter.createTask(conversation.id, {
+        type: 'negotiation',
+        opportunityId: expiredOpportunityId,
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        initiatorUserId: ownerId,
+        networkId: 'pause-network',
+        seats: {
+          [ownerIntentId]: { userId: ownerId, round: 1 },
+          [counterpartIntentId]: { userId: counterpartId, round: 1 },
+        },
+        drainGeneration: 0,
+      });
+      await adapter.updateTaskState(expiredTask.id, 'working');
+      const expiredClosed = await adapter.completeNegotiation({
+        taskId: expiredTask.id,
+        kind: 'opportunity_expired',
+      });
+      expect(expiredClosed?.state).toBe('completed');
+      expect(await adapter.getArtifactsForTask(expiredTask.id)).toEqual([]);
     }, 30000);
 
     it('projects the latest task, opportunity, turn, and signal lifecycle', async () => {
@@ -841,6 +996,9 @@ describe('ConversationDatabaseAdapter', () => {
         candidateUserId: counterpart,
         seats: { [intentId]: { userId, round: 3 } },
       });
+      // A just-created negotiation is submitted, and still holds the round
+      // active until its worker starts and eventually pauses or completes it.
+      expect(await adapter.countActiveNegotiationsForRound(intentId, 3)).toBe(1);
       await adapter.updateTaskState(current.id, 'working');
 
       // Pre-rewrite rows have no seat binding.
@@ -888,6 +1046,7 @@ describe('ConversationDatabaseAdapter', () => {
         sourceUserId: userId,
         candidateUserId: counterpart,
         seats: { 'intent-a': { userId, round: 1 } },
+        drainGeneration: 0,
       });
 
       // The old select-then-spread-then-update shape had a lost-update race
@@ -904,7 +1063,69 @@ describe('ConversationDatabaseAdapter', () => {
       expect(reread?.metadata.seats['intent-a']).toEqual({ userId, round: 7 });
       expect(reread?.metadata.pause).toMatchObject({ reason: 'counterparty_silent' });
       expect(reread?.state).toBe('paused');
+
+      const firstResume = await adapter.updateNegotiationTaskState(task.id, 'working', null);
+      expect(firstResume.metadata.drainGeneration).toBe(1);
+      expect(firstResume.metadata.pause).toBeNull();
+      await adapter.updateNegotiationTaskState(task.id, 'paused', { reason: 'counterparty_silent' });
+      const secondResume = await adapter.updateNegotiationTaskState(task.id, 'working', null);
+      expect(secondResume.metadata.drainGeneration).toBe(2);
     });
+  });
+
+  describe('openNegotiationTask — durable seat binding', () => {
+    it('creates the task with both actor intents and generation zero in one write', async () => {
+      const run = `${Date.now()}-${crypto.randomUUID()}`;
+      const ownerId = `open-owner-${run}`;
+      const counterpartId = `open-counterpart-${run}`;
+      const ownerIntentId = `open-owner-intent-${run}`;
+      const counterpartIntentId = `open-counterpart-intent-${run}`;
+      const opportunityId = `open-opportunity-${run}`;
+
+      await db.insert(schema.users).values([
+        { id: ownerId, email: `${ownerId}@test.local`, name: 'Open Owner' },
+        { id: counterpartId, email: `${counterpartId}@test.local`, name: 'Open Counterpart' },
+      ]);
+      createdUserIds.push(ownerId, counterpartId);
+      await db.insert(schema.intents).values([
+        { id: ownerIntentId, userId: ownerId, payload: 'Owner intent' },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Counterpart intent' },
+      ]);
+      createdIntentIds.push(ownerIntentId, counterpartIntentId);
+      await db.insert(schema.opportunities).values({
+        id: opportunityId,
+        detection: { source: 'manual', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: 'open-network', userId: ownerId, role: 'peer', intent: ownerIntentId },
+          { networkId: 'open-network', userId: counterpartId, role: 'peer', intent: counterpartIntentId },
+        ],
+        interpretation: { category: 'test', reasoning: 'Two-seat open.', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        status: 'latent',
+      });
+      createdOpportunityIds.push(opportunityId);
+
+      const opened = await adapter.openNegotiationTask({
+        opportunityId,
+        sourceUserId: ownerId,
+        candidateUserId: counterpartId,
+        brief: 'Owner brief',
+        seats: {
+          [ownerIntentId]: { userId: ownerId, round: 3 },
+          [counterpartIntentId]: { userId: counterpartId, round: 5 },
+        },
+        networkId: 'open-network',
+      });
+
+      expect(opened?.disposition).toBe('created');
+      expect(opened?.task.metadata.seats).toEqual({
+        [ownerIntentId]: { userId: ownerId, round: 3 },
+        [counterpartIntentId]: { userId: counterpartId, round: 5 },
+      });
+      expect(opened?.task.metadata.drainGeneration).toBe(0);
+      if (opened) createdIds.push(opened.task.conversationId);
+    }, 30000);
   });
 
   describe('getConversationsForUser — pause projection (#1494 round-2 finding 10)', () => {

@@ -1054,6 +1054,7 @@ export default function IntentDetailPage() {
                             opportunityStatusMap[item.opportunityId]
                           }
                           negotiationInspectorHref={inspectorHrefByOpportunity.get(item.opportunityId)}
+                          negotiationState={negotiationByOpportunity.get(item.opportunityId)}
                           onPrimaryAction={(
                             oppId,
                             userId,

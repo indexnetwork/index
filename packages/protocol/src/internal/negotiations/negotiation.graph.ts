@@ -6,11 +6,12 @@
  * port (callers pass ids, never pre-built contexts); `turn` produces the
  * current seat's move, in-process or via an external agent; `apply` is the
  * one sink for every turn regardless of source and decides continue/pause;
- * `resolve` is the only terminal write.
+ * `resolve` records a pause owner's verdict, while `close` ends a task after
+ * the host has already committed an opportunity-owner verdict.
  *
  * The negotiator never concludes a negotiation. It only ever continues or
- * pauses. `resolve` is invoked separately (by IS-A, in step 2; nothing calls
- * it yet in this PR) once a decision has actually been made.
+ * pauses. `resolve` is invoked separately by the owning PersonalAgent once a
+ * decision has actually been made.
  */
 import { END, StateGraph, Annotation } from "@langchain/langgraph";
 
@@ -22,13 +23,6 @@ import { maybeEnqueueRoundReflect, type NegotiationRoundReflectEnqueueFn } from 
 import type { NegotiationTurnAuthor } from "./negotiation.turn-author.js";
 
 const logger = protocolLogger("NegotiationGraph");
-
-/**
- * Opportunity statuses that are already decided. `resolve` never writes over
- * one: the decision behind them is the owner's, and this graph's verdict is
- * only ever the negotiation's own.
- */
-const TERMINAL_OPPORTUNITY_STATUSES = new Set(["accepted", "rejected", "expired"]);
 
 // ─── Invoke contract ─────────────────────────────────────────────────────────
 
@@ -52,6 +46,10 @@ export type NegotiationGraphInput =
   | { negotiationId: string; expire: { expectedUpdatedAt: Date; reason: 'counterparty_silent' | 'needs_principal' } }
   /** A verdict is authored by one authenticated seat, never by an anonymous resolver. */
   | { negotiationId: string; verdict: NegotiationVerdict; reasoning: string; byUserId: string }
+  /** Close a task after the host has already committed its owner's terminal opportunity action. */
+  | { negotiationId: string; close: { reason: "owner_verdict"; verdict: NegotiationVerdict; reasoning: string }; byUserId: string }
+  /** Close an active task after the host has expired its opportunity. */
+  | { negotiationId: string; close: { reason: "opportunity_expired" } }
   | { negotiationId: string };
 
 export interface NegotiationGraphResult {
@@ -94,7 +92,7 @@ const NegotiationGraphState = Annotation.Root({
   pendingTurnByUserId: Annotation<string | null>({ reducer: (c, n) => (n === undefined ? c : n), default: () => null }),
   /** True once this invoke's own author/dispatch has produced `pendingTurn` — vs. one supplied on input. */
   authored: Annotation<boolean>({ reducer: (c, n) => n ?? c, default: () => false }),
-  phase: Annotation<"init" | "turn" | "apply" | "resolve" | "expire" | "read" | "done" | "error">({
+  phase: Annotation<"init" | "turn" | "apply" | "resolve" | "close" | "expire" | "read" | "done" | "error">({
     reducer: (c, n) => n ?? c,
     default: () => "init",
   }),
@@ -147,6 +145,12 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       return { task, phase: "resolve" };
     }
 
+    if ("close" in input) {
+      const task = await deps.database.getNegotiationTask(input.negotiationId);
+      if (!task) return { phase: "error", error: "Negotiation not found" };
+      return { task, phase: "close" };
+    }
+
     // ── read-only ──
     if (!("brief" in input) && !("turn" in input) && !("pause" in input) && !("expire" in input)) {
       const task = await deps.database.getNegotiationTask(input.negotiationId);
@@ -182,14 +186,23 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       const sourceActor = opportunity.actors.find((a) => a.userId === intent.userId && a.role !== "introducer");
       const candidateActor = opportunity.actors.find((a) => a.userId !== intent.userId && a.role !== "introducer");
       if (!sourceActor || !candidateActor) return { phase: "error", error: "Opportunity does not have two actors" };
+      if (!candidateActor.intent) return { phase: "error", error: "Counterparty actor has no owning intent" };
+      const candidateIntent = await deps.database.getIntent(candidateActor.intent);
+      if (!candidateIntent || candidateIntent.userId !== candidateActor.userId) {
+        return { phase: "error", error: "Counterparty actor intent is not owned by that seat" };
+      }
+      const candidateRound = await deps.database.getIntentNegotiationRound(candidateIntent.id);
+      const seats = {
+        [input.intentId]: { userId: sourceActor.userId, round: input.round },
+        [candidateIntent.id]: { userId: candidateActor.userId, round: candidateRound.round },
+      };
 
       const opened = await deps.database.openNegotiationTask({
         opportunityId: input.opportunityId,
         sourceUserId: sourceActor.userId,
         candidateUserId: candidateActor.userId,
         brief: input.brief,
-        intentId: input.intentId,
-        round: input.round,
+        seats,
         networkId: sourceActor.networkId,
         ...(existing ? { knownTaskId: existing.id } : {}),
       });
@@ -207,7 +220,7 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
           briefs: { ...opened.task.briefs, [sourceActor.userId]: input.brief },
           metadata: {
             ...opened.task.metadata,
-            seats: { ...opened.task.metadata.seats, [input.intentId]: { userId: sourceActor.userId, round: input.round } },
+            seats: { ...opened.task.metadata.seats, [input.intentId]: seats[input.intentId]! },
           },
         };
         return {
@@ -298,9 +311,8 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     // it because history is non-empty).
     const isOpening = messages.length === 0;
 
-    const opportunity = await deps.database.getOpportunity(task.metadata.opportunityId);
-    const actor = opportunity?.actors.find((candidate) => candidate.userId === speakerId && candidate.role !== "introducer");
-    if (!actor?.intent) return { task, turns, phase: "error", error: "Speaking opportunity actor has no intent" };
+    const intentId = Object.entries(meta.seats).find(([, seat]) => seat.userId === speakerId)?.[0];
+    if (!intentId) return { task, turns, phase: "error", error: "Speaking seat has no bound intent" };
 
     // Every turn is authored in-process, synchronously, within this invoke:
     // the author is the speaking seat's own PersonalAgent in negotiation
@@ -308,7 +320,7 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     const authored = await deps.author.authorTurn({
       negotiationId: task.id,
       userId: speakerId,
-      intentId: actor.intent,
+      intentId,
     });
     const turn: NegotiationTurn = isOpening ? NegotiationOpeningTurnSchema.parse(authored) : authored;
 
@@ -435,13 +447,24 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
  * either side's — checking only the opener's would leave the counterparty's
  * round waiting on a negotiation that had already stopped.
  */
-async function triggerReflectForEverySeat(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<void> {
+async function triggerReflectForEverySeat(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<boolean> {
+  let succeeded = true;
   for (const [intentId, binding] of Object.entries(meta.seats)) {
-    await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
+    const checked = await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
       userId: binding.userId,
       intentId,
       round: binding.round,
     });
+    succeeded &&= checked;
+  }
+  return succeeded;
+}
+
+async function clearReflectPendingBestEffort(deps: NegotiationGraphDeps, taskId: string): Promise<void> {
+  try {
+    await deps.database.clearNegotiationReflectPending(taskId);
+  } catch (error) {
+    logger.error("Failed to clear durable reflect marker; watchdog will retry", { taskId, error });
   }
 }
 
@@ -456,37 +479,80 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
       || task.metadata.sourceUserId === input.byUserId
       || task.metadata.candidateUserId === input.byUserId;
     if (!isSeat) return { phase: "error", error: "Only a negotiation seat may resolve it" };
-    // reasoning is private to the resolving side — recorded on the outcome
-    // artifact only, never persisted into the A2A thread as a message; the
-    // counterparty sees only that the negotiation closed.
-    await deps.database.createNegotiationOutcomeArtifact(task.id, {
+    const ownsReadyPause = task.state === "paused"
+      && task.metadata.pause?.reason === "ready_for_verdict"
+      && task.metadata.pause.pausedBy === input.byUserId;
+    if (!ownsReadyPause) {
+      return { phase: "error", error: "Only the seat owning a ready_for_verdict pause may resolve it" };
+    }
+    // The database rechecks pause ownership and locks the task + opportunity
+    // before writing. That makes completion, the private outcome, and the
+    // non-terminal opportunity transition one transaction, so a concurrent
+    // human verdict cannot be overwritten after an earlier status read.
+    const updated = await deps.database.completeNegotiation({
+      taskId: task.id,
+      kind: "pause_verdict",
       verdict: input.verdict,
       reasoning: input.reasoning,
       resolvedByUserId: input.byUserId,
     });
-    const updated = await deps.database.updateNegotiationTaskState(task.id, "completed");
-    // The opportunity status is resolve's to write UNLESS the owner has
-    // already written a terminal one. An owner verdict (Radar skip/accept,
-    // `PATCH /opportunities/:id/status`, the DM's accept/reject tools) is a
-    // user action outside this loop by design — it writes `accepted` /
-    // `rejected` itself and then calls resolve to CLOSE the negotiation,
-    // because a terminal opportunity whose task stays `working` holds its
-    // round open forever and the round's reflect job never fires. Rewriting
-    // the status here would downgrade that owner's `accepted` back to
-    // `pending` and re-fire the actionable notification for a match they
-    // have already accepted.
-    const opportunity = await deps.database.getOpportunity(task.metadata.opportunityId);
-    if (!opportunity || !TERMINAL_OPPORTUNITY_STATUSES.has(opportunity.status)) {
-      await deps.database.updateOpportunityStatus(
-        task.metadata.opportunityId,
-        input.verdict === "pending" ? "pending" : "rejected",
-      );
-    }
+    if (!updated) return { phase: "error", error: "Negotiation changed before its verdict committed" };
     // A round whose last active negotiation ends by direct verdict (not a
     // pause) must still trigger the all-paused check — apply isn't the only
     // way a round finishes.
-    await triggerReflectForEverySeat(deps, task.metadata);
+    if (await triggerReflectForEverySeat(deps, task.metadata)) {
+      await clearReflectPendingBestEffort(deps, task.id);
+    }
     return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", verdict: input.verdict, reasoning: input.reasoning, turns: [] } };
+  } catch (err) {
+    return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Host-only closure after a terminal opportunity action. */
+async function closeNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
+  const task = state.task;
+  const input = state.input;
+  if (!task || !("close" in input)) return { phase: "error", error: "Missing task or close action" };
+  try {
+    if (input.close.reason === "opportunity_expired") {
+      const updated = await deps.database.completeNegotiation({
+        taskId: task.id,
+        kind: "opportunity_expired",
+      });
+      if (!updated) return { phase: "error", error: "Expiry closure requires a live task and expired opportunity" };
+      if (await triggerReflectForEverySeat(deps, task.metadata)) {
+        await clearReflectPendingBestEffort(deps, task.id);
+      }
+      return { task: updated, phase: "done", result: { negotiationId: task.id, status: "resolved", turns: [] } };
+    }
+    if (!("byUserId" in input)) return { phase: "error", error: "Missing owner-verdict resolver" };
+    const isSeat = Object.values(task.metadata.seats).some((seat) => seat.userId === input.byUserId)
+      || task.metadata.sourceUserId === input.byUserId
+      || task.metadata.candidateUserId === input.byUserId;
+    if (!isSeat) return { phase: "error", error: "Only a negotiation seat may close it" };
+    const updated = await deps.database.completeNegotiation({
+      taskId: task.id,
+      kind: "owner_verdict",
+      verdict: input.close.verdict,
+      reasoning: input.close.reasoning,
+      resolvedByUserId: input.byUserId,
+    });
+    if (!updated) return { phase: "error", error: "Owner-verdict closure requires a live task and terminal opportunity" };
+    if (await triggerReflectForEverySeat(deps, task.metadata)) {
+      await clearReflectPendingBestEffort(deps, task.id);
+    }
+    return {
+      task: updated,
+      phase: "done",
+      result: {
+        negotiationId: task.id,
+        status: "resolved",
+        verdict: input.close.verdict,
+        reasoning: input.close.reasoning,
+        turns: [],
+      },
+    };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
@@ -546,6 +612,7 @@ export class NegotiationGraphFactory {
       .addNode("turn", (s: NegotiationState) => turnNode(s, deps))
       .addNode("apply", (s: NegotiationState) => applyNode(s, deps))
       .addNode("resolve", (s: NegotiationState) => resolveNode(s, deps))
+      .addNode("close", (s: NegotiationState) => closeNode(s, deps))
       .addNode("expire", (s: NegotiationState) => expireNode(s, deps))
       .addNode("read", readNode)
       // Named "fail", not "error" — "error" is already the state's own
@@ -557,6 +624,7 @@ export class NegotiationGraphFactory {
         turn: "turn",
         apply: "apply",
         resolve: "resolve",
+        close: "close",
         expire: "expire",
         read: "read",
         error: "fail",
@@ -564,6 +632,7 @@ export class NegotiationGraphFactory {
       .addConditionalEdges("turn", (s: NegotiationState) => s.phase, { apply: "apply", done: END, error: "fail" })
       .addConditionalEdges("apply", (s: NegotiationState) => s.phase, { turn: "turn", done: END, error: "fail" })
       .addEdge("resolve", END)
+      .addEdge("close", END)
       .addEdge("expire", END)
       .addEdge("read", END)
       .addEdge("fail", END)

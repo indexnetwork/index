@@ -20,6 +20,7 @@ describe("OpportunityCard negotiation lifecycle", () => {
         <OpportunityCard
           card={baseCard}
           negotiationInspectorHref="/i/intent-7/negotiations/task-1"
+          negotiationState={{ state: "working", pause: null }}
           onPrimaryAction={action}
           onSecondaryAction={action}
         />
@@ -31,6 +32,21 @@ describe("OpportunityCard negotiation lifecycle", () => {
       .toBe("/i/intent-7/negotiations/task-1");
     expect(screen.queryByRole("button", { name: "Start Chat" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+  });
+
+  it("shows waiting copy for a counterparty-owned verdict pause", () => {
+    render(
+      <MemoryRouter>
+        <OpportunityCard
+          card={baseCard}
+          negotiationState={{ state: "paused", pause: { reason: "ready_for_verdict", by: "theirs" } }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("The other side is deciding.")).toBeTruthy();
+    expect(screen.queryByText(/Your PersonalAgent is handling/)).toBeNull();
+    expect(screen.queryByText(/Questions appear/)).toBeNull();
   });
 
   it("keeps pending opportunities owner-actionable", () => {

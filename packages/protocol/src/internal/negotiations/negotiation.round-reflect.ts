@@ -3,8 +3,9 @@
  *
  * Every pause is a DB transition. The graph's apply step ends by checking
  * whether any active negotiation remains for `(intentId, round)`; if not, it
- * enqueues one reflect job, keyed so ten pauses produce one job and a late
- * pause from an earlier round cannot re-trigger the current one. The consumer
+ * enqueues one reflect job keyed by the durable task-generation vector. Ten
+ * deliveries of one drain produce one job, while a later pause after a reopen
+ * produces a new one even when the seat binding still names the same round. The consumer
  * invokes the PersonalAgent with `{ userId, intentId, event: 'all_paused',
  * round }`.
  *
@@ -32,11 +33,15 @@ export interface NegotiationRoundReflectJobData {
   userId: string;
   intentId: string;
   round: number;
+  /** Exact durable all-paused state this job drains. */
+  generation: string;
 }
 
-/** Deterministic job id: ten pauses of the same round collapse to one job. */
-export function negotiationRoundReflectJobId(intentId: string, round: number): string {
-  return `reflect:${intentId}:${round}`;
+export type NegotiationRoundReflectCheck = Omit<NegotiationRoundReflectJobData, "generation">;
+
+/** Deterministic job id: duplicate delivery of one durable drain collapses. */
+export function negotiationRoundReflectJobId(intentId: string, round: number, generation: string): string {
+  return `reflect:${intentId}:${round}:${generation}`;
 }
 
 /**
@@ -49,26 +54,35 @@ export type NegotiationRoundReflectEnqueueFn = (job: NegotiationRoundReflectJobD
 /** The database reads the all-paused check needs. */
 export type NegotiationRoundReflectDatabase = Pick<
   NegotiationGraphDatabase,
-  "getIntentNegotiationRound" | "countActiveNegotiationsForRound"
+  "getIntentNegotiationRound" | "getNegotiationTasksForIntentRound"
 >;
 
 /**
- * Enqueue exactly one reflect job if this round is stamped and every one of
- * its negotiations has stopped. Never throws: the caller's own transition is
- * already durable and must not fail over a trigger.
+ * Enqueue exactly one reflect job if this round's task set is complete and
+ * every negotiation in it has stopped. Never throws: the caller's own transition is
+ * already durable and must not fail over a trigger. Returns false only when
+ * the check or enqueue exhausted its retries, so a durable recovery marker
+ * can remain pending.
  */
 export async function maybeEnqueueRoundReflect(
   database: NegotiationRoundReflectDatabase,
   enqueue: NegotiationRoundReflectEnqueueFn | undefined,
-  job: NegotiationRoundReflectJobData,
-): Promise<void> {
-  if (!enqueue) return;
+  check: NegotiationRoundReflectCheck,
+): Promise<boolean> {
+  if (!enqueue) return true;
   try {
-    const stamp = await database.getIntentNegotiationRound(job.intentId);
-    // Unstamped, or already superseded by a fresh kickoff: not this round's moment.
-    if (stamp.round !== job.round || stamp.roundSize === null) return;
-    const active = await database.countActiveNegotiationsForRound(job.intentId, job.round);
-    if (active !== 0) return;
+    const stamp = await database.getIntentNegotiationRound(check.intentId);
+    // A current kickoff has not finished binding all of its tasks yet. A
+    // passive/counterparty seat (no kickoff marker) and a superseded round
+    // already have their complete durable task sets and need no size gate.
+    if (stamp.round === check.round && stamp.roundSize === null && stamp.kickoffStartedAt !== null) return true;
+    const tasks = await database.getNegotiationTasksForIntentRound(check.intentId, check.round);
+    if (tasks.length === 0 || tasks.some((task) => task.state !== "paused" && task.state !== "completed")) return true;
+    const generation = tasks
+      .map((task) => `${task.id}.${task.metadata.drainGeneration}`)
+      .sort()
+      .join("_");
+    const job: NegotiationRoundReflectJobData = { ...check, generation };
     // The pause this runs behind is already persisted, so throwing would
     // report a failure for work that is durably done. But a swallowed enqueue
     // on the round's LAST pause is a round that never reflects and has no
@@ -78,7 +92,7 @@ export async function maybeEnqueueRoundReflect(
     for (let attempt = 0; attempt < ENQUEUE_ATTEMPTS; attempt++) {
       try {
         await enqueue(job);
-        return;
+        return true;
       } catch (err) {
         failure = err;
         await new Promise((resolve) => setTimeout(resolve, ENQUEUE_RETRY_DELAY_MS * (attempt + 1)));
@@ -87,10 +101,10 @@ export async function maybeEnqueueRoundReflect(
     throw failure;
   } catch (err) {
     logger.error("Failed to check all-paused / enqueue reflect — this round will not reflect", {
-      intentId: job.intentId,
-      round: job.round,
-      jobId: negotiationRoundReflectJobId(job.intentId, job.round),
+      intentId: check.intentId,
+      round: check.round,
       error: err,
     });
+    return false;
   }
 }

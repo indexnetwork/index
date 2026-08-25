@@ -8,7 +8,7 @@ class CapturingPersonalAgentModel extends PersonalAgentModel {
 
   protected override async callActsModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
     this.lastMessages = messages;
-    return { act: "message_user", text: "I chose a different next step." };
+    return { act: "message_user", text: "The other side is deciding." };
   }
 }
 
@@ -32,6 +32,12 @@ class SignalCapturingPersonalAgentModel extends PersonalAgentModel {
         return { text: "A concise strategy." };
       },
     } as never;
+  }
+}
+
+class UnsupportedStrategyModel extends PersonalAgentModel {
+  protected override async callProseModel(): Promise<unknown> {
+    return { text: "They are deliberating over the pricing terms while I contact another match." };
   }
 }
 
@@ -72,6 +78,17 @@ describe("validateDecidedAct", () => {
     expect(validateDecidedAct({ act: "reject", negotiation: 2 }, context())).toBeNull();
   });
 
+  test("permits verdicts only for an owned ready_for_verdict pause", () => {
+    expect(validateDecidedAct({ act: "promote", negotiation: 1 }, context()))
+      .toEqual({ tool: "promote", negotiationId: "task-1", reasoning: "Worth surfacing." });
+    expect(validateDecidedAct({ act: "reject", negotiation: 1 }, context({
+      paused: [{ negotiationId: "task-1", opportunityId: "opportunity-1", reason: "needs_principal", pausedByUs: true, thread: [] }],
+    }))).toBeNull();
+    expect(validateDecidedAct({ act: "reject", negotiation: 1 }, context({
+      paused: [{ negotiationId: "task-1", opportunityId: "opportunity-1", reason: "ready_for_verdict", pausedByUs: false, thread: [] }],
+    }))).toBeNull();
+  });
+
   test("accepts only a bounded user-message verdict and rejects background acceptance", () => {
     expect(validateDecidedAct({ act: "accept_opportunity", opportunity: 1 }, context()))
       .toEqual({ tool: "accept_opportunity", opportunityId: "opportunity-1" });
@@ -80,9 +97,69 @@ describe("validateDecidedAct", () => {
       context({ event: "matches_ready", message: undefined }),
     )).toBeNull();
   });
+
+  test("counterparty deciding state cannot become invented response or review narration", () => {
+    const deciding = context({
+      event: "all_paused",
+      message: undefined,
+      round: 1,
+      paused: [{
+        negotiationId: "task-1",
+        opportunityId: "opportunity-1",
+        reason: "ready_for_verdict",
+        pausedByUs: false,
+        thread: [],
+      }],
+    });
+
+    expect(validateDecidedAct({
+      act: "message_user",
+      text: "They still have not responded and are reviewing the pricing details.",
+    }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "There is no response yet." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "They are assessing the pricing." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "They are deliberating over the pricing terms." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "They are thinking through your proposed timeline." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "The other side is deciding. I will keep you posted." }, deciding)).toBeNull();
+    expect(validateDecidedAct({ act: "message_user", text: "The other side is deciding." }, deciding))
+      .toEqual({ tool: "message_user", text: "The other side is deciding." });
+  });
 });
 
 describe("PersonalAgentModel", () => {
+  test("rejects kickoff strategy prose that bypasses canonical counterpart status", async () => {
+    const model = new UnsupportedStrategyModel();
+    await expect(model.strategy(context({
+      paused: [{
+        negotiationId: "task-1",
+        opportunityId: "opportunity-1",
+        reason: "ready_for_verdict",
+        pausedByUs: false,
+        thread: [],
+      }],
+    }))).rejects.toThrow("PersonalAgent produced no usable strategy");
+  });
+
+  test("counterparty pause rendering exposes only public state, not thread topics", async () => {
+    const model = new CapturingPersonalAgentModel();
+    await model.next(context({
+      event: "all_paused",
+      message: undefined,
+      round: 1,
+      paused: [{
+        negotiationId: "task-1",
+        opportunityId: "opportunity-1",
+        reason: "ready_for_verdict",
+        pausedByUs: false,
+        thread: [{ speaker: "counterparty", turn: { verb: "counter", message: "SECRET_PRICING_TOPIC", reasoning: "private" } }],
+      }],
+    }), []);
+
+    const prompt = model.lastMessages.find((message) => message.role === "user")?.content;
+    expect(prompt).toContain("CANONICAL COUNTERPART STATUS RESPONSE:\nThe other side is deciding.");
+    expect(prompt).not.toContain("SECRET_PRICING_TOPIC");
+  });
+
   test("renders refused irreversible calls as non-durable observations", async () => {
     const model = new CapturingPersonalAgentModel();
     const observation: PersonalAgentNonDurableObservation = {

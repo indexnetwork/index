@@ -33,12 +33,17 @@ function makeDeps(task: ReturnType<typeof makeTask> | null = makeTask()) {
     getStaleNegotiationTasks: mock(async () => stale),
     getTask: mock(async () => task),
     recordNegotiationWatchdogAttempt: mock(async () => task),
+    recordNegotiationWatchdogRecoveryCheck: mock(async () => true),
+    clearNegotiationReflectPending: mock(async () => undefined),
+    getIntentNegotiationRound: mock(async () => ({ round: 1, roundSize: 1, kickoffStartedAt: null })),
+    getNegotiationTasksForIntentRound: mock(async () => task ? [task as never] : []),
   };
   const opportunities = {
     getOpportunity: mock(async () => ({ id: 'opportunity-1', status: 'negotiating' })),
   };
   const negotiationGraph = { invoke: mock(async () => ({ negotiationId: task?.id ?? '', status: 'paused' as const, turns: [] })) };
-  return { database, opportunities, negotiationGraph };
+  const reflectEnqueue = mock(async () => undefined);
+  return { database, opportunities, negotiationGraph, reflectEnqueue };
 }
 
 beforeEach(() => {
@@ -119,6 +124,113 @@ describe('NegotiationWatchdogQueue', () => {
     });
   });
 
+  it('retries a failed durable reflect generation on the next ready_for_verdict sweep', async () => {
+    const task = makeTask({
+      state: 'paused',
+      metadata: {
+        type: 'negotiation',
+        opportunityId: 'opportunity-1',
+        sourceUserId: 'user-1',
+        candidateUserId: 'user-2',
+        initiatorUserId: 'user-1',
+        networkId: 'network-1',
+        seats: { 'intent-1': { userId: 'user-1', round: 1 } },
+        drainGeneration: 0,
+        pause: { reason: 'ready_for_verdict', pausedBy: 'user-1' },
+      },
+    });
+    const deps = makeDeps(task);
+    deps.reflectEnqueue
+      .mockRejectedValueOnce(new Error('redis unavailable'))
+      .mockRejectedValueOnce(new Error('redis unavailable'))
+      .mockRejectedValueOnce(new Error('redis unavailable'));
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+    expect(deps.reflectEnqueue).toHaveBeenCalledTimes(3);
+
+    await queue.sweep();
+
+    expect(deps.reflectEnqueue).toHaveBeenLastCalledWith({
+      userId: 'user-1',
+      intentId: 'intent-1',
+      round: 1,
+      generation: 'task-1.0',
+    });
+    expect(deps.reflectEnqueue).toHaveBeenCalledTimes(4);
+    expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
+    expect(deps.database.recordNegotiationWatchdogRecoveryCheck).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      expectedUpdatedAt: task.updatedAt,
+      checkedAt: now,
+    });
+  });
+
+  it('recovers an active task left behind after an owner verdict committed', async () => {
+    const task = makeTask({ state: 'working' });
+    const deps = makeDeps(task);
+    deps.opportunities.getOpportunity.mockResolvedValue({ id: 'opportunity-1', status: 'accepted' } as never);
+    deps.negotiationGraph.invoke.mockResolvedValue({ negotiationId: task.id, status: 'resolved', turns: [] } as never);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.negotiationGraph.invoke).toHaveBeenCalledWith({
+      negotiationId: task.id,
+      close: {
+        reason: 'owner_verdict',
+        verdict: 'pending',
+        reasoning: 'Recovered after the owner verdict committed before negotiation closure.',
+      },
+      byUserId: 'user-1',
+    });
+    expect(deps.database.recordNegotiationWatchdogAttempt).not.toHaveBeenCalled();
+  });
+
+  it('recovers an active task left behind after its opportunity expired', async () => {
+    const task = makeTask({ state: 'working' });
+    const deps = makeDeps(task);
+    deps.opportunities.getOpportunity.mockResolvedValue({ id: 'opportunity-1', status: 'expired' } as never);
+    deps.negotiationGraph.invoke.mockResolvedValue({ negotiationId: task.id, status: 'resolved', turns: [] } as never);
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+
+    expect(deps.negotiationGraph.invoke).toHaveBeenCalledWith({
+      negotiationId: task.id,
+      close: { reason: 'opportunity_expired' },
+    });
+    expect(deps.database.recordNegotiationWatchdogAttempt).not.toHaveBeenCalled();
+  });
+
+  it('keeps a completed verdict durable until its reflect check succeeds', async () => {
+    const task = makeTask({
+      state: 'completed',
+      metadata: {
+        type: 'negotiation',
+        opportunityId: 'opportunity-1',
+        sourceUserId: 'user-1',
+        candidateUserId: 'user-2',
+        seats: { 'intent-1': { userId: 'user-1', round: 1 } },
+        drainGeneration: 0,
+        watchdogReflectPending: true,
+      },
+    });
+    const deps = makeDeps(task);
+    deps.reflectEnqueue
+      .mockRejectedValueOnce(new Error('redis unavailable'))
+      .mockRejectedValueOnce(new Error('redis unavailable'))
+      .mockRejectedValueOnce(new Error('redis unavailable'));
+    const queue = new NegotiationWatchdogQueue({ ...deps, clock: () => now });
+
+    await queue.sweep();
+    expect(deps.database.clearNegotiationReflectPending).not.toHaveBeenCalled();
+    expect(deps.database.recordNegotiationWatchdogRecoveryCheck).toHaveBeenCalledTimes(1);
+
+    await queue.sweep();
+    expect(deps.database.clearNegotiationReflectPending).toHaveBeenCalledWith(task.id);
+  });
+
   it('does not expire a paused task changed after the stale-list read', async () => {
     const task = makeTask({
       state: 'paused',
@@ -152,6 +264,7 @@ describe('NegotiationWatchdogQueue', () => {
     await queue.sweep();
 
     expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
+    expect(deps.database.recordNegotiationWatchdogRecoveryCheck).toHaveBeenCalledTimes(1);
   });
 
   it('a task that exhausted the watchdog retry budget is paused through the graph, not marked with an out-of-union state', async () => {

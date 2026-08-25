@@ -9,11 +9,11 @@
  * kickoff and resume.
  */
 
-import type { Opportunity, OpportunityStatus } from './entities.js';
+import type { Opportunity } from './entities.js';
 import type { Database } from '../database.js';
 
 /** Negotiation task lifecycle. `paused` carries a reason in `metadata.pause`. */
-export type NegotiationTaskState = 'working' | 'paused' | 'completed';
+export type NegotiationTaskState = 'submitted' | 'working' | 'paused' | 'completed';
 
 /** One seat's binding to a signal, and that signal's kickoff round. */
 export interface NegotiationSeatBinding {
@@ -44,12 +44,21 @@ export interface NegotiationTaskMetadata {
    * terminators — and a re-kick from that side would either overwrite the
    * opener's round or be refused.
    *
-   * A seat appears here when its own kickoff opens or re-kicks this
-   * negotiation, never by guessing: an actor's `intent` field names the
-   * intent it matched AGAINST for a premise match, so it cannot be trusted to
-   * name the seat's own signal.
+   * Creation binds both seats after verifying each actor's intent ownership;
+   * a later kickoff updates only its own seat's round.
    */
   seats: Record<string, NegotiationSeatBinding>;
+  /**
+   * Monotonic generation of this task's paused lifecycle. The opening run is
+   * generation 0; the first persisted turn after each pause increments it.
+   * An all-paused drain is deduplicated by the durable vector of these values,
+   * so reopening a task creates a new drain without duplicating one pause.
+   */
+  drainGeneration: number;
+  /** True between atomic verdict completion and a successful round-reflect check. */
+  watchdogReflectPending?: boolean;
+  /** Fairness cursor for bounded watchdog sweeps; ISO-8601 when last checked. */
+  watchdogRecoveryCheckedAt?: string;
   /**
    * `payload` is private to `pausedBy` — the seat whose turn produced this
    * pause. It is never persisted into a shared message or returned from a
@@ -104,8 +113,7 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
     sourceUserId: string;
     candidateUserId: string;
     brief: string;
-    intentId: string;
-    round: number;
+    seats: Record<string, NegotiationSeatBinding>;
     networkId: string;
     knownTaskId?: string;
   }): Promise<{ task: NegotiationTaskRow; disposition: 'created' | 'existing' | 'raced' } | null>;
@@ -118,10 +126,13 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** Every negotiation task where the given user is source or candidate. */
   getNegotiationTasksForUser(userId: string): Promise<NegotiationTaskRow[]>;
 
-  /** Transitions state and, for `paused`, records the reason/payload. Merges into metadata; other keys are untouched. */
+  /**
+   * Transitions state and, for `paused`, records the reason/payload. Moving a
+   * paused task back to `working` also increments its durable drain generation.
+   */
   updateNegotiationTaskState(
     taskId: string,
-    state: NegotiationTaskState,
+    state: 'working' | 'paused' | 'completed',
     pause?: NegotiationTaskMetadata['pause'],
   ): Promise<NegotiationTaskRow>;
 
@@ -159,18 +170,30 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** This negotiation's own turns, oldest first. */
   getNegotiationMessages(taskId: string): Promise<NegotiationMessageRow[]>;
 
-  /** Persists the resolve outcome artifact. */
-  createNegotiationOutcomeArtifact(taskId: string, outcome: {
-    verdict: 'pending' | 'reject';
-    reasoning?: string;
-    /** The only user allowed to read the private verdict reasoning. */
-    resolvedByUserId: string;
-  }): Promise<void>;
+  /**
+   * Atomically records an outcome and completes its task. A pause verdict also
+   * locks the opportunity and updates it only while it is still non-terminal;
+   * an owner verdict requires a terminal host write, while expiry requires the
+   * opportunity to be expired and records no owner outcome. Returns null when
+   * the task or opportunity changed before the transaction acquired its locks.
+   */
+  completeNegotiation(input: {
+    taskId: string;
+  } & (
+    | {
+      kind: 'pause_verdict' | 'owner_verdict';
+      verdict: 'pending' | 'reject';
+      reasoning?: string;
+      resolvedByUserId: string;
+    }
+    | { kind: 'opportunity_expired' }
+  )): Promise<NegotiationTaskRow | null>;
+
+  /** Clears the durable post-verdict reflect marker after a successful check. */
+  clearNegotiationReflectPending(taskId: string): Promise<void>;
 
   /** Reads back artifacts persisted for a task (e.g. the resolve outcome). */
   getArtifactsForTask(taskId: string): Promise<Array<{ id: string; name: string | null; parts: unknown[]; metadata: Record<string, unknown> | null }>>;
-
-  updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<{ id: string; status: OpportunityStatus } | null>;
 
   /** Every negotiation task bound to one intent's given round, whatever its state. The round-settling read. */
   getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRow[]>;

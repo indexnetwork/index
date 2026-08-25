@@ -37,8 +37,10 @@ export class FakeNegotiationHost {
   readonly messages = new Map<string, FakeMessage[]>();
   readonly opportunityStatusUpdates: Array<{ id: string; status: string }> = [];
   readonly outcomeArtifacts = new Map<string, { verdict: 'pending' | 'reject'; reasoning?: string; resolvedByUserId: string }>();
-  /** Deduped by (intent, round), exactly as the deterministic BullMQ job id does. */
-  readonly reflectJobs: Array<{ userId: string; intentId: string; round: number }> = [];
+  /** Test-only interleave immediately before the atomic completion snapshot. */
+  beforeCompleteNegotiation?: () => void;
+  /** Deduped by one durable drain generation, exactly as BullMQ does. */
+  readonly reflectJobs: Array<{ userId: string; intentId: string; round: number; generation: string }> = [];
   private taskCounter = 0;
   private messageCounter = 0;
 
@@ -71,7 +73,7 @@ export class FakeNegotiationHost {
       conversationId: input.conversationId,
       state: 'working',
       briefs: { ...input.briefs },
-      metadata: input.metadata,
+      metadata: { drainGeneration: 0, ...input.metadata },
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -117,7 +119,8 @@ export class FakeNegotiationHost {
           candidateUserId: input.candidateUserId,
           initiatorUserId: input.sourceUserId,
           networkId: input.networkId,
-          seats: { [input.intentId]: { userId: input.sourceUserId, round: input.round } },
+          seats: input.seats,
+          drainGeneration: 0,
         },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -141,7 +144,13 @@ export class FakeNegotiationHost {
       const updated: NegotiationTaskRow = {
         ...task,
         state,
-        metadata: { ...task.metadata, pause: pause ?? null },
+        metadata: {
+          ...task.metadata,
+          ...(state === "working" && task.state === "paused"
+            ? { drainGeneration: task.metadata.drainGeneration + 1 }
+            : {}),
+          ...(pause !== undefined || state === "working" ? { pause: pause ?? null } : {}),
+        },
         updatedAt: new Date(),
       };
       this.tasks.set(taskId, updated);
@@ -173,16 +182,56 @@ export class FakeNegotiationHost {
     },
     // A snapshot, not the live array — a real DB read would never see a later write reflected back.
     getNegotiationMessages: async (taskId) => [...(this.messages.get(taskId) ?? [])],
-    createNegotiationOutcomeArtifact: async (taskId, outcome) => {
-      this.outcomeArtifacts.set(taskId, outcome);
+    completeNegotiation: async (input) => {
+      const task = this.tasks.get(input.taskId);
+      if (!task || task.state === 'completed') return null;
+      if (input.kind !== 'opportunity_expired') {
+        const isSeat = Object.values(task.metadata.seats).some((seat) => seat.userId === input.resolvedByUserId)
+          || task.metadata.sourceUserId === input.resolvedByUserId
+          || task.metadata.candidateUserId === input.resolvedByUserId;
+        if (!isSeat) return null;
+        if (input.kind === 'pause_verdict' && (
+          task.state !== 'paused'
+          || task.metadata.pause?.reason !== 'ready_for_verdict'
+          || task.metadata.pause.pausedBy !== input.resolvedByUserId
+        )) return null;
+      }
+      this.beforeCompleteNegotiation?.();
+      const opportunity = this.opportunities.get(task.metadata.opportunityId);
+      if (!opportunity) return null;
+      const terminal = ['accepted', 'rejected', 'expired'].includes(opportunity.status);
+      if (input.kind === 'owner_verdict' && !terminal) return null;
+      if (input.kind === 'opportunity_expired' && opportunity.status !== 'expired') return null;
+      if (input.kind !== 'opportunity_expired') {
+        this.outcomeArtifacts.set(task.id, {
+          verdict: input.verdict,
+          reasoning: input.reasoning,
+          resolvedByUserId: input.resolvedByUserId,
+        });
+      }
+      const updated = {
+        ...task,
+        state: 'completed' as const,
+        metadata: { ...task.metadata, watchdogReflectPending: true },
+        updatedAt: new Date(),
+      };
+      this.tasks.set(task.id, updated);
+      if (input.kind === 'pause_verdict' && !terminal) {
+        const status = input.verdict === 'pending' ? 'pending' : 'rejected';
+        this.opportunityStatusUpdates.push({ id: opportunity.id, status });
+        opportunity.status = status;
+      }
+      return updated;
+    },
+    clearNegotiationReflectPending: async (taskId) => {
+      const task = this.tasks.get(taskId);
+      if (!task) return;
+      this.tasks.set(taskId, {
+        ...task,
+        metadata: { ...task.metadata, watchdogReflectPending: false },
+      });
     },
     getArtifactsForTask: async () => [],
-    updateOpportunityStatus: async (id, status) => {
-      this.opportunityStatusUpdates.push({ id, status });
-      const opportunity = this.opportunities.get(id);
-      if (opportunity) opportunity.status = status;
-      return { id, status };
-    },
     getNegotiationTasksForIntentRound: async (intentId, round) =>
       [...this.tasks.values()].filter((t) => t.metadata.seats[intentId]?.round === round),
     // Signal-scoped on purpose: a negotiation a later round left behind must
@@ -195,17 +244,23 @@ export class FakeNegotiationHost {
       this.kickoffStartedAt = new Date();
       return (this.round += 1);
     },
-    getIntentNegotiationRound: async () => ({
+    getIntentNegotiationRound: async (intentId) => intentId === INTENT_ID ? ({
       round: this.round,
       roundSize: this.roundSize,
       kickoffStartedAt: this.kickoffStartedAt,
+    }) : ({
+      // A counterparty that did not initiate a kickoff still owns a durable
+      // drain. Its passive round has no in-progress size gate.
+      round: 0,
+      roundSize: null,
+      kickoffStartedAt: null,
     }),
     stampIntentNegotiationRoundSize: async (_intentId, round, size) => {
       if (round === this.round) this.roundSize = size;
     },
     countActiveNegotiationsForRound: async (intentId, round) =>
       [...this.tasks.values()].filter((t) =>
-        t.metadata.seats[intentId]?.round === round && t.state === "working").length,
+        t.metadata.seats[intentId]?.round === round && t.state !== "paused" && t.state !== "completed").length,
   };
 
   /**
@@ -216,9 +271,10 @@ export class FakeNegotiationHost {
     if (this.kickoffStartedAt) this.kickoffStartedAt = new Date(this.kickoffStartedAt.getTime() - byMs);
   }
 
-  /** Records a reflect job the way the queue does: once per (intent, round). */
-  enqueueReflect(job: { userId: string; intentId: string; round: number }): void {
-    if (this.reflectJobs.some((existing) => existing.intentId === job.intentId && existing.round === job.round)) return;
+  /** Records a reflect job the way the queue does: once per durable generation. */
+  enqueueReflect(job: { userId: string; intentId: string; round: number; generation: string }): void {
+    if (this.reflectJobs.some((existing) =>
+      existing.intentId === job.intentId && existing.round === job.round && existing.generation === job.generation)) return;
     this.reflectJobs.push(job);
   }
 

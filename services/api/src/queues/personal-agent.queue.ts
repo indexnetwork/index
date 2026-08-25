@@ -12,8 +12,8 @@
  *   double-speak. Removed on completion; the chat controller awaits it.
  * - `matches_ready` — keyed by the signal, so a burst of discovery batches
  *   coalesces into one kickoff turn rather than one per batch.
- * - `all_paused` — keyed by `(intentId, round)` and NOT removed on
- *   completion: reflect must fire exactly once per round, or the agent acts
+ * - `all_paused` — keyed by one durable all-paused generation and NOT removed on
+ *   completion: reflect must fire exactly once per durable drain, or the agent acts
  *   twice on the same moment.
  */
 import { Job, UnrecoverableError } from 'bullmq';
@@ -145,20 +145,22 @@ export class PersonalAgentQueue {
 
   /**
    * Every negotiation of a round has paused. The deterministic job id is the
-   * whole dedup: ten pauses produce one reflect, and the completed job is
-   * retained FOREVER so the same round can never reflect twice — the queue's
+   * whole dedup: duplicate delivery of one durable drain produces one reflect,
+   * and the completed job is retained so that generation cannot run twice. A
+   * reopened task increments its durable generation and therefore gets a new
+   * job. The queue's
    * default `removeOnComplete: { age: 24h }` would free the id, and a late
-   * watchdog pause on a stale negotiation of that round would then wake the
-   * agent to re-decide a round it already closed out. One retained row per
-   * (signal, round) is the price of exactly-once.
+   * watchdog delivery of the same durable pause would then wake the agent to
+   * re-decide work it already closed out. One retained row per drain
+   * generation is the price of exactly-once.
    *
    * `removeOnFail` keeps the default 7-day window on purpose: a reflect lost
    * to a transient model outage should become reachable again, and a genuinely
-   * dead round is better re-run once than never.
+   * dead drain is better re-run once than never.
    */
   addAllPausedEvent(job: NegotiationRoundReflectJobData): Promise<Job<PersonalAgentEvent>> {
     return this.queue.add('all_paused', { ...job, event: 'all_paused' }, {
-      jobId: negotiationRoundReflectJobId(job.intentId, job.round),
+      jobId: negotiationRoundReflectJobId(job.intentId, job.round, job.generation),
       removeOnComplete: false,
     });
   }
