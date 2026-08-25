@@ -457,25 +457,35 @@ bun run db:seed:sandbox -- --confirm --twenty    # five Launch people plus 15 au
 Both modes wipe and recreate every seed-owned user, so switching modes is just
 re-running the command.
 
-#### Fast local sandbox reset
+#### Immutable local playground
 
-After a successful full seed, save a local database snapshot once:
-
-```bash
-bun run db:snapshot:sandbox
-```
-
-Later resets can restore that snapshot without regenerating embeddings or
-recreating every fixture:
+Seed the desired playground population once, then freeze it as the local
+template:
 
 ```bash
-bun run db:restore:sandbox
+bun run db:seed:sandbox -- --confirm --twenty
+bun run db:playground:freeze -- --confirm
 ```
 
-The snapshot lives at `.cache/index/protocol_sandbox.dump` and is ignored by
-Git. It replaces the whole `protocol_sandbox` database, so stop the local API
-server before restoring. Recreate the snapshot after schema migrations or
-fixture changes.
+Use a fresh working copy whenever you want to use the playground. This replaces
+only `protocol_sandbox` with a clone of the immutable local template, without
+regenerating embeddings or recreating fixtures:
+
+```bash
+bun run db:playground:clone -- --confirm
+```
+
+The template lives at `.cache/index/playground-template.dump` and is ignored by
+Git. `freeze` refuses to overwrite it, so normal playground use cannot mutate
+the initial data. After deliberately reseeding for a schema or fixture change,
+replace the template explicitly:
+
+```bash
+bun run db:playground:freeze -- --confirm --replace
+```
+
+Cloning replaces the whole `protocol_sandbox` database, so stop the local API
+server before cloning.
 
 The command derives the sandbox connection from the repo-root
 `.env.development`, refuses unrelated source database names, always replaces
