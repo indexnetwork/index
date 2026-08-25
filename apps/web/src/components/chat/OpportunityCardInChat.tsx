@@ -156,6 +156,8 @@ interface OpportunityCardProps {
     state: string;
     pause: { reason: string; by: "yours" | "theirs" } | null;
   };
+  /** Intent Radar only: pending may be acted on after its negotiation completes. */
+  pendingActionable?: boolean;
 }
 
 function negotiationStatusCopy(negotiation: OpportunityCardProps["negotiationState"]): string {
@@ -229,6 +231,7 @@ export default function OpportunityCard({
   currentStatus,
   negotiationInspectorHref,
   negotiationState,
+  pendingActionable = true,
 }: OpportunityCardProps) {
   const navigate = useNavigate();
   const [actionTaken, setActionTaken] = useState<
@@ -240,7 +243,8 @@ export default function OpportunityCard({
   const effectiveStatus = currentStatus ?? card.status;
 
   // Check if the opportunity status allows actions
-  const canTakeAction = isActionableStatus(effectiveStatus);
+  const canTakeAction = isActionableStatus(effectiveStatus)
+    && (effectiveStatus !== "pending" || pendingActionable);
   const statusMessage = getStatusMessage(effectiveStatus);
 
 

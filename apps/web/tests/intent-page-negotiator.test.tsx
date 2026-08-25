@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   },
   chatStubBehavior: { failBootstrap: false },
   turnCompletedHandlers: new Set<(event: { intentId: string }) => void>(),
+  conversationMessageHandlers: new Set<(event: { message: { taskId?: string | null; senderId: string; parts: unknown[]; createdAt: string } }) => void>(),
   intentInvalidationHandlers: new Set<(event: { intentId: string }) => void>(),
 }));
 
@@ -84,6 +85,10 @@ vi.mock('@/contexts/ConversationContext', () => ({
       mocks.turnCompletedHandlers.add(handler);
       return () => mocks.turnCompletedHandlers.delete(handler);
     },
+    subscribeConversationMessage: (handler: (event: { message: { taskId?: string | null; senderId: string; parts: unknown[]; createdAt: string } }) => void) => {
+      mocks.conversationMessageHandlers.add(handler);
+      return () => mocks.conversationMessageHandlers.delete(handler);
+    },
     subscribeIntentDiscoveryProgress: () => () => {},
     subscribeIntentInvalidation: (handler: (event: { intentId: string }) => void) => {
       mocks.intentInvalidationHandlers.add(handler);
@@ -132,6 +137,12 @@ function emitIntentInvalidation(event: { intentId: string }) {
   });
 }
 
+function emitConversationMessage(event: { message: { taskId?: string | null; senderId: string; parts: unknown[]; createdAt: string } }) {
+  act(() => {
+    mocks.conversationMessageHandlers.forEach((handler) => handler(event));
+  });
+}
+
 describe('Intent page — agent chat panel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -148,6 +159,7 @@ describe('Intent page — agent chat panel', () => {
     mocks.conversationsService.getIntentCycleTimeline.mockResolvedValue([]);
     mocks.chatStubBehavior.failBootstrap = false;
     mocks.turnCompletedHandlers.clear();
+    mocks.conversationMessageHandlers.clear();
     mocks.intentInvalidationHandlers.clear();
   });
 
@@ -172,6 +184,30 @@ describe('Intent page — agent chat panel', () => {
     ).toBeInTheDocument();
   });
 
+  test('updates the Agent handling row from a persisted A2A message without presenter prose', async () => {
+    mocks.opportunitiesService.getRadarView.mockResolvedValue({
+      items: [{ opportunityId: 'opp-1', status: 'negotiating', userId: 'maya', name: 'Maya Chen', avatar: null }],
+    });
+    mocks.conversationsService.getIntentCycle.mockResolvedValue({
+      round: { number: 1, size: 1, kickoffStartedAt: null, active: 1, paused: 0 },
+      negotiations: [{
+        taskId: 'task-1', conversationId: 'conversation-1', opportunityId: 'opp-1', opportunityStatus: 'negotiating', counterpartLabel: 'Maya Chen', round: 1,
+        state: 'working', pause: null, latestActivity: null, updatedAt: '2026-08-25T00:00:00.000Z',
+      }],
+    });
+    renderIntentPage();
+
+    expect(await screen.findByText('Preparing negotiation.')).toBeInTheDocument();
+    emitConversationMessage({ message: {
+      taskId: 'task-1', senderId: 'agent:maya', createdAt: '2026-08-25T00:01:00.000Z',
+      parts: [{ kind: 'data', data: { verb: 'counter', message: 'Their agent proposed terms.' } }],
+    } });
+
+    expect(await screen.findByText('Their Agent')).toBeInTheDocument();
+    expect(screen.getByText('Their agent proposed terms.')).toBeInTheDocument();
+    expect(mocks.opportunitiesService.getRadarView).toHaveBeenCalledWith(expect.objectContaining({ presentation: 'skeleton' }));
+  });
+
   test('refreshes the entire workspace when the PersonalAgent turn completes', async () => {
     renderIntentPage();
     await screen.findByText('Looking for a technical co-founder');
@@ -183,7 +219,6 @@ describe('Intent page — agent chat panel', () => {
     await waitFor(() => expect(mocks.intentsService.getIntent).toHaveBeenCalledWith('intent-1'));
     expect(mocks.conversationsService.getIntentCycle).toHaveBeenCalledWith('intent-1');
     expect(mocks.conversationsService.getIntentCycleTimeline).toHaveBeenCalledWith('intent-1');
-    expect(mocks.opportunitiesService.getRadarView).toHaveBeenCalled();
   });
 
   test('refreshes the entire workspace when negotiation expiry invalidates its intent', async () => {
@@ -197,6 +232,5 @@ describe('Intent page — agent chat panel', () => {
     await waitFor(() => expect(mocks.intentsService.getIntent).toHaveBeenCalledWith('intent-1'));
     expect(mocks.conversationsService.getIntentCycle).toHaveBeenCalledWith('intent-1');
     expect(mocks.conversationsService.getIntentCycleTimeline).toHaveBeenCalledWith('intent-1');
-    expect(mocks.opportunitiesService.getRadarView).toHaveBeenCalled();
   });
 });

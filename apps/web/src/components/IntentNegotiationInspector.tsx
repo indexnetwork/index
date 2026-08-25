@@ -5,6 +5,7 @@ function payload(value: unknown): string {
 }
 
 function pauseLabel(reason: string): string {
+  if (reason === "open_failed") return "agent response failed";
   return reason.replace(/_/g, " ");
 }
 

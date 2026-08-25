@@ -24,6 +24,7 @@ const MockChatDatabaseAdapter = class {
 mock.module("../../adapters/database.adapter", () => ({
   ChatDatabaseAdapter: MockChatDatabaseAdapter,
   chatDatabaseAdapter: new MockChatDatabaseAdapter(),
+  conversationDatabaseAdapter: { getNegotiationTaskForOpportunity: mock(() => Promise.resolve(null)) },
 }));
 mock.module("../../adapters/embedder.adapter", () => ({
   EmbedderAdapter: class {},
@@ -90,25 +91,14 @@ function createService(opts: {
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("OpportunityService.getRadarView — rediscovery trigger", () => {
-  it("triggers maintenance graph on every radar view request", async () => {
+describe("OpportunityService.getRadarView", () => {
+  it("does not trigger maintenance as a side effect of a read", async () => {
     const { service, mockMaintenanceInvoke } = createService({});
 
     await service.getRadarView(USER_ID);
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(mockMaintenanceInvoke).toHaveBeenCalledTimes(1);
-    const calls = mockMaintenanceInvoke.mock.calls as unknown as Array<[{ userId: string }]>;
-    expect(calls[0][0]).toEqual({ userId: USER_ID });
-  });
-
-  it("sets maintenanceTriggered:true in meta", async () => {
-    const { service } = createService({});
-
-    const result = await service.getRadarView(USER_ID);
-
-    expect('meta' in result).toBe(true);
-    expect((result as { meta: { maintenanceTriggered: boolean } }).meta.maintenanceTriggered).toBe(true);
+    expect(mockMaintenanceInvoke).not.toHaveBeenCalled();
   });
 
   it("does NOT trigger maintenance graph when networkId scoped", async () => {

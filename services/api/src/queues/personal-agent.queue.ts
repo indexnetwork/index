@@ -7,7 +7,7 @@
  * own message turn. Global serialization is what the existing infra supports
  * with zero new machinery.
  *
- * Three events, one graph input each:
+ * Four events, one graph input each:
  * - `user_message` — keyed by the reply message id, so a redelivery cannot
  *   double-speak. Removed on completion; the chat controller awaits it.
  * - `matches_ready` — keyed by the signal, so a burst of discovery batches
@@ -15,6 +15,8 @@
  * - `all_paused` — keyed by one durable all-paused generation and NOT removed on
  *   completion: reflect must fire exactly once per durable drain, or the agent acts
  *   twice on the same moment.
+ * - `counterparty_resolved` — keyed by the negotiation, recipient signal and
+ *   verdict; a counterpart receives one factual terminal announcement.
  */
 import { Job, UnrecoverableError } from 'bullmq';
 import type { QueueEvents } from 'bullmq';
@@ -49,6 +51,14 @@ export function personalAgentUserMessageJobId(messageId: string): string {
 
 export function personalAgentMatchesReadyJobId(intentId: string): string {
   return `personal-agent-matches.${intentId}`;
+}
+
+export function personalAgentCounterpartyResolvedJobId(
+  negotiationId: string,
+  intentId: string,
+  verdict: 'pending' | 'reject',
+): string {
+  return `personal-agent-counterparty-resolved.${negotiationId}.${intentId}.${verdict}`;
 }
 
 export class PersonalAgentQueue {
@@ -110,10 +120,22 @@ export class PersonalAgentQueue {
     const primary = personalAgentMatchesReadyJobId(input.intentId);
     for (const jobId of [primary, `${primary}.next`]) {
       if (!(await this.slotWouldRun(jobId))) continue;
-      return this.queue.add('matches_ready', data, { ...options, jobId });
+      const job = await this.queue.add('matches_ready', data, { ...options, jobId });
+      this.logger.info('Queued matches_ready', {
+        jobId: job.id,
+        userId: input.userId,
+        intentId: input.intentId,
+      });
+      return job;
     }
     this.logger.warn('Both matches_ready slots are occupied; enqueueing an unkeyed follow-up', { intentId: input.intentId });
-    return this.queue.add('matches_ready', data, options);
+    const job = await this.queue.add('matches_ready', data, options);
+    this.logger.info('Queued matches_ready', {
+      jobId: job.id,
+      userId: input.userId,
+      intentId: input.intentId,
+    });
+    return job;
   }
 
   /**
@@ -161,6 +183,14 @@ export class PersonalAgentQueue {
   addAllPausedEvent(job: NegotiationRoundReflectJobData): Promise<Job<PersonalAgentEvent>> {
     return this.queue.add('all_paused', { ...job, event: 'all_paused' }, {
       jobId: negotiationRoundReflectJobId(job.intentId, job.round, job.generation),
+      removeOnComplete: false,
+    });
+  }
+
+  /** One durable, server-owned announcement of the other agent's verdict. */
+  addCounterpartyResolvedEvent(input: Extract<PersonalAgentEvent, { event: 'counterparty_resolved' }>): Promise<Job<PersonalAgentEvent>> {
+    return this.queue.add('counterparty_resolved', input, {
+      jobId: personalAgentCounterpartyResolvedJobId(input.negotiationId, input.intentId, input.verdict),
       removeOnComplete: false,
     });
   }
@@ -238,6 +268,9 @@ export class PersonalAgentQueue {
         totalDurationMs: finishedAt - job.timestamp,
         actCount: result.acts.length,
         messageCount: result.messages.length,
+        acts: result.acts.map((act) => act.tool === 'kickoff'
+          ? { tool: act.tool, attempted: act.attempted, opened: act.opened, failed: act.failed }
+          : { tool: act.tool }),
       });
       return result;
     } catch (error) {

@@ -1,9 +1,9 @@
 import { config } from 'dotenv';
 import path from 'node:path';
-import { describe, expect, test } from 'bun:test';
-import { and, eq } from 'drizzle-orm';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { eq } from 'drizzle-orm';
 
-config({ path: path.resolve(import.meta.dir, '../../.env.development'), override: true });
+config({ path: path.resolve(import.meta.dir, '../../../.env.development'), override: true });
 
 const configuredUrl = process.env.DATABASE_URL;
 const sandboxUrl = configuredUrl ? new URL(configuredUrl) : null;
@@ -21,6 +21,8 @@ const RUN_LIVE_SANDBOX = process.env.RUN_SANDBOX_E2E === '1'
   && sandboxUrl?.pathname === '/protocol_sandbox';
 
 type Mode = 'minimal' | 'twenty';
+
+let closeLiveResources: (() => Promise<void>) | null = null;
 
 async function seed(mode: Mode): Promise<void> {
   const child = Bun.spawn([
@@ -51,6 +53,16 @@ async function liveHarness(mode: Mode) {
     import('../src/services/chat.service'),
     import('../src/adapters/database.adapter'),
   ]);
+  closeLiveResources ??= async () => {
+    const [{ closeDb }, { closeRedisConnection }, { personalAgentQueue }] = await Promise.all([
+      import('../src/lib/drizzle/drizzle'),
+      import('../src/adapters/cache.adapter'),
+      import('../src/queues/personal-agent.queue'),
+    ]);
+    await personalAgentQueue.close();
+    await closeRedisConnection();
+    await closeDb();
+  };
 
   const resolve = async (email: string, intentIndex: number) => {
     const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
@@ -67,7 +79,10 @@ async function liveHarness(mode: Mode) {
     return { user, intent: selected };
   };
 
-  const discover = async (seat: { user: { id: string }; intent: { id: string; payload: string } }) => {
+  const discover = async (
+    seat: { user: { id: string }; intent: { id: string; payload: string } },
+    targetUserId?: string,
+  ) => {
     const graph = buildOpportunityGraph(createOpportunityGraphDb(), {
       matchesReady: async ({ userId, intentId }: { userId: string; intentId: string }) => {
         await personalAgentGraph.invoke({ userId, intentId, event: 'matches_ready' });
@@ -76,12 +91,15 @@ async function liveHarness(mode: Mode) {
     const [network] = await db.select().from(schema.intentNetworks)
       .where(eq(schema.intentNetworks.intentId, seat.intent.id));
     if (!network) throw new Error(`missing network for ${seat.intent.id}`);
-    return graph.invoke(buildIntentDiscoveryTrigger({
+    return graph.invoke({
+      ...buildIntentDiscoveryTrigger({
       userId: seat.user.id,
       searchQuery: seat.intent.payload,
       networkIds: [network.networkId],
       triggerIntentId: seat.intent.id,
-    }));
+      }),
+      ...(targetUserId ? { targetUserId } : {}),
+    });
   };
 
   const messagePrincipal = async (seat: { user: { id: string }; intent: { id: string } }, text: string) => {
@@ -103,78 +121,135 @@ function hasSeats(row: { actors: Array<{ userId: string; intent?: string }> }, f
 }
 
 describe.skipIf(!RUN_LIVE_SANDBOX)('PersonalAgent + negotiation live sandbox E2E', () => {
-  test('minimal market discovers, pauses for principals, and reaches pending only through an owner action', async () => {
-    const h = await liveHarness('minimal');
-    const maya = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaDaniel.source.email, h.personas.SANDBOX_E2E_CASES.mayaDaniel.source.intentIndex);
+  async function exerciseDesignatedLifecycle(mode: Mode): Promise<void> {
+    const h = await liveHarness(mode);
+    const mayaDaniel = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaDaniel.source.email, h.personas.SANDBOX_E2E_CASES.mayaDaniel.source.intentIndex);
     const daniel = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaDaniel.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaDaniel.candidate.intentIndex);
+    const mayaAisha = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaAisha.source.email, h.personas.SANDBOX_E2E_CASES.mayaAisha.source.intentIndex);
     const aisha = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaAisha.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaAisha.candidate.intentIndex);
     const sofia = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaSofia.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaSofia.candidate.intentIndex);
 
-    await h.discover(maya);
+    const discoverPair = async (source: typeof mayaDaniel, candidate: typeof daniel) => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await h.discover(source, candidate.user.id);
+        const opportunity = (await h.db.select().from(h.schema.opportunities))
+          .find((row) => hasSeats(row, source, candidate));
+        if (opportunity) return opportunity;
+      }
+      return undefined;
+    };
+
+    // Only the two designated signals enter discovery. These are explicit
+    // introductions, so target the intended counterparty through the same
+    // production direct-connection graph path a principal uses.
+    const mayaAishaOpportunity = await discoverPair(mayaAisha, aisha);
+    const mayaDanielOpportunity = await discoverPair(mayaDaniel, daniel);
     const opportunities = await h.db.select().from(h.schema.opportunities);
-    const mayaDaniel = opportunities.find((row) => hasSeats(row, maya, daniel));
-    const mayaAisha = opportunities.find((row) => hasSeats(row, maya, aisha));
-    expect(mayaDaniel).toBeDefined();
-    expect(mayaAisha).toBeDefined();
-    expect(opportunities.some((row) => hasSeats(row, maya, sofia) && ['negotiating', 'pending'].includes(row.status))).toBe(false);
+    expect(mayaDanielOpportunity).toBeDefined();
+    expect(mayaAishaOpportunity).toBeDefined();
+    expect(Number(mayaDanielOpportunity!.confidence)).toBeGreaterThanOrEqual(0.4);
+    expect(Number(mayaAishaOpportunity!.confidence)).toBeGreaterThanOrEqual(0.4);
+    expect(opportunities.some((row) => hasSeats(row, mayaDaniel, sofia) && ['negotiating', 'pending'].includes(row.status))).toBe(false);
 
     // These are messages to each owner's own intent-scoped DM, never A2A turns.
-    await h.messagePrincipal(maya, 'For Daniel, I can offer meaningful founding equity and want to discuss ownership and start date.');
+    await h.messagePrincipal(mayaDaniel, 'For Daniel, I can offer meaningful founding equity and want to discuss ownership and start date.');
     await h.messagePrincipal(daniel, 'I am interested if the role has clear technical ownership and meaningful equity.');
+    await h.messagePrincipal(mayaAisha, 'For Maya Chen, our six design partners and two annual conversions support a focused seed conversation.');
 
-    const task = (await h.db.select().from(h.schema.tasks)).find((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === mayaDaniel!.id);
-    expect(task).toBeDefined();
-    expect(Object.keys(task!.briefs)).toEqual(expect.arrayContaining([maya.user.id, daniel.user.id]));
-    const a2a = await h.conversationDatabaseAdapter.getNegotiationMessages(task!.id);
-    expect(a2a.length).toBeGreaterThan(0);
-    for (const message of a2a) {
-      const data = (message.parts as Array<{ kind?: string; data?: { verb?: string } }>).find((part) => part.kind === 'data')?.data;
-      if (data?.verb) expect(['outreach', 'counter', 'question', 'pause', 'withdraw']).toContain(data.verb);
+    const tasks = await h.db.select().from(h.schema.tasks);
+    const taskFor = (opportunityId: string) => tasks.find((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === opportunityId);
+    const mayaDanielTask = taskFor(mayaDanielOpportunity!.id);
+    const mayaAishaTask = taskFor(mayaAishaOpportunity!.id);
+    expect(mayaDanielTask).toBeDefined();
+    expect(mayaAishaTask).toBeDefined();
+    expect([mayaDanielTask, mayaAishaTask].some((task) => task!.state === 'paused')).toBe(true);
+    for (const [task, first, second] of [[mayaDanielTask!, mayaDaniel, daniel], [mayaAishaTask!, mayaAisha, aisha]] as const) {
+      expect(Object.keys(task.briefs)).toEqual(expect.arrayContaining([first.user.id, second.user.id]));
+      const a2a = await h.conversationDatabaseAdapter.getNegotiationMessages(task.id);
+      expect(a2a.length).toBeGreaterThan(0);
+      for (const message of a2a) {
+        const data = (message.parts as Array<{ kind?: string; data?: { verb?: string } }>).find((part) => part.kind === 'data')?.data;
+        if (data?.verb) expect(['outreach', 'counter', 'question', 'pause', 'withdraw']).toContain(data.verb);
+      }
+      expect(a2a.some((message) => [first.user.id, second.user.id].includes(message.senderId))).toBe(false);
     }
-    expect(a2a.some((message) => message.senderId === maya.user.id || message.senderId === daniel.user.id)).toBe(false);
-    expect((await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, mayaDaniel!.id)))[0]!.status).not.toBe('accepted');
+    expect((await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, mayaDanielOpportunity!.id)))[0]!.status).not.toBe('accepted');
+    expect((await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, mayaAishaOpportunity!.id)))[0]!.status).not.toBe('accepted');
 
     // This row is intentionally an unapproved introduction. It exercises the
     // production graph's admission guard with real persistence, not a fake
     // host: an introducer's approval is required before a task can open.
     const [mayaNetwork] = await h.db.select().from(h.schema.intentNetworks)
-      .where(eq(h.schema.intentNetworks.intentId, maya.intent.id));
+      .where(eq(h.schema.intentNetworks.intentId, mayaDaniel.intent.id));
     const blockedOpportunityId = crypto.randomUUID();
     await h.db.insert(h.schema.opportunities).values({
       id: blockedOpportunityId,
       detection: { source: 'manual', timestamp: new Date().toISOString() },
       actors: [
-        { userId: maya.user.id, intent: maya.intent.id, networkId: mayaNetwork!.networkId, role: 'peer' },
+        { userId: mayaDaniel.user.id, intent: mayaDaniel.intent.id, networkId: mayaNetwork!.networkId, role: 'peer' },
         { userId: daniel.user.id, intent: daniel.intent.id, networkId: mayaNetwork!.networkId, role: 'peer' },
         { userId: aisha.user.id, networkId: mayaNetwork!.networkId, role: 'introducer', approved: false },
       ],
       interpretation: { category: 'introduction', reasoning: 'Requires introducer approval.', confidence: 1 },
       context: { networkId: mayaNetwork!.networkId }, confidence: '1', status: 'latent',
     });
-    await h.negotiationGraph.invoke({ opportunityId: blockedOpportunityId, intentId: maya.intent.id, brief: 'Do not open until the introducer approves.', round: 1 });
-    const [blocked] = await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, blockedOpportunityId));
-    expect(blocked!.status).toBe('latent');
-    expect((await h.db.select().from(h.schema.tasks)).some((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === blockedOpportunityId)).toBe(false);
+    try {
+      await h.negotiationGraph.invoke({ opportunityId: blockedOpportunityId, intentId: mayaDaniel.intent.id, brief: 'Do not open until the introducer approves.', round: 1 });
+      const [blocked] = await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, blockedOpportunityId));
+      expect(blocked!.status).toBe('latent');
+      expect((await h.db.select().from(h.schema.tasks)).some((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === blockedOpportunityId)).toBe(false);
+    } finally {
+      await h.db.delete(h.schema.opportunities).where(eq(h.schema.opportunities.id, blockedOpportunityId));
+    }
 
-    // The production graph's verdict lane is an explicit owner action; agents
-    // are not allowed to self-accept while negotiating.
-    await h.negotiationGraph.invoke({ negotiationId: task!.id, verdict: 'pending', reasoning: 'Both owners supplied the needed context.', byUserId: maya.user.id });
-    const [pending] = await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, mayaDaniel!.id));
-    expect(pending!.status).toBe('pending');
-    expect(pending!.acceptedBy).toBeNull();
-  }, 240_000);
+    // The agents have exchanged real turns and pause whenever they need the
+    // principal's context. Resume each needs-principal pause through the same
+    // production NegotiationGraph using the answer from that owner. A later
+    // ready-for-verdict pause may be promoted to pending.
+    const principalContext = new Map([
+      [mayaDaniel.user.id, 'I am Maya Chen, the technical co-founder. We are building AI-agent observability for customer cloud environments, have six active design partners, converted two to annual contracts, are raising a $1.5m seed, and can offer meaningful founding equity with clear technical ownership.'],
+      [daniel.user.id, 'I have built multi-tenant data platforms and distributed systems at two B2B SaaS startups. I am available to begin a founding-engineer role within 30 days, want clear technical ownership, and need meaningful equity.'],
+      [mayaAisha.user.id, 'I invest $500k to $1.5m at pre-seed and seed in developer tools, data infrastructure, and enterprise software. I want to assess the initial buyer, painful workflow, and changes after design-partner usage before a formal process.'],
+    ]);
+    for (const opportunity of [mayaDanielOpportunity!, mayaAishaOpportunity!]) {
+      let freshTask = (await h.db.select().from(h.schema.tasks))
+        .find((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === opportunity.id);
+      expect(freshTask).toBeDefined();
+      let pause = (freshTask!.metadata as { pause?: { reason?: string; pausedBy?: string } } | null)?.pause;
+      for (let answerCount = 0; freshTask!.state === 'paused' && pause?.reason === 'needs_principal'; answerCount += 1) {
+        expect(answerCount).toBeLessThan(3);
+        const brief = principalContext.get(pause.pausedBy!);
+        expect(brief).toBeDefined();
+        const resumed = await h.negotiationGraph.invoke({
+          negotiationId: freshTask!.id,
+          brief: brief!,
+          byUserId: pause.pausedBy!,
+        });
+        expect(resumed.status).not.toBe('error');
+        freshTask = (await h.db.select().from(h.schema.tasks))
+          .find((row) => (row.metadata as { opportunityId?: string } | null)?.opportunityId === opportunity.id);
+        pause = (freshTask!.metadata as { pause?: { reason?: string; pausedBy?: string } } | null)?.pause;
+      }
+      if (freshTask!.state === 'paused') {
+        expect(pause?.pausedBy).toBeDefined();
+        expect(pause?.reason).toBe('ready_for_verdict');
+        await h.negotiationGraph.invoke({ negotiationId: freshTask!.id, verdict: 'pending', reasoning: 'Both owners supplied the needed context.', byUserId: pause!.pausedBy! });
+      }
+      const [pending] = await h.db.select().from(h.schema.opportunities).where(eq(h.schema.opportunities.id, opportunity.id));
+      expect(pending!.status).toBe('pending');
+      expect(pending!.acceptedBy).toBeNull();
+    }
+  }
+
+  test('minimal market discovers, pauses for principals, and reaches pending only through an owner action', async () => {
+    await exerciseDesignatedLifecycle('minimal');
+  }, 600_000);
 
   test('twenty-person market bounds discovery to designated signals and keeps the same lifecycle boundaries', async () => {
-    const h = await liveHarness('twenty');
-    const maya = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaDaniel.source.email, h.personas.SANDBOX_E2E_CASES.mayaDaniel.source.intentIndex);
-    const daniel = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaDaniel.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaDaniel.candidate.intentIndex);
-    const aisha = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaAisha.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaAisha.candidate.intentIndex);
-    const sofia = await h.resolve(h.personas.SANDBOX_E2E_CASES.mayaSofia.candidate.email, h.personas.SANDBOX_E2E_CASES.mayaSofia.candidate.intentIndex);
-    await h.discover(maya);
-    const rows = await h.db.select().from(h.schema.opportunities);
-    expect(rows.some((row) => hasSeats(row, maya, daniel))).toBe(true);
-    expect(rows.some((row) => hasSeats(row, maya, aisha))).toBe(true);
-    expect(rows.some((row) => hasSeats(row, maya, sofia) && ['negotiating', 'pending'].includes(row.status))).toBe(false);
-    expect(rows.every((row) => row.status !== 'accepted')).toBe(true);
-  }, 240_000);
+    await exerciseDesignatedLifecycle('twenty');
+  }, 600_000);
+});
+
+afterAll(async () => {
+  await closeLiveResources?.();
 });

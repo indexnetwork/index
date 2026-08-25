@@ -15,11 +15,12 @@ describe("Radar responsibility buckets", () => {
   });
 
   it.each([
-    ["pending", undefined, "needs-you"],
+    ["pending", undefined, "agent-handling"],
     ["latent", undefined, "agent-handling"],
     ["draft", undefined, "agent-handling"],
     ["negotiating", undefined, "agent-handling"],
-    ["pending", negotiation({ state: "working" }), "needs-you"],
+    ["pending", negotiation({ state: "working" }), "agent-handling"],
+    ["pending", negotiation({ state: "completed" }), "needs-you"],
   ] as const)("maps %s without a blocking pause to %s", (status, task, bucket) => {
     expect(radarBucketForOpportunity(status, task)).toBe(bucket);
   });
@@ -51,8 +52,8 @@ describe("Radar responsibility buckets", () => {
     }))).toBe(bucket);
   });
 
-  it("falls back to opportunity status when cycle data is unavailable", () => {
-    expect(radarBucketForOpportunity("pending")).toBe("needs-you");
+  it("keeps an unproven pending opportunity with the agent", () => {
+    expect(radarBucketForOpportunity("pending")).toBe("agent-handling");
     expect(radarBucketForOpportunity("accepted")).toBe("connected");
   });
 

@@ -106,6 +106,18 @@ async function main(): Promise<void> {
   const schema = await import('../schemas/database.schema');
 
   try {
+    // Fail before any paid embedding request when the configured local-dev
+    // branch does not actually expose protocol_sandbox. The live E2E runs
+    // this seeder as its reset step, so its environment check must be cheap.
+    try {
+      await db.execute(sql`SELECT 1`);
+    } catch (error) {
+      const cause = error instanceof Error && error.cause instanceof Error
+        ? error.cause.message
+        : error instanceof Error ? error.message : String(error);
+      throw new Error(`Cannot connect to ${SANDBOX_DATABASE} before seeding: ${cause}`, { cause: error });
+    }
+
     const personaFixtures = personas.map((persona, index) => {
       const context = profileText(persona);
       const classified = minimal

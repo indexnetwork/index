@@ -445,7 +445,9 @@ evaluation has a real decision to make. Three investor personas
 that docs and prior threads reference. Every persona has a Better Auth
 email/password credential with the shared test password `sandbox-sandbox`, so
 the normal login form works for any of them (`.test` addresses are marked
-verified by the seed). Re-seed the fixtures after schema migrations with:
+verified by the seed). Login addresses are lowercase, dot-separated names — for
+example, `pilar.santos@sandbox.test` and `maya.chen@sandbox.test`. Re-seed the
+fixtures after schema migrations with:
 
 ```bash
 bun run db:seed:sandbox -- --confirm --minimal   # five-person Launch market

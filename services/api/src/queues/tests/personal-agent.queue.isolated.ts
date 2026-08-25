@@ -114,6 +114,22 @@ describe('PersonalAgentQueue serialization', () => {
     });
   });
 
+  it('delivers one retained counterpart-resolution notification per verdict', async () => {
+    await withQueue(buildQueue(() => idle), async ({ queue, invocations }) => {
+      const event = {
+        userId: 'user-1', intentId: 'intent-1', event: 'counterparty_resolved' as const,
+        negotiationId: 'task-1', verdict: 'pending' as const,
+      };
+      const [first, duplicate] = await Promise.all([
+        queue.addCounterpartyResolvedEvent(event),
+        queue.addCounterpartyResolvedEvent(event),
+      ]);
+      expect(duplicate.id).toBe(first.id);
+      await first.waitUntilFinished(undefined as never, 10_000);
+      expect(invocations()).toBe(1);
+    });
+  });
+
   it('a matches_ready batch arriving while a turn is running is queued, never swallowed', async () => {
     // The coalescing that makes a burst of discovery batches one kickoff must
     // not eat a batch the running turn has already read past: BullMQ silently

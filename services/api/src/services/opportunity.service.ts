@@ -404,7 +404,7 @@ export class OpportunityService {
   async getRadarView(
     userId: string,
     options?: { networkId?: string; scopeType?: 'intent'; scopeId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[]; presentation?: 'full' | 'skeleton' }
-  ): Promise<{ items: unknown[]; meta: { totalOpportunities: number; maintenanceTriggered: boolean } } | { error: string }> {
+  ): Promise<{ items: unknown[]; meta: { totalOpportunities: number } } | { error: string }> {
     logger.verbose('Getting radar view', { userId, options });
     try {
       const radarGraph = this.getRadarGraph();
@@ -423,26 +423,7 @@ export class OpportunityService {
         return { error: result.error };
       }
       const items = result.items ?? [];
-      const meta: { totalOpportunities: number; maintenanceTriggered: boolean } = {
-        ...(result.meta ?? { totalOpportunities: 0 }),
-        maintenanceTriggered: false,
-      };
-
-      // Fire-and-forget maintenance: health-scored check replaces empty-radar-only trigger.
-      // Intent scope is a radar narrowing, not a maintenance target, so it does not suppress
-      // the existing unscoped maintenance trigger. Network scope retains current behavior.
-      // Skeleton requests are the fast first phase of a two-phase fetch; the
-      // full request that follows immediately will trigger maintenance, so
-      // firing here would just double it.
-      if (!options?.networkId && options?.presentation !== 'skeleton') {
-        meta.maintenanceTriggered = true;
-        logger.info('Triggering maintenance via health scoring', { userId, source: 'radar-view' });
-        this.getMaintenanceGraph().invoke({ userId }).catch((err) =>
-          logger.warn('Maintenance graph failed', { userId, error: err })
-        );
-      }
-
-      return { items, meta };
+      return { items, meta: result.meta ?? { totalOpportunities: 0 } };
     } catch (e) {
       logger.error('getRadarView failed', { userId, error: e });
       return { error: 'Failed to load radar view' };

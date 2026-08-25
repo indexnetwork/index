@@ -50,7 +50,7 @@ export function parkLifecycleLabel(pause: NegotiationParkNarration): string {
     case 'turn_cap':
       return 'PAUSED — the negotiation reached its turn cap and cannot continue without review.';
     case 'open_failed':
-      return 'PAUSED — the negotiation could not be started. Nothing has been said to the counterparty yet.';
+      return 'PAUSED — the agent could not produce its next response. The negotiation can be retried.';
   }
 }
 

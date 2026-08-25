@@ -43,6 +43,11 @@ export async function matchesReadyNode(state: OpportunityState, deps: Opportunit
   // never woken — discovery reporting success for the one thing it exists to
   // hand off. Let it fail so the discovery job retries: persistence dedupes,
   // and the wake itself coalesces on the signal, so a retry is idempotent.
+  matchesReadyLog.info('Emitting matches_ready', {
+    userId: discoveryUserId,
+    signals: intentIds.size,
+    opportunities: state.opportunities.length,
+  });
   const emitted = await Promise.allSettled([...intentIds].map(async (intentId) => {
     await deps.matchesReady!({ userId: discoveryUserId, intentId });
   }));

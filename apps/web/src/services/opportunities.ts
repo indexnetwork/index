@@ -85,7 +85,7 @@ export interface RadarCardItem {
 
 export interface RadarViewResponse {
   items: RadarCardItem[];
-  meta: { totalOpportunities: number; maintenanceTriggered?: boolean };
+  meta: { totalOpportunities: number };
 }
 
 export interface GetRadarViewOptions {

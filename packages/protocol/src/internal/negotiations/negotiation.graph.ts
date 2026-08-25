@@ -66,6 +66,8 @@ export interface NegotiationGraphResult {
 export interface NegotiationGraphDeps {
   database: NegotiationGraphDatabase;
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
+  /** Delivers the other agent's terminal verdict to each opposing PersonalAgent. */
+  resolutionEnqueue?: (input: { userId: string; intentId: string; negotiationId: string; verdict: "pending" | "reject" }) => Promise<void>;
   /**
    * Who plays a seat's turn. Production binds this to the PersonalAgent in
    * negotiation scope; the graph itself never knows a model exists.
@@ -330,7 +332,9 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     return {
       task,
       turns: [],
-      pendingTurn: { verb: "pause", reason: "counterparty_silent" },
+      // This is an author/provider failure, not evidence that the other
+      // agent went silent. Persist the recoverable system failure honestly.
+      pendingTurn: { verb: "pause", reason: "open_failed" },
       pendingTurnByUserId: null,
       authored: true,
       phase: "apply",
@@ -468,6 +472,20 @@ async function clearReflectPendingBestEffort(deps: NegotiationGraphDeps, taskId:
   }
 }
 
+async function notifyCounterparties(
+  deps: NegotiationGraphDeps,
+  meta: NegotiationTaskMetadata,
+  negotiationId: string,
+  resolvedByUserId: string,
+  verdict: "pending" | "reject",
+): Promise<void> {
+  if (!deps.resolutionEnqueue) return;
+  for (const [intentId, seat] of Object.entries(meta.seats)) {
+    if (seat.userId === resolvedByUserId) continue;
+    await deps.resolutionEnqueue({ userId: seat.userId, intentId, negotiationId, verdict });
+  }
+}
+
 // ─── resolve ─────────────────────────────────────────────────────────────────
 
 async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
@@ -497,6 +515,7 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
       resolvedByUserId: input.byUserId,
     });
     if (!updated) return { phase: "error", error: "Negotiation changed before its verdict committed" };
+    await notifyCounterparties(deps, task.metadata, task.id, input.byUserId, input.verdict);
     // A round whose last active negotiation ends by direct verdict (not a
     // pause) must still trigger the all-paused check — apply isn't the only
     // way a round finishes.

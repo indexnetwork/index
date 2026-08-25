@@ -35,4 +35,10 @@ describe('IntentNegotiationInspector', () => {
 
     expect(screen.queryByText(/Expires in/)).not.toBeInTheDocument();
   });
+
+  test('does not present an agent failure as counterparty silence', () => {
+    render(<IntentNegotiationInspector detail={detail('open_failed')} />);
+
+    expect(screen.getByText(/Paused · agent response failed · your agent/)).toBeInTheDocument();
+  });
 });

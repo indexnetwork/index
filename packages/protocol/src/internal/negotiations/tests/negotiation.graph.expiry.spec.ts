@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 
 import { NegotiationGraphFactory } from '../negotiation.graph.js';
+import { negotiationRoundReflectJobId } from '../negotiation.round-reflect.js';
 
 const updatedAt = new Date('2026-07-21T00:00:00.000Z');
 
@@ -34,6 +35,10 @@ function graph(overrides: Record<string, unknown> = {}) {
 }
 
 describe('NegotiationGraph system expiry', () => {
+  it('uses a BullMQ-safe id for a durable all-paused reflect', () => {
+    expect(negotiationRoundReflectJobId('intent-1', 2, 'task-1.0')).toBe('reflect.intent-1.2.task-1.0');
+  });
+
   it('completes an eligible paused task without authoring a verdict and reflects its round', async () => {
     const fixture = graph();
 

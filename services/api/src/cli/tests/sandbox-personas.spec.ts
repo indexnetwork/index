@@ -38,10 +38,10 @@ describe('SANDBOX_PERSONAS', () => {
     assertPopulationShape(SANDBOX_PERSONAS);
   });
 
-  it('keeps every derived persona on the sandbox-person address family', () => {
+  it('gives every persona a readable name-based sandbox address', () => {
     const derived = SANDBOX_PERSONAS.filter((persona) => !persona.fixedIds);
     for (const persona of derived) {
-      expect(persona.email).toMatch(/^sandbox-person-\d{2}@index-network\.test$/);
+      expect(persona.email).toMatch(/^[a-z0-9]+(?:\.[a-z0-9]+)+@sandbox\.test$/);
     }
   });
 
@@ -67,11 +67,11 @@ describe('SANDBOX_MINIMAL_PERSONAS', () => {
     // One shared market: the supporting people carry two focused signals each.
     assertPopulationShape(SANDBOX_MINIMAL_PERSONAS, { minIntents: 2 });
     expect(SANDBOX_MINIMAL_PERSONAS.map((persona) => persona.email).sort()).toEqual([
-      'aisha-okafor@sandbox.test',
-      'daniel-ruiz@sandbox.test',
-      'ethan-brooks@sandbox.test',
-      'maya-chen@sandbox.test',
-      'sofia-martinez@sandbox.test',
+      'aisha.okafor@sandbox.test',
+      'daniel.ruiz@sandbox.test',
+      'ethan.brooks@sandbox.test',
+      'maya.chen@sandbox.test',
+      'sofia.martinez@sandbox.test',
     ]);
     for (const persona of SANDBOX_MINIMAL_PERSONAS) expect(persona.fixedIds).toBeUndefined();
   });
@@ -103,5 +103,12 @@ describe('SANDBOX_TWENTY_PERSONAS', () => {
         expect(persona!.intents[seat.intentIndex]).toBeDefined();
       }
     }
+  });
+
+  it('starts the investor/founder E2E signal from Aisha before Maya emits its unrelated filler', () => {
+    expect(SANDBOX_E2E_CASES.mayaAisha).toEqual({
+      source: { email: 'aisha.okafor@sandbox.test', intentIndex: 0 },
+      candidate: { email: 'maya.chen@sandbox.test', intentIndex: 0 },
+    });
   });
 });

@@ -274,6 +274,29 @@ function buildCycle(judgment: ScriptedJudgment, counterparties: string[]) {
   return { agent, negotiationHost, principal, wakes, judgmentMatches, negotiationInputs };
 }
 
+describe("PersonalAgent counterpart verdict notice", () => {
+  test("delivers fixed pending copy without asking the model", async () => {
+    const judgment = new ScriptedJudgment([]);
+    const { agent, principal } = buildCycle(judgment, []);
+
+    const result = await agent.invoke({
+      userId: SOURCE_USER_ID,
+      intentId: INTENT_ID,
+      event: "counterparty_resolved",
+      negotiationId: "task-1",
+      verdict: "pending",
+    });
+
+    expect(result.messages).toEqual([
+      "The other agent considers this a potential fit and has put it in their principal's decision queue. This is not an acceptance.",
+    ]);
+    expect(judgment.decideCalls).toHaveLength(0);
+    expect(principal.ledgerRows.at(-1)?.event).toEqual({
+      kind: "counterparty_resolved", negotiationId: "task-1", verdict: "pending",
+    });
+  });
+});
+
 const userMessage = (text: string) => ({
   userId: SOURCE_USER_ID,
   intentId: INTENT_ID,
@@ -824,6 +847,11 @@ describe("PersonalAgent — the whole cycle", () => {
       "promote", // the reopened own verdict is resolved before replying
       "message_user", // the model's natural terminal response
     ]);
+    const clientMessageId = "client-message-29";
+    const clientTurnRows = principal.ledgerRows.filter((row) => row.event.messageId === clientMessageId);
+    expect(clientTurnRows.length).toBeGreaterThan(0);
+    expect(new Set(clientTurnRows.map((row) => row.event.traceId)).size).toBe(1);
+    expect(clientTurnRows.every((row) => typeof row.event.traceId === "string")).toBe(true);
     expect(negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.status).toBe("pending");
     expect(negotiationHost.opportunities.get(THIRD_OPPORTUNITY_ID)!.status).toBe("negotiating");
     // Only the own needs_principal pause was sent back out. The already

@@ -49,6 +49,10 @@ export const negotiationGraph = new NegotiationGraphFactory({
     const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
     await personalAgentQueue.addAllPausedEvent(job);
   },
+  resolutionEnqueue: async (input) => {
+    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
+    await personalAgentQueue.addCounterpartyResolvedEvent({ ...input, event: 'counterparty_resolved' });
+  },
   // The seat's own agent plays its turn. `personalAgentGraph` is referenced
   // lazily, inside the call, so the two constructions below can be ordered.
   author: {

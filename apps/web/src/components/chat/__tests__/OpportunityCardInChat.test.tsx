@@ -59,4 +59,20 @@ describe("OpportunityCard negotiation lifecycle", () => {
     expect(screen.getByRole("button", { name: "Start Chat" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Skip" })).toBeTruthy();
   });
+
+  it("does not expose a pending Radar card before its negotiation completes", () => {
+    render(
+      <MemoryRouter>
+        <OpportunityCard
+          card={{ ...baseCard, status: "pending" }}
+          pendingActionable={false}
+          onPrimaryAction={vi.fn()}
+          onSecondaryAction={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("button", { name: "Start Chat" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+  });
 });

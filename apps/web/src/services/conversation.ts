@@ -101,6 +101,8 @@ export interface ConversationMessage {
   role: 'user' | 'agent';
   /** Durable conversation-session binding for sectioned history reads. */
   sessionId?: string | null;
+  /** Negotiation task that owns this durable A2A turn, when applicable. */
+  taskId?: string | null;
   parts: unknown[];
   metadata?: Record<string, unknown>;
   createdAt: string;
