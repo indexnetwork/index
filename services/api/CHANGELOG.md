@@ -14,7 +14,9 @@ section before promoting to `main`).
   between the same users no longer suppress another intent's opportunity or
   task, while exact intent-pair opportunity delivery and per-opportunity task
   creation remain serialized. Each negotiation keeps its own conversation,
-  seats, rounds, pause, verdict, and lifecycle state.
+  seats, rounds, pause, verdict, and lifecycle state. Final persistence locks
+  and revalidates every participant intent as active, non-archived, owned by
+  that actor, and assigned to the actor's exact network.
 - Give PersonalAgent user-message jobs an enqueue-relative 70-second execution
   deadline inside the controller's 90-second wait, with the same fresh budget
   for background turns. A user-message deadline failure before durable work

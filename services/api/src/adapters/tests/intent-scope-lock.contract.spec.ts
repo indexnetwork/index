@@ -57,6 +57,17 @@ describe('intent-scope advisory lock contract', () => {
       .toBeLessThan(opportunity.indexOf('acquireIntentScopedPairLock('));
     expect(opportunity.indexOf('acquireIntentScopeAdvisoryLock('))
       .toBeLessThan(opportunity.indexOf(".from(schema.intents)"));
+    const participantAssignments = opportunity.indexOf(
+      '.innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))',
+    );
+    const participantShareLock = opportunity.indexOf(".for('share')", participantAssignments);
+    const opportunityDedupRead = opportunity.indexOf('.from(opportunities)', participantShareLock);
+    expect(opportunity).toContain('participantIntentNetworkBindings');
+    expect(opportunity).toContain('isNull(schema.intents.archivedAt)');
+    expect(opportunity).toContain("eq(schema.intents.status, 'ACTIVE')");
+    expect(participantAssignments).toBeGreaterThanOrEqual(0);
+    expect(participantShareLock).toBeGreaterThan(participantAssignments);
+    expect(opportunityDedupRead).toBeGreaterThan(participantShareLock);
   });
 
   it('serializes exact-trigger opportunity reactivation before every conflicting row lock', () => {

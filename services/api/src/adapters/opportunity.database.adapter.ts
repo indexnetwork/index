@@ -412,9 +412,20 @@ export class OpportunityDatabaseAdapter {
         && actor.intent === eligibility.triggerIntentId)
     ) return null;
     const participantScopeKeys = participantActors.map((actor) => `intent:${actor.intent!}`);
-    const intentBindings = [...new Map(participantActors.map((actor) => [
-      `${actor.userId}\u0000${actor.intent!}`,
-      { userId: actor.userId, intentId: actor.intent! },
+    const participantIntentNetworkBindings = [...new Map([
+      ...participantActors.map((actor) => ({
+        userId: actor.userId,
+        intentId: actor.intent!,
+        networkId: actor.networkId,
+      })),
+      ...actorNetworkIds.map((networkId) => ({
+        userId: eligibility.ownerUserId,
+        intentId: eligibility.triggerIntentId,
+        networkId,
+      })),
+    ].map((binding) => [
+      `${binding.userId}\u0000${binding.intentId}\u0000${binding.networkId}`,
+      binding,
     ] as const)).values()];
 
     const requestedPairs = [
@@ -452,38 +463,28 @@ export class OpportunityDatabaseAdapter {
       );
       await acquireIntentScopedPairLock(tx, participantScopeKeys);
 
-      const [ownedIntent] = await tx
-        .select({ id: schema.intents.id })
+      const activeAssignedIntents = await tx
+        .select({
+          id: schema.intents.id,
+          userId: schema.intents.userId,
+          networkId: schema.intentNetworks.networkId,
+        })
         .from(schema.intents)
+        .innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))
         .where(and(
-          eq(schema.intents.id, eligibility.triggerIntentId),
-          eq(schema.intents.userId, eligibility.ownerUserId),
+          or(...participantIntentNetworkBindings.map((binding) => and(
+            eq(schema.intents.id, binding.intentId),
+            eq(schema.intents.userId, binding.userId),
+            eq(schema.intentNetworks.networkId, binding.networkId),
+          ))),
           isNull(schema.intents.archivedAt),
           or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
         ))
         .for('share');
-      if (!ownedIntent) return null;
-
-      const boundIntents = await tx
-        .select({ id: schema.intents.id, userId: schema.intents.userId })
-        .from(schema.intents)
-        .where(or(...intentBindings.map((binding) => and(
-          eq(schema.intents.id, binding.intentId),
-          eq(schema.intents.userId, binding.userId),
-        ))))
-        .for('share');
-      const boundIntentKeys = new Set(boundIntents.map((intent) => `${intent.userId}\u0000${intent.id}`));
-      if (intentBindings.some((binding) => !boundIntentKeys.has(`${binding.userId}\u0000${binding.intentId}`))) return null;
-
-      const assignments = await tx
-        .select({ networkId: schema.intentNetworks.networkId })
-        .from(schema.intentNetworks)
-        .where(and(
-          eq(schema.intentNetworks.intentId, eligibility.triggerIntentId),
-          inArray(schema.intentNetworks.networkId, actorNetworkIds),
-        ))
-        .for('share');
-      if (new Set(assignments.map((row) => row.networkId)).size !== actorNetworkIds.length) return null;
+      const activeAssignedIntentKeys = new Set(activeAssignedIntents.map((intent) =>
+        `${intent.userId}\u0000${intent.id}\u0000${intent.networkId}`));
+      if (participantIntentNetworkBindings.some((binding) =>
+        !activeAssignedIntentKeys.has(`${binding.userId}\u0000${binding.intentId}\u0000${binding.networkId}`))) return null;
 
       const activePairs = await tx
         .select({

@@ -1387,6 +1387,65 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(inserted).toEqual([]);
     });
 
+    it('fails closed when the counterparty intent is inactive, archived, or unassigned', async () => {
+      const candidateIntentId = uuidv4();
+      fixture.extraIntentIds.push(candidateIntentId);
+      await db.insert(intents).values({
+        id: candidateIntentId,
+        userId: fixture.userBId,
+        payload: `${TEST_PREFIX}ineligible counterparty intent`,
+        sourceType: 'discovery_form',
+        sourceId: fixture.userBId,
+        status: 'PAUSED',
+      });
+      await db.insert(intentNetworks).values({
+        intentId: candidateIntentId,
+        networkId: fixture.networkId,
+      });
+      const markerPrefix = `${TEST_PREFIX}ineligible-counterparty-${uuidv4()}`;
+      const persist = (suffix: string) => adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          createdBy: `${markerPrefix}-${suffix}`,
+          timestamp: new Date().toISOString(),
+          triggeredBy: fixture.intent1Id,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent', intent: candidateIntentId },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Ineligible counterparty must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: fixture.intent1Id,
+      });
+
+      const inactive = await persist('inactive');
+      await db.update(intents)
+        .set({ status: 'ACTIVE', archivedAt: new Date() })
+        .where(eq(intents.id, candidateIntentId));
+      const archived = await persist('archived');
+      await db.update(intents)
+        .set({ archivedAt: null })
+        .where(eq(intents.id, candidateIntentId));
+      await db.delete(intentNetworks).where(and(
+        eq(intentNetworks.intentId, candidateIntentId),
+        eq(intentNetworks.networkId, fixture.networkId),
+      ));
+      const unassigned = await persist('unassigned');
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'createdBy' LIKE ${`${markerPrefix}%`}`);
+
+      expect([inactive, archived, unassigned]).toEqual([null, null, null]);
+      expect(inserted).toEqual([]);
+    });
+
     it('does not let an unbound legacy row suppress a fully bound intent pair', async () => {
       const triggerIntentId = uuidv4();
       const candidateIntentId = uuidv4();
@@ -1407,7 +1466,10 @@ describe('OpportunityDatabaseAdapter', () => {
           sourceId: fixture.userBId,
         },
       ]);
-      await db.insert(intentNetworks).values({ intentId: triggerIntentId, networkId: fixture.networkId });
+      await db.insert(intentNetworks).values([
+        { intentId: triggerIntentId, networkId: fixture.networkId },
+        { intentId: candidateIntentId, networkId: fixture.networkId },
+      ]);
       const legacy = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: triggerIntentId },
         actors: [
@@ -1463,7 +1525,10 @@ describe('OpportunityDatabaseAdapter', () => {
           sourceId: fixture.userBId,
         },
       ]);
-      await db.insert(intentNetworks).values({ intentId: triggerIntentId, networkId: fixture.networkId });
+      await db.insert(intentNetworks).values([
+        { intentId: triggerIntentId, networkId: fixture.networkId },
+        { intentId: candidateIntentId, networkId: fixture.networkId },
+      ]);
       const otherTrigger = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: fixture.intent1Id },
         actors: [
@@ -1598,7 +1663,10 @@ describe('OpportunityDatabaseAdapter', () => {
           sourceId: fixture.userBId,
         },
       ]);
-      await db.insert(intentNetworks).values({ intentId: triggerIntentId, networkId: fixture.networkId });
+      await db.insert(intentNetworks).values([
+        { intentId: triggerIntentId, networkId: fixture.networkId },
+        { intentId: candidateIntentId, networkId: fixture.networkId },
+      ]);
 
       const createData = {
         detection: {

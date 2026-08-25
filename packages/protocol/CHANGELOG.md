@@ -29,7 +29,9 @@ pin a supported release, use `latest`.
   `pair_active_negotiation` conflict: any opportunity for the same two intent
   seats deduplicates persistence. Hosts must allow different intent
   pairs between the same users to persist and negotiate independently; task
-  creation remains idempotent per opportunity.
+  creation remains idempotent per opportunity. Counterparty seats are bound
+  from authoritative discovery candidates rather than evaluator-generated
+  intent IDs, and intent-scoped persistence fails closed on an unbound seat.
 
 ## 35.0.0 - 2026-08-24
 
