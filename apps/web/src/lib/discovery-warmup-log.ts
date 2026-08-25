@@ -5,9 +5,8 @@
  * on every render, so a reload reproduces the identical log and no client-side
  * delta tracking (or new table) is involved.
  *
- *  - Lane ● reads the `intent_discovery_progress` row the from-intent worker
+ *  - The log reads the `intent_discovery_progress` row the from-intent worker
  *    writes at its run boundaries (queued / started / retried / succeeded).
- *  - Lane ○ reads the negotiation conversations the page already fetches.
  *
  * There is deliberately no per-community narration ("scanning Climate
  * Founders…"): the discovery graph runs once across every valid network and
@@ -16,18 +15,8 @@
  */
 import type { DiscoveryProgress, DiscoveryProgressStatus } from '@/services/intents';
 
-/** A negotiation conversation on this signal, for the live lane. */
-export interface WarmupConversation {
-  /** Conversation id; stable log key across refreshes. */
-  id: string;
-  counterpartLabel: string;
-  /** Conversation creation time — when the agents actually started talking. */
-  startedAt: string | null;
-}
-
 export interface WarmupLogEntry {
   id: string;
-  lane: 'progress' | 'conversation';
   text: string;
   /** Epoch ms; entries without a durable timestamp are never invented. */
   at: number;
@@ -77,12 +66,8 @@ export function formatLogClock(at: number): string {
  */
 export function buildWarmupLog({
   progress,
-  conversations = [],
-  maxConversations = 5,
 }: {
   progress?: DiscoveryProgress;
-  conversations?: WarmupConversation[];
-  maxConversations?: number;
 }): WarmupLogEntry[] {
   const status = progress?.status ?? 'unknown';
   const active = ACTIVE_DISCOVERY_STATUSES.has(status);
@@ -93,7 +78,7 @@ export function buildWarmupLog({
   if (progress && status !== 'unknown') {
     const queuedAt = epoch(progress.queuedAt);
     if (queuedAt !== null) {
-      entries.push({ id: 'queued', lane: 'progress', text: 'queued', at: queuedAt, current: status === 'queued', order: 0 });
+      entries.push({ id: 'queued', text: 'queued', at: queuedAt, current: status === 'queued', order: 0 });
     }
 
     const startedAt = epoch(progress.startedAt);
@@ -102,7 +87,6 @@ export function buildWarmupLog({
       if (retriedAt !== null) {
         entries.push({
           id: 'attempt',
-          lane: 'progress',
           text: `attempt ${progress.attempt} of ${progress.maxAttempts} — retrying`,
           at: retriedAt,
           current: status === 'retrying',
@@ -115,8 +99,11 @@ export function buildWarmupLog({
       const communities = count(progress.assignedCommunityCount, 'community', 'communities');
       entries.push({
         id: 'scanning',
-        lane: 'progress',
-        text: active ? `scanning ${communities}…` : `scanned ${communities}`,
+        text: status === 'completed'
+          ? `scanned ${communities}`
+          : active
+            ? `scanning ${communities}…`
+            : `scan started across ${communities}`,
         at: startedAt,
         current: status === 'running',
         order: 2,
@@ -125,11 +112,12 @@ export function buildWarmupLog({
 
     const completedAt = epoch(progress.completedAt);
     if (completedAt !== null && status === 'completed') {
+      const matches = progress.conversationsStartedCount;
       entries.push({
         id: 'completed',
-        lane: 'progress',
-        text: `＋ ${count(progress.possibleOverlapCount, 'possible overlap', 'possible overlaps')} found, `
-          + `${count(progress.conversationsStartedCount, 'conversation', 'conversations')} started`,
+        text: matches === 0
+          ? 'scan completed with no matches yet'
+          : `＋ ${count(matches, 'match', 'matches')} handed to the PersonalAgent; kickoff has not started yet`,
         at: completedAt,
         current: false,
         order: 3,
@@ -137,24 +125,7 @@ export function buildWarmupLog({
     }
   }
 
-  const conversationEntries = conversations
-    .flatMap((conversation): WarmupLogEntry[] => {
-      const at = epoch(conversation.startedAt);
-      if (at === null) return [];
-      return [{
-        id: `conversation:${conversation.id}`,
-        lane: 'conversation',
-        text: `conversation with ${conversation.counterpartLabel}'s agent started`,
-        at,
-        current: false,
-        order: 4,
-      }];
-    })
-    .sort((left, right) => left.at - right.at)
-    .slice(-maxConversations);
-
-  return [...entries, ...conversationEntries]
-    .sort((left, right) => left.at - right.at || left.order - right.order);
+  return entries.sort((left, right) => left.at - right.at || left.order - right.order);
 }
 
 /** The card's paused copy — one wording for both ways a run can be unable to start. */
@@ -173,38 +144,37 @@ export function warmupHeadline(
 
   if (status === 'blocked') return { ...WARMUP_PAUSED_HEADLINE };
   if (status === 'unknown') {
-    return { title: 'Preparing your first conversations', summary: 'Status unavailable.' };
+    return { title: 'Discovery status unavailable', summary: 'Progress is unavailable or stale.' };
   }
   if (status === 'completed') {
     // `processedCommunityCount` is written only by runs that carried a graph
     // summary; older rows fall back to what the run was assigned.
     const scanned = progress?.processedCommunityCount || assigned;
-    const overlaps = progress?.possibleOverlapCount ?? 0;
-    const conversations = progress?.conversationsStartedCount ?? 0;
-    // A zero-result run still reports its tallies — an empty card would read as
-    // "nothing happened" when in fact the whole search ran and found nothing.
-    const tally = overlaps === 0 && conversations === 0
-      ? 'no overlaps yet'
-      : `${count(overlaps, 'possible overlap', 'possible overlaps')}, ${count(conversations, 'conversation', 'conversations')} started`;
+    // This legacy field now counts persisted matches. A successful progress
+    // stamp means their matches_ready event was handed to the PersonalAgent;
+    // it does not mean negotiation conversations have opened.
+    const matches = progress?.conversationsStartedCount ?? 0;
     return {
       title: 'First scan complete',
-      summary: `Scanned ${count(scanned, 'community', 'communities')} — ${tally}`,
+      summary: matches === 0
+        ? `Scanned ${count(scanned, 'community', 'communities')} — no matches yet.`
+        : `Scanned ${count(scanned, 'community', 'communities')} — ${count(matches, 'match', 'matches')} handed to the PersonalAgent. Kickoff has not started yet.`,
     };
   }
   if (status === 'failed') {
     return {
       title: 'Scanning needs attention',
-      summary: `Stopped after ${count(progress?.attempt ?? 0, 'attempt', 'attempts')}. It will be picked up again.`,
+      summary: `Discovery stopped after ${count(progress?.attempt ?? 0, 'attempt', 'attempts')}.`,
     };
   }
   if (status === 'queued') {
     return {
-      title: 'Finding your first conversations',
+      title: 'Finding your first matches',
       summary: `Queued — ${count(assigned, 'community', 'communities')} to scan.`,
     };
   }
   return {
-    title: 'Finding your first conversations',
+    title: 'Finding your first matches',
     summary: `Scanning ${count(assigned, 'community', 'communities')} for possible overlaps.`,
   };
 }
