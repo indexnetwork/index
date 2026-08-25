@@ -74,6 +74,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     expect(host.taskFor(result.negotiationId).metadata.pause).toMatchObject({
       reason: "open_failed",
       failure: "provider_unavailable",
+      failureDetail: "Error: provider unavailable",
     });
   });
 

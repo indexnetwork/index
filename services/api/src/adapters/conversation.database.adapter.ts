@@ -31,7 +31,7 @@ type NegotiationTaskMetadataMirror = {
   /** One binding per seat, keyed by intent id — the protocol's `seats`. */
   seats: Record<string, { userId: string; round: number }>;
   drainGeneration: number;
-  pause?: { reason: NegotiationPauseReason; payload?: unknown; pausedBy?: string; failure?: string } | null;
+  pause?: { reason: NegotiationPauseReason; payload?: unknown; pausedBy?: string; failure?: string; failureDetail?: string } | null;
 };
 
 type NegotiationTaskRowMirror = {

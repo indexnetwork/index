@@ -61,7 +61,14 @@ export const negotiationGraph = new NegotiationGraphFactory({
   // lazily, inside the call, so the two constructions below can be ordered.
   author: {
     authorTurn: async ({ negotiationId, userId, intentId }) => {
-      const result = await personalAgentGraph.invoke({ userId, intentId, negotiationId });
+      let result = await personalAgentGraph.invoke({ userId, intentId, negotiationId });
+      // OpenRouter can return its own timeout before our 20-second author
+      // budget expires. No shared turn exists yet, so retry that transient
+      // provider result once instead of parking a healthy negotiation.
+      if (!result.turn && /\btimeout\b|\btimed out\b/i.test(result.error ?? '')) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        result = await personalAgentGraph.invoke({ userId, intentId, negotiationId });
+      }
       if (!result.turn) throw new Error(result.error ?? 'PersonalAgent produced no negotiation turn');
       return result.turn;
     },
