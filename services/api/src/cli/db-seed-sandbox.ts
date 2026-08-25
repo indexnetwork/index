@@ -6,7 +6,7 @@ import { v5 as uuidv5 } from 'uuid';
 
 import { CREDENTIAL_PROVIDER_ID, hashCredentialPassword } from '../lib/betterauth/credential-password';
 
-import { SANDBOX_MINIMAL_PERSONAS, SANDBOX_PERSONAS, SANDBOX_SEED_PASSWORD, type SandboxPersona } from './sandbox-personas';
+import { SANDBOX_MINIMAL_PERSONAS, SANDBOX_TWENTY_PERSONAS, SANDBOX_SEED_PASSWORD, type SandboxPersona } from './sandbox-personas';
 
 const SANDBOX_DATABASE = 'protocol_sandbox';
 const FIXTURE_NAMESPACE = 'd52db0f7-f03d-4f65-a20d-dcc16a890a21';
@@ -92,10 +92,12 @@ async function generateEmbeddings(texts: string[]): Promise<Map<string, number[]
 
 async function main(): Promise<void> {
   if (!process.argv.includes('--confirm')) {
-    throw new Error(`This command writes curated fixtures to ${SANDBOX_DATABASE}. Re-run with --confirm (add --minimal for the small five-person population).`);
+    throw new Error(`This command writes curated fixtures to ${SANDBOX_DATABASE}. Re-run with --confirm and exactly one of --minimal or --twenty.`);
   }
   const minimal = process.argv.includes('--minimal');
-  const personas = minimal ? SANDBOX_MINIMAL_PERSONAS : SANDBOX_PERSONAS;
+  const twenty = process.argv.includes('--twenty');
+  if (minimal === twenty) throw new Error('Choose exactly one sandbox population: --minimal or --twenty.');
+  const personas = minimal ? SANDBOX_MINIMAL_PERSONAS : SANDBOX_TWENTY_PERSONAS;
   // Minimal mode is deliberately one complete market: create Launch and no
   // other network, and keep every fixture signal inside it.
   const fixtureNetworks = minimal ? NETWORKS.filter((network) => network.key === 'launch') : NETWORKS;
@@ -406,7 +408,7 @@ async function main(): Promise<void> {
     const premiseCount = personaFixtures.reduce((sum, item) => sum + item.premiseTexts.length, 0);
     const intentCount = personaFixtures.reduce((sum, item) => sum + item.persona.intents.length, 0);
     console.log(
-      `Seeded ${personaFixtures.length} people${minimal ? ' (minimal mode)' : ''}, ${fixtureNetworks.length} networks, `
+      `Seeded ${personaFixtures.length} people (${minimal ? 'minimal' : 'twenty'} mode), ${fixtureNetworks.length} networks, `
       + `${premiseCount} premises, and ${intentCount} intents into ${SANDBOX_DATABASE}.`,
     );
     console.log(`Every seed persona signs in with email/password; the shared password is "${SANDBOX_SEED_PASSWORD}".`);

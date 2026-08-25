@@ -2054,3 +2054,38 @@ export const SANDBOX_PERSONAS: SandboxPersona[] = buildPersonas(SCENARIOS, 'sand
  * pool rather than isolated category fixtures.
  */
 export const SANDBOX_MINIMAL_PERSONAS: SandboxPersona[] = buildPersonas([MINIMAL_SCENARIO], 'sandbox-minimal');
+
+/**
+ * Stable people and signals used by the paid, live PersonalAgent E2E suite.
+ * They intentionally use email plus intent position: fixture ids are derived
+ * by the seeder and should remain an implementation detail of the fixture.
+ */
+export const SANDBOX_E2E_CASES = {
+  mayaDaniel: {
+    source: { email: 'maya-chen@sandbox.test', intentIndex: 1 },
+    candidate: { email: 'daniel-ruiz@sandbox.test', intentIndex: 0 },
+  },
+  mayaAisha: {
+    source: { email: 'maya-chen@sandbox.test', intentIndex: 0 },
+    candidate: { email: 'aisha-okafor@sandbox.test', intentIndex: 0 },
+  },
+  mayaSofia: {
+    source: { email: 'maya-chen@sandbox.test', intentIndex: 1 },
+    candidate: { email: 'sofia-martinez@sandbox.test', intentIndex: 0 },
+  },
+} as const;
+
+/**
+ * A bounded market for live provider tests: the five designated Launch people
+ * plus these fifteen already-authored personas from the full curated population.
+ */
+const SANDBOX_TWENTY_AUTHORED_NAMES = [
+  'Nora Kim', 'Maya Patel', 'Rosa Delgado', 'Selin Demir', 'Kerem Arslan',
+  'Ege Yılmaz', 'Amara Okafor', 'Julian Foster', 'Pilar Santos', 'Leo Martins',
+  'Ines Costa', 'Duarte Ferreira', 'Priya Nair', 'Daniel Wu', 'Harriet Osei',
+] as const;
+
+export const SANDBOX_TWENTY_PERSONAS: SandboxPersona[] = [
+  ...SANDBOX_MINIMAL_PERSONAS,
+  ...SANDBOX_PERSONAS.filter((persona) => SANDBOX_TWENTY_AUTHORED_NAMES.includes(persona.name as typeof SANDBOX_TWENTY_AUTHORED_NAMES[number])),
+];

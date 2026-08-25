@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { SANDBOX_MINIMAL_PERSONAS, SANDBOX_PERSONAS, type SandboxNetworkKey, type SandboxPersona } from '../sandbox-personas';
+import { SANDBOX_E2E_CASES, SANDBOX_MINIMAL_PERSONAS, SANDBOX_PERSONAS, SANDBOX_TWENTY_PERSONAS, type SandboxNetworkKey, type SandboxPersona } from '../sandbox-personas';
 
 const NETWORK_KEYS: SandboxNetworkKey[] = ['stack', 'latent', 'pixel', 'launch', 'atelier', 'arena', 'syllabus', 'reps', 'tribe', 'bench'];
 
@@ -79,5 +79,29 @@ describe('SANDBOX_MINIMAL_PERSONAS', () => {
   it('does not collide with the full population', () => {
     const fullEmails = new Set(SANDBOX_PERSONAS.map((persona) => persona.email));
     for (const persona of SANDBOX_MINIMAL_PERSONAS) expect(fullEmails.has(persona.email)).toBe(false);
+  });
+});
+
+describe('SANDBOX_TWENTY_PERSONAS', () => {
+  it('is the five-person Launch market plus the fixed fifteen existing authored personas', () => {
+    expect(SANDBOX_TWENTY_PERSONAS).toHaveLength(20);
+    expect(SANDBOX_TWENTY_PERSONAS.slice(0, 5)).toEqual(SANDBOX_MINIMAL_PERSONAS);
+    const fullEmails = new Set(SANDBOX_PERSONAS.map((persona) => persona.email));
+    for (const persona of SANDBOX_TWENTY_PERSONAS.slice(5)) expect(fullEmails.has(persona.email)).toBe(true);
+    expect(SANDBOX_TWENTY_PERSONAS.slice(5).map((persona) => persona.name)).toEqual([
+      'Nora Kim', 'Maya Patel', 'Rosa Delgado', 'Selin Demir', 'Kerem Arslan',
+      'Ege Yılmaz', 'Amara Okafor', 'Julian Foster', 'Pilar Santos', 'Leo Martins',
+      'Ines Costa', 'Duarte Ferreira', 'Priya Nair', 'Daniel Wu', 'Harriet Osei',
+    ]);
+  });
+
+  it('exports stable designated PersonalAgent E2E signals', () => {
+    for (const scenario of Object.values(SANDBOX_E2E_CASES)) {
+      for (const seat of [scenario.source, scenario.candidate]) {
+        const persona = SANDBOX_MINIMAL_PERSONAS.find((candidate) => candidate.email === seat.email);
+        expect(persona).toBeDefined();
+        expect(persona!.intents[seat.intentIndex]).toBeDefined();
+      }
+    }
   });
 });

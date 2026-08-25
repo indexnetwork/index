@@ -30,6 +30,7 @@
     "maintenance:backfill-intent-networks": "bun ./src/cli/backfill-intent-networks.ts",
     "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
+    "test:sandbox:e2e": "bun test ./tests/personal-agent-negotiation.sandbox.e2e.ts",
     "test": "NODE_ENV=test bash scripts/test-safe.sh",
     "test:raw": "NODE_ENV=test bun test"
   },
