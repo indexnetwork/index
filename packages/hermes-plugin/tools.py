@@ -348,7 +348,7 @@ def index_open_app(args: dict, **kwargs) -> str:
     except ValueError:
         return _error(f"target must be an {base_url} URL.")
     # An absolute https origin is required in its own right, not just an origin
-    # that matches the base: a relative target ('/etc/passwd') has an empty
+    # that matches the base: a bare filesystem path used as a target has an empty
     # scheme and netloc and must never be handed to the OS opener.
     if target_parts.scheme != "https" or not target_parts.netloc:
         return _error(f"target must be an {base_url} URL.")
