@@ -3,7 +3,7 @@
   "version": "0.59.1",
   "license": "MIT",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "vite --host ::",
     "build": "bun run build:blog && vite build",
     "build:blog": "bun run build-blog.ts",
     "start": "bun server.ts",
