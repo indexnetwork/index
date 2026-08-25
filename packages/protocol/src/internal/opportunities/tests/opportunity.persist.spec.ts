@@ -328,7 +328,7 @@ describe('persistOpportunities', () => {
         allowedNetworkIds: ['net-1'],
         triggerIntentId: 'intent-eligibility',
       },
-      intentDedupScope: { triggerIntentId: 'intent-dedup', dedupWindowMs: 1_000 },
+      intentDedupScope: { triggerIntentId: 'intent-dedup' },
     });
 
     expect(atomicCalls).toBe(0);
@@ -390,7 +390,7 @@ describe('persistOpportunities', () => {
         allowedNetworkIds: ['net-1'],
         triggerIntentId,
       },
-      intentDedupScope: { triggerIntentId, dedupWindowMs: 30 * 24 * 60 * 60 * 1000 },
+      intentDedupScope: { triggerIntentId },
     });
 
     expect(result.errors).toBeUndefined();
@@ -417,7 +417,7 @@ describe('persistOpportunities', () => {
         atomicCalls += 1;
         return {
           conflict: {
-            reason: 'same_trigger_recent_duplicate',
+            reason: 'same_intent_pair_duplicate',
             existingOpportunityId: 'opp-existing',
             existingTriggerIntentId: 'intent-current',
             existingStatus: 'pending',
@@ -447,7 +447,7 @@ describe('persistOpportunities', () => {
         allowedNetworkIds: ['net-1'],
         triggerIntentId: 'intent-current',
       },
-      intentDedupScope: { triggerIntentId: 'intent-current', dedupWindowMs: 30 * 24 * 60 * 60 * 1000 },
+      intentDedupScope: { triggerIntentId: 'intent-current' },
     });
 
     expect(atomicCalls).toBe(1);
@@ -455,7 +455,7 @@ describe('persistOpportunities', () => {
     expect(result.conflicts).toEqual([{
       itemIndex: 0,
       finalAtomic: true,
-      reason: 'same_trigger_recent_duplicate',
+      reason: 'same_intent_pair_duplicate',
       existingOpportunityId: 'opp-existing',
       existingTriggerIntentId: 'intent-current',
       existingStatus: 'pending',
@@ -499,7 +499,7 @@ describe('persistOpportunities', () => {
       embedder: mockEmbedder,
       items: [item],
       networkEligibility: { ownerUserId: 'user-1', allowedNetworkIds: ['net-1'], triggerIntentId: 'intent-current' },
-      intentDedupScope: { triggerIntentId: 'intent-current', dedupWindowMs: 1_000 },
+      intentDedupScope: { triggerIntentId: 'intent-current' },
     });
 
     expect(receivedExpireIds).toEqual([]);

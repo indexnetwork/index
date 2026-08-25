@@ -30,6 +30,7 @@ const USER_C = 'c0000000-0000-4000-8000-000000000003' as Id<'users'>;
 const NET_ID = 'n0000000-0000-4000-8000-000000000001' as Id<'networks'>;
 const OPP_ID = 'op000000-0000-4000-8000-000000000001' as Id<'opportunities'>;
 const INTENT_A = 'intent-1' as Id<'intents'>;
+const INTENT_B = 'intent-bob' as Id<'intents'>;
 const INTENT_OTHER = 'intent-other' as Id<'intents'>;
 
 // ---------------------------------------------------------------------------
@@ -45,8 +46,8 @@ const mockEvaluator: OpportunityEvaluatorLike = {
       reasoning: 'Good match',
       score: 80,
       actors: [
-        { userId: USER_A, role: 'patient' as const },
-        { userId: USER_B, role: 'agent' as const },
+        { userId: USER_A, role: 'patient' as const, intentId: INTENT_A },
+        { userId: USER_B, role: 'agent' as const, intentId: INTENT_B },
       ],
     },
   ],
@@ -437,10 +438,14 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     expect(updateCalledWith![1]).toBe('pending');
   });
 
-  test('owned intent suppresses a recent same-trigger opportunity', async () => {
+  test('owned intent suppresses the same intent pair regardless of age', async () => {
     const existing = makeOpportunity({
       status: 'pending',
-      createdAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000),
+      actors: [
+        { userId: USER_A, role: 'patient', networkId: NET_ID, intent: INTENT_A },
+        { userId: USER_B, role: 'agent', networkId: NET_ID, intent: INTENT_B },
+      ],
       detection: {
         source: 'opportunity_graph',
         timestamp: new Date().toISOString(),
@@ -457,8 +462,43 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     })).invoke(ownedIntentInput);
 
     expect(createCalled).toBe(false);
-    expect(result.existingBetweenActors[0]?.reason).toBe('same_trigger_recent_duplicate');
-    expect(result.persistenceOutcome?.sameTriggerDuplicateSuppressions).toBe(1);
+    expect(result.existingBetweenActors[0]?.reason).toBe('same_intent_pair_duplicate');
+    expect(result.persistenceOutcome?.sameIntentPairDuplicateSuppressions).toBe(1);
+  });
+
+  test('owned intent allows the same users to match through a different counterparty intent', async () => {
+    const existing = makeOpportunity({
+      status: 'pending',
+      createdAt: new Date(Date.now() - 60_000),
+      actors: [
+        { userId: USER_A, role: 'patient', networkId: NET_ID, intent: INTENT_A },
+        { userId: USER_B, role: 'agent', networkId: NET_ID, intent: INTENT_OTHER },
+      ],
+      detection: {
+        source: 'opportunity_graph',
+        timestamp: new Date().toISOString(),
+        triggeredBy: INTENT_A,
+      },
+    });
+    let inserted: Opportunity | undefined;
+    const result = await buildGraph(buildDb({
+      findOpportunitiesByActors: async () => [existing],
+      createOpportunity: async (data) => {
+        inserted = {
+          ...data,
+          id: 'different-intent-pair',
+          status: 'latent',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        };
+        return inserted;
+      },
+    })).invoke(ownedIntentInput);
+
+    expect(inserted?.actors.find((actor) => actor.userId === USER_B)?.intent).toBe(INTENT_B);
+    expect(result.opportunities.map((opportunity) => opportunity.id)).toEqual(['different-intent-pair']);
+    expect(result.persistenceOutcome?.crossIntentPairAllowedCount).toBe(1);
   });
 
   test('owned intent allows other-trigger terminal and non-negotiating lifecycle rows without mutating them', async () => {
@@ -498,7 +538,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
       expect(updateCalls).toBe(0);
       expect(inserted?.detection.triggeredBy).toBe(INTENT_A);
       expect(result.opportunities).toHaveLength(1);
-      expect(result.persistenceOutcome?.crossTriggerAllowedCount).toBe(1);
+      expect(result.persistenceOutcome?.crossIntentPairAllowedCount).toBe(1);
     }
   });
 
@@ -531,16 +571,16 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
 
     expect(createCalled).toBe(false);
     expect(result.existingBetweenActors[0]?.existingOpportunityId).toBe('same-second');
-    expect(result.existingBetweenActors[0]?.reason).toBe('same_trigger_recent_duplicate');
+    expect(result.existingBetweenActors[0]?.reason).toBe('same_intent_pair_duplicate');
   });
 
-  test('owned intent keeps a pair-global fresh active negotiation guard', async () => {
+  test('owned intent persists a cross-trigger match despite a fresh active negotiation', async () => {
     const otherNegotiating = makeOpportunity({
       status: 'negotiating',
       createdAt: new Date(Date.now() - 60_000),
       detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: INTENT_OTHER },
     });
-    let createCalled = false;
+    let inserted: Opportunity | undefined;
     const result = await buildGraph(buildDb({
       findOpportunitiesByActors: async () => [otherNegotiating],
       getNegotiationTaskForOpportunity: async () => ({
@@ -548,14 +588,90 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
         createdAt: new Date(), updatedAt: new Date(),
       }),
       createOpportunity: async (data) => {
-        createCalled = true;
-        return { ...data, id: 'unexpected', status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+        inserted = {
+          ...data,
+          id: 'current-trigger',
+          status: 'latent',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        };
+        return inserted;
       },
     })).invoke(ownedIntentInput);
 
-    expect(createCalled).toBe(false);
-    expect(result.existingBetweenActors[0]?.reason).toBe('pair_active_negotiation');
-    expect(result.persistenceOutcome?.pairActiveNegotiationSuppressions).toBe(1);
+    expect(inserted?.detection.triggeredBy).toBe(INTENT_A);
+    expect(result.opportunities.map((opportunity) => opportunity.id)).toEqual(['current-trigger']);
+    expect(result.existingBetweenActors).toEqual([]);
+    expect(result.persistenceOutcome).toMatchObject({
+      createdCount: 1,
+      crossIntentPairAllowedCount: 1,
+      finalAtomicConflictCount: 0,
+    });
+  });
+
+  test('owned-intent floor persists both counterparties when one has an unrelated active negotiation', async () => {
+    const otherNegotiating = makeOpportunity({
+      status: 'negotiating',
+      createdAt: new Date(Date.now() - 60_000),
+      detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: INTENT_OTHER },
+    });
+    const twoCandidateEmbedder = {
+      ...dummyEmbedder,
+      searchWithHydeEmbeddings: async () => [
+        { type: 'intent' as const, id: 'intent-bob' as Id<'intents'>, userId: USER_B, score: 0.9, matchedVia: 'mirror' as const, networkId: NET_ID },
+        { type: 'intent' as const, id: 'intent-carol' as Id<'intents'>, userId: USER_C, score: 0.8, matchedVia: 'mirror' as const, networkId: NET_ID },
+      ],
+    } as unknown as Embedder;
+    const twoCandidateEvaluator: OpportunityEvaluatorLike = {
+      invokeEntityBundle: async () => [
+        {
+          reasoning: 'Bob match', score: 90,
+          actors: [{ userId: USER_A, role: 'patient' }, { userId: USER_B, role: 'agent' }],
+        },
+        {
+          reasoning: 'Carol match', score: 80,
+          actors: [{ userId: USER_A, role: 'patient' }, { userId: USER_C, role: 'agent' }],
+        },
+      ],
+    };
+    const inserted: Opportunity[] = [];
+    const db = buildDb({
+      findOpportunitiesByActors: async (actorIds) => actorIds.includes(USER_B) ? [otherNegotiating] : [],
+      getNegotiationTaskForOpportunity: async () => ({
+        id: 'active-task', conversationId: 'conversation', state: 'paused', metadata: null,
+        createdAt: new Date(), updatedAt: new Date(),
+      }),
+      createOpportunity: async (data) => {
+        const created = {
+          ...data,
+          id: `current-trigger-${inserted.length + 1}`,
+          status: 'latent' as const,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        };
+        inserted.push(created);
+        return created;
+      },
+    });
+
+    const result = await buildGraph(
+      db,
+      undefined,
+      { embedder: twoCandidateEmbedder, evaluator: twoCandidateEvaluator },
+    ).invoke(ownedIntentInput);
+
+    expect(inserted).toHaveLength(2);
+    expect(inserted.map((opportunity) => opportunity.actors.find((actor) => actor.userId !== USER_A)?.userId))
+      .toEqual([USER_B, USER_C]);
+    expect(result.opportunities).toHaveLength(2);
+    expect(result.persistenceOutcome).toMatchObject({
+      evaluatedCount: 2,
+      createdCount: 2,
+      crossIntentPairAllowedCount: 1,
+      finalAtomicConflictCount: 0,
+    });
   });
 
   test('owned intent does not adopt a stale other-trigger negotiating row', async () => {

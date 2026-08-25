@@ -587,9 +587,7 @@ export interface OpportunityNetworkEligibility {
   triggerIntentId?: string;
 }
 
-export type OpportunityDedupConflictReason =
-  | 'same_trigger_recent_duplicate'
-  | 'pair_active_negotiation';
+export type OpportunityDedupConflictReason = 'same_intent_pair_duplicate';
 
 export interface OpportunityDedupConflict {
   reason: OpportunityDedupConflictReason;

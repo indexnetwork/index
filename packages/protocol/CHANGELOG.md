@@ -20,6 +20,17 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 36.0.0 - 2026-08-24
+
+### Breaking
+
+- **Intent matches and negotiations are isolated by their exact intent pair.**
+  `persistIntentScopedOpportunityIfNetworkEligible` no longer returns the
+  `pair_active_negotiation` conflict: any opportunity for the same two intent
+  seats deduplicates persistence. Hosts must allow different intent
+  pairs between the same users to persist and negotiate independently; task
+  creation remains idempotent per opportunity.
+
 ## 35.0.0 - 2026-08-24
 
 ### Breaking

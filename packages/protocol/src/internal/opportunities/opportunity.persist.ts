@@ -64,7 +64,6 @@ export type PersistOpportunityDatabase = EnricherDatabase & {
     data: CreateOpportunityData,
     expireIds: string[],
     eligibility: OpportunityNetworkEligibility & { triggerIntentId: string },
-    dedupWindowMs: number,
   ): Promise<IntentScopedOpportunityPersistenceResult | null>;
   /** Optional: used to populate expired list in non-atomic path. */
   getOpportunity?(id: string): Promise<Opportunity | null>;
@@ -78,7 +77,7 @@ export interface PersistOpportunitiesParams {
   /** Require adapter-level membership/assignment locks for discovery-created rows. */
   networkEligibility?: OpportunityNetworkEligibility;
   /** Scope dedup/enrichment and the final atomic re-check to one owned intent. */
-  intentDedupScope?: { triggerIntentId: string; dedupWindowMs: number };
+  intentDedupScope?: { triggerIntentId: string };
 }
 
 export interface PersistOpportunitiesError {
@@ -158,7 +157,6 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
           toCreate,
           enrichment.enriched ? enrichment.expiredIds : [],
           { ...networkEligibility, triggerIntentId: networkEligibility.triggerIntentId },
-          intentDedupScope.dedupWindowMs,
         );
         if (!result) continue;
         if ('conflict' in result) {

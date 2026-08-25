@@ -108,11 +108,23 @@ function getNonIntroducerUserIds(data: CreateOpportunityData): Id<'users'>[] {
  */
 function belongsToOwnedIntent(
   opportunity: Opportunity,
+  newData: CreateOpportunityData,
   scope: { triggerIntentId: string; ownerUserId: string },
 ): boolean {
-  if (opportunity.detection.triggeredBy === scope.triggerIntentId) return true;
-  return opportunity.actors.some((actor) =>
-    actor.userId === scope.ownerUserId && actor.intent === scope.triggerIntentId);
+  const belongs = opportunity.detection.triggeredBy === scope.triggerIntentId
+    || opportunity.actors.some((actor) =>
+      actor.userId === scope.ownerUserId && actor.intent === scope.triggerIntentId);
+  if (!belongs) return false;
+
+  return newData.actors
+    .filter((actor) =>
+      actor.role !== 'introducer'
+      && actor.userId !== scope.ownerUserId
+      && actor.intent)
+    .every((actor) => {
+      const existingActors = opportunity.actors.filter((existing) => existing.userId === actor.userId);
+      return existingActors.some((existing) => !existing.intent || existing.intent === actor.intent);
+    });
 }
 
 function getIntentIdsFromActors(actors: OpportunityActor[]): Set<string> {
@@ -239,13 +251,13 @@ export async function enrichOrCreate(
   const pairOverlaps = await database.findOpportunitiesByActors(actorUserIds, { excludeStatuses });
   const ownedIntentScope = options?.ownedIntentScope;
   const overlapping = ownedIntentScope
-    ? pairOverlaps.filter((opportunity) => belongsToOwnedIntent(opportunity, ownedIntentScope))
+    ? pairOverlaps.filter((opportunity) => belongsToOwnedIntent(opportunity, newData, ownedIntentScope))
     : pairOverlaps;
   if (ownedIntentScope && pairOverlaps.length > overlapping.length) {
-    logger.info('Excluded cross-trigger overlaps from owned-intent enrichment', {
+    logger.info('Excluded other intent-pair overlaps from owned-intent enrichment', {
       triggerIntentId: ownedIntentScope.triggerIntentId,
       pairOverlapCount: pairOverlaps.length,
-      sameTriggerOverlapCount: overlapping.length,
+      sameIntentPairOverlapCount: overlapping.length,
     });
   }
   if (overlapping.length === 0) {
