@@ -1,11 +1,10 @@
 /**
  * The PersonalAgent's inbox.
  *
- * Everything that wakes a signal's agent lands here, and everything for one
- * signal runs strictly one at a time: the worker runs at the factory default
- * concurrency 1, so a reflect turn can never interleave with the principal's
- * own message turn. Global serialization is what the existing infra supports
- * with zero new machinery.
+ * Everything that wakes a signal's agent lands here. Turns for one signal run
+ * strictly one at a time, while unrelated signals can run side by side. A
+ * market-wide discovery must not make one signal's reflect wait behind every
+ * other signal's kickoff.
  *
  * Four events, one graph input each:
  * - `user_message` — keyed by the reply message id, so a redelivery cannot
@@ -43,6 +42,9 @@ export const PERSONAL_AGENT_EXECUTION_BUDGET_MS = 70_000;
 /** A kickoff may author several briefs and A2A turns; it is not constrained by an HTTP response. */
 export const PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS = 5 * 60_000;
 
+/** Independent signals may make progress concurrently; each signal is still serialized below. */
+export const PERSONAL_AGENT_WORKER_CONCURRENCY = 4;
+
 /** What the agent is woken with — the graph's own intent-scope input shapes. */
 export type PersonalAgentEvent = Extract<PersonalAgentInput, { event: string }>;
 
@@ -78,6 +80,8 @@ export class PersonalAgentQueue {
   private readonly publishTurnCompleted: (input: { userId: string; intentId: string }) => Promise<void>;
   private worker: ReturnType<typeof QueueFactory.createWorker<PersonalAgentEvent>> | null = null;
   private queueEvents: QueueEvents | null = null;
+  /** Tail promise for each signal's actor lane. Resolved even after a failed turn. */
+  private readonly intentTails = new Map<string, Promise<void>>();
 
   constructor(
     invoke?: (input: PersonalAgentInput) => Promise<PersonalAgentResult>,
@@ -254,8 +258,33 @@ export class PersonalAgentQueue {
     return result;
   }
 
+  /**
+   * Run work in one signal's actor lane. BullMQ's queue-wide worker
+   * concurrency gets unrelated signals moving; this small in-process gate
+   * preserves the signal's existing no-interleaving contract.
+   */
+  private async serializeIntent<T>(intentId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.intentTails.get(intentId);
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.intentTails.set(intentId, current);
+    const finish = (): void => {
+      release();
+      if (this.intentTails.get(intentId) === current) this.intentTails.delete(intentId);
+    };
+    // Start an idle lane immediately. Besides avoiding an unnecessary turn of
+    // the event loop, this keeps a just-created AbortSignal observable by the
+    // graph before callers can cancel it.
+    if (!previous) return work().finally(finish);
+    return previous.then(work).finally(finish);
+  }
+
   /** Apply the queue-time/user deadline or a fresh, retryable background budget to one invocation. */
   async processJob(job: Job<PersonalAgentEvent>): Promise<PersonalAgentResult> {
+    return this.serializeIntent(job.data.intentId, () => this.processSerializedJob(job));
+  }
+
+  private async processSerializedJob(job: Job<PersonalAgentEvent>): Promise<PersonalAgentResult> {
     const startedAt = Date.now();
     const queueWaitMs = Math.max(0, startedAt - job.timestamp);
     const isUserMessage = job.data.event === 'user_message';
@@ -324,7 +353,9 @@ export class PersonalAgentQueue {
       this.logger.info('Processing event', { jobId: job.id, jobName: job.name });
       return this.processJob(job);
     };
-    this.worker = QueueFactory.createWorker<PersonalAgentEvent>(QUEUE_NAME, processor);
+    this.worker = QueueFactory.createWorker<PersonalAgentEvent>(QUEUE_NAME, processor, {
+      concurrency: PERSONAL_AGENT_WORKER_CONCURRENCY,
+    });
   }
 
   private getQueueEvents(): QueueEvents {

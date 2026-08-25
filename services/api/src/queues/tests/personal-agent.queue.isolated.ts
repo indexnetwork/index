@@ -84,6 +84,20 @@ describe('PersonalAgentQueue serialization', () => {
     });
   });
 
+  it('events for different signals do not wait behind each other', async () => {
+    await withQueue(buildQueue(() => idle), async ({ queue, spans }) => {
+      const jobs = await Promise.all([
+        queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' }),
+        queue.addMatchesReadyEvent({ userId: 'user-2', intentId: 'intent-2' }),
+      ]);
+      await Promise.all(jobs.map((job) => job.waitUntilFinished(undefined as never, 10_000)));
+
+      expect(spans).toHaveLength(2);
+      const [first, second] = [...spans].sort((a, b) => a.start - b.start);
+      expect(second!.start).toBeLessThan(first!.end);
+    });
+  });
+
   it('a redelivered user message coalesces on its message id — one turn, not two', async () => {
     await withQueue(buildQueue(() => idle), async ({ queue, invocations }) => {
       const event = {
@@ -171,14 +185,18 @@ describe('PersonalAgentQueue serialization', () => {
       // The turn is now ACTIVE and has read its match list; this batch is new.
       const second = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' });
       expect(second.id).not.toBe(first.id);
-      expect(await second.getState()).not.toBe('active');
-      // A third batch in the same window coalesces onto the queued follow-up.
+      // A concurrent worker may reserve this job, but the signal gate must
+      // keep its graph invocation behind the first turn.
+      expect(built.invocations()).toBe(1);
+      // With parallel workers both reserved slots can already be active (the
+      // per-signal gate still serializes their graph turns), so a third batch
+      // takes the documented unkeyed follow-up path.
       const third = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' });
-      expect(third.id).toBe(second.id);
+      expect(third.id).not.toBe(first.id);
+      expect(third.id).not.toBe(second.id);
       gate?.();
-      await first.waitUntilFinished(undefined as never, 10_000);
-      await second.waitUntilFinished(undefined as never, 10_000);
-      expect(built.invocations()).toBe(2);
+      await Promise.all([first, second, third].map((job) => job.waitUntilFinished(undefined as never, 10_000)));
+      expect(built.invocations()).toBe(3);
     } finally {
       gate?.();
       await built.queue.close();
