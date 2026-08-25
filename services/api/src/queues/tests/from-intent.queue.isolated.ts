@@ -123,8 +123,33 @@ describe('FromIntentQueue', () => {
   });
 
   describe('addJob', () => {
+    it('records the attached community count while the job is queued', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => ['idx1', 'idx2'],
+          getAssignmentNetworkMembershipsForUser: async () => [
+            { networkId: 'idx1', isPersonal: false },
+            { networkId: 'idx2', isPersonal: false },
+          ],
+          recordIntentDiscoveryProgress,
+        }),
+      });
+
+      await queue.addJob({ intentId: 'i1', userId: 'u1' });
+
+      expect(progressWrite(recordIntentDiscoveryProgress, 'queued')).toMatchObject({
+        assignedCommunityCount: 2,
+      });
+    });
+
     it('adds discover job with data and options', async () => {
-      const queue = new FromIntentQueue();
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+      });
       const job = await queue.addJob({ intentId: 'i1', userId: 'u1', networkIds: ['idx1'] });
       expect(job.id).toBe('job-1');
       expect(mockAdd).toHaveBeenCalledWith(
@@ -140,7 +165,11 @@ describe('FromIntentQueue', () => {
     });
 
     it('supports debounce and removal options', async () => {
-      const queue = new FromIntentQueue();
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+      });
       await queue.addJob(
         { intentId: 'i1', userId: 'u1', trigger: 'intent_resume' },
         {
