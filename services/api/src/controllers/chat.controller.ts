@@ -106,6 +106,8 @@ const streamBodySchema = z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
   })).max(10).optional(),
+  /** Question messages explicitly answered by this principal turn. */
+  decisionQuestionMessageIds: z.array(z.string().min(1)).min(1).max(20).optional(),
 });
 
 let suggestionGeneratorInstance: SuggestionGenerator | null = null;
@@ -436,6 +438,18 @@ export class ChatController {
     if (effectiveScopeError) return effectiveScopeError;
 
     const sessionId = currentSessionId;
+    if (body.decisionQuestionMessageIds) {
+      const marked = await chatSessionService.markDecisionQuestionsSubmitted(
+        sessionId,
+        body.decisionQuestionMessageIds,
+      );
+      if (!marked) {
+        return Response.json(
+          { error: 'Decision questions are no longer awaiting an answer.' },
+          { status: 409 },
+        );
+      }
+    }
     // ─── Phase 2 (full chat ownership): a signal's DM runs no persona graph
     // at all — EVERY intent-scoped turn is the signal's IntentAgent's,
     // decided and executed on its serialized inbox. Global and network-scoped

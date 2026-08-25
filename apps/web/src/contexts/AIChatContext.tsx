@@ -121,6 +121,8 @@ export interface ChatSendOptions {
   existingMessageId?: string;
   /** Surface-specific recovery hook. Errors remain handled by the shared chat state machine. */
   onError?: (error: unknown) => void;
+  /** Structured question messages explicitly answered by this turn. */
+  decisionQuestionMessageIds?: string[];
 }
 
 interface ChatMessage {
@@ -647,6 +649,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           sessionId: operationSessionId,
           ...(chatScope ? { scopeType: chatScope.type, scopeId: chatScope.id } : {}),
           ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
+          ...(options?.decisionQuestionMessageIds?.length
+            ? { decisionQuestionMessageIds: options.decisionQuestionMessageIds }
+            : {}),
         };
 
         const streamEndpoint = effectiveTransport === "web"

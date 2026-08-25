@@ -339,9 +339,24 @@ export default function IntentNegotiatorChat({
   );
 
   const placeholder = agentName ? `Message ${agentName}…` : "Message your Personal Agent…";
+  const firstPendingQuestionIndex = messages.findIndex((message) => (
+    message.role === "assistant"
+    && message.decisionQuestions !== undefined
+    && message.decisionQuestions.length > 0
+    && !(message.decisionQuestionsSubmitted ?? decisionQuestionsSubmittedIds.has(message.id))
+  ));
+  // A principal question is a transcript barrier. Background agent activity
+  // remains durable, but it must not appear to supersede a form the principal
+  // has not submitted yet. Principal chat messages stay visible and do not
+  // count as answers to the structured form.
+  const visibleMessages = firstPendingQuestionIndex < 0
+    ? messages
+    : messages.filter((message, index) => (
+      index <= firstPendingQuestionIndex || message.role === "user"
+    ));
   const tracePlacement = useMemo(
-    () => placeTraceGroups(messages, timelineEntries),
-    [messages, timelineEntries],
+    () => placeTraceGroups(visibleMessages, timelineEntries),
+    [visibleMessages, timelineEntries],
   );
   const hasRestoredHistory = restoredHistoryLoaded && messages.length > 0;
   const restoredHistoryLastActive = hasRestoredHistory
@@ -411,8 +426,8 @@ export default function IntentNegotiatorChat({
               </div>
             )}
 
-            {messages.map((msg, messageIndex) => {
-              const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined;
+            {visibleMessages.map((msg, messageIndex) => {
+              const previousMessage = messageIndex > 0 ? visibleMessages[messageIndex - 1] : undefined;
               const startsSession = previousMessage !== undefined
                 && previousMessage.conversationSessionId !== msg.conversationSessionId;
               return (
@@ -476,9 +491,8 @@ export default function IntentNegotiatorChat({
                         <DecisionQuestions
                           questions={msg.decisionQuestions}
                           submitted={
-                            messageIndex < messages.length - 1 ||
-                            (msg.decisionQuestionsSubmitted ??
-                              decisionQuestionsSubmittedIds.has(msg.id))
+                            msg.decisionQuestionsSubmitted ??
+                            decisionQuestionsSubmittedIds.has(msg.id)
                           }
                           onSubmit={(flattened) => {
                             setDecisionQuestionsSubmittedIds((previous) => {
@@ -486,7 +500,16 @@ export default function IntentNegotiatorChat({
                               next.add(msg.id);
                               return next;
                             });
-                            void sendMessage(flattened);
+                            void sendMessage(flattened, {
+                              decisionQuestionMessageIds: [msg.id],
+                              onError: () => {
+                                setDecisionQuestionsSubmittedIds((previous) => {
+                                  const next = new Set(previous);
+                                  next.delete(msg.id);
+                                  return next;
+                                });
+                              },
+                            });
                           }}
                         />
                       )}

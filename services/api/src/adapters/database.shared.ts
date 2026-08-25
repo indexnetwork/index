@@ -363,6 +363,8 @@ export interface ChatMessage {
   interrupted?: boolean | null;
   /** Structured questions rendered by the chat question widget. */
   decisionQuestions?: unknown[] | null;
+  /** True only after an explicit structured-question submission. */
+  decisionQuestionsSubmitted?: boolean | null;
   createdAt: Date;
 }
 
@@ -397,6 +399,8 @@ export interface ChatMessageMeta {
   interrupted?: boolean;
   /** Structured questions rendered by the chat question widget. */
   decisionQuestions?: unknown[];
+  /** Set only after the principal explicitly submits this question form. */
+  decisionQuestionsSubmitted?: boolean;
   [key: string]: unknown;
 }
 

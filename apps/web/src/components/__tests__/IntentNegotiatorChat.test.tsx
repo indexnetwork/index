@@ -109,11 +109,12 @@ describe('IntentNegotiatorChat', () => {
     await waitFor(() => expect(sendMessage).toHaveBeenCalledWith(
       'Sofia (Does your design-partner experience include a scalable SaaS transition?): Yes, directly\n' +
       'Aisha (What product domain are you building in?): AI',
+      expect.objectContaining({ decisionQuestionMessageIds: ['msg-agent'] }),
     ));
     expect(screen.getByText('Submitted.')).toBeInTheDocument();
   });
 
-  it('disables a historical question form once a later message exists', async () => {
+  it('keeps a question form open when a later principal message exists', async () => {
     chatState.messages = [
       agentMessage({ decisionQuestions }),
       {
@@ -125,10 +126,64 @@ describe('IntentNegotiatorChat', () => {
     ];
     renderChat();
 
-    expect(await screen.findByText('Submitted.')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Yes, directly/i })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
+    await screen.findByRole('radio', { name: /Yes, directly/i });
+    expect(screen.queryByText('Submitted.')).toBeNull();
+    expect(screen.getByRole('radio', { name: /Yes, directly/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('parks later agent messages behind an unanswered question', async () => {
+    chatState.messages = [
+      agentMessage({ decisionQuestions }),
+      agentMessage({
+        id: 'msg-later-agent',
+        content: 'The negotiation could not be opened.',
+        timestamp: new Date('2026-08-21T10:01:00.000Z'),
+      }),
+    ];
+    renderChat();
+
+    expect(await screen.findByText('What should I push hardest on?')).toBeInTheDocument();
+    expect(screen.queryByText('The negotiation could not be opened.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
+  });
+
+  it('releases parked messages after the question is durably submitted', async () => {
+    chatState.messages = [
+      agentMessage({ decisionQuestions, decisionQuestionsSubmitted: true }),
+      agentMessage({
+        id: 'msg-later-agent',
+        content: 'The negotiation could not be opened.',
+        timestamp: new Date('2026-08-21T10:01:00.000Z'),
+      }),
+    ];
+    renderChat();
+
+    expect(await screen.findByText('Submitted.')).toBeInTheDocument();
+    expect(screen.getByText('The negotiation could not be opened.')).toBeInTheDocument();
+  });
+
+  it('stops again at the next unanswered question in transcript order', async () => {
+    chatState.messages = [
+      agentMessage({ decisionQuestions, decisionQuestionsSubmitted: true }),
+      agentMessage({
+        id: 'msg-next-question',
+        content: 'I need one more answer.',
+        decisionQuestions: [decisionQuestions[0]],
+        timestamp: new Date('2026-08-21T10:01:00.000Z'),
+      }),
+      agentMessage({
+        id: 'msg-after-next-question',
+        content: 'This must stay parked.',
+        timestamp: new Date('2026-08-21T10:02:00.000Z'),
+      }),
+    ];
+    renderChat();
+
+    expect(await screen.findByText('I need one more answer.')).toBeInTheDocument();
+    expect(screen.queryByText('This must stay parked.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
   });
 
   it('shows the latest agent activity until response text arrives', async () => {
