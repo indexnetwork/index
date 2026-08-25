@@ -46,4 +46,9 @@ describe('host graph composition', () => {
     expect(mcp).toContain("import { matchesReadyBestEffort, negotiationGraph } from '../lib/negotiation/negotiation-graph'");
     expect(mcp).toMatch(/negotiationGraph,\n[\s\S]*?matchesReady: protocolDeps\.matchesReady/);
   });
+
+  it('binds reply text and safe activity to the same per-message transport', () => {
+    expect(composition).toContain('replyStream: { publish: publishPersonalAgentReplyChunk }');
+    expect(composition).toContain('activity: { publish: publishPersonalAgentActivity }');
+  });
 });

@@ -13,10 +13,10 @@ import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { personalAgentQueue } from "../queues/personal-agent.queue";
 import type { PersonalAgentUserMessageEvent } from "../queues/personal-agent.queue";
 import { subscribePersonalAgentReply } from "../lib/agent/personal-agent-reply.stream";
-import type { PersonalAgentReplyChunk } from "../lib/agent/personal-agent-reply.stream";
+import type { PersonalAgentReplyStreamEvent } from "../lib/agent/personal-agent-reply.stream";
 import { SuggestionGenerator, ChatInterruptClassifier, PERSONAL_AGENT_PERSONA_ID } from '@indexnetwork/protocol';
 import type { PersonalAgentResult } from '@indexnetwork/protocol';
-import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
+import { createAgentActivityEvent, createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
 type RouteParams = Record<string, string>;
@@ -534,8 +534,6 @@ export class ChatController {
           let agentTurn: PersonalAgentResult | null = null;
           let agentUserMessageId: string | null = null;
           let agentAssistantMessageId: string | undefined;
-          /** Canned replies the agent attached to its delivered message. */
-          let agentReplyOptions: string[] | undefined;
 
           if (agentOwnsTurn && effectiveScope) {
             // The conversation is the agent's memory, so the client's message
@@ -554,13 +552,19 @@ export class ChatController {
             let lastSeq = 0;
             let unsubscribeReply: (() => void) | null = null;
             try {
-              unsubscribeReply = await subscribePersonalAgentReply(agentUserMessageId, (chunk: PersonalAgentReplyChunk) => {
-                if (chunk.seq <= lastSeq) return;
-                lastSeq = chunk.seq;
-                streamedText += chunk.content;
+              unsubscribeReply = await subscribePersonalAgentReply(agentUserMessageId, (event: PersonalAgentReplyStreamEvent) => {
                 try {
+                  if (event.type === 'activity') {
+                    controller.enqueue(
+                      encoder.encode(formatSSEEvent(createAgentActivityEvent(sessionId, event.label))),
+                    );
+                    return;
+                  }
+                  if (event.seq <= lastSeq) return;
+                  lastSeq = event.seq;
+                  streamedText += event.content;
                   controller.enqueue(
-                    encoder.encode(formatSSEEvent(createTokenEvent(sessionId, chunk.content))),
+                    encoder.encode(formatSSEEvent(createTokenEvent(sessionId, event.content))),
                   );
                 } catch {
                   // Stream may have already closed.
@@ -583,11 +587,10 @@ export class ChatController {
               for (const act of agentTurn.acts) {
                 if (act.tool !== 'message_user') continue;
                 agentAssistantMessageId = act.messageId;
-                // The chips belong to the last message the turn delivered —
-                // the same one `agentAssistantMessageId` names. They are
-                // already persisted on it; the done event only spares the
-                // client a reload to see them.
-                agentReplyOptions = act.options;
+                // Questions belong to the last delivered message named by
+                // `agentAssistantMessageId`. They are already persisted on
+                // it; done only spares the client a reload.
+                decisionQuestions = act.questions;
               }
               // Dropped-subscription fallback: whatever the channel did not
               // deliver of the completed turn is emitted as one token event.
@@ -825,7 +828,6 @@ export class ChatController {
                     title: sessionTitle,
                     suggestions,
                     ...(decisionQuestions !== undefined ? { decisionQuestions } : {}),
-                    ...(agentReplyOptions ? { options: agentReplyOptions } : {}),
                   }),
                 ),
               ),

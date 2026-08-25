@@ -2,7 +2,7 @@ import { log } from '../lib/log';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import type { ChatPersonaId, ChatScopeType } from '../adapters/database.shared';
 import { ChatGraphFactory, ChatTitleGenerator, PERSONAL_AGENT_PERSONA_ID, createPersonalAgentPersona } from '@indexnetwork/protocol';
-import type { ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
+import type { ChatGraphCompositeDatabase, Question } from '@indexnetwork/protocol';
 import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 
@@ -422,8 +422,8 @@ export class ChatSessionService {
     subgraphResults?: Record<string, unknown>;
     tokenCount?: number;
     interrupted?: boolean;
-    /** Canned replies rendered as chips under an agent question. */
-    options?: string[];
+    /** Structured questions rendered by the chat question widget. */
+    questions?: Question[];
   }): Promise<string> {
     logger.verbose('Adding message', {
       sessionId: params.sessionId,
@@ -442,7 +442,7 @@ export class ChatSessionService {
       subgraphResults: params.subgraphResults,
       tokenCount: params.tokenCount,
       interrupted: params.interrupted,
-      options: params.options,
+      questions: params.questions,
     });
 
     // Update session timestamp

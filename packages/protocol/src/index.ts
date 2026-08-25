@@ -249,7 +249,7 @@ export type {
  */
 export { PersonalAgentGraphFactory, chunkReplyText } from "./internal/agents/personal-agent/agent.graph.js";
 export type { PersonalAgentGraphLike } from "./internal/agents/personal-agent/agent.graph.js";
-export { PersonalAgentModel, renderPersonalAgentTurn, normalizeMessageOptions, validateDecidedAct } from "./internal/agents/personal-agent/agent.judgment.js";
+export { PersonalAgentModel, renderPersonalAgentTurn, normalizeMessageQuestions, validateDecidedAct } from "./internal/agents/personal-agent/agent.judgment.js";
 export { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, PERSONAL_AGENT_SYSTEM_PROMPT_VERSION } from "./internal/agents/personal-agent/agent.prompt.js";
 export type {
   PersonalAgentInput,
@@ -272,6 +272,8 @@ export type {
   PersonalAgentLedgerPort,
   PersonalAgentConversationPort,
   PersonalAgentReplyStreamPort,
+  PersonalAgentActivity,
+  PersonalAgentActivityPort,
   PersonalAgentOpportunityPort,
   PersonalAgentIdentityPort,
 } from "./internal/agents/personal-agent/agent.types.js";

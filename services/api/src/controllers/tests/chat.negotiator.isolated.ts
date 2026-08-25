@@ -33,7 +33,7 @@ import db from "../../lib/drizzle/drizzle";
 import { agents, chatSessionScopes, conversationParticipants, conversations, intents } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { PERSONAL_AGENT_TURN_FAILURE_REPLY } from "../chat.controller";
-import { publishPersonalAgentReplyChunk } from "../../lib/agent/personal-agent-reply.stream";
+import { publishPersonalAgentActivity, publishPersonalAgentReplyChunk } from "../../lib/agent/personal-agent-reply.stream";
 import type { PersonalAgentResult } from "@indexnetwork/protocol";
 import type { PersonalAgentUserMessageEvent } from "../../queues/personal-agent.queue";
 
@@ -332,6 +332,8 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
       // The host's shape: chunks published (post-check, post-persist) before
       // the job resolves, concatenating to exactly the joined messages.
       await publishPersonalAgentReplyChunk(event.messageId, { seq: 1, content: 'Declined that match. ' });
+      await publishPersonalAgentActivity(event.messageId, { label: 'Preparing your update' });
+      await publishPersonalAgentReplyChunk(event.messageId, { seq: 1, content: 'duplicate' });
       await publishPersonalAgentReplyChunk(event.messageId, { seq: 2, content: 'Nothing else needs you.' });
       return {
         acts: [{ tool: 'message_user', text: 'Declined that match. Nothing else needs you.', sessionId: event.sessionId, messageId: 'assistant-3' }],
@@ -349,8 +351,65 @@ describe("Signal DM (intent-scoped PersonalAgent chat)", () => {
 
     const tokens = events.filter((e) => e.type === 'token').map((e) => e.content);
     expect(tokens).toEqual(['Declined that match. ', 'Nothing else needs you.']);
+    expect(events.filter((e) => e.type === 'agent_activity')).toEqual([
+      expect.objectContaining({ type: 'agent_activity', label: 'Preparing your update' }),
+    ]);
     const done = events.find((e) => e.type === 'done') as { response: string } | undefined;
     expect(done?.response).toBe('Declined that match. Nothing else needs you.');
+  }, 60000);
+
+  test("structured agent questions are returned in done and persist on the assistant message", async () => {
+    const questions = [{
+      title: 'Product',
+      prompt: 'What product domain are you building in?',
+      options: [
+        { label: 'Dev tools', description: 'Tools for software teams.' },
+        { label: 'Data infra', description: 'Data platforms and infrastructure.' },
+      ],
+      multiSelect: false,
+    }];
+    scriptedAgentTurn = async (event) => {
+      const messageId = await chatSessionService.addMessage({
+        sessionId: event.sessionId,
+        role: 'assistant',
+        content: 'I need one detail before moving forward.',
+        questions,
+      });
+      return {
+        acts: [{
+          tool: 'message_user',
+          text: 'I need one detail before moving forward.',
+          questions,
+          sessionId: event.sessionId,
+          messageId,
+        }],
+        messages: ['I need one detail before moving forward.'],
+      };
+    };
+
+    const pinned = (await conversationDatabaseAdapter.getNegotiatorIntentChatSession(testUserId, testIntentId))!;
+    const res = await controller.messageStream(
+      streamReq({ message: 'What do you need?', sessionId: pinned.id }),
+      mockUser(),
+    );
+    expect(res.status).toBe(200);
+    const events = sseEvents(await res.text());
+    const done = events.find((event) => event.type === 'done');
+    expect(done?.decisionQuestions).toEqual(questions);
+
+    const history = await chatSessionService.getConversationSessionHistory(pinned.id);
+    expect(history.messages.at(-1)?.decisionQuestions).toEqual(questions);
+
+    const loaded = await controller.getWebSession(
+      new Request('http://localhost/chat/web/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: pinned.id }),
+      }),
+      mockUser(),
+    );
+    const loadedBody = (await loaded.json()) as { messages: Array<{ decisionQuestions?: unknown[] | null }> };
+    expect(loadedBody.messages.at(-1)?.decisionQuestions).toEqual(questions);
   }, 60000);
 
   test("a failed agent turn answers with the fixed honest copy and persists it", async () => {

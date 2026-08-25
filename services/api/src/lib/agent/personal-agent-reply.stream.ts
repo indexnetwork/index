@@ -1,5 +1,5 @@
 /**
- * Token transport for the PersonalAgent's completed conversational messages.
+ * Transport for the PersonalAgent's checked replies and safe activity labels.
  *
  * The turn runs on the inbox worker — serialization stays THE inbox — so the
  * reply's chunks cross back to the waiting chat controller over Redis
@@ -32,6 +32,10 @@ export interface PersonalAgentReplyChunk {
   content: string;
 }
 
+export type PersonalAgentReplyStreamEvent =
+  | { type: 'chunk'; seq: number; content: string }
+  | { type: 'activity'; label: string };
+
 export function personalAgentReplyChannel(messageId: string): string {
   return `personal-agent:reply:${messageId}`;
 }
@@ -48,18 +52,33 @@ export async function publishPersonalAgentReplyChunk(
   messageId: string,
   chunk: PersonalAgentReplyChunk,
 ): Promise<void> {
+  await publishPersonalAgentReplyEvent(messageId, { type: 'chunk', ...chunk });
+}
+
+/** Publish only the user-safe label; protocol-internal activity state stays server-side. */
+export async function publishPersonalAgentActivity(
+  messageId: string,
+  activity: { label: string },
+): Promise<void> {
+  await publishPersonalAgentReplyEvent(messageId, { type: 'activity', label: activity.label });
+}
+
+async function publishPersonalAgentReplyEvent(
+  messageId: string,
+  event: PersonalAgentReplyStreamEvent,
+): Promise<void> {
   const channel = personalAgentReplyChannel(messageId);
   try {
     if (useHermeticRedis()) {
-      hermeticBus.emit(channel, JSON.stringify(chunk));
+      hermeticBus.emit(channel, JSON.stringify(event));
       return;
     }
     const { getRedisClient } = await import('../../adapters/cache.adapter');
-    await getRedisClient().publish(channel, JSON.stringify(chunk));
+    await getRedisClient().publish(channel, JSON.stringify(event));
   } catch (err) {
     logger.warn('personal_agent_reply_publish_failed', {
       messageId,
-      seq: chunk.seq,
+      ...(event.type === 'chunk' ? { seq: event.seq } : {}),
       error: err instanceof Error ? err.message : String(err),
     });
   }
@@ -73,13 +92,17 @@ export async function publishPersonalAgentReplyChunk(
  */
 export async function subscribePersonalAgentReply(
   messageId: string,
-  onChunk: (chunk: PersonalAgentReplyChunk) => void,
+  onEvent: (event: PersonalAgentReplyStreamEvent) => void,
 ): Promise<() => void> {
   const channel = personalAgentReplyChannel(messageId);
   const handle = (data: string) => {
     try {
-      const parsed = JSON.parse(data) as PersonalAgentReplyChunk;
-      if (typeof parsed?.seq === 'number' && typeof parsed?.content === 'string') onChunk(parsed);
+      const parsed = JSON.parse(data) as Partial<PersonalAgentReplyStreamEvent>;
+      if (parsed.type === 'chunk' && typeof parsed.seq === 'number' && typeof parsed.content === 'string') {
+        onEvent(parsed as Extract<PersonalAgentReplyStreamEvent, { type: 'chunk' }>);
+      } else if (parsed.type === 'activity' && typeof parsed.label === 'string') {
+        onEvent(parsed as Extract<PersonalAgentReplyStreamEvent, { type: 'activity' }>);
+      }
     } catch {
       // Malformed chunk: drop; the job-result fallback delivers the reply.
     }

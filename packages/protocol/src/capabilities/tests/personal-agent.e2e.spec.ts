@@ -28,7 +28,8 @@ const TERMINAL_STATUSES = new Set(["accepted", "rejected", "expired"]);
 
 /** The DM, the dossier and the ledger, in memory. */
 class FakePrincipalHost {
-  readonly dmMessages: Array<{ role: string; content: string; options?: string[] }> = [];
+  readonly dmMessages: Array<{ role: string; content: string; questions?: import("../../protocol/question.js").Question[] }> = [];
+  readonly activities: Array<import("../../internal/agents/personal-agent/agent.types.js").PersonalAgentActivity> = [];
   readonly dossierEntries: Array<{ id: string; text: string; source: string; createdAt: Date }> = [];
   readonly ledgerRows: Array<{ event: Record<string, unknown>; act: Record<string, unknown> }> = [];
   readonly publishedChunks: Array<{ messageId: string; seq: number; content: string }> = [];
@@ -42,8 +43,8 @@ class FakePrincipalHost {
     findSession: async () => ({ id: "dm-1" }),
     resolveSession: async () => ({ session: { id: "dm-1" } }),
     getMessages: async () => this.dmMessages.map(({ role, content }) => ({ role, content })),
-    addMessage: async ({ role, content, options }) => {
-      this.dmMessages.push({ role, content, ...(options ? { options } : {}) });
+    addMessage: async ({ role, content, questions }) => {
+      this.dmMessages.push({ role, content, ...(questions ? { questions } : {}) });
       return `dm-message-${++this.messageCounter}`;
     },
   };
@@ -97,6 +98,10 @@ class FakePrincipalHost {
 
   readonly replyStream: PersonalAgentDeps["replyStream"] = {
     publish: async (messageId, chunk) => { this.publishedChunks.push({ messageId, ...chunk }); },
+  };
+
+  readonly activity: PersonalAgentDeps["activity"] = {
+    publish: async (_messageId, activity) => { this.activities.push(activity); },
   };
 }
 
@@ -225,6 +230,7 @@ function buildCycle(judgment: ScriptedJudgment, counterparties: string[]) {
     opportunities: principal.opportunities,
     identity: principal.identity,
     replyStream: principal.replyStream,
+    activity: principal.activity,
     reflectEnqueue: async (job) => { negotiationHost.enqueueReflect(job); },
     wakeForMatches: async (input) => { wakes.push(input); },
     judgment,
@@ -244,9 +250,18 @@ const userMessage = (text: string) => ({
 
 describe("PersonalAgent — chat-first intent turns", () => {
   test("acts on one resolved matter and asks about another in the same turn", async () => {
+    const questions = [{
+      title: "Compensation",
+      prompt: "What compensation range should I use?",
+      options: [
+        { label: "$100k-$150k", description: "Use a six-figure cash range." },
+        { label: "Equity-led", description: "Prioritize ownership over cash." },
+      ],
+      multiSelect: false,
+    }];
     const judgment = new ScriptedJudgment([() => [
       { tool: "note_dossier", text: "Can start in three weeks." },
-      { tool: "message_user", text: "I noted the timing. What compensation range should I use?" },
+      { tool: "message_user", text: "I noted the timing. One more detail will help.", questions },
     ]]);
     const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
 
@@ -254,31 +269,48 @@ describe("PersonalAgent — chat-first intent turns", () => {
 
     expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier", "message_user"]);
     expect(principal.dossierEntries.map((entry) => entry.text)).toEqual(["Can start in three weeks."]);
-    expect(result.messages).toEqual(["I noted the timing. What compensation range should I use?"]);
+    expect(result.messages).toEqual(["I noted the timing. One more detail will help."]);
+    expect(principal.dmMessages.at(-1)?.questions).toEqual(questions);
   });
 
   test("can ask naturally without fabricating work", async () => {
     const judgment = new ScriptedJudgment([() => [
-      { tool: "message_user", text: "What timing would work for you?" },
+      {
+        tool: "message_user",
+        text: "One timing detail will help.",
+        questions: [{
+          title: "Timing",
+          prompt: "What timing would work for you?",
+          options: [
+            { label: "This month", description: "Start in the next few weeks." },
+            { label: "Next quarter", description: "Plan for a later start." },
+          ],
+          multiSelect: false,
+        }],
+      },
     ]]);
     const { agent } = buildCycle(judgment, [CANDIDATE_USER_ID]);
 
     const result = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
     expect(result.acts.map((act) => act.tool)).toEqual(["message_user"]);
-    expect(result.messages).toEqual(["What timing would work for you?"]);
+    expect(result.messages).toEqual(["One timing detail will help."]);
   });
 
   test("answers a plain conversation without fabricated work", async () => {
     const judgment = new ScriptedJudgment([() => [
       { tool: "message_user", text: "I am here and keeping an eye on this signal." },
     ]]);
-    const { agent } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
 
     const result = await agent.invoke(userMessage("Thanks."));
 
     expect(result.acts.map((act) => act.tool)).toEqual(["message_user"]);
     expect(result.messages).toEqual(["I am here and keeping an eye on this signal."]);
+    expect(principal.activities).toEqual([
+      { phase: "reviewing", label: "Reviewing the conversation" },
+      { phase: "preparing_response", label: "Preparing a response" },
+    ]);
   });
 
   test("uses the actual executed tool result before choosing the response", async () => {
@@ -292,12 +324,18 @@ describe("PersonalAgent — chat-first intent turns", () => {
           : { tool: "message_user", text: "I could not save that preference." };
       },
     );
-    const { agent } = buildCycle(judgment, [CANDIDATE_USER_ID]);
+    const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
 
     const result = await agent.invoke(userMessage("Remote is important."));
 
     expect(result.acts.map((act) => act.tool)).toEqual(["note_dossier", "message_user"]);
     expect(result.messages).toEqual(["I saved your remote preference for the negotiation table."]);
+    expect(principal.activities).toEqual([
+      { phase: "reviewing", label: "Reviewing the conversation" },
+      { phase: "working", label: "Saving what you shared" },
+      { phase: "working", label: "Saved what you shared" },
+      { phase: "preparing_response", label: "Preparing a response" },
+    ]);
   });
 
   test("refreshes the dossier after note_dossier before kickoff strategy and briefs", async () => {
@@ -435,7 +473,19 @@ describe("PersonalAgent — chat-first intent turns", () => {
 
   test("does not accept a match from hedge text", async () => {
     const judgment = new ScriptedJudgment([() => [
-      { tool: "message_user", text: "It sounds promising. What would settle it for you?" },
+      {
+        tool: "message_user",
+        text: "It sounds promising. One detail could settle it.",
+        questions: [{
+          title: "Decision",
+          prompt: "What would settle it for you?",
+          options: [
+            { label: "Terms", description: "Clarify the practical terms first." },
+            { label: "Fit", description: "Clarify the working fit first." },
+          ],
+          multiSelect: false,
+        }],
+      },
     ]]);
     const { agent, principal } = buildCycle(judgment, [CANDIDATE_USER_ID]);
 
@@ -626,7 +676,19 @@ describe("PersonalAgent — the whole cycle", () => {
   test("matches_ready → conversation → kickoff → all_paused → further conversation and actions", async () => {
     const judgment = new ScriptedJudgment([
       // 1. matches_ready: the agent asks for the missing timing.
-      () => [{ tool: "message_user", text: "Before I reach out — what is your timeline?" }],
+      () => [{
+        tool: "message_user",
+        text: "Before I reach out, I need one timeline detail.",
+        questions: [{
+          title: "Timeline",
+          prompt: "What is your timeline?",
+          options: [
+            { label: "This month", description: "Move within the next few weeks." },
+            { label: "Next quarter", description: "Plan for a later start." },
+          ],
+          multiSelect: false,
+        }],
+      }],
       // 2. their answer: note it, then kick every match off.
       () => [
         { tool: "note_dossier", text: "Wants to start within a month." },
@@ -635,7 +697,19 @@ describe("PersonalAgent — the whole cycle", () => {
       // 3. all_paused: ask what one table still needs.
       (context) => {
         expect(context.paused).toHaveLength(3);
-        return [{ tool: "message_user", text: "One of them needs your earliest start date — what should I say?" }];
+        return [{
+          tool: "message_user",
+          text: "One of them needs your earliest start date.",
+          questions: [{
+            title: "Start date",
+            prompt: "What should I say your earliest start date is?",
+            options: [
+              { label: "Two weeks", description: "Say you can start in two weeks." },
+              { label: "One month", description: "Say you can start in one month." },
+            ],
+            multiSelect: false,
+          }],
+        }];
       },
       // 4. their answer: promote, reject, and re-kick the rest.
       (context) => {
@@ -653,7 +727,7 @@ describe("PersonalAgent — the whole cycle", () => {
     const asked = await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
     expect(asked.acts.map((act) => act.tool)).toEqual(["message_user"]);
     expect(negotiationHost.tasks.size).toBe(0);
-    expect(principal.dmMessages.at(-1)?.content).toContain("what is your timeline");
+    expect(principal.dmMessages.at(-1)?.questions?.[0]?.prompt).toBe("What is your timeline?");
 
     // ── 2. the answer kicks the round off ─────────────────────────────────
     const kicked = await agent.invoke(userMessage("Within a month, ideally sooner."));

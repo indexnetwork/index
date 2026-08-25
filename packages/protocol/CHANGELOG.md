@@ -20,6 +20,23 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 35.0.0 - 2026-08-24
+
+### Breaking
+
+- **PersonalAgent questions use the canonical structured question contract.**
+  `message_user.options` is replaced by `message_user.questions` on decided
+  and executed acts and on the conversation delivery port. Questions are
+  safety-checked and delivered separately from the message introduction so
+  clients can render the guided question UI directly. The exported
+  `normalizeMessageOptions` helper is replaced by `normalizeMessageQuestions`.
+
+### Added
+
+- `PersonalAgentActivity` and `PersonalAgentActivityPort` provide bounded,
+  user-facing progress updates for live intent turns without exposing internal
+  identifiers, model reasoning, or private context.
+
 ## 34.0.1 - 2026-08-24
 
 ### Changed

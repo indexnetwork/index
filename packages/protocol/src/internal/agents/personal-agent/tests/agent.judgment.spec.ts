@@ -48,9 +48,24 @@ function context(overrides: Partial<PersonalAgentTurnContext> = {}): PersonalAge
 }
 
 describe("validateDecidedAct", () => {
-  test("allows a normal conversational response on a client-message turn", () => {
-    expect(validateDecidedAct({ act: "message_user", text: "What timing works for you?" }, context()))
-      .toEqual({ tool: "message_user", text: "What timing works for you?" });
+  test("keeps asks in safe canonical questions instead of message prose", () => {
+    const question = {
+      title: "Timing",
+      prompt: "What timing works for you?",
+      options: [
+        { label: "This month", description: "Start within the next few weeks." },
+        { label: "Next quarter", description: "Plan for a later start." },
+      ],
+      multiSelect: false,
+    };
+    expect(validateDecidedAct({ act: "message_user", text: "A quick detail will help.", questions: [question] }, context()))
+      .toEqual({ tool: "message_user", text: "A quick detail will help.", questions: [question] });
+    expect(validateDecidedAct({ act: "message_user", text: "What timing works for you?" }, context())).toBeNull();
+    expect(validateDecidedAct({
+      act: "message_user",
+      text: "A quick detail will help.",
+      questions: [{ ...question, prompt: "What is the opportunity_id?" }],
+    }, context())).toBeNull();
   });
 
   test("keeps references bounded to the state the model was shown", () => {

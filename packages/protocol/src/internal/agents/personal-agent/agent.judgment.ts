@@ -19,6 +19,7 @@ import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema, type NegotiationAuthoredTurn, type NegotiationTurn } from "../../negotiations/negotiation.turn.js";
+import { QuestionSchema, type Question } from "../../../protocol/question.js";
 import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
 import type { PersonalAgentBriefInput, PersonalAgentSeatBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
@@ -38,9 +39,7 @@ const MAX_TEXT_CHARS = 500;
 const MAX_DM_CHARS = 1000;
 const MAX_DM_MESSAGES = 20;
 const MAX_THREAD_TURNS = 8;
-const MAX_OPTION_CHARS = 60;
-const MIN_OPTIONS = 2;
-const MAX_OPTIONS = 4;
+const MAX_QUESTIONS = 3;
 
 function truncate(text: string, max: number): string {
   const trimmed = text.trim();
@@ -48,27 +47,32 @@ function truncate(text: string, max: number): string {
 }
 
 /**
- * Canned replies, normalized. Options are a shortcut for typing and nothing
- * more, so a malformed set is DROPPED rather than rejected: the question
- * still reads fine as prose, and refusing the whole round trip over chip
- * wording would trade a convenience for a lost turn.
+ * Structured questions, normalized through the canonical renderer schema and
+ * the same prose leak gate used for chat copy. One malformed question is
+ * dropped without losing the other safe questions in the response.
  */
-export function normalizeMessageOptions(raw: unknown): string[] | undefined {
+export function normalizeMessageQuestions(raw: unknown): Question[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const seen = new Set<string>();
-  const options: string[] = [];
+  const questions: Question[] = [];
   for (const candidate of raw) {
-    if (typeof candidate !== "string") continue;
-    const text = candidate.trim();
-    if (!text || text.length > MAX_OPTION_CHARS) continue;
-    if (!isSafeAgentMessageProse(text)) continue;
-    const key = text.toLowerCase();
+    const parsed = QuestionSchema.safeParse(candidate);
+    if (!parsed.success) continue;
+    const question = parsed.data;
+    const prose = [
+      question.title,
+      question.prompt,
+      question.evidence,
+      ...question.options.flatMap((option) => [option.label, option.description]),
+    ].filter((value): value is string => typeof value === "string");
+    if (!prose.every(isSafeAgentMessageProse)) continue;
+    const key = question.prompt.trim().toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    options.push(text);
-    if (options.length === MAX_OPTIONS) break;
+    questions.push(question);
+    if (questions.length === MAX_QUESTIONS) break;
   }
-  return options.length >= MIN_OPTIONS ? options : undefined;
+  return questions.length > 0 ? questions : undefined;
 }
 
 // ─── Rendering ───────────────────────────────────────────────────────────────
@@ -231,8 +235,8 @@ const DecidedActSchema = z.object({
     act: z.enum(["message_user", "kickoff", "promote", "reject", "note_dossier", "retire_dossier", "accept_opportunity"]),
     /** message_user: the prose. note_dossier: the fact. */
     text: z.string().max(4000).nullable().optional(),
-    /** message_user: 2-4 short canned replies. */
-    options: z.array(z.string().max(MAX_OPTION_CHARS)).max(8).nullable().optional(),
+    /** message_user: renderer-ready questions; all asking lives here, not in text. */
+    questions: z.array(QuestionSchema).max(MAX_QUESTIONS).nullable().optional(),
     /** promote / reject: 1-based number from the paused list. */
     negotiation: z.number().int().min(1).nullable().optional(),
     /** accept_opportunity: 1-based number from the match list. */
@@ -416,8 +420,12 @@ export function validateDecidedAct(
       {
         const text = act.text?.trim();
         if (!text || !isSafeAgentMessageProse(text)) return null;
-        const options = normalizeMessageOptions(act.options);
-        return { tool: "message_user", text, ...(options ? { options } : {}) };
+        const questions = normalizeMessageQuestions(act.questions);
+        // Questions belong in the structured field. Keeping them out of prose
+        // prevents the same ask rendering twice and guarantees widget delivery.
+        if (text.includes("?")) return null;
+        if (Array.isArray(act.questions) && act.questions.length > 0 && !questions) return null;
+        return { tool: "message_user", text, ...(questions ? { questions } : {}) };
       }
       case "kickoff": {
         return { tool: "kickoff", reasoning: act.reasoning?.trim() || "Reaching out to this signal's matches." };

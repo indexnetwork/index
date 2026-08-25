@@ -27,8 +27,9 @@ import { requestContext } from "../../shared/observability/request-context.js";
 import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 import type { IntentRecord } from "../../../platform/database/entities.js";
-import { PersonalAgentModel } from "./agent.judgment.js";
-import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
+import { normalizeMessageQuestions, PersonalAgentModel } from "./agent.judgment.js";
+import type { Question } from "../../../protocol/question.js";
+import type { PersonalAgentActivity, PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgentGraph");
 
@@ -276,7 +277,7 @@ async function deliverMessage(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
   text: string,
-  options?: string[],
+  questions?: Question[],
 ): Promise<{ sessionId: string; messageId: string } | null> {
   const resolved = await deps.conversation.resolveSession(context.userId, context.intentId);
   if ("error" in resolved) {
@@ -295,7 +296,7 @@ async function deliverMessage(
     sessionId: resolved.session.id,
     role: "assistant",
     content: text,
-    ...(options ? { options } : {}),
+    ...(questions ? { questions } : {}),
   });
   return { sessionId: resolved.session.id, messageId };
 }
@@ -367,14 +368,17 @@ async function say(
   accumulator: TurnAccumulator,
   tool: "message_user",
   text: string,
-  options?: string[],
+  questions?: Question[],
 ): Promise<void> {
-  const delivered = await deliverMessage(deps, context, text, options);
+  if (text.includes("?")) throw new Error("PersonalAgent questions must use the structured questions field");
+  const safeQuestions = normalizeMessageQuestions(questions);
+  if (questions && !safeQuestions) throw new Error("PersonalAgent produced no safe questions");
+  const delivered = await deliverMessage(deps, context, text, safeQuestions);
   if (!delivered) return;
   const executed: PersonalAgentExecutedAct = {
     tool,
     text,
-    ...(options ? { options } : {}),
+    ...(safeQuestions ? { questions: safeQuestions } : {}),
     ...delivered,
   };
   // Guarded, like every other post-delivery ledger write: the message is on
@@ -830,7 +834,7 @@ async function executeAct(
 ): Promise<void> {
   switch (act.tool) {
     case "message_user":
-      await say(deps, context, accumulator, act.tool, act.text, act.options);
+      await say(deps, context, accumulator, act.tool, act.text, act.questions);
       return;
     case "promote":
     case "reject": {
@@ -992,6 +996,29 @@ async function publishTurnMessages(
   }
 }
 
+const TOOL_ACTIVITY_LABELS: Record<Exclude<PersonalAgentDecidedAct["tool"], "message_user">, { before: string; after: string }> = {
+  kickoff: { before: "Preparing outreach", after: "Outreach prepared" },
+  promote: { before: "Updating a match", after: "Match updated" },
+  reject: { before: "Updating a match", after: "Match updated" },
+  note_dossier: { before: "Saving what you shared", after: "Saved what you shared" },
+  retire_dossier: { before: "Updating what I remember", after: "Updated what I remember" },
+  accept_opportunity: { before: "Recording your decision", after: "Decision recorded" },
+};
+
+/** Activity is best-effort UI feedback and must never decide turn success. */
+async function publishActivity(
+  deps: PersonalAgentDeps,
+  input: Extract<PersonalAgentInput, { event: PersonalAgentIntentEventKind }>,
+  activity: PersonalAgentActivity,
+): Promise<void> {
+  if (!deps.activity || input.event !== "user_message") return;
+  try {
+    await deps.activity.publish(input.messageId, activity);
+  } catch (err) {
+    logger.warn("Failed to publish PersonalAgent activity", { phase: activity.phase, error: err });
+  }
+}
+
 // ─── Nodes ───────────────────────────────────────────────────────────────────
 
 async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
@@ -999,6 +1026,7 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
   let context: PersonalAgentTurnContext | null = null;
   let accumulator: TurnAccumulator | null = null;
   try {
+    await publishActivity(deps, input, { phase: "reviewing", label: "Reviewing the conversation" });
     const contextStartedAt = Date.now();
     context = await assembleContext(deps, input);
     logger.info("PersonalAgent context assembled", {
@@ -1059,11 +1087,15 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
       const toolStartedAt = Date.now();
       try {
         if (act.tool === "message_user") {
+          await publishActivity(deps, input, { phase: "preparing_response", label: "Preparing a response" });
           accumulator.finalMessageChosen = true;
           await executeAct(deps, context, accumulator, act);
         } else if (act.tool === "kickoff") {
+          await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS.kickoff.before });
           await runKickoff(deps, context, accumulator, act.reasoning);
+          await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS.kickoff.after });
         } else {
+          await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS[act.tool].before });
           await executeAct(deps, context, accumulator, act);
           if (act.tool === "note_dossier" || act.tool === "retire_dossier") {
             context = {
@@ -1071,6 +1103,7 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
               dossier: await deps.dossier.readActiveEntries(context.userId, context.intentId),
             };
           }
+          await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS[act.tool].after });
         }
       } catch (err) {
         logger.error("PersonalAgent tool failed", {
@@ -1095,6 +1128,7 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
     if (!accumulator.finalMessageChosen) {
       if (accumulator.acts.length === 0) throwIfIntentAborted();
       logger.warn("PersonalAgent exhausted its intent tool budget", { intentId: context.intentId, event: context.event });
+      await publishActivity(deps, input, { phase: "preparing_response", label: "Preparing a response" });
       await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
     }
     if (input.event === "user_message") await publishTurnMessages(deps, input.messageId, accumulator.messages);
@@ -1115,6 +1149,7 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
         error: err,
       });
       try {
+        await publishActivity(deps, input, { phase: "preparing_response", label: "Preparing a response" });
         await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_POST_ACTION_FAILURE);
       } catch (fallbackError) {
         logger.error("PersonalAgent terminal fallback could not be delivered", {

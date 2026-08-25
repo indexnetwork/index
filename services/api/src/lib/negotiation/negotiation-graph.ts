@@ -31,7 +31,7 @@ import { agentService } from '../../services/agent.service';
 import { AgentDispatcherImpl } from '../../services/agent-dispatcher.service';
 import { chatSessionService } from '../../services/chat.service';
 import { PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readSignalMatches } from '../agent/negotiator-verdict.host';
-import { publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
+import { publishPersonalAgentActivity, publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
 
 /**
  * `agentDispatcher` is exported separately: it is no longer part of the
@@ -96,6 +96,7 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
     readAgentName: async (userId) => (await agentService.getNegotiatorAgent(userId))?.name ?? null,
   },
   replyStream: { publish: publishPersonalAgentReplyChunk },
+  activity: { publish: publishPersonalAgentActivity },
   reflectEnqueue: async (job) => {
     const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
     await personalAgentQueue.addAllPausedEvent(job);

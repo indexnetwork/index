@@ -25,6 +25,7 @@ import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.
 import type { NegotiationGraphDatabase, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 import type { IntentRecord } from "../../../platform/database/entities.js";
 import type { NegotiationRoundReflectEnqueueFn } from "../../negotiations/negotiation.round-reflect.js";
+import type { Question } from "../../../protocol/question.js";
 
 // ─── Invoke contract ─────────────────────────────────────────────────────────
 
@@ -69,10 +70,10 @@ export interface PersonalAgentResult {
 
 /**
  * One model choice is one tool call. `message_user` is the natural terminal
- * response, including a question when more information is needed.
+ * response; any asks travel as canonical structured questions beside its prose.
  */
 export type PersonalAgentDecidedAct =
-  | { tool: "message_user"; text: string; options?: string[] }
+  | { tool: "message_user"; text: string; questions?: Question[] }
   /** Open (or re-open) every undecided match of this signal with fresh briefs. */
   | { tool: "kickoff"; reasoning: string }
   /** Terminal writes IS-A owns: opportunity → `pending` / `rejected`. */
@@ -89,7 +90,7 @@ export type PersonalAgentExecutedAct =
   | {
     tool: "message_user";
     text: string;
-    options?: string[];
+    questions?: Question[];
     sessionId: string;
     messageId: string;
   }
@@ -193,13 +194,24 @@ export interface PersonalAgentConversationPort {
     sessionId: string;
     role: "user" | "assistant" | "system";
     content: string;
-    options?: string[];
+    questions?: Question[];
   }): Promise<string>;
 }
 
 /** Token transport for completed conversational messages. */
 export interface PersonalAgentReplyStreamPort {
   publish(messageId: string, chunk: { seq: number; content: string }): Promise<void>;
+}
+
+/** A bounded, user-facing description of an intent turn's visible progress. */
+export interface PersonalAgentActivity {
+  phase: "reviewing" | "working" | "preparing_response";
+  label: string;
+}
+
+/** Live activity transport. `messageId` is the channel key, never event data. */
+export interface PersonalAgentActivityPort {
+  publish(messageId: string, activity: PersonalAgentActivity): Promise<void>;
 }
 
 /** One of this signal's matches, as the prompt numbers it. */
@@ -248,6 +260,7 @@ export interface PersonalAgentDeps {
   opportunities: PersonalAgentOpportunityPort;
   identity: PersonalAgentIdentityPort;
   replyStream?: PersonalAgentReplyStreamPort;
+  activity?: PersonalAgentActivityPort;
   /**
    * The all-paused → reflect trigger. Kickoff runs one final check after
    * stamping the round size, to cover pauses that landed before the stamp.
