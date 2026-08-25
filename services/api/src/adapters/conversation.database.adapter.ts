@@ -70,7 +70,7 @@ import { publishConversationMessageEvent, publishIntentInvalidationEvent } from 
 import { log } from '../lib/log';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
-import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere, rewriteEraNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, rewriteEraNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
 
 /**
  * In-transaction read of ONE negotiation's turn history, for the locked floor
@@ -385,7 +385,7 @@ export interface StaleNegotiationTask {
 
 /**
  * Claim an exact eligible opportunity state, promote it to negotiating, and
- * insert its task while the shared attempt, row, and pair locks are held.
+ * insert its task while the opportunity attempt and row locks are held.
  */
 export async function createNegotiationTaskForAttemptInTransaction(
   tx: NegotiationAttemptTransaction,
@@ -401,19 +401,11 @@ export async function createNegotiationTaskForAttemptInTransaction(
     .select({
       status: opportunities.status,
       updatedAt: opportunities.updatedAt,
-      actors: opportunities.actors,
     })
     .from(opportunities)
     .where(eq(opportunities.id, input.opportunityId))
     .for('update');
   if (!opportunity) return null;
-
-  const actorUserIds = [...new Set(opportunity.actors
-    .filter((actor) => actor.role !== 'introducer')
-    .map((actor) => actor.userId))].sort();
-  if (actorUserIds.length >= 2) {
-    await acquireNegotiationPairLock(tx, actorUserIds);
-  }
 
   if (
     opportunity.status !== input.expectedStatus
@@ -421,16 +413,6 @@ export async function createNegotiationTaskForAttemptInTransaction(
     || opportunity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
   ) {
     return null;
-  }
-
-  if (actorUserIds.length >= 2) {
-    const [pairTask] = await tx
-      .select({ id: schema.tasks.id })
-      .from(schema.tasks)
-      .innerJoin(opportunities, sql`TRUE`)
-      .where(qualifyingPairNegotiationTaskWhere(actorUserIds, input.opportunityId))
-      .limit(1);
-    if (pairTask) return null;
   }
 
   const [qualifyingTask] = await tx

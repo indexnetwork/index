@@ -3,7 +3,7 @@ import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
-import { acquireNegotiationAttemptLock, acquireNegotiationPairLock, qualifyingActiveNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, qualifyingPairNegotiationTaskWhere } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, qualifyingActiveNegotiationTaskWhere } from './negotiation-attempt.atomic';
 import { runTasklessNegotiationReactivation } from './negotiation-reactivation.atomic';
 import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
 
@@ -14,7 +14,7 @@ interface OpportunityNetworkEligibilityInput {
 }
 
 interface IntentScopedOpportunityPersistenceConflict {
-  reason: 'same_trigger_recent_duplicate' | 'pair_active_negotiation';
+  reason: 'same_intent_pair_duplicate';
   existingOpportunityId: string;
   existingTriggerIntentId?: string;
   existingStatus: OpportunityRow['status'];
@@ -36,16 +36,14 @@ function participantUserIds(data: CreateOpportunityInput): string[] {
     .map((actor) => actor.userId))].sort();
 }
 
-async function acquireIntentScopedPairLocks(
+async function acquireIntentScopedPairLock(
   tx: DrizzleTx,
-  actorUserIds: string[],
-  triggerIntentId: string,
+  participantScopeKeys: string[],
 ): Promise<void> {
-  const pairKey = actorUserIds.join('|');
-  await acquireNegotiationPairLock(tx, actorUserIds);
+  const pairKey = [...new Set(participantScopeKeys)].sort().join('|');
   await tx.execute(sql`
     SELECT pg_advisory_xact_lock(
-      hashtextextended(${`opportunity-pair-intent:${pairKey}:${triggerIntentId}`}, 0)
+      hashtextextended(${`opportunity-intent-pair:${pairKey}`}, 0)
     )
   `);
 }
@@ -390,30 +388,45 @@ export class OpportunityDatabaseAdapter {
   }
 
   /**
-   * Persist one owned-intent discovery result under pair + pair/intent advisory
-   * locks, re-checking dedup and active negotiation state at the final boundary.
+   * Persist one owned-intent discovery result under intent-scope and exact-pair
+   * advisory locks, re-checking exact intent-pair dedup at the final boundary.
    */
   async persistIntentScopedOpportunityIfNetworkEligible(
     data: CreateOpportunityInput,
     expireIds: string[],
     eligibility: OpportunityNetworkEligibilityInput & { triggerIntentId: string },
-    dedupWindowMs: number,
   ): Promise<IntentScopedOpportunityPersistenceResult | null> {
     const actorNetworkIds = [...new Set(data.actors.map((actor) => actor.networkId))];
     const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
     const actorUserIds = participantUserIds(data);
+    const participantActors = data.actors.filter((actor) => actor.role !== 'introducer');
     if (
       data.detection.triggeredBy !== eligibility.triggerIntentId
       || actorNetworkIds.length === 0
       || actorNetworkIds.some((id) => !allowedNetworkIds.has(id))
       || actorUserIds.length < 2
+      || participantActors.some((actor) => !actor.intent)
       || !data.actors.some((actor) =>
         actor.userId === eligibility.ownerUserId
         && actor.role !== 'introducer'
         && actor.intent === eligibility.triggerIntentId)
-      || !Number.isFinite(dedupWindowMs)
-      || dedupWindowMs <= 0
     ) return null;
+    const participantScopeKeys = participantActors.map((actor) => `intent:${actor.intent!}`);
+    const participantIntentNetworkBindings = [...new Map([
+      ...participantActors.map((actor) => ({
+        userId: actor.userId,
+        intentId: actor.intent!,
+        networkId: actor.networkId,
+      })),
+      ...actorNetworkIds.map((networkId) => ({
+        userId: eligibility.ownerUserId,
+        intentId: eligibility.triggerIntentId,
+        networkId,
+      })),
+    ].map((binding) => [
+      `${binding.userId}\u0000${binding.intentId}\u0000${binding.networkId}`,
+      binding,
+    ] as const)).values()];
 
     const requestedPairs = [
       ...data.actors.map((actor) => ({ userId: actor.userId, networkId: actor.networkId })),
@@ -423,11 +436,14 @@ export class OpportunityDatabaseAdapter {
       `${pair.userId}\u0000${pair.networkId}`,
       pair,
     ] as const)).values()];
-    const actorContainment = actorUserIds.map((userId) => sql`EXISTS (
-      SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
-      WHERE elem->>'userId' = ${userId}
-        AND elem->>'role' IS DISTINCT FROM 'introducer'
-    )`);
+    const actorContainment = data.actors
+      .filter((actor) => actor.role !== 'introducer')
+      .map((actor) => sql`EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
+        WHERE elem->>'userId' = ${actor.userId}
+          AND elem->>'role' IS DISTINCT FROM 'introducer'
+          AND elem->>'intent' = ${actor.intent!}
+      )`);
     const sameTrigger = or(
       sql`${opportunities.detection}->>'triggeredBy' = ${eligibility.triggerIntentId}`,
       sql`${opportunities.actors} @> ${JSON.stringify([{
@@ -445,29 +461,30 @@ export class OpportunityDatabaseAdapter {
         eligibility.ownerUserId,
         eligibility.triggerIntentId,
       );
-      await acquireIntentScopedPairLocks(tx, actorUserIds, eligibility.triggerIntentId);
+      await acquireIntentScopedPairLock(tx, participantScopeKeys);
 
-      const [ownedIntent] = await tx
-        .select({ id: schema.intents.id })
+      const activeAssignedIntents = await tx
+        .select({
+          id: schema.intents.id,
+          userId: schema.intents.userId,
+          networkId: schema.intentNetworks.networkId,
+        })
         .from(schema.intents)
+        .innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))
         .where(and(
-          eq(schema.intents.id, eligibility.triggerIntentId),
-          eq(schema.intents.userId, eligibility.ownerUserId),
+          or(...participantIntentNetworkBindings.map((binding) => and(
+            eq(schema.intents.id, binding.intentId),
+            eq(schema.intents.userId, binding.userId),
+            eq(schema.intentNetworks.networkId, binding.networkId),
+          ))),
           isNull(schema.intents.archivedAt),
-          or(isNull(schema.intents.status), eq(schema.intents.status, 'ACTIVE')),
+          eq(schema.intents.status, 'ACTIVE'),
         ))
         .for('share');
-      if (!ownedIntent) return null;
-
-      const assignments = await tx
-        .select({ networkId: schema.intentNetworks.networkId })
-        .from(schema.intentNetworks)
-        .where(and(
-          eq(schema.intentNetworks.intentId, eligibility.triggerIntentId),
-          inArray(schema.intentNetworks.networkId, actorNetworkIds),
-        ))
-        .for('share');
-      if (new Set(assignments.map((row) => row.networkId)).size !== actorNetworkIds.length) return null;
+      const activeAssignedIntentKeys = new Set(activeAssignedIntents.map((intent) =>
+        `${intent.userId}\u0000${intent.id}\u0000${intent.networkId}`));
+      if (participantIntentNetworkBindings.some((binding) =>
+        !activeAssignedIntentKeys.has(`${binding.userId}\u0000${binding.intentId}\u0000${binding.networkId}`))) return null;
 
       const activePairs = await tx
         .select({
@@ -487,26 +504,6 @@ export class OpportunityDatabaseAdapter {
         .for('share');
       if (activePairs.length !== pairs.length) return null;
 
-      const [activeNegotiationRow] = await tx
-        .select({ opportunity: opportunities })
-        .from(opportunities)
-        .innerJoin(schema.tasks, sql`TRUE`)
-        .where(qualifyingPairNegotiationTaskWhere(actorUserIds))
-        .orderBy(desc(schema.tasks.updatedAt))
-        .limit(1);
-      if (activeNegotiationRow) {
-        const existing = toOpportunityRow(activeNegotiationRow.opportunity);
-        return {
-          conflict: {
-            reason: 'pair_active_negotiation' as const,
-            existingOpportunityId: existing.id,
-            existingTriggerIntentId: opportunityTriggerForOwner(existing, eligibility.ownerUserId),
-            existingStatus: existing.status,
-            existingCreatedAt: existing.createdAt,
-          },
-        };
-      }
-
       const [sameTriggerRecentRow] = await tx
         .select()
         .from(opportunities)
@@ -514,7 +511,6 @@ export class OpportunityDatabaseAdapter {
           ...actorContainment,
           sameTrigger,
           ne(opportunities.status, 'draft'),
-          sql`${opportunities.createdAt} >= NOW() - (${dedupWindowMs} * INTERVAL '1 millisecond')`,
         ))
         .orderBy(desc(opportunities.createdAt))
         .limit(1);
@@ -522,7 +518,7 @@ export class OpportunityDatabaseAdapter {
         const existing = toOpportunityRow(sameTriggerRecentRow);
         return {
           conflict: {
-            reason: 'same_trigger_recent_duplicate' as const,
+            reason: 'same_intent_pair_duplicate' as const,
             existingOpportunityId: existing.id,
             existingTriggerIntentId: opportunityTriggerForOwner(existing, eligibility.ownerUserId),
             existingStatus: existing.status,

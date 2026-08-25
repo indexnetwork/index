@@ -26,7 +26,7 @@ const intentDatabaseSource = readFileSync(
 // The executor node is where the graph issues the locked intent write, so that
 // is the file the CAS contract below is asserted against.
 const protocolIntentGraphSource = readFileSync(
-  new URL('../../../../../packages/protocol/src/intents/graph/intent.graph.execute.ts', import.meta.url),
+  new URL('../../../../../packages/protocol/src/internal/intents/graph/intent.graph.execute.ts', import.meta.url),
   'utf8',
 );
 
@@ -54,16 +54,28 @@ describe('intent-scope advisory lock contract', () => {
     expect(opportunity).toContain('eligibility.ownerUserId');
     expect(opportunity).toContain('eligibility.triggerIntentId');
     expect(opportunity.indexOf('acquireIntentScopeAdvisoryLock('))
-      .toBeLessThan(opportunity.indexOf('acquireIntentScopedPairLocks('));
+      .toBeLessThan(opportunity.indexOf('acquireIntentScopedPairLock('));
     expect(opportunity.indexOf('acquireIntentScopeAdvisoryLock('))
       .toBeLessThan(opportunity.indexOf(".from(schema.intents)"));
+    const participantAssignments = opportunity.indexOf(
+      '.innerJoin(schema.intentNetworks, eq(schema.intentNetworks.intentId, schema.intents.id))',
+    );
+    const participantShareLock = opportunity.indexOf(".for('share')", participantAssignments);
+    const opportunityDedupRead = opportunity.indexOf('.from(opportunities)', participantShareLock);
+    expect(opportunity).toContain('participantIntentNetworkBindings');
+    expect(opportunity).toContain('isNull(schema.intents.archivedAt)');
+    expect(opportunity).toContain("eq(schema.intents.status, 'ACTIVE')");
+    expect(opportunity).not.toContain('isNull(schema.intents.status)');
+    expect(participantAssignments).toBeGreaterThanOrEqual(0);
+    expect(participantShareLock).toBeGreaterThan(participantAssignments);
+    expect(opportunityDedupRead).toBeGreaterThan(participantShareLock);
   });
 
   it('serializes exact-trigger opportunity reactivation before every conflicting row lock', () => {
     const reactivation = methodSlice(
       opportunitySource,
       'async updateOpportunityStatusIfNetworkEligible(',
-      'async compensateTasklessNegotiatingOpportunity(',
+      'async getOpportunity(',
     );
     const advisory = reactivation.indexOf('acquireIntentScopeAdvisoryLock(');
     const intentRow = reactivation.indexOf('.from(schema.intents)', advisory);
@@ -88,17 +100,13 @@ describe('intent-scope advisory lock contract', () => {
     const activeTask = methodSlice(
       negotiationAttemptSource,
       'export function qualifyingActiveNegotiationTaskWhere(',
-      '/** Pair-global tasks fresh enough',
-    );
-    const pairTask = methodSlice(
-      negotiationAttemptSource,
-      'export function qualifyingPairNegotiationTaskWhere(',
-      '/**\n * Qualifying tasks that prove an attempt',
+      '/**\n * Reusable SQL predicate',
     );
     expect(activeTask).toContain("metadata}->>'type' = 'negotiation'");
     expect(activeTask).toContain("metadata}->>'opportunityId' = ${opportunityId}");
     expect(activeTask).toContain('qualifyingFreshNegotiationTaskStateWhere()');
-    expect(pairTask).toContain('qualifyingFreshNegotiationTaskStateWhere()');
+    expect(negotiationAttemptSource).not.toContain('qualifyingPairNegotiationTaskWhere');
+    expect(negotiationAttemptSource).not.toContain('acquireNegotiationPairLock');
     expect(negotiationAttemptSource).toContain("IN ('submitted', 'working', 'paused')");
 
     const acquire = negotiationReactivationSource.indexOf('boundary.acquireAttemptLock()');

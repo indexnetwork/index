@@ -24,7 +24,7 @@ type ExistingBetweenActor = {
   networkId: Id<'networks'>;
   existingOpportunityId?: Id<'opportunities'>;
   existingStatus?: OpportunityStatus;
-  reason?: 'same_trigger_recent_duplicate' | 'pair_active_negotiation' | 'final_atomic_conflict';
+  reason?: 'same_intent_pair_duplicate' | 'final_atomic_conflict';
   existingTriggerIntentId?: string;
 };
 
@@ -33,12 +33,12 @@ type StatusUpdater = ReturnType<typeof createEligibleOpportunityStatusUpdater>;
 
 /**
  * Mutable state shared across the per-opportunity loop: what got reactivated,
- * what got suppressed, and how many cross-trigger matches were let through.
+ * what got suppressed, and how many different intent-pair matches were let through.
  */
 interface PersistLedger {
   reactivated: Opportunity[];
   existingBetweenActors: ExistingBetweenActor[];
-  crossTriggerAllowedCount: number;
+  crossIntentPairAllowedCount: number;
 }
 
 /** Everything the three persistence paths read. */
@@ -83,9 +83,8 @@ export async function persistNode(state: OpportunityState, deps: OpportunityGrap
           evaluatedCount: 0,
           createdCount: 0,
           reactivatedCount: 0,
-          sameTriggerDuplicateSuppressions: 0,
-          pairActiveNegotiationSuppressions: 0,
-          crossTriggerAllowedCount: 0,
+          sameIntentPairDuplicateSuppressions: 0,
+          crossIntentPairAllowedCount: 0,
           finalAtomicConflictCount: 0,
         },
       };
@@ -128,7 +127,7 @@ export async function persistNode(state: OpportunityState, deps: OpportunityGrap
         },
       );
 
-      const ledger: PersistLedger = { reactivated: [], existingBetweenActors: [], crossTriggerAllowedCount: 0 };
+      const ledger: PersistLedger = { reactivated: [], existingBetweenActors: [], crossIntentPairAllowedCount: 0 };
       const ctx: PersistPathContext = {
         state,
         deps,
@@ -200,7 +199,7 @@ export async function persistNode(state: OpportunityState, deps: OpportunityGrap
       );
 
       const intentDedupScope = finalTriggerIntentId && state.discoverySource === 'intent'
-        ? { triggerIntentId: finalTriggerIntentId, dedupWindowMs: DEDUP_WINDOW_MS }
+        ? { triggerIntentId: finalTriggerIntentId }
         : undefined;
       const { created: createdList, conflicts } = await persistOpportunities({
         database: deps.database,
@@ -248,11 +247,9 @@ export async function persistNode(state: OpportunityState, deps: OpportunityGrap
         evaluatedCount: state.evaluatedOpportunities.length,
         createdCount: createdList.length,
         reactivatedCount: ledger.reactivated.length,
-        sameTriggerDuplicateSuppressions: ledger.existingBetweenActors.filter((entry) =>
-          entry.reason === 'same_trigger_recent_duplicate').length,
-        pairActiveNegotiationSuppressions: ledger.existingBetweenActors.filter((entry) =>
-          entry.reason === 'pair_active_negotiation').length,
-        crossTriggerAllowedCount: ledger.crossTriggerAllowedCount,
+        sameIntentPairDuplicateSuppressions: ledger.existingBetweenActors.filter((entry) =>
+          entry.reason === 'same_intent_pair_duplicate').length,
+        crossIntentPairAllowedCount: ledger.crossIntentPairAllowedCount,
         finalAtomicConflictCount: conflicts.length,
       };
       return {
@@ -459,7 +456,8 @@ async function suppressDiscoveryDuplicate(
   evaluated: EvaluatedOpportunity,
 ): Promise<boolean> {
   const { state, deps, ledger, updateStatusIfStillEligible, initialStatus } = ctx;
-  const candidateUserId = evaluated.actors.find((a) => a.userId !== state.userId)?.userId;
+  const candidateActor = evaluated.actors.find((a) => a.userId !== state.userId);
+  const candidateUserId = candidateActor?.userId;
   persistDedupLog.verbose('Checking overlapping opportunities', {
     stateUserId: state.userId,
     candidateUserId: candidateUserId ?? 'NONE',
@@ -483,14 +481,19 @@ async function suppressDiscoveryDuplicate(
     : undefined;
 
   if (ownedIntentTriggerId && candidateUserId) {
-    return suppressOwnedIntentDuplicate(ctx, overlapping, candidateUserId, ownedIntentTriggerId);
+    return suppressOwnedIntentDuplicate(
+      ctx,
+      overlapping,
+      candidateUserId,
+      candidateActor?.intentId,
+      ownedIntentTriggerId,
+    );
   }
   if (overlapping.length === 0) return false;
 
   const existing = overlapping[0];
   const existingIndexId = (existing.context?.networkId ?? state.networkId ?? state.userNetworks?.[0] ?? '') as Id<'networks'>;
   const isRecent = new Date(existing.createdAt).getTime() > Date.now() - DEDUP_WINDOW_MS;
-
   if (existing.status === 'expired' || existing.status === 'stalled') {
     // Reactivate expired or stalled opportunities.
     // Stalled opportunities are reactivated regardless of age: a stalled negotiation
@@ -587,65 +590,37 @@ async function suppressDiscoveryDuplicate(
 
 /**
  * Dedup for a discovery run triggered by an intent the owner still holds.
- * A pair-global active negotiation always wins; otherwise only opportunities
- * carrying the *same* trigger intent can suppress this one.
+ * Only an opportunity carrying the same two intent seats can suppress this one.
  */
 async function suppressOwnedIntentDuplicate(
   ctx: PersistPathContext,
   overlapping: Opportunity[],
   candidateUserId: Id<'users'>,
+  candidateIntentId: Id<'intents'> | undefined,
   ownedIntentTriggerId: string,
 ): Promise<boolean> {
-  const { state, deps, ledger, updateStatusIfStillEligible, initialStatus } = ctx;
-
-  let activeNegotiation: { opportunity: Opportunity; taskState: string } | undefined;
-  for (const opportunity of overlapping) {
-    if (opportunity.status !== 'negotiating') continue;
-    const task = await deps.database.getNegotiationTaskForOpportunity(opportunity.id);
-    if (task && isActiveNegotiationTaskFresh(task)) {
-      activeNegotiation = { opportunity, taskState: task.state };
-      break;
-    }
-  }
-
-  if (activeNegotiation) {
-    const existingTriggerIntentId = triggerForOwner(activeNegotiation.opportunity, state.userId);
-    ledger.existingBetweenActors.push({
-      candidateUserId,
-      networkId: (activeNegotiation.opportunity.context?.networkId ?? state.networkId ?? state.userNetworks?.[0] ?? '') as Id<'networks'>,
-      existingOpportunityId: activeNegotiation.opportunity.id as Id<'opportunities'>,
-      existingStatus: activeNegotiation.opportunity.status,
-      reason: 'pair_active_negotiation',
-      ...(existingTriggerIntentId ? { existingTriggerIntentId } : {}),
-    });
-    persistDedupLog.info('Suppressing owned-intent match for pair-global active negotiation', {
-      triggerIntentId: ownedIntentTriggerId,
-      candidateUserId,
-      existingOpportunityId: activeNegotiation.opportunity.id,
-      existingTriggerIntentId,
-      existingStatus: activeNegotiation.opportunity.status,
-      existingAgeMs: Date.now() - new Date(activeNegotiation.opportunity.createdAt).getTime(),
-      taskState: activeNegotiation.taskState,
-      reason: 'pair_active_negotiation',
-    });
-    return true;
-  }
+  const { state, ledger, updateStatusIfStillEligible, initialStatus } = ctx;
 
   const sameTrigger = overlapping
-    .filter((opportunity) => belongsToOwnedIntent(opportunity, state.userId, ownedIntentTriggerId))
+    .filter((opportunity) => {
+      if (!belongsToOwnedIntent(opportunity, state.userId, ownedIntentTriggerId)) return false;
+      if (!candidateIntentId) return false;
+      const candidateActors = opportunity.actors.filter((actor) => actor.userId === candidateUserId);
+      return candidateActors.some((actor) => actor.intent === candidateIntentId);
+    })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const otherTrigger = overlapping.filter((opportunity) =>
-    !belongsToOwnedIntent(opportunity, state.userId, ownedIntentTriggerId));
+  const sameTriggerIds = new Set(sameTrigger.map((opportunity) => opportunity.id));
+  const otherTrigger = overlapping.filter((opportunity) => !sameTriggerIds.has(opportunity.id));
   const existing = sameTrigger[0];
 
   if (!existing) {
     if (otherTrigger.length > 0) {
-      ledger.crossTriggerAllowedCount += 1;
-      persistDedupLog.info('Allowing cross-trigger match for owned intent', {
+      ledger.crossIntentPairAllowedCount += 1;
+      persistDedupLog.info('Allowing a different intent-pair match', {
         triggerIntentId: ownedIntentTriggerId,
         candidateUserId,
-        reason: 'cross_trigger_match_allowed',
-        otherTriggers: otherTrigger.map((opportunity) => ({
+        reason: 'cross_intent_pair_match_allowed',
+        otherIntentPairs: otherTrigger.map((opportunity) => ({
           opportunityId: opportunity.id,
           triggerIntentId: triggerForOwner(opportunity, state.userId),
           status: opportunity.status,
@@ -657,14 +632,13 @@ async function suppressOwnedIntentDuplicate(
   }
 
   const existingIndexId = (existing.context?.networkId ?? state.networkId ?? state.userNetworks?.[0] ?? '') as Id<'networks'>;
-  const isRecent = new Date(existing.createdAt).getTime() > Date.now() - DEDUP_WINDOW_MS;
 
   if (existing.status === 'expired' || existing.status === 'stalled') {
     const reactivated = await updateStatusIfStillEligible(
       existing.id, initialStatus, existing.actors, existing.status,
     );
     if (reactivated) {
-      persistLog.info('Reactivated same-trigger opportunity', {
+      persistLog.info('Reactivated same-intent-pair opportunity', {
         triggerIntentId: ownedIntentTriggerId,
         opportunityId: existing.id,
         candidateUserId,
@@ -680,7 +654,7 @@ async function suppressOwnedIntentDuplicate(
       existing.id, initialStatus, existing.actors, existing.status,
     );
     if (reactivated) {
-      persistLog.info('Resuming same-trigger orphaned negotiating opportunity', {
+      persistLog.info('Resuming same-intent-pair orphaned negotiating opportunity', {
         triggerIntentId: ownedIntentTriggerId,
         opportunityId: existing.id,
         candidateUserId,
@@ -694,7 +668,7 @@ async function suppressOwnedIntentDuplicate(
       existing.id, initialStatus, existing.actors, existing.status,
     );
     if (upgraded) {
-      persistLog.info('Upgraded same-trigger latent opportunity', {
+      persistLog.info('Upgraded same-intent-pair latent opportunity', {
         triggerIntentId: ownedIntentTriggerId,
         opportunityId: existing.id,
         candidateUserId,
@@ -704,34 +678,24 @@ async function suppressOwnedIntentDuplicate(
     }
     return true;
   }
-  if (isRecent) {
-    ledger.existingBetweenActors.push({
-      candidateUserId,
-      networkId: existingIndexId,
-      existingOpportunityId: existing.id as Id<'opportunities'>,
-      existingStatus: existing.status,
-      reason: 'same_trigger_recent_duplicate',
-      existingTriggerIntentId: ownedIntentTriggerId,
-    });
-    persistDedupLog.info('Suppressing recent same-trigger duplicate', {
-      triggerIntentId: ownedIntentTriggerId,
-      candidateUserId,
-      existingOpportunityId: existing.id,
-      existingTriggerIntentId: ownedIntentTriggerId,
-      existingStatus: existing.status,
-      existingAgeMs: Date.now() - new Date(existing.createdAt).getTime(),
-      reason: 'same_trigger_recent_duplicate',
-    });
-    return true;
-  }
-  persistDedupLog.info('Allowing same-trigger opportunity outside dedup window', {
+  ledger.existingBetweenActors.push({
+    candidateUserId,
+    networkId: existingIndexId,
+    existingOpportunityId: existing.id as Id<'opportunities'>,
+    existingStatus: existing.status,
+    reason: 'same_intent_pair_duplicate',
+    existingTriggerIntentId: ownedIntentTriggerId,
+  });
+  persistDedupLog.info('Suppressing duplicate for the same intent pair', {
     triggerIntentId: ownedIntentTriggerId,
     candidateUserId,
     existingOpportunityId: existing.id,
+    existingTriggerIntentId: ownedIntentTriggerId,
     existingStatus: existing.status,
     existingAgeMs: Date.now() - new Date(existing.createdAt).getTime(),
+    reason: 'same_intent_pair_duplicate',
   });
-  return false;
+  return true;
 }
 
 /** Trace summary for {@link persistNode}. */

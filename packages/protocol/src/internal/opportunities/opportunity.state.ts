@@ -110,9 +110,8 @@ export interface OpportunityPersistenceOutcome {
   evaluatedCount: number;
   createdCount: number;
   reactivatedCount: number;
-  sameTriggerDuplicateSuppressions: number;
-  pairActiveNegotiationSuppressions: number;
-  crossTriggerAllowedCount: number;
+  sameIntentPairDuplicateSuppressions: number;
+  crossIntentPairAllowedCount: number;
   finalAtomicConflictCount: number;
 }
 
@@ -354,7 +353,7 @@ export const OpportunityGraphState = Annotation.Root({
     networkId: Id<'networks'>;
     existingOpportunityId?: Id<'opportunities'>;
     existingStatus?: OpportunityStatus;
-    reason?: 'same_trigger_recent_duplicate' | 'pair_active_negotiation' | 'final_atomic_conflict';
+    reason?: 'same_intent_pair_duplicate' | 'final_atomic_conflict';
     existingTriggerIntentId?: string;
   }>>({
     reducer: (curr, next) => next ?? curr,

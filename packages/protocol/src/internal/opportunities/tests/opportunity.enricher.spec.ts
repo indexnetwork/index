@@ -924,6 +924,29 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
     expect(result.data.detection.triggeredBy).toBe('intent-current');
   });
 
+  test('owned-intent scope excludes a same-trigger overlap with no counterparty intent', async () => {
+    const existing = existingOpportunity(
+      'opp-unbound-counterparty',
+      [
+        { networkId: 'idx-1', userId: 'user-a', role: 'patient', intent: 'intent-current' },
+        { networkId: 'idx-1', userId: 'user-b', role: 'agent' },
+      ],
+      MEANINGFUL.reasoning.aiMlCofounder,
+    );
+    existing.detection.triggeredBy = 'intent-current';
+    const db = { findOpportunitiesByActors: async () => [existing] };
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder);
+    newData.detection.triggeredBy = 'intent-current';
+    newData.actors[0].intent = 'intent-current';
+    newData.actors[1].intent = 'intent-counterparty';
+
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, {
+      ownedIntentScope: { triggerIntentId: 'intent-current', ownerUserId: 'user-a' },
+    });
+
+    expect(result.enriched).toBe(false);
+  });
+
   // ── Cross-index ──────────────────────────────────────────────────────
 
   test('same match found in two indexes merges and preserves both index contexts', async () => {
