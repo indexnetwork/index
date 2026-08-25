@@ -604,9 +604,9 @@ async function suppressOwnedIntentDuplicate(
   const sameTrigger = overlapping
     .filter((opportunity) => {
       if (!belongsToOwnedIntent(opportunity, state.userId, ownedIntentTriggerId)) return false;
-      if (!candidateIntentId) return true;
+      if (!candidateIntentId) return false;
       const candidateActors = opportunity.actors.filter((actor) => actor.userId === candidateUserId);
-      return candidateActors.some((actor) => !actor.intent || actor.intent === candidateIntentId);
+      return candidateActors.some((actor) => actor.intent === candidateIntentId);
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const sameTriggerIds = new Set(sameTrigger.map((opportunity) => opportunity.id));

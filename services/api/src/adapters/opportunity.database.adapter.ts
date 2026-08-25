@@ -3,7 +3,7 @@ import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
-import { acquireNegotiationAttemptLock, qualifyingActiveNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere } from './negotiation-attempt.atomic';
+import { acquireNegotiationAttemptLock, qualifyingActiveNegotiationTaskWhere } from './negotiation-attempt.atomic';
 import { runTasklessNegotiationReactivation } from './negotiation-reactivation.atomic';
 import { exactEvidencePoolWhere, exactLivePoolWhere, POOL_LIVE_STATUSES } from './poolquery.shared';
 
@@ -399,23 +399,23 @@ export class OpportunityDatabaseAdapter {
     const actorNetworkIds = [...new Set(data.actors.map((actor) => actor.networkId))];
     const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
     const actorUserIds = participantUserIds(data);
-    const participantScopeKeys = data.actors
-      .filter((actor) => actor.role !== 'introducer')
-      .map((actor) => actor.intent
-        ? `intent:${actor.intent}`
-        : actor.userId === eligibility.ownerUserId
-          ? `intent:${eligibility.triggerIntentId}`
-          : `user:${actor.userId}`);
+    const participantActors = data.actors.filter((actor) => actor.role !== 'introducer');
     if (
       data.detection.triggeredBy !== eligibility.triggerIntentId
       || actorNetworkIds.length === 0
       || actorNetworkIds.some((id) => !allowedNetworkIds.has(id))
       || actorUserIds.length < 2
+      || participantActors.some((actor) => !actor.intent)
       || !data.actors.some((actor) =>
         actor.userId === eligibility.ownerUserId
         && actor.role !== 'introducer'
         && actor.intent === eligibility.triggerIntentId)
     ) return null;
+    const participantScopeKeys = participantActors.map((actor) => `intent:${actor.intent!}`);
+    const intentBindings = [...new Map(participantActors.map((actor) => [
+      `${actor.userId}\u0000${actor.intent!}`,
+      { userId: actor.userId, intentId: actor.intent! },
+    ] as const)).values()];
 
     const requestedPairs = [
       ...data.actors.map((actor) => ({ userId: actor.userId, networkId: actor.networkId })),
@@ -431,9 +431,7 @@ export class OpportunityDatabaseAdapter {
         SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
         WHERE elem->>'userId' = ${actor.userId}
           AND elem->>'role' IS DISTINCT FROM 'introducer'
-          ${actor.intent
-            ? sql`AND (elem->>'intent' = ${actor.intent} OR elem->>'intent' IS NULL)`
-            : sql``}
+          AND elem->>'intent' = ${actor.intent!}
       )`);
     const sameTrigger = or(
       sql`${opportunities.detection}->>'triggeredBy' = ${eligibility.triggerIntentId}`,
@@ -465,6 +463,17 @@ export class OpportunityDatabaseAdapter {
         ))
         .for('share');
       if (!ownedIntent) return null;
+
+      const boundIntents = await tx
+        .select({ id: schema.intents.id, userId: schema.intents.userId })
+        .from(schema.intents)
+        .where(or(...intentBindings.map((binding) => and(
+          eq(schema.intents.id, binding.intentId),
+          eq(schema.intents.userId, binding.userId),
+        ))))
+        .for('share');
+      const boundIntentKeys = new Set(boundIntents.map((intent) => `${intent.userId}\u0000${intent.id}`));
+      if (intentBindings.some((binding) => !boundIntentKeys.has(`${binding.userId}\u0000${binding.intentId}`))) return null;
 
       const assignments = await tx
         .select({ networkId: schema.intentNetworks.networkId })

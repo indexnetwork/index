@@ -316,6 +316,10 @@ describe('opportunity graph — newborn stamping seam', () => {
     const stalled = makeOpportunity({
       status: 'stalled',
       createdAt: new Date(),
+      actors: [
+        { userId: USER_A, role: 'patient', networkId: NET_ID, intent: INTENT_A },
+        { userId: USER_B, role: 'agent', networkId: NET_ID, intent: INTENT_B },
+      ],
       detection: {
         source: 'opportunity_graph',
         timestamp: new Date().toISOString(),
@@ -481,7 +485,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
       },
     });
     let inserted: Opportunity | undefined;
-    const result = await buildGraph(buildDb({
+    const db = buildDb({
       findOpportunitiesByActors: async () => [existing],
       createOpportunity: async (data) => {
         inserted = {
@@ -494,7 +498,19 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
         };
         return inserted;
       },
-    })).invoke(ownedIntentInput);
+    });
+    const hallucinatingEvaluator: OpportunityEvaluatorLike = {
+      invokeEntityBundle: async () => [{
+        reasoning: 'Good match with a hallucinated intent binding',
+        score: 80,
+        actors: [
+          { userId: USER_A, role: 'patient' as const, intentId: INTENT_OTHER },
+          { userId: USER_B, role: 'agent' as const, intentId: INTENT_OTHER },
+        ],
+      }],
+    };
+    const result = await buildGraph(db, undefined, { evaluator: hallucinatingEvaluator })
+      .invoke(ownedIntentInput);
 
     expect(inserted?.actors.find((actor) => actor.userId === USER_B)?.intent).toBe(INTENT_B);
     expect(result.opportunities.map((opportunity) => opportunity.id)).toEqual(['different-intent-pair']);
@@ -542,7 +558,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     }
   });
 
-  test('owned intent inspects all overlaps when the first updated row belongs to another trigger', async () => {
+  test('owned intent does not treat a missing counterparty intent as an exact-pair duplicate', async () => {
     const otherTrigger = makeOpportunity({
       id: 'other-first' as Id<'opportunities'>,
       status: 'pending',
@@ -560,18 +576,18 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
         { userId: USER_B, role: 'agent', networkId: NET_ID },
       ],
     });
-    let createCalled = false;
+    let inserted: Opportunity | undefined;
     const result = await buildGraph(buildDb({
       findOpportunitiesByActors: async () => [otherTrigger, sameTrigger],
       createOpportunity: async (data) => {
-        createCalled = true;
-        return { ...data, id: 'unexpected', status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+        inserted = { ...data, id: 'exact-pair', status: 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null };
+        return inserted;
       },
     })).invoke(ownedIntentInput);
 
-    expect(createCalled).toBe(false);
-    expect(result.existingBetweenActors[0]?.existingOpportunityId).toBe('same-second');
-    expect(result.existingBetweenActors[0]?.reason).toBe('same_intent_pair_duplicate');
+    expect(inserted?.actors.find((actor) => actor.userId === USER_B)?.intent).toBe(INTENT_B);
+    expect(result.opportunities.map((opportunity) => opportunity.id)).toEqual(['exact-pair']);
+    expect(result.existingBetweenActors).toEqual([]);
   });
 
   test('owned intent persists a cross-trigger match despite a fresh active negotiation', async () => {

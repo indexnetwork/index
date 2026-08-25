@@ -1316,6 +1316,133 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(inserted).toEqual([]);
     });
 
+    it('fails closed when the counterparty actor has no intent', async () => {
+      const marker = `${TEST_PREFIX}missing-counterparty-intent-${uuidv4()}`;
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          createdBy: marker,
+          timestamp: new Date().toISOString(),
+          triggeredBy: fixture.intent1Id,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Unbound counterparty must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: fixture.intent1Id,
+      });
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'createdBy' = ${marker}`);
+
+      expect(result).toBeNull();
+      expect(inserted).toEqual([]);
+    });
+
+    it('fails closed when the counterparty intent belongs to another user', async () => {
+      const misownedIntentId = uuidv4();
+      fixture.extraIntentIds.push(misownedIntentId);
+      await db.insert(intents).values({
+        id: misownedIntentId,
+        userId: fixture.userAId,
+        payload: `${TEST_PREFIX}misowned counterparty intent`,
+        sourceType: 'discovery_form',
+        sourceId: fixture.userAId,
+      });
+      const marker = `${TEST_PREFIX}misowned-counterparty-intent-${uuidv4()}`;
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          createdBy: marker,
+          timestamp: new Date().toISOString(),
+          triggeredBy: fixture.intent1Id,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent', intent: misownedIntentId },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Misowned counterparty intent must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: fixture.intent1Id,
+      });
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'createdBy' = ${marker}`);
+
+      expect(result).toBeNull();
+      expect(inserted).toEqual([]);
+    });
+
+    it('does not let an unbound legacy row suppress a fully bound intent pair', async () => {
+      const triggerIntentId = uuidv4();
+      const candidateIntentId = uuidv4();
+      fixture.extraIntentIds.push(triggerIntentId, candidateIntentId);
+      await db.insert(intents).values([
+        {
+          id: triggerIntentId,
+          userId: fixture.userAId,
+          payload: `${TEST_PREFIX}legacy wildcard trigger`,
+          sourceType: 'discovery_form',
+          sourceId: fixture.userAId,
+        },
+        {
+          id: candidateIntentId,
+          userId: fixture.userBId,
+          payload: `${TEST_PREFIX}legacy wildcard counterparty`,
+          sourceType: 'discovery_form',
+          sourceId: fixture.userBId,
+        },
+      ]);
+      await db.insert(intentNetworks).values({ intentId: triggerIntentId, networkId: fixture.networkId });
+      const legacy = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: triggerIntentId },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: triggerIntentId },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Legacy unbound row', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'pending',
+      });
+
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: triggerIntentId },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: triggerIntentId },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent', intent: candidateIntentId },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Fully bound exact pair', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId,
+      });
+
+      expect(result && 'created' in result).toBe(true);
+      if (!result || !('created' in result)) throw new Error('expected fully bound opportunity');
+      expect(result.created.id).not.toBe(legacy.id);
+      expect(result.created.actors.find((actor) => actor.userId === fixture.userBId)?.intent)
+        .toBe(candidateIntentId);
+    });
+
     it('persists and starts a distinct intent negotiation while another intent for the pair is paused', async () => {
       const triggerIntentId = uuidv4();
       const candidateIntentId = uuidv4();

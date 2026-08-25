@@ -126,6 +126,12 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
             intentDedupScope.triggerIntentId,
           )
         : normalizedData;
+      if (
+        intentDedupScope
+        && scopedData.actors.some((actor) => actor.role !== 'introducer' && !actor.intent)
+      ) {
+        throw new Error('Intent-scoped opportunities require an intent for every participant');
+      }
       const enrichment = await enrichOrCreate(database, embedder, scopedData, intentDedupScope && networkEligibility
         ? {
             ownedIntentScope: {

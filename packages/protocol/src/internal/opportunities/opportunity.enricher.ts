@@ -116,14 +116,15 @@ function belongsToOwnedIntent(
       actor.userId === scope.ownerUserId && actor.intent === scope.triggerIntentId);
   if (!belongs) return false;
 
-  return newData.actors
-    .filter((actor) =>
-      actor.role !== 'introducer'
-      && actor.userId !== scope.ownerUserId
-      && actor.intent)
+  const counterpartyActors = newData.actors.filter((actor) =>
+    actor.role !== 'introducer'
+    && actor.userId !== scope.ownerUserId);
+  if (counterpartyActors.some((actor) => !actor.intent)) return false;
+
+  return counterpartyActors
     .every((actor) => {
       const existingActors = opportunity.actors.filter((existing) => existing.userId === actor.userId);
-      return existingActors.some((existing) => !existing.intent || existing.intent === actor.intent);
+      return existingActors.some((existing) => existing.intent === actor.intent);
     });
 }
 
