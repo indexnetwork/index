@@ -1,10 +1,12 @@
 import { Link } from "react-router";
 
+import DiscoveryWarmupLog from "@/components/DiscoveryWarmupLog";
 import type { IntentCycleSnapshot, NegotiationPauseReason } from "@/services/conversation";
+import type { DiscoveryProgress } from "@/services/intents";
 
 function cyclePhase(cycle: IntentCycleSnapshot): { label: string; detail: string; active: number } {
   const { round } = cycle;
-  if (round.number === 0) return { label: "Waiting for kickoff", detail: "No negotiation round has been started.", active: 1 };
+  if (round.number === 0) return { label: "Waiting for kickoff", detail: "", active: 1 };
   if (round.size === null) return { label: `Opening round ${round.number}`, detail: "The agent is creating this round's negotiations.", active: 3 };
   if (round.working > 0) return { label: `Round ${round.number} negotiating`, detail: `${round.working} active · ${round.paused} paused`, active: 4 };
   return { label: `Round ${round.number} ready to reflect`, detail: `${round.paused} paused · the intent agent decides the next step`, active: 5 };
@@ -33,11 +35,15 @@ export default function IntentCycleInspector({
   cycle,
   loading,
   error,
+  discoveryProgress,
+  networks,
 }: {
   intentId: string;
   cycle: IntentCycleSnapshot | null;
   loading: boolean;
   error: boolean;
+  discoveryProgress?: DiscoveryProgress;
+  networks?: Array<{ id: string; title: string }>;
 }) {
   if (loading) return <p role="status" className="text-xs text-gray-500">Loading negotiation cycle…</p>;
   if (error || !cycle) return <p role="status" className="text-xs text-red-600">Negotiation cycle could not be loaded.</p>;
@@ -52,7 +58,7 @@ export default function IntentCycleInspector({
             <p className="font-ibm-plex-mono text-[10px] uppercase tracking-[0.12em] text-slate-500">PersonalAgent cycle</p>
             <p className="mt-1 text-sm font-semibold text-slate-900">{phase.label}</p>
           </div>
-          <p className="font-ibm-plex-mono text-[11px] text-slate-600">{phase.detail}</p>
+          {phase.detail && <p className="font-ibm-plex-mono text-[11px] text-slate-600">{phase.detail}</p>}
         </div>
         <ol className="mt-3 grid grid-cols-5 gap-1" aria-label="Cycle stages">
           {stages.map((stage, index) => (
@@ -66,6 +72,10 @@ export default function IntentCycleInspector({
           round {cycle.round.number} · {cycle.round.size === null ? 'opening not yet stamped' : `${cycle.round.size} opened`}
         </p>
       </div>
+
+      {cycle.round.number === 0 && (
+        <DiscoveryWarmupLog progress={discoveryProgress} communities={networks} />
+      )}
 
       {cycle.negotiations.length === 0 ? (
         <p className="rounded-lg border border-dashed border-gray-200 px-3 py-4 text-center text-xs text-gray-500">No negotiations have been opened for this intent.</p>

@@ -1002,6 +1002,8 @@ export default function IntentDetailPage() {
                       cycle={intentCycle}
                       loading={intentCycleLoading}
                       error={intentCycleError}
+                      discoveryProgress={intent?.discoveryProgress}
+                      networks={intent?.networks}
                     />
                     <PersonalAgentTimeline
                       entries={intentTimeline}
