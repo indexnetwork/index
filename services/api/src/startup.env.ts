@@ -47,6 +47,7 @@ const optionalOne = z.union([z.literal(''), z.literal('1')]).optional();
 const envSchema = z.object({
   // 1. Core
   DATABASE_URL: z.string().url(),
+  DATABASE_POOL_MAX: optionalPositiveInt,
   PORT: z.string().regex(/^\d+$/).default('3001'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_URL: optionalUrl,
@@ -96,6 +97,8 @@ const envSchema = z.object({
   UNAVATAR_BASE: optionalUrl,
 
   // 8. Discovery / protocol runtime
+  PERSONAL_AGENT_WORKER_CONCURRENCY: optionalPositiveInt,
+  PERSONAL_AGENT_KICKOFF_CONCURRENCY: optionalPositiveInt,
 
   // Test harness (repo-root .env.test only)
   TEST_DATABASE_SAFE: optionalOne,

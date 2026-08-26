@@ -4,6 +4,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
+    "predev": "bun run --cwd ../../packages/protocol build",
     "dev": "NODE_ENV=development bun --watch --preload ./src/instrument.ts src/main.ts",
     "build": "bun run --cwd ../../packages/protocol build && tsc",
     "start": "bun --preload ./dist/instrument.js dist/main.js",

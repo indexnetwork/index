@@ -49,11 +49,19 @@ const MAX_MATCHES = 12;
 
 /**
  * How many opens run at once. A negotiation self-plays several model turns
- * inside its own invoke, so twelve at once is twelve concurrent conversations
- * plus twelve briefs — past the chat controller's wait and into provider rate
- * limits, whose failures then land in `compensateFailedOpen`.
+ * inside its own invoke, so this is that many concurrent conversations plus
+ * that many briefs. Not bounded by provider rate limits (none are enforced);
+ * a stalled/failed open lands in `compensateFailedOpen` regardless of how
+ * many run alongside it. PERSONAL_AGENT_KICKOFF_CONCURRENCY overrides it.
+ *
+ * Read lazily, inside the function that uses it — this package is bundled
+ * into the browser too (apps/web), which has no `process` global. A
+ * module-scope `process.env` read here throws on the client the instant the
+ * module loads, before this function ever runs server-side.
  */
-const KICKOFF_CONCURRENCY = 3;
+function kickoffConcurrency(): number {
+  return Number(process.env.PERSONAL_AGENT_KICKOFF_CONCURRENCY) || 8;
+}
 
 /**
  * How long a round may be "begun" before a later turn treats it as abandoned
@@ -63,7 +71,7 @@ const KICKOFF_CONCURRENCY = 3;
  * — leaves the round alone instead of settling it out from under the turn
  * still opening it.
  */
-const KICKOFF_STALE_AFTER_MS = 10 * 60 * 1000;
+export const KICKOFF_STALE_AFTER_MS = 10 * 60 * 1000;
 
 /** Attempts for a post-bump write before it is given up on loudly (D54). */
 const POST_BUMP_WRITE_ATTEMPTS = 3;
@@ -599,7 +607,7 @@ async function runKickoff(
   // settled results so compensation and round settlement can still finish.
   const threadByOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.thread]));
 
-  const opens = await mapWithConcurrency(matches, KICKOFF_CONCURRENCY, async (match) => {
+  const opens = await mapWithConcurrency(matches, kickoffConcurrency(), async (match) => {
     const brief = await judgment.brief(kickoffContext, {
       match,
       strategy,

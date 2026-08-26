@@ -42,8 +42,18 @@ export const PERSONAL_AGENT_EXECUTION_BUDGET_MS = 70_000;
 /** A kickoff may author several briefs and A2A turns; it is not constrained by an HTTP response. */
 export const PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS = 5 * 60_000;
 
-/** Independent signals may make progress concurrently; each signal is still serialized below. */
-export const PERSONAL_AGENT_WORKER_CONCURRENCY = 4;
+/**
+ * Independent signals may make progress concurrently; each signal is still
+ * serialized below. Bounded by the shared DB pool (`DATABASE_POOL_MAX`), not
+ * by LLM rate limits — a deployment's single replica against Neon's pooled
+ * endpoint tolerates far more parallel turns than a local box sharing an
+ * unpooled Postgres with other worktrees. PERSONAL_AGENT_WORKER_CONCURRENCY
+ * overrides either default.
+ */
+const isDeployment = process.env.NODE_ENV === 'production'
+  || Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME);
+export const PERSONAL_AGENT_WORKER_CONCURRENCY =
+  Number(process.env.PERSONAL_AGENT_WORKER_CONCURRENCY) || (isDeployment ? 24 : 10);
 
 /** What the agent is woken with — the graph's own intent-scope input shapes. */
 export type PersonalAgentEvent = Extract<PersonalAgentInput, { event: string }>;

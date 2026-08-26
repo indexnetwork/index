@@ -1,5 +1,5 @@
 import type { Job, Queue, Worker } from 'bullmq';
-import { maybeEnqueueRoundReflect, type NegotiationGraphLike, type NegotiationRoundReflectEnqueueFn } from '@indexnetwork/protocol';
+import { KICKOFF_STALE_AFTER_MS, maybeEnqueueRoundReflect, type MatchesReadyFn, type NegotiationGraphLike, type NegotiationRoundReflectEnqueueFn } from '@indexnetwork/protocol';
 
 import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../../adapters/conversation.database.adapter';
 import type { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
@@ -30,6 +30,7 @@ type WatchdogDatabase = Pick<
   'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
   | 'clearNegotiationReflectPending'
   | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
+  | 'getIntentsWithInterruptedKickoff'
 >;
 type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
 
@@ -52,6 +53,7 @@ export interface NegotiationWatchdogQueueDeps {
     'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
     | 'clearNegotiationReflectPending'
     | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
+    | 'getIntentsWithInterruptedKickoff'
   >;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
   negotiationGraph?: NegotiationGraphLike;
@@ -62,6 +64,8 @@ export interface NegotiationWatchdogQueueDeps {
   logger?: WatchdogLogger;
   clock?: () => Date;
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
+  /** Re-wakes a signal's agent. Defaults to the discovery-facing `matchesReady`. */
+  matchesReady?: MatchesReadyFn;
 }
 
 /**
@@ -96,6 +100,7 @@ export class NegotiationWatchdogQueue {
   private worker: WatchdogWorkerHandle | null = null;
   private negotiationGraph: NegotiationGraphLike | undefined;
   private reflectEnqueue: NegotiationRoundReflectEnqueueFn | undefined;
+  private readonly matchesReadyFn: MatchesReadyFn | undefined;
 
   constructor(deps: NegotiationWatchdogQueueDeps = {}) {
     this.deps = deps;
@@ -103,6 +108,7 @@ export class NegotiationWatchdogQueue {
     this.clock = deps.clock ?? (() => new Date());
     this.negotiationGraph = deps.negotiationGraph;
     this.reflectEnqueue = deps.reflectEnqueue;
+    this.matchesReadyFn = deps.matchesReady;
   }
 
   /** Wired once at startup by main.ts, after the single NegotiationGraph is compiled. */
@@ -181,6 +187,31 @@ export class NegotiationWatchdogQueue {
       await this.reconcileCandidate(candidate, database, opportunities).catch((error) => {
         this.logger.error('Negotiation watchdog candidate failed; continuing sweep', {
           taskId: candidate.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+
+    await this.repairInterruptedKickoffs(database);
+  }
+
+  /**
+   * A kickoff that bumped the round and stamped `kickoffStartedAt` but never
+   * finished (crash, restart) leaves zero negotiation tasks behind — nothing
+   * for the stale-task sweep above to find, and no reflect wake scheduled
+   * either, since that requires `negotiationRoundSize` to be stamped. Without
+   * this, such a signal sits idle forever. `runKickoff`'s own
+   * `interruptedRound` check already knows how to settle it; re-waking with
+   * `matches_ready` is what gives that check a turn to run in.
+   */
+  private async repairInterruptedKickoffs(database: WatchdogDatabase): Promise<void> {
+    const matchesReady: MatchesReadyFn = this.matchesReadyFn
+      ?? (await import('../../lib/negotiation/negotiation-graph')).matchesReady;
+    const interrupted = await database.getIntentsWithInterruptedKickoff(KICKOFF_STALE_AFTER_MS);
+    for (const { id: intentId, userId } of interrupted) {
+      await matchesReady({ userId, intentId }).catch((error) => {
+        this.logger.error('Negotiation watchdog could not re-wake an interrupted kickoff; continuing sweep', {
+          intentId,
           error: error instanceof Error ? error.message : String(error),
         });
       });

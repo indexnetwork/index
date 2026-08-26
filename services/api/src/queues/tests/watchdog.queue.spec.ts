@@ -37,13 +37,15 @@ function makeDeps(task: ReturnType<typeof makeTask> | null = makeTask()) {
     clearNegotiationReflectPending: mock(async () => undefined),
     getIntentNegotiationRound: mock(async () => ({ round: 1, roundSize: 1, kickoffStartedAt: null })),
     getNegotiationTasksForIntentRound: mock(async () => task ? [task as never] : []),
+    getIntentsWithInterruptedKickoff: mock(async () => []),
   };
   const opportunities = {
     getOpportunity: mock(async () => ({ id: 'opportunity-1', status: 'negotiating' })),
   };
   const negotiationGraph = { invoke: mock(async () => ({ negotiationId: task?.id ?? '', status: 'paused' as const, turns: [] })) };
   const reflectEnqueue = mock(async () => undefined);
-  return { database, opportunities, negotiationGraph, reflectEnqueue };
+  const matchesReady = mock(async () => undefined);
+  return { database, opportunities, negotiationGraph, reflectEnqueue, matchesReady };
 }
 
 beforeEach(() => {
@@ -304,6 +306,36 @@ describe('NegotiationWatchdogQueue', () => {
 
     expect(deps.database.getTask).not.toHaveBeenCalled();
     expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
+    expect(deps.matchesReady).not.toHaveBeenCalled();
+  });
+
+  it('re-wakes a signal whose kickoff started but never finished settling', async () => {
+    const deps = makeDeps(null);
+    deps.database.getIntentsWithInterruptedKickoff = mock(async () => [
+      { id: 'intent-1', userId: 'user-1' },
+    ]);
+    const queue = new NegotiationWatchdogQueue(deps);
+
+    await queue.sweep();
+
+    expect(deps.matchesReady).toHaveBeenCalledWith({ userId: 'user-1', intentId: 'intent-1' });
+  });
+
+  it('continues the sweep when re-waking one interrupted kickoff fails', async () => {
+    const deps = makeDeps(null);
+    deps.database.getIntentsWithInterruptedKickoff = mock(async () => [
+      { id: 'intent-1', userId: 'user-1' },
+      { id: 'intent-2', userId: 'user-2' },
+    ]);
+    deps.matchesReady = mock(async (input: { intentId: string }) => {
+      if (input.intentId === 'intent-1') throw new Error('boom');
+    });
+    const queue = new NegotiationWatchdogQueue(deps);
+
+    await queue.sweep();
+
+    expect(deps.matchesReady).toHaveBeenCalledWith({ userId: 'user-1', intentId: 'intent-1' });
+    expect(deps.matchesReady).toHaveBeenCalledWith({ userId: 'user-2', intentId: 'intent-2' });
   });
 
   it('flag on registers the five-minute scheduler and worker', async () => {

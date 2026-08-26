@@ -3013,6 +3013,26 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Signals whose current round began but never finished settling — a
+   * kickoff that was interrupted (crash, restart) before it could stamp
+   * `negotiationRoundSize` or hand off to reflect. `runKickoff`'s own
+   * `interruptedRound` repair already knows how to settle these; it just
+   * needs a fresh wake to run it, which is what this list is for.
+   */
+  async getIntentsWithInterruptedKickoff(staleBeforeMs: number): Promise<Array<{ id: string; userId: string }>> {
+    const cutoff = new Date(Date.now() - staleBeforeMs);
+    const rows = await db
+      .select({ id: schema.intents.id, userId: schema.intents.userId })
+      .from(schema.intents)
+      .where(and(
+        eq(schema.intents.status, 'ACTIVE'),
+        isNull(schema.intents.negotiationRoundSize),
+        lt(schema.intents.negotiationKickoffStartedAt, cutoff),
+      ));
+    return rows;
+  }
+
+  /**
    * Settles a round: records how many negotiations it holds. Guarded on the
    * round itself, so a kickoff that lost a race to a newer round cannot stamp
    * the newer one's size with its own count. The value is a record; what the

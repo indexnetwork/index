@@ -129,9 +129,11 @@ export const PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION = `Someone else's agent has o
 
 // ─── Negotiation scope ───────────────────────────────────────────────────────
 
-export const PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT = `You are a personal agent's negotiator seat, opening a bilateral negotiation on your principal's behalf. You are given your own client's actual intent, this negotiation's context and history, and a compact brief derived from them. You have one move: "outreach" — a first message to the counterparty's agent, grounded in all of that context. Write it like an agent speaking for its principal, not the principal themselves.`;
+const NEGOTIATION_MESSAGE_FORMAT_LAW = `Write it as a direct, plain-prose chat message — never a letter or email. No "Subject:" line, no salutation ("Dear", "Hi [name]"), no sign-off or signature block. Never write a placeholder like "[Your Name]" or "[Your Client's Name]": you are not producing a template for a human to fill in. If you do not have a name to use, speak in first person as the agent ("I'm reaching out on behalf of my principal") without naming yourself or your principal.`;
 
-export const PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT = `You are a personal agent's negotiator seat in an ongoing bilateral negotiation, acting for your principal. You are given only your own client's actual intent, this negotiation's context and shared history, and a compact brief derived from them. Choose exactly one move:
+export const PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT = `You are a personal agent's negotiator seat, opening a bilateral negotiation on your principal's behalf. You are given your own client's actual intent, this negotiation's context and history, and a compact brief derived from them. You have one move: "outreach" — a first message to the counterparty's agent, grounded in all of that context. Write it like an agent speaking for its principal, not the principal themselves. ${NEGOTIATION_MESSAGE_FORMAT_LAW}`;
+
+export const PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT = `You are a personal agent's negotiator seat in an ongoing bilateral negotiation, acting for your principal. You are given only your own client's actual intent, this negotiation's context and shared history, and a compact brief derived from them. ${NEGOTIATION_MESSAGE_FORMAT_LAW} Choose exactly one move:
 - "counter" — push back or propose something different, with a message.
 - "question" — ask the counterparty's agent something that would change your assessment, with a message.
 - "pause" reason "needs_principal" — you cannot continue without something only your own principal knows; the payload is the question you would ask them.

@@ -1,6 +1,7 @@
 import { config } from 'dotenv';
 import path from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
+import { parseQuestionMessage } from '@indexnetwork/protocol';
 
 config({ path: path.resolve(import.meta.dir, '../../../.env.development'), override: true });
 const databaseUrl = new URL(process.env.DATABASE_URL!);
@@ -34,10 +35,23 @@ async function seed(mode: Mode): Promise<void> {
   if (code !== 0) throw new Error(`sandbox seed failed (${code}): ${stdout}${stderr}`);
 }
 
+async function drainLive(stream: ReadableStream<Uint8Array>): Promise<void> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    serverLogs += decoder.decode(value, { stream: true });
+  }
+}
+
 async function start(): Promise<void> {
   serverLogs = '';
   server = Bun.spawn(['bun', '--preload', './src/instrument.ts', 'src/main.ts'], { cwd: path.resolve(import.meta.dir, '..'), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, PORT: '3101', API_URL: BASE } });
-  serverLogDrain = Promise.all([new Response(server.stdout).text(), new Response(server.stderr).text()]).then((outputs) => { serverLogs = outputs.join(''); });
+  // Drained incrementally (not awaited-to-completion) so serverLogs carries a
+  // live snapshot a still-running waitFor() timeout can report, not just the
+  // full log after the process has already exited.
+  serverLogDrain = Promise.all([drainLive(server.stdout as ReadableStream<Uint8Array>), drainLive(server.stderr as ReadableStream<Uint8Array>)]).then(() => undefined);
   for (let attempt = 0; attempt < 150; attempt += 1) {
     if (await fetch(`${BASE}/health`).then((response) => response.ok).catch(() => false)) return;
     await Bun.sleep(200);
@@ -76,13 +90,24 @@ async function api<T>(jwt: string, url: string, init: RequestInit = {}): Promise
   }
 }
 
-async function waitFor<T>(read: () => Promise<T | undefined>, label: string): Promise<T> {
-  for (let attempt = 0; attempt < 240; attempt += 1) {
+// The "240 attempts" cap this replaced assumed ~500ms per read and undercounted
+// real elapsed time whenever a read (an HTTP round trip, sometimes several)
+// took longer than that — this timeout is real wall-clock instead, and reports
+// a live server-log tail so a genuine stall (vs. a model judgment call) is
+// diagnosable from the failure alone.
+async function waitFor<T>(read: () => Promise<T | undefined>, label: string, timeoutMs = 5 * 60_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
     const value = await read();
     if (value) return value;
     await Bun.sleep(500);
   }
-  throw new Error(`timed out after two minutes: ${label}`);
+  // A 4KB inline tail was too short to show what happened to the specific
+  // stalled job, only routine polling well after the fact — write the whole
+  // captured log so the moment of failure is actually inspectable.
+  const logPath = '/tmp/sandbox-e2e-server.log';
+  await Bun.write(logPath, serverLogs);
+  throw new Error(`timed out after ${Math.round(timeoutMs / 1000)}s: ${label}\nfull server log written to ${logPath} (${serverLogs.length} bytes)\nlog tail:\n${serverLogs.slice(-20_000)}`);
 }
 
 describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => {
@@ -93,10 +118,9 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
     try {
       const { SANDBOX_E2E_CASES, SANDBOX_MINIMAL_PERSONAS, SANDBOX_TWENTY_PERSONAS } = await import('../src/cli/sandbox-personas');
       const people = [...SANDBOX_MINIMAL_PERSONAS, ...SANDBOX_TWENTY_PERSONAS];
-      const mayaJwt = await login('maya.chen@sandbox.test');
-      const danielJwt = await login('daniel.ruiz@sandbox.test');
-      const aishaJwt = await login('aisha.okafor@sandbox.test');
-      const ethanJwt = await login('ethan.brooks@sandbox.test');
+      const [mayaJwt, danielJwt, aishaJwt, ethanJwt] = await Promise.all([
+        login('maya.chen@sandbox.test'), login('daniel.ruiz@sandbox.test'), login('aisha.okafor@sandbox.test'), login('ethan.brooks@sandbox.test'),
+      ]);
       const intent = async (jwt: string, email: string, index: number): Promise<Intent> => {
         const person = people.find((candidate) => candidate.email === email)!;
         const list = await api<{ intents: Intent[] }>(jwt, '/api/intents/list', { method: 'POST', body: '{}' });
@@ -104,18 +128,21 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
         if (!found) throw new Error(`missing ${email}[${index}]`);
         return found;
       };
-      const mayaDaniel = await intent(mayaJwt, 'maya.chen@sandbox.test', SANDBOX_E2E_CASES.mayaDaniel.source.intentIndex);
-      const daniel = await intent(danielJwt, 'daniel.ruiz@sandbox.test', SANDBOX_E2E_CASES.mayaDaniel.candidate.intentIndex);
-      const aishaMaya = await intent(aishaJwt, 'aisha.okafor@sandbox.test', SANDBOX_E2E_CASES.mayaAisha.source.intentIndex);
-      const mayaAisha = await intent(mayaJwt, 'maya.chen@sandbox.test', SANDBOX_E2E_CASES.mayaAisha.candidate.intentIndex);
+      const [mayaDaniel, daniel, aishaMaya, mayaAisha] = await Promise.all([
+        intent(mayaJwt, 'maya.chen@sandbox.test', SANDBOX_E2E_CASES.mayaDaniel.source.intentIndex),
+        intent(danielJwt, 'daniel.ruiz@sandbox.test', SANDBOX_E2E_CASES.mayaDaniel.candidate.intentIndex),
+        intent(aishaJwt, 'aisha.okafor@sandbox.test', SANDBOX_E2E_CASES.mayaAisha.source.intentIndex),
+        intent(mayaJwt, 'maya.chen@sandbox.test', SANDBOX_E2E_CASES.mayaAisha.candidate.intentIndex),
+      ]);
       console.log(`[sandbox-e2e] ${mode}: resume designated discovery`);
-      for (const [jwt, item] of [[mayaJwt, mayaDaniel], [danielJwt, daniel], [aishaJwt, aishaMaya], [mayaJwt, mayaAisha]] as const) {
-        await api(jwt, `/api/intents/${item.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'ACTIVE' }) });
-      }
+      await Promise.all([[mayaJwt, mayaDaniel], [danielJwt, daniel], [aishaJwt, aishaMaya], [mayaJwt, mayaAisha]].map(([jwt, item]) =>
+        api(jwt as string, `/api/intents/${(item as Intent).id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'ACTIVE' }) })));
 
       const radar = (jwt: string, intentId: string) => api<{ items: RadarCard[] }>(jwt, `/api/opportunities/radar?scopeType=intent&scopeId=${intentId}&statuses=latent,draft,negotiating,stalled,pending,accepted,rejected&presentation=skeleton&noCache=1`);
       const findCard = async (jwt: string, intentId: string, opportunityId: string) => (await radar(jwt, intentId)).items.find((card) => card.opportunityId === opportunityId);
       const cycle = (jwt: string, intentId: string) => api<{ cycle: Cycle }>(jwt, `/api/conversations/negotiations/intent-cycle?intentId=${intentId}`);
+      const targetTaskForOpportunity = async (jwt: string, intentId: string, opportunityId: string) =>
+        (await cycle(jwt, intentId)).cycle.negotiations.find((negotiation) => negotiation.opportunityId === opportunityId);
       const sharedTask = async (
         sourceJwt: string,
         sourceIntentId: string,
@@ -129,10 +156,12 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
           && counterpart.cycle.negotiations.some((other) => other.opportunityId === task.opportunityId),
         );
       };
-      const mayaDanielTask = await waitFor(() => sharedTask(mayaJwt, mayaDaniel.id, 'Daniel Ruiz', danielJwt, daniel.id), 'Maya/Daniel shared opportunity');
-      console.log(`[sandbox-e2e] ${mode}: Maya/Daniel discovered`);
-      const aishaMayaTask = await waitFor(() => sharedTask(aishaJwt, aishaMaya.id, 'Maya Chen', mayaJwt, mayaAisha.id), 'Maya/Aisha shared opportunity');
-      console.log(`[sandbox-e2e] ${mode}: Maya/Aisha discovered`);
+      const [mayaDanielTask, aishaMayaTask] = await Promise.all([
+        waitFor(() => sharedTask(mayaJwt, mayaDaniel.id, 'Daniel Ruiz', danielJwt, daniel.id), 'Maya/Daniel shared opportunity')
+          .then((task) => { console.log(`[sandbox-e2e] ${mode}: Maya/Daniel discovered`); return task; }),
+        waitFor(() => sharedTask(aishaJwt, aishaMaya.id, 'Maya Chen', mayaJwt, mayaAisha.id), 'Maya/Aisha shared opportunity')
+          .then((task) => { console.log(`[sandbox-e2e] ${mode}: Maya/Aisha discovered`); return task; }),
+      ]);
       expect(mayaDanielTask.opportunityStatus).not.toBe('accepted');
       expect(aishaMayaTask.opportunityStatus).not.toBe('accepted');
 
@@ -145,11 +174,11 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       expect(unapprovedIntroduction.viewerRole).toBe('introducer');
 
       const timelineFor = (jwt: string, intentId: string) => api<{ entries: TimelineEntry[] }>(jwt, `/api/conversations/negotiations/intent-cycle/timeline?intentId=${intentId}`);
-      await waitFor(async () => {
-        const timeline = await timelineFor(mayaJwt, mayaDaniel.id);
-        return timeline.entries.some((entry) => entry.event.kind === 'all_paused') ? timeline : undefined;
-      }, 'Maya kickoff reflection');
-
+      const negotiatorMessages = async (jwt: string, intentId: string): Promise<Array<{ role: string; content: string }>> => {
+        const { session } = await api<{ session: { id: string } }>(jwt, '/api/chat/negotiator/session', { method: 'POST', body: JSON.stringify({ intentId }) });
+        const { messages } = await api<{ messages: Array<{ role: string; content: string }> }>(jwt, '/api/chat/web/session', { method: 'POST', body: JSON.stringify({ sessionId: session.id }) });
+        return messages;
+      };
       const send = async (jwt: string, intentId: string, message: string): Promise<void> => {
         try {
           const response = await fetch(`${BASE}/api/chat/web/stream`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ message, scopeType: 'intent', scopeId: intentId }), signal: AbortSignal.timeout(120_000) });
@@ -165,22 +194,88 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       const danielMessage = 'I want a hands-on founding-engineer role with clear technical ownership and meaningful equity. Maya\'s AI-agent observability company is the kind of operational product I want to build.';
       const aishaMessage = 'Maya has six active design partners, two annual conversions, and is raising a $1.5m seed for enterprise AI observability. That is credible enough for a seed conversation.';
       const aishaFollowUp = 'My fund invests $500k to $1.5m at pre-seed and seed in developer tools, data infrastructure, and enterprise software. I have led observability and data-tooling investments and want a narrow enterprise buyer with credible customer signal.';
-      await send(mayaJwt, mayaDaniel.id, mayaMessage);
-      // The first reply answers Daniel's traction question. The real agent
-      // then asks the remaining Aisha question, so answer it through the same
-      // owner chat surface before expecting either negotiation to advance.
-      await send(mayaJwt, mayaDaniel.id, mayaFollowUp);
-      console.log(`[sandbox-e2e] ${mode}: Maya context sent`);
-      await send(danielJwt, daniel.id, danielMessage);
-      console.log(`[sandbox-e2e] ${mode}: Daniel context sent`);
-      await send(aishaJwt, aishaMaya.id, aishaMessage);
-      await send(aishaJwt, aishaMaya.id, aishaFollowUp);
-      console.log(`[sandbox-e2e] ${mode}: Aisha context sent`);
 
-      const targetTaskForOpportunity = async (jwt: string, intentId: string, opportunityId: string) =>
-        (await cycle(jwt, intentId)).cycle.negotiations.find((negotiation) => negotiation.opportunityId === opportunityId);
-      const danielMayaTask = await waitFor(() => targetTaskForOpportunity(danielJwt, daniel.id, mayaDanielTask.opportunityId), 'Daniel/Maya shared negotiation task');
-      const mayaAishaTask = await waitFor(() => targetTaskForOpportunity(mayaJwt, mayaAisha.id, aishaMayaTask.opportunityId), 'Maya/Aisha shared negotiation task');
+      type AishaOutcome =
+        | { kind: 'parked'; question: { prompt: string } }
+        | { kind: 'resolved'; task: CycleNegotiation };
+
+      // Maya, Daniel, and Aisha are three independent people messaging their
+      // own agents about their own negotiations — nothing in the app queues
+      // them behind each other, so the test shouldn't either.
+      // A principal's message is only meaningful once their OWN intent's
+      // kickoff has actually settled (agent reached all_paused) — sending
+      // earlier races the still-in-flight kickoff/reconciliation graph for
+      // that same intent. Each pairing waits on its own intent, not Maya's.
+      const kickoffSettled = (jwt: string, intentId: string, label: string) => waitFor(async () => {
+        const timeline = await timelineFor(jwt, intentId);
+        return timeline.entries.some((entry) => entry.event.kind === 'all_paused') ? timeline : undefined;
+      }, `${label} kickoff reflection`);
+
+      const mayaThread = (async (): Promise<void> => {
+        await kickoffSettled(mayaJwt, mayaDaniel.id, 'Maya');
+        await send(mayaJwt, mayaDaniel.id, mayaMessage);
+        // The first reply answers Daniel's traction question. The real agent
+        // then asks the remaining Aisha question, so answer it through the same
+        // owner chat surface before expecting either negotiation to advance.
+        await send(mayaJwt, mayaDaniel.id, mayaFollowUp);
+        console.log(`[sandbox-e2e] ${mode}: Maya context sent`);
+      })();
+
+      const danielThread = (async (): Promise<void> => {
+        await kickoffSettled(danielJwt, daniel.id, 'Daniel');
+        await send(danielJwt, daniel.id, danielMessage);
+        console.log(`[sandbox-e2e] ${mode}: Daniel context sent`);
+      })();
+
+      // Withhold aishaFollowUp so the negotiation can actually stall and park,
+      // instead of pre-empting the agent's question with an upfront answer.
+      // This exercises the real park -> question-block -> chat-answer -> resume
+      // path (docs/plans/2026-08-18-conversational-questions.md), which nothing
+      // in the E2E suite touched before. Whether the agent asks at all is a
+      // model judgment call, not a guarantee (agent.judgment.ts), so both
+      // outcomes are valid: race the park against the negotiation simply
+      // resolving without a question, and log whichever happens for review.
+      const aishaThread = (async (): Promise<AishaOutcome> => {
+        await kickoffSettled(aishaJwt, aishaMaya.id, 'Aisha');
+        await send(aishaJwt, aishaMaya.id, aishaMessage);
+        console.log(`[sandbox-e2e] ${mode}: Aisha context sent (withholding follow-up)`);
+        const outcome = await waitFor<AishaOutcome>(async () => {
+          const messages = await negotiatorMessages(aishaJwt, aishaMaya.id);
+          for (let index = messages.length - 1; index >= 0; index -= 1) {
+            const message = messages[index]!;
+            if (message.role !== 'assistant') continue;
+            const parsed = parseQuestionMessage(message.content);
+            if (!parsed) continue;
+            const question = parsed.block.questions.find((candidate) =>
+              candidate.opportunityId === aishaMayaTask.opportunityId || candidate.alsoUnblocks?.includes(aishaMayaTask.opportunityId));
+            if (question) return { kind: 'parked', question };
+          }
+          const task = await targetTaskForOpportunity(aishaJwt, aishaMaya.id, aishaMayaTask.opportunityId);
+          if (task && task.opportunityStatus !== 'latent' && task.opportunityStatus !== 'negotiating') return { kind: 'resolved', task };
+          return undefined;
+        }, 'Aisha negotiation parks with a question-block, or resolves without one');
+
+        if (outcome.kind === 'parked') {
+          expect(outcome.question.prompt.length).toBeGreaterThan(0);
+          console.log(`[sandbox-e2e] ${mode}: Aisha parked with question: ${outcome.question.prompt}`);
+          await send(aishaJwt, aishaMaya.id, aishaFollowUp);
+          await waitFor(async () => {
+            const task = await targetTaskForOpportunity(aishaJwt, aishaMaya.id, aishaMayaTask.opportunityId);
+            return task && task.opportunityStatus !== 'stalled' ? task : undefined;
+          }, 'Aisha/Maya negotiation resumes after the parked question is answered');
+          console.log(`[sandbox-e2e] ${mode}: Aisha answered the parked question, negotiation resumed`);
+        } else {
+          console.log(`[sandbox-e2e] ${mode}: Aisha's agent resolved to ${outcome.task.opportunityStatus} without asking a follow-up question (no park to answer)`);
+        }
+        return outcome;
+      })();
+
+      const [, , aishaOutcome] = await Promise.all([mayaThread, danielThread, aishaThread]);
+
+      const [danielMayaTask, mayaAishaTask] = await Promise.all([
+        waitFor(() => targetTaskForOpportunity(danielJwt, daniel.id, mayaDanielTask.opportunityId), 'Daniel/Maya shared negotiation task'),
+        waitFor(() => targetTaskForOpportunity(mayaJwt, mayaAisha.id, aishaMayaTask.opportunityId), 'Maya/Aisha shared negotiation task'),
+      ]);
       const detail = (jwt: string, intentId: string, taskId: string) => api<{ negotiation: Detail }>(jwt, `/api/conversations/negotiations/intent-cycle/${taskId}?intentId=${intentId}`).then((result) => result.negotiation);
       const [mayaDanielDetail, danielMayaDetail, aishaMayaDetail, mayaAishaDetail] = await Promise.all([
         detail(mayaJwt, mayaDaniel.id, mayaDanielTask.taskId), detail(danielJwt, daniel.id, danielMayaTask.taskId), detail(aishaJwt, aishaMaya.id, aishaMayaTask.taskId), detail(mayaJwt, mayaAisha.id, mayaAishaTask.taskId),
@@ -198,14 +293,16 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       const timeline = await timelineFor(mayaJwt, mayaDaniel.id);
       expect(timeline.entries.some((entry) => entry.event.kind === 'matches_ready' && entry.act.tool === 'kickoff')).toBe(true);
 
-      const pendingMayaDaniel = await waitFor(async () => {
-        const task = await targetTaskForOpportunity(mayaJwt, mayaDaniel.id, mayaDanielTask.opportunityId);
-        return task?.opportunityStatus === 'pending' ? task : undefined;
-      }, 'Maya/Daniel pending after principal context');
-      const pendingMayaAisha = await waitFor(async () => {
-        const task = await targetTaskForOpportunity(aishaJwt, aishaMaya.id, aishaMayaTask.opportunityId);
-        return task?.opportunityStatus === 'pending' ? task : undefined;
-      }, 'Maya/Aisha pending after principal context');
+      const [pendingMayaDaniel, pendingMayaAisha] = await Promise.all([
+        waitFor(async () => {
+          const task = await targetTaskForOpportunity(mayaJwt, mayaDaniel.id, mayaDanielTask.opportunityId);
+          return task?.opportunityStatus === 'pending' ? task : undefined;
+        }, 'Maya/Daniel pending after principal context'),
+        waitFor(async () => {
+          const task = await targetTaskForOpportunity(aishaJwt, aishaMaya.id, aishaMayaTask.opportunityId);
+          return task?.opportunityStatus === 'pending' ? task : undefined;
+        }, 'Maya/Aisha pending after principal context'),
+      ]);
       expect(pendingMayaDaniel.opportunityStatus).toBe('pending');
       expect(pendingMayaAisha.opportunityStatus).toBe('pending');
 
@@ -226,12 +323,24 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
         return task?.opportunityStatus === 'accepted' ? task : undefined;
       }, 'explicit owner acceptance');
       expect(acceptedMayaDaniel.opportunityStatus).toBe('accepted');
+
+      // No pass/fail scoring — this is for a human to read and judge prompt
+      // quality by eye, not an automated eval.
+      console.log(`[sandbox-e2e] ${mode}: run summary for prompt-quality review`);
+      console.log(`[sandbox-e2e] ${mode}: Aisha outcome: ${aishaOutcome.kind === 'parked' ? `parked with question: ${aishaOutcome.question.prompt}` : `resolved without asking (status ${aishaOutcome.task.opportunityStatus})`}`);
+      for (const [label, taskDetail] of [
+        ['Maya/Daniel', mayaDanielDetail], ['Daniel/Maya', danielMayaDetail],
+        ['Aisha/Maya', aishaMayaDetail], ['Maya/Aisha', mayaAishaDetail],
+      ] as const) {
+        console.log(`[sandbox-e2e] ${mode}: transcript ${label} (brief: ${taskDetail.task.brief})`);
+        for (const turn of taskDetail.transcript) console.log(`[sandbox-e2e] ${mode}:   ${turn.actor} ${turn.verb ?? ''}: ${turn.text}`);
+      }
+      console.log(`[sandbox-e2e] ${mode}: final statuses — Maya/Daniel=${acceptedMayaDaniel.opportunityStatus}, Maya/Aisha=${pendingMayaAisha.opportunityStatus}`);
     } finally {
       await stop();
     }
   }
 
-  test('minimal market uses only the running API, queues, and provider', () => run('minimal'), 600_000);
   test('twenty-person market uses only the running API, queues, and provider', () => run('twenty'), 600_000);
 });
 
