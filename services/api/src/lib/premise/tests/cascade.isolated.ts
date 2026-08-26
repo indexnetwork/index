@@ -12,14 +12,14 @@ const mockGetUser = mock(async (_userId: string) => ({
   id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', intro: 'Engineer.', location: 'Berlin', socials: [],
 }));
 
-mock.module('../../adapters/database.adapter', () => ({
+mock.module('../../../adapters/database.adapter', () => ({
   ChatDatabaseAdapter: class {
     getUser = mockGetUser;
   },
   OpportunityDatabaseAdapter: class {},
 }));
 
-mock.module('../../adapters/embedder.adapter', () => ({
+mock.module('../../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class {},
 }));
 

@@ -7,20 +7,17 @@ config({ path: '.env.test', override: true });
 import { beforeEach, describe, expect, it, mock, afterAll } from 'bun:test';
 import type { OpportunityDiscoverySummary } from '../discovery.shared';
 
-mock.module('../../adapters/database.adapter', () => ({
+mock.module('../../../adapters/database.adapter', () => ({
   ChatDatabaseAdapter: class ChatDatabaseAdapter {},
   chatDatabaseAdapter: {},
 }));
-mock.module('../../adapters/embedder.adapter', () => ({
+mock.module('../../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class EmbedderAdapter {},
   embedderAdapter: {},
 }));
 
 mock.module('../../negotiation/negotiation-evidence.shadow', () => ({
   maybeRunNegotiationEvidenceShadow: async () => {},
-}));
-mock.module('../questioner/recovery.shared', () => ({
-  maybeEnqueueIntentRecovery: async () => {},
 }));
 
 // Stand in for the discovery graph runner so a test can hand the queue a real

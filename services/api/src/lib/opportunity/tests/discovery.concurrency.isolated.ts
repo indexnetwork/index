@@ -6,11 +6,11 @@ config({ path: '.env.test', override: true });
 
 import { afterAll, describe, expect, it, mock } from 'bun:test';
 
-mock.module('../../adapters/database.adapter', () => ({
+mock.module('../../../adapters/database.adapter', () => ({
   ChatDatabaseAdapter: class ChatDatabaseAdapter {},
   chatDatabaseAdapter: {},
 }));
-mock.module('../../adapters/embedder.adapter', () => ({
+mock.module('../../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class EmbedderAdapter {},
   embedderAdapter: {},
 }));

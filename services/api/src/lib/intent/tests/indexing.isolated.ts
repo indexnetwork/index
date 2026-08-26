@@ -6,11 +6,11 @@ config({ path: '.env.test', override: true });
 
 import { describe, expect, it, mock, afterAll, afterEach } from 'bun:test';
 
-mock.module('../../adapters/database.adapter', () => ({
+mock.module('../../../adapters/database.adapter', () => ({
   ChatDatabaseAdapter: class ChatDatabaseAdapter {},
   chatDatabaseAdapter: {},
 }));
-mock.module('../../adapters/embedder.adapter', () => ({
+mock.module('../../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class EmbedderAdapter {},
   embedderAdapter: {},
 }));
@@ -18,7 +18,7 @@ mock.module('../../opportunity/discovery', () => ({
   intentDiscovery: { addJob: async () => ({ id: '1' }) },
 }));
 let mockBuildProfileFromUser = async (_userId: string) => null as null | { identity: { name: string; bio: string; location: string } };
-mock.module('../../adapters/database.shared', () => ({
+mock.module('../../../adapters/database.shared', () => ({
   buildProfileFromUser: (userId: string) => mockBuildProfileFromUser(userId),
 }));
 afterEach(() => {
@@ -266,7 +266,7 @@ describe('IntentIndexing', () => {
       expect(addOpportunityJob).not.toHaveBeenCalled();
     });
 
-    it('generate_hyde: network scope assigns focused plus personal but discovers focused only', async () => {
+    it('generate_hyde: network scope assigns and discovers the focused network only', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => ({}));
       const assignIntentToNetwork = mock(async () => {});
@@ -286,7 +286,7 @@ describe('IntentIndexing', () => {
       await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1', scopeType: 'network', scopeId: 'scope-net' });
 
       expect(getAssignmentNetworkMembershipsForUser).toHaveBeenCalledWith('u1');
-      expect(assignIntentToNetwork.mock.calls.map((c) => c[1])).toEqual(['scope-net', 'personal-net']);
+      expect(assignIntentToNetwork.mock.calls.map((c) => c[1])).toEqual(['scope-net']);
       expect(invokeHyde).toHaveBeenCalled();
       expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1', networkIds: ['scope-net'] });
     });
@@ -394,7 +394,7 @@ describe('IntentIndexing', () => {
         }
       });
 
-      it('limits network-scoped assignment to the focused network plus personal networks', async () => {
+      it('limits network-scoped assignment to the focused network', async () => {
         const getNetworkAssignmentContext = mock(async (networkId: string) => ({ networkId, indexPrompt: null, memberPrompt: null }));
         const assignIntentToNetwork = mock(async () => {});
         const db = {
@@ -412,10 +412,9 @@ describe('IntentIndexing', () => {
 
         await queue.processJob('generate_hyde', { intentId: 'intent-1', userId: 'user-1', scopeType: 'network', scopeId: 'net-b' });
 
-        expect(getNetworkAssignmentContext).toHaveBeenCalledTimes(2);
+        expect(getNetworkAssignmentContext).toHaveBeenCalledTimes(1);
         expect(getNetworkAssignmentContext).toHaveBeenCalledWith('net-b', 'user-1');
-        expect(getNetworkAssignmentContext).toHaveBeenCalledWith('personal-net', 'user-1');
-        expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-b', 'personal-net']);
+        expect(assignIntentToNetwork.mock.calls.map((call) => call[1])).toEqual(['net-b']);
       });
 
       it('skips assignment fail-closed when membership context disappears', async () => {
@@ -505,7 +504,7 @@ describe('IntentIndexing', () => {
       // Pure assignment: reconcile must never regenerate HyDE or trigger discovery.
       expect(invokeHyde).not.toHaveBeenCalled();
       expect(addOpportunityJob).not.toHaveBeenCalled();
-      expect(assignIntentToNetwork.mock.calls[0][3]).toMatchObject({ source: 'intent-reconcile-queue', assigned: true });
+      expect(assignIntentToNetwork.mock.calls[0][3]).toMatchObject({ source: 'intent-reconcile', assigned: true });
     });
 
     it('reconcile_orphaned_intent: re-admits missing artifacts in normal assignment → HyDE → discovery order', async () => {

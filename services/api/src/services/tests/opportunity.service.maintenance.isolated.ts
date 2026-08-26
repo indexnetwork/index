@@ -9,6 +9,7 @@ mock.module('../../lib/drizzle/drizzle', () => ({ default: {} }));
 mock.module('../../adapters/database.adapter', () => ({
   ChatDatabaseAdapter: class {},
   chatDatabaseAdapter: {},
+  conversationDatabaseAdapter: {},
 }));
 mock.module('../../adapters/cache.adapter', () => ({
   RedisCacheAdapter: class {},

@@ -334,7 +334,7 @@ export class IntentIndexing implements IntentFollowUp {
       });
       throw error;
     }
-    this.hydeLogger.info('HyDE generation complete, enqueuing opportunity discovery', { intentId, userId });
+    this.hydeLogger.info('HyDE generation complete, starting opportunity discovery', { intentId, userId });
     const addJob =
       overrides?.addOpportunityJob ??
       this.deps?.addOpportunityJob ??

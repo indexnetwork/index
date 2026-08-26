@@ -1,6 +1,8 @@
 /**
  * Unit tests for OpportunityNotifier. Mocks userService, Redis, email, and events.
  */
+process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://unused:unused@localhost:5432/unused';
+
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
@@ -22,25 +24,25 @@ const mockRedisExpire = mock(async () => 'OK');
 const mockEmitOpportunityNotification = mock(() => {});
 const mockSendEmail = mock(async () => {});
 
-mock.module('../../services/user.service', () => ({
+mock.module('../../../services/user.service', () => ({
   userService: {
     getUserForNewsletter: (id: string) => mockGetUserForNewsletter(id),
   },
 }));
-mock.module('../../adapters/cache.adapter', () => ({
+mock.module('../../../adapters/cache.adapter', () => ({
   getRedisClient: () => ({
     set: mockRedisSet,
     rpush: mockRedisRpush,
     expire: mockRedisExpire,
   }),
 }));
-mock.module('../email/transport.helper', () => ({
+mock.module('../../email/transport.helper', () => ({
   executeSendEmail: (payload: unknown) => (mockSendEmail as (a: unknown) => Promise<unknown>)(payload),
 }));
 const _telegramEmitter = new EventEmitter();
 _telegramEmitter.setMaxListeners(100);
 
-mock.module('../notification-events', () => ({
+mock.module('../../notification-events', () => ({
   emitOpportunityNotification: (opts: { opportunityId: string; recipientId: string }) =>
     (mockEmitOpportunityNotification as (opts: unknown) => void)(opts),
   emitTelegramNotification: (payload: unknown) => _telegramEmitter.emit('telegram', payload),
@@ -55,8 +57,8 @@ afterAll(() => {
 });
 
 import { OpportunityNotifier, type NotificationJobData, type NotificationPriority, type OpportunityNotifierDatabase, notifyOpportunity } from '../opportunity-notifier';
-import type { NotificationStreamEvent } from '../notification-stream-events';
-import { onTelegramNotification } from '../notification-events';
+import type { NotificationStreamEvent } from '../../notification-stream-events';
+import { onTelegramNotification } from '../../notification-events';
 
 const asNotifDb = (db: { getOpportunity: (id: string) => Promise<unknown> }): OpportunityNotifierDatabase => ({
   getOpportunity: db.getOpportunity as OpportunityNotifierDatabase['getOpportunity'],

@@ -23,7 +23,7 @@ afterAll(() => {
 import type { HydeMaintenanceDatabase } from '../hyde-maintenance';
 import { HydeMaintenance } from '../hyde-maintenance';
 
-/** Minimal stub for tests; queue only uses a subset of the full adapter types. */
+/** Minimal stub for tests; maintenance only uses a subset of the full adapter types. */
 const asHydeDb = (db: unknown): HydeMaintenanceDatabase => db as HydeMaintenanceDatabase;
 
 describe('HydeMaintenance', () => {
