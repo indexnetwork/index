@@ -67,7 +67,7 @@ async function resolveNetwork(db: ExportDb, query: string | null) {
         .from(schema.networks)
         .where(and(
           isNull(schema.networks.deletedAt),
-          sql`(lower(${schema.networks.title}) like '%edge esmeralda%' or lower(coalesce(${schema.networks.key}, '')) like '%esmeralda%')`,
+          sql`(lower(${schema.networks.title}) like '%edge esmeralda%' or lower(${schema.networks.title}) like '%edge city%' or lower(coalesce(${schema.networks.key}, '')) like '%esmeralda%')`,
         ));
   if (rows.length === 0) throw new Error(query ? `No network matched ${query}` : 'No Edge Esmeralda network found');
   if (rows.length > 1) {
