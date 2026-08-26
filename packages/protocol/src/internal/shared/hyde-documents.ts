@@ -2,9 +2,8 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 
 import type { HydeDocument } from '../../platform/database.js';
-/** HyDE generation mode. Frame-v1 is the only supported mode. */
+/** HyDE document format/version tag used in cache keys and DB records. */
 export const HYDE_FRAME_GENERATION_VERSION = "frame-v1" as const;
-export type HydeGenerationMode = typeof HYDE_FRAME_GENERATION_VERSION;
 
 /** Hash source text without persisting the source itself in frame metadata. */
 export function computeHydeSourceTextHash(sourceText: string): string {
@@ -30,12 +29,11 @@ function hasFrameMetadataForSource(document: HydeDocument, sourceTextHash: strin
 }
 
 /**
- * Select persisted documents that belong to the currently active generation
- * mode and, for frame-v1, the newest generation marker group.
+ * Select persisted frame-v1 documents belonging to the newest generation
+ * marker group.
  */
 export function selectHydeDocumentsForGeneration(
   documents: HydeDocument[],
-  mode: HydeGenerationMode,
   sourceText: string,
 ): HydeDocument[] {
   const sourceTextHash = computeHydeSourceTextHash(sourceText);

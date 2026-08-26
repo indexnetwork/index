@@ -12,7 +12,6 @@ import { NetworkRequestController } from './controllers/network-request.controll
 import { IntentController } from './controllers/intent.controller';
 import { IntentIntakeController } from './controllers/intent-intake.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
-import { ConnectLinkController } from './controllers/connect-link.controller';
 import { AuthController } from './controllers/auth.controller';
 import { EnrichmentController } from './controllers/enrichment.controller';
 import { UserController } from './controllers/user.controller';
@@ -272,7 +271,6 @@ controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(IntentIntakeController, new IntentIntakeController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
-controllerInstances.set(ConnectLinkController, new ConnectLinkController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
@@ -404,13 +402,6 @@ const server = Bun.serve({
     // MCP Streamable HTTP endpoint (OPTIONS already handled globally above)
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
       return mcpHandler(req, corsHeaders);
-    }
-
-    // Short connect-link URLs are minted at <base>/c/<code> (no /api prefix
-    // — the brevity is the point). Rewrite to the controller path so the
-    // normal route-matching loop can dispatch to ConnectLinkController.
-    if (url.pathname.startsWith('/c/')) {
-      url.pathname = `/api${url.pathname}`;
     }
 
     // Iterate over controllers and routes to find a match.

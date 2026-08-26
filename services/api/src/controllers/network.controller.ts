@@ -5,7 +5,6 @@ import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { MasterKeyGuard, type MasterKeyNetwork } from '../guards/master-key.guard';
 import { log } from '../lib/log';
-import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { isStaff } from '../lib/staff';
 import { experimentService, SignupNotCompleteError, type ImportRow } from '../services/experiment.service';
@@ -629,44 +628,6 @@ export class NetworkController {
   }
 
   /**
-   * PUT /networks/:id/key — update a network's key. Owner-only.
-   * @param req - Request with JSON body `{ key: string }`
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the network ID
-   * @returns Updated network or validation error
-   */
-  @Put('/:id/key')
-  @deprecatedRoute('network.update-key')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async updateKey(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
-    let body: { key?: string };
-    try {
-      body = (await req.json()) as { key?: string };
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-
-    if (!body.key || typeof body.key !== 'string') {
-      return Response.json({ error: 'key is required' }, { status: 400 });
-    }
-
-    // Resolve idOrKey to actual UUID first
-    const resolvedId = await networkService.resolveIndexId(params.id);
-    if (!resolvedId) {
-      return Response.json({ error: 'Network not found' }, { status: 404 });
-    }
-
-    await assertAgentNetworkScope(req, resolvedId);
-
-    const result = await networkService.updateKey(resolvedId, user.id, body.key);
-    if ('error' in result) {
-      return Response.json({ error: result.error }, { status: result.status });
-    }
-
-    return Response.json(result);
-  }
-
-  /**
    * Rotate a network's invitation link, issuing a fresh code. Owner-only.
    * The previously shared link stops resolving once rotated.
    */
@@ -779,28 +740,6 @@ export class NetworkController {
     } catch (err: unknown) {
       const msg = errorMessage(err);
       if (msg.includes('Not a member')) {
-        return Response.json({ error: msg }, { status: 403 });
-      }
-      throw err;
-    }
-  }
-
-  /**
-   * Get current user's intents in a network. Members only.
-   * IMPORTANT: This must come before GET /:id to avoid route collision.
-   */
-  @Get('/:id/my-intents')
-  @deprecatedRoute('network.my-intents')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getMyIntents(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
-    try {
-      await assertAgentNetworkScope(req, params.id);
-      const intents = await networkService.getMyIntentsInNetwork(params.id, user.id);
-      logger.verbose('My intents retrieved for network', { networkId: params.id, userId: user.id, count: intents.length });
-      return Response.json({ intents });
-    } catch (err: unknown) {
-      const msg = errorMessage(err);
-      if (msg.includes('Access denied') || msg.includes('Not a member')) {
         return Response.json({ error: msg }, { status: 403 });
       }
       throw err;

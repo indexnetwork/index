@@ -512,7 +512,6 @@ export interface UserWithGraph {
   hasProfile: boolean;
   notificationPreferences: {
     connectionUpdates: boolean;
-    weeklyNewsletter: boolean;
   };
 }
 
@@ -525,7 +524,6 @@ export interface NewsletterUserData {
   lastSent: Date | null;
   prefs: {
     connectionUpdates?: boolean;
-    weeklyNewsletter?: boolean;
   } | null;
   unsubscribeToken: string | null;
   onboarding: {

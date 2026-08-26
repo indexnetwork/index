@@ -99,7 +99,6 @@ function makeHarness(overrides: {
   };
 
   const graph = new HydeGraphFactory(database, embedder, cache, inferrer, generator, {
-    mode: 'frame-v1',
     validator: overrides.validator,
   }).createGraph();
 
@@ -316,7 +315,7 @@ describe('HyDE cache and DB isolation', () => {
     };
     const graphInput = { sourceType: 'intent' as const, sourceId: 'intent-1', sourceText: 'climate founder seeking funding' };
 
-    const frameGraph = new HydeGraphFactory(database, embedder, cache, inferrer, generator, { mode: 'frame-v1', validator }).createGraph();
+    const frameGraph = new HydeGraphFactory(database, embedder, cache, inferrer, generator, { validator }).createGraph();
     const frame = await frameGraph.invoke(graphInput);
     const frameKey = cache.sets.find((key) => key.startsWith('hyde:frame-v1:'))!;
     expect(frameKey).toMatch(/^hyde:frame-v1:intent:intent-1:/);
@@ -376,7 +375,6 @@ describe('HyDE cache and DB isolation', () => {
     expect(markers[0]).toEqual(expect.any(String));
     expect(selectHydeDocumentsForGeneration(
       [...harness.stored.values()],
-      'frame-v1',
       sourceText,
     )).toHaveLength(2);
   });

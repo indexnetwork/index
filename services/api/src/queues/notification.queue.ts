@@ -14,8 +14,8 @@ import { userDatabaseAdapter } from '../adapters/database.adapter';
 /** BullMQ queue name for opportunity notification jobs. */
 export const QUEUE_NAME = 'notification-queue';
 
-/** Delivery priority: immediate (WebSocket), high (email soon), low (weekly digest). */
-export type NotificationPriority = 'immediate' | 'high' | 'low';
+/** Delivery priority: immediate (WebSocket) or high (email soon). */
+export type NotificationPriority = 'immediate' | 'high';
 
 /** Payload for a single opportunity notification job. */
 export interface NotificationJobData {
@@ -43,17 +43,14 @@ export interface NotificationQueueDeps {
 
 const API_URL = process.env.API_URL || 'https://protocol.index.network';
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://index.network';
-const DIGEST_LIST_PREFIX = 'digest:opportunities:';
-const DIGEST_DEDUPE_PREFIX = 'digest:dedupe:';
 const EMAIL_OPPORTUNITY_DEDUPE_PREFIX = 'email:opportunity:dedupe:';
-const DIGEST_TTL_SEC = 7 * 24 * 3600;
+const EMAIL_DEDUPE_TTL_SEC = 7 * 24 * 3600;
 
 /**
  * Notification queue: BullMQ queue plus worker and job handlers for opportunity notifications.
  *
  * Handles `process_opportunity_notification`: loads opportunity, then by priority—immediate
- * (WebSocket emit), high (send email), or low (add to weekly digest). Uses email queue and Redis
- * for digest/dedupe.
+ * (WebSocket emit) or high (send email). Uses email queue and Redis for dedupe.
  *
  * @remarks
  * Workers are started only by the protocol server via {@link NotificationQueue.startWorker}.
@@ -90,7 +87,7 @@ export class NotificationQueue {
    * Enqueue an opportunity notification for a recipient at the given priority.
    * @param opportunityId - Opportunity to notify about
    * @param recipientId - User to notify
-   * @param priority - immediate (WebSocket), high (email), or low (digest)
+   * @param priority - immediate (WebSocket) or high (email)
    * @returns The BullMQ job
    */
   async queueOpportunityNotification(
@@ -98,7 +95,7 @@ export class NotificationQueue {
     recipientId: string,
     priority: NotificationPriority
   ): Promise<Job<NotificationQueueJobData>> {
-    const priorityNum = priority === 'immediate' ? 0 : priority === 'high' ? 5 : 10;
+    const priorityNum = priority === 'immediate' ? 0 : 5;
     return this.queue.add(
       'process_opportunity_notification',
       { opportunityId, recipientId, priority },
@@ -182,13 +179,8 @@ export class NotificationQueue {
         await this.sendHighPriorityEmail(recipientId, opportunityId, summary);
         break;
       }
-      case 'low': {
-        await this.addToDigest(recipientId, opportunityId);
-        break;
-      }
       default: {
-        this.logger.warn('Unknown priority, treating as low', { priority });
-        await this.addToDigest(recipientId, opportunityId);
+        this.logger.warn('Unknown priority, skipping', { priority });
       }
     }
 
@@ -241,7 +233,7 @@ export class NotificationQueue {
 
     const redis = getRedisClient();
     const emailDedupeKey = `${EMAIL_OPPORTUNITY_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
-    const setResult = await redis.set(emailDedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
+    const setResult = await redis.set(emailDedupeKey, '1', 'EX', EMAIL_DEDUPE_TTL_SEC, 'NX');
     if (setResult !== 'OK') {
       this.logger.verbose('Skipped duplicate opportunity email (dedupe key already set)', {
         recipientId,
@@ -277,34 +269,6 @@ export class NotificationQueue {
       opportunityId,
     });
   }
-
-  private async addToDigest(recipientId: string, opportunityId: string): Promise<void> {
-    try {
-      const redis = getRedisClient();
-      const dedupeKey = `${DIGEST_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
-      const setResult = await redis.set(dedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
-      if (setResult !== 'OK') {
-        this.logger.verbose('Skipped duplicate digest entry (dedupe key already set)', {
-          recipientId,
-          opportunityId,
-        });
-        return;
-      }
-      const listKey = `${DIGEST_LIST_PREFIX}${recipientId}`;
-      await redis.rpush(listKey, opportunityId);
-      await redis.expire(listKey, DIGEST_TTL_SEC);
-      this.logger.verbose('Added opportunity to weekly digest list', {
-        recipientId,
-        opportunityId,
-      });
-    } catch (err) {
-      this.logger.error('Failed to add to digest list', {
-        recipientId,
-        opportunityId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
 }
 
 /** Singleton notification queue instance. Use for enqueueing notifications and starting the worker. */
@@ -314,7 +278,7 @@ export const notificationQueue = new NotificationQueue();
  * Enqueue an opportunity notification (convenience for existing call sites).
  * @param opportunityId - Opportunity to notify about
  * @param recipientId - User to notify
- * @param priority - immediate (WebSocket), high (email), or low (digest)
+ * @param priority - immediate (WebSocket) or high (email)
  * @returns The BullMQ job
  */
 export async function queueOpportunityNotification(

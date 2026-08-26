@@ -1892,33 +1892,6 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  /**
-   * Check if a network key already exists.
-   * @param key - The key to check
-   * @returns True if the key is taken
-   */
-  async networkKeyExists(key: string): Promise<boolean> {
-    const result = await db.select({ id: networks.id })
-      .from(networks)
-      .where(eq(networks.key, key))
-      .limit(1);
-    return result.length > 0;
-  }
-
-  /**
-   * Update a network's key. Owner-only check should be done at the service level.
-   * @param indexId - The network ID
-   * @param key - The new key value
-   * @returns Updated network or null
-   */
-  async updateIndexKey(indexId: string, key: string) {
-    const result = await db.update(networks)
-      .set({ key, updatedAt: new Date() })
-      .where(and(eq(networks.id, indexId), isNull(networks.deletedAt)))
-      .returning();
-    return result[0] ?? null;
-  }
-
   async createNetwork(data: {
     title: string;
     prompt?: string | null;
@@ -2579,19 +2552,6 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
-  }
-  async applyOpportunityPoolAdjustments(
-    recipientUserId: string,
-    intentId: string,
-    expectedIntentFingerprint: string,
-    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[3],
-  ): Promise<string[] | null> {
-    return this.opportunityAdapter.applyOpportunityPoolAdjustments(
-      recipientUserId,
-      intentId,
-      expectedIntentFingerprint,
-      writes,
-    );
   }
   async stampOpportunityActorAction(
     id: string,

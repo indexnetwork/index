@@ -42,8 +42,6 @@ export interface OpportunityCardData {
   score?: number;
   /** Opportunity status at the time the card was created. */
   status?: string;
-  /** Template-only pool-answer demotion explanation from server metadata. */
-  deprioritizedReason?: string;
   /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
   secondParty?: {
     name: string;
@@ -115,16 +113,6 @@ function getNarratorHoverClass(status?: string): string {
     default:
       return "hover:bg-[#E8E8E8]";
   }
-}
-
-/** Keep only the user's own selected side; never expose an axis/evaluator rationale. */
-function formatDeprioritizedReason(detail: string): string {
-  const marker = ": you chose ";
-  const markerIndex = detail.lastIndexOf(marker);
-  const chosenSide = markerIndex >= 0
-    ? detail.slice(markerIndex + marker.length).trim()
-    : detail.trim();
-  return `Deprioritized — you chose ${chosenSide}`;
 }
 
 interface OpportunityCardProps {
@@ -474,14 +462,6 @@ export default function OpportunityCard({
           </div>
         )}
       </div>
-
-      {card.deprioritizedReason && (
-        <div>
-          <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
-            {formatDeprioritizedReason(card.deprioritizedReason)}
-          </span>
-        </div>
-      )}
 
       {effectiveStatus === "negotiating" && (
         <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">

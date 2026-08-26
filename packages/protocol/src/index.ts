@@ -89,10 +89,6 @@ export {
 } from "./protocol/question.js";
 export type {
   Question,
-  QuestionPoolPush,
-  QuestionPoolPushRequestReason,
-  QuestionPoolPushRequestStatus,
-  QuestionPoolSnapshot,
   QuestionPurpose,
   QuestionRecoverySnapshot,
   QuestionStrategy,
@@ -120,8 +116,6 @@ export type { PersonalAgentPersonaOptions } from "./internal/chat/personal-agent
 export { buildAgentSelfIntroduction } from "./internal/chat/agent-identity.prompt.js";
 export type { AgentIdentityOptions } from "./internal/chat/agent-identity.prompt.js";
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
-export { Discovery } from "./capabilities/discovery.js";
-export type { DiscoveryDeps } from "./capabilities/discovery.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
 // The whole capability behind one class: the community lifecycle graph, the
 // membership graph, signal assignment, and the agent-facing tools.
@@ -132,8 +126,6 @@ export type {
   NetworksDeps,
   NetworkToolDeps,
 } from "./capabilities/networks.js";
-export { Opportunities } from "./capabilities/opportunities.js";
-export type { OpportunitiesDeps } from "./capabilities/opportunities.js";
 export { Negotiations } from "./capabilities/negotiations.js";
 export type { NegotiationsDeps } from "./capabilities/negotiations.js";
 
@@ -223,7 +215,6 @@ export {
   NegotiationOpeningTurnSchema,
   NegotiationVerdictSchema,
   isPauseTurn,
-  isContinueTurn,
 } from "./internal/negotiations/negotiation.turn.js";
 export type {
   NegotiationTurn,
@@ -290,7 +281,6 @@ export type {
   ReflectEnqueueFn,
   ReflectionTranscriptEntry,
 } from "./internal/negotiations/negotiation.reflect.js";
-export { renderNegotiatorChatMemorySection } from "./internal/negotiations/negotiation.memory.js";
 export type { NegotiatorMemoryEntry } from "./internal/negotiations/negotiation.memory.js";
 export type { NegotiationToolDeps } from "./internal/negotiations/negotiation.tools.port.js";
 export type {
@@ -372,27 +362,8 @@ export {
 export type {
 } from "./internal/opportunities/discovery.env.js";
 export {
-  buildPoolAdjustment,
-  mergePoolAdjustment,
-  planPoolAdjustments,
-} from "./internal/opportunities/discriminator/discriminator.adjustments.js";
-export type {
-  PoolAdjustment,
-  PoolAdjustmentSignal,
-} from "./internal/opportunities/discriminator/discriminator.adjustments.js";
-export {
-  PoolDiscriminatorAssigner,
-} from "./internal/opportunities/discriminator/discriminator.assigner.js";
-export type {
-  PoolDiscriminatorAssignedAxis,
-  PoolDiscriminatorAssignmentInput,
-} from "./internal/opportunities/discriminator/discriminator.assigner.js";
-export {
   PoolDiscriminatorMiner,
 } from "./internal/opportunities/discriminator/discriminator.miner.js";
-export {
-  runPoolDiscriminatorShadow,
-} from "./internal/opportunities/discriminator/discriminator.shadow.js";
 export type {
   DiscriminatorMiningInput,
   MinedDiscriminator,

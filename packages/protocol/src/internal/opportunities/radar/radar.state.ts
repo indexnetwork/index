@@ -24,8 +24,6 @@ export interface RadarCardItem {
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
-  /** Template-only explanation for a pool-answer demotion (never evaluator reasoning). */
-  deprioritizedReason?: string;
   /** Second party in introducer arrow layout. Present when viewerRole is 'introducer'. */
   secondParty?: { name: string; avatar?: string | null; userId?: string };
   /**
