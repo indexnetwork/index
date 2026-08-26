@@ -53,9 +53,7 @@ This is a Bun/Linux module-resolution problem against Drizzle's root barrel
    ```bash
    cd services/api
    bun test \
-     src/adapters/tests/can-actor-see-opportunity.spec.ts \
-     src/queues/tests/timeout.queue.spec.ts \
-     src/queues/tests/claim-timeout.queue.spec.ts
+     src/adapters/tests/can-actor-see-opportunity.spec.ts
    bun run build
    ```
 

@@ -3,8 +3,8 @@ import type { UserServiceDeps } from '../user.service';
 
 const addDecomposeProfileJob = mock(async () => ({ id: 'decompose-job' }));
 
-mock.module('../../queues/premise.queue', () => ({
-  premiseQueue: { addDecomposeProfileJob },
+mock.module('../../lib/premise/cascade', () => ({
+  premiseCascade: { addDecomposeProfileJob },
 }));
 
 const { UserService } = await import('../user.service');

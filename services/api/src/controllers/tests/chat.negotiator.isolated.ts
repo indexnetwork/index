@@ -35,7 +35,7 @@ import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { PERSONAL_AGENT_TURN_FAILURE_REPLY } from "../chat.controller";
 import { publishPersonalAgentActivity, publishPersonalAgentReplyChunk } from "../../lib/agent/personal-agent-reply.stream";
 import type { PersonalAgentResult } from "@indexnetwork/protocol";
-import type { PersonalAgentUserMessageEvent } from "../../queues/personal-agent.queue";
+import type { PersonalAgentUserMessageEvent } from "../../lib/negotiation/personal-agent";
 
 const EMAIL = "test-chat-negotiator@example.com";
 

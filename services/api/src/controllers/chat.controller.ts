@@ -9,9 +9,9 @@ import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorator
 import { chatSessionService, RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, type ChatStreamSurface } from "../services/chat.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
-import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { personalAgentQueue } from "../queues/personal-agent.queue";
-import type { PersonalAgentUserMessageEvent } from "../queues/personal-agent.queue";
+import { negotiationReflect } from "../lib/negotiation/reflect";
+import { personalAgentTurns } from "../lib/negotiation/personal-agent";
+import type { PersonalAgentUserMessageEvent } from "../lib/negotiation/personal-agent";
 import { subscribePersonalAgentReply } from "../lib/agent/personal-agent-reply.stream";
 import type { PersonalAgentReplyStreamEvent } from "../lib/agent/personal-agent-reply.stream";
 import { SuggestionGenerator, ChatInterruptClassifier, PERSONAL_AGENT_PERSONA_ID } from '@indexnetwork/protocol';
@@ -212,7 +212,7 @@ export class ChatController {
     /** Seam for tests; production awaits the serialized inbox turn. */
     private readonly runPersonalAgentUserTurn: (
       event: PersonalAgentUserMessageEvent,
-    ) => Promise<PersonalAgentResult> = (event) => personalAgentQueue.runUserMessageTurn(event),
+    ) => Promise<PersonalAgentResult> = (event) => personalAgentTurns.runUserMessageTurn(event),
   ) {}
   /**
    * SSE streaming endpoint for chat messages with context support.
@@ -761,7 +761,7 @@ export class ChatController {
           // distilling stated preferences into negotiator memories. Never
           // blocks the stream.
           if (agentOwnsTurn && fullResponse) {
-            negotiationReflectQueue.scheduleChatReflect({ sessionId, userId: user.id })
+            negotiationReflect.scheduleChatReflect({ sessionId, userId: user.id })
               .catch((err) => logger.error("Failed to schedule negotiator chat reflection", { sessionId, error: err }));
           }
 

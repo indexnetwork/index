@@ -3566,27 +3566,6 @@ Dismiss a pending question. Negotiation-family rows use the same exact cohort-fi
 
 ---
 
-## Queue Monitoring (Dev Only)
-
-### Bull Board UI
-
-```
-GET /dev/queues/
-```
-
-**Auth**: None (only available when `NODE_ENV !== 'production'`)
-
-Serves the Bull Board UI for monitoring BullMQ job queues. Monitors the following queues:
-- notification
-- intent
-- opportunity
-- profile
-- email
-- questioner (when `QUESTIONER_ENABLED=true`)
-
-Accessible at `http://localhost:3001/dev/queues/` when the protocol server is running in development mode.
-
-
 ## Standalone Hermes and native-client authentication
 
 Native clients authenticate with ordinary Better Auth API keys.

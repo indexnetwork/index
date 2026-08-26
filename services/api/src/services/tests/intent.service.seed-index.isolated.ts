@@ -25,14 +25,11 @@ mock.module('../../adapters/intent-proposal.database.adapter', () => ({
   IntentProposalDatabaseAdapter: class {},
   intentProposalDatabaseAdapter: {},
 }));
-mock.module('../../queues/intent.queue', () => ({
-  intentQueue: {
-    addGenerateHydeJob: mock(async () => {}),
+mock.module('../../lib/intent/indexing', () => ({
+  intentIndexing: {
+    generateHyde: mock(async () => {}),
     runGenerateHydeSync: mock(async () => {}),
   },
-}));
-mock.module('../../queues/questioner.queue', () => ({
-  questionerEnqueueIfEnabled: () => undefined,
 }));
 mock.module('../../events/intent.event', () => ({
   IntentEvents: { onCreated: () => {} },
@@ -61,7 +58,7 @@ function createService(options: {
   const service = new IntentService({
     adapter: { updateIntent } as unknown as IntentDatabaseAdapter,
     embedder: { generate } as unknown as EmbedderAdapter,
-    seedIndexQueue: { runGenerateHydeSync },
+    seedIndexer: { runGenerateHydeSync },
   });
   return { service, generate, updateIntent, runGenerateHydeSync };
 }

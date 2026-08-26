@@ -58,10 +58,8 @@ const KICKOFF_CONCURRENCY = 3;
 /**
  * How long a round may be "begun" before a later turn treats it as abandoned
  * rather than in flight (D20). Comfortably longer than any real kickoff and
- * far shorter than a stuck one matters. Under it, a concurrent turn — the
- * inbox serializes per worker, but the queue's own code contemplates several
- * — leaves the round alone instead of settling it out from under the turn
- * still opening it.
+ * far shorter than a stuck one matters. A concurrent turn leaves the round
+ * alone instead of settling it out from under the turn still opening it.
  */
 const KICKOFF_STALE_AFTER_MS = 10 * 60 * 1000;
 
@@ -1184,7 +1182,7 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
     if (context && hasUnresolvedOwnedPause(context)) {
       return { phase: "error", error: err instanceof Error ? err.message : String(err) };
     }
-    // An outer queue retry repeats the entire turn. Once a durable tool has
+    // Once a durable tool has
     // completed, a later invalid model choice must therefore terminate this
     // turn rather than replaying its earlier effects.
     const durableEffectExecuted = (accumulator?.acts.length ?? 0) > 0;

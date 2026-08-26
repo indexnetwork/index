@@ -27,7 +27,7 @@ import { OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, buildDeliveryCardPresentationCacheKey
 
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { cacheAdapter } from '../../adapters/cache.adapter';
-import { type OutcomeMiningScope, maybeMineOutcomeHypotheses } from '../../queues/outcome/outcome.mining.shared';
+import { type OutcomeMiningScope, maybeMineOutcomeHypotheses } from './outcome.mining.shared';
 import type { NewOpportunityOutcomeEvent } from '../../schemas/database.schema';
 import { computeIntentFingerprint } from '../intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from './outcome-feedback.identity';

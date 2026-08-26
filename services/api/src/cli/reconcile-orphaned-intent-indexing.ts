@@ -8,7 +8,7 @@
  * bun run maintenance:reconcile-orphaned-intent-indexing -- --confirm-dev --intent <uuid> --intent <uuid>
  */
 import { closeDb } from '../lib/drizzle/drizzle';
-import { intentQueue } from '../queues/intent.queue';
+import { intentIndexing } from '../lib/intent/indexing';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 
 function valuesFor(flag: string): string[] {
@@ -38,19 +38,17 @@ async function main(): Promise<void> {
     if (intent.archivedAt || (intent.status != null && intent.status !== 'ACTIVE')) {
       throw new Error(`Intent is not active and cannot be reconciled: ${intentId}`);
     }
-    await intentQueue.addOrphanReconciliationJob({ intentId, userId: intent.userId });
-    console.log(`Enqueued guarded orphan reconciliation for ${intentId}`);
+    await intentIndexing.addOrphanReconciliationJob({ intentId, userId: intent.userId });
+    console.log(`Started guarded orphan reconciliation for ${intentId}`);
   }
 }
 
 main()
   .then(async () => {
-    await intentQueue.close();
     await closeDb();
   })
   .catch(async (error: unknown) => {
     console.error(error instanceof Error ? error.message : String(error));
-    await intentQueue.close().catch(() => {});
     await closeDb().catch(() => {});
     process.exit(1);
   });

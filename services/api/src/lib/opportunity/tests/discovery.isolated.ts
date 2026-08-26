@@ -1,0 +1,494 @@
+/**
+ * Unit tests for IntentDiscovery. Use injected deps to avoid Redis/DB.
+ */
+import { config } from 'dotenv';
+config({ path: '.env.test', override: true });
+
+import { beforeEach, describe, expect, it, mock, afterAll } from 'bun:test';
+import type { OpportunityDiscoverySummary } from '../discovery.shared';
+
+mock.module('../../adapters/database.adapter', () => ({
+  ChatDatabaseAdapter: class ChatDatabaseAdapter {},
+  chatDatabaseAdapter: {},
+}));
+mock.module('../../adapters/embedder.adapter', () => ({
+  EmbedderAdapter: class EmbedderAdapter {},
+  embedderAdapter: {},
+}));
+
+mock.module('../../negotiation/negotiation-evidence.shadow', () => ({
+  maybeRunNegotiationEvidenceShadow: async () => {},
+}));
+mock.module('../questioner/recovery.shared', () => ({
+  maybeEnqueueIntentRecovery: async () => {},
+}));
+
+// Stand in for the discovery graph runner so a test can hand the queue a real
+// `OpportunityDiscoverySummary` without building the protocol graph. The
+// injected-graph short-circuit is reproduced faithfully (it returns null), so
+// every existing `invokeOpportunityGraph` test keeps its original semantics.
+const actualDiscoveryShared = await import('../discovery.shared');
+let nextDiscoverySummary: OpportunityDiscoverySummary | null = null;
+const runOpportunityDiscoveryMock = mock(async (params: {
+  deps?: { invokeOpportunityGraph?: (opts: unknown) => Promise<void> };
+  invokeOpts: unknown;
+}): Promise<OpportunityDiscoverySummary | null> => {
+  if (params.deps?.invokeOpportunityGraph) {
+    await params.deps.invokeOpportunityGraph(params.invokeOpts);
+    return null;
+  }
+  return nextDiscoverySummary;
+});
+mock.module('../discovery.shared', () => ({
+  ...actualDiscoveryShared,
+  runOpportunityDiscovery: runOpportunityDiscoveryMock,
+}));
+
+afterAll(() => {
+  mock.restore();
+});
+
+import type { FromIntentJobData, FromIntentDatabase, FromIntentDeps, FromIntentGraphInvokeOptions } from '../discovery';
+import { buildIntentDiscoveryTrigger } from '../discovery-trigger.builders';
+
+const { IntentDiscovery } = await import('../discovery');
+const { summarizeOpportunityDiscoveryResult } = await import('../discovery.shared');
+
+type FromIntentDatabaseOverrides = Partial<FromIntentDatabase> & Pick<FromIntentDatabase, 'getIntentForIndexing'>;
+
+const asDb = (db: FromIntentDatabaseOverrides): FromIntentDatabase => ({
+  getIntentForIndexing: db.getIntentForIndexing,
+  getNetworkIdsForIntent: db.getNetworkIdsForIntent ?? (async () => ['idx1']),
+  getAssignmentNetworkMembershipsForUser:
+    db.getAssignmentNetworkMembershipsForUser
+    ?? (async () => [{ networkId: 'idx1', isPersonal: false }]),
+  markIntentFirstDiscoverySucceeded: db.markIntentFirstDiscoverySucceeded ?? (async () => {}),
+  recordIntentDiscoveryProgress: db.recordIntentDiscoveryProgress ?? (async () => {}),
+});
+
+type ProgressWrite = Parameters<NonNullable<FromIntentDatabase['recordIntentDiscoveryProgress']>>[0];
+
+/** A complete summary; overrides name only the tallies a test is about. */
+const discoverySummary = (overrides: Partial<OpportunityDiscoverySummary> = {}): OpportunityDiscoverySummary => ({
+  candidatesFound: 0,
+  evaluatedCount: 0,
+  opportunitiesCreated: 0,
+  completionReason: 'created_or_reactivated',
+  sameIntentPairDuplicateSuppressions: 0,
+  crossIntentPairAllowedCount: 0,
+  finalAtomicConflictCount: 0,
+  ...overrides,
+});
+
+const progressWrite = (
+  record: { mock: { calls: unknown[][] } },
+  status: ProgressWrite['status'],
+): ProgressWrite => {
+  const call = record.mock.calls.find((args) => (args[0] as ProgressWrite).status === status);
+  if (!call) throw new Error(`no ${status} progress write recorded`);
+  return call[0] as ProgressWrite;
+};
+
+describe('IntentDiscovery', () => {
+  beforeEach(() => {
+    nextDiscoverySummary = null;
+  });
+
+  describe('constructor', () => {
+    it('uses provided database when deps given', async () => {
+      const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>);
+      const db = { getIntentForIndexing };
+      const queue = new IntentDiscovery({ database: asDb(db) });
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+      expect(getIntentForIndexing).toHaveBeenCalledWith('i1');
+    });
+  });
+
+  describe('processJob', () => {
+    it('records aggregate queued, running, and completed lifecycle states without candidate data', async () => {
+      const recordIntentDiscoveryProgress = mock(async () => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          recordIntentDiscoveryProgress,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 2);
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'running', attempt: 2, assignedCommunityCount: 1 }));
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded', attempt: 2 }));
+    });
+
+    it('records both persisted floor matches when one different intent pair was allowed', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      nextDiscoverySummary = discoverySummary({
+        candidatesFound: 2,
+        evaluatedCount: 2,
+        opportunitiesCreated: 2,
+        crossIntentPairAllowedCount: 1,
+      });
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => ['idx1', 'idx2'],
+          getAssignmentNetworkMembershipsForUser: async () => [
+            { networkId: 'idx1', isPersonal: false },
+            { networkId: 'idx2', isPersonal: false },
+          ],
+          recordIntentDiscoveryProgress,
+        }),
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'succeeded',
+        assignedCommunityCount: 2,
+        // The graph runs once across every valid network, so the whole
+        // still-valid set is what was processed.
+        processedCommunityCount: 2,
+        possibleOverlapCount: 2,
+        conversationsStartedCount: 2,
+      }));
+    });
+
+    it('writes a zero-result run honestly rather than skipping the tallies', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      nextDiscoverySummary = discoverySummary({ completionReason: 'no_search_candidates' });
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          recordIntentDiscoveryProgress,
+        }),
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'succeeded', processedCommunityCount: 1, possibleOverlapCount: 0, conversationsStartedCount: 0,
+      }));
+    });
+
+    it('omits the tallies entirely when the graph was injected and returned no summary', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          recordIntentDiscoveryProgress,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+
+      const succeeded = progressWrite(recordIntentDiscoveryProgress, 'succeeded');
+      // Omitted, not zeroed: the adapter leaves stored counts untouched, so an
+      // injected graph can never claim a run found nothing.
+      expect(succeeded).not.toHaveProperty('processedCommunityCount');
+      expect(succeeded).not.toHaveProperty('possibleOverlapCount');
+      expect(succeeded).not.toHaveProperty('conversationsStartedCount');
+    });
+
+    it('leaves the blocked write free of tallies', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getAssignmentNetworkMembershipsForUser: async () => [],
+          recordIntentDiscoveryProgress,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+
+      const blocked = progressWrite(recordIntentDiscoveryProgress, 'blocked');
+      expect(blocked).toMatchObject({ status: 'blocked', attempt: 0, assignedCommunityCount: 0 });
+      expect(blocked).not.toHaveProperty('possibleOverlapCount');
+      expect(blocked).not.toHaveProperty('conversationsStartedCount');
+    });
+
+    it('unknown job name logs warning and does not throw', async () => {
+      const queue = new IntentDiscovery();
+      await expect(
+        queue.processJob('unknown_job', { intentId: 'i1', userId: 'u1' })
+      ).resolves.toBeUndefined();
+    });
+
+    it('discover: intent not found skips', async () => {
+      const db = {
+        getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>,
+      };
+      const queue = new IntentDiscovery({ database: asDb(db) });
+      await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
+    });
+
+    it('discover: skips paused, archived, and wrong-owner jobs at admission', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
+      const rows = [
+        { id: 'paused', payload: 'P', userId: 'u1', sourceType: null, sourceId: null, status: 'PAUSED' as const, archivedAt: null },
+        { id: 'archived', payload: 'P', userId: 'u1', sourceType: null, sourceId: null, status: 'ACTIVE' as const, archivedAt: new Date() },
+        { id: 'foreign', payload: 'P', userId: 'u2', sourceType: null, sourceId: null, status: 'ACTIVE' as const, archivedAt: null },
+      ];
+      for (const row of rows) {
+        const queue = new IntentDiscovery({
+          database: asDb({ getIntentForIndexing: async () => row, markIntentFirstDiscoverySucceeded }),
+          invokeOpportunityGraph,
+        });
+        await queue.processJob('discover_opportunities', { intentId: row.id, userId: 'u1' });
+      }
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
+    });
+
+    it('intent-resume follows the ordinary discovery path', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const db = {
+        getIntentForIndexing: async () => ({
+          id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null,
+          status: 'ACTIVE' as const, archivedAt: null,
+        }),
+      };
+      const queue = new IntentDiscovery({ database: asDb(db), invokeOpportunityGraph });
+      await queue.processJob('discover_opportunities', {
+        intentId: 'i1', userId: 'u1', trigger: 'intent_resume',
+      });
+      expect(invokeOpportunityGraph).toHaveBeenCalledTimes(1);
+    });
+
+    it('discover: stamps first-discovery success after the graph completes', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
+      const db = asDb({
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
+        markIntentFirstDiscoverySucceeded,
+      });
+      const queue = new IntentDiscovery({ database: db, invokeOpportunityGraph });
+      await queue.processJob('discover_opportunities', {
+        intentId: 'i1',
+        userId: 'u1',
+        networkIds: ['idx1'],
+      });
+      expect(markIntentFirstDiscoverySucceeded).toHaveBeenCalledWith('i1');
+      const expected = buildIntentDiscoveryTrigger({
+        userId: 'u1',
+        searchQuery: 'Build a SaaS',
+        networkIds: ['idx1'],
+        triggerIntentId: 'i1',
+      });
+      expect(JSON.stringify(invokeOpportunityGraph.mock.calls[0]![0])).toBe(JSON.stringify(expected));
+    });
+
+    it('discover: does not stamp when the graph fails', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {
+        throw new Error('graph failed');
+      });
+      const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
+          markIntentFirstDiscoverySucceeded,
+        }),
+        invokeOpportunityGraph,
+      });
+
+      await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
+        .rejects.toThrow('graph failed');
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
+    });
+
+    it('discover: does not stamp when assignment disappears after the graph completes', async () => {
+      const markIntentFirstDiscoverySucceeded = mock(async () => {});
+      const getNetworkIdsForIntent = mock()
+        .mockResolvedValueOnce(['idx1'])
+        .mockResolvedValueOnce([]);
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent,
+          markIntentFirstDiscoverySucceeded,
+        }),
+        invokeOpportunityGraph: async () => {},
+      });
+      await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
+        .rejects.toThrow('stamp precondition failed');
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
+    });
+
+    it('forwards every assigned active network through deterministic indexScope', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const db = asDb({
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        getNetworkIdsForIntent: async () => ['idx-b', 'idx-a', 'idx-b', 'idx-foreign'],
+        getAssignmentNetworkMembershipsForUser: async () => [
+          { networkId: 'idx-a', isPersonal: false },
+          { networkId: 'idx-b', isPersonal: false },
+          { networkId: 'idx-owner-only', isPersonal: false },
+        ],
+      });
+      const queue = new IntentDiscovery({ database: db, invokeOpportunityGraph });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+
+      expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({
+        indexScope: ['idx-a', 'idx-b'],
+      }));
+      expect(invokeOpportunityGraph.mock.calls[0]?.[0]).not.toHaveProperty('networkId');
+    });
+
+    it('allows explicit networkIds to narrow but never broaden authoritative scope', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const db = asDb({
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        getNetworkIdsForIntent: async () => ['idx-a', 'idx-b'],
+        getAssignmentNetworkMembershipsForUser: async () => [
+          { networkId: 'idx-a', isPersonal: false },
+          { networkId: 'idx-b', isPersonal: false },
+          { networkId: 'idx-foreign', isPersonal: false },
+        ],
+      });
+      const queue = new IntentDiscovery({ database: db, invokeOpportunityGraph });
+
+      await queue.processJob('discover_opportunities', {
+        intentId: 'i1', userId: 'u1', networkIds: ['idx-foreign', 'idx-b'],
+      });
+
+      expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({ networkId: 'idx-b' }));
+      expect(invokeOpportunityGraph.mock.calls[0]?.[0]).not.toHaveProperty('indexScope');
+    });
+
+    it('fails closed for foreign explicit scope', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => ['idx-assigned'],
+          getAssignmentNetworkMembershipsForUser: async () => [{ networkId: 'idx-assigned', isPersonal: false }],
+        }),
+        invokeOpportunityGraph,
+      });
+
+      await queue.processJob('discover_opportunities', {
+        intentId: 'i1', userId: 'u1', networkIds: ['idx-foreign'],
+      });
+
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the intent has no network assignments', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => [],
+          getAssignmentNetworkMembershipsForUser: async () => [{ networkId: 'idx-owner-only', isPersonal: false }],
+          markIntentFirstDiscoverySucceeded,
+        }),
+        invokeOpportunityGraph,
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+      expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when assignment membership lookup excludes a soft-deleted membership', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => ['idx-soft-deleted'],
+          // The production lookup omits soft-deleted membership/network rows.
+          getAssignmentNetworkMembershipsForUser: async () => [],
+        }),
+        invokeOpportunityGraph,
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+    });
+
+    it('keeps an assigned owner personal network eligible', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => ['personal-net'],
+          getAssignmentNetworkMembershipsForUser: async () => [{ networkId: 'personal-net', isPersonal: true }],
+        }),
+        invokeOpportunityGraph,
+      });
+
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+
+      expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({ networkId: 'personal-net' }));
+    });
+
+    it('discover: empty explicit networkIds skips fail-closed instead of broadening', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const queue = new IntentDiscovery({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+        invokeOpportunityGraph,
+      });
+      await queue.processJob('discover_opportunities', {
+        intentId: 'i1', userId: 'u1', networkIds: [],
+      });
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+    });
+
+  });
+
+  describe('completion telemetry', () => {
+    it('distinguishes evaluator-zero from persistence-dedup-zero', () => {
+      const evaluatorZero = summarizeOpportunityDiscoveryResult({
+        candidates: [{}],
+        evaluatedOpportunities: [],
+        opportunities: [],
+      });
+      const persistenceDedupZero = summarizeOpportunityDiscoveryResult({
+        candidates: [{}],
+        evaluatedOpportunities: [{}],
+        opportunities: [],
+        persistenceOutcome: {
+          evaluatedCount: 1,
+          sameIntentPairDuplicateSuppressions: 1,
+          crossIntentPairAllowedCount: 0,
+          finalAtomicConflictCount: 0,
+        },
+      });
+
+      expect(evaluatorZero.completionReason).toBe('evaluator_rejected_all');
+      expect(persistenceDedupZero.completionReason).toBe('same_intent_pair_duplicate_suppressed');
+    });
+
+    it('reports persisted different-intent-pair matches as created without an atomic conflict', () => {
+      const summary = summarizeOpportunityDiscoveryResult({
+        candidates: [{}, {}],
+        evaluatedOpportunities: [{}, {}],
+        opportunities: [{}, {}],
+        persistenceOutcome: {
+          evaluatedCount: 2,
+          sameIntentPairDuplicateSuppressions: 0,
+          crossIntentPairAllowedCount: 1,
+          finalAtomicConflictCount: 0,
+        },
+      });
+
+      expect(summary).toMatchObject({
+        candidatesFound: 2,
+        evaluatedCount: 2,
+        opportunitiesCreated: 2,
+        completionReason: 'created_or_reactivated',
+        crossIntentPairAllowedCount: 1,
+        finalAtomicConflictCount: 0,
+      });
+      expect(summary).not.toHaveProperty('pairActiveNegotiationSuppressions');
+    });
+  });
+});

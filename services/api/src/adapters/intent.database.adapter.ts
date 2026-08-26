@@ -729,9 +729,9 @@ export class IntentDatabaseAdapter {
       eq(schema.intentDiscoveryProgress.userId, userId),
     ));
     for (const row of rows) {
-      // A worker heartbeat is the durable row's update time. Do not present a
-      // retained/dead BullMQ job as active after a worker crash or redelivery
-      // gap; its precise state is no longer knowable.
+      // A heartbeat is the durable row's update time. Do not present a
+      // stale running/queued row as active after a crash; its precise state
+      // is no longer knowable.
       const stale = (row.status === 'queued' || row.status === 'running')
         && Date.now() - row.updatedAt.getTime() > 30 * 60 * 1000;
       result.set(row.intentId, {

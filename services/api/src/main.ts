@@ -42,31 +42,27 @@ import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
-// Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
-import { intentQueue } from './queues/intent.queue';
-import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
-import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
-import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
-import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
-import { frameDriftQueue } from './queues/frame-drift.queue';
+import { intentIndexing } from './lib/intent/indexing';
+import { intentDiscovery } from './lib/opportunity/discovery';
+import { negotiationWatchdog, isNegotiationWatchdogEnabled } from './lib/negotiation/watchdog';
+import { opportunityExpirationCron } from './lib/opportunity/expiration';
+import { checkpointRetentionCron } from './lib/checkpoint/retention';
+import { frameDriftCron } from './lib/frame-drift/cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
-import { notificationQueue } from './queues/notification.queue';
-import { hydeQueue } from './queues/hyde.queue';
-import { emailQueue } from './queues/email.queue';
-import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
+import { hydeMaintenance } from './lib/intent/hyde-maintenance';
+import { negotiationReflect } from './lib/negotiation/reflect';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
-import { personalAgentQueue } from './queues/personal-agent.queue';
+import { personalAgentTurns } from './lib/negotiation/personal-agent';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { handleIntentCreatedMaintenance, IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
-import { premiseQueue } from './queues/premise.queue';
+import { premiseCascade } from './lib/premise/cascade';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
@@ -108,13 +104,13 @@ setRequestContextStore(hostRequestContext);
 // post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
 // discovery does. Without this, the graph's matches_ready node
 // short-circuits and a persisted batch never reaches its agent.
-fromIntentQueue.setRuntimeDeps({
+intentDiscovery.setRuntimeDeps({
   matchesReady,
   agentDispatcher: backgroundAgentDispatcher,
 });
-negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph);
-negotiationWatchdogQueue.setReflectEnqueue(async (job) => {
-  await personalAgentQueue.addAllPausedEvent(job);
+negotiationWatchdog.setNegotiationGraph(negotiationGraph);
+negotiationWatchdog.setReflectEnqueue(async (job) => {
+  await personalAgentTurns.addAllPausedEvent(job);
 });
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
@@ -124,7 +120,7 @@ const notificationDeliveryService = new NotificationDeliveryService({
   publish: publishNotificationStreamEvent,
 });
 
-// Assign callbacks before starting workers to avoid a race with jobs already in Redis.
+// Wire event callbacks before crons start.
 OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
 
 NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
@@ -132,8 +128,8 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   // Intents created before joining never get an assignment pass for this network
   // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
   // regen / opportunity discovery); scoped to this network.
-  intentQueue.addNetworkReconcileForUser(userId, networkId).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue intent network reconcile', { userId, networkId, error: err });
+  intentIndexing.addNetworkReconcileForUser(userId, networkId).catch((err) => {
+    log.job.from('NetworkMembership').error('Failed to start intent network reconcile', { userId, networkId, error: err });
   });
 };
 
@@ -148,42 +144,35 @@ PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
 
 PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
   log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade', { premiseId, userId });
-  premiseQueue.addCascadeJob({ premiseId, userId, event: 'retracted' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
+  premiseCascade.addCascadeJob({ premiseId, userId, event: 'retracted' })
+    .catch(err => log.job.from('PremiseEvents').error('Failed to start cascade', { premiseId, userId, error: err }));
 };
 
 PremiseEvents.onExpired = (premiseId: string, userId: string) => {
   log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade', { premiseId, userId });
-  premiseQueue.addCascadeJob({ premiseId, userId, event: 'expired' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
+  premiseCascade.addCascadeJob({ premiseId, userId, event: 'expired' })
+    .catch(err => log.job.from('PremiseEvents').error('Failed to start cascade', { premiseId, userId, error: err }));
 };
 
-intentQueue.startWorker();
-fromIntentQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
-  void negotiationWatchdogQueue.start().catch((error) => {
-    log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
+  void negotiationWatchdog.start().catch((error) => {
+    log.job.from('NegotiationWatchdog').error('Negotiation watchdog startup failed', { error });
   });
 }
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
-void frameDriftQueue.start().catch((error) => {
-  log.queue.from('FrameDriftQueue').error('Frame-drift queue startup failed', {
+void frameDriftCron.start().catch((error) => {
+  log.job.from('FrameDrift').error('Frame-drift startup failed', {
     event: 'frame_drift_monitoring_startup_failed',
     error,
   });
 });
-notificationQueue.startWorker();
-hydeQueue.startCrons();
-emailQueue.startWorker();
-negotiationReflectQueue.startWorker();
-negotiationReflectQueue.startCrons();
-personalAgentQueue.startWorker();
-premiseQueue.startWorker();
-premiseQueue.startCrons();
+hydeMaintenance.startCrons();
+negotiationReflect.startCrons();
+premiseCascade.startCrons();
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
-  // IntentQueue owns the authoritative discovery trigger: it assigns networks,
+  // IntentIndexing owns the authoritative discovery trigger: it assigns networks,
   // generates HyDE, then awaits one from-intent enqueue. Starting here races the
   // assignment transaction and produces a misleading successful fail-closed run.
   log.job.from('IntentEvents').verbose('Intent created, triggering maintenance', { intentId, userId });
@@ -299,12 +288,11 @@ function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return 'mcp';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/tools')) return 'protocol';
-  if (pathname.startsWith('/dev/queues')) return 'queue-admin';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
 }
 
-// Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
+// Cron jobs (HyDE, expiration, retention, frame-drift, watchdog) start above.
 const server = Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors
@@ -354,14 +342,6 @@ const server = Bun.serve({
         },
         { headers: corsHeaders }
       );
-    }
-
-    // Bull Board UI at /dev/queues (before API loop so it is always served in dev)
-    if (!IS_PRODUCTION && (url.pathname === '/dev/queues' || url.pathname.startsWith('/dev/queues/'))) {
-      const res = await adminQueuesApp.fetch(req);
-      const newHeaders = new Headers(res.headers);
-      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
-      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
     // Better Auth handles its own /api/auth/* routes (sign-in, sign-up, session, etc.)
@@ -601,20 +581,16 @@ bindLimiterServer(server);
 logger.info('Server running', { port: PORT });
 
 
-// Graceful shutdown: close BullMQ workers so stale workers don't linger after restart
+// Graceful shutdown
 const shutdown = async () => {
-  logger.info('Shutting down workers...');
+  logger.info('Shutting down...');
   await Promise.allSettled([
-    intentQueue.close(),
-    fromIntentQueue.close(),
-    negotiationWatchdogQueue.close(),
-    notificationQueue.close(),
-    emailQueue.close(),
-    personalAgentQueue.close(),
-    premiseQueue.close(),
-    frameDriftQueue.close(),
+    negotiationWatchdog.close(),
+    premiseCascade.close(),
+    frameDriftCron.close(),
+    negotiationReflect.close(),
   ]);
-  logger.info('Workers closed');
+  logger.info('Background work stopped');
   await Sentry.close(2000);
   process.exit(0);
 };

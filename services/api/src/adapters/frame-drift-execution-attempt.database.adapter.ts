@@ -100,7 +100,7 @@ export class FrameDriftExecutionAttemptDatabaseAdapter implements FrameDriftExec
   /**
    * Insert the started state once, retaining the first start timestamp on replay.
    *
-   * @param attempt - Scheduler/job identity, daily bucket, and BullMQ attempt bounds.
+   * @param attempt - Scheduler identity, daily bucket, and attempt bounds.
    * @returns Insert/replay status and any terminal state already recorded.
    * @throws When the same job attempt already exists with conflicting identity.
    */

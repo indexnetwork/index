@@ -86,8 +86,8 @@ export interface NegotiationReflectJobData {
 }
 
 /**
- * Injected enqueue callback for post-negotiation reflection (P5.2). The
- * protocol package has no BullMQ access — services/api wires this at its
+ * Injected callback for post-negotiation reflection (P5.2). The
+ * protocol package has no host scheduler — services/api wires this at its
  * composition roots. Called fire-and-
  * forget from the finalize node: a reflection failure must never affect the
  * negotiation outcome.
@@ -135,8 +135,8 @@ export interface NegotiationReflectorConfig {
 /**
  * The memory distiller (P5.2). One structured LLM call per reflection pass,
  * producing ≤ {@link MAX_DISTILLED_MEMORIES} private memory entries for one
- * client's negotiator. Throws on LLM/validation failure — callers (the reflect
- * queue worker) own the swallow-and-log policy, since reflection must never
+ * client's negotiator. Throws on LLM/validation failure — callers
+ * own the swallow-and-log policy, since reflection must never
  * affect a negotiation outcome.
  */
 export class NegotiationReflector {

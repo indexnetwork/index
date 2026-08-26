@@ -45,9 +45,9 @@ export function negotiationRoundReflectJobId(intentId: string, round: number, ge
 }
 
 /**
- * Injected enqueue callback. The protocol package has no BullMQ access;
+ * Injected callback. The protocol package has no host scheduler;
  * services/api wires this at its composition roots. Called fire-and-forget:
- * a failed enqueue must never affect the negotiation's own pause.
+ * a failed start must never affect the negotiation's own pause.
  */
 export type NegotiationRoundReflectEnqueueFn = (job: NegotiationRoundReflectJobData) => Promise<void>;
 

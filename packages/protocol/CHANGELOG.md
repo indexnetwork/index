@@ -20,6 +20,15 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 37.0.0 - 2026-08-26
+
+### Breaking
+
+- **Remove the queue host port.** `IntentGraphQueue` is now `IntentFollowUp`
+  (`generateHyde` / `deleteHyde` / `resumeDiscovery`). `IntentsDeps.queue` is
+  `followUp`. `MaintenanceGraphQueue.addJob` is `MaintenanceRediscovery.discover`.
+  Hosts start this work directly; there is no job queue in the protocol contract.
+
 ## 36.0.0 - 2026-08-24
 
 ### Breaking

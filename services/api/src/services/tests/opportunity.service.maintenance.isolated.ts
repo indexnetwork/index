@@ -1,13 +1,9 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 
-const fromIntentAddJob = mock(async () => ({ id: 'from-intent-job' }));
-const fromIntroducerAddJob = mock(async () => ({ id: 'from-introducer-job' }));
+const fromIntentAddJob = mock(async () => undefined);
 
-mock.module('../../queues/opportunity/from-intent.queue', () => ({
-  fromIntentQueue: { addJob: fromIntentAddJob },
-}));
-mock.module('../../queues/opportunity/from-introducer.queue', () => ({
-  fromIntroducerQueue: { addJob: fromIntroducerAddJob },
+mock.module('../../lib/opportunity/discovery', () => ({
+  intentDiscovery: { addJob: fromIntentAddJob },
 }));
 mock.module('../../lib/drizzle/drizzle', () => ({ default: {} }));
 mock.module('../../adapters/database.adapter', () => ({
@@ -24,22 +20,15 @@ mock.module('../../lib/opportunity/outcome-feedback.recorder', () => ({ outcomeF
 
 const { OpportunityService } = await import('../opportunity.service');
 
-describe('OpportunityService maintenance queue composition', () => {
+describe('OpportunityService maintenance rediscovery', () => {
   beforeEach(() => {
     fromIntentAddJob.mockClear();
-    fromIntroducerAddJob.mockClear();
   });
 
-  test('routes maintenance rediscovery and introducer work through retained background queues', async () => {
+  test('starts intent discovery when the maintenance graph rediscovers', async () => {
     const service = new OpportunityService({
       getOpportunitiesForUser: async () => [],
       getActiveIntents: async () => [{ id: 'intent-1', payload: 'Find a technical cofounder' }],
-      getPersonalIndexId: async () => 'personal-index-1',
-      getContactsWithIntentFreshness: async () => [{
-        userId: 'contact-1',
-        latestIntentAt: new Date().toISOString(),
-        intentCount: 1,
-      }],
     } as never, {
       get: async () => null,
       set: async () => {},
@@ -47,15 +36,10 @@ describe('OpportunityService maintenance queue composition', () => {
 
     service.triggerMaintenance('user-1', 'test');
 
-    await waitFor(() => fromIntentAddJob.mock.calls.length === 1 && fromIntroducerAddJob.mock.calls.length === 1);
+    await waitFor(() => fromIntentAddJob.mock.calls.length === 1);
 
     expect(fromIntentAddJob).toHaveBeenCalledWith(
       { intentId: 'intent-1', userId: 'user-1' },
-      expect.objectContaining({ priority: 10 }),
-    );
-    expect(fromIntroducerAddJob).toHaveBeenCalledWith(
-      { userId: 'user-1', contactUserId: 'contact-1', networkIds: ['personal-index-1'] },
-      expect.objectContaining({ priority: 15 }),
     );
   });
 });
@@ -65,5 +49,5 @@ async function waitFor(condition: () => boolean): Promise<void> {
     if (condition()) return;
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
-  throw new Error('maintenance graph did not enqueue both retained queues');
+  throw new Error('maintenance graph did not start discovery');
 }

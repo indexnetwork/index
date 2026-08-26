@@ -161,8 +161,8 @@ export interface DatabaseIdentityQueries {
   }): Promise<TransitionLifecycleResult>;
 
   /**
-   * Compare-and-set a resume back to PAUSED when its discovery-enqueue
-   * acknowledgement failed. A concurrent lifecycle write is never overwritten.
+   * Compare-and-set a resume back to PAUSED when its discovery follow-up
+   * failed. A concurrent lifecycle write is never overwritten.
    */
   compensateFailedResume(input: {
     intentId: string;

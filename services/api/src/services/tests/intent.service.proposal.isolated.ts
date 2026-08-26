@@ -14,8 +14,8 @@ mock.module('../../adapters/intent-proposal.database.adapter', () => ({
   IntentProposalDatabaseAdapter: class IntentProposalDatabaseAdapter {},
   intentProposalDatabaseAdapter: {},
 }));
-mock.module('../../queues/intent.queue', () => ({
-  intentQueue: { addGenerateHydeJob: async () => 'job-id' },
+mock.module('../../lib/intent/indexing', () => ({
+  intentIndexing: { generateHyde: async () => undefined },
 }));
 mock.module('../../events/intent.event', () => ({
   IntentEvents: { onCreated: () => {} },

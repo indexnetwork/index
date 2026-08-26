@@ -7,7 +7,7 @@ import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { queueOpportunityNotification } from '../queues/notification.queue';
+import { notifyOpportunity } from '../lib/notification/opportunity-notifier';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('opportunity');
@@ -496,7 +496,7 @@ export class NetworkOpportunityController {
     // Queue notifications for non-introducer parties
     const recipientIds = parties.map((p) => p.userId).filter((id) => id !== user.id);
     for (const recipientId of recipientIds) {
-      await queueOpportunityNotification(result.id, recipientId, 'high');
+      await notifyOpportunity(result.id, recipientId, 'high');
     }
 
     return Response.json(result, { status: 201 });

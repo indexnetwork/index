@@ -24,7 +24,7 @@ The existing domain-first implementation tree now lives under `internal/`.
 `Agents`, and `Discovery` are executable capability modules; consumers continue
 to import only from the package root. `platform/`
 defines TypeScript ports for a host to implement; it contains no adapter,
-controller, web, database, queue, cache, or dependency-wiring implementation.
+controller, web, database, cache, or dependency-wiring implementation.
 Those belong in the consuming host.
 
 Hosts provide request-context storage with `setRequestContextStore()` and log

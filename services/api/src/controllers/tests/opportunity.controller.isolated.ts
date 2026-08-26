@@ -16,8 +16,8 @@ afterAll(() => {
 });
 
 // Mock notification queue so loading OpportunityController does not connect to Redis
-mock.module("../../queues/notification.queue", () => ({
-  queueOpportunityNotification: async () => ({ id: "mock-job" }),
+mock.module("../../lib/notification/opportunity-notifier", () => ({
+  notifyOpportunity: async () => ({ id: "mock-job" }),
 }));
 
 // Load controllers after mock is registered so createManual path never touches Redis in tests

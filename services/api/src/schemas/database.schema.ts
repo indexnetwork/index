@@ -852,9 +852,9 @@ export const networkIntegrations = pgTable('network_integrations', {
 }));
 
 /**
- * Owner-visible, aggregate-only observability for the ordinary from-intent
- * worker. Unlike BullMQ retention this survives completed, failed and stale
- * jobs and deliberately has no error payload or candidate-level data.
+ * Owner-visible, aggregate-only observability for intent-triggered discovery.
+ * Survives completed, failed and stale runs and deliberately has no error
+ * payload or candidate-level data.
  */
 export const intentDiscoveryProgress = pgTable('intent_discovery_progress', {
   intentId: text('intent_id').primaryKey().references(() => intents.id, { onDelete: 'cascade' }),

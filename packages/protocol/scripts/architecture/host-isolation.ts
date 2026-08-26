@@ -79,4 +79,4 @@ for (const filePath of await sourceFiles(sourceRoot)) {
 }
 
 if (violations.length > 0) throw new Error(`Host-isolation violations:\n${violations.map((entry) => `- ${entry}`).join("\n")}`);
-console.log("Host isolation OK (zero API/web/schema/queue/concrete-adapter imports)." );
+console.log("Host isolation OK (zero API/web/schema/concrete-adapter imports)." );

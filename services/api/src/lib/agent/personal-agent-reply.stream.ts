@@ -15,13 +15,12 @@
  * Chunks are published only after each message passed its prose-safety check
  * and was persisted; nothing unchecked crosses this transport.
  *
- * In hermetic test mode (the same `useHermeticRedis()` guard the queue
- * factory applies) the transport is an in-process emitter, so controller and
- * worker specs exercise the real subscribe→publish→relay path without Redis.
+ * In hermetic test mode the transport is an in-process emitter, so controller
+ * specs exercise the real subscribe→publish→relay path without Redis.
  */
 import { EventEmitter } from 'events';
 
-import { useHermeticRedis } from '../bullmq/bullmq';
+import { useHermeticRedis } from '../redis/hermetic';
 import { log } from '../log';
 
 const logger = log.lib.from('personal-agent-reply.stream');

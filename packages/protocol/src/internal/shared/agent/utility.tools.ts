@@ -226,7 +226,7 @@ Discovery is the process of finding meaningful connections between users based o
 3. **Semantic matching**: Uses HyDE (Hypothetical Document Embeddings) to find candidate intents that complement the source. This goes beyond keyword matching — it understands conceptual relationships.
 4. **Evaluation**: An LLM evaluator agent scores each candidate match on relevance, complementarity, and actionability. Low-scoring matches are filtered out.
 5. **Results**: Persisted as draft opportunities with roles, reasoning, and confidence scores.
-6. **Background processing**: After intent creation, a queue job continues looking for matches asynchronously.
+6. **Background processing**: After intent creation, the host continues looking for matches asynchronously.
 7. **Review**: Use list_opportunities to review persisted actionable cards; it does not run matching.
 
 ### Discovery Best Practices

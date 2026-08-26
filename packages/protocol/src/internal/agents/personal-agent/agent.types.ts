@@ -17,7 +17,7 @@
  * surface for it.
  *
  * The ports below are what a host must implement. The package knows nothing
- * of Drizzle, BullMQ or Redis: the signal DM, the dossier, the act ledger,
+ * of Drizzle or Redis: the signal DM, the dossier, the act ledger,
  * the reply transport and the owner's accept path are all host concerns.
  */
 import type { NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";

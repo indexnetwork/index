@@ -7,7 +7,7 @@ tool names, serialized data, or supported root exports.
 | Boundary | Responsibility | First-slice contents |
 | --- | --- | --- |
 | `protocol/` | Framework-free vocabulary, schemas, and deterministic rules | Schemas, request scope, retrieval lenses, and intent-indexing contracts |
-| `platform/` | Host ports and supported runtime hooks | TypeScript contracts for database, cache, queue, embedder, scraper, logging, request context, and errors; no adapter implementations |
+| `platform/` | Host ports and supported runtime hooks | TypeScript contracts for database, cache, embedder, scraper, logging, request context, follow-up, and errors; no adapter implementations |
 | `capabilities/` | Small executable entry points | Executable intent, network, context, contact, opportunity, negotiation, agent, and discovery capability classes |
 
 `internal/` is private and now contains graphs, prompts, agents, retrieval,
@@ -40,7 +40,7 @@ subpaths.
 | Current area | Boundary | Status |
 | --- | --- | --- |
 | Stable schemas and deterministic vocabulary | `protocol/` | Moved where framework-free |
-| Database, cache, queue, embedder, scraper, request/context, and service contracts | `platform/` | Contracts only; no Drizzle/Postgres/Redis/BullMQ adapters, API controllers, web concerns, configuration, or host wiring |
+| Database, cache, follow-up, embedder, scraper, request/context, and service contracts | `platform/` | Contracts only; no Drizzle/Postgres/Redis adapters, API controllers, web concerns, configuration, or host wiring |
 | Intent, network, context, contact, opportunity, negotiation, chat-agent, and HyDE discovery composition | `capabilities/` | Executable capability modules; internal graphs and tools remain private |
 | Existing domain-first implementation directories | `internal/` | Moved without workflow rewrites |
 

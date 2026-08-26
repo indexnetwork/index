@@ -16,7 +16,7 @@ import { signalIntakePackAdapter } from '../adapters/signal-intake-pack.database
 import { computeAnswersHash, signalIntakeRunAdapter, SIGNAL_INTAKE_RUN_TTL_MS } from '../adapters/signal-intake-run.database.adapter';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { intentQueue } from '../queues/intent.queue';
+import { intentIndexing } from '../lib/intent/indexing';
 import { getSignalIntakeConfig } from '../lib/fast-intake-feature';
 import { log } from '../lib/log';
 
@@ -510,7 +510,7 @@ export class SignalIntakeService {
 const productionIntents = new Intents({
   database: intentDatabaseAdapter,
   embedder: new EmbedderAdapter(),
-  queue: intentQueue,
+  followUp: intentIndexing,
 });
 const compiledIntentGraph = productionIntents.createGraph();
 

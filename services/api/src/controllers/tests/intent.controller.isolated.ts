@@ -9,7 +9,7 @@ import type { AuthenticatedUser } from "../../guards/auth.guard";
 import { ScopeViolationError } from '../../guards/agent-scope.guard';
 import { IntentNetworkMembershipError, IntentProposalConfirmationError } from '../../services/intent.service';
 import db from '../../lib/drizzle/drizzle';
-import { intentQueue } from '../../queues/intent.queue';
+import { intentIndexing } from '../../lib/intent/indexing';
 import { intentNetworks as intentNetworksTable, intents as intentsTable, networkMembers as networkMembersTable, opportunities as opportunitiesTable } from '../../schemas/database.schema';
 import { withMinimumDatabaseHookBudget, withMinimumDatabaseTestBudget } from '../../lib/testing/database-test-budget';
 
@@ -751,9 +751,9 @@ describe("IntentController Integration", () => {
       userId: testUserId,
       status: 'PAUSED',
     });
-    const originalAddResumeDiscoveryJob = intentQueue.addResumeDiscoveryJob.bind(intentQueue);
-    intentQueue.addResumeDiscoveryJob = async () => {
-      throw new Error('queue unavailable');
+    const originalResumeDiscovery = intentIndexing.resumeDiscovery.bind(intentIndexing);
+    intentIndexing.resumeDiscovery = async () => {
+      throw new Error('discovery unavailable');
     };
     try {
       const response = await controller.updateStatus(
@@ -774,7 +774,7 @@ describe("IntentController Integration", () => {
       });
       expect((await intentAdapter.getIntentById(testIntentId, testUserId))?.status).toBe('PAUSED');
     } finally {
-      intentQueue.addResumeDiscoveryJob = originalAddResumeDiscoveryJob;
+      intentIndexing.resumeDiscovery = originalResumeDiscovery;
     }
   });
 

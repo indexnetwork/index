@@ -21,7 +21,7 @@ Install the following before cloning the repository.
 | **Bun** | 1.2+ | JavaScript/TypeScript runtime, package manager, test runner |
 | **PostgreSQL** | 14+ | Primary data store |
 | **pgvector** extension | 0.5+ | 2000-dimensional vector similarity search |
-| **Redis** | 6+ | Job queues (BullMQ) and caching |
+| **Redis** | 6+ | Cache, locks, SSE |
 | **Git** | 2.30+ | Version control, worktrees |
 
 Install Bun (if not already installed):
@@ -358,16 +358,6 @@ bun run db:flush        # Flush all data (development only)
 
 After generating a migration, always rename the SQL file to a descriptive name and update the `tag` field in `services/api/drizzle/meta/_journal.json` to match.
 
-### Queue monitoring
-
-When the API service is running, Bull Board is available at:
-
-```
-http://localhost:3001/dev/queues/
-```
-
-This shows all BullMQ job queues, their status, and lets you retry failed jobs or clear queues.
-
 ## Git workflow
 
 ### Worktrees
@@ -476,7 +466,7 @@ If you see `ECONNREFUSED` errors related to Redis:
 
 1. Verify Redis is running: `redis-cli ping` should return `PONG`.
 2. If Redis is on a non-default host/port, set `REDIS_URL` in the root `.env.development`.
-3. The API service will start without Redis, but job queues and caching will not function.
+3. The API service will start without Redis, but caching, locks, and SSE will not function.
 
 ### Migrations out of sync
 

@@ -32,7 +32,7 @@ index/
     hermes-plugin/   Hermes-native plugin distribution with generated skills, subtree-synced publicly
 ```
 
-**API service** is a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
+**API service** is a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, in-process background work, and event infrastructure.
 
 **Web app** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the API service. In production, `apps/web/server.ts` serves the Vite output and falls back to `index.html` only for document navigations. HTML is `no-store`, generated `/assets/*` files are immutable, and missing assets return a non-HTML 404 so stale lazy imports can be detected and recovered safely. React Router lazy imports make one bounded, URL-preserving reload attempt per stale route load before the application error boundary presents an explicit refresh action.
 
@@ -71,7 +71,7 @@ The protocol backend enforces strict layering to maintain separation of concerns
 |                                                                  |
 |   Adapters                                                       |
 |   Own types that align with protocol interfaces                   |
-|   (database, embedder, cache, queue, scraper, storage)           |
+|   (database, embedder, cache, scraper, storage)                  |
 |   Named by concept, not technology                               |
 |                                                                  |
 +------------------------------------------------------------------+
@@ -81,7 +81,7 @@ The protocol backend enforces strict layering to maintain separation of concerns
 +------------------------------------------------------------------+
 |                                                                  |
 |   Infrastructure                                                 |
-|   PostgreSQL + pgvector, Redis (BullMQ), OpenRouter (LLM),      |
+|   PostgreSQL + pgvector, Redis (cache/locks/SSE), OpenRouter,   |
 |   S3 (storage), external APIs                                    |
 |                                                                  |
 +------------------------------------------------------------------+
@@ -113,7 +113,7 @@ Layering is enforced through strict import rules. Violations cause tight couplin
 
 **Services**
 - CAN import: adapters from `src/adapters/`, protocol graphs and agents from `@indexnetwork/protocol`
-- CANNOT import: other services (use events, queues, or shared lib for cross-service orchestration)
+- CANNOT import: other services (use events or shared lib for cross-service orchestration)
 
 **Adapters**
 - CAN import: infrastructure libraries (must not import from `@indexnetwork/protocol` interfaces — define own aligned types)
@@ -168,7 +168,6 @@ Adapters are named by **concept**, not by implementation technology.
 |---------|-----------|
 | `database.adapter.ts` | `drizzle.adapter.ts` |
 | `cache.adapter.ts` | `redis.adapter.ts` |
-| `queue.adapter.ts` | `bullmq.adapter.ts` |
 | `storage.adapter.ts` | `s3.adapter.ts` |
 
 This allows swapping infrastructure without renaming files or updating imports across the codebase.
@@ -279,7 +278,7 @@ The primary use case is bulk experiment-network onboarding: `networkInvitationSe
 
 Negotiation turns that cannot be resolved synchronously by an in-process system agent are **parked for polling**: the graph writes a `tasks` row in `waiting_for_agent` with the full turn context in metadata and suspends.
 
-1. The user's personal agent polls `POST /api/agents/:id/negotiations/pickup` with its API key. The backend atomically CAS's the oldest pending task for the caller's user from `waiting_for_agent` to `claimed`, enqueues a 6-hour claim timeout, and returns the turn context.
+1. The user's personal agent polls `POST /api/agents/:id/negotiations/pickup` with its API key. The backend atomically CAS's the oldest pending task for the caller's user from `waiting_for_agent` to `claimed`, the watchdog starts a 6-hour claim timeout, and the handler returns the turn context.
 2. The agent deliberates and submits its decision via `POST /api/agents/:id/negotiations/:negotiationId/respond`. The backend persists the turn and either finalizes the negotiation (on `accept`, `reject`, or turn cap) or returns the task to `waiting_for_agent` for the counterparty.
 3. If no agent claims a parked turn within 24 hours, the in-process system `Index Negotiator` takes over.
 
@@ -377,8 +376,7 @@ When a user says "I'm looking for a React co-founder":
    - **Verification node**: `IntentVerifier` checks felicity conditions (semantic entropy, referential anchors, sincerity)
    - **Reconciliation node**: `IntentReconciler` decides whether to create, update, or expire existing intents
    - **Execution node**: Persists the intent to the database with embedding
-3. `IntentEvents.onCreated` fires, which enqueues an opportunity discovery job
-4. The opportunity queue picks up the job asynchronously
+3. `IntentEvents.onCreated` fires maintenance. Intent indexing assigns networks, generates HyDE, then starts discovery in-process.
 
 ### Intent Pause/Resume Admission
 
@@ -386,7 +384,7 @@ When a user says "I'm looking for a React co-founder":
 
 Pause is an admission gate, not cleanup. It preserves existing opportunities/Radar cards, pending questions, conversations, intent-network assignments, and HyDE documents. Lifecycle checks prevent a paused intent from admitting not-yet-started intent-driven discovery, appearing as a candidate match, or starting new pool mining, question generation, and answer-triggered Tier-1 runs. Work that passed its admission check before the pause may finish. A pending question can still be answered and its deterministic Tier-0 re-ranking can still affect the existing pool.
 
-Resume atomically restores `ACTIVE` and invokes `IntentEvents.onResumed`. The HTTP response awaits enqueue acknowledgement for a from-intent discovery job whose ID includes the stable lifecycle version, so retries deduplicate. If enqueue fails after a real `PAUSED` → `ACTIVE` transition, a narrow owner/scope/version compare-and-set compensates back to `PAUSED`; concurrent lifecycle writes are not overwritten, and an idempotent `ACTIVE` request is not mutated. The endpoint returns retryable `503 enqueue_failed` with the authoritative resulting status instead of claiming success. An acknowledged run proceeds through the ordinary discovery-completion pool mining and question flow.
+Resume atomically restores `ACTIVE` and starts discovery in-process via `IntentFollowUp.resumeDiscovery`. If that follow-up fails after a real `PAUSED` → `ACTIVE` transition, a narrow owner/scope/version compare-and-set compensates back to `PAUSED`; concurrent lifecycle writes are not overwritten, and an idempotent `ACTIVE` request is not mutated. The endpoint returns retryable `503 enqueue_failed` with the authoritative resulting status instead of claiming success.
 
 ---
 
@@ -401,22 +399,12 @@ Defined in `src/events/intent.event.ts`:
 ```typescript
 export const IntentEvents = {
   onCreated: (_intentId: string, _userId: string): void => {},
-  onPaused: (_intentId: string, _userId: string, _lifecycleVersionMs: number): void => {},
-  onResumed: async (_intentId: string, _userId: string, _lifecycleVersionMs: number): Promise<void> => {},
+  onMaterialUpdated: async (_event: IntentMaterialUpdateEvent): Promise<void> => {},
   onArchived: (_intentId: string, _userId: string): void => {},
 };
 ```
 
-These are assigned concrete handlers in `main.ts`. `onCreated` enqueues discovery and triggers opportunity maintenance; `onPaused` records the transition without cleanup; `onResumed` awaits enqueue acknowledgement for the deduplicated resume discovery job; and `onArchived` triggers maintenance after archive cleanup. The awaited resume handler makes the status response acknowledge queue admission rather than merely starting a fire-and-forget enqueue; service-level compare-and-set compensation restores `PAUSED` when a changed resume cannot be admitted:
-
-```typescript
-IntentEvents.onResumed = async (intentId, userId, lifecycleVersionMs) => {
-  await fromIntentQueue.addJob(
-    { intentId, userId, trigger: 'intent_resume' },
-    { priority: 10, jobId: intentResumeDiscoveryJobId(userId, intentId, lifecycleVersionMs) },
-  );
-};
-```
+These are assigned concrete handlers in `main.ts`. `onCreated` triggers opportunity maintenance (discovery starts later from intent indexing after assignment and HyDE); `onArchived` triggers maintenance after archive cleanup. Resume discovery is started from the protocol intent graph through `IntentFollowUp.resumeDiscovery`.
 
 ### Network Membership Events
 
@@ -434,54 +422,30 @@ When a user joins an index, this event triggers an enrichment job (`ensure_profi
 
 - **Services emit events after DB transactions**, ensuring data consistency before side effects
 - **Events decouple services**: the intent service does not need to know about opportunity discovery
-- **Queue-based handlers**: event handlers enqueue jobs rather than executing work inline, keeping the request path fast
-- **Events and queues are the only mechanism for cross-service communication** (services must not import other services)
+- **Follow-up handlers**: event handlers start in-process work rather than executing it on the request path
+- **Events and shared lib are the only mechanism for cross-service communication** (services must not import other services)
 
 ---
 
-## 7. Queue System
+## 7. Background work
 
-BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions live in `src/queues/`, and workers are started in `main.ts`.
+Background work runs in-process: direct calls for request-triggered follow-up, and `node-cron` for periodic sweeps. Redis is used for cache, locks, and SSE, not jobs.
 
-### Queue Types
+| Work | Purpose |
+|------|---------|
+| Intent indexing (`lib/intent/indexing.ts`) | Assign networks, generate HyDE, start discovery |
+| Intent discovery (`lib/opportunity/discovery.ts`) | Intent-triggered opportunity discovery |
+| Opportunity expiration | Cron: expire stale opportunities |
+| HyDE maintenance | Cron: cleanup and refresh HyDE documents |
+| Opportunity notifications | Immediate / email / digest delivery |
+| PersonalAgent turns | Serialized per-intent agent turns |
+| Premise cascade | Retract/expire cascades and profile decomposition |
+| Negotiation watchdog | Cron: sweep stale negotiation tasks |
+| Negotiation reflect | Delayed chat reflection + decay cron |
+| Frame-drift monitoring | Disabled-by-default daily centroid observations |
+| Checkpoint retention | Cron: prune LangGraph checkpoint tables |
 
-| Queue | Purpose |
-|-------|---------|
-| `intent.queue` | Intent indexing and generation jobs |
-| `opportunity/from-intent` | BullMQ queue: intent-triggered opportunity discovery |
-| `opportunity/from-introducer` | BullMQ queue: introducer-triggered opportunity discovery |
-| `opportunity/expiration` | **node-cron task** (not a BullMQ queue — does not appear in Bull-Board): scans and expires stale opportunities on a schedule |
-| `negotiations/timeout` | BullMQ queue: AI fallback when personal agent lacks heartbeat |
-| `negotiations/claim-timeout` | BullMQ queue: expire stale claims stuck in `claimed` state |
-| `enrichment.queue` | User enrichment (premise decomposition) and HyDE document creation |
-| `hyde.queue` | HyDE document generation and cron-based refresh |
-| `email.queue` | Email delivery via Resend |
-| `notification.queue` | Notification delivery |
-| `integration-sync-queue` | Periodic Google Calendar sync for event networks |
-| `frame-drift-monitoring` | Disabled-by-default daily BullMQ scheduler for atomically claimed, immutable capture-time centroid observations and a non-causal intent-assignment-pair normalized opportunity-yield proxy; intentionally omitted from Bull Board |
-
-### Job Patterns
-
-- **Retries**: 3 attempts with exponential backoff (1-second base delay)
-- **Cleanup**: Completed jobs removed after 24 hours, failed jobs after 7 days
-- **Concurrency**: Default is 1 (sequential processing) to avoid race conditions
-- **Naming**: Snake_case job names (e.g., `generate_hyde`, `discover_opportunities`)
-- **Deduplication**: Jobs use deterministic IDs where appropriate (e.g., time-bucketed rediscovery jobs) to prevent duplicate processing
-
-### Queue Orchestration Rule
-
-Queues orchestrate by calling services, graphs, or adapters. They contain no business logic themselves. A queue handler might:
-
-1. Load context from the database adapter
-2. Invoke a graph factory to run a pipeline
-3. Persist results via the adapter
-4. Emit events if further processing is needed
-
-### Monitoring
-
-Bull Board UI is served at `http://localhost:3001/dev/queues/` when the protocol server is running. It provides job status visibility, retry controls, and queue metrics. Internal measurement schedulers such as frame-drift monitoring are not registered there.
-
-Daily frame-drift measurement is implemented as queue orchestration → service calculation → adapter-owned `REPEATABLE READ` observation. A unique run header claims the whole bucket before source reads, and metric rows reference that header, preventing duplicate captures from appending newly eligible rows. Privacy thresholding applies both to user-balanced centroids and to each side of a yield pair; historical qualifying aggregates are not recomputed after later user deletion. The pipeline is measurement-only and has no API/UI or realignment side effects. See [Frame-Drift Monitoring](./frame-drift-monitoring.md).
+Daily frame-drift measurement is cron → service calculation → adapter-owned `REPEATABLE READ` observation. A unique run header claims the whole bucket before source reads, and metric rows reference that header, preventing duplicate captures from appending newly eligible rows. Privacy thresholding applies both to user-balanced centroids and to each side of a yield pair; historical qualifying aggregates are not recomputed after later user deletion. The pipeline is measurement-only and has no API/UI or realignment side effects. See [Frame-Drift Monitoring](./frame-drift-monitoring.md).
 
 ---
 
@@ -632,7 +596,7 @@ Browser --HTTP--> Bun.serve --route--> Guard --auth--> Controller
         (up to 12 iterations)
 ```
 
-### Event and Queue Flow
+### Event and follow-up flow
 
 ```
 Service
@@ -643,11 +607,11 @@ Service
   v
 IntentEvents.onCreated(intentId, userId)
   |
-  |  Enqueues job
+  |  Intent indexing (HyDE + assignment) then discovery
   v
-fromIntentQueue.addJob({intentId, userId})
+intentDiscovery.addJob({intentId, userId})
   |
-  |  Worker picks up job
+  |  In-process run
   v
 OpportunityGraphFactory.createGraph().invoke(...)
   |
@@ -708,4 +672,4 @@ Sandbox is not a production requirement for this distribution model.
 - **Protocol package README**: `packages/protocol/src/README.md` — graph, agent, and tool documentation
 - **Protocol design references**: `docs/design/protocol-deep-dive.md` and `docs/design/opportunity-status-lifecycle.md`
 - **Research and historical analysis**: `docs/research/`
-- **Template files**: `services/api/src/controllers/controller.template.md`, `services/api/src/services/service.template.md`, `services/api/src/queues/queue.template.md`
+- **Template files**: `services/api/src/controllers/controller.template.md`, `services/api/src/services/service.template.md`

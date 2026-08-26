@@ -284,7 +284,7 @@ export function createMockProtocolDeps(overrides?: Partial<ProtocolDeps>): Proto
     hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    intentQueue: { addGenerateHydeJob: async () => ({}), addDeleteHydeJob: async () => ({}) } as any,
+    intentFollowUp: { generateHyde: async () => ({}), deleteHyde: async () => ({}) } as any,
     contactService: { listContacts: async () => [], removeContact: async () => {} } as unknown as ProtocolDeps["contactService"],
     chatSession: mockChatSessionReader,
     enricher: { enrichUserProfile: async () => null } as unknown as ProtocolDeps["enricher"],

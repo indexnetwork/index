@@ -2,9 +2,8 @@
 /**
  * Rediscover opportunities for a specific user.
  *
- * Wipes the user's prior discovery state so the new run isn't dedup-skipped or
- * polluted by stale negotiation tasks, then enqueues a fresh discovery job per
- * active intent with a unique jobId to bypass the 6h queue-level dedupe key.
+ * Wipes the user's prior discovery state so the new run isn't polluted by
+ * stale negotiation tasks, then starts discovery for each active intent.
  *
  * Cleanup order (FK-safe):
  *   1. Delete negotiation tasks tied to those opportunities (artifacts cascade,
@@ -26,7 +25,7 @@ import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm/sql';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, opportunities, users } from '../schemas/database.schema';
 import { tasks } from '../schemas/conversation.schema';
-import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
+import { intentDiscovery } from '../lib/opportunity/discovery';
 import { assertNoPausedIntentsForRediscovery } from './rediscover-user-opportunities.guard';
 
 async function main() {
@@ -95,18 +94,13 @@ async function main() {
     ));
   console.log(`[rediscover] Found ${activeIntents.length} active intent(s) for user ${userId}.`);
 
-  const stamp = Date.now();
-  let enqueued = 0;
+  let started = 0;
   for (const { id: intentId } of activeIntents) {
-    await fromIntentQueue.addJob(
-      { intentId, userId },
-      { priority: 10, jobId: `manual-rediscovery-${userId}-${intentId}-${stamp}` },
-    );
-    enqueued++;
+    await intentDiscovery.discover({ intentId, userId });
+    started++;
   }
-  console.log(`[rediscover] Enqueued ${enqueued} discovery job(s).`);
+  console.log(`[rediscover] Started discovery for ${started} intent(s).`);
 
-  await fromIntentQueue.queue.close();
   await closeDb();
   process.exit(0);
 }

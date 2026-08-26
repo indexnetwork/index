@@ -1,12 +1,12 @@
-/** Unit tests for PremiseEvents hooks and constructor-injected PremiseQueue logic. */
+/** Unit tests for PremiseEvents hooks and constructor-injected PremiseCascade logic. */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import { PremiseEvents } from '../premise.event';
-import { PremiseQueue } from '../../queues/premise.queue';
-import type { IntentReverificationVerdict, NonTerminalStatus, PremiseQueueDeps } from '../../queues/premise.queue';
+import { PremiseCascade } from '../../lib/premise/cascade';
+import type { IntentReverificationVerdict, NonTerminalStatus, PremiseCascadeDeps } from '../../lib/premise/cascade';
 
 /** Deps that silence the re-verification path for opportunity-focused tests. */
-const noReverifyDeps: Pick<PremiseQueueDeps, 'getPremiseEmbedding'> = {
+const noReverifyDeps: Pick<PremiseCascadeDeps, 'getPremiseEmbedding'> = {
   getPremiseEmbedding: async () => null,
 };
 
@@ -78,12 +78,12 @@ describe('PremiseEvents', () => {
 });
 
 // ---------------------------------------------------------------------------
-// PremiseQueue cascade tests
+// PremiseCascade cascade tests
 // ---------------------------------------------------------------------------
-describe('PremiseQueue — premise_cascade', () => {
+describe('PremiseCascade — premise_cascade', () => {
   it('passes both userId and premiseId to the targeted opportunity fetch', async () => {
     const fetchArgs: Array<[string, string]> = [];
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...noReverifyDeps,
       getOpportunitiesCitingPremise: async (userId, premiseId) => {
         fetchArgs.push([userId, premiseId]);
@@ -91,14 +91,14 @@ describe('PremiseQueue — premise_cascade', () => {
       },
       updateOpportunityStatus: async () => {},
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-0', userId: 'u-0', event: 'retracted' });
     expect(fetchArgs).toEqual([['u-0', 'p-0']]);
   });
 
   it('transitions draft and latent opportunities citing the premise to expired', async () => {
     const transitions: Array<[string, string]> = [];
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...noReverifyDeps,
       getOpportunitiesCitingPremise: async () => [
         { id: 'opp-1', status: 'draft' as NonTerminalStatus },
@@ -108,7 +108,7 @@ describe('PremiseQueue — premise_cascade', () => {
         transitions.push([id, status]);
       },
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-1', userId: 'u-1', event: 'retracted' });
     expect(transitions).toEqual([
       ['opp-1', 'expired'],
@@ -118,7 +118,7 @@ describe('PremiseQueue — premise_cascade', () => {
 
   it('transitions pending and negotiating opportunities to expired, never stalled', async () => {
     const transitions: Array<[string, string]> = [];
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...noReverifyDeps,
       getOpportunitiesCitingPremise: async () => [
         { id: 'opp-1', status: 'pending' as NonTerminalStatus },
@@ -128,7 +128,7 @@ describe('PremiseQueue — premise_cascade', () => {
         transitions.push([id, status]);
       },
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-2', userId: 'u-2', event: 'expired' });
     expect(transitions).toEqual([
       ['opp-1', 'expired'],
@@ -138,7 +138,7 @@ describe('PremiseQueue — premise_cascade', () => {
 
   it('handles mixed statuses: every citing cascade-eligible opportunity expires', async () => {
     const transitions: Array<[string, string]> = [];
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...noReverifyDeps,
       getOpportunitiesCitingPremise: async () => [
         { id: 'opp-a', status: 'draft' as NonTerminalStatus },
@@ -150,7 +150,7 @@ describe('PremiseQueue — premise_cascade', () => {
         transitions.push([id, status]);
       },
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-3', userId: 'u-3', event: 'retracted' });
     expect(transitions).toEqual([
       ['opp-a', 'expired'],
@@ -162,12 +162,12 @@ describe('PremiseQueue — premise_cascade', () => {
 
   it('expires nothing when no opportunity cites the premise (no collateral)', async () => {
     const updateOpportunityStatus = mock(async (_id: string, _status: 'expired') => {});
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...noReverifyDeps,
       getOpportunitiesCitingPremise: async () => [],
       updateOpportunityStatus,
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await expect(
       queue.processJob('premise_cascade', { premiseId: 'p-4', userId: 'u-4', event: 'retracted' })
     ).resolves.toBeUndefined();
@@ -176,7 +176,7 @@ describe('PremiseQueue — premise_cascade', () => {
 
   it('calls updateOpportunityStatus once per citing opportunity', async () => {
     const updateOpportunityStatus = mock(async (_id: string, _status: 'expired') => {});
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...noReverifyDeps,
       getOpportunitiesCitingPremise: async () => [
         { id: 'opp-1', status: 'draft' as NonTerminalStatus },
@@ -184,16 +184,16 @@ describe('PremiseQueue — premise_cascade', () => {
       ],
       updateOpportunityStatus,
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-5', userId: 'u-5', event: 'retracted' });
     expect(updateOpportunityStatus).toHaveBeenCalledTimes(2);
   });
 });
 
 // ---------------------------------------------------------------------------
-// PremiseQueue grounded-intent re-verification tests (IND-423)
+// PremiseCascade grounded-intent re-verification tests (IND-423)
 // ---------------------------------------------------------------------------
-describe('PremiseQueue — grounded intent re-verification', () => {
+describe('PremiseCascade — grounded intent re-verification', () => {
   const verdict: IntentReverificationVerdict = {
     classification: 'COMMISSIVE',
     felicity_scores: { clarity: 80, authority: 45, sincerity: 90 },
@@ -201,7 +201,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
     flags: ['SKILL_MISMATCH'],
   };
 
-  const baseDeps = (): PremiseQueueDeps => ({
+  const baseDeps = (): PremiseCascadeDeps => ({
     getOpportunitiesCitingPremise: async () => [],
     updateOpportunityStatus: async () => {},
   });
@@ -209,7 +209,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
   it('re-verifies intents grounded on the lapsed premise and persists the verdict', async () => {
     const applied: Array<[string, IntentReverificationVerdict]> = [];
     const verified: string[] = [];
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...baseDeps(),
       getPremiseEmbedding: async () => [0.1, 0.2, 0.3],
       getGroundedIntents: async () => [
@@ -225,7 +225,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
         applied.push([intentId, v]);
       },
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-1', userId: 'u-1', event: 'retracted' });
     expect(verified).toEqual([
       'Looking for a co-founder in Berlin',
@@ -239,12 +239,12 @@ describe('PremiseQueue — grounded intent re-verification', () => {
 
   it('skips re-verification when the premise has no embedding', async () => {
     const getGroundedIntents = mock(async () => []);
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...baseDeps(),
       getPremiseEmbedding: async () => null,
       getGroundedIntents,
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-2', userId: 'u-2', event: 'expired' });
     expect(getGroundedIntents).not.toHaveBeenCalled();
   });
@@ -252,14 +252,14 @@ describe('PremiseQueue — grounded intent re-verification', () => {
   it('skips the profile fetch and verifier when no intents are grounded on the premise', async () => {
     const verifyIntent = mock(async () => verdict);
     const getUserProfileContext = mock(async () => '{}');
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...baseDeps(),
       getPremiseEmbedding: async () => [0.5, 0.5],
       getGroundedIntents: async () => [],
       getUserProfileContext,
       verifyIntent,
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await queue.processJob('premise_cascade', { premiseId: 'p-3', userId: 'u-3', event: 'retracted' });
     expect(getUserProfileContext).not.toHaveBeenCalled();
     expect(verifyIntent).not.toHaveBeenCalled();
@@ -267,7 +267,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
 
   it('continues past per-intent verifier failures and persists the rest', async () => {
     const applied: string[] = [];
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       ...baseDeps(),
       getPremiseEmbedding: async () => [0.1],
       getGroundedIntents: async () => [
@@ -283,7 +283,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
         applied.push(intentId);
       },
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await expect(
       queue.processJob('premise_cascade', { premiseId: 'p-4', userId: 'u-4', event: 'retracted' })
     ).resolves.toBeUndefined();
@@ -292,14 +292,14 @@ describe('PremiseQueue — grounded intent re-verification', () => {
 
   it('never fails the cascade job when re-verification setup throws (expiry already done)', async () => {
     const transitions: string[] = [];
-    const deps: PremiseQueueDeps = {
+    const deps: PremiseCascadeDeps = {
       getOpportunitiesCitingPremise: async () => [
         { id: 'opp-1', status: 'pending' as NonTerminalStatus },
       ],
       updateOpportunityStatus: async (id) => { transitions.push(id); },
       getPremiseEmbedding: async () => { throw new Error('db down'); },
     };
-    const queue = new PremiseQueue(deps);
+    const queue = new PremiseCascade(deps);
     await expect(
       queue.processJob('premise_cascade', { premiseId: 'p-5', userId: 'u-5', event: 'retracted' })
     ).resolves.toBeUndefined();
@@ -308,12 +308,12 @@ describe('PremiseQueue — grounded intent re-verification', () => {
 });
 
 // ---------------------------------------------------------------------------
-// PremiseQueue routing tests
+// PremiseCascade routing tests
 // ---------------------------------------------------------------------------
-describe('PremiseQueue — job routing', () => {
+describe('PremiseCascade — job routing', () => {
   it('does not throw for unknown job names', async () => {
-    const deps: PremiseQueueDeps = {};
-    const queue = new PremiseQueue(deps);
+    const deps: PremiseCascadeDeps = {};
+    const queue = new PremiseCascade(deps);
     await expect(
       queue.processJob('unknown_job_type', { premiseId: 'p-x', userId: 'u-x', event: 'retracted' })
     ).resolves.toBeUndefined();

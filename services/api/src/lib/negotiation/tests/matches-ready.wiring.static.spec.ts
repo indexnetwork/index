@@ -21,7 +21,7 @@ const main = read('../../../main.ts');
 describe('matches_ready wiring', () => {
   it('is exported from the one composition site, alongside the graphs it feeds', () => {
     expect(composition).toContain('export const matchesReady: MatchesReadyFn');
-    expect(composition).toContain('personalAgentQueue.addMatchesReadyEvent');
+    expect(composition).toContain('personalAgentTurns.addMatchesReadyEvent');
   });
 
   it('reaches the chat/MCP tool factory through protocolDeps and toolDeps', () => {

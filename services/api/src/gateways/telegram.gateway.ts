@@ -58,7 +58,7 @@ function productionDeps(): GatewayDeps {
 
 /**
  * Handle a notification event: deliver via Telegram and write to conversation.
- * @param payload - Notification payload from the NotificationQueue
+ * @param payload - Notification payload from the OpportunityNotifier
  * @param deps - Injectable deps (defaults to production singletons)
  */
 export async function handleOutbound(

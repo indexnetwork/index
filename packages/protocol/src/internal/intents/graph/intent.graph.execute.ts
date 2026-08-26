@@ -89,12 +89,12 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
           results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
           logger.verbose('Created intent', { intentId: created.id });
 
-          deps.intentQueue?.addGenerateHydeJob({
+          deps.intentFollowUp?.generateHyde({
             intentId: created.id,
             userId: state.userId,
             ...scopeEnvelope,
           }).catch((err) =>
-            logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
+            logger.error('Failed to start intent HyDE', { intentId: created.id, error: err })
           );
 
         } else if (actionType === 'update') {
@@ -139,12 +139,12 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
           });
           logger.verbose('Updated intent', { intentId: updateAction.id });
           if (updated) {
-            deps.intentQueue?.addGenerateHydeJob({
+            deps.intentFollowUp?.generateHyde({
               intentId: updateAction.id,
               userId: state.userId,
               ...scopeEnvelope,
             }).catch((err) =>
-              logger.error('Failed to enqueue intent HyDE job', { intentId: updateAction.id, error: err })
+              logger.error('Failed to start intent HyDE', { intentId: updateAction.id, error: err })
             );
           }
 
@@ -172,8 +172,8 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             } catch (err) {
               logger.error('Failed to expire opportunities', { intentId: expireAction.id, error: err });
             }
-            deps.intentQueue?.addDeleteHydeJob({ intentId: expireAction.id }).catch((err) =>
-              logger.error('Failed to enqueue intent HyDE delete job', { intentId: expireAction.id, error: err })
+            deps.intentFollowUp?.deleteHyde({ intentId: expireAction.id }).catch((err) =>
+              logger.error('Failed to start intent HyDE delete', { intentId: expireAction.id, error: err })
             );
           }
 
@@ -191,14 +191,14 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             outcome = dbResult;
           } else {
             try {
-              await deps.intentQueue?.addResumeDiscoveryJob({
+              await deps.intentFollowUp?.resumeDiscovery({
                 intentId: dbResult.id,
                 userId: state.userId,
                 lifecycleVersionMs: dbResult.lifecycleVersionMs,
               });
               outcome = dbResult;
             } catch (err) {
-              logger.warn('Failed to enqueue resumed intent discovery', {
+              logger.warn('Failed to start resumed intent discovery', {
                 intentId: dbResult.id,
                 lifecycleVersionMs: dbResult.lifecycleVersionMs,
                 changed: dbResult.changed,
@@ -270,7 +270,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
  * description (differs from the stored proposal) is re-verified and made
  * authoritative before confirmation continues; an unchanged description
  * skips straight to the atomic confirm. HyDE admission is awaited (unlike
- * the fire-and-forget enqueue on a plain create): a failure here means the
+ * the fire-and-forget start on a plain create): a failure here means the
  * intent was saved but is not yet indexed, which the caller must retry.
  */
 async function executeConfirmAction(
@@ -338,14 +338,14 @@ async function executeConfirmAction(
 
   const intentId = confirmation.intent.id;
   try {
-    await deps.intentQueue?.addGenerateHydeJob({
+    await deps.intentFollowUp?.generateHyde({
       intentId,
       userId: state.userId,
       ...(proposal.networkId ? { scopeType: 'network' as const, scopeId: proposal.networkId } : {}),
     });
     return { kind: confirmation.kind, intentId };
   } catch (err) {
-    logger.error('Intent admission enqueue failed after confirmation persistence', { intentId, error: err });
+    logger.error('Intent admission follow-up failed after confirmation persistence', { intentId, error: err });
     return { kind: 'admission_enqueue_failed', intentId };
   }
 }

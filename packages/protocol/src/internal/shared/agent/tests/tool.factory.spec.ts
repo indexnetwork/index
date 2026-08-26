@@ -353,7 +353,7 @@ const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | '
   },
   cache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false, mget: async () => [], deleteByPattern: async () => 0 },
   hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
-  intentQueue: { addGenerateHydeJob: async () => ({}), addDeleteHydeJob: async () => ({}) },
+  intentFollowUp: { generateHyde: async () => ({}), deleteHyde: async () => ({}) },
   contactService: { listContacts: async () => [], searchContacts: async () => [], removeContact: async () => {} },
   chatSession: { getSessionMessages: async () => [], listSessions: async () => [], getSession: async () => null },
   enricher: { enrichUserProfile: async () => null },

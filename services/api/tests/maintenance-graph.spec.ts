@@ -33,8 +33,8 @@ describe('MaintenanceGraph', () => {
         }),
         set: mock(() => Promise.resolve()),
       },
-      queue: {
-        addJob: mock(() => Promise.resolve({ id: 'job-1' })),
+      rediscovery: {
+        discover: mock(() => Promise.resolve()),
       },
     };
   }
@@ -49,11 +49,11 @@ describe('MaintenanceGraph', () => {
       lastRediscoveryAt: Date.now() - 1000,
     });
 
-    const factory = new MaintenanceGraphFactory(deps.database as any, deps.cache as any, deps.queue as any);
+    const factory = new MaintenanceGraphFactory(deps.database as any, deps.cache as any, deps.rediscovery as any);
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId });
 
-    expect(deps.queue.addJob).not.toHaveBeenCalled();
+    expect(deps.rediscovery.discover).not.toHaveBeenCalled();
   }, 30_000);
 
   it('enqueues rediscovery when feed is empty', async () => {
@@ -62,11 +62,11 @@ describe('MaintenanceGraph', () => {
       lastRediscoveryAt: null,
     });
 
-    const factory = new MaintenanceGraphFactory(deps.database as any, deps.cache as any, deps.queue as any);
+    const factory = new MaintenanceGraphFactory(deps.database as any, deps.cache as any, deps.rediscovery as any);
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId });
 
-    expect(deps.queue.addJob).toHaveBeenCalled();
+    expect(deps.rediscovery.discover).toHaveBeenCalled();
   }, 30_000);
 
   it('enqueues rediscovery when composition is poor', async () => {
@@ -79,10 +79,10 @@ describe('MaintenanceGraph', () => {
       lastRediscoveryAt: Date.now() - 20 * 60 * 60 * 1000, // 20h ago
     });
 
-    const factory = new MaintenanceGraphFactory(deps.database as any, deps.cache as any, deps.queue as any);
+    const factory = new MaintenanceGraphFactory(deps.database as any, deps.cache as any, deps.rediscovery as any);
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId });
 
-    expect(deps.queue.addJob).toHaveBeenCalled();
+    expect(deps.rediscovery.discover).toHaveBeenCalled();
   }, 30_000);
 });

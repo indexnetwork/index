@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceRediscovery, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
@@ -67,7 +67,7 @@ interface IntentScopeOptions {
    * Verified provenance of the owner action, set ONLY by controller entry
    * points that represent a genuine explicit human owner action (REST session
    * accept/reject/start-chat). Absent for
-   * internal, queue, agent, and API-key callers — so Lens B capture (IND-434)
+   * internal, agent, and API-key callers — so Lens B capture (IND-434)
    * never records their status mutations as preference labels.
    */
   actionProvenance?: OwnerActionProvenance;
@@ -371,17 +371,11 @@ export class OpportunityService {
       this.db as unknown as MaintenanceGraphDatabase,
       this.cache as unknown as MaintenanceGraphCache,
       {
-        addJob: async (
-          data: { intentId: string; userId: string; indexIds?: string[] },
-          options?: { priority?: number; jobId?: string },
-        ) => {
-          const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
-          return fromIntentQueue.addJob(
-            { intentId: data.intentId, userId: data.userId },
-            options,
-          );
+        discover: async (data: { intentId: string; userId: string }) => {
+          const { intentDiscovery } = await import('../lib/opportunity/discovery');
+          return intentDiscovery.addJob({ intentId: data.intentId, userId: data.userId });
         },
-      } satisfies MaintenanceGraphQueue,
+      } satisfies MaintenanceRediscovery,
     ).createGraph();
     return this.maintenanceGraph;
   }

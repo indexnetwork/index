@@ -50,13 +50,13 @@ function makeCache(overrides?: {
   } as never;
 }
 
-function makeQueue() {
-  const enqueued: string[] = [];
+function makeRediscovery() {
+  const started: string[] = [];
   return {
-    queue: {
-      addJob: async (data: { intentId: string }) => { enqueued.push(data.intentId); },
+    rediscovery: {
+      discover: async (data: { intentId: string }) => { started.push(data.intentId); },
     } as never,
-    enqueued,
+    started,
   };
 }
 
@@ -67,7 +67,7 @@ describe('MaintenanceGraphFactory', () => {
     const factory = new MaintenanceGraphFactory(
       makeDatabase(),
       makeCache(),
-      makeQueue().queue,
+      makeRediscovery().rediscovery,
     );
     const graph = factory.createGraph();
 
@@ -81,7 +81,7 @@ describe('MaintenanceGraphFactory', () => {
     const factory = new MaintenanceGraphFactory(
       makeDatabase({ getOpportunitiesForUser: async () => { throw new Error('DB down'); } }),
       makeCache(),
-      makeQueue().queue,
+      makeRediscovery().rediscovery,
     );
     const graph = factory.createGraph();
 
@@ -91,7 +91,7 @@ describe('MaintenanceGraphFactory', () => {
   }, 15000);
 
   it('enqueues rediscovery jobs when feed is unhealthy and intents exist', async () => {
-    const { queue, enqueued } = makeQueue();
+    const { rediscovery, started } = makeRediscovery();
 
     // Simulate stale feed: no opportunities (unhealthy), with old cache
     const oldTimestamp = Date.now() - 25 * 60 * 60 * 1000; // 25 hours ago
@@ -107,7 +107,7 @@ describe('MaintenanceGraphFactory', () => {
       makeCache({
         get: async () => ({ triggeredAt: new Date(oldTimestamp).toISOString() }),
       }),
-      queue,
+      rediscovery,
     );
     const graph = factory.createGraph();
 
@@ -120,7 +120,7 @@ describe('MaintenanceGraphFactory', () => {
   }, 15000);
 
   it('skips rediscovery when feed was recently refreshed', async () => {
-    const { queue, enqueued } = makeQueue();
+    const { rediscovery, started } = makeRediscovery();
 
     const recentTimestamp = Date.now() - 1 * 60 * 60 * 1000; // 1 hour ago
 
@@ -134,21 +134,21 @@ describe('MaintenanceGraphFactory', () => {
       makeCache({
         get: async () => ({ triggeredAt: new Date(recentTimestamp).toISOString() }),
       }),
-      queue,
+      rediscovery,
     );
     const graph = factory.createGraph();
 
     const result = await graph.invoke({ userId });
 
     expect(result.error).toBeUndefined();
-    expect(enqueued).toHaveLength(0);
+    expect(started).toHaveLength(0);
   }, 15000);
 
   it('returns zero rediscoveryJobsEnqueued when userId is missing', async () => {
     const factory = new MaintenanceGraphFactory(
       makeDatabase(),
       makeCache(),
-      makeQueue().queue,
+      makeRediscovery().rediscovery,
     );
     const graph = factory.createGraph();
 
@@ -167,7 +167,7 @@ describe('MaintenanceGraphFactory', () => {
     const factory = new MaintenanceGraphFactory(
       makeDatabase({ getPersonalIndexId, getContactsWithIntentFreshness }),
       makeCache(),
-      makeQueue().queue,
+      makeRediscovery().rediscovery,
     );
 
     await factory.createGraph().invoke({ userId });

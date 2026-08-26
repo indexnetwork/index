@@ -13,7 +13,7 @@ import { agentService } from '../../services/agent.service';
 import { chatSessionService } from '../../services/chat.service';
 import { userService } from '../../services/user.service';
 import type { PersonalAgentResult } from '@indexnetwork/protocol';
-import type { PersonalAgentUserMessageEvent } from '../../queues/personal-agent.queue';
+import type { PersonalAgentUserMessageEvent } from '../../lib/negotiation/personal-agent';
 
 const USER: AuthenticatedUser = {
   id: 'signal-user-1',

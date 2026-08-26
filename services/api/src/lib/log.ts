@@ -12,7 +12,6 @@ export type LogContext =
   | 'cli'
   | 'graph'
   | 'job'
-  | 'queue'
   | 'protocol'
   | 'route'
   | 'router'
@@ -25,7 +24,7 @@ const RESET = '\x1b[0m';
 
 /** Valid logger context names. */
 const LOG_CONTEXT_NAMES = new Set<string>([
-  'controller', 'service', 'agent', 'cli', 'graph', 'job', 'queue',
+  'controller', 'service', 'agent', 'cli', 'graph', 'job',
   'protocol', 'route', 'router', 'server', 'lib',
 ]);
 
@@ -75,7 +74,6 @@ const CONTEXT_STYLES: Record<LogContext, { emoji: string; color: string }> = {
   cli: { emoji: '💻', color: '#6c757d' },
   graph: { emoji: '🕸️', color: '#20c997' },
   job: { emoji: '⏰', color: '#0dcaf0' },
-  queue: { emoji: '📬', color: '#fd7e14' },
   protocol: { emoji: '📜', color: '#198754' },
   route: { emoji: '🛤️', color: '#e83e8c' },
   router: { emoji: '🔀', color: '#e83e8c' },
@@ -275,7 +273,7 @@ function emitSentryLog(
 
 /**
  * Source path is relative to src/ (e.g. "controllers/chat.controller.ts").
- * Non-deprecated: lib/*, controllers/, adapters/, jobs/, queues/, and root main.ts only.
+ * Non-deprecated: lib/*, controllers/, adapters/, jobs/, and root main.ts only.
  * index.ts at root is deprecated. All other paths (routes/, services/, agents/, etc.) are deprecated.
  */
 export function isDeprecatedSource(sourcePath: string): boolean {
@@ -286,7 +284,6 @@ export function isDeprecatedSource(sourcePath: string): boolean {
   if (normalized.startsWith('controllers/')) return false;
   if (normalized.startsWith('adapters/')) return false;
   if (normalized.startsWith('jobs/')) return false;
-  if (normalized.startsWith('queues/')) return false;
   return true;
 }
 
@@ -315,7 +312,7 @@ function wrapWithContext(
   const deprecatedTag =
     context === 'cli' || context === 'route'
       ? '[DEPRECATED] '
-      : context === 'lib' || context === 'job' || context === 'service' || context === 'server' || context === 'controller' || context === 'protocol' || context === 'queue'
+      : context === 'lib' || context === 'job' || context === 'service' || context === 'server' || context === 'controller' || context === 'protocol'
         ? ''
         : (source && looksLikePath(source) && isDeprecatedSource(source))
           ? '[DEPRECATED] '
@@ -384,7 +381,7 @@ export const log = {
   /**
    * Pre-bound loggers. Source label conventions per layer:
    * controllers = lowercase feature ('chat'); services = PascalCase class name ('IntentService');
-   * queues = 'XxxJob'/'XxxQueue'; adapters = '<name>.adapter'; guards = '<name>.guard';
+   * job = 'XxxJob'; adapters = '<name>.adapter'; guards = '<name>.guard';
    * lib = module name without lib/ prefix or extension ('email/transport.helper');
    * protocol components = PascalCase with optional ':SubScope' ('OpportunityGraph:Prep').
    */
@@ -394,7 +391,6 @@ export const log = {
   cli: addFrom('cli'),
   graph: addFrom('graph'),
   job: addFrom('job'),
-  queue: addFrom('queue'),
   protocol: addFrom('protocol'),
   route: addFrom('route'),
   router: addFrom('router'),

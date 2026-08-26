@@ -1,6 +1,6 @@
 # Service Implementation Guide
 
-Services are the core business logic layer of the application. They handle data access, complex business rules, and orchestration between different parts of the system (DB, Agents, Queues).
+Services are the core business logic layer of the application. They handle data access, complex business rules, and orchestration between different parts of the system (DB, Agents).
 
 ## Location & Naming
 - **File**: `src/services/<domain>.service.ts` (e.g., `user.service.ts`, `stake.service.ts`)
@@ -31,7 +31,6 @@ Services sit between controllers and infrastructure, with adapters providing pro
 ┌─────────────────────────────────────┐
 │         Infrastructure              │
 │  - Database (Drizzle ORM)           │
-│  - Queue (BullMQ)                   │
 │  - Embedder (OpenAI)                │
 │  - Scraper (Parallels)              │
 │  - Cache (Redis)                    │
@@ -45,7 +44,6 @@ Services sit between controllers and infrastructure, with adapters providing pro
 - Business logic and data validation
 - Complex queries and data aggregation
 - Coordinating multiple database operations
-- Queue job creation for async operations
 - **Direct access to database via Drizzle**
 - Called by controllers for data needs
 
@@ -60,7 +58,7 @@ Services sit between controllers and infrastructure, with adapters providing pro
 **Adapters are responsible for:**
 - Implementing protocol interfaces from `src/lib/protocol/interfaces/`
 - Being passed to graph factories by controllers
-- Wrapping infrastructure (database, embedder, scraper, cache, queue)
+- Wrapping infrastructure (database, embedder, scraper, cache)
 - Providing testable interfaces for protocol layer
 - Defined in `src/adapters/` directory
 
@@ -227,7 +225,6 @@ export class UserService {
 - `EmbedderAdapter` - Vector embeddings (wraps OpenAI)
 - `ScraperAdapter` - Web scraping (wraps Parallels)
 - `RedisCacheAdapter` - Caching (wraps Redis)
-- `QueueAdapter` - Job queues (wraps BullMQ)
 
 **Using Protocol Adapters (When Creating Graphs):**
 ```typescript
@@ -294,19 +291,7 @@ export class EnrichmentService {
 - ❌ **Creating Adapters in Services**: Do not define adapter classes in service files. Import existing adapters from \`src/adapters/\`. If you need a new adapter, create it in \`src/adapters/\` directory.
 - ❌ **Overusing Adapters**: Most services should use direct Drizzle access. Only use adapters when passing dependencies to protocol graphs/agents.
 
-### 6. Queue Usage
-- **Pattern**: Offload heavy/async work to queues (e.g., AI generation, notifications).
-- **Import**: Import the queue instance from \`../queues/<domain>.queue.ts\`.
-- **Usage**:
-  \`\`\`typescript
-  import { myQueue } from '../queues/my.queue';
-
-  // Inside service method
-  await myQueue.add('job_name', { userId: '123' }, { priority: 1 });
-  \`\`\`
-- **Definition**: Queues are defined in \`src/queues/\` using \`QueueFactory.createQueue\`.
-
-### 7. Postgres Vector Search
+### 6. Postgres Vector Search
 - **Context**: If your service needs to perform vector search on its own entities using `pgvector`.
 - **Pattern**: Add a typed `<=>` cosine-distance query to `EmbedderAdapter` (`adapters/embedder.adapter.ts`), which already owns pgvector search (`search`, `searchWithHydeEmbeddings`). Do not reintroduce a per-service searcher: keep the SQL in the adapter and call it from the service.
 - **Example**:

@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.97.2",
+  "version": "0.98.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -37,8 +37,6 @@
     "@aws-sdk/client-s3": "^3.939.0",
     "@aws-sdk/s3-request-presigner": "^3.983.0",
     "@better-auth/api-key": "^1.5.6",
-    "@bull-board/api": "^6.15.0",
-    "@bull-board/hono": "^6.15.0",
     "@composio/core": "^0.6.3",
     "@composio/langchain": "^0.6.3",
     "@indexnetwork/protocol": "workspace:*",
@@ -49,7 +47,6 @@
     "@modelcontextprotocol/server": "2.0.0",
     "@sentry/bun": "^10.55.0",
     "better-auth": "^1.5.6",
-    "bullmq": "^5.65.1",
     "busboy": "^1.6.0",
     "dotenv": "^16.3.1",
     "drizzle-orm": "^0.45.1",

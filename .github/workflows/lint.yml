@@ -146,9 +146,7 @@ jobs:
           cd services/api
           bun test \
             src/adapters/tests/can-actor-see-opportunity.spec.ts \
-            src/adapters/tests/negotiation-lifecycle.projection.spec.ts \
-            src/queues/tests/timeout.queue.spec.ts \
-            src/queues/tests/claim-timeout.queue.spec.ts
+            src/adapters/tests/negotiation-lifecycle.projection.spec.ts
 
       # These guard destructive operational CLIs (paused-intent rediscovery
       # refusal, global user-context backfill classification, intent

@@ -38,7 +38,7 @@ Bun monorepo. Overview: `docs/design/architecture-overview.md`; commands and con
 | Path | What it is |
 |---|---|
 | `packages/protocol` | `@indexnetwork/protocol` — the domain: LangGraph graphs, agents, tools, MCP server, and the **interfaces** a host must implement. Published to npm; also used by external integrators. |
-| `services/api` | The host. Bun HTTP server + workers that wire real infrastructure (Drizzle/Postgres, Redis, BullMQ, OpenRouter) into the protocol. |
+| `services/api` | The host. Bun HTTP server that wires real infrastructure (Drizzle/Postgres, Redis, OpenRouter) into the protocol. |
 | `apps/web` | Vite + React Router SPA. `src/app` routes, `components`, `contexts`, `hooks`, `lib`; `src/services/*.ts` are typed API clients, not business logic. |
 | `apps/mac` | Swift WKWebView shell (`Sources/`) around a self-contained React bundle (`src/`). |
 | `packages/cli`, `claude-plugin`, `hermes-plugin` | Clients over the HTTP/MCP API. `protocol`, `cli`, `claude-plugin`, `hermes-plugin` are subtree-mirrored to public repos on every push to `dev`/`main`; their `package.json` deps must be pinned exactly (`bun run check:subtree-parity`). |
@@ -46,16 +46,15 @@ Bun monorepo. Overview: `docs/design/architecture-overview.md`; commands and con
 ### API layering (`services/api/src`, enforced by `eslint-plugin-boundaries` in `eslint.config.mjs`)
 
 - `controllers/*.controller.ts` — HTTP only: decorators (`@Controller`, `@Get`, `@UseGuards`),
-  input validation, response shape. Import services, guards, schemas, types, queues. Never
+  input validation, response shape. Import services, guards, schemas, types. Never
   adapters, `db` or Drizzle. Template: `controllers/controller.template.md`.
-- `services/*.service.ts` — business logic, transactions, event emission, queue enqueues.
+- `services/*.service.ts` — business logic, transactions, event emission.
   Import adapters and `@indexnetwork/protocol`. Template: `services/service.template.md`.
 - `adapters/*.adapter.ts` — the concrete implementations of the protocol's interfaces
   (`import type { … } from '@indexnetwork/protocol'`) over Drizzle, Redis, OpenAI, etc.
   This is the only place the protocol meets infrastructure.
-- `queues/*.queue.ts` — one BullMQ class per domain (queue + worker + handlers); orchestrate
-  by calling services/graphs, no business logic. Template: `queues/queue.template.md`.
-- `guards/`, `events/`, `schemas/` (Drizzle schema + zod), `lib/` (cross-cutting helpers),
+- `guards/`, `events/`, `schemas/` (Drizzle schema + zod), `lib/` (cross-cutting helpers,
+  in-process follow-up, and `node-cron` jobs),
   `cli/` (maintenance scripts). Guards are documented in `guards/README.md`.
 - Tests sit in a `tests/` folder beside the code they cover (or as `*.spec.ts` next to it)
   and go through services, never adapters or `db`.

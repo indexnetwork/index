@@ -186,7 +186,7 @@ export const IntentGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /** Focused request scope type for write-side assignment and follow-up queues. */
+  /** Focused request scope type for write-side assignment and follow-up. */
   scopeType: Annotation<ToolScopeType | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,

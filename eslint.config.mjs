@@ -183,7 +183,6 @@ export default tseslint.config(
         { type: "services", pattern: "src/services/*", mode: "file" },
         { type: "adapters", pattern: "src/adapters/*", mode: "file" },
         { type: "protocol", pattern: "src/lib/protocol/**/*", mode: "file" },
-        { type: "queues", pattern: "src/queues/**/*", mode: "file" },
         { type: "events", pattern: "src/events/*", mode: "file" },
         { type: "guards", pattern: "src/guards/*", mode: "file" },
         { type: "schemas", pattern: "src/schemas/*", mode: "file" },
@@ -213,7 +212,7 @@ export default tseslint.config(
               from: { type: "controllers" },
               allow: {
                 to: {
-                  type: ["services", "guards", "types", "schemas", "queues"],
+                  type: ["services", "guards", "types", "schemas"],
                 },
               },
             },
@@ -226,7 +225,6 @@ export default tseslint.config(
                     "protocol",
                     "init",
                     "events",
-                    "queues",
                     "schemas",
                     "types",
                   ],
@@ -243,22 +241,6 @@ export default tseslint.config(
               from: { type: "protocol" },
               allow: {
                 to: { type: ["protocol", "types", "schemas"] },
-              },
-            },
-            {
-              from: { type: "queues" },
-              allow: {
-                to: {
-                  type: [
-                    "queues",
-                    "services",
-                    "adapters",
-                    "protocol",
-                    "schemas",
-                    "types",
-                    "events",
-                  ],
-                },
               },
             },
             {
@@ -287,7 +269,6 @@ export default tseslint.config(
                     "init",
                     "adapters",
                     "protocol",
-                    "queues",
                     "services",
                     "schemas",
                     "types",
@@ -306,7 +287,6 @@ export default tseslint.config(
                     "services",
                     "adapters",
                     "protocol",
-                    "queues",
                     "events",
                     "guards",
                     "schemas",
@@ -327,7 +307,6 @@ export default tseslint.config(
                     "services",
                     "adapters",
                     "protocol",
-                    "queues",
                     "events",
                     "guards",
                     "schemas",

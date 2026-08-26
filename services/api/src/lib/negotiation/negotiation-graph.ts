@@ -46,8 +46,8 @@ export const negotiationGraph = new NegotiationGraphFactory({
   // All-paused → reflect: the trigger waits for an in-flight kickoff to finish,
   // then deduplicates the durable task-generation vector for every bound seat.
   reflectEnqueue: async (job) => {
-    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-    await personalAgentQueue.addAllPausedEvent(job);
+    const { personalAgentTurns } = await import('./personal-agent');
+    await personalAgentTurns.addAllPausedEvent(job);
   },
   // The seat's own agent plays its turn. `personalAgentGraph` is referenced
   // lazily, inside the call, so the two constructions below can be ordered.
@@ -98,14 +98,14 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
   replyStream: { publish: publishPersonalAgentReplyChunk },
   activity: { publish: publishPersonalAgentActivity },
   reflectEnqueue: async (job) => {
-    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-    await personalAgentQueue.addAllPausedEvent(job);
+    const { personalAgentTurns } = await import('./personal-agent');
+    await personalAgentTurns.addAllPausedEvent(job);
   },
   // A discovery batch that landed while a kickoff turn was running was read
   // past; the agent wakes itself again rather than losing it.
   wakeForMatches: async (input) => {
-    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-    await personalAgentQueue.addMatchesReadyEvent(input);
+    const { personalAgentTurns } = await import('./personal-agent');
+    await personalAgentTurns.addMatchesReadyEvent(input);
   },
 }).createGraph();
 
@@ -118,8 +118,8 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
  * discovery. Only wire this where a retry actually exists.
  */
 export const matchesReady: MatchesReadyFn = async ({ userId, intentId }) => {
-  const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-  await personalAgentQueue.addMatchesReadyEvent({ userId, intentId });
+  const { personalAgentTurns } = await import('./personal-agent');
+  await personalAgentTurns.addMatchesReadyEvent({ userId, intentId });
 };
 
 /** How many times a tool-path wake is retried before the loss is recorded. */
@@ -138,10 +138,10 @@ const TOOL_PATH_WAKE_RETRY_MS = 100;
  * not at the user's expense.
  */
 export const matchesReadyBestEffort: MatchesReadyFn = async ({ userId, intentId }) => {
-  const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
+  const { personalAgentTurns } = await import('./personal-agent');
   for (let attempt = 0; attempt < TOOL_PATH_WAKE_ATTEMPTS; attempt++) {
     try {
-      await personalAgentQueue.addMatchesReadyEvent({ userId, intentId });
+      await personalAgentTurns.addMatchesReadyEvent({ userId, intentId });
       return;
     } catch (err) {
       if (attempt === TOOL_PATH_WAKE_ATTEMPTS - 1) {

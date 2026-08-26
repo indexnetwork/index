@@ -411,9 +411,9 @@ describe('IntentGraph - transition and confirm actions', () => {
       }),
     });
     const factory = new IntentGraphFactory(database, undefined, {
-      addGenerateHydeJob: async () => {},
-      addDeleteHydeJob: async () => {},
-      addResumeDiscoveryJob: async (data) => { resumeJobs.push(data); },
+      generateHyde: async () => {},
+      deleteHyde: async () => {},
+      resumeDiscovery: async (data) => { resumeJobs.push(data); },
     });
     const result = await factory.createGraph().invoke({
       userId: 'user-1', userProfile: '', targetIntentIds: ['intent-1'], status: 'ACTIVE',
@@ -435,9 +435,9 @@ describe('IntentGraph - transition and confirm actions', () => {
       },
     });
     const factory = new IntentGraphFactory(database, undefined, {
-      addGenerateHydeJob: async () => {},
-      addDeleteHydeJob: async () => {},
-      addResumeDiscoveryJob: async () => { throw new Error('queue unavailable'); },
+      generateHyde: async () => {},
+      deleteHyde: async () => {},
+      resumeDiscovery: async () => { throw new Error('queue unavailable'); },
     });
     const result = await factory.createGraph().invoke({
       userId: 'user-1', userProfile: '', targetIntentIds: ['intent-1'], status: 'ACTIVE',
@@ -459,9 +459,9 @@ describe('IntentGraph - transition and confirm actions', () => {
       },
     });
     const factory = new IntentGraphFactory(database, undefined, {
-      addGenerateHydeJob: async () => {},
-      addDeleteHydeJob: async () => {},
-      addResumeDiscoveryJob: async () => { throw new Error('queue unavailable'); },
+      generateHyde: async () => {},
+      deleteHyde: async () => {},
+      resumeDiscovery: async () => { throw new Error('queue unavailable'); },
     });
     const result = await factory.createGraph().invoke({
       userId: 'user-1', userProfile: '', targetIntentIds: ['intent-1'], status: 'ACTIVE',
@@ -479,9 +479,9 @@ describe('IntentGraph - transition and confirm actions', () => {
     });
     let resumeCalled = false;
     const factory = new IntentGraphFactory(database, undefined, {
-      addGenerateHydeJob: async () => {},
-      addDeleteHydeJob: async () => {},
-      addResumeDiscoveryJob: async () => { resumeCalled = true; },
+      generateHyde: async () => {},
+      deleteHyde: async () => {},
+      resumeDiscovery: async () => { resumeCalled = true; },
     });
     const result = await factory.createGraph().invoke({
       userId: 'user-1', userProfile: '', targetIntentIds: ['intent-1'], status: 'PAUSED',
@@ -527,9 +527,9 @@ describe('IntentGraph - transition and confirm actions', () => {
     const { database, revised, confirmedWith } = makeConfirmDatabase(proposal);
     const hydeJobs: unknown[] = [];
     const factory = new IntentGraphFactory(database, undefined, {
-      addGenerateHydeJob: async (data) => { hydeJobs.push(data); },
-      addDeleteHydeJob: async () => {},
-      addResumeDiscoveryJob: async () => {},
+      generateHyde: async (data) => { hydeJobs.push(data); },
+      deleteHyde: async () => {},
+      resumeDiscovery: async () => {},
     });
     const result = await factory.createGraph().invoke({
       userId: 'user-1', userProfile: '', proposalId: 'proposal-1', description: 'Find a design partner',
@@ -548,9 +548,9 @@ describe('IntentGraph - transition and confirm actions', () => {
     };
     const { database, revised, confirmedWith } = makeConfirmDatabase(proposal);
     const factory = new IntentGraphFactory(database, undefined, {
-      addGenerateHydeJob: async () => {},
-      addDeleteHydeJob: async () => {},
-      addResumeDiscoveryJob: async () => {},
+      generateHyde: async () => {},
+      deleteHyde: async () => {},
+      resumeDiscovery: async () => {},
     });
     const result = await factory.createGraph().invoke({
       userId: 'user-1', userProfile: '', proposalId: 'proposal-1',
@@ -573,9 +573,9 @@ describe('IntentGraph - transition and confirm actions', () => {
     };
     const { database, revised, confirmedWith } = makeConfirmDatabase(proposal);
     const factory = new IntentGraphFactory(database, undefined, {
-      addGenerateHydeJob: async () => {},
-      addDeleteHydeJob: async () => {},
-      addResumeDiscoveryJob: async () => {},
+      generateHyde: async () => {},
+      deleteHyde: async () => {},
+      resumeDiscovery: async () => {},
     });
     const result = await factory.createGraph().invoke({
       userId: 'user-1', userProfile: '', proposalId: 'proposal-1',

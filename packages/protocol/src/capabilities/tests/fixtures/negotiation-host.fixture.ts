@@ -39,7 +39,7 @@ export class FakeNegotiationHost {
   readonly outcomeArtifacts = new Map<string, { verdict: 'pending' | 'reject'; reasoning?: string; resolvedByUserId: string }>();
   /** Test-only interleave immediately before the atomic completion snapshot. */
   beforeCompleteNegotiation?: () => void;
-  /** Deduped by one durable drain generation, exactly as BullMQ does. */
+  /** Deduped by one durable drain generation. */
   readonly reflectJobs: Array<{ userId: string; intentId: string; round: number; generation: string }> = [];
   private taskCounter = 0;
   private messageCounter = 0;
@@ -271,7 +271,7 @@ export class FakeNegotiationHost {
     if (this.kickoffStartedAt) this.kickoffStartedAt = new Date(this.kickoffStartedAt.getTime() - byMs);
   }
 
-  /** Records a reflect job the way the queue does: once per durable generation. */
+  /** Records a reflect job once per durable generation. */
   enqueueReflect(job: { userId: string; intentId: string; round: number; generation: string }): void {
     if (this.reflectJobs.some((existing) =>
       existing.intentId === job.intentId && existing.round === job.round && existing.generation === job.generation)) return;

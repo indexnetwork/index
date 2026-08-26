@@ -61,7 +61,7 @@ export type {
   ConfirmProposalResult,
 } from "./platform/database.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/discovery/embedder.js";
-export type { IntentGraphQueue } from "./platform/runtime/queue.js";
+export type { IntentFollowUp, IntentFollowUpScope } from "./platform/runtime/follow-up.js";
 export type { Scraper } from "./platform/discovery/scraper.js";
 export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
 export type { AgentDispatcher } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
@@ -159,7 +159,7 @@ export type {
 } from "./capabilities/intents.js";
 
 export { MaintenanceGraphFactory } from "./internal/maintenance/maintenance.graph.js";
-export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./internal/maintenance/maintenance.graph.js";
+export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceRediscovery } from "./internal/maintenance/maintenance.graph.js";
 export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────

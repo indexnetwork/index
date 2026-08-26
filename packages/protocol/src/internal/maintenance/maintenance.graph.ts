@@ -28,14 +28,14 @@ export interface MaintenanceGraphCache {
   set(key: string, value: unknown, options?: { ttl?: number }): Promise<void>;
 }
 
-/** Queue methods needed by the maintenance graph. */
-export interface MaintenanceGraphQueue {
-  addJob(data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string }, options?: { priority?: number; jobId?: string }): Promise<unknown>;
+/** Host rediscovery the maintenance graph starts when a feed is unhealthy. */
+export interface MaintenanceRediscovery {
+  discover(data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string }): Promise<unknown>;
 }
 
 /**
  * Factory for the Maintenance Graph.
- * Accepts database, cache, and queue dependencies via constructor injection.
+ * Accepts database, cache, and rediscovery dependencies via constructor injection.
  */
 
 /** The graph's channel state, as every node sees it. */
@@ -45,12 +45,12 @@ export type MaintenanceState = typeof MaintenanceGraphState.State;
 export interface MaintenanceGraphDeps {
   database: MaintenanceGraphDatabase;
   cache: MaintenanceGraphCache;
-  queue: MaintenanceGraphQueue;
+  rediscovery: MaintenanceRediscovery;
 }
 
 /**
  * Factory for the Maintenance Graph.
- * Accepts database, cache, and queue dependencies via constructor injection.
+ * Accepts database, cache, and rediscovery dependencies via constructor injection.
  */
 export class MaintenanceGraphFactory {
   /** Resolved dependency bag shared by every node. */
@@ -59,9 +59,9 @@ export class MaintenanceGraphFactory {
   constructor(
     database: MaintenanceGraphDatabase,
     cache: MaintenanceGraphCache,
-    queue: MaintenanceGraphQueue,
+    rediscovery: MaintenanceRediscovery,
   ) {
-    this.deps = { database, cache, queue };
+    this.deps = { database, cache, rediscovery };
   }
 
   /** Compile and return the maintenance graph. */
@@ -175,13 +175,10 @@ export function shouldRediscover(state: MaintenanceState): string {
 
 export async function rediscoverNode(state: MaintenanceState, deps: MaintenanceGraphDeps) {
   try {
-    const bucket = Math.floor(Date.now() / (6 * 60 * 60 * 1000));
-
     const results = await Promise.allSettled(
       state.activeIntents.map((intent) =>
-        deps.queue.addJob(
+        deps.rediscovery.discover(
           { intentId: intent.id, userId: state.userId },
-          { priority: 10, jobId: `rediscovery-${state.userId}-${intent.id}-${bucket}` },
         )
       )
     );
@@ -189,7 +186,7 @@ export async function rediscoverNode(state: MaintenanceState, deps: MaintenanceG
     for (const r of results) {
       if (r.status === 'rejected') {
         const errMsg = r.reason instanceof Error ? r.reason.message : String(r.reason);
-        logger.error('Rediscovery job enqueue failed', { error: errMsg });
+        logger.error('Rediscovery start failed', { error: errMsg });
       }
     }
     const enqueued = results.filter((r) => r.status === 'fulfilled').length;
@@ -210,7 +207,7 @@ export async function rediscoverNode(state: MaintenanceState, deps: MaintenanceG
     return { rediscoveryJobsEnqueued: enqueued };
   } catch (e) {
     logger.error('MaintenanceGraph rediscover failed', { error: e });
-    return { error: 'Failed to enqueue rediscovery jobs' };
+    return { error: 'Failed to start rediscovery' };
   }
 }
 

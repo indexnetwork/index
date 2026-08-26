@@ -9,6 +9,14 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Breaking
+- **Remove the queue system.** BullMQ, Bull Board, `/dev/queues`, and
+  `src/queues/` are gone. Background work runs in-process (direct calls plus
+  `node-cron`). Redis remains for cache, locks, and SSE. Discovery, HyDE, and
+  notifications are fire-and-forget in the server process; delayed chat-reflect
+  uses in-process `setTimeout` and is lost on restart. There are no durable job
+  retries or dedup.
+
 ### Fixed
 - Isolate discovery and negotiation by exact intent pair: active negotiations
   between the same users no longer suppress another intent's opportunity or

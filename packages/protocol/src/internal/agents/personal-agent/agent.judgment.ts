@@ -6,8 +6,7 @@
  * strictly by number. It never sees or emits an id, so it cannot mint a ref
  * that would end the wrong negotiation or retire the wrong fact; an act
  * naming a number outside the lists is DROPPED. Output that does not parse at
- * all is retried once and then throws, and the caller's queue retry covers a
- * transient model outage.
+ * all is retried once and then throws.
  *
  * `PersonalAgentModel` is the production implementation of the
  * `PersonalAgentJudgment` seam. Tests and evals script that seam instead of

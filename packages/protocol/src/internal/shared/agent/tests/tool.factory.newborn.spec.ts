@@ -31,7 +31,7 @@ describe('createChatTools newborn callback propagation', () => {
         scraper: {},
         cache: {},
         hydeCache: {},
-        intentQueue: {},
+        intentFollowUp: {},
         contactService: {},
         enricher: {},
         negotiationDatabase: {},

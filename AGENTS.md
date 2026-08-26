@@ -34,7 +34,7 @@ architecture and `docs/guides/development-reference.md` for commands.
 | Path | Responsibility |
 |---|---|
 | `packages/protocol` | `@indexnetwork/protocol`: domain graphs, agents, tools, MCP server, and host interfaces. Published to npm and used by external integrators. |
-| `services/api` | Bun HTTP host and workers. Wires infrastructure (Drizzle/Postgres, Redis, BullMQ, OpenRouter) into the protocol. |
+| `services/api` | Bun HTTP host and workers. Wires infrastructure (Drizzle/Postgres, Redis, OpenRouter) into the protocol. |
 | `apps/web` | Vite + React Router SPA. `src/services/*.ts` are typed API clients, not business logic. |
 | `apps/mac` | Swift WKWebView shell around a self-contained React bundle. |
 | `packages/cli`, `packages/claude-plugin`, `packages/hermes-plugin` | HTTP/MCP clients mirrored to public repositories. Their dependencies must be exact pins; run `bun run check:subtree-parity` when they change. |
@@ -44,14 +44,12 @@ architecture and `docs/guides/development-reference.md` for commands.
 The ESLint boundaries enforce these roles:
 
 - `controllers/*.controller.ts`: HTTP decorators, input validation, and response
-  shape only. They may import services, guards, schemas, types, and queues;
+  shape only. They may import services, guards, schemas, and types;
   never adapters, `db`, or Drizzle.
-- `services/*.service.ts`: business logic, transactions, events, and queue
-  enqueues. They may import adapters and `@indexnetwork/protocol`.
+- `services/*.service.ts`: business logic, transactions, and events.
+  They may import adapters and `@indexnetwork/protocol`.
 - `adapters/*.adapter.ts`: concrete protocol-interface implementations over
   infrastructure. This is the only place the protocol meets infrastructure.
-- `queues/*.queue.ts`: one BullMQ class per domain; call services or graphs and
-  keep business logic out of queues.
 - Tests live next to the code or in its `tests/` directory. Exercise behavior
   through services, never directly through adapters or `db`.
 
@@ -61,7 +59,7 @@ The ESLint boundaries enforce these roles:
   imports are not a contract. Follow `STABILITY.md` and `IMPLEMENTATION.md`.
 - Organize source by domain capability and enter a capability through its barrel;
   do not import another capability's implementation files.
-- The package must not depend on host infrastructure such as Drizzle, BullMQ,
+- The package must not depend on host infrastructure such as Drizzle,
   Redis, or Postgres clients. Define interfaces in `shared/interfaces/` and have
   the host implement them. Run `bun run architecture:check` in this package when
   changing its boundaries.

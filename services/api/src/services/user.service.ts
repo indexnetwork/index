@@ -2,7 +2,7 @@ import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
-import { premiseQueue } from '../queues/premise.queue';
+import { premiseCascade } from '../lib/premise/cascade';
 
 const logger = log.service.from("UserService");
 
@@ -87,7 +87,7 @@ export class UserService {
     }
 
     private enqueuePremisesFromProfile(userId: string): void {
-        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
+        premiseCascade.addDecomposeProfileJob(userId).catch(err =>
             logger.error('Failed to enqueue premise rebuild after profile update', { userId, error: err }),
         );
     }
@@ -177,7 +177,7 @@ export class UserService {
         }
 
         // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
-        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
+        premiseCascade.addDecomposeProfileJob(userId).catch(err =>
             logger.error('Failed to enqueue premise rebuild after social update', {
                 userId,
                 error: err,

@@ -21,7 +21,7 @@ function productionSources(directory: string): string[] {
 const composition = read('../negotiation-graph.ts');
 const mcp = read('../../../controllers/mcp.controller.ts');
 const opportunityService = read('../../../services/opportunity.service.ts');
-const personalAgentQueue = read('../../../queues/personal-agent.queue.ts');
+const personalAgentSource = read('../personal-agent.ts');
 const main = read('../../../main.ts');
 
 describe('host graph composition', () => {
@@ -38,10 +38,10 @@ describe('host graph composition', () => {
     expect(composition).toMatch(/authorTurn: async[\s\S]*?personalAgentGraph\.invoke/);
     expect(composition).toMatch(/personalAgentGraph[\s\S]*?negotiations: negotiationGraph/);
 
-    expect(personalAgentQueue).toContain("import { personalAgentGraph } from '../lib/negotiation/negotiation-graph'");
-    expect(personalAgentQueue).toContain('personalAgentGraph.invoke(input)');
-    expect(main).toContain('negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph)');
-    expect(main).toContain('negotiationWatchdogQueue.setReflectEnqueue');
+    expect(personalAgentSource).toContain("import { personalAgentGraph } from './negotiation-graph'");
+    expect(personalAgentSource).toContain('personalAgentGraph.invoke(input)');
+    expect(main).toContain('negotiationWatchdog.setNegotiationGraph(negotiationGraph)');
+    expect(main).toContain('negotiationWatchdog.setReflectEnqueue');
     expect(opportunityService).toContain("await import('../lib/negotiation/negotiation-graph')");
     expect(opportunityService).toContain("close: { reason: 'owner_verdict'");
     expect(mcp).toContain("import { matchesReadyBestEffort, negotiationGraph } from '../lib/negotiation/negotiation-graph'");

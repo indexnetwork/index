@@ -28,11 +28,8 @@ mock.module('../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class EmbedderAdapter {},
   embedderAdapter: {},
 }));
-mock.module('../../queues/intent.queue', () => ({
-  intentQueue: { addGenerateHydeJob: async () => 'job-id' },
-}));
-mock.module('../../queues/questioner.queue', () => ({
-  questionerEnqueueIfEnabled: () => undefined,
+mock.module('../../lib/intent/indexing', () => ({
+  intentIndexing: { generateHyde: async () => undefined },
 }));
 mock.module('../../events/intent.event', () => ({
   IntentEvents: { onCreated: () => {} },

@@ -40,7 +40,7 @@ mock.module('../../guards/agent-scope.guard', () => ({
 }));
 mock.module('../../services/opportunity.service', () => ({ opportunityService: serviceMock }));
 mock.module('../../lib/protocol-url', () => ({ resolveProtocolBaseUrl: () => 'http://localhost' }));
-mock.module('../../queues/notification.queue', () => ({ queueOpportunityNotification: async () => undefined }));
+mock.module('../../lib/notification/opportunity-notifier', () => ({ notifyOpportunity: async () => undefined }));
 mock.module('../../lib/mcp/owner-approval', () => ({
   ...realOwnerApproval,
   getOpportunityOwnerApprovalAuthority: () => currentAuthority,

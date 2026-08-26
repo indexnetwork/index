@@ -1,6 +1,6 @@
 # API Service
 
-Backend API and agent engine for Index Network: Bun runtime, Bun.serve routing, Drizzle ORM, PostgreSQL with pgvector, BullMQ, and LangChain/LangGraph.
+Backend API and agent engine for Index Network: Bun runtime, Bun.serve routing, Drizzle ORM, PostgreSQL with pgvector, Redis, and LangChain/LangGraph.
 
 ## Quick start
 

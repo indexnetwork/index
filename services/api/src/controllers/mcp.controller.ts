@@ -13,7 +13,7 @@ import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
-import { intentQueue } from '../queues/intent.queue';
+import { intentIndexing } from '../lib/intent/indexing';
 import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
@@ -68,7 +68,7 @@ const protocolDeps = {
   scraper: scraperAdapter,
   cache: cacheAdapter,
   hydeCache: hydeCacheAdapter,
-  intentQueue,
+  intentFollowUp: intentIndexing,
   intentProposalStore: intentProposalDatabaseAdapter,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
@@ -145,7 +145,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const intents = new Intents({
     database,
     embedder,
-    queue: protocolDeps.intentQueue,
+    followUp: protocolDeps.intentFollowUp,
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
@@ -649,7 +649,7 @@ function createMcpServerInstance(): McpServer {
     mcpRateLimiter: (input) => checkMcpRateLimit(input),
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
-    intentProposalStore: protocolDeps.intentProposalStore,
+    intentFollowUp: protocolDeps.intentFollowUp,
     graphs,
   };
 
