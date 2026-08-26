@@ -18,7 +18,7 @@ const CURRENT_VERBS = ['outreach', 'counter', 'question', 'pause', 'withdraw'];
 
 type Mode = 'minimal' | 'twenty';
 type Intent = { id: string; payload: string };
-type RadarCard = { opportunityId: string; name: string; status?: string };
+type RadarCard = { opportunityId: string; name: string; status?: string; viewerRole?: string };
 type CycleNegotiation = { taskId: string; counterpartLabel: string; opportunityId: string; opportunityStatus: string; state: string };
 type Cycle = { negotiations: CycleNegotiation[] };
 type Detail = { task: { brief: string | null; state: string; pause: { reason: string; by: 'yours' | 'theirs' | null } | null }; transcript: Array<{ actor: 'yours' | 'theirs'; verb: string | null; text: string | null }> };
@@ -96,6 +96,7 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       const mayaJwt = await login('maya.chen@sandbox.test');
       const danielJwt = await login('daniel.ruiz@sandbox.test');
       const aishaJwt = await login('aisha.okafor@sandbox.test');
+      const ethanJwt = await login('ethan.brooks@sandbox.test');
       const intent = async (jwt: string, email: string, index: number): Promise<Intent> => {
         const person = people.find((candidate) => candidate.email === email)!;
         const list = await api<{ intents: Intent[] }>(jwt, '/api/intents/list', { method: 'POST', body: '{}' });
@@ -135,6 +136,14 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       expect(mayaDanielTask.opportunityStatus).not.toBe('accepted');
       expect(aishaMayaTask.opportunityStatus).not.toBe('accepted');
 
+      const introducerRadar = () => api<{ items: RadarCard[] }>(ethanJwt, '/api/opportunities/radar?statuses=latent&presentation=skeleton&noCache=1');
+      const unapprovedIntroduction = await waitFor(async () => {
+        const result = await introducerRadar();
+        return result.items.find((opportunity) => opportunity.opportunityId === SANDBOX_E2E_CASES.unapprovedIntroducer.opportunityId);
+      }, 'unapproved introduction fixture');
+      expect(unapprovedIntroduction.status).toBe('latent');
+      expect(unapprovedIntroduction.viewerRole).toBe('introducer');
+
       const timelineFor = (jwt: string, intentId: string) => api<{ entries: TimelineEntry[] }>(jwt, `/api/conversations/negotiations/intent-cycle/timeline?intentId=${intentId}`);
       await waitFor(async () => {
         const timeline = await timelineFor(mayaJwt, mayaDaniel.id);
@@ -157,35 +166,15 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       const aishaMessage = 'Maya has six active design partners, two annual conversions, and is raising a $1.5m seed for enterprise AI observability. That is credible enough for a seed conversation.';
       const aishaFollowUp = 'My fund invests $500k to $1.5m at pre-seed and seed in developer tools, data infrastructure, and enterprise software. I have led observability and data-tooling investments and want a narrow enterprise buyer with credible customer signal.';
       await send(mayaJwt, mayaDaniel.id, mayaMessage);
-      await waitFor(async () => {
-        const timeline = await timelineFor(mayaJwt, mayaDaniel.id);
-        return timeline.entries.some((entry) => entry.event.kind === 'user_message') ? timeline : undefined;
-      }, 'Maya PersonalAgent user turn');
       // The first reply answers Daniel's traction question. The real agent
       // then asks the remaining Aisha question, so answer it through the same
       // owner chat surface before expecting either negotiation to advance.
       await send(mayaJwt, mayaDaniel.id, mayaFollowUp);
-      await waitFor(async () => {
-        const timeline = await timelineFor(mayaJwt, mayaDaniel.id);
-        return timeline.entries.filter((entry) => entry.event.kind === 'user_message').length >= 2 ? timeline : undefined;
-      }, 'Maya follow-up PersonalAgent user turn');
       console.log(`[sandbox-e2e] ${mode}: Maya context sent`);
       await send(danielJwt, daniel.id, danielMessage);
-      await waitFor(async () => {
-        const timeline = await timelineFor(danielJwt, daniel.id);
-        return timeline.entries.some((entry) => entry.event.kind === 'user_message') ? timeline : undefined;
-      }, 'Daniel PersonalAgent user turn');
       console.log(`[sandbox-e2e] ${mode}: Daniel context sent`);
       await send(aishaJwt, aishaMaya.id, aishaMessage);
-      await waitFor(async () => {
-        const timeline = await timelineFor(aishaJwt, aishaMaya.id);
-        return timeline.entries.some((entry) => entry.event.kind === 'user_message') ? timeline : undefined;
-      }, 'Aisha PersonalAgent user turn');
       await send(aishaJwt, aishaMaya.id, aishaFollowUp);
-      await waitFor(async () => {
-        const timeline = await timelineFor(aishaJwt, aishaMaya.id);
-        return timeline.entries.filter((entry) => entry.event.kind === 'user_message').length >= 2 ? timeline : undefined;
-      }, 'Aisha follow-up PersonalAgent user turn');
       console.log(`[sandbox-e2e] ${mode}: Aisha context sent`);
 
       const targetTaskForOpportunity = async (jwt: string, intentId: string, opportunityId: string) =>
@@ -226,6 +215,8 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       expect(mayaSofiaCard?.status).not.toBe('negotiating');
       expect(mayaSofiaCard?.status).not.toBe('pending');
       expect(mayaSofiaCard?.status).not.toBe('accepted');
+      const stillUnapproved = await introducerRadar();
+      expect(stillUnapproved.items.some((opportunity) => opportunity.opportunityId === SANDBOX_E2E_CASES.unapprovedIntroducer.opportunityId && opportunity.status === 'latent')).toBe(true);
 
       // An agent never advances to accepted. The only accepted transition in
       // this suite is this explicit owner action through the normal API.

@@ -111,4 +111,13 @@ describe('SANDBOX_TWENTY_PERSONAS', () => {
       candidate: { email: 'maya.chen@sandbox.test', intentIndex: 0 },
     });
   });
+
+  it('keeps the unapproved-introducer E2E fixture stable', () => {
+    expect(SANDBOX_E2E_CASES.unapprovedIntroducer).toEqual({
+      opportunityId: 'e8dd4e42-2f66-469d-8c0c-61e0bcb3e56b',
+      source: { email: 'maya.chen@sandbox.test', intentIndex: 1 },
+      candidate: { email: 'sofia.martinez@sandbox.test', intentIndex: 0 },
+      introducer: { email: 'ethan.brooks@sandbox.test' },
+    });
+  });
 });

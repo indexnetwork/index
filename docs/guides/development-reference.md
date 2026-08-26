@@ -452,10 +452,14 @@ fixtures after schema migrations with:
 ```bash
 bun run db:seed:sandbox -- --confirm --minimal   # five-person Launch market
 bun run db:seed:sandbox -- --confirm --twenty    # five Launch people plus 15 authored personas
+
+# Live, paid PersonalAgent + negotiation E2E (never normal CI)
+RUN_SANDBOX_E2E=1 RUN_PAID_INTEGRATION_TESTS=1 bun run test:sandbox:e2e
 ```
 
 Both modes wipe and recreate every seed-owned user, so switching modes is just
-re-running the command.
+re-running the command. The live suite resets only `protocol_sandbox`, starts
+its own API process, and requires Redis plus `OPENROUTER_API_KEY`.
 
 #### Immutable local playground
 
