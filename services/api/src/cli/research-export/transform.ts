@@ -322,6 +322,77 @@ It is intended for authorized research on matching and negotiation behavior. It 
 - \`negotiations.jsonl\` — one agent-to-agent thread per row (Hugging Face conversation envelope plus Index ids)
 - \`metrics.json\` — aggregate counts
 
+## Data structure
+
+\`users.jsonl\`
+
+\`\`\`json
+{ "user_id": "user_<pseudonym>", "created_at": 1780000000.0, "deleted": false }
+\`\`\`
+
+\`intents.jsonl\`
+
+\`\`\`json
+{
+  "intent_id": "intent_<pseudonym>",
+  "user_id": "user_<pseudonym>",
+  "payload": "Privacy-reduced intent text",
+  "summary": "Privacy-reduced summary",
+  "status": "ACTIVE",
+  "is_incognito": false,
+  "created_at": 1780000000.0,
+  "updated_at": 1780000000.0,
+  "archived_at": null
+}
+\`\`\`
+
+\`opportunities.jsonl\`
+
+\`\`\`json
+{
+  "opportunity_id": "opp_<pseudonym>",
+  "status": "accepted",
+  "confidence": 80,
+  "created_at": 1780000000.0,
+  "updated_at": 1780000100.0,
+  "expires_at": null,
+  "accepted_by": "user_<pseudonym>",
+  "detection_source": "opportunity_graph",
+  "triggered_by_intent_id": "intent_<pseudonym>",
+  "network_id": "network_<pseudonym>",
+  "actors": [{ "user_id": "user_<pseudonym>", "intent_id": "intent_<pseudonym>", "role": "patient", "acted_at": "2026-06-04T00:00:00.000Z", "approved": null }],
+  "category": "collaboration",
+  "reasoning": "Privacy-reduced match reasoning"
+}
+\`\`\`
+
+\`negotiations.jsonl\` — one agent-to-agent thread per row:
+
+\`\`\`json
+{
+  "conversation_id": "session_<pseudonym>",
+  "opportunity_id": "opp_<pseudonym>",
+  "source_user_id": "user_<pseudonym>",
+  "candidate_user_id": "user_<pseudonym>",
+  "started_at": 1780000000.0,
+  "task_state": "completed",
+  "outcome_has_opportunity": true,
+  "outcome_reason": null,
+  "messages": [
+    {
+      "seq": 0,
+      "timestamp": 1780000000.0,
+      "role": "agent",
+      "speaker_user_id": "user_<pseudonym>",
+      "verb": "outreach",
+      "text": "Privacy-reduced negotiation turn"
+    }
+  ]
+}
+\`\`\`
+
+Messages are ordered by original timestamp, then id. The public \`seq\` field is assigned after sorting.
+
 ## Identifiers
 
 User, intent, opportunity, and conversation identifiers are stable HMAC-SHA256 pseudonyms generated for this dump (\`user_\`, \`intent_\`, \`opp_\`, \`session_\`, \`network_\`). Raw platform identifiers are not included.
