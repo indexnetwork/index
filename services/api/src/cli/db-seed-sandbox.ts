@@ -118,13 +118,16 @@ async function main(): Promise<void> {
       throw new Error(`Cannot connect to ${SANDBOX_DATABASE} before seeding: ${cause}`, { cause: error });
     }
 
-    const personaFixtures = personas.map((persona, index) => {
+    const personaFixtures = personas.map((persona) => {
       const context = profileText(persona);
+      // Twenty mode used to pad every persona up to at least 3 networks (plus
+      // a 1-in-7 vault add) so the fixture looked diverse. That's exactly the
+      // network segregation the playground population was reworked to avoid:
+      // membership is now just the persona's authored network(s) plus the
+      // always-on commons baseline — real matching is the only filter left.
       const classified = minimal
         ? new Set<NetworkKey>(persona.networkKeys)
         : new Set<NetworkKey>(['commons', ...persona.networkKeys]);
-      if (!minimal && index % 7 === 0) classified.add('vault');
-      if (!minimal && classified.size < 3) classified.add(NETWORKS[2 + (index % (NETWORKS.length - 2))]!.key);
       return {
         persona,
         userId: persona.fixedIds?.userId ?? fixtureId('user', persona.email),

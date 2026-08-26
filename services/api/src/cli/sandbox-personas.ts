@@ -2092,15 +2092,31 @@ export const SANDBOX_E2E_CASES = {
 
 /**
  * A bounded market for live provider tests: the five designated Launch people
- * plus these fifteen already-authored personas from the full curated population.
+ * plus these sixteen already-authored personas from the full curated
+ * population (still exported/named "twenty" — see docs/guides/development-
+ * reference.md's "Immutable local playground" — the count drifted by one
+ * pair in exchange for content relevance, see below).
  */
+// Every name here is plausibly launch-adjacent by content, not just by an
+// authored network tag — a prior version included a nonprofit-grant-writing
+// trio that shared the 'launch' tag but had nothing to do with a dev-tools
+// startup, an "obvious non-fit" rather than a real judgment call. It also
+// included three trios with no shared network with the core five or each
+// other at all, which thinned matches across the whole population.
 const SANDBOX_TWENTY_AUTHORED_NAMES = [
-  'Nora Kim', 'Maya Patel', 'Rosa Delgado', 'Selin Demir', 'Kerem Arslan',
-  'Ege Yılmaz', 'Amara Okafor', 'Julian Foster', 'Pilar Santos', 'Leo Martins',
-  'Ines Costa', 'Duarte Ferreira', 'Priya Nair', 'Daniel Wu', 'Harriet Osei',
+  'Amara Okafor', 'Julian Foster', 'Pilar Santos', 'Leo Martins', 'Ines Costa',
+  'Duarte Ferreira', 'Sarah Mitchell', 'Idris Campbell', 'Vanessa Hart',
+  'Raj Krishnan', 'Diego Alvarez', 'Carla Romero', 'Marta Vidal', 'Kwame Mensah',
+  'Zuri Boateng', 'Wanjiru Kamau',
 ] as const;
 
 export const SANDBOX_TWENTY_PERSONAS: SandboxPersona[] = [
   ...SANDBOX_MINIMAL_PERSONAS,
-  ...SANDBOX_PERSONAS.filter((persona) => SANDBOX_TWENTY_AUTHORED_NAMES.includes(persona.name as typeof SANDBOX_TWENTY_AUTHORED_NAMES[number])),
+  ...SANDBOX_PERSONAS
+    .filter((persona) => SANDBOX_TWENTY_AUTHORED_NAMES.includes(persona.name as typeof SANDBOX_TWENTY_AUTHORED_NAMES[number]))
+    // One shared network for the whole playground population: candidacy comes
+    // from being in the same network, so everyone is a candidate for everyone.
+    // Whether they actually match is left to real discovery and negotiation
+    // (semantic fit, then agent judgment) — not artificial network segregation.
+    .map((persona) => ({ ...persona, networkKeys: ['launch'] as SandboxNetworkKey[] })),
 ];

@@ -83,16 +83,20 @@ describe('SANDBOX_MINIMAL_PERSONAS', () => {
 });
 
 describe('SANDBOX_TWENTY_PERSONAS', () => {
-  it('is the five-person Launch market plus the fixed fifteen existing authored personas', () => {
-    expect(SANDBOX_TWENTY_PERSONAS).toHaveLength(20);
+  it('is the five-person Launch market plus the fixed sixteen existing authored personas', () => {
+    expect(SANDBOX_TWENTY_PERSONAS).toHaveLength(21);
     expect(SANDBOX_TWENTY_PERSONAS.slice(0, 5)).toEqual(SANDBOX_MINIMAL_PERSONAS);
     const fullEmails = new Set(SANDBOX_PERSONAS.map((persona) => persona.email));
     for (const persona of SANDBOX_TWENTY_PERSONAS.slice(5)) expect(fullEmails.has(persona.email)).toBe(true);
     expect(SANDBOX_TWENTY_PERSONAS.slice(5).map((persona) => persona.name)).toEqual([
-      'Nora Kim', 'Maya Patel', 'Rosa Delgado', 'Selin Demir', 'Kerem Arslan',
-      'Ege Yılmaz', 'Amara Okafor', 'Julian Foster', 'Pilar Santos', 'Leo Martins',
-      'Ines Costa', 'Duarte Ferreira', 'Priya Nair', 'Daniel Wu', 'Harriet Osei',
+      'Amara Okafor', 'Julian Foster', 'Pilar Santos', 'Leo Martins', 'Ines Costa',
+      'Duarte Ferreira', 'Kwame Mensah', 'Zuri Boateng', 'Wanjiru Kamau',
+      'Sarah Mitchell', 'Idris Campbell', 'Diego Alvarez', 'Carla Romero', 'Marta Vidal',
+      'Vanessa Hart', 'Raj Krishnan',
     ]);
+    // Single shared network: candidacy comes from membership, not topic tags —
+    // real matching/negotiation is the only filter, not network segregation.
+    for (const persona of SANDBOX_TWENTY_PERSONAS) expect(persona.networkKeys).toEqual(['launch']);
   });
 
   it('exports stable designated PersonalAgent E2E signals', () => {
