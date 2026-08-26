@@ -50,13 +50,18 @@ describe("Gemini 3.7 Flash configuration", () => {
 });
 
 describe("createFallbackModel", () => {
-  it("falls back to openai/gpt-4o-mini", () => {
+  it("falls back to the previous-generation flash model for a flash primary", () => {
     const fallback = createFallbackModel("opportunityEvaluator");
-    expect(fallback?.model).toBe("openai/gpt-4o-mini");
+    expect(fallback?.model).toBe("google/gemini-2.5-flash");
+  });
+
+  it("falls back to the previous-generation pro model for a pro primary", () => {
+    const fallback = createFallbackModel("chat", { chatModel: "google/gemini-3.7-pro" });
+    expect(fallback?.model).toBe("google/gemini-2.5-pro");
   });
 
   it("returns undefined when the fallback equals the primary model", () => {
-    expect(createFallbackModel("chat", { chatModel: "openai/gpt-4o-mini" })).toBeUndefined();
+    expect(createFallbackModel("chat", { chatModel: "google/gemini-2.5-flash" })).toBeUndefined();
   });
 
   it("inherits the agent's sampling settings but never reasoning kwargs", () => {

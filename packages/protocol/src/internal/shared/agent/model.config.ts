@@ -156,11 +156,21 @@ function instantiateModel(agent: string, cfg: ModelSettings, config?: ModelConfi
 }
 
 /**
- * Default cross-vendor fallback model. The per-agent primaries run on Google's
- * provider lane (gemini-3.7-flash); a same-key OpenRouter fallback on a
- * different vendor survives Google-side outages.
+ * Same-tier, previous-generation fallback: a "pro" primary falls back to the
+ * previous pro model, a "flash" primary to the previous flash model — the
+ * fallback is meant to survive a provider-side outage or rate limit on the
+ * exact primary, not to trade away the tier's capability. Every current
+ * primary is a flash model, but this stays tier-aware for when a pro model
+ * is added.
  */
-const FALLBACK_MODEL = "openai/gpt-4o-mini";
+const FALLBACK_MODEL_BY_TIER: Record<"pro" | "flash", string> = {
+  pro: "google/gemini-2.5-pro",
+  flash: "google/gemini-2.5-flash",
+};
+
+function fallbackModelFor(primaryModel: string): string {
+  return primaryModel.includes("pro") ? FALLBACK_MODEL_BY_TIER.pro : FALLBACK_MODEL_BY_TIER.flash;
+}
 
 /**
  * Creates the fallback ChatOpenAI for an agent, or undefined when fallbacks
@@ -170,8 +180,9 @@ const FALLBACK_MODEL = "openai/gpt-4o-mini";
  */
 export function createFallbackModel(agent: ModelAgent, config?: ModelConfig): ChatOpenAI | undefined {
   const cfg = getModelConfig(config)[agent] as ModelSettings;
-  if (cfg.model === FALLBACK_MODEL) return undefined;
-  return instantiateModel(agent, { ...cfg, model: FALLBACK_MODEL, reasoning: undefined }, config);
+  const fallbackModel = fallbackModelFor(cfg.model);
+  if (cfg.model === fallbackModel) return undefined;
+  return instantiateModel(agent, { ...cfg, model: fallbackModel, reasoning: undefined }, config);
 }
 
 /**
@@ -209,9 +220,10 @@ function withResilience<RunOutput>(
  * plus `.withRetry(...)` and `.withFallbacks([...])`.
  *
  * Retry covers transient provider errors *and* schema parse/validation
- * failures; the fallback model (see OPENROUTER_FALLBACK_MODEL) is bound to the
- * same schema so a provider outage degrades to a different vendor instead of
- * failing the call. Abort signals pass through: aborts are never retried and
+ * failures; the fallback model (see FALLBACK_MODEL_BY_TIER) is bound to the
+ * same schema so a provider outage or rate limit degrades to the previous
+ * generation of the same tier instead of failing the call. Abort signals
+ * pass through: aborts are never retried and
  * skip the fallback.
  *
  * @param agent - Key identifying which agent's model settings to use.
