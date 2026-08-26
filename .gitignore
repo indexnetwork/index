@@ -60,6 +60,8 @@ apps/mac/Resources/index.html
 
 # Local Postgres dump used to reset the synthetic development sandbox quickly.
 .cache/index/
+# Anonymized research dumps (never commit production extracts).
+.cache/research-export/
 
 # Root-only Pi subagent runtime state; nested/source artifacts remain visible.
 /.pi-subagents/
