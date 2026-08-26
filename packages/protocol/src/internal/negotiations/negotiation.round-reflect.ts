@@ -41,7 +41,9 @@ export type NegotiationRoundReflectCheck = Omit<NegotiationRoundReflectJobData, 
 
 /** Deterministic job id: duplicate delivery of one durable drain collapses. */
 export function negotiationRoundReflectJobId(intentId: string, round: number, generation: string): string {
-  return `reflect:${intentId}:${round}:${generation}`;
+  // BullMQ rejects custom ids containing `:`. Keep the durable components,
+  // but use a safe separator so a real all-paused check can reach its agent.
+  return `reflect.${intentId}.${round}.${generation}`;
 }
 
 /**
@@ -69,15 +71,35 @@ export async function maybeEnqueueRoundReflect(
   enqueue: NegotiationRoundReflectEnqueueFn | undefined,
   check: NegotiationRoundReflectCheck,
 ): Promise<boolean> {
-  if (!enqueue) return true;
+  if (!enqueue) {
+    logger.warn("Skipping all-paused reflect because no enqueue handler is configured", {
+      intentId: check.intentId,
+      round: check.round,
+    });
+    return true;
+  }
   try {
     const stamp = await database.getIntentNegotiationRound(check.intentId);
     // A current kickoff has not finished binding all of its tasks yet. A
     // passive/counterparty seat (no kickoff marker) and a superseded round
     // already have their complete durable task sets and need no size gate.
-    if (stamp.round === check.round && stamp.roundSize === null && stamp.kickoffStartedAt !== null) return true;
+    if (stamp.round === check.round && stamp.roundSize === null && stamp.kickoffStartedAt !== null) {
+      logger.info("Deferring all-paused reflect until kickoff stamps its round", {
+        intentId: check.intentId,
+        round: check.round,
+      });
+      return true;
+    }
     const tasks = await database.getNegotiationTasksForIntentRound(check.intentId, check.round);
-    if (tasks.length === 0 || tasks.some((task) => task.state !== "paused" && task.state !== "completed")) return true;
+    if (tasks.length === 0 || tasks.some((task) => task.state !== "paused" && task.state !== "completed")) {
+      logger.info("Deferring all-paused reflect because the round is still active", {
+        intentId: check.intentId,
+        round: check.round,
+        taskCount: tasks.length,
+        states: tasks.map((task) => task.state),
+      });
+      return true;
+    }
     const generation = tasks
       .map((task) => `${task.id}.${task.metadata.drainGeneration}`)
       .sort()
@@ -92,6 +114,12 @@ export async function maybeEnqueueRoundReflect(
     for (let attempt = 0; attempt < ENQUEUE_ATTEMPTS; attempt++) {
       try {
         await enqueue(job);
+        logger.info("Enqueued all-paused reflect", {
+          intentId: check.intentId,
+          round: check.round,
+          generation,
+          taskCount: tasks.length,
+        });
         return true;
       } catch (err) {
         failure = err;

@@ -70,6 +70,9 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
   }, [providersRetryKey]);
 
   const hasGoogle = socialProviders.includes('google');
+  // The local API enables email/password. Keep its entry point available while
+  // the providers probe retries during a backend restart.
+  const canUseEmailPassword = emailPasswordEnabled || import.meta.env.DEV;
   const resolvedCallbackURL =
     callbackURL ?? (typeof window !== 'undefined' ? window.location.origin : '/');
 
@@ -249,7 +252,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
             </button>
           </form>
 
-          {emailPasswordEnabled && (
+          {canUseEmailPassword && (
             <p className="av-alt">
               or{' '}
               <button
@@ -264,7 +267,7 @@ export default function AuthForm({ callbackURL, onAuthenticated, variant = 'defa
         </>
       )}
 
-      {view === 'email-password' && emailPasswordEnabled && (
+      {view === 'email-password' && canUseEmailPassword && (
         <>
           <div className="av-head">
             <button

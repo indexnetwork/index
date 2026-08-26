@@ -6,7 +6,7 @@ import { v5 as uuidv5 } from 'uuid';
 
 import { CREDENTIAL_PROVIDER_ID, hashCredentialPassword } from '../lib/betterauth/credential-password';
 
-import { SANDBOX_MINIMAL_PERSONAS, SANDBOX_PERSONAS, SANDBOX_SEED_PASSWORD, type SandboxPersona } from './sandbox-personas';
+import { SANDBOX_E2E_CASES, SANDBOX_MINIMAL_PERSONAS, SANDBOX_TWENTY_PERSONAS, SANDBOX_SEED_PASSWORD, type SandboxPersona } from './sandbox-personas';
 
 const SANDBOX_DATABASE = 'protocol_sandbox';
 const FIXTURE_NAMESPACE = 'd52db0f7-f03d-4f65-a20d-dcc16a890a21';
@@ -92,10 +92,12 @@ async function generateEmbeddings(texts: string[]): Promise<Map<string, number[]
 
 async function main(): Promise<void> {
   if (!process.argv.includes('--confirm')) {
-    throw new Error(`This command writes curated fixtures to ${SANDBOX_DATABASE}. Re-run with --confirm (add --minimal for the small five-person population).`);
+    throw new Error(`This command writes curated fixtures to ${SANDBOX_DATABASE}. Re-run with --confirm and exactly one of --minimal or --twenty.`);
   }
   const minimal = process.argv.includes('--minimal');
-  const personas = minimal ? SANDBOX_MINIMAL_PERSONAS : SANDBOX_PERSONAS;
+  const twenty = process.argv.includes('--twenty');
+  if (minimal === twenty) throw new Error('Choose exactly one sandbox population: --minimal or --twenty.');
+  const personas = minimal ? SANDBOX_MINIMAL_PERSONAS : SANDBOX_TWENTY_PERSONAS;
   // Minimal mode is deliberately one complete market: create Launch and no
   // other network, and keep every fixture signal inside it.
   const fixtureNetworks = minimal ? NETWORKS.filter((network) => network.key === 'launch') : NETWORKS;
@@ -104,6 +106,18 @@ async function main(): Promise<void> {
   const schema = await import('../schemas/database.schema');
 
   try {
+    // Fail before any paid embedding request when the configured local-dev
+    // branch does not actually expose protocol_sandbox. The live E2E runs
+    // this seeder as its reset step, so its environment check must be cheap.
+    try {
+      await db.execute(sql`SELECT 1`);
+    } catch (error) {
+      const cause = error instanceof Error && error.cause instanceof Error
+        ? error.cause.message
+        : error instanceof Error ? error.message : String(error);
+      throw new Error(`Cannot connect to ${SANDBOX_DATABASE} before seeding: ${cause}`, { cause: error });
+    }
+
     const personaFixtures = personas.map((persona, index) => {
       const context = profileText(persona);
       const classified = minimal
@@ -240,7 +254,7 @@ async function main(): Promise<void> {
       }
 
       for (const fixture of personaFixtures) {
-        const { persona, userId, context, premiseTexts, networkKeys } = fixture;
+        const { persona, userId, premiseTexts, networkKeys } = fixture;
         await tx.insert(schema.users).values({
           id: userId,
           email: persona.email,
@@ -331,10 +345,13 @@ async function main(): Promise<void> {
             felicityAuthority: 1,
             felicitySincerity: 1,
             felicityClarity: 1,
-            status: 'ACTIVE',
+            // A reset sandbox must be inert until its owner explicitly
+            // resumes an intent. Otherwise booting the API starts every
+            // fixture's discovery at once and drowns the first real user turn.
+            status: 'PAUSED',
           }).onConflictDoUpdate({
             target: schema.intents.id,
-            set: { payload, summary: payload, embedding: embeddings.get(payload)!, status: 'ACTIVE' },
+            set: { payload, summary: payload, embedding: embeddings.get(payload)!, status: 'PAUSED' },
           });
 
           const relevantKeys: NetworkKey[] = networkKeys.filter((key) => key !== 'commons' && key !== 'vault');
@@ -351,13 +368,60 @@ async function main(): Promise<void> {
           }
         }
       }
+
+      // A durable but unapproved introduction gives the live E2E suite a
+      // normal fixture to observe. It is intentionally outside discovery:
+      // neither principal may see or open it until Ethan approves it.
+      const fixtureByEmail = new Map(personaFixtures.map((fixture) => [fixture.persona.email, fixture]));
+      const unapproved = SANDBOX_E2E_CASES.unapprovedIntroducer;
+      const source = fixtureByEmail.get(unapproved.source.email)!;
+      const candidate = fixtureByEmail.get(unapproved.candidate.email)!;
+      const introducer = fixtureByEmail.get(unapproved.introducer.email)!;
+      const sourceIntent = source.persona.fixedIds?.intentIds[unapproved.source.intentIndex]
+        ?? fixtureId('intent', `${source.persona.email}:${unapproved.source.intentIndex}`);
+      const candidateIntent = candidate.persona.fixedIds?.intentIds[unapproved.candidate.intentIndex]
+        ?? fixtureId('intent', `${candidate.persona.email}:${unapproved.candidate.intentIndex}`);
+      const launch = networkByKey.get('launch')!;
+      await tx.insert(schema.opportunities).values({
+        id: unapproved.opportunityId,
+        detection: {
+          source: 'manual',
+          createdBy: introducer.userId,
+          createdByName: introducer.persona.name,
+          triggeredBy: sourceIntent,
+          timestamp: '2026-01-01T00:00:00.000Z',
+        },
+        actors: [
+          { networkId: launch.id, userId: source.userId, intent: sourceIntent, role: 'patient' },
+          { networkId: launch.id, userId: candidate.userId, intent: candidateIntent, role: 'agent' },
+          { networkId: launch.id, userId: introducer.userId, role: 'introducer', approved: false },
+        ],
+        interpretation: {
+          category: 'collaboration',
+          reasoning: 'Fixture introduction awaiting introducer approval.',
+          confidence: 0.8,
+          signals: [{ type: 'curator_judgment', weight: 1, detail: 'Sandbox E2E unapproved introduction' }],
+        },
+        context: { networkId: launch.id },
+        confidence: '0.8',
+        status: 'latent',
+        metadata: { fixture: SANDBOX_DATABASE, purpose: 'unapproved_introducer_e2e' },
+      }).onConflictDoUpdate({
+        target: schema.opportunities.id,
+        set: {
+          status: 'latent',
+          updatedAt: new Date(),
+          actors: [
+            { networkId: launch.id, userId: source.userId, intent: sourceIntent, role: 'patient' },
+            { networkId: launch.id, userId: candidate.userId, intent: candidateIntent, role: 'agent' },
+            { networkId: launch.id, userId: introducer.userId, role: 'introducer', approved: false },
+          ],
+        },
+      });
     });
 
-    // The discovery queue dedups by `rediscovery-<userId>-<intentId>-<6h bucket>`
-    // and keeps completed jobs for 24h. Fixture ids are deterministic, so a
-    // re-seed inside the same bucket re-enqueues under an id BullMQ already
-    // holds as completed — the add is silently dropped and the intent shows
-    // WARMING forever. Best-effort: an unreachable Redis must not fail the seed.
+    // Remove stale discovery jobs for fixture owners. A reset stays paused;
+    // normal intent resume is the only thing that starts discovery.
     const currentFixtureUserIds = personaFixtures.map((fixture) => fixture.userId);
     if (wipedFixtureUserIds.length > 0 || minimal) {
       try {
@@ -371,33 +435,8 @@ async function main(): Promise<void> {
             removed += 1;
           }
         }
-        // In the focused fixture every active signal is deliberately sent to
-        // discovery. That gives the local sandbox real agent-to-agent traffic
-        // immediately instead of requiring someone to manually re-submit each
-        // intent after a reset.
-        let queued = 0;
-        if (minimal) {
-          const launch = networkByKey.get('launch')!;
-          for (const fixture of personaFixtures) {
-            for (const [intentIndex] of fixture.persona.intents.entries()) {
-              const intentId = fixture.persona.fixedIds?.intentIds[intentIndex]
-                ?? fixtureId('intent', `${fixture.persona.email}:${intentIndex}`);
-              await fromIntentQueue.addJob({
-                userId: fixture.userId,
-                intentId,
-                networkIds: [launch.id],
-              }, {
-                jobId: `sandbox-launch-${fixture.userId}-${intentId}`,
-                removeOnComplete: true,
-                removeOnFail: true,
-              });
-              queued += 1;
-            }
-          }
-        }
         await fromIntentQueue.queue.close();
         if (removed > 0) console.log(`Removed ${removed} stale discovery job(s) for wiped fixture users.`);
-        if (queued > 0) console.log(`Queued ${queued} Launch intent(s) for discovery and negotiation.`);
       } catch (error) {
         console.warn(`Discovery queue sweep skipped: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -406,7 +445,7 @@ async function main(): Promise<void> {
     const premiseCount = personaFixtures.reduce((sum, item) => sum + item.premiseTexts.length, 0);
     const intentCount = personaFixtures.reduce((sum, item) => sum + item.persona.intents.length, 0);
     console.log(
-      `Seeded ${personaFixtures.length} people${minimal ? ' (minimal mode)' : ''}, ${fixtureNetworks.length} networks, `
+      `Seeded ${personaFixtures.length} people (${minimal ? 'minimal' : 'twenty'} mode), ${fixtureNetworks.length} networks, `
       + `${premiseCount} premises, and ${intentCount} intents into ${SANDBOX_DATABASE}.`,
     );
     console.log(`Every seed persona signs in with email/password; the shared password is "${SANDBOX_SEED_PASSWORD}".`);

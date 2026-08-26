@@ -10,18 +10,18 @@ import { FocusScope } from "@radix-ui/react-focus-scope";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
+import AgentHandlingOpportunity from "@/components/AgentHandlingOpportunity";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import IntentCycleInspector from "@/components/IntentCycleInspector";
-import PersonalAgentTimeline from "@/components/PersonalAgentTimeline";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversations, useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
-import type { IntentCycleSnapshot, IntentCycleTimelineEntry } from "@/services/conversation";
+import type { IntentCycleSnapshot, IntentCycleTimelineEntry, NegotiationPauseReason } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
@@ -61,6 +61,31 @@ const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "rejected",
   "expired",
 ];
+
+function latestA2AActivity(message: { senderId: string; parts: unknown[]; createdAt: string }, viewerUserId: string) {
+  let verb: string | null = null;
+  let text: string | null = null;
+  let pauseReason: NegotiationPauseReason | null = null;
+  for (const part of message.parts) {
+    if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+    const record = part as Record<string, unknown>;
+    if (typeof record.text === "string" && record.text.trim()) text = record.text.trim();
+    if (record.kind !== "data" || !record.data || typeof record.data !== "object" || Array.isArray(record.data)) continue;
+    const data = record.data as Record<string, unknown>;
+    if (typeof data.verb === "string") verb = data.verb;
+    if (verb === "pause" && typeof data.reason === "string") {
+      pauseReason = data.reason as NegotiationPauseReason;
+    } else if (typeof data.message === "string" && data.message.trim()) {
+      text = data.message.trim();
+    }
+  }
+  return {
+    actor: message.senderId === `agent:${viewerUserId}` ? "yours" as const : "theirs" as const,
+    verb,
+    text: verb === "pause" ? null : text,
+    pauseReason,
+  };
+}
 
 /** Icon-only action button in the intent detail header (Pause / Edit / Archive). */
 function ActionChip({
@@ -272,7 +297,7 @@ export default function IntentDetailPage() {
   useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
   const { user } = useAuthContext();
-  const { subscribePersonalAgentTurnCompleted, subscribeIntentDiscoveryProgress, subscribeIntentInvalidation } = useConversation();
+  const { subscribePersonalAgentTurnCompleted, subscribeConversationMessage, subscribeIntentDiscoveryProgress, subscribeIntentInvalidation } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -305,6 +330,7 @@ export default function IntentDetailPage() {
   const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
+  const selectedBucketEffectRef = useRef<RadarBucket | null>(null);
   // The left column is the signal's agent chat window. `chatUnavailable` is
   // the runtime fallback if the bootstrap fails.
   const [chatUnavailable, setChatUnavailable] = useState(false);
@@ -340,6 +366,7 @@ export default function IntentDetailPage() {
     activeIntentIdRef.current = intentId;
     lifecycleGenerationRef.current += 1;
     lifecycleMutationRef.current = null;
+    selectedBucketEffectRef.current = null;
     setArchiveTargetId(null);
     setArchiving(false);
   }, [intentId]);
@@ -449,6 +476,9 @@ export default function IntentDetailPage() {
         // Skeleton phase is best-effort — fall through to the full fetch.
       }
     }
+    // Agent-owned buckets deliberately avoid the Opportunity Presenter. Their
+    // rows use the skeleton identity plus durable A2A state below.
+    if (selectedBucket === "agent-handling" || selectedBucket === "waiting") return;
     // Phase 2 (full): presenter text for cache misses; replaces the whole list.
     try {
       const res = await opportunitiesService.getRadarView(baseOptions);
@@ -465,7 +495,7 @@ export default function IntentDetailPage() {
     } finally {
       if (seq === loadSeqRef.current && !preserveExisting) settleLoading();
     }
-  }, [intentId, opportunitiesService]);
+  }, [intentId, opportunitiesService, selectedBucket]);
 
   const negotiationByOpportunity = useMemo(() => {
     const negotiations = new Map<string, IntentCycleSnapshot["negotiations"][number]>();
@@ -504,6 +534,38 @@ export default function IntentDetailPage() {
   }, [intentId, invalidateLiveIntent, subscribePersonalAgentTurnCompleted]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    return subscribeConversationMessage(({ message }) => {
+      if (!message.taskId) return;
+      const activity = latestA2AActivity(message, user.id);
+      setIntentCycle((current) => {
+        if (!current || !current.negotiations.some((negotiation) => negotiation.taskId === message.taskId)) return current;
+        return {
+          ...current,
+          negotiations: current.negotiations.map((negotiation) => {
+            if (negotiation.taskId !== message.taskId) return negotiation;
+            const pause = activity.verb === "pause" && activity.pauseReason
+              ? { reason: activity.pauseReason, by: activity.actor }
+              : negotiation.pause;
+            return {
+              ...negotiation,
+              state: activity.verb === "pause" ? "paused" : negotiation.state,
+              pause,
+              latestActivity: {
+                actor: activity.actor,
+                verb: activity.verb,
+                text: activity.text,
+                createdAt: message.createdAt,
+              },
+              updatedAt: message.createdAt,
+            };
+          }),
+        };
+      });
+    });
+  }, [subscribeConversationMessage, user?.id]);
+
+  useEffect(() => {
     return subscribeIntentDiscoveryProgress((event) => {
       if (event.intentId === intentId) invalidateLiveIntent();
     });
@@ -537,6 +599,14 @@ export default function IntentDetailPage() {
       active = false;
     };
   }, [intentId, intentsService, loadOpportunities, loadIntentCycle, loadIntentTimeline]);
+
+  useEffect(() => {
+    if (selectedBucketEffectRef.current === null) {
+      selectedBucketEffectRef.current = selectedBucket;
+      return;
+    }
+    void loadOpportunities(true);
+  }, [loadOpportunities, selectedBucket]);
 
   const handleArchive = useCallback(async () => {
     if (!archiveTargetId || archiving) return;
@@ -1005,11 +1075,6 @@ export default function IntentDetailPage() {
                       discoveryProgress={intent?.discoveryProgress}
                       networks={intent?.networks}
                     />
-                    <PersonalAgentTimeline
-                      entries={intentTimeline}
-                      loading={intentTimelineLoading}
-                      error={intentTimelineError}
-                    />
                   </div>
                   <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
                     {RADAR_BUCKETS.map((bucket) => (
@@ -1047,46 +1112,60 @@ export default function IntentDetailPage() {
                   ) : (
                     <div className="space-y-3">
                       {visibleOpportunities.map((item) => (
-                        <OpportunityCard
-                          key={item.opportunityId}
-                          card={item}
-                          currentStatus={
-                            opportunityStatusMap[item.opportunityId]
-                          }
-                          negotiationInspectorHref={inspectorHrefByOpportunity.get(item.opportunityId)}
-                          negotiationState={negotiationByOpportunity.get(item.opportunityId)}
-                          onPrimaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                            counterpartName,
-                          ) =>
-                            handleOpportunityAction(
+                        selectedBucket === "agent-handling" || selectedBucket === "waiting" ? (
+                          <AgentHandlingOpportunity
+                            key={item.opportunityId}
+                            item={item}
+                            negotiation={negotiationByOpportunity.get(item.opportunityId)}
+                            waiting={selectedBucket === "waiting"}
+                            inspectorHref={inspectorHrefByOpportunity.get(item.opportunityId)}
+                          />
+                        ) : (
+                          <OpportunityCard
+                            key={item.opportunityId}
+                            card={item}
+                            currentStatus={
+                              opportunityStatusMap[item.opportunityId]
+                            }
+                            negotiationInspectorHref={inspectorHrefByOpportunity.get(item.opportunityId)}
+                            negotiationState={negotiationByOpportunity.get(item.opportunityId)}
+                            pendingActionable={
+                              ((opportunityStatusMap[item.opportunityId] as OpportunityLifecycleStatus | undefined) ?? item.status) !== "pending"
+                              || negotiationByOpportunity.get(item.opportunityId)?.state === "completed"
+                            }
+                            onPrimaryAction={(
                               oppId,
-                              "accepted",
                               userId,
                               viewerRole,
                               counterpartName,
-                            )
-                          }
-                          onSecondaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                            counterpartName,
-                          ) =>
-                            handleOpportunityAction(
+                            ) =>
+                              handleOpportunityAction(
+                                oppId,
+                                "accepted",
+                                userId,
+                                viewerRole,
+                                counterpartName,
+                              )
+                            }
+                            onSecondaryAction={(
                               oppId,
-                              "rejected",
                               userId,
                               viewerRole,
                               counterpartName,
-                            )
-                          }
-                          isLoading={
-                            !!opportunityActionLoading[item.opportunityId]
-                          }
-                        />
+                            ) =>
+                              handleOpportunityAction(
+                                oppId,
+                                "rejected",
+                                userId,
+                                viewerRole,
+                                counterpartName,
+                              )
+                            }
+                            isLoading={
+                              !!opportunityActionLoading[item.opportunityId]
+                            }
+                          />
+                        )
                       ))}
                     </div>
                   )}

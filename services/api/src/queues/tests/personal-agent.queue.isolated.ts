@@ -11,7 +11,7 @@ import type { PersonalAgentInput, PersonalAgentResult } from '@indexnetwork/prot
 import { UnrecoverableError } from 'bullmq';
 
 import { requestContext as hostRequestContext } from '../../lib/request-context';
-import { PERSONAL_AGENT_EXECUTION_BUDGET_MS, PersonalAgentQueue } from '../personal-agent.queue';
+import { PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS, PERSONAL_AGENT_EXECUTION_BUDGET_MS, PersonalAgentQueue } from '../personal-agent.queue';
 
 setRequestContextStore(hostRequestContext);
 
@@ -84,6 +84,20 @@ describe('PersonalAgentQueue serialization', () => {
     });
   });
 
+  it('events for different signals do not wait behind each other', async () => {
+    await withQueue(buildQueue(() => idle), async ({ queue, spans }) => {
+      const jobs = await Promise.all([
+        queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' }),
+        queue.addMatchesReadyEvent({ userId: 'user-2', intentId: 'intent-2' }),
+      ]);
+      await Promise.all(jobs.map((job) => job.waitUntilFinished(undefined as never, 10_000)));
+
+      expect(spans).toHaveLength(2);
+      const [first, second] = [...spans].sort((a, b) => a.start - b.start);
+      expect(second!.start).toBeLessThan(first!.end);
+    });
+  });
+
   it('a redelivered user message coalesces on its message id — one turn, not two', async () => {
     await withQueue(buildQueue(() => idle), async ({ queue, invocations }) => {
       const event = {
@@ -114,6 +128,43 @@ describe('PersonalAgentQueue serialization', () => {
     });
   });
 
+  it('delivers one retained counterpart-resolution notification per verdict', async () => {
+    await withQueue(buildQueue(() => idle), async ({ queue, invocations }) => {
+      const event = {
+        userId: 'user-1', intentId: 'intent-1', event: 'counterparty_resolved' as const,
+        negotiationId: 'task-1', verdict: 'pending' as const,
+      };
+      const [first, duplicate] = await Promise.all([
+        queue.addCounterpartyResolvedEvent(event),
+        queue.addCounterpartyResolvedEvent(event),
+      ]);
+      expect(duplicate.id).toBe(first.id);
+      await first.waitUntilFinished(undefined as never, 10_000);
+      expect(invocations()).toBe(1);
+    });
+  });
+
+  it('delivers one retained needs-principal notification per pause generation', async () => {
+    await withQueue(buildQueue(() => idle), async ({ queue, invocations }) => {
+      const event = {
+        userId: 'user-1', intentId: 'intent-1', event: 'needs_principal' as const,
+        negotiationId: 'task-1', generation: 0,
+      };
+      const [first, duplicate] = await Promise.all([
+        queue.addNeedsPrincipalEvent(event),
+        queue.addNeedsPrincipalEvent(event),
+      ]);
+      expect(duplicate.id).toBe(first.id);
+      expect(first.opts.lifo).toBe(true);
+      await first.waitUntilFinished(undefined as never, 10_000);
+      expect(invocations()).toBe(1);
+
+      const reopened = await queue.addNeedsPrincipalEvent({ ...event, generation: 1 });
+      await reopened.waitUntilFinished(undefined as never, 10_000);
+      expect(invocations()).toBe(2);
+    });
+  });
+
   it('a matches_ready batch arriving while a turn is running is queued, never swallowed', async () => {
     // The coalescing that makes a burst of discovery batches one kickoff must
     // not eat a batch the running turn has already read past: BullMQ silently
@@ -134,14 +185,18 @@ describe('PersonalAgentQueue serialization', () => {
       // The turn is now ACTIVE and has read its match list; this batch is new.
       const second = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' });
       expect(second.id).not.toBe(first.id);
-      expect(await second.getState()).not.toBe('active');
-      // A third batch in the same window coalesces onto the queued follow-up.
+      // A concurrent worker may reserve this job, but the signal gate must
+      // keep its graph invocation behind the first turn.
+      expect(built.invocations()).toBe(1);
+      // With parallel workers both reserved slots can already be active (the
+      // per-signal gate still serializes their graph turns), so a third batch
+      // takes the documented unkeyed follow-up path.
       const third = await built.queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' });
-      expect(third.id).toBe(second.id);
+      expect(third.id).not.toBe(first.id);
+      expect(third.id).not.toBe(second.id);
       gate?.();
-      await first.waitUntilFinished(undefined as never, 10_000);
-      await second.waitUntilFinished(undefined as never, 10_000);
-      expect(built.invocations()).toBe(2);
+      await Promise.all([first, second, third].map((job) => job.waitUntilFinished(undefined as never, 10_000)));
+      expect(built.invocations()).toBe(3);
     } finally {
       gate?.();
       await built.queue.close();
@@ -196,6 +251,11 @@ describe('PersonalAgentQueue serialization', () => {
       messages: ['Right here.'],
     };
     await withQueue(buildQueue(() => result), async ({ queue }) => {
+      const queued = await queue.addUserMessageEvent({
+        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
+        sessionId: 'session-1', messageId: 'reply-priority', text: 'priority please',
+      });
+      expect(queued.opts.lifo).toBe(true);
       const turn = await queue.runUserMessageTurn({
         userId: 'user-1', intentId: 'intent-1', event: 'user_message',
         sessionId: 'session-1', messageId: 'reply-2', text: 'where are we?',
@@ -264,6 +324,15 @@ describe('PersonalAgentQueue serialization', () => {
   });
 
   it('a background job gets a fresh execution-relative budget and preserves request context', async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout')!;
+    let timeoutMs: number | undefined;
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: (ms: number) => {
+        timeoutMs = ms;
+        return new AbortController().signal;
+      },
+    });
     let captured: ReturnType<typeof requestContext.getStore>;
     const queue = new PersonalAgentQueue(async () => {
       captured = requestContext.getStore();
@@ -282,7 +351,9 @@ describe('PersonalAgentQueue serialization', () => {
       expect(captured?.originUrl).toBe('https://queue.example.test');
       expect(captured?.abortSignal).toBeInstanceOf(AbortSignal);
       expect(captured?.abortSignal?.aborted).toBe(false);
+      expect(timeoutMs).toBe(PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS);
     } finally {
+      Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
       await queue.close();
     }
   });

@@ -34,9 +34,9 @@ describe('readSignalMatches', () => {
       .rejects.toThrow('connection reset');
   });
 
-  it('flags an introduction whose introducer has not approved it', async () => {
-    const [match] = await readSignalMatches('alice', 'intent-1', introduction(undefined), PERSONAL_AGENT_MATCH_STATUSES);
-    expect(match!.awaitingIntroducerApproval).toBe(true);
+  it('does not expose an introduction whose introducer has not approved it', async () => {
+    const matches = await readSignalMatches('alice', 'intent-1', introduction(undefined), PERSONAL_AGENT_MATCH_STATUSES);
+    expect(matches).toEqual([]);
   });
 
   it('clears the flag once every introducer has approved', async () => {
@@ -47,6 +47,16 @@ describe('readSignalMatches', () => {
   it('lists latent and draft matches, which a kickoff reaches out to', async () => {
     const matches = await readSignalMatches('alice', 'intent-1', introduction(true), PERSONAL_AGENT_MATCH_STATUSES);
     expect(matches.map((match) => match.status)).toEqual(['latent']);
+  });
+
+  it('keeps a persisted latent match eligible for PersonalAgent kickoff', async () => {
+    const matches = await readSignalMatches('alice', 'intent-1', {
+      listOpportunities: async () => [{
+        id: 'latent-match', status: 'latent', createdAt: new Date(), counterpartName: 'Match',
+        actors: [{ userId: 'alice', role: 'peer' }, { userId: 'bob', role: 'peer' }],
+      }],
+    }, PERSONAL_AGENT_MATCH_STATUSES);
+    expect(matches.map((match) => match.opportunityId)).toEqual(['latent-match']);
   });
 });
 

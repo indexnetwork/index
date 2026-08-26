@@ -32,7 +32,7 @@ const logger = protocolLogger("PersonalAgent:Judgment");
  * chat controller's 90s wait and the principal sees a timeout for a turn that
  * is still running.
  */
-const NEGOTIATION_TURN_TIMEOUT_MS = 20_000;
+export const NEGOTIATION_TURN_TIMEOUT_MS = 20_000;
 export const PERSONAL_AGENT_MODEL_TIMEOUT_MS = 15_000;
 
 const MAX_TEXT_CHARS = 500;
@@ -361,7 +361,7 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
       `NEGOTIATION CONTEXT:\nThis table is ${input.negotiation.state}; ${input.negotiation.metadata.initiatorUserId === input.intent.userId ? "your seat opened it" : "the counterparty opened it"}.`,
       `WHAT HAS BEEN SAID SO FAR:\n${renderThread(input.thread)}`,
     ].join("\n\n");
-    const parsed = ProseSchema.safeParse(await this.callProseModel("personal_agent_seat_brief", [
+    const parsed = ProseSchema.safeParse(await this.callNegotiationBriefModel([
       { role: "system", content: PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION },
       { role: "user", content: `${known}\n\nWrite the brief.` },
     ]));
@@ -408,6 +408,15 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
       this.createProseModel(name),
       messages,
       AbortSignal.timeout(PERSONAL_AGENT_MODEL_TIMEOUT_MS),
+    );
+  }
+
+  /** A counterparty brief is part of opening a live negotiation, not ordinary DM prose. */
+  protected async callNegotiationBriefModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
+    return invokeWithAbortSignal(
+      this.createProseModel("personal_agent_seat_brief"),
+      messages,
+      AbortSignal.timeout(NEGOTIATION_TURN_TIMEOUT_MS),
     );
   }
 

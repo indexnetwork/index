@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 
 import { useAIChat } from "@/contexts/AIChatContext";
@@ -14,6 +14,81 @@ import { log } from "@/lib/logger";
 import type { IntentCycleTimelineEntry } from "@/services/conversation";
 
 const logger = log.ui.from("IntentNegotiatorChat");
+
+interface TraceChatMessage {
+  id: string;
+  timestamp: Date;
+}
+
+interface TraceGroup {
+  id: string;
+  entries: IntentCycleTimelineEntry[];
+  createdAt: Date;
+  inputMessageId: string | null;
+  outputMessageId: string | null;
+}
+
+interface TracePlacement {
+  before: Map<string, TraceGroup[]>;
+  after: Map<string, TraceGroup[]>;
+  tail: TraceGroup[];
+}
+
+function recordString(record: Record<string, unknown>, key: string): string | null {
+  return typeof record[key] === "string" && record[key].trim() ? record[key] : null;
+}
+
+/**
+ * Durable acts normally precede the message they explain, except
+ * `message_user`: its ledger row is written after delivery. The message ids
+ * recorded with a turn make that causal position exact; older rows fall back
+ * to their timestamp without pretending to know more than they do.
+ */
+function placeTraceGroups(messages: TraceChatMessage[], entries: IntentCycleTimelineEntry[]): TracePlacement {
+  const groups = new Map<string, TraceGroup>();
+  for (const entry of entries) {
+    const traceId = recordString(entry.event, "traceId");
+    const groupId = traceId ?? `legacy-${entry.id}`;
+    const createdAt = new Date(entry.createdAt);
+    const current = groups.get(groupId);
+    const inputMessageId = recordString(entry.event, "messageId");
+    const outputMessageId = recordString(entry.act, "messageId");
+    if (current) {
+      current.entries.push(entry);
+      if (createdAt < current.createdAt) current.createdAt = createdAt;
+      current.inputMessageId ??= inputMessageId;
+      current.outputMessageId ??= outputMessageId;
+    } else {
+      groups.set(groupId, {
+        id: groupId,
+        entries: [entry],
+        createdAt,
+        inputMessageId,
+        outputMessageId,
+      });
+    }
+  }
+
+  const knownMessageIds = new Set(messages.map((message) => message.id));
+  const placement: TracePlacement = { before: new Map(), after: new Map(), tail: [] };
+  const add = (target: Map<string, TraceGroup[]>, messageId: string, group: TraceGroup) => {
+    const existing = target.get(messageId) ?? [];
+    existing.push(group);
+    target.set(messageId, existing);
+  };
+  for (const group of [...groups.values()].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())) {
+    if (group.outputMessageId && knownMessageIds.has(group.outputMessageId)) {
+      add(placement.before, group.outputMessageId, group);
+    } else if (group.inputMessageId && knownMessageIds.has(group.inputMessageId)) {
+      add(placement.after, group.inputMessageId, group);
+    } else {
+      const nextMessage = messages.find((message) => message.timestamp.getTime() > group.createdAt.getTime());
+      if (nextMessage) add(placement.before, nextMessage.id, group);
+      else placement.tail.push(group);
+    }
+  }
+  return placement;
+}
 
 function formatRelativeTimestamp(timestamp: Date | undefined): string | null {
   if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
@@ -264,6 +339,25 @@ export default function IntentNegotiatorChat({
   );
 
   const placeholder = agentName ? `Message ${agentName}…` : "Message your Personal Agent…";
+  const firstPendingQuestionIndex = messages.findIndex((message) => (
+    message.role === "assistant"
+    && message.decisionQuestions !== undefined
+    && message.decisionQuestions.length > 0
+    && !(message.decisionQuestionsSubmitted ?? decisionQuestionsSubmittedIds.has(message.id))
+  ));
+  // A principal question is a transcript barrier. Background agent activity
+  // remains durable, but it must not appear to supersede a form the principal
+  // has not submitted yet. Principal chat messages stay visible and do not
+  // count as answers to the structured form.
+  const visibleMessages = firstPendingQuestionIndex < 0
+    ? messages
+    : messages.filter((message, index) => (
+      index <= firstPendingQuestionIndex || message.role === "user"
+    ));
+  const tracePlacement = useMemo(
+    () => placeTraceGroups(visibleMessages, timelineEntries),
+    [visibleMessages, timelineEntries],
+  );
   const hasRestoredHistory = restoredHistoryLoaded && messages.length > 0;
   const restoredHistoryLastActive = hasRestoredHistory
     ? formatRelativeTimestamp(messages[messages.length - 1]?.timestamp)
@@ -332,12 +426,15 @@ export default function IntentNegotiatorChat({
               </div>
             )}
 
-            {messages.map((msg, messageIndex) => {
-              const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined;
+            {visibleMessages.map((msg, messageIndex) => {
+              const previousMessage = messageIndex > 0 ? visibleMessages[messageIndex - 1] : undefined;
               const startsSession = previousMessage !== undefined
                 && previousMessage.conversationSessionId !== msg.conversationSessionId;
               return (
                 <Fragment key={`message-${msg.id}`}>
+                  {tracePlacement.before.get(msg.id)?.map((group) => (
+                    <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
+                  ))}
                   {startsSession && (
                     <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
                       <span className="h-px flex-1 bg-gray-200" />
@@ -394,9 +491,8 @@ export default function IntentNegotiatorChat({
                         <DecisionQuestions
                           questions={msg.decisionQuestions}
                           submitted={
-                            messageIndex < messages.length - 1 ||
-                            (msg.decisionQuestionsSubmitted ??
-                              decisionQuestionsSubmittedIds.has(msg.id))
+                            msg.decisionQuestionsSubmitted ??
+                            decisionQuestionsSubmittedIds.has(msg.id)
                           }
                           onSubmit={(flattened) => {
                             setDecisionQuestionsSubmittedIds((previous) => {
@@ -404,21 +500,33 @@ export default function IntentNegotiatorChat({
                               next.add(msg.id);
                               return next;
                             });
-                            void sendMessage(flattened);
+                            void sendMessage(flattened, {
+                              decisionQuestionMessageIds: [msg.id],
+                              onError: () => {
+                                setDecisionQuestionsSubmittedIds((previous) => {
+                                  const next = new Set(previous);
+                                  next.delete(msg.id);
+                                  return next;
+                                });
+                              },
+                            });
                           }}
                         />
                       )}
                     </div>
                   )}
+                  {tracePlacement.after.get(msg.id)?.map((group) => (
+                    <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
+                  ))}
                 </Fragment>
               );
             })}
 
-            <PersonalAgentDebugTrace
-              entries={timelineEntries}
-              loading={timelineLoading}
-              error={timelineError}
-            />
+            {tracePlacement.tail.map((group) => (
+              <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
+            ))}
+            {timelineLoading && <p role="status" className="text-xs text-gray-500">Loading agent trace…</p>}
+            {timelineError && <p role="status" className="text-xs text-red-600">Agent trace could not be loaded.</p>}
 
             {regenerationPending && <QuestionRegenerationIndicator />}
           </>

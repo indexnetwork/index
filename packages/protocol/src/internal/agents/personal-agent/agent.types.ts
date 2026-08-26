@@ -30,7 +30,7 @@ import type { Question } from "../../../protocol/question.js";
 // ─── Invoke contract ─────────────────────────────────────────────────────────
 
 /** What woke the agent in intent scope. */
-export type PersonalAgentIntentEventKind = "user_message" | "matches_ready" | "all_paused";
+export type PersonalAgentIntentEventKind = "user_message" | "matches_ready" | "needs_principal" | "all_paused";
 
 export type PersonalAgentInput =
   /** Global scope — deferred; the graph answers with an input error. */
@@ -48,8 +48,12 @@ export type PersonalAgentInput =
   }
   /** Discovery persisted a batch of matches for this signal. */
   | { userId: string; intentId: string; event: "matches_ready" }
+  /** One of this signal's negotiations needs its principal before it can continue. */
+  | { userId: string; intentId: string; event: "needs_principal"; negotiationId: string }
   /** Every negotiation of `(intentId, round)` has paused. */
   | { userId: string; intentId: string; event: "all_paused"; round: number }
+  /** The other agent resolved a shared negotiation; fixed copy informs this principal. */
+  | { userId: string; intentId: string; event: "counterparty_resolved"; negotiationId: string; verdict: "pending" | "reject" }
   /** One negotiator turn for the given seat and its own signal. */
   | { userId: string; intentId: string; negotiationId: string };
 
@@ -364,6 +368,8 @@ export interface PersonalAgentTurnContext {
   userId: string;
   intentId: string;
   event: PersonalAgentIntentEventKind;
+  /** Internal provenance shared by every durable act from one agent turn. */
+  traceId?: string;
   /** Present only for `user_message`. */
   message?: { text: string; sessionId: string; messageId: string };
   /** Present only for `all_paused`. */

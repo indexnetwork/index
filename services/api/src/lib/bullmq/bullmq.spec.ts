@@ -26,6 +26,15 @@ describe('QueueFactory test isolation', () => {
     await queue.close();
   });
 
+  it('rejects a BullMQ-invalid custom job id before enqueueing', async () => {
+    const queue = QueueFactory.createQueue<{ value: number }>(queueName('job-id-validation'));
+
+    expect(() => queue.add('work', { value: 1 }, { jobId: 'contains:colon' })).toThrow(
+      'BullMQ custom jobId must not contain ":"',
+    );
+    await queue.close();
+  });
+
   it('models delayed and prioritized states', async () => {
     const queue = QueueFactory.createQueue(queueName('states'));
     const delayed = await queue.add('delayed', {}, { delay: 60_000 });

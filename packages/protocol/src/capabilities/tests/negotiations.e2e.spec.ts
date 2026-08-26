@@ -61,6 +61,23 @@ class ScriptedTurnAuthor implements NegotiationTurnAuthor {
 }
 
 describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
+  test("records an author failure without falsely blaming a silent counterparty", async () => {
+    const host = new FakeNegotiationHost();
+    const graph = new Negotiations({
+      database: host.database,
+      author: { authorTurn: async () => { throw new Error("provider unavailable"); } },
+    }).createGraph();
+
+    const result = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+
+    expect(result).toMatchObject({ status: "paused", pause: { reason: "open_failed" } });
+    expect(host.taskFor(result.negotiationId).metadata.pause).toMatchObject({
+      reason: "open_failed",
+      failure: "provider_unavailable",
+      failureDetail: "Error: provider unavailable",
+    });
+  });
+
   test("a submitted passive-round sibling prevents an early all-paused wake", async () => {
     const host = new FakeNegotiationHost();
     const passiveIntentId = "intent-bob-1";
@@ -231,7 +248,12 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       { verb: "outreach", message: "Opening.", reasoning: "r" },
       { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const notifications: Array<{ userId: string; intentId: string; negotiationId: string; verdict: "pending" | "reject" }> = [];
+    const graph = new Negotiations({
+      database: host.database,
+      author,
+      resolutionEnqueue: async (input) => { notifications.push(input); },
+    }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
     expect(opened.status).toBe("paused");
@@ -245,6 +267,12 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     expect(resolved.status).toBe("resolved");
     expect(resolved.verdict).toBe("reject");
     expect(host.opportunityStatusUpdates.at(-1)).toEqual({ id: OPPORTUNITY_ID, status: "rejected" });
+    expect(notifications).toEqual([{
+      userId: SOURCE_USER_ID,
+      intentId: INTENT_ID,
+      negotiationId: opened.negotiationId,
+      verdict: "reject",
+    }]);
   });
 
   test("rejects a verdict from someone who is not a negotiation seat", async () => {

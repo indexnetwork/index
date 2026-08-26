@@ -109,11 +109,12 @@ describe('IntentNegotiatorChat', () => {
     await waitFor(() => expect(sendMessage).toHaveBeenCalledWith(
       'Sofia (Does your design-partner experience include a scalable SaaS transition?): Yes, directly\n' +
       'Aisha (What product domain are you building in?): AI',
+      expect.objectContaining({ decisionQuestionMessageIds: ['msg-agent'] }),
     ));
     expect(screen.getByText('Submitted.')).toBeInTheDocument();
   });
 
-  it('disables a historical question form once a later message exists', async () => {
+  it('keeps a question form open when a later principal message exists', async () => {
     chatState.messages = [
       agentMessage({ decisionQuestions }),
       {
@@ -125,10 +126,64 @@ describe('IntentNegotiatorChat', () => {
     ];
     renderChat();
 
-    expect(await screen.findByText('Submitted.')).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Yes, directly/i })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
+    await screen.findByRole('radio', { name: /Yes, directly/i });
+    expect(screen.queryByText('Submitted.')).toBeNull();
+    expect(screen.getByRole('radio', { name: /Yes, directly/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('parks later agent messages behind an unanswered question', async () => {
+    chatState.messages = [
+      agentMessage({ decisionQuestions }),
+      agentMessage({
+        id: 'msg-later-agent',
+        content: 'The negotiation could not be opened.',
+        timestamp: new Date('2026-08-21T10:01:00.000Z'),
+      }),
+    ];
+    renderChat();
+
+    expect(await screen.findByText('What should I push hardest on?')).toBeInTheDocument();
+    expect(screen.queryByText('The negotiation could not be opened.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
+  });
+
+  it('releases parked messages after the question is durably submitted', async () => {
+    chatState.messages = [
+      agentMessage({ decisionQuestions, decisionQuestionsSubmitted: true }),
+      agentMessage({
+        id: 'msg-later-agent',
+        content: 'The negotiation could not be opened.',
+        timestamp: new Date('2026-08-21T10:01:00.000Z'),
+      }),
+    ];
+    renderChat();
+
+    expect(await screen.findByText('Submitted.')).toBeInTheDocument();
+    expect(screen.getByText('The negotiation could not be opened.')).toBeInTheDocument();
+  });
+
+  it('stops again at the next unanswered question in transcript order', async () => {
+    chatState.messages = [
+      agentMessage({ decisionQuestions, decisionQuestionsSubmitted: true }),
+      agentMessage({
+        id: 'msg-next-question',
+        content: 'I need one more answer.',
+        decisionQuestions: [decisionQuestions[0]],
+        timestamp: new Date('2026-08-21T10:01:00.000Z'),
+      }),
+      agentMessage({
+        id: 'msg-after-next-question',
+        content: 'This must stay parked.',
+        timestamp: new Date('2026-08-21T10:02:00.000Z'),
+      }),
+    ];
+    renderChat();
+
+    expect(await screen.findByText('I need one more answer.')).toBeInTheDocument();
+    expect(screen.queryByText('This must stay parked.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
   });
 
   it('shows the latest agent activity until response text arrives', async () => {
@@ -194,21 +249,56 @@ describe('IntentNegotiatorChat', () => {
         onLiveInvalidation={() => {}}
       />,
     );
-    const trace = await screen.findByTestId('personal-agent-debug-trace');
-    expect(trace).toHaveTextContent('PersonalAgent debug trace');
-    expect(trace).toHaveTextContent('matches_ready → message_user · Delivered');
-    expect(trace).toHaveTextContent('I opened the conversation.');
-    expect(trace).toHaveTextContent('matches_ready → kickoff · Partial');
-    expect(trace).toHaveTextContent('round 3 · 4 attempted · 2 opened · 2 failed');
-    expect(trace).toHaveTextContent('matches_ready → kickoff · Completed');
-    expect(trace).toHaveTextContent('matches_ready → kickoff · Failed');
-    expect(trace).toHaveTextContent('all_paused → promote · Resolved');
-    expect(trace).toHaveTextContent('negotiation neg-1 · opportunity opp-1 · Strong fit.');
-    expect(trace).toHaveTextContent('all_paused → reject · Failed');
+    const traces = await screen.findAllByTestId('personal-agent-debug-trace');
+    const traceText = traces.map((trace) => trace.textContent).join('\n');
+    expect(traceText).toContain('PersonalAgent debug trace');
+    expect(traceText).toContain('matches_ready → message_user · Delivered');
+    expect(traceText).toContain('I opened the conversation.');
+    expect(traceText).toContain('matches_ready → kickoff · Partial');
+    expect(traceText).toContain('round 3 · 4 attempted · 2 opened · 2 failed');
+    expect(traceText).toContain('matches_ready → kickoff · Completed');
+    expect(traceText).toContain('matches_ready → kickoff · Failed');
+    expect(traceText).toContain('all_paused → promote · Resolved');
+    expect(traceText).toContain('negotiation neg-1 · opportunity opp-1 · Strong fit.');
+    expect(traceText).toContain('all_paused → reject · Failed');
+    expect(traceText).toContain('user_message → note_dossier · Saved');
+    expect(traceText).toContain('user_message → retire_dossier · Not retired');
+    expect(traceText).toContain('user_message → accept_opportunity · accepted');
+    expect(traceText).toContain('opportunity opp-3 · Riley');
+  });
+
+  it('places every act from a user turn between that message and its generated response', async () => {
+    chatState.messages = [
+      {
+        id: 'msg-user', role: 'user', content: 'I can start in three weeks.',
+        timestamp: new Date('2026-08-21T10:00:00.000Z'),
+      },
+      agentMessage({ id: 'msg-agent', content: 'I will use that timing.', timestamp: new Date('2026-08-21T10:01:00.000Z') }),
+    ];
+    render(
+      <IntentNegotiatorChat
+        intentId="intent-1"
+        timelineEntries={[
+          { id: 'act-note', event: { kind: 'user_message', traceId: 'turn-1', messageId: 'msg-user' }, act: { tool: 'note_dossier', text: 'Available in three weeks.', entryId: 'dossier-1' }, createdAt: '2026-08-21T10:00:10.000Z' },
+          { id: 'act-message', event: { kind: 'user_message', traceId: 'turn-1', messageId: 'msg-user' }, act: { tool: 'message_user', text: 'I will use that timing.', sessionId: 'session-1', messageId: 'msg-agent' }, createdAt: '2026-08-21T10:01:01.000Z' },
+        ]}
+        timelineLoading={false}
+        timelineError={false}
+        opportunityStatusMap={{}}
+        opportunityActionLoading={{}}
+        onOpportunityAction={() => {}}
+        onUnavailable={() => {}}
+        onLiveInvalidation={() => {}}
+      />,
+    );
+
+    const trace = (await screen.findAllByTestId('personal-agent-debug-trace')).at(-1)!;
+    const userMessage = await screen.findByText('I can start in three weeks.');
+    const response = (await screen.findAllByText('I will use that timing.')).at(-1)!;
+    expect(userMessage.compareDocumentPosition(trace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(trace.compareDocumentPosition(response) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(trace).toHaveTextContent('user_message → note_dossier · Saved');
-    expect(trace).toHaveTextContent('user_message → retire_dossier · Not retired');
-    expect(trace).toHaveTextContent('user_message → accept_opportunity · accepted');
-    expect(trace).toHaveTextContent('opportunity opp-3 · Riley');
+    expect(trace).toHaveTextContent('user_message → message_user · Delivered');
   });
 
   it('reconciles an agent SSE message for its session, but ignores another session', async () => {

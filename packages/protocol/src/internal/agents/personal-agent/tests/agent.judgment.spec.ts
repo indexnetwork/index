@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { PersonalAgentModel, PERSONAL_AGENT_MODEL_TIMEOUT_MS, validateDecidedAct } from "../agent.judgment.js";
+import { NEGOTIATION_TURN_TIMEOUT_MS, PersonalAgentModel, PERSONAL_AGENT_MODEL_TIMEOUT_MS, validateDecidedAct } from "../agent.judgment.js";
 import type { PersonalAgentExecutedAct, PersonalAgentNonDurableObservation, PersonalAgentTurnContext } from "../agent.types.js";
 
 class CapturingPersonalAgentModel extends PersonalAgentModel {
@@ -15,6 +15,7 @@ class CapturingPersonalAgentModel extends PersonalAgentModel {
 class SignalCapturingPersonalAgentModel extends PersonalAgentModel {
   choiceSignal?: AbortSignal;
   proseSignal?: AbortSignal;
+  proseModelNames: string[] = [];
 
   protected override createChoiceModel() {
     return {
@@ -25,7 +26,8 @@ class SignalCapturingPersonalAgentModel extends PersonalAgentModel {
     } as never;
   }
 
-  protected override createProseModel() {
+  protected override createProseModel(name: string) {
+    this.proseModelNames.push(name);
     return {
       invoke: async (_input: unknown, config?: { signal?: AbortSignal }) => {
         this.proseSignal = config?.signal;
@@ -247,4 +249,19 @@ describe("PersonalAgentModel", () => {
     expect(model.choiceSignal).toBeInstanceOf(AbortSignal);
     expect(model.proseSignal).toBeInstanceOf(AbortSignal);
   });
+
+  test("gives a counterparty seat brief the negotiation turn budget", async () => {
+    const model = new SignalCapturingPersonalAgentModel();
+
+    await model.seatBrief({
+      intent: { userId: "alice", payload: "Looking for a technical co-founder." },
+      negotiation: { state: "working", metadata: { initiatorUserId: "bob" } },
+      thread: [],
+    } as never);
+
+    expect(NEGOTIATION_TURN_TIMEOUT_MS).toBe(20_000);
+    expect(model.proseModelNames).toContain("personal_agent_seat_brief");
+    expect(model.proseSignal).toBeInstanceOf(AbortSignal);
+  });
+
 });

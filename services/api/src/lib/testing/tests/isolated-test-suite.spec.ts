@@ -46,7 +46,6 @@ describe('isolated test inventory', () => {
     // the card question generators.
     expect(e2eFiles).toEqual([
       'tests/limiter.e2e.isolated.ts',
-      'tests/negotiation.e2e.isolated.ts',
       'tests/network-resend-invite.e2e.isolated.ts',
     ]);
     expect(runner).not.toContain('*.e2e.*');

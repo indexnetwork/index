@@ -13,10 +13,8 @@ export const DISCOVERY_MIN_SIMILARITY = 0.20;
 export const DISCOVERY_EVALUATOR_MIN_SCORE = 40;
 
 /**
- * Minimum opportunities a discovery run tries to surface when the pool
- * allows it. When fewer than this many candidates pass evaluation, the run
- * fills the rest with the best-scored rejected candidates (their real, low
- * score is persisted so they stay distinguishable downstream).
+ * Minimum opportunities a discovery run surfaces when the pool allows it.
+ * The best evaluated candidates fill the floor when fewer pass admission.
  */
 export const DISCOVERY_MIN_MATCHES = 10;
 

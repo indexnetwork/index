@@ -464,6 +464,11 @@ export class ChatSessionService {
     return this.db.getChatSessionMessages(sessionId, limit);
   }
 
+  /** Persist explicit completion for question forms in one conversation. */
+  async markDecisionQuestionsSubmitted(sessionId: string, messageIds: string[]): Promise<boolean> {
+    return this.db.markDecisionQuestionsSubmitted(sessionId, messageIds);
+  }
+
   /**
    * Loads the active or one immediately previous durable timeline session for an
    * authorized H2A conversation.

@@ -38,6 +38,13 @@ export function radarBucketForOpportunity(
   const terminalBucket = status ? TERMINAL_BUCKETS[status] : undefined;
   if (terminalBucket) return terminalBucket;
 
+  if (status === "pending") {
+    // A pending outcome is human-actionable only after its PersonalAgent
+    // negotiation has completed. While the cycle snapshot has no completed
+    // task, keep it with the agent rather than exposing the direct chat CTA.
+    return negotiation?.state === "completed" ? "needs-you" : "agent-handling";
+  }
+
   if (status !== "negotiating") {
     return status ? STATUS_BUCKETS[status] : "agent-handling";
   }

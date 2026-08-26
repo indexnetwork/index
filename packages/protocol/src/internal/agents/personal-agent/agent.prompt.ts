@@ -93,6 +93,8 @@ export function personalAgentEventInstruction(event: PersonalAgentIntentEventKin
       return `Your client just wrote. Converse naturally: if it answers what you were waiting on, decide what follows; if it explicitly renders a verdict on a listed match, execute it; if it states a fact worth keeping, note it. Finish with an honest message_user response. A hedge is not a verdict.`;
     case "matches_ready":
       return `THE EVENT: discovery has just found matches for this signal. Decide what can usefully happen now. You may kickoff resolved work and still use message_user to ask about a separate unresolved matter.`;
+    case "needs_principal":
+      return `THE EVENT: one of your negotiations cannot continue without your client's input. Deliver its structured question now. Other live negotiations do not delay this request.`;
     case "all_paused":
       return `THE EVENT: every negotiation of this durable drain has paused; they are listed above with what each is waiting on. Reflect on each independently: promote or reject only your own ready_for_verdict pauses, re-kick only your own pauses that new information can advance, and ask your client about what remains unresolved in your final message_user response. Counterparty-owned pauses are visible status only. You may not finish while one of your own ready_for_verdict pauses remains unresolved.`;
   }

@@ -471,8 +471,8 @@ describe('Opportunity Graph', () => {
 
       expect(searchSpy.mock.calls[0]?.[1]?.minScore).toBe(0.42);
       expect(evaluatorCalls[0]?.minScore).toBe(63);
-      // Below the evaluator threshold, so it never "passed" — but the pool has
-      // nothing else, so it fills the match floor with its own real score.
+      // Below the evaluator threshold, but it fills the discovery floor with
+      // its own real score when there are no stronger candidates.
       expect(result.opportunities).toHaveLength(1);
       expect(parseFloat(result.opportunities[0].confidence)).toBeCloseTo(0.62, 5);
       expect(result.trace).toContainEqual(expect.objectContaining({
@@ -755,7 +755,7 @@ describe('Opportunity Graph', () => {
       ],
     });
 
-    /** A `not_accepted` verdict — carries actors, same as the real evaluator now does. */
+    /** A rejected verdict that can fill the discovery floor. */
     const rejectedVerdict = (candidateUserId: string, score: number) => ({
       reasoning: 'Complementary-role mismatch.',
       score,
@@ -766,7 +766,7 @@ describe('Opportunity Graph', () => {
       rejection: { candidateId: candidateUserId, reason: 'not_accepted' as const },
     });
 
-    /** A guard-dropped verdict — never carries actors, never a fill candidate. */
+    /** A guard-dropped verdict — never a floor candidate. */
     const guardDroppedVerdict = (
       candidateUserId: string,
       score: number,
@@ -855,17 +855,14 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      // 3 passed + 7 fills = 10, the match floor.
       expect(result.opportunities).toHaveLength(10);
       const counterpartIds = result.opportunities.map(
         (o) => o.actors.find((a) => a.userId !== SOURCE_USER_ID)!.userId,
       );
-      // The 7 fills are the top 7 rejects by score (ranks 3..9 of the reject pool).
-      const expectedFillIds = candidates.slice(3, 10).map((c) => c.userId);
+      const expectedFillIds = candidates.slice(3, 10).map((candidate) => candidate.userId);
       for (const id of expectedFillIds) expect(counterpartIds).toContain(id);
-      // A fill's persisted confidence is its real (low) score, not the passing threshold.
-      const fillOpp = result.opportunities.find(
-        (o) => o.actors.find((a) => a.userId === expectedFillIds[0]),
+      const fillOpp = result.opportunities.find((opportunity) =>
+        opportunity.actors.find((actor) => actor.userId === expectedFillIds[0]),
       );
       expect(parseFloat(fillOpp?.confidence ?? 'NaN')).toBeCloseTo(rejectScoreByIndex.get(expectedFillIds[0])! / 100, 5);
     });
@@ -944,8 +941,6 @@ describe('Opportunity Graph', () => {
         rejection: { candidateId: CANDIDATE_ID, reason: 'not_accepted' },
       }]));
 
-      // The pool has exactly one candidate; with nothing passing, it fills the
-      // match floor with its own real (low) score rather than vanishing.
       expect(result.evaluatedOpportunities).toHaveLength(1);
       expect(result.evaluatedOpportunities[0].score).toBe(12);
       expect(result.trace).toContainEqual(expect.objectContaining({
@@ -2809,9 +2804,9 @@ async function runDirectConnectionEval(): Promise<{ opportunities: Array<{ reaso
     const durationMs = Date.now() - start;
     totalDurationMs += durationMs;
     const opportunities = raw
-      // `rejection === undefined` is the persistable signal now — a not_accepted
-      // rejection carries real actors too (for the discovery match floor), so
-      // actor presence alone no longer distinguishes an accepted verdict.
+      // `rejection === undefined` is the persistable signal now — a
+      // not_accepted rejection carries real actors for diagnostics, so actor
+      // presence alone no longer distinguishes an accepted verdict.
       .filter(op => op.rejection === undefined)
       .map(op => {
         const candidate = op.actors.find(a => a.userId !== DISCOVERER_ID);

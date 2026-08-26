@@ -35,9 +35,9 @@ type TraceEntry = { node: string; detail?: string; data?: Record<string, unknown
 
 /**
  * Every candidate in the pool is evaluated — no early stop, no similarity
- * cutoff (pass rate does not track similarity; see the discovery match-floor
- * PR). This still bounds the pool by rank so a run can never fan out
- * unboundedly against a very large network.
+ * cutoff (pass rate does not track retrieval similarity). This still bounds
+ * the pool by rank so a run can never fan out unboundedly against a very
+ * large network.
  */
 const MAX_EVALUATION_POOL = 80;
 
@@ -154,9 +154,8 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
 
       return {
         candidates: eligibleCandidates,
-        // Every passing opportunity reaches downstream nodes, uncapped; filled
-        // candidates (best-scored rejects) top the run up to the match floor
-        // when too few passed.
+        // Passing opportunities are uncapped; best evaluated rejections fill
+        // the discovery floor so a sparse market still has a usable inbox.
         evaluatedOpportunities: [...passed, ...filled],
         trace: traceEntries,
         agentTimings: agentTimingsAccum,
@@ -195,7 +194,7 @@ interface CandidatePoolArgs {
   agentTimingsAccum: DebugMetaAgent[];
 }
 
-/** An {@link EvaluatedOpportunity} plus the retrieval similarity behind it, for fill-tiebreaking. */
+/** An {@link EvaluatedOpportunity} plus retrieval similarity for floor tiebreaking. */
 type ScoredOpportunity = EvaluatedOpportunity & { _similarity: number };
 
 function stripSimilarity(o: ScoredOpportunity): EvaluatedOpportunity {
@@ -206,10 +205,8 @@ function stripSimilarity(o: ScoredOpportunity): EvaluatedOpportunity {
 /**
  * Evaluate the whole candidate pool in one parallel round: hydrate entities,
  * invoke the evaluator once per candidate, map verdicts onto opportunities,
- * and emit the trace. Every passing opportunity is returned uncapped; when
- * fewer than {@link DISCOVERY_MIN_MATCHES} pass, the best-scored non-passing
- * verdicts (evaluator rejects and below-threshold accepts — never guard
- * drops) fill the rest, tiebroken by retrieval similarity.
+ * and emits diagnostics. Passing candidates are returned uncapped; the best
+ * evaluated non-passing candidates fill the discovery floor.
  */
 async function evaluateCandidatePool(
   args: CandidatePoolArgs,
@@ -222,8 +219,7 @@ async function evaluateCandidatePool(
   const traceEntries: TraceEntry[] = [];
 
   const candidateEntities = await buildCandidateEntities(pool, deps);
-  const similarityByUserId = new Map(pool.map((c) => [c.candidateUserId, c.similarity]));
-
+  const similarityByUserId = new Map(pool.map((candidate) => [candidate.candidateUserId, candidate.similarity]));
   const evidenceByEntityKey = new Map<string, OpportunityEvidence[]>();
   const entityKeysByUserId = new Map<string, string[]>();
   for (const e of candidateEntities) {
@@ -293,33 +289,28 @@ async function evaluateCandidatePool(
     };
   }
 
-  const evaluatedOpportunities: ScoredOpportunity[] = pairwiseOpportunities.map(toScoredOpportunity);
+  const evaluatedOpportunities = pairwiseOpportunities.map(toScoredOpportunity);
   const passed = evaluatedOpportunities.filter((o) => o.score >= minScore);
 
-  // Rejected-but-fillable pool for the match floor: accepted verdicts that
-  // didn't clear minScore, plus the evaluator's own `not_accepted` rejections
-  // (which now carry actors — see opportunity.evaluator.ts). Guard drops
-  // (`incomplete_actors`, `unsupported_claim`) are never fills — they hold no
-  // usable actors and were never a real verdict on the pairing.
   const belowScore = evaluatedOpportunities.filter((o) => o.score < minScore);
-  const notAcceptedRejections = rejections
+  const rejectedFillers = rejections
     .filter((op) => op.rejection!.reason === 'not_accepted')
     .map((op) => {
       const candidateId = op.candidate.candidateUserId;
-      const actorIds = new Set(op.actors.map((a) => a.userId));
-      const hasUsableActors = actorIds.size === 2 && actorIds.has(discoveryUserId) && actorIds.has(candidateId);
-      const actors = hasUsableActors ? op.actors : [
-        { userId: discoveryUserId, role: 'peer' as const, intentId: state.resolvedTriggerIntentId ?? sourceEntity.intents?.[0]?.intentId ?? null },
-        { userId: candidateId, role: 'peer' as const, intentId: op.candidate.candidateIntentId ?? null },
-      ];
+      const actorIds = new Set(op.actors.map((actor) => actor.userId));
+      const actors = actorIds.size === 2 && actorIds.has(discoveryUserId) && actorIds.has(candidateId)
+        ? op.actors
+        : [
+          { userId: discoveryUserId, role: 'peer' as const, intentId: state.resolvedTriggerIntentId ?? sourceEntity.intents?.[0]?.intentId ?? null },
+          { userId: candidateId, role: 'peer' as const, intentId: op.candidate.candidateIntentId ?? null },
+        ];
       return toScoredOpportunity({ ...op, actors });
     });
-  const fillPool = [...belowScore, ...notAcceptedRejections]
-    .sort((a, b) => (b.score - a.score) || (b._similarity - a._similarity));
-  const needed = Math.max(0, DISCOVERY_MIN_MATCHES - passed.length);
-  const filled = fillPool.slice(0, needed);
+  const filled = [...belowScore, ...rejectedFillers]
+    .sort((a, b) => (b.score - a.score) || (b._similarity - a._similarity))
+    .slice(0, Math.max(0, DISCOVERY_MIN_MATCHES - passed.length));
   const filledCandidateIds = new Set(
-    filled.map((o) => o.actors.find((a) => a.userId !== discoveryUserId)?.userId),
+    filled.map((opportunity) => opportunity.actors.find((actor) => actor.userId !== discoveryUserId)?.userId),
   );
 
   evaluationLog.verbose('Pool evaluated', {
@@ -413,7 +404,7 @@ async function evaluateCandidatePool(
       ? '✓ passed'
       : isFilled
         ? `~ filled (score ${score})`
-        : score !== undefined
+      : score !== undefined
           ? `✗ score ${score}`
           : '✗ no verdict';
 

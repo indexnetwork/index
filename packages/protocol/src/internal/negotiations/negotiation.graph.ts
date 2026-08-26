@@ -66,6 +66,10 @@ export interface NegotiationGraphResult {
 export interface NegotiationGraphDeps {
   database: NegotiationGraphDatabase;
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
+  /** Delivers an owned needs-principal pause immediately; batch reflection remains separate. */
+  needsPrincipalEnqueue?: (input: { userId: string; intentId: string; negotiationId: string; generation: number }) => Promise<void>;
+  /** Delivers the other agent's terminal verdict to each opposing PersonalAgent. */
+  resolutionEnqueue?: (input: { userId: string; intentId: string; negotiationId: string; verdict: "pending" | "reject" }) => Promise<void>;
   /**
    * Who plays a seat's turn. Production binds this to the PersonalAgent in
    * negotiation scope; the graph itself never knows a model exists.
@@ -98,9 +102,30 @@ const NegotiationGraphState = Annotation.Root({
   }),
   result: Annotation<NegotiationGraphResult | null>({ reducer: (c, n) => n ?? c, default: () => null }),
   error: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
+  /** A safe, private classification of a failed in-process turn author. */
+  authorFailure: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
+  /** Bounded diagnostic detail, retained only with the task's private pause metadata. */
+  authorFailureDetail: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
 });
 
 type NegotiationState = typeof NegotiationGraphState.State;
+
+function classifyAuthorFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  if (error instanceof DOMException && error.name === "TimeoutError") return "author_timeout";
+  if (/\btimeout\b|\btimed out\b|\babort(?:ed)?\b/.test(message)) return "author_timeout";
+  if (/\b429\b|rate.?limit|too many requests/.test(message)) return "provider_rate_limited";
+  if (/\b5\d\d\b|provider unavailable|service unavailable|internal server error/.test(message)) return "provider_unavailable";
+  if (/zod|schema|structured output|parse/.test(message)) return "invalid_author_output";
+  return "author_failed";
+}
+
+function authorFailureDetail(error: unknown): string {
+  const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  // Provider errors can include request headers. Task metadata is private, but
+  // credentials never belong in any persisted diagnostic.
+  return detail.replace(/(?:sk|napi)_[A-Za-z0-9_-]+/g, "[redacted]").slice(0, 300);
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -330,8 +355,12 @@ async function turnNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
     return {
       task,
       turns: [],
-      pendingTurn: { verb: "pause", reason: "counterparty_silent" },
+      // This is an author/provider failure, not evidence that the other
+      // agent went silent. Persist the recoverable system failure honestly.
+      pendingTurn: { verb: "pause", reason: "open_failed" },
       pendingTurnByUserId: null,
+      authorFailure: classifyAuthorFailure(err),
+      authorFailureDetail: authorFailureDetail(err),
       authored: true,
       phase: "apply",
     };
@@ -426,7 +455,30 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
         reason: effectiveTurn.reason,
         pausedBy: speakerId,
         ...("payload" in effectiveTurn ? { payload: effectiveTurn.payload } : {}),
+        ...(effectiveTurn.reason === "open_failed" && state.authorFailure ? { failure: state.authorFailure } : {}),
+        ...(effectiveTurn.reason === "open_failed" && state.authorFailureDetail ? { failureDetail: state.authorFailureDetail } : {}),
       });
+      if (effectiveTurn.reason === "needs_principal") {
+        const intentId = Object.entries(meta.seats).find(([, seat]) => seat.userId === speakerId)?.[0];
+        if (intentId && deps.needsPrincipalEnqueue) {
+          try {
+            await deps.needsPrincipalEnqueue({
+              userId: speakerId,
+              intentId,
+              negotiationId: updated.id,
+              generation: updated.metadata.drainGeneration,
+            });
+          } catch (error) {
+            // The pause is already durable. A missed wake must not undo it or
+            // misreport the turn as failed; the all-paused reflect still retries later.
+            logger.error("Failed to enqueue needs-principal notification", {
+              negotiationId: updated.id,
+              intentId,
+              error,
+            });
+          }
+        }
+      }
       // EVERY bound seat: a pause can complete either side's round, and each
       // side's IS-A reflects on its own.
       await triggerReflectForEverySeat(deps, meta);
@@ -468,6 +520,20 @@ async function clearReflectPendingBestEffort(deps: NegotiationGraphDeps, taskId:
   }
 }
 
+async function notifyCounterparties(
+  deps: NegotiationGraphDeps,
+  meta: NegotiationTaskMetadata,
+  negotiationId: string,
+  resolvedByUserId: string,
+  verdict: "pending" | "reject",
+): Promise<void> {
+  if (!deps.resolutionEnqueue) return;
+  for (const [intentId, seat] of Object.entries(meta.seats)) {
+    if (seat.userId === resolvedByUserId) continue;
+    await deps.resolutionEnqueue({ userId: seat.userId, intentId, negotiationId, verdict });
+  }
+}
+
 // ─── resolve ─────────────────────────────────────────────────────────────────
 
 async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps): Promise<Partial<NegotiationState>> {
@@ -497,6 +563,7 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
       resolvedByUserId: input.byUserId,
     });
     if (!updated) return { phase: "error", error: "Negotiation changed before its verdict committed" };
+    await notifyCounterparties(deps, task.metadata, task.id, input.byUserId, input.verdict);
     // A round whose last active negotiation ends by direct verdict (not a
     // pause) must still trigger the all-paused check — apply isn't the only
     // way a round finishes.

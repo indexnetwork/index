@@ -66,6 +66,38 @@ const DEFAULT_JOB_OPTS: JobsOptions = {
 };
 
 /**
+ * BullMQ rejects custom job ids containing `:`. Validate at our adapter
+ * boundary so a lifecycle trigger fails where it is authored, rather than
+ * deep inside BullMQ after the durable work it was meant to wake already
+ * exists.
+ */
+function assertBullMqSafeJobId(jobId: string | undefined): void {
+  if (jobId?.includes(':')) throw new Error('BullMQ custom jobId must not contain ":"');
+}
+
+function withSafeJobIds<T>(queue: Queue<T>): Queue<T> {
+  const add = queue.add.bind(queue);
+  const addBulk = queue.addBulk.bind(queue);
+  return new Proxy(queue, {
+    get(target, property, receiver) {
+      if (property === 'add') {
+        return (...args: unknown[]) => {
+          assertBullMqSafeJobId((args[2] as JobsOptions | undefined)?.jobId);
+          return Reflect.apply(add, queue, args);
+        };
+      }
+      if (property === 'addBulk') {
+        return (jobs: Array<{ opts?: JobsOptions }>) => {
+          for (const job of jobs) assertBullMqSafeJobId(job.opts?.jobId);
+          return Reflect.apply(addBulk, queue, [jobs]);
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
+/**
  * True when queue infrastructure must stay in-memory: tests without
  * RUN_REDIS_INTEGRATION_TESTS=1. Exported so queue collaborators that reach
  * for Redis outside BullMQ (e.g. SSE publishes) can apply the same guard.
@@ -104,13 +136,13 @@ export class QueueFactory {
   static createQueue<T = any>(name: string, options?: Omit<QueueOptions, 'connection'>): Queue<T> {
     logger.info('Initializing queue', { name });
     if (useHermeticRedis()) {
-      return createHermeticQueue<T>(name, options?.defaultJobOptions ?? DEFAULT_JOB_OPTS);
+      return withSafeJobIds(createHermeticQueue<T>(name, options?.defaultJobOptions ?? DEFAULT_JOB_OPTS));
     }
-    return new Queue<T>(name, {
+    return withSafeJobIds(new Queue<T>(name, {
       connection: SHARED_REDIS_OPTS,
       defaultJobOptions: DEFAULT_JOB_OPTS,
       ...options,
-    });
+    }));
   }
 
   /**

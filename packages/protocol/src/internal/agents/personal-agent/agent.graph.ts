@@ -112,7 +112,7 @@ function isOwnedReadyPause(paused: PersonalAgentPausedNegotiation): boolean {
 const PersonalAgentGraphState = Annotation.Root({
   input: Annotation<PersonalAgentInput>({ reducer: (c, n) => n ?? c, default: () => ({} as PersonalAgentInput) }),
   scope: Annotation<PersonalAgentScope>({ reducer: (c, n) => n ?? c, default: () => "global" }),
-  phase: Annotation<"intent" | "negotiation" | "error" | "done">({ reducer: (c, n) => n ?? c, default: () => "error" }),
+  phase: Annotation<"intent" | "counterparty_resolved" | "negotiation" | "error" | "done">({ reducer: (c, n) => n ?? c, default: () => "error" }),
   result: Annotation<PersonalAgentResult | null>({ reducer: (c, n) => n ?? c, default: () => null }),
   error: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
 });
@@ -123,13 +123,23 @@ type PersonalAgentState = typeof PersonalAgentGraphState.State;
 
 function routeNode(state: PersonalAgentState): Partial<PersonalAgentState> {
   const input = state.input;
-  if ("negotiationId" in input) return { scope: "negotiation", phase: "negotiation" };
+  if ("event" in input && input.event === "counterparty_resolved") return { scope: "intent", phase: "counterparty_resolved" };
+  // An intent event may name the negotiation that woke it. Events still
+  // belong to the principal's signal inbox; only an event-less input enters
+  // the negotiator seat.
   if ("event" in input) return { scope: "intent", phase: "intent" };
+  if ("negotiationId" in input) return { scope: "negotiation", phase: "negotiation" };
   return {
     scope: "global",
     phase: "error",
     error: "PersonalAgent global scope is not implemented; invoke with an intentId",
   };
+}
+
+function counterpartyResolutionMessage(verdict: "pending" | "reject"): string {
+  return verdict === "pending"
+    ? "The other agent considers this a potential fit and has put it in their principal's decision queue. This is not an acceptance."
+    : "The other agent declined this match for their principal. I have closed it on this signal.";
 }
 
 // ─── Context assembly ────────────────────────────────────────────────────────
@@ -247,6 +257,18 @@ async function assembleContext(
       && !(await spentItsTurnBudget(deps, match)),
   })));
   const kickoffTargets = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
+  if (input.event === "matches_ready") {
+    logger.info("PersonalAgent matches_ready eligibility", {
+      intentId,
+      matches: matches.length,
+      kickoffTargets: kickoffTargets.length,
+      awaitingIntroducerApproval: eligibility.filter((entry) => entry.match.awaitingIntroducerApproval).length,
+      pending: eligibility.filter((entry) => NOT_KICKOFF_ELIGIBLE_STATUSES.has(entry.match.status)).length,
+      counterpartyPaused: eligibility.filter((entry) =>
+        paused.some((pausedEntry) => pausedEntry.opportunityId === entry.match.opportunityId && !pausedEntry.pausedByUs),
+      ).length,
+    });
+  }
   const name = agentName?.trim();
   return {
     userId,
@@ -282,7 +304,12 @@ async function appendLedger(
   await deps.ledger.append({
     userId: context.userId,
     intentId: context.intentId,
-    event: { kind: context.event, ...(context.round !== undefined ? { round: context.round } : {}) },
+    event: {
+      kind: context.event,
+      ...(context.traceId ? { traceId: context.traceId } : {}),
+      ...(context.message ? { messageId: context.message.messageId } : {}),
+      ...(context.round !== undefined ? { round: context.round } : {}),
+    },
     act: act as unknown as Record<string, unknown>,
   });
 }
@@ -1039,12 +1066,13 @@ async function publishActivity(
 
 async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
   const input = state.input as Extract<PersonalAgentInput, { event: PersonalAgentIntentEventKind }>;
+  const traceId = crypto.randomUUID();
   let context: PersonalAgentTurnContext | null = null;
   let accumulator: TurnAccumulator | null = null;
   try {
     await publishActivity(deps, input, { phase: "reviewing", label: "Reviewing the conversation" });
     const contextStartedAt = Date.now();
-    context = await assembleContext(deps, input);
+    context = { ...(await assembleContext(deps, input)), traceId };
     logger.info("PersonalAgent context assembled", {
       intentId: context.intentId,
       event: context.event,
@@ -1078,6 +1106,16 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
         tool: act.tool,
         judgmentDurationMs: Date.now() - judgmentStartedAt,
       });
+      if (context.event === "matches_ready") {
+        logger.info("PersonalAgent matches_ready decision", {
+          intentId: context.intentId,
+          traceId,
+          step,
+          tool: act.tool,
+          matchCount: context.matches.length,
+          kickoffTargetCount: context.kickoffTargets.length,
+        });
+      }
       if (act.tool === "message_user") {
         const ownReady = context.paused.some((paused) =>
           paused.pausedByUs && paused.reason === "ready_for_verdict");
@@ -1158,7 +1196,7 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
       if (act.tool === "message_user") break;
       // Every next choice — especially the final narration — reads the state
       // the action actually persisted, not the turn's opening snapshot.
-      context = await assembleContext(deps, input);
+      context = { ...(await assembleContext(deps, input)), traceId };
     }
     if (!accumulator.finalMessageChosen) {
       if (accumulator.acts.length === 0) throwIfIntentAborted();
@@ -1210,6 +1248,40 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
         result: { scope: "intent", acts: accumulator.acts, messages: accumulator.messages },
       };
     }
+    return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * A completed counterpart verdict is a durable fact, not another judgment.
+ * Deliver fixed copy without a model call so the principal hears it promptly
+ * and the private reasoning behind the other seat's verdict stays private.
+ */
+async function counterpartyResolvedNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
+  const input = state.input as Extract<PersonalAgentInput, { event: "counterparty_resolved" }>;
+  try {
+    const resolved = await deps.conversation.resolveSession(input.userId, input.intentId);
+    if ("error" in resolved) return { phase: "error", error: `Signal conversation resolution failed: ${resolved.error}` };
+    const text = counterpartyResolutionMessage(input.verdict);
+    const messageId = await deps.conversation.addMessage({
+      sessionId: resolved.session.id,
+      role: "assistant",
+      content: text,
+    });
+    const act: PersonalAgentExecutedAct = {
+      tool: "message_user",
+      text,
+      sessionId: resolved.session.id,
+      messageId,
+    };
+    await deps.ledger.append({
+      userId: input.userId,
+      intentId: input.intentId,
+      event: { kind: input.event, negotiationId: input.negotiationId, verdict: input.verdict },
+      act: act as unknown as Record<string, unknown>,
+    });
+    return { phase: "done", result: { scope: "intent", acts: [act], messages: [text] } };
+  } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -1312,6 +1384,7 @@ export class PersonalAgentGraphFactory {
     const compiled = new StateGraph(PersonalAgentGraphState)
       .addNode("route", routeNode)
       .addNode("intent", (s: PersonalAgentState) => intentNode(s, deps))
+      .addNode("counterparty_resolved", (s: PersonalAgentState) => counterpartyResolvedNode(s, deps))
       .addNode("negotiation", (s: PersonalAgentState) => negotiationNode(s, deps))
       // Named "fail", not "error": LangGraph rejects a node name that
       // collides with a state channel name, and "error" is one.
@@ -1319,10 +1392,12 @@ export class PersonalAgentGraphFactory {
       .addEdge("__start__", "route")
       .addConditionalEdges("route", (s: PersonalAgentState) => s.phase, {
         intent: "intent",
+        counterparty_resolved: "counterparty_resolved",
         negotiation: "negotiation",
         error: "fail",
       })
       .addConditionalEdges("intent", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
+      .addConditionalEdges("counterparty_resolved", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
       .addConditionalEdges("negotiation", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
       .addEdge("fail", END)
       .compile();

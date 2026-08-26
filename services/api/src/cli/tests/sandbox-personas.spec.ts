@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { SANDBOX_MINIMAL_PERSONAS, SANDBOX_PERSONAS, type SandboxNetworkKey, type SandboxPersona } from '../sandbox-personas';
+import { SANDBOX_E2E_CASES, SANDBOX_MINIMAL_PERSONAS, SANDBOX_PERSONAS, SANDBOX_TWENTY_PERSONAS, type SandboxNetworkKey, type SandboxPersona } from '../sandbox-personas';
 
 const NETWORK_KEYS: SandboxNetworkKey[] = ['stack', 'latent', 'pixel', 'launch', 'atelier', 'arena', 'syllabus', 'reps', 'tribe', 'bench'];
 
@@ -38,10 +38,10 @@ describe('SANDBOX_PERSONAS', () => {
     assertPopulationShape(SANDBOX_PERSONAS);
   });
 
-  it('keeps every derived persona on the sandbox-person address family', () => {
+  it('gives every persona a readable name-based sandbox address', () => {
     const derived = SANDBOX_PERSONAS.filter((persona) => !persona.fixedIds);
     for (const persona of derived) {
-      expect(persona.email).toMatch(/^sandbox-person-\d{2}@index-network\.test$/);
+      expect(persona.email).toMatch(/^[a-z0-9]+(?:\.[a-z0-9]+)+@sandbox\.test$/);
     }
   });
 
@@ -67,11 +67,11 @@ describe('SANDBOX_MINIMAL_PERSONAS', () => {
     // One shared market: the supporting people carry two focused signals each.
     assertPopulationShape(SANDBOX_MINIMAL_PERSONAS, { minIntents: 2 });
     expect(SANDBOX_MINIMAL_PERSONAS.map((persona) => persona.email).sort()).toEqual([
-      'aisha-okafor@sandbox.test',
-      'daniel-ruiz@sandbox.test',
-      'ethan-brooks@sandbox.test',
-      'maya-chen@sandbox.test',
-      'sofia-martinez@sandbox.test',
+      'aisha.okafor@sandbox.test',
+      'daniel.ruiz@sandbox.test',
+      'ethan.brooks@sandbox.test',
+      'maya.chen@sandbox.test',
+      'sofia.martinez@sandbox.test',
     ]);
     for (const persona of SANDBOX_MINIMAL_PERSONAS) expect(persona.fixedIds).toBeUndefined();
   });
@@ -79,5 +79,45 @@ describe('SANDBOX_MINIMAL_PERSONAS', () => {
   it('does not collide with the full population', () => {
     const fullEmails = new Set(SANDBOX_PERSONAS.map((persona) => persona.email));
     for (const persona of SANDBOX_MINIMAL_PERSONAS) expect(fullEmails.has(persona.email)).toBe(false);
+  });
+});
+
+describe('SANDBOX_TWENTY_PERSONAS', () => {
+  it('is the five-person Launch market plus the fixed fifteen existing authored personas', () => {
+    expect(SANDBOX_TWENTY_PERSONAS).toHaveLength(20);
+    expect(SANDBOX_TWENTY_PERSONAS.slice(0, 5)).toEqual(SANDBOX_MINIMAL_PERSONAS);
+    const fullEmails = new Set(SANDBOX_PERSONAS.map((persona) => persona.email));
+    for (const persona of SANDBOX_TWENTY_PERSONAS.slice(5)) expect(fullEmails.has(persona.email)).toBe(true);
+    expect(SANDBOX_TWENTY_PERSONAS.slice(5).map((persona) => persona.name)).toEqual([
+      'Nora Kim', 'Maya Patel', 'Rosa Delgado', 'Selin Demir', 'Kerem Arslan',
+      'Ege Yılmaz', 'Amara Okafor', 'Julian Foster', 'Pilar Santos', 'Leo Martins',
+      'Ines Costa', 'Duarte Ferreira', 'Priya Nair', 'Daniel Wu', 'Harriet Osei',
+    ]);
+  });
+
+  it('exports stable designated PersonalAgent E2E signals', () => {
+    for (const scenario of Object.values(SANDBOX_E2E_CASES)) {
+      for (const seat of [scenario.source, scenario.candidate]) {
+        const persona = SANDBOX_MINIMAL_PERSONAS.find((candidate) => candidate.email === seat.email);
+        expect(persona).toBeDefined();
+        expect(persona!.intents[seat.intentIndex]).toBeDefined();
+      }
+    }
+  });
+
+  it('starts the investor/founder E2E signal from Aisha before Maya emits its unrelated filler', () => {
+    expect(SANDBOX_E2E_CASES.mayaAisha).toEqual({
+      source: { email: 'aisha.okafor@sandbox.test', intentIndex: 0 },
+      candidate: { email: 'maya.chen@sandbox.test', intentIndex: 0 },
+    });
+  });
+
+  it('keeps the unapproved-introducer E2E fixture stable', () => {
+    expect(SANDBOX_E2E_CASES.unapprovedIntroducer).toEqual({
+      opportunityId: 'e8dd4e42-2f66-469d-8c0c-61e0bcb3e56b',
+      source: { email: 'maya.chen@sandbox.test', intentIndex: 1 },
+      candidate: { email: 'sofia.martinez@sandbox.test', intentIndex: 0 },
+      introducer: { email: 'ethan.brooks@sandbox.test' },
+    });
   });
 });
