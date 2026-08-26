@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { countNegotiationsRequiringAction, deriveNegotiationInbox, flattenNegotiationInbox } from '@/lib/negotiation-inbox';
-import type { ConversationSummary } from '@/services/conversation';
+import { countNegotiationsRequiringAction, deriveNegotiationInbox, deriveTaskIndexInbox, flattenNegotiationInbox } from '@/lib/negotiation-inbox';
+import type { ConversationSummary, NegotiationTaskIndexEntry } from '@/services/conversation';
 
 const NOW = new Date('2026-07-24T12:00:00.000Z').getTime();
 
@@ -268,5 +268,95 @@ describe('negotiations inbox presentation', () => {
       ['resolved', 'resolved'],
       ['agreed', 'your_move'],
     ]);
+  });
+});
+
+function taskEntry(input: Partial<NegotiationTaskIndexEntry> & { id: string }): NegotiationTaskIndexEntry {
+  return {
+    intentId: `${input.id}-intent`,
+    intentLabel: input.intentLabel ?? 'Find a collaborator',
+    taskId: `${input.id}-task`,
+    conversationId: `${input.id}-conversation`,
+    opportunityId: `${input.id}-opportunity`,
+    opportunityStatus: input.opportunityStatus ?? 'negotiating',
+    counterpartLabel: input.counterpartLabel ?? 'Mira Chen',
+    round: input.round ?? 1,
+    state: input.state ?? 'working',
+    pause: input.pause ?? null,
+    latestActivity: input.latestActivity ?? { actor: 'theirs', verb: 'counter', createdAt: '2026-07-24T11:00:00.000Z' },
+    updatedAt: input.updatedAt ?? '2026-07-24T11:00:00.000Z',
+  };
+}
+
+describe('task-index inbox presentation', () => {
+  it('maps the raw task dump into your-move, in-progress, and resolved groups', () => {
+    const groups = deriveTaskIndexInbox([
+      taskEntry({
+        id: 'guidance',
+        intentLabel: 'Sell a Robinson R22 helicopter',
+        state: 'paused',
+        pause: { reason: 'needs_principal', by: 'yours' },
+        latestActivity: { actor: 'yours', verb: 'pause', createdAt: '2026-07-24T11:30:00.000Z' },
+      }),
+      taskEntry({
+        id: 'live',
+        intentLabel: 'Connect with TypeScript enthusiasts',
+        latestActivity: { actor: 'theirs', verb: 'counter', createdAt: '2026-07-24T11:20:00.000Z' },
+      }),
+      taskEntry({
+        id: 'rejected',
+        intentLabel: 'Find a technical co-founder',
+        state: 'completed',
+        opportunityStatus: 'rejected',
+        pause: { reason: 'ready_for_verdict', by: 'theirs' },
+        latestActivity: { actor: 'theirs', verb: 'pause', createdAt: '2026-07-24T11:10:00.000Z' },
+      }),
+      taskEntry({
+        id: 'accepted',
+        intentLabel: "I'm in NYC, looking to invest",
+        state: 'completed',
+        opportunityStatus: 'accepted',
+        latestActivity: { actor: 'yours', verb: 'outreach', createdAt: '2026-07-24T10:00:00.000Z' },
+      }),
+    ], NOW);
+
+    expect(groups.yourMove.map((item) => [item.status, item.lastAction])).toEqual([
+      ['needs_input', 'your agent asked for guidance'],
+    ]);
+    expect(groups.inProgress.map((item) => [item.status, item.lastAction])).toEqual([
+      ['negotiating', 'their agent countered'],
+    ]);
+    expect(groups.resolved.map((item) => [item.status, item.lastAction])).toEqual([
+      ['no_match', 'agents did not recommend moving forward'],
+      ['connection_accepted', 'the connection was accepted'],
+    ]);
+  });
+
+  it('does not treat the other side asking their principal as your move', () => {
+    const groups = deriveTaskIndexInbox([
+      taskEntry({
+        id: 'theirs',
+        state: 'paused',
+        pause: { reason: 'needs_principal', by: 'theirs' },
+        latestActivity: { actor: 'theirs', verb: 'pause', createdAt: '2026-07-24T11:00:00.000Z' },
+      }),
+    ], NOW);
+    expect(groups.yourMove).toEqual([]);
+    expect(groups.inProgress[0]?.status).toBe('negotiating');
+  });
+
+  it('surfaces a pending opportunity as awaiting review', () => {
+    const groups = deriveTaskIndexInbox([
+      taskEntry({
+        id: 'pending',
+        state: 'completed',
+        opportunityStatus: 'pending',
+        latestActivity: { actor: 'theirs', verb: null, createdAt: '2026-07-24T11:00:00.000Z' },
+      }),
+    ], NOW);
+    expect(groups.yourMove[0]).toMatchObject({
+      status: 'awaiting_review',
+      lastAction: 'agents recommended moving forward',
+    });
   });
 });

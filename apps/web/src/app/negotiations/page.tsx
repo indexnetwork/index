@@ -33,15 +33,9 @@ export default function NegotiationsPage() {
   if (isLoading || !isAuthenticated) return null;
   return (
     <ClientLayout>
-      <div className="px-10 py-6 lg:px-16">
+      <div className="px-6 pb-12 lg:px-8">
         <ContentContainer size="wide">
-          <h1 className="font-ibm-plex-mono text-lg font-bold text-black">Negotiation task index</h1>
-          <p className="mt-1 text-sm text-gray-500">One row per owned intent seat. This is task state, not a conversation inbox.</p>
-          <div className="mt-6">
-            {loading ? <p className="text-sm text-gray-500">Loading negotiation tasks…</p>
-              : error ? <p className="text-sm text-red-600">Negotiation task index could not be loaded.</p>
-                : <NegotiationTaskIndex entries={entries} />}
-          </div>
+          <NegotiationTaskIndex entries={entries} loading={loading} error={error} />
         </ContentContainer>
       </div>
     </ClientLayout>

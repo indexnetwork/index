@@ -1,4 +1,4 @@
-import type { ConversationSummary } from '@/services/conversation';
+import type { ConversationSummary, NegotiationTaskIndexEntry } from '@/services/conversation';
 import { deriveNegotiationPresentation, type NegotiationPresentationStatus } from '@/lib/negotiation-presentation';
 import type { NegotiationPauseReason } from '@/services/conversation';
 
@@ -31,6 +31,26 @@ export interface NegotiationInboxGroups {
   yourMove: NegotiationInboxItem[];
   inProgress: NegotiationInboxItem[];
   resolved: NegotiationInboxItem[];
+}
+
+/** One row per owned intent seat, presented the same way as the conversation inbox. */
+export interface TaskIndexInboxItem {
+  key: string;
+  intentId: string;
+  taskId: string;
+  counterpartName: string;
+  intentLabel: string;
+  group: NegotiationInboxGroup;
+  status: NegotiationInboxStatus;
+  lastAction: string;
+  timeAgo: string;
+  sortTimestamp: number;
+}
+
+export interface TaskIndexInboxGroups {
+  yourMove: TaskIndexInboxItem[];
+  inProgress: TaskIndexInboxItem[];
+  resolved: TaskIndexInboxItem[];
 }
 
 export interface LastTurnData {
@@ -272,4 +292,62 @@ export function countNegotiationsRequiringAction(
   viewerUserId: string | undefined,
 ): number {
   return deriveNegotiationInbox(negotiations, viewerUserId).yourMove.length;
+}
+
+/**
+ * Same presentation as the conversation inbox, keyed per owned intent seat
+ * rather than per A2A conversation. The /negotiations page lists these rows
+ * so two pairings with the same person stay distinct.
+ */
+export function deriveTaskIndexInbox(
+  entries: NegotiationTaskIndexEntry[],
+  now = Date.now(),
+): TaskIndexInboxGroups {
+  const items = entries.map<TaskIndexInboxItem>((entry) => {
+    const presentation = deriveNegotiationPresentation({
+      lifecycle: {
+        taskId: entry.taskId,
+        state: entry.state,
+        pause: entry.pause ? { reason: entry.pause.reason } : null,
+        statusTimestamp: entry.latestActivity.createdAt,
+        opportunityId: entry.opportunityId,
+        opportunityStatus: entry.opportunityStatus,
+        acceptedByViewer: false,
+        turnCount: 0,
+        signalCount: 0,
+        updatedAt: entry.updatedAt,
+      },
+      latestSenderId: entry.latestActivity.actor === 'yours' ? 'agent:viewer' : 'agent:peer',
+      viewerUserId: 'viewer',
+    });
+    const lastTurn: LastTurnData = {
+      verb: entry.latestActivity.verb ?? (entry.pause ? 'pause' : null),
+      pauseReason: entry.pause?.reason ?? null,
+    };
+    const sortTimestamp = new Date(entry.latestActivity.createdAt ?? entry.updatedAt).getTime();
+    const safeTimestamp = Number.isFinite(sortTimestamp) ? sortTimestamp : 0;
+    return {
+      key: `${entry.taskId}:${entry.intentId}`,
+      intentId: entry.intentId,
+      taskId: entry.taskId,
+      counterpartName: entry.counterpartLabel,
+      intentLabel: entry.intentLabel,
+      group: presentation.group,
+      status: presentation.status,
+      lastAction: presentation.group === 'resolved'
+        ? describeResolved(presentation.status)
+        : describeLive(presentation.status, lastTurn, entry.latestActivity.actor === 'yours'),
+      timeAgo: formatTimeAgo(safeTimestamp, now),
+      sortTimestamp: safeTimestamp,
+    };
+  });
+
+  const byNewest = (left: TaskIndexInboxItem, right: TaskIndexInboxItem) => right.sortTimestamp - left.sortTimestamp;
+  return {
+    yourMove: items
+      .filter((item) => item.group === 'your_move')
+      .sort((left, right) => (left.status === right.status ? byNewest(left, right) : left.status === 'needs_input' ? -1 : 1)),
+    inProgress: items.filter((item) => item.group === 'in_progress').sort(byNewest),
+    resolved: items.filter((item) => item.group === 'resolved').sort(byNewest),
+  };
 }
