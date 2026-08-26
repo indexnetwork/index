@@ -218,6 +218,10 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/dev/intent-proposal", () => import("@/app/dev/intent-proposal/page")),
       },
       {
+        path: "/dev/floor",
+        lazy: lazyRoute("/dev/floor", () => import("@/app/dev/floor/page")),
+      },
+      {
         path: "/agent/:tab?",
         lazy: lazyRoute("/agent/:tab?", () => import("@/app/agent/page")),
       },
