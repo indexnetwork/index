@@ -99,7 +99,7 @@ vi.mock('@/contexts/APIContext', () => {
     }),
   };
   const conversationsService = {
-    getNegotiationActivity: vi.fn().mockResolvedValue([]),
+    getIntentCycle: vi.fn().mockResolvedValue({ round: { number: 0, size: null, kickoffStartedAt: null, working: 0, paused: 0 }, negotiations: [] }),
   };
   const questionsService = {
     getPending: vi.fn().mockResolvedValue([]),
@@ -324,13 +324,6 @@ vi.mock('@/services/networks', () => ({
 vi.mock('@/services/v2/indexes.service', () => ({
   useIndexesV2: () =>
     new Proxy({}, { get: () => vi.fn().mockResolvedValue({ data: [] }) }),
-}));
-
-// Mock v2 upload service (used by ChatContent)
-vi.mock('@/services/v2/upload.service', () => ({
-  useUploadServiceV2: () => ({
-    uploadFile: vi.fn().mockResolvedValue({}),
-  }),
 }));
 
 // Mock auth service hook (used by AuthContext)

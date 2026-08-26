@@ -67,8 +67,10 @@ function graphOpenInput(opportunity: typeof opportunities.$inferSelect) {
     sourceUserId: source!.userId,
     candidateUserId: candidate!.userId,
     brief: 'Atomic open fixture brief.',
-    intentId: `intent-${source!.userId}`,
-    round: 1,
+    seats: {
+      [`intent-${source!.userId}`]: { userId: source!.userId, round: 1 },
+      [`intent-${candidate!.userId}`]: { userId: candidate!.userId, round: 0 },
+    },
     networkId: source!.networkId,
   };
 }

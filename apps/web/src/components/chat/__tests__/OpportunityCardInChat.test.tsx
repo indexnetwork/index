@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import OpportunityCard, { type OpportunityCardData } from "@/components/chat/OpportunityCardInChat";
 
@@ -12,108 +12,67 @@ const baseCard: OpportunityCardData = {
   status: "negotiating",
 };
 
-const presence = {
-  conversationId: "conv-1",
-  latestMove: "Their agent countered · 12m ago",
-  turnCount: 3,
-  maxTurns: 6,
-};
-
-function renderCard(card: OpportunityCardData, withPresence = false) {
-  return render(
-    <MemoryRouter>
-      <OpportunityCard card={card} {...(withPresence ? { negotiationPresence: presence } : {})} />
-    </MemoryRouter>,
-  );
-}
-
-describe("OpportunityCard negotiation presence", () => {
-  it("renders resolved-card reasoning and remains usable with fallback copy", () => {
-    const { rerender } = renderCard({
-      ...baseCard,
-      status: "rejected",
-      mainText: "Their timeline conflicts with your deadline.",
-    });
-
-    expect(screen.getByText("Their timeline conflicts with your deadline.")).toBeTruthy();
-
-    rerender(
-      <MemoryRouter>
-        <OpportunityCard card={{ ...baseCard, status: "rejected", mainText: "A suggested connection." }} />
-      </MemoryRouter>,
-    );
-    expect(screen.getByText("A suggested connection.")).toBeTruthy();
-  });
-
-  it("renders the templated chip, latest move, and human gate for negotiating cards", () => {
-    renderCard(baseCard, true);
-
-    expect(screen.getByText("Currently negotiating · turn 3 of 6")).toBeTruthy();
-    expect(screen.getByText("Their agent countered · 12m ago")).toBeTruthy();
-    expect(screen.getByText("You'll be asked before anything is agreed")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Watch the negotiation" })).toBeTruthy();
-  });
-
-  it("omits the turn counter until the first turn completes", () => {
+describe("OpportunityCard negotiation lifecycle", () => {
+  it("keeps negotiating informational and links to the owner-seat inspector", () => {
+    const action = vi.fn();
     render(
       <MemoryRouter>
         <OpportunityCard
           card={baseCard}
-          negotiationPresence={{ ...presence, turnCount: 0 }}
+          negotiationInspectorHref="/i/intent-7/negotiations/task-1"
+          negotiationState={{ state: "working", pause: null }}
+          onPrimaryAction={action}
+          onSecondaryAction={action}
         />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Currently negotiating")).toBeTruthy();
-    expect(screen.queryByText(/turn \d+ of \d+/)).toBeNull();
+    expect(screen.getByText(/Your PersonalAgent is handling this negotiation/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Inspect negotiation seat" }).getAttribute("href"))
+      .toBe("/i/intent-7/negotiations/task-1");
+    expect(screen.queryByRole("button", { name: "Start Chat" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
   });
 
-  it("renders nothing without presence data", () => {
-    renderCard(baseCard);
+  it("shows waiting copy for a counterparty-owned verdict pause", () => {
+    render(
+      <MemoryRouter>
+        <OpportunityCard
+          card={baseCard}
+          negotiationState={{ state: "paused", pause: { reason: "ready_for_verdict", by: "theirs" } }}
+        />
+      </MemoryRouter>,
+    );
 
-    expect(screen.queryByText(/Currently negotiating/)).toBeNull();
+    expect(screen.getByText("The other side is deciding.")).toBeTruthy();
+    expect(screen.queryByText(/Your PersonalAgent is handling/)).toBeNull();
+    expect(screen.queryByText(/Questions appear/)).toBeNull();
   });
 
-  it("renders nothing when the card is no longer negotiating", () => {
-    renderCard({ ...baseCard, status: "pending" }, true);
+  it("keeps pending opportunities owner-actionable", () => {
+    render(
+      <MemoryRouter>
+        <OpportunityCard card={{ ...baseCard, status: "pending" }} onPrimaryAction={vi.fn()} onSecondaryAction={vi.fn()} />
+      </MemoryRouter>,
+    );
 
-    expect(screen.queryByText(/Currently negotiating/)).toBeNull();
-  });
-});
-
-describe("OpportunityCard asking-you-first state", () => {
-  // A pre-contact park (#1445) leaves the opportunity `negotiating`, so the
-  // presenter hands us the in-flight template: "still talking with theirs", "no
-  // action needed yet", plus the presence chip. All three are false while the
-  // negotiation is parked before any contact, and the card must not show them.
-  const askingFirst = {
-    intentId: "intent-7",
-    reason: "unresolved_owner_constraint",
-    whatFit: "Consumer-AI founder with strong general AI depth.",
-  };
-
-  it("renders the asking-first card in place of the negotiating body", () => {
-    renderCard({ ...baseCard, askingFirst }, true);
-
-    const card = screen.getByTestId("asking-first-card");
-    expect(card).toHaveTextContent("Your agent wants to ask you first");
-    expect(card).toHaveTextContent("Aisha Khan was not contacted and cannot see this.");
-    expect(screen.getByRole("link", { name: "Answer in this signal's DM" }).getAttribute("href"))
-      .toBe("/i/intent-7");
-    expect(screen.queryByText("Your agents are debating a connection.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Start Chat" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Skip" })).toBeTruthy();
   });
 
-  it("suppresses the negotiation presence, which would claim a dialogue that has not started", () => {
-    renderCard({ ...baseCard, askingFirst }, true);
+  it("does not expose a pending Radar card before its negotiation completes", () => {
+    render(
+      <MemoryRouter>
+        <OpportunityCard
+          card={{ ...baseCard, status: "pending" }}
+          pendingActionable={false}
+          onPrimaryAction={vi.fn()}
+          onSecondaryAction={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
 
-    expect(screen.queryByText(/Currently negotiating/)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Watch the negotiation" })).toBeNull();
-  });
-
-  it("leaves an ordinary negotiating card alone", () => {
-    renderCard(baseCard, true);
-
-    expect(screen.queryByTestId("asking-first-card")).toBeNull();
-    expect(screen.getByText("Your agents are debating a connection.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Start Chat" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
   });
 });

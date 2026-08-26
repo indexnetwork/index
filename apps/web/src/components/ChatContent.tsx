@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useLocation, useNavigate } from "react-router";
-import { ArrowUp, Pencil, Paperclip, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users, MessageSquare } from "lucide-react";
+import { ArrowUp, Pencil, Square, X, Globe, ChevronDown, Lock, ChevronLeft, Share2, Check, Users, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
 import { useAIChat } from "@/contexts/AIChatContext";
-import { useUploadServiceV2 } from "@/services/v2/upload.service";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunities } from "@/contexts/APIContext";
-import { validateFiles } from "@/lib/file-validation";
 import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
 import { DecisionQuestions } from "@/components/DecisionQuestions";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
@@ -34,17 +32,12 @@ const logger = log.ui.from("ChatContent");
 
 const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
 
-interface PendingFile {
-  id: string;
-  file: File;
-}
-
 interface HomeIntent {
   id: string;
   payload: string;
   summary?: string | null;
   createdAt: string;
-  sourceType?: 'file' | 'link' | 'integration';
+  sourceType?: 'integration' | 'discovery_form' | 'enrichment';
   networks?: { id: string; title: string }[];
   status?: string;
 }
@@ -112,17 +105,13 @@ export default function ChatContent({
     inMemorySessionIdRef.current = sessionId;
     locationKeyRef.current = location.key;
   }, [location.key, mutationsBlocked, sessionId, sessionIdFromUrl]);
-  const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, addNotification } = useNotifications();
   const [input, setInput] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
-  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [decisionQuestionsSubmittedIds, setDecisionQuestionsSubmittedIds] = useState<
     Set<string>
   >(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -133,7 +122,7 @@ export default function ChatContent({
   const [shareCopied, setShareCopied] = useState(false);
   const { OAuthLink } = useGmailConnect(useCallback(() => {
     if (mutationsBlockedRef.current) return;
-    void sendWebMessage("I've connected my account, please continue with the import.", undefined, undefined, { hidden: true });
+    void sendWebMessage("I've connected my account, please continue with the import.", { hidden: true });
   }, [sendWebMessage]));
 
   const handleShare = useCallback(async () => {
@@ -536,7 +525,7 @@ export default function ChatContent({
     [proposalIntentMap, archiveProposalIntent],
   );
 
-  const canSend = input.trim() || selectedFiles.length > 0;
+  const canSend = Boolean(input.trim());
 
   useEffect(() => {
     const el = inputRef.current;
@@ -560,73 +549,22 @@ export default function ChatContent({
       setIsInputMultiline(true);
     }
   }, [input]);
-  const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files?.length) return;
-      const list = Array.from(files);
-      const validation = validateFiles(list, "general");
-      if (!validation.isValid) {
-        showError(validation.message ?? "Invalid file(s)");
-        e.target.value = "";
-        return;
-      }
-      setSelectedFiles((prev) => [
-        ...prev,
-        ...list.map((file) => ({ id: crypto.randomUUID(), file })),
-      ]);
-      e.target.value = "";
-    },
-    [showError],
-  );
-
-  const removeFile = useCallback((id: string) => {
-    setSelectedFiles((prev) => prev.filter((f) => f.id !== id));
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
       mutationsBlockedRef.current
       || Boolean(turnBlock)
       || !canSend
-      || isUploadingFiles
-    ) return;  // file upload blocks; stream does not
+    ) return;
 
     const message = input.trim();
     setInput("");
 
-    let fileIds: string[] = [];
-    const attachmentNames: string[] = [];
-    if (selectedFiles.length > 0) {
-      setIsUploadingFiles(true);
-      try {
-        const uploaded = await Promise.all(
-          selectedFiles.map(({ file }) => uploadServiceV2.uploadFile(file)),
-        );
-        fileIds = uploaded.map((f) => f.id);
-        attachmentNames.push(...selectedFiles.map(({ file }) => file.name));
-        setSelectedFiles([]);
-      } catch (err) {
-        logger.error("Upload failed", { error: err });
-        showError(err instanceof Error ? err.message : "Failed to upload file(s)");
-        setIsUploadingFiles(false);
-        inputRef.current?.focus();
-        return;
-      }
-      setIsUploadingFiles(false);
-    }
-
-    const msgContent = message || "Attached file(s).";
-    const fileArg = fileIds.length ? fileIds : undefined;
-    const nameArg = attachmentNames.length ? attachmentNames : undefined;
-
     if (isLoading) {
-      // Mid-stream: route via interrupt flow
       const streamingMsg = messages.find((m) => m.isStreaming);
-      submitMidStreamMessage(msgContent, streamingMsg?.traceEvents ?? [], fileArg, nameArg);
+      submitMidStreamMessage(message, streamingMsg?.traceEvents ?? []);
     } else {
-      await sendWebMessage(msgContent, fileArg, nameArg);
+      await sendWebMessage(message);
     }
     inputRef.current?.focus();
   };
@@ -744,57 +682,13 @@ export default function ChatContent({
       <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
         <form
           onSubmit={handleSubmit}
-          className={cn("flex flex-col bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3", selectedFiles.length > 0 && "gap-2")}
+          className="flex flex-col bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3"
         >
-          {selectedFiles.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {selectedFiles.map(({ id, file }) => (
-                <span
-                  key={id}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 text-gray-800 text-sm font-ibm-plex-mono max-w-50"
-                >
-                  <span className="truncate" title={file.name}>
-                    {file.name}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(id)}
-                    className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-800 focus:outline-none"
-                    aria-label={`Remove ${file.name}`}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
           <div className={cn("flex gap-3", isTextareaMultiline ? "items-end" : "items-center")}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".csv,.doc,.docx,.epub,.html,.json,.md,.pdf,.ppt,.pptx,.rtf,.tsv,.txt,.xls,.xlsx,.xml"
-              onChange={handleFileSelect}
-              className="sr-only"
-              aria-label="Attach files"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              disabled={isUploadingFiles}
-              onClick={() => fileInputRef.current?.click()}
-              className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
-              title="Attach files"
-              aria-label="Attach files"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
             <MentionsTextInput
               value={input}
               onChange={setInput}
               placeholder={CHAT_INPUT_PLACEHOLDER}
-              disabled={isUploadingFiles}
               autoFocus
               inputRef={inputRef}
               suggestionsAbove
@@ -814,7 +708,7 @@ export default function ChatContent({
               <Button
                 type="submit"
                 size="icon"
-                disabled={!canSend || isUploadingFiles}
+                disabled={!canSend}
                 title="Send message"
                 aria-label="Send message"
                 className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
@@ -964,55 +858,13 @@ export default function ChatContent({
             {turnBlock ? renderContinuationPanel() : (
             <form
               onSubmit={handleSubmit}
-              className={cn("flex flex-col bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3", selectedFiles.length > 0 && "gap-2")}
+              className="flex flex-col bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3"
             >
-              {selectedFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {selectedFiles.map(({ id, file }) => (
-                    <span
-                      key={id}
-                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 text-gray-800 text-sm font-ibm-plex-mono max-w-50"
-                    >
-                      <span className="truncate" title={file.name}>
-                        {file.name}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(id)}
-                        className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-800 focus:outline-none"
-                        aria-label={`Remove ${file.name}`}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
               <div className={cn("flex gap-3", isTextareaMultiline ? "items-end" : "items-center")}>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".csv,.doc,.docx,.epub,.html,.json,.md,.pdf,.ppt,.pptx,.rtf,.tsv,.txt,.xls,.xlsx,.xml"
-                  onChange={handleFileSelect}
-                  className="sr-only"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={isUploadingFiles}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
-                  title="Attach files"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
                 <MentionsTextInput
                   value={input}
                   onChange={setInput}
                   placeholder={CHAT_INPUT_PLACEHOLDER}
-                  disabled={isUploadingFiles}
                   autoFocus
                   inputRef={inputRef}
                 />
@@ -1032,7 +884,7 @@ export default function ChatContent({
                   <Button
                     type="submit"
                     size="icon"
-                    disabled={!canSend || isUploadingFiles}
+                    disabled={!canSend}
                     title="Send message"
                     aria-label="Send message"
                     className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
@@ -1307,21 +1159,6 @@ export default function ChatContent({
                     </div>
                   )}
                 </div>
-                {msg.role === "user" &&
-                  msg.attachmentNames &&
-                  msg.attachmentNames.length > 0 && (
-                    <div className="flex justify-end mt-1.5">
-                      <div className="bg-[#FAFAFA] border border-[#E8E8E8] rounded-2xl px-3 py-1.5 text-xs text-gray-600">
-                        {msg.attachmentNames.map((name, idx) => (
-                          <span key={idx} className="inline-flex items-center gap-1.5">
-                            <Paperclip className="w-3 h-3" />
-                            {name}
-                            {idx < msg.attachmentNames!.length - 1 && ", "}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 {/* Inline discovery cards (legacy format) */}
                 {msg.role === "assistant" &&
                   msg.discoveries &&
@@ -1410,7 +1247,6 @@ export default function ChatContent({
               <>
                 <SuggestionChips
                   suggestions={suggestions}
-                  disabled={isUploadingFiles}
                   onSuggestionClick={handleSuggestionClick}
                 />
                 {renderInputForm()}

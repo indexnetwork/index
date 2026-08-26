@@ -1,17 +1,72 @@
-/** The Radar opens on live broker activity instead of a passive backlog. */
-export const DEFAULT_RADAR_BUCKET = 'negotiating';
+import type { IntentCycleSnapshot } from "@/services/conversation";
+import type { OpportunityLifecycleStatus } from "@/services/opportunities";
 
-/**
- * Pending opportunities need a visible call to action even when another Radar
- * tab is selected. Other count badges remain neutral (or inherit selection).
- */
+export type RadarBucket =
+  | "needs-you"
+  | "agent-handling"
+  | "waiting"
+  | "connected"
+  | "closed";
+
+type IntentCycleNegotiation = IntentCycleSnapshot["negotiations"][number];
+
+export const DEFAULT_RADAR_BUCKET: RadarBucket = "agent-handling";
+
+const TERMINAL_BUCKETS: Partial<Record<OpportunityLifecycleStatus, RadarBucket>> = {
+  accepted: "connected",
+  rejected: "closed",
+  expired: "closed",
+  stalled: "closed",
+};
+
+const STATUS_BUCKETS: Record<OpportunityLifecycleStatus, RadarBucket> = {
+  latent: "agent-handling",
+  draft: "agent-handling",
+  pending: "needs-you",
+  negotiating: "agent-handling",
+  stalled: "closed",
+  accepted: "connected",
+  rejected: "closed",
+  expired: "closed",
+};
+
+/** Assign an opportunity to the person or agent currently responsible for it. */
+export function radarBucketForOpportunity(
+  status: OpportunityLifecycleStatus | undefined,
+  negotiation?: Pick<IntentCycleNegotiation, "state" | "pause">,
+): RadarBucket {
+  const terminalBucket = status ? TERMINAL_BUCKETS[status] : undefined;
+  if (terminalBucket) return terminalBucket;
+
+  if (status === "pending") {
+    // A pending outcome is human-actionable only after its PersonalAgent
+    // negotiation has completed. While the cycle snapshot has no completed
+    // task, keep it with the agent rather than exposing the direct chat CTA.
+    return negotiation?.state === "completed" ? "needs-you" : "agent-handling";
+  }
+
+  if (status !== "negotiating") {
+    return status ? STATUS_BUCKETS[status] : "agent-handling";
+  }
+
+  if (negotiation?.state === "paused") {
+    if (negotiation.pause?.by === "theirs") return "waiting";
+    if (negotiation.pause?.reason === "needs_principal") return "needs-you";
+    return "agent-handling";
+  }
+
+  if (negotiation?.state === "working") return "agent-handling";
+  return "agent-handling";
+}
+
+/** Only a non-zero Needs you count calls for visual attention. */
 export function radarBucketBadgeTone(
-  bucketKey: string,
+  bucketKey: RadarBucket,
   value: number,
   active: boolean,
 ): string {
-  if (bucketKey === 'pending' && value > 0) {
-    return 'bg-amber-200 text-amber-950';
+  if (bucketKey === "needs-you" && value > 0) {
+    return "bg-amber-200 text-amber-950";
   }
-  return active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500';
+  return active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500";
 }

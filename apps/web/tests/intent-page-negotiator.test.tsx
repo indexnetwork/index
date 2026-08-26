@@ -7,13 +7,12 @@
  * block is retired with the card questions (conversational-questions plan,
  * "Retirements").
  */
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import IntentDetailPage from '@/app/i/[intentId]/page';
-import { RADAR_REFRESH_INTERVAL_MS } from '@/hooks/useRadarLiveRefresh';
 
 const mocks = vi.hoisted(() => ({
   authState: {
@@ -29,9 +28,13 @@ const mocks = vi.hoisted(() => ({
     getRadarView: vi.fn(),
   },
   conversationsService: {
-    getNegotiationActivity: vi.fn(),
+    getIntentCycle: vi.fn(),
+    getIntentCycleTimeline: vi.fn(),
   },
   chatStubBehavior: { failBootstrap: false },
+  turnCompletedHandlers: new Set<(event: { intentId: string }) => void>(),
+  conversationMessageHandlers: new Set<(event: { message: { taskId?: string | null; senderId: string; parts: unknown[]; createdAt: string } }) => void>(),
+  intentInvalidationHandlers: new Set<(event: { intentId: string }) => void>(),
 }));
 
 vi.mock('@/components/ClientLayout', () => ({
@@ -77,7 +80,21 @@ vi.mock('@/contexts/APIContext', () => ({
 }));
 
 vi.mock('@/contexts/ConversationContext', () => ({
-  useConversation: () => ({ negotiations: [], subscribeQuestionRegeneration: () => () => {} }),
+  useConversation: () => ({
+    subscribePersonalAgentTurnCompleted: (handler: (event: { intentId: string }) => void) => {
+      mocks.turnCompletedHandlers.add(handler);
+      return () => mocks.turnCompletedHandlers.delete(handler);
+    },
+    subscribeConversationMessage: (handler: (event: { message: { taskId?: string | null; senderId: string; parts: unknown[]; createdAt: string } }) => void) => {
+      mocks.conversationMessageHandlers.add(handler);
+      return () => mocks.conversationMessageHandlers.delete(handler);
+    },
+    subscribeIntentDiscoveryProgress: () => () => {},
+    subscribeIntentInvalidation: (handler: (event: { intentId: string }) => void) => {
+      mocks.intentInvalidationHandlers.add(handler);
+      return () => mocks.intentInvalidationHandlers.delete(handler);
+    },
+  }),
 }));
 
 vi.mock('@/contexts/NotificationContext', () => ({
@@ -108,6 +125,24 @@ function renderIntentPage() {
   );
 }
 
+function emitTurnCompleted(event: { intentId: string }) {
+  act(() => {
+    mocks.turnCompletedHandlers.forEach((handler) => handler(event));
+  });
+}
+
+function emitIntentInvalidation(event: { intentId: string }) {
+  act(() => {
+    mocks.intentInvalidationHandlers.forEach((handler) => handler(event));
+  });
+}
+
+function emitConversationMessage(event: { message: { taskId?: string | null; senderId: string; parts: unknown[]; createdAt: string } }) {
+  act(() => {
+    mocks.conversationMessageHandlers.forEach((handler) => handler(event));
+  });
+}
+
 describe('Intent page — agent chat panel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -120,8 +155,12 @@ describe('Intent page — agent chat panel', () => {
     });
     mocks.intentsService.visitIntent.mockResolvedValue(undefined);
     mocks.opportunitiesService.getRadarView.mockResolvedValue({ items: [] });
-    mocks.conversationsService.getNegotiationActivity.mockResolvedValue([]);
+    mocks.conversationsService.getIntentCycle.mockResolvedValue({ round: { number: 0, size: null, kickoffStartedAt: null, working: 0, paused: 0 }, negotiations: [] });
+    mocks.conversationsService.getIntentCycleTimeline.mockResolvedValue([]);
     mocks.chatStubBehavior.failBootstrap = false;
+    mocks.turnCompletedHandlers.clear();
+    mocks.conversationMessageHandlers.clear();
+    mocks.intentInvalidationHandlers.clear();
   });
 
   test('the chat window renders unconditionally — no flag gates it', async () => {
@@ -145,130 +184,53 @@ describe('Intent page — agent chat panel', () => {
     ).toBeInTheDocument();
   });
 
-  test('shows truthful discovery preparation instead of claiming agents are talking', async () => {
-    mocks.intentsService.getIntent.mockResolvedValue({
-      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
-      createdAt: new Date().toISOString(), warming: true,
-      networks: [{ id: 'community-1', title: 'Builders' }],
-      discoveryProgress: {
-        status: 'retrying', attempt: 2, maxAttempts: 3, assignedCommunityCount: 1,
-        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
-        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: '2026-08-19T09:15:00.000Z',
-        completedAt: null, updatedAt: '2026-08-19T09:15:00.000Z',
-      },
+  test('updates the Agent handling row from a persisted A2A message without presenter prose', async () => {
+    mocks.opportunitiesService.getRadarView.mockResolvedValue({
+      items: [{ opportunityId: 'opp-1', status: 'negotiating', userId: 'maya', name: 'Maya Chen', avatar: null }],
+    });
+    mocks.conversationsService.getIntentCycle.mockResolvedValue({
+      round: { number: 1, size: 1, kickoffStartedAt: null, active: 1, paused: 0 },
+      negotiations: [{
+        taskId: 'task-1', conversationId: 'conversation-1', opportunityId: 'opp-1', opportunityStatus: 'negotiating', counterpartLabel: 'Maya Chen', round: 1,
+        state: 'working', pause: null, latestActivity: null, updatedAt: '2026-08-25T00:00:00.000Z',
+      }],
     });
     renderIntentPage();
-    await screen.findByText('Looking for a technical co-founder');
-    fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
-    expect(await screen.findByText('Finding your first conversations')).toBeInTheDocument();
-    expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('retrying');
-    expect(screen.getByText(/attempt 2 of 3 . retrying/i)).toBeInTheDocument();
-    expect(screen.queryByText(/still talking with theirs/i)).toBeNull();
+
+    expect(await screen.findByText('Preparing negotiation.')).toBeInTheDocument();
+    emitConversationMessage({ message: {
+      taskId: 'task-1', senderId: 'agent:maya', createdAt: '2026-08-25T00:01:00.000Z',
+      parts: [{ kind: 'data', data: { verb: 'counter', message: 'Their agent proposed terms.' } }],
+    } });
+
+    expect(await screen.findByText('Their Agent')).toBeInTheDocument();
+    expect(screen.getByText('Their agent proposed terms.')).toBeInTheDocument();
+    expect(mocks.opportunitiesService.getRadarView).toHaveBeenCalledWith(expect.objectContaining({ presentation: 'skeleton' }));
   });
 
-  test('reports a completed search with no conversations distinctly from failure', async () => {
-    mocks.intentsService.getIntent.mockResolvedValue({
-      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
-      createdAt: new Date().toISOString(), warming: false,
-      networks: [{ id: 'community-1', title: 'Builders' }],
-      discoveryProgress: {
-        status: 'completed', attempt: 1, maxAttempts: 3, assignedCommunityCount: 1,
-        processedCommunityCount: 1, possibleOverlapCount: 0, conversationsStartedCount: 0,
-        queuedAt: null, startedAt: null, completedAt: new Date().toISOString(), updatedAt: null,
-      },
-    });
+  test('refreshes the entire workspace when the PersonalAgent turn completes', async () => {
     renderIntentPage();
     await screen.findByText('Looking for a technical co-founder');
-    fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
-    // A zero-result run still reports its tally; an empty card would read as
-    // though the agent never ran.
-    expect(await screen.findByText('Scanned 1 community — no overlaps yet')).toBeInTheDocument();
-    expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('completed');
-  });
-  test('refreshes the signal snapshot so a finished run lands on the card', async () => {
-    // The SSE-driven radar refresh never carried the intent snapshot, so a
-    // completed run's tallies used to sit unread until the slower progress poll.
-    const warmingIntent = {
-      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
-      createdAt: new Date().toISOString(), warming: true,
-      networks: [{ id: 'community-1', title: 'Builders' }, { id: 'community-2', title: 'Climate' }],
-      discoveryProgress: {
-        status: 'running', attempt: 1, maxAttempts: 3, assignedCommunityCount: 2,
-        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
-        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: '2026-08-19T09:15:00.000Z',
-        completedAt: null, updatedAt: '2026-08-19T09:15:00.000Z',
-      },
-    };
-    mocks.intentsService.getIntent
-      .mockResolvedValueOnce(warmingIntent)
-      .mockResolvedValue({
-        ...warmingIntent,
-        discoveryProgress: {
-          ...warmingIntent.discoveryProgress,
-          status: 'completed', processedCommunityCount: 2, possibleOverlapCount: 3,
-          conversationsStartedCount: 1, completedAt: '2026-08-19T09:21:00.000Z',
-        },
-      });
+    await waitFor(() => expect(mocks.conversationsService.getIntentCycleTimeline).toHaveBeenCalledTimes(1));
+    vi.clearAllMocks();
 
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      renderIntentPage();
-      await screen.findByText('Looking for a technical co-founder');
-      fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
-      await screen.findByText('Finding your first conversations');
+    emitTurnCompleted({ intentId: 'intent-1' });
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(RADAR_REFRESH_INTERVAL_MS);
-      });
-
-      expect(
-        await screen.findByText('Scanned 2 communities — 3 possible overlaps, 1 conversation started'),
-      ).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    await waitFor(() => expect(mocks.intentsService.getIntent).toHaveBeenCalledWith('intent-1'));
+    expect(mocks.conversationsService.getIntentCycle).toHaveBeenCalledWith('intent-1');
+    expect(mocks.conversationsService.getIntentCycleTimeline).toHaveBeenCalledWith('intent-1');
   });
 
-  test('a blocked card is not frozen: it observes the signal joining a community', async () => {
-    // `blocked` used to sit outside the poll allowlist, so the card could never
-    // see its own recovery and stayed on "Needs attention" indefinitely.
-    const blockedIntent = {
-      id: 'intent-1', payload: 'Looking for a technical co-founder', summary: null,
-      createdAt: new Date().toISOString(), warming: true, networks: [],
-      discoveryProgress: {
-        status: 'blocked', attempt: 0, maxAttempts: 3, assignedCommunityCount: 0,
-        processedCommunityCount: 0, possibleOverlapCount: 0, conversationsStartedCount: 0,
-        queuedAt: '2026-08-19T09:14:00.000Z', startedAt: null,
-        completedAt: '2026-08-19T09:14:00.000Z', updatedAt: '2026-08-19T09:14:00.000Z',
-      },
-    };
-    mocks.intentsService.getIntent
-      .mockResolvedValueOnce(blockedIntent)
-      .mockResolvedValue({
-        ...blockedIntent,
-        networks: [{ id: 'community-1', title: 'Builders' }],
-        discoveryProgress: {
-          ...blockedIntent.discoveryProgress,
-          status: 'running', attempt: 1, assignedCommunityCount: 1,
-          startedAt: '2026-08-19T09:16:00.000Z', completedAt: null,
-        },
-      });
+  test('refreshes the entire workspace when negotiation expiry invalidates its intent', async () => {
+    renderIntentPage();
+    await screen.findByText('Looking for a technical co-founder');
+    await waitFor(() => expect(mocks.conversationsService.getIntentCycleTimeline).toHaveBeenCalledTimes(1));
+    vi.clearAllMocks();
 
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      renderIntentPage();
-      await screen.findByText('Looking for a technical co-founder');
-      fireEvent.click(screen.getByRole('button', { name: /Negotiating/ }));
-      await screen.findByText('Scanning is paused');
+    emitIntentInvalidation({ intentId: 'intent-1' });
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(15_000);
-      });
-
-      expect(await screen.findByText('Finding your first conversations')).toBeInTheDocument();
-      expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('scanning');
-    } finally {
-      vi.useRealTimers();
-    }
+    await waitFor(() => expect(mocks.intentsService.getIntent).toHaveBeenCalledWith('intent-1'));
+    expect(mocks.conversationsService.getIntentCycle).toHaveBeenCalledWith('intent-1');
+    expect(mocks.conversationsService.getIntentCycleTimeline).toHaveBeenCalledWith('intent-1');
   });
 });

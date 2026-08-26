@@ -11,7 +11,6 @@ import { recordRequestAuthContext } from '../../lib/request-auth-context';
 import { RouteRegistry } from '../../lib/router/router.decorators';
 import { agentService } from '../../services/agent.service';
 import { chatSessionService } from '../../services/chat.service';
-import { fileService } from '../../services/file.service';
 import { userService } from '../../services/user.service';
 import type { PersonalAgentResult } from '@indexnetwork/protocol';
 import type { PersonalAgentUserMessageEvent } from '../../queues/personal-agent.queue';
@@ -56,7 +55,6 @@ describe('PersonalAgent web chat routing', () => {
   let getSessionSpy: ReturnType<typeof spyOn>;
   let addMessageSpy: ReturnType<typeof spyOn>;
   let getFactorySpy: ReturnType<typeof spyOn>;
-  let loadFilesSpy: ReturnType<typeof spyOn>;
   /** Events the controller handed to the PersonalAgent seam. */
   const agentTurnEvents: PersonalAgentUserMessageEvent[] = [];
   let scriptedAgentTurn: (event: PersonalAgentUserMessageEvent) => Promise<PersonalAgentResult>;
@@ -109,7 +107,6 @@ describe('PersonalAgent web chat routing', () => {
     spyOn(chatSessionService, 'upsertSessionMetadata').mockResolvedValue();
     spyOn(chatSessionService, 'saveMessageMetadata').mockResolvedValue();
     getFactorySpy = spyOn(chatSessionService, 'getPersonalAgentGraphFactory').mockReturnValue(personalFactory);
-    loadFilesSpy = spyOn(fileService, 'loadAttachedFileContent').mockResolvedValue('file contents');
   });
 
   afterEach(() => {
@@ -204,7 +201,7 @@ describe('PersonalAgent web chat routing', () => {
     expect((await loaded.json() as { session: { persona: string } }).session.persona).toBe('orchestrator');
 
     const response = await stream(
-      { sessionId: 'legacy-session', fileIds: ['file-1'] },
+      { sessionId: 'legacy-session', message: 'continue' },
       'web',
     );
     const payload = await response.json() as {
@@ -216,7 +213,6 @@ describe('PersonalAgent web chat routing', () => {
     expect(payload.code).toBe('WEB_SIGNAL_SESSION_REQUIRED');
     expect(payload.action).toEqual({ type: 'start_signal_session', href: '/' });
     expect(addMessageSpy).not.toHaveBeenCalled();
-    expect(loadFilesSpy).not.toHaveBeenCalled();
     expect(getFactorySpy).not.toHaveBeenCalled();
   });
 

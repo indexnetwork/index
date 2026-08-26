@@ -30,7 +30,7 @@ const runtimeAndCurrentDocFiles = [
 ];
 
 describe('Release 1 background-only opportunity inventory', () => {
-  test('keeps direct discovery out of public runtime composition while retaining the Release 1 schema', () => {
+  test('keeps direct discovery out of public runtime composition', () => {
     const publicRuntimeSources = publicRuntimeFiles.map((file) => readFileSync(resolve(root, file), 'utf8')).join('\n');
     const runtimeAndCurrentDocs = runtimeAndCurrentDocFiles.map((file) => readFileSync(resolve(root, file), 'utf8')).join('\n');
     const chatPrompt = readFileSync(resolve(root, 'packages/protocol/src/internal/chat/chat.prompt.ts'), 'utf8');
@@ -38,7 +38,6 @@ describe('Release 1 background-only opportunity inventory', () => {
     const metadataEndpointStart = chatController.indexOf('async updateMessageMetadata(');
     const metadataEndpointEnd = chatController.indexOf('\n  /**', metadataEndpointStart);
     const metadataEndpoint = chatController.slice(metadataEndpointStart, metadataEndpointEnd);
-    const schemaSources = readFileSync(resolve(root, 'services/api/src/schemas/database.schema.ts'), 'utf8');
 
     expect(publicRuntimeSources).not.toMatch(/discover_opportunities|get_discovery_run|cancel_discovery_run|discoveryRunQueue/);
     expect(runtimeAndCurrentDocs).not.toMatch(/opportunity_draft_ready|OpportunityTrigger|trigger:\s*['"]orchestrator['"]/);
@@ -46,6 +45,5 @@ describe('Release 1 background-only opportunity inventory', () => {
     expect(chatPrompt).not.toMatch(/I can(?: now)? (?:look for|help you find) relevant people(?: when you ask)?/);
     expect(metadataEndpoint).toContain('streamingDrafts is no longer accepted');
     expect(metadataEndpoint).not.toMatch(/saveMessageMetadata\(\{[\s\S]*streamingDrafts/);
-    expect(schemaSources).toContain('opportunityDiscoveryRuns');
   });
 });

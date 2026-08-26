@@ -33,6 +33,27 @@ export interface QuestionRegenerationEvent {
   pending: boolean;
 }
 
+/** A completed durable PersonalAgent turn for one of the owner's intents. */
+export interface PersonalAgentTurnCompletedEvent {
+  intentId: string;
+}
+
+/** A persisted message received on the authenticated conversation SSE channel. */
+export interface ConversationMessageEvent {
+  conversationId: string;
+  message: ConversationMessage;
+}
+
+/** An owner-visible discovery-progress write; fetch the intent for its data. */
+export interface IntentDiscoveryProgressEvent {
+  intentId: string;
+}
+
+/** An owner-scoped invalidation for an intent-owned view. */
+export interface IntentInvalidationEvent {
+  intentId: string;
+}
+
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: ConversationSummary[];
@@ -55,6 +76,14 @@ interface ConversationContextType {
    * Returns the unsubscribe function.
    */
   subscribeQuestionRegeneration: (handler: (event: QuestionRegenerationEvent) => void) => () => void;
+  /** Subscribe to durable PersonalAgent completion signals from the SSE stream. */
+  subscribePersonalAgentTurnCompleted: (handler: (event: PersonalAgentTurnCompletedEvent) => void) => () => void;
+  /** Subscribe to persisted conversation messages from the SSE stream. */
+  subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
+  /** Subscribe to owner-scoped discovery-progress invalidations. */
+  subscribeIntentDiscoveryProgress: (handler: (event: IntentDiscoveryProgressEvent) => void) => () => void;
+  /** Subscribe to owner-scoped intent invalidations. */
+  subscribeIntentInvalidation: (handler: (event: IntentInvalidationEvent) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -79,6 +108,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const refreshNegotiationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const questionRegenerationHandlersRef = useRef(new Set<(event: QuestionRegenerationEvent) => void>());
+  const personalAgentTurnCompletedHandlersRef = useRef(new Set<(event: PersonalAgentTurnCompletedEvent) => void>());
+  const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
+  const intentDiscoveryProgressHandlersRef = useRef(new Set<(event: IntentDiscoveryProgressEvent) => void>());
+  const intentInvalidationHandlersRef = useRef(new Set<(event: IntentInvalidationEvent) => void>());
 
   const subscribeQuestionRegeneration = useCallback(
     (handler: (event: QuestionRegenerationEvent) => void) => {
@@ -86,6 +119,40 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       return () => {
         questionRegenerationHandlersRef.current.delete(handler);
       };
+    },
+    [],
+  );
+
+  const subscribePersonalAgentTurnCompleted = useCallback(
+    (handler: (event: PersonalAgentTurnCompletedEvent) => void) => {
+      personalAgentTurnCompletedHandlersRef.current.add(handler);
+      return () => {
+        personalAgentTurnCompletedHandlersRef.current.delete(handler);
+      };
+    },
+    [],
+  );
+
+  const subscribeConversationMessage = useCallback(
+    (handler: (event: ConversationMessageEvent) => void) => {
+      conversationMessageHandlersRef.current.add(handler);
+      return () => { conversationMessageHandlersRef.current.delete(handler); };
+    },
+    [],
+  );
+
+  const subscribeIntentDiscoveryProgress = useCallback(
+    (handler: (event: IntentDiscoveryProgressEvent) => void) => {
+      intentDiscoveryProgressHandlersRef.current.add(handler);
+      return () => { intentDiscoveryProgressHandlersRef.current.delete(handler); };
+    },
+    [],
+  );
+
+  const subscribeIntentInvalidation = useCallback(
+    (handler: (event: IntentInvalidationEvent) => void) => {
+      intentInvalidationHandlersRef.current.add(handler);
+      return () => { intentInvalidationHandlersRef.current.delete(handler); };
     },
     [],
   );
@@ -409,6 +476,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                 negotiationsRefreshTimeoutRef.current = null;
                 void refreshNegotiationsRef.current();
               }, 500);
+              conversationMessageHandlersRef.current.forEach((handler) => handler({
+                conversationId: convId,
+                message: msg,
+              }));
               break;
             }
             case 'question_regeneration': {
@@ -422,6 +493,24 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
                 pending: Boolean(data.pending),
               };
               questionRegenerationHandlersRef.current.forEach((handler) => handler(regenerationEvent));
+              break;
+            }
+            case 'intent_discovery_progress': {
+              const intentId = data.intentId as string | undefined;
+              if (!intentId) break;
+              intentDiscoveryProgressHandlersRef.current.forEach((handler) => handler({ intentId }));
+              break;
+            }
+            case 'intent_invalidated': {
+              const intentId = data.intentId as string | undefined;
+              if (!intentId) break;
+              intentInvalidationHandlersRef.current.forEach((handler) => handler({ intentId }));
+              break;
+            }
+            case 'personal_agent_turn_completed': {
+              const intentId = data.intentId as string | undefined;
+              if (!intentId) break;
+              personalAgentTurnCompletedHandlersRef.current.forEach((handler) => handler({ intentId }));
               break;
             }
           }
@@ -520,6 +609,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         hideConversation,
         getOrCreateDM,
         subscribeQuestionRegeneration,
+        subscribePersonalAgentTurnCompleted,
+        subscribeConversationMessage,
+        subscribeIntentDiscoveryProgress,
+        subscribeIntentInvalidation,
       }}
     >
       {children}

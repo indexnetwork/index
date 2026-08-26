@@ -74,8 +74,7 @@ export type OpportunityDiscoveryCompletionReason =
   | 'created_or_reactivated'
   | 'no_search_candidates'
   | 'evaluator_rejected_all'
-  | 'same_trigger_duplicate_suppressed'
-  | 'pair_active_negotiation_suppressed'
+  | 'same_intent_pair_duplicate_suppressed'
   | 'final_atomic_conflict'
   | 'persistence_zero_other';
 
@@ -84,9 +83,8 @@ export interface OpportunityDiscoverySummary {
   evaluatedCount: number;
   opportunitiesCreated: number;
   completionReason: OpportunityDiscoveryCompletionReason;
-  sameTriggerDuplicateSuppressions: number;
-  pairActiveNegotiationSuppressions: number;
-  crossTriggerAllowedCount: number;
+  sameIntentPairDuplicateSuppressions: number;
+  crossIntentPairAllowedCount: number;
   finalAtomicConflictCount: number;
 }
 
@@ -96,9 +94,8 @@ interface OpportunityDiscoveryResultShape {
   opportunities?: unknown[];
   persistenceOutcome?: {
     evaluatedCount: number;
-    sameTriggerDuplicateSuppressions: number;
-    pairActiveNegotiationSuppressions: number;
-    crossTriggerAllowedCount: number;
+    sameIntentPairDuplicateSuppressions: number;
+    crossIntentPairAllowedCount: number;
     finalAtomicConflictCount: number;
   };
 }
@@ -112,9 +109,8 @@ export function summarizeOpportunityDiscoveryResult(
   const persistence = result.persistenceOutcome;
   const evaluatedCount = persistence?.evaluatedCount
     ?? (Array.isArray(result.evaluatedOpportunities) ? result.evaluatedOpportunities.length : 0);
-  const sameTriggerDuplicateSuppressions = persistence?.sameTriggerDuplicateSuppressions ?? 0;
-  const pairActiveNegotiationSuppressions = persistence?.pairActiveNegotiationSuppressions ?? 0;
-  const crossTriggerAllowedCount = persistence?.crossTriggerAllowedCount ?? 0;
+  const sameIntentPairDuplicateSuppressions = persistence?.sameIntentPairDuplicateSuppressions ?? 0;
+  const crossIntentPairAllowedCount = persistence?.crossIntentPairAllowedCount ?? 0;
   const finalAtomicConflictCount = persistence?.finalAtomicConflictCount ?? 0;
   const completionReason: OpportunityDiscoveryCompletionReason = opportunities.length > 0
     ? 'created_or_reactivated'
@@ -124,20 +120,17 @@ export function summarizeOpportunityDiscoveryResult(
         ? 'evaluator_rejected_all'
         : finalAtomicConflictCount > 0
           ? 'final_atomic_conflict'
-          : pairActiveNegotiationSuppressions > 0
-            ? 'pair_active_negotiation_suppressed'
-            : sameTriggerDuplicateSuppressions > 0
-              ? 'same_trigger_duplicate_suppressed'
-              : 'persistence_zero_other';
+          : sameIntentPairDuplicateSuppressions > 0
+            ? 'same_intent_pair_duplicate_suppressed'
+            : 'persistence_zero_other';
 
   return {
     candidatesFound: candidates.length,
     evaluatedCount,
     opportunitiesCreated: opportunities.length,
     completionReason,
-    sameTriggerDuplicateSuppressions,
-    pairActiveNegotiationSuppressions,
-    crossTriggerAllowedCount,
+    sameIntentPairDuplicateSuppressions,
+    crossIntentPairAllowedCount,
     finalAtomicConflictCount,
   };
 }

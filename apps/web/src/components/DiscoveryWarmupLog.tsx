@@ -13,7 +13,7 @@
 import { useMemo } from "react";
 
 import type { DiscoveryProgress, DiscoveryProgressStatus } from "@/services/intents";
-import { ACTIVE_DISCOVERY_STATUSES, DISCOVERY_STATUS_CHIP, WARMUP_PAUSED_HEADLINE, buildWarmupLog, formatLogClock, warmupHeadline, type WarmupConversation } from "@/lib/discovery-warmup-log";
+import { ACTIVE_DISCOVERY_STATUSES, DISCOVERY_STATUS_CHIP, WARMUP_PAUSED_HEADLINE, buildWarmupLog, formatLogClock, warmupHeadline } from "@/lib/discovery-warmup-log";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONE: Record<DiscoveryProgressStatus, string> = {
@@ -29,21 +29,21 @@ const STATUS_TONE: Record<DiscoveryProgressStatus, string> = {
 export default function DiscoveryWarmupLog({
   progress,
   communities,
-  conversations,
 }: {
   progress?: DiscoveryProgress;
-  communities: Array<{ id: string; title: string }>;
-  conversations?: WarmupConversation[];
+  communities?: Array<{ id: string; title: string }>;
 }) {
   const status = progress?.status ?? "unknown";
   const active = ACTIVE_DISCOVERY_STATUSES.has(status);
-  // No community means no run can start, whatever the stored row last said.
-  const paused = status === "blocked" || communities.length === 0;
+  // A loaded empty community list means no run can start, whatever the stored
+  // row last said. An omitted list is still loading, not evidence of a block.
+  const communityCount = communities?.length ?? 0;
+  const paused = status === "blocked" || communities?.length === 0;
   const chipStatus: DiscoveryProgressStatus = paused ? "blocked" : status;
-  const log = useMemo(() => buildWarmupLog({ progress, conversations }), [progress, conversations]);
+  const log = useMemo(() => buildWarmupLog({ progress }), [progress]);
   const headline = useMemo(
-    () => (paused ? { ...WARMUP_PAUSED_HEADLINE } : warmupHeadline(progress, communities.length)),
-    [paused, communities.length, progress],
+    () => (paused ? { ...WARMUP_PAUSED_HEADLINE } : warmupHeadline(progress, communityCount)),
+    [paused, communityCount, progress],
   );
 
   return (
@@ -79,13 +79,13 @@ export default function DiscoveryWarmupLog({
           data-testid="discovery-warmup-log"
         >
           {log.map((entry) => (
-            <li key={entry.id} className="flex items-start gap-2" data-lane={entry.lane}>
+            <li key={entry.id} className="flex items-start gap-2">
               <span className="shrink-0 text-gray-400">{formatLogClock(entry.at)}</span>
               <span
                 aria-hidden="true"
                 className={cn(
                   "mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full",
-                  entry.lane === "progress" ? "bg-gray-400" : "border border-gray-400",
+                  "bg-gray-400",
                   entry.current && "warmup-pulse",
                 )}
               />

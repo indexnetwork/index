@@ -20,7 +20,7 @@ interface HomeIntent {
   payload: string;
   summary?: string | null;
   createdAt: string;
-  sourceType?: "file" | "link" | "integration" | "discovery_form" | "enrichment";
+  sourceType?: "integration" | "discovery_form" | "enrichment";
   waitingOpportunityCount?: number;
   pendingQuestionCount?: number;
   /** The signal's agent is holding an unanswered question for the user. */

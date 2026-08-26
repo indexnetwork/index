@@ -31,7 +31,7 @@ import { agentService } from '../../services/agent.service';
 import { AgentDispatcherImpl } from '../../services/agent-dispatcher.service';
 import { chatSessionService } from '../../services/chat.service';
 import { PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readSignalMatches } from '../agent/negotiator-verdict.host';
-import { publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
+import { publishPersonalAgentActivity, publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
 
 /**
  * `agentDispatcher` is exported separately: it is no longer part of the
@@ -43,17 +43,32 @@ export const agentDispatcher = new AgentDispatcherImpl(agentService);
 
 export const negotiationGraph = new NegotiationGraphFactory({
   database: conversationDatabaseAdapter,
-  // All-paused → reflect: the trigger is gated on the round's size stamp, so
-  // this fires exactly once per round, when kickoff's opens have all settled.
+  // All-paused → reflect: the trigger waits for an in-flight kickoff to finish,
+  // then deduplicates the durable task-generation vector for every bound seat.
   reflectEnqueue: async (job) => {
     const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
     await personalAgentQueue.addAllPausedEvent(job);
+  },
+  needsPrincipalEnqueue: async (input) => {
+    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
+    await personalAgentQueue.addNeedsPrincipalEvent({ ...input, event: 'needs_principal' });
+  },
+  resolutionEnqueue: async (input) => {
+    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
+    await personalAgentQueue.addCounterpartyResolvedEvent({ ...input, event: 'counterparty_resolved' });
   },
   // The seat's own agent plays its turn. `personalAgentGraph` is referenced
   // lazily, inside the call, so the two constructions below can be ordered.
   author: {
     authorTurn: async ({ negotiationId, userId, intentId }) => {
-      const result = await personalAgentGraph.invoke({ userId, intentId, negotiationId });
+      let result = await personalAgentGraph.invoke({ userId, intentId, negotiationId });
+      // OpenRouter can return its own timeout before our 20-second author
+      // budget expires. No shared turn exists yet, so retry that transient
+      // provider result once instead of parking a healthy negotiation.
+      if (!result.turn && /\btimeout\b|\btimed out\b/i.test(result.error ?? '')) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        result = await personalAgentGraph.invoke({ userId, intentId, negotiationId });
+      }
       if (!result.turn) throw new Error(result.error ?? 'PersonalAgent produced no negotiation turn');
       return result.turn;
     },
@@ -75,8 +90,8 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
     // `readSignalMatches`, NOT the degrading `readActionableCounterparties`:
     // every one of the agent's turns is about this list, and a read that
     // failed must fail the turn. Swallowed to `[]` it becomes a reflect that
-    // saw no negotiations, decided nothing, succeeded — and burned the round's
-    // one retained reflect job.
+    // saw no negotiations, decided nothing, succeeded — and burned that drain
+    // generation's one retained job.
     readMatches: async (userId, intentId) => (
       await readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)
     ).map((match) => ({
@@ -96,6 +111,7 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
     readAgentName: async (userId) => (await agentService.getNegotiatorAgent(userId))?.name ?? null,
   },
   replyStream: { publish: publishPersonalAgentReplyChunk },
+  activity: { publish: publishPersonalAgentActivity },
   reflectEnqueue: async (job) => {
     const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
     await personalAgentQueue.addAllPausedEvent(job);

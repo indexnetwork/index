@@ -7,17 +7,16 @@ import { getRequestAuthContext } from '../lib/request-auth-context';
 import { log } from "../lib/log";
 import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorators";
 import { chatSessionService, RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, type ChatStreamSurface } from "../services/chat.service";
-import { fileService } from "../services/file.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
 import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
 import { personalAgentQueue } from "../queues/personal-agent.queue";
 import type { PersonalAgentUserMessageEvent } from "../queues/personal-agent.queue";
 import { subscribePersonalAgentReply } from "../lib/agent/personal-agent-reply.stream";
-import type { PersonalAgentReplyChunk } from "../lib/agent/personal-agent-reply.stream";
+import type { PersonalAgentReplyStreamEvent } from "../lib/agent/personal-agent-reply.stream";
 import { SuggestionGenerator, ChatInterruptClassifier, PERSONAL_AGENT_PERSONA_ID } from '@indexnetwork/protocol';
 import type { PersonalAgentResult } from '@indexnetwork/protocol';
-import { createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
+import { createAgentActivityEvent, createDoneEvent, createErrorEvent, createStatusEvent, createSteerOrQueueEvent, createTokenEvent, formatSSEEvent } from "../types/chat-streaming.types";
 import { emitChatInterrupt, onChatInterrupt } from '../lib/chat-interrupt.events';
 
 type RouteParams = Record<string, string>;
@@ -97,7 +96,6 @@ const streamBodySchema = z.object({
   message: z.string().nullish(),
   sessionId: z.string().nullish(),
   useCheckpointer: z.boolean().optional(),
-  fileIds: z.array(z.string().min(1)).max(20).optional(),
   /** @deprecated Use scopeType/scopeId. Retained as the REST edge alias for network-scoped sessions. */
   networkId: z.string().nullish(),
   scopeType: z.enum(['network', 'intent']).nullish(),
@@ -108,6 +106,8 @@ const streamBodySchema = z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
   })).max(10).optional(),
+  /** Question messages explicitly answered by this principal turn. */
+  decisionQuestionMessageIds: z.array(z.string().min(1)).min(1).max(20).optional(),
 });
 
 let suggestionGeneratorInstance: SuggestionGenerator | null = null;
@@ -220,7 +220,7 @@ export class ChatController {
    * SSE streaming endpoint for chat messages with context support.
    * Streams graph events and LLM tokens in real-time, loading previous conversation context.
    *
-   * @param req - The HTTP request object (body: { message: string, sessionId?: string, useCheckpointer?: boolean, fileIds?: string[] })
+   * @param req - The HTTP request object (body: { message: string, sessionId?: string, useCheckpointer?: boolean })
    * @param user - The authenticated user from AuthGuard
    * @returns SSE Response stream
    */
@@ -276,7 +276,7 @@ export class ChatController {
         return Response.json(
           {
             error:
-              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], scopeType?: 'network' | 'intent' | null, scopeId?: string | null, networkId?: string | null }",
+              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, scopeType?: 'network' | 'intent' | null, scopeId?: string | null, networkId?: string | null }",
           },
           { status: 400 },
         );
@@ -291,11 +291,10 @@ export class ChatController {
       );
     }
 
-    let messageContent = body.message?.trim() || "";
-    const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
-    if (!messageContent && fileIds.length === 0) {
+    const messageContent = body.message?.trim() || "";
+    if (!messageContent) {
       return Response.json(
-        { error: "Message content or file attachments are required" },
+        { error: "Message content is required" },
         { status: 400 },
       );
     }
@@ -352,24 +351,6 @@ export class ChatController {
         { status: 400 },
       );
     }
-    if (fileIds.length > 0) {
-      const fileContent = await fileService.loadAttachedFileContent(
-        user.id,
-        fileIds,
-      );
-      if (fileContent) {
-        messageContent = messageContent
-          ? `${messageContent}\n\n[Attached files]\n${fileContent}`
-          : `[Attached files]\n${fileContent}`;
-      }
-    }
-    if (!messageContent) {
-      return Response.json(
-        { error: "Message content or file attachments are required" },
-        { status: 400 },
-      );
-    }
-
     // API-key clients only ever drive a signal's DM (the mac app's per-signal
     // chat); the global chat stays a web surface, exactly as when persona ids
     // encoded the split.
@@ -457,6 +438,18 @@ export class ChatController {
     if (effectiveScopeError) return effectiveScopeError;
 
     const sessionId = currentSessionId;
+    if (body.decisionQuestionMessageIds) {
+      const marked = await chatSessionService.markDecisionQuestionsSubmitted(
+        sessionId,
+        body.decisionQuestionMessageIds,
+      );
+      if (!marked) {
+        return Response.json(
+          { error: 'Decision questions are no longer awaiting an answer.' },
+          { status: 409 },
+        );
+      }
+    }
     // ─── Phase 2 (full chat ownership): a signal's DM runs no persona graph
     // at all — EVERY intent-scoped turn is the signal's IntentAgent's,
     // decided and executed on its serialized inbox. Global and network-scoped
@@ -555,8 +548,6 @@ export class ChatController {
           let agentTurn: PersonalAgentResult | null = null;
           let agentUserMessageId: string | null = null;
           let agentAssistantMessageId: string | undefined;
-          /** Canned replies the agent attached to its delivered message. */
-          let agentReplyOptions: string[] | undefined;
 
           if (agentOwnsTurn && effectiveScope) {
             // The conversation is the agent's memory, so the client's message
@@ -575,13 +566,19 @@ export class ChatController {
             let lastSeq = 0;
             let unsubscribeReply: (() => void) | null = null;
             try {
-              unsubscribeReply = await subscribePersonalAgentReply(agentUserMessageId, (chunk: PersonalAgentReplyChunk) => {
-                if (chunk.seq <= lastSeq) return;
-                lastSeq = chunk.seq;
-                streamedText += chunk.content;
+              unsubscribeReply = await subscribePersonalAgentReply(agentUserMessageId, (event: PersonalAgentReplyStreamEvent) => {
                 try {
+                  if (event.type === 'activity') {
+                    controller.enqueue(
+                      encoder.encode(formatSSEEvent(createAgentActivityEvent(sessionId, event.label))),
+                    );
+                    return;
+                  }
+                  if (event.seq <= lastSeq) return;
+                  lastSeq = event.seq;
+                  streamedText += event.content;
                   controller.enqueue(
-                    encoder.encode(formatSSEEvent(createTokenEvent(sessionId, chunk.content))),
+                    encoder.encode(formatSSEEvent(createTokenEvent(sessionId, event.content))),
                   );
                 } catch {
                   // Stream may have already closed.
@@ -604,11 +601,10 @@ export class ChatController {
               for (const act of agentTurn.acts) {
                 if (act.tool !== 'message_user') continue;
                 agentAssistantMessageId = act.messageId;
-                // The chips belong to the last message the turn delivered —
-                // the same one `agentAssistantMessageId` names. They are
-                // already persisted on it; the done event only spares the
-                // client a reload to see them.
-                agentReplyOptions = act.options;
+                // Questions belong to the last delivered message named by
+                // `agentAssistantMessageId`. They are already persisted on
+                // it; done only spares the client a reload.
+                decisionQuestions = act.questions;
               }
               // Dropped-subscription fallback: whatever the channel did not
               // deliver of the completed turn is emitted as one token event.
@@ -846,7 +842,6 @@ export class ChatController {
                     title: sessionTitle,
                     suggestions,
                     ...(decisionQuestions !== undefined ? { decisionQuestions } : {}),
-                    ...(agentReplyOptions ? { options: agentReplyOptions } : {}),
                   }),
                 ),
               ),

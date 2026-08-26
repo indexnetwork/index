@@ -84,7 +84,12 @@ export class FromIntentQueue {
       deduplication?: DeduplicationOptions;
     },
   ): Promise<Job<FromIntentJobData>> {
-    await this.recordProgress(data, 'queued', 0);
+    const assignedCommunityCount = (await this.getValidDiscoveryNetworkIds(
+      data.intentId,
+      data.userId,
+      data.networkIds,
+    )).length;
+    await this.recordProgress(data, 'queued', 0, assignedCommunityCount);
     return this.enqueueDiscover(data, options);
   }
 

@@ -893,7 +893,7 @@ def main() -> None:
             os.environ["INDEX_APP_BASE_URL"] = "index.network"
             try:
                 assert plugin.tools._app_base_url() == "https://index.network"
-                for relative in ("/etc/passwd", "etc/passwd", "//evil.test/x"):
+                for relative in ("/private/notes.txt", "private/notes.txt", "//evil.test/x"):
                     local = json.loads(plugin.tools.index_open_app({"target": relative}))
                     assert local["success"] is False, relative
                     assert local["error"] == "target must be an https://index.network URL."

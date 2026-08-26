@@ -165,6 +165,11 @@ export default function TopBar() {
 
               {userDropdownOpen && (
                 <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-sm z-50 overflow-hidden">
+                  <div className="border-b border-gray-100 px-4 py-3">
+                    <p className="truncate text-sm font-medium text-gray-900" title={user.name || 'User'}>
+                      {user.name || 'User'}
+                    </p>
+                  </div>
                   <div className="py-1.5">
                     <button
                       className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${

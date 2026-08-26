@@ -43,9 +43,9 @@ export const NegotiationCounterpartySilentPauseSchema = z.object({
 });
 
 /**
- * The open that created this negotiation could not produce a turn. Not the
- * counterparty's silence and not a spent budget — an honest third thing, and
- * unlike `turn_cap` it stays re-kickable, because the failure was ours.
+ * The agent could not produce its next turn. Not the counterparty's silence
+ * and not a spent budget — an honest third thing, and unlike `turn_cap` it
+ * stays re-kickable, because the failure was ours.
  * System-emitted only.
  */
 export const NegotiationOpenFailedPauseSchema = z.object({

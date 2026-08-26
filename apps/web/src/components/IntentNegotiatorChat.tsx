@@ -4,13 +4,91 @@ import { ArrowUp, BotMessageSquare, Square } from "lucide-react";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import AssistantMessageContent from "@/components/chat/AssistantMessageContent";
+import { DecisionQuestions } from "@/components/DecisionQuestions";
 import { QuestionRegenerationIndicator } from "@/components/chat/QuestionSteps";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
+import { PersonalAgentDebugTrace } from "@/components/PersonalAgentTimeline";
 import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { log } from "@/lib/logger";
+import type { IntentCycleTimelineEntry } from "@/services/conversation";
 
 const logger = log.ui.from("IntentNegotiatorChat");
+
+interface TraceChatMessage {
+  id: string;
+  timestamp: Date;
+}
+
+interface TraceGroup {
+  id: string;
+  entries: IntentCycleTimelineEntry[];
+  createdAt: Date;
+  inputMessageId: string | null;
+  outputMessageId: string | null;
+}
+
+interface TracePlacement {
+  before: Map<string, TraceGroup[]>;
+  after: Map<string, TraceGroup[]>;
+  tail: TraceGroup[];
+}
+
+function recordString(record: Record<string, unknown>, key: string): string | null {
+  return typeof record[key] === "string" && record[key].trim() ? record[key] : null;
+}
+
+/**
+ * Durable acts normally precede the message they explain, except
+ * `message_user`: its ledger row is written after delivery. The message ids
+ * recorded with a turn make that causal position exact; older rows fall back
+ * to their timestamp without pretending to know more than they do.
+ */
+function placeTraceGroups(messages: TraceChatMessage[], entries: IntentCycleTimelineEntry[]): TracePlacement {
+  const groups = new Map<string, TraceGroup>();
+  for (const entry of entries) {
+    const traceId = recordString(entry.event, "traceId");
+    const groupId = traceId ?? `legacy-${entry.id}`;
+    const createdAt = new Date(entry.createdAt);
+    const current = groups.get(groupId);
+    const inputMessageId = recordString(entry.event, "messageId");
+    const outputMessageId = recordString(entry.act, "messageId");
+    if (current) {
+      current.entries.push(entry);
+      if (createdAt < current.createdAt) current.createdAt = createdAt;
+      current.inputMessageId ??= inputMessageId;
+      current.outputMessageId ??= outputMessageId;
+    } else {
+      groups.set(groupId, {
+        id: groupId,
+        entries: [entry],
+        createdAt,
+        inputMessageId,
+        outputMessageId,
+      });
+    }
+  }
+
+  const knownMessageIds = new Set(messages.map((message) => message.id));
+  const placement: TracePlacement = { before: new Map(), after: new Map(), tail: [] };
+  const add = (target: Map<string, TraceGroup[]>, messageId: string, group: TraceGroup) => {
+    const existing = target.get(messageId) ?? [];
+    existing.push(group);
+    target.set(messageId, existing);
+  };
+  for (const group of [...groups.values()].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())) {
+    if (group.outputMessageId && knownMessageIds.has(group.outputMessageId)) {
+      add(placement.before, group.outputMessageId, group);
+    } else if (group.inputMessageId && knownMessageIds.has(group.inputMessageId)) {
+      add(placement.after, group.inputMessageId, group);
+    } else {
+      const nextMessage = messages.find((message) => message.timestamp.getTime() > group.createdAt.getTime());
+      if (nextMessage) add(placement.before, nextMessage.id, group);
+      else placement.tail.push(group);
+    }
+  }
+  return placement;
+}
 
 function formatRelativeTimestamp(timestamp: Date | undefined): string | null {
   if (!timestamp || Number.isNaN(timestamp.getTime())) return null;
@@ -37,8 +115,10 @@ export interface IntentNegotiatorChatProps {
    * override both with an even fresher signal.
    */
   questionRegenerationPending?: boolean;
-  /** Monotonic signal to reload server-appended Beat narration. */
-  refreshVersion?: number;
+  /** Owner-scoped append-only IS-A ledger, loaded by the intent workspace. */
+  timelineEntries: IntentCycleTimelineEntry[];
+  timelineLoading: boolean;
+  timelineError: boolean;
   /** Opportunity card plumbing shared with the page's Radar panel. */
   opportunityStatusMap: Record<string, string>;
   opportunityActionLoading: Record<string, boolean>;
@@ -55,6 +135,8 @@ export interface IntentNegotiatorChatProps {
    * static panel.
    */
   onUnavailable: () => void;
+  /** Revalidate the intent workspace after a durable agent message arrives. */
+  onLiveInvalidation?: () => void;
 }
 
 /**
@@ -70,11 +152,14 @@ export interface IntentNegotiatorChatProps {
 export default function IntentNegotiatorChat({
   intentId,
   questionRegenerationPending,
-  refreshVersion = 0,
+  timelineEntries,
+  timelineLoading,
+  timelineError,
   opportunityStatusMap,
   opportunityActionLoading,
   onOpportunityAction,
   onUnavailable,
+  onLiveInvalidation,
 }: IntentNegotiatorChatProps) {
   const {
     messages,
@@ -88,20 +173,24 @@ export default function IntentNegotiatorChat({
     clearChat,
     sessionId,
   } = useAIChat();
-  const { subscribeQuestionRegeneration } = useConversation();
+  const { subscribeQuestionRegeneration, subscribePersonalAgentTurnCompleted, subscribeConversationMessage } = useConversation();
 
   const [agentName, setAgentName] = useState<string | null>(null);
   const [bootstrapRegenerationPending, setBootstrapRegenerationPending] = useState(false);
   const [liveRegenerationPending, setLiveRegenerationPending] = useState<boolean | null>(null);
   const [regenerationReloadToken, setRegenerationReloadToken] = useState(0);
   const appliedRegenerationReloadRef = useRef(0);
+  const [turnReloadToken, setTurnReloadToken] = useState(0);
+  const appliedTurnReloadRef = useRef(0);
   const [ready, setReady] = useState(false);
   const [restoredHistoryLoaded, setRestoredHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
+  const [decisionQuestionsSubmittedIds, setDecisionQuestionsSubmittedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const clearChatRef = useRef(clearChat);
-  const appliedRefreshVersionRef = useRef(0);
   useEffect(() => {
     clearChatRef.current = clearChat;
   }, [clearChat]);
@@ -127,6 +216,26 @@ export default function IntentNegotiatorChat({
     });
   }, [intentId, subscribeQuestionRegeneration]);
 
+  // Background IS-A work appends durable DM messages outside this component's
+  // POST/SSE stream. Reconcile from the session only when no user reply is
+  // streaming, preserving the original stream as the primary response path.
+  useEffect(() => {
+    return subscribePersonalAgentTurnCompleted((event) => {
+      if (event.intentId === intentId) setTurnReloadToken((token) => token + 1);
+    });
+  }, [intentId, subscribePersonalAgentTurnCompleted]);
+
+  // A2H writes can happen outside the local POST stream. Reconcile this
+  // session on any persisted agent message, then let the parent refresh its
+  // intent-scoped server snapshots.
+  useEffect(() => {
+    return subscribeConversationMessage((event) => {
+      if (event.conversationId !== sessionId || event.message.role !== "agent") return;
+      setTurnReloadToken((token) => token + 1);
+      onLiveInvalidation?.();
+    });
+  }, [onLiveInvalidation, sessionId, subscribeConversationMessage]);
+
   // Apply the reload outside the active stream: while the negotiator is
   // streaming, the shared context owns the message list, so wait for
   // isLoading to settle (the effect re-runs) before pulling fresh history.
@@ -138,6 +247,15 @@ export default function IntentNegotiatorChat({
       logger.warn("Failed to reload after question-message regeneration", { error, intentId });
     });
   }, [intentId, isLoading, loadSession, ready, regenerationReloadToken, sessionId]);
+
+  useEffect(() => {
+    if (!ready || !sessionId || turnReloadToken === appliedTurnReloadRef.current) return;
+    if (isLoading) return;
+    appliedTurnReloadRef.current = turnReloadToken;
+    void loadSession(sessionId).catch((error) => {
+      logger.warn("Failed to reconcile completed PersonalAgent turn", { error, intentId });
+    });
+  }, [intentId, isLoading, loadSession, ready, sessionId, turnReloadToken]);
 
   // Bootstrap: get-or-create the per-intent negotiator session, then load it
   // into the shared chat context. One session per (user, intent, persona) —
@@ -175,16 +293,6 @@ export default function IntentNegotiatorChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intentId]);
 
-  // Server-side pool reactions append template messages outside the active
-  // stream. Reload only when the parent emits one of its bounded checkpoints.
-  useEffect(() => {
-    if (!ready || !sessionId || refreshVersion <= appliedRefreshVersionRef.current) return;
-    appliedRefreshVersionRef.current = refreshVersion;
-    void loadSession(sessionId).catch((error) => {
-      logger.warn("Failed to refresh intent negotiator session", { error, intentId });
-    });
-  }, [intentId, loadSession, ready, refreshVersion, sessionId]);
-
   // Follow the stream.
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -198,15 +306,6 @@ export default function IntentNegotiatorChat({
     setInput(`"${quoted}" — `);
     inputRef.current?.focus();
   }, []);
-
-  // A chip is a canned reply, not a new answer channel: its text is sent
-  // through the ordinary send path, so the agent's next turn cannot tell it
-  // from something the user typed.
-  const handleOptionSelect = useCallback(async (option: string) => {
-    if (isLoading || !ready) return;
-    setInput("");
-    await sendMessage(option);
-  }, [isLoading, ready, sendMessage]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -240,6 +339,25 @@ export default function IntentNegotiatorChat({
   );
 
   const placeholder = agentName ? `Message ${agentName}…` : "Message your Personal Agent…";
+  const firstPendingQuestionIndex = messages.findIndex((message) => (
+    message.role === "assistant"
+    && message.decisionQuestions !== undefined
+    && message.decisionQuestions.length > 0
+    && !(message.decisionQuestionsSubmitted ?? decisionQuestionsSubmittedIds.has(message.id))
+  ));
+  // A principal question is a transcript barrier. Background agent activity
+  // remains durable, but it must not appear to supersede a form the principal
+  // has not submitted yet. Principal chat messages stay visible and do not
+  // count as answers to the structured form.
+  const visibleMessages = firstPendingQuestionIndex < 0
+    ? messages
+    : messages.filter((message, index) => (
+      index <= firstPendingQuestionIndex || message.role === "user"
+    ));
+  const tracePlacement = useMemo(
+    () => placeTraceGroups(visibleMessages, timelineEntries),
+    [visibleMessages, timelineEntries],
+  );
   const hasRestoredHistory = restoredHistoryLoaded && messages.length > 0;
   const restoredHistoryLastActive = hasRestoredHistory
     ? formatRelativeTimestamp(messages[messages.length - 1]?.timestamp)
@@ -308,19 +426,15 @@ export default function IntentNegotiatorChat({
               </div>
             )}
 
-            {messages.map((msg, messageIndex) => {
-              const previousMessage = messageIndex > 0 ? messages[messageIndex - 1] : undefined;
-              // Chips belong to an unanswered question only. Any later message
-              // — the user's typed answer, their tapped chip, the agent's next
-              // word — is that answer, so message order is the whole rule and
-              // there is no "answered" state to keep.
-              const options = messageIndex === messages.length - 1 && !msg.isStreaming
-                ? msg.options ?? []
-                : [];
+            {visibleMessages.map((msg, messageIndex) => {
+              const previousMessage = messageIndex > 0 ? visibleMessages[messageIndex - 1] : undefined;
               const startsSession = previousMessage !== undefined
                 && previousMessage.conversationSessionId !== msg.conversationSessionId;
               return (
                 <Fragment key={`message-${msg.id}`}>
+                  {tracePlacement.before.get(msg.id)?.map((group) => (
+                    <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
+                  ))}
                   {startsSession && (
                     <div className="flex items-center gap-3 py-3" role="separator" aria-label="Earlier chat session">
                       <span className="h-px flex-1 bg-gray-200" />
@@ -344,43 +458,75 @@ export default function IntentNegotiatorChat({
                           stoppedAt={msg.stoppedAt}
                         />
                       )}
-                      <AssistantMessageContent
-                        content={msg.content}
-                        isStreaming={msg.isStreaming ?? false}
-                        onOpportunityPrimaryAction={(id, userId, role, name) =>
-                          onOpportunityAction(id, "accepted", userId, role, name)
-                        }
-                        onOpportunitySecondaryAction={(id, userId, role, name) =>
-                          onOpportunityAction(id, "rejected", userId, role, name)
-                        }
-                        opportunityLoadingMap={opportunityActionLoading}
-                        currentStatusMap={opportunityStatusMap}
-                        onIntentProposalApprove={handleProposalApprove}
-                        onIntentProposalReject={handleProposalReject}
-                        onIntentProposalUndo={handleProposalUndo}
-                        intentProposalStatusMap={proposalStatusMap}
-                        onQuestionQuote={handleQuestionQuote}
-                      />
-                      {options.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5" data-testid="negotiator-chat-options">
-                          {options.map((option) => (
-                            <button
-                              key={option}
-                              type="button"
-                              onClick={() => void handleOptionSelect(option)}
-                              disabled={isLoading || !ready}
-                              className="rounded-full border border-[#E9E9E9] bg-[#FCFCFC] px-3 py-1 text-xs font-ibm-plex-mono text-gray-700 transition-colors hover:border-[#4091BB] hover:text-[#041729] disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {option}
-                            </button>
-                          ))}
+                      {msg.isStreaming && msg.agentActivityLabel && !msg.content.trim() ? (
+                        <div
+                          className="flex items-center gap-2 py-1 text-xs font-ibm-plex-mono text-gray-500"
+                          role="status"
+                          aria-live="polite"
+                          data-testid="negotiator-agent-activity"
+                        >
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#4091BB]" />
+                          <span>{msg.agentActivityLabel}</span>
                         </div>
+                      ) : (
+                        <AssistantMessageContent
+                          content={msg.content}
+                          isStreaming={msg.isStreaming ?? false}
+                          onOpportunityPrimaryAction={(id, userId, role, name) =>
+                            onOpportunityAction(id, "accepted", userId, role, name)
+                          }
+                          onOpportunitySecondaryAction={(id, userId, role, name) =>
+                            onOpportunityAction(id, "rejected", userId, role, name)
+                          }
+                          opportunityLoadingMap={opportunityActionLoading}
+                          currentStatusMap={opportunityStatusMap}
+                          onIntentProposalApprove={handleProposalApprove}
+                          onIntentProposalReject={handleProposalReject}
+                          onIntentProposalUndo={handleProposalUndo}
+                          intentProposalStatusMap={proposalStatusMap}
+                          onQuestionQuote={handleQuestionQuote}
+                        />
+                      )}
+                      {msg.decisionQuestions && msg.decisionQuestions.length > 0 && (
+                        <DecisionQuestions
+                          questions={msg.decisionQuestions}
+                          submitted={
+                            msg.decisionQuestionsSubmitted ??
+                            decisionQuestionsSubmittedIds.has(msg.id)
+                          }
+                          onSubmit={(flattened) => {
+                            setDecisionQuestionsSubmittedIds((previous) => {
+                              const next = new Set(previous);
+                              next.add(msg.id);
+                              return next;
+                            });
+                            void sendMessage(flattened, {
+                              decisionQuestionMessageIds: [msg.id],
+                              onError: () => {
+                                setDecisionQuestionsSubmittedIds((previous) => {
+                                  const next = new Set(previous);
+                                  next.delete(msg.id);
+                                  return next;
+                                });
+                              },
+                            });
+                          }}
+                        />
                       )}
                     </div>
                   )}
+                  {tracePlacement.after.get(msg.id)?.map((group) => (
+                    <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
+                  ))}
                 </Fragment>
               );
             })}
+
+            {tracePlacement.tail.map((group) => (
+              <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
+            ))}
+            {timelineLoading && <p role="status" className="text-xs text-gray-500">Loading agent trace…</p>}
+            {timelineError && <p role="status" className="text-xs text-red-600">Agent trace could not be loaded.</p>}
 
             {regenerationPending && <QuestionRegenerationIndicator />}
           </>

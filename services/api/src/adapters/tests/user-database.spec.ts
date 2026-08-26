@@ -29,7 +29,7 @@ const ownedIntent = {
   updatedAt: new Date(),
   archivedAt: null,
   embedding: undefined as number[] | undefined,
-  sourceType: undefined as 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment' | undefined,
+  sourceType: undefined as 'integration' | 'discovery_form' | 'enrichment' | undefined,
   sourceId: undefined as string | undefined,
 };
 
@@ -43,7 +43,7 @@ const otherIntent = {
   updatedAt: new Date(),
   archivedAt: null,
   embedding: undefined as number[] | undefined,
-  sourceType: undefined as 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment' | undefined,
+  sourceType: undefined as 'integration' | 'discovery_form' | 'enrichment' | undefined,
   sourceId: undefined as string | undefined,
 };
 
@@ -51,7 +51,7 @@ const ownedIntentForIndexing = {
   id: 'intent-1',
   payload: 'test intent',
   userId: AUTH_USER,
-  sourceType: null as 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment' | null,
+  sourceType: null as 'integration' | 'discovery_form' | 'enrichment' | null,
   sourceId: null as string | null,
 };
 
@@ -59,7 +59,7 @@ const otherIntentForIndexing = {
   id: 'intent-2',
   payload: 'other intent',
   userId: OTHER_USER,
-  sourceType: null as 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment' | null,
+  sourceType: null as 'integration' | 'discovery_form' | 'enrichment' | null,
   sourceId: null as string | null,
 };
 

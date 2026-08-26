@@ -18,6 +18,7 @@ type NegotiationConnectionState =
   | 'paused_ready_for_verdict'
   | 'paused_turn_cap'
   | 'paused_open_failed'
+  | 'negotiation_submitted'
   | 'unknown';
 
 /** How a negotiation task reads when it is currently paused. */
@@ -27,7 +28,7 @@ export interface NegotiationParkNarration {
 }
 
 export interface NegotiationLifecycleNarration {
-  agentNegotiation: 'working' | 'paused' | 'completed';
+  agentNegotiation: 'submitted' | 'working' | 'paused' | 'completed';
   opportunityStatus: OpportunityStatus | null;
   connectionState: NegotiationConnectionState;
   ownerAction: 'accepted' | 'not_recorded';
@@ -49,7 +50,7 @@ export function parkLifecycleLabel(pause: NegotiationParkNarration): string {
     case 'turn_cap':
       return 'PAUSED — the negotiation reached its turn cap and cannot continue without review.';
     case 'open_failed':
-      return 'PAUSED — the negotiation could not be started. Nothing has been said to the counterparty yet.';
+      return 'PAUSED — the agent could not produce its next response. The negotiation can be retried.';
   }
 }
 
@@ -59,7 +60,7 @@ export function parkLifecycleLabel(pause: NegotiationParkNarration): string {
  * an H2H conversation.
  */
 export function buildLifecycleNarration(
-  taskState: 'working' | 'paused' | 'completed',
+  taskState: 'submitted' | 'working' | 'paused' | 'completed',
   opportunity?: NegotiationOpportunityLifecycle,
   pause?: NegotiationParkNarration,
 ): NegotiationLifecycleNarration {
@@ -83,6 +84,14 @@ export function buildLifecycleNarration(
     };
     const connectionState = CONNECTION_STATE[pause.reason];
     return { ...common, connectionState, lifecycleLabel: parkLifecycleLabel(pause), pause };
+  }
+
+  if (taskState === 'submitted') {
+    return {
+      ...common,
+      connectionState: 'negotiation_submitted',
+      lifecycleLabel: 'The agent negotiation is waiting to start.',
+    };
   }
 
   switch (opportunity?.status) {

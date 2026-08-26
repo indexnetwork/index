@@ -6,12 +6,14 @@ import type { InteropZodType } from "@langchain/core/utils/types";
 
 import { resolveCanonicalAllAgentModels } from "./model.resolver.js";
 
+const GEMINI_3_7_FLASH_MODEL = "google/gemini-3.7-flash";
+
 /** Settings that can be configured per agent. */
 export interface ModelSettings {
   model: string;
   temperature?: number;
   maxTokens?: number;
-  reasoning?: { effort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; exclude?: boolean };
+  reasoning?: { effort?: 'low' | 'medium' | 'high'; exclude?: boolean };
 }
 
 /**
@@ -30,44 +32,44 @@ export interface ModelConfig {
   /** Override the chat agent model. Falls back to CHAT_MODEL env var. */
   chatModel?: string;
   /** Override the chat reasoning effort. Falls back to CHAT_REASONING_EFFORT env var. */
-  chatReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  chatReasoningEffort?: 'low' | 'medium' | 'high';
 }
 
 /** Per-agent model settings before canonical assignments are applied. */
 function getBaseModelConfig(config?: ModelConfig) {
   const settings = {
-    intentInferrer:       { model: "google/gemini-2.5-flash" },
-    intentIndexer:        { model: "google/gemini-2.5-flash" },
-    intentVerifier:       { model: "google/gemini-2.5-flash" },
-    intentReconciler:     { model: "google/gemini-2.5-flash" },
-    intentClarifier:      { model: "google/gemini-2.5-flash" },
-    profileGenerator:     { model: "google/gemini-2.5-flash" },
-    hydeGenerator:        { model: "google/gemini-2.5-flash" },
-    hydeValidator:        { model: "google/gemini-2.5-flash", temperature: 0.0, maxTokens: 2048 },
-    lensInferrer:         { model: "google/gemini-2.5-flash" },
-    opportunityEvaluator: { model: "google/gemini-2.5-flash" },
-    opportunityPresenter: { model: "google/gemini-2.5-flash" },
-    negotiator:           { model: "google/gemini-2.5-flash" },
-    negotiationReflector: { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 2048 },
-    homeCategorizer:      { model: "google/gemini-2.5-flash" },
-    suggestionGenerator:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
-    chatTitleGenerator:   { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 32 },
-    negotiationInsights:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
-    chatContextSummarizer: { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 512 },
-    signalIntakePack: { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 1024 },
-    negotiationSummarizer:      { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 256 },
-    poolDiscriminatorMiner:        { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 4096 },
-    poolDiscriminatorAssigner:     { model: "google/gemini-2.5-flash", temperature: 0.1, maxTokens: 16384 },
-    negotiationEvidenceMiner:      { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 4096 },
-    inviteGenerator:      { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
-    premiseAnalyzer:      { model: "google/gemini-2.5-flash" },
-    premiseDecomposer:    { model: "google/gemini-2.5-flash" },
-    premiseIndexer:       { model: "google/gemini-2.5-flash" },
-    userContextGenerator: { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
-    networkRecommender:   { model: "google/gemini-2.5-flash", temperature: 0.2, maxTokens: 512 },
-    interruptClassifier:  { model: "google/gemini-2.5-flash", temperature: 0.0, maxTokens: 16 },
+    intentInferrer:       { model: "google/gemini-3.7-flash" },
+    intentIndexer:        { model: "google/gemini-3.7-flash" },
+    intentVerifier:       { model: "google/gemini-3.7-flash" },
+    intentReconciler:     { model: "google/gemini-3.7-flash" },
+    intentClarifier:      { model: "google/gemini-3.7-flash" },
+    profileGenerator:     { model: "google/gemini-3.7-flash" },
+    hydeGenerator:        { model: "google/gemini-3.7-flash" },
+    hydeValidator:        { model: "google/gemini-3.7-flash", temperature: 0.0, maxTokens: 2048 },
+    lensInferrer:         { model: "google/gemini-3.7-flash" },
+    opportunityEvaluator: { model: "google/gemini-3.7-flash" },
+    opportunityPresenter: { model: "google/gemini-3.7-flash" },
+    negotiator:           { model: "google/gemini-3.7-flash" },
+    negotiationReflector: { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 2048 },
+    homeCategorizer:      { model: "google/gemini-3.7-flash" },
+    suggestionGenerator:  { model: "google/gemini-3.7-flash", temperature: 0.4, maxTokens: 512 },
+    chatTitleGenerator:   { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 32 },
+    negotiationInsights:  { model: "google/gemini-3.7-flash", temperature: 0.4, maxTokens: 512 },
+    chatContextSummarizer: { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 512 },
+    signalIntakePack: { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 1024 },
+    negotiationSummarizer:      { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 256 },
+    poolDiscriminatorMiner:        { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 4096 },
+    poolDiscriminatorAssigner:     { model: "google/gemini-3.7-flash", temperature: 0.1, maxTokens: 16384 },
+    negotiationEvidenceMiner:      { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 4096 },
+    inviteGenerator:      { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 512 },
+    premiseAnalyzer:      { model: "google/gemini-3.7-flash" },
+    premiseDecomposer:    { model: "google/gemini-3.7-flash" },
+    premiseIndexer:       { model: "google/gemini-3.7-flash" },
+    userContextGenerator: { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 512 },
+    networkRecommender:   { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 512 },
+    interruptClassifier:  { model: "google/gemini-3.7-flash", temperature: 0.0, maxTokens: 16 },
     chat: {
-      model: "google/gemini-3-pro-preview",
+      model: "google/gemini-3.7-flash",
       maxTokens: 8192,
       reasoning: {
         effort: (config?.chatReasoningEffort ?? process.env.CHAT_REASONING_EFFORT ?? "low") as NonNullable<ModelSettings["reasoning"]>["effort"],
@@ -80,8 +82,17 @@ function getBaseModelConfig(config?: ModelConfig) {
     EVAL_MODEL_OVERRIDES: process.env.EVAL_MODEL_OVERRIDES,
   }, { applyEvalOverrides: process.env.NODE_ENV !== "production" });
   return Object.fromEntries(
-    Object.entries(settings).map(([agent, value]) => [agent, { ...value, model: assignments[agent as keyof typeof assignments] }]),
-  ) as { [Agent in keyof typeof settings]: Omit<(typeof settings)[Agent], "model"> & { model: string } };
+    Object.entries(settings).map(([agent, value]) => {
+      const model = assignments[agent as keyof typeof assignments];
+      return [agent, {
+        ...value,
+        model,
+        reasoning: model === GEMINI_3_7_FLASH_MODEL
+          ? ("reasoning" in value ? value.reasoning : { effort: "low" })
+          : undefined,
+      }];
+    }),
+  ) as unknown as { [Agent in keyof typeof settings]: Omit<(typeof settings)[Agent], "model"> & { model: string } };
 }
 
 /** Canonical assignments preserve sampling, token, and reasoning settings. */
@@ -145,11 +156,21 @@ function instantiateModel(agent: string, cfg: ModelSettings, config?: ModelConfi
 }
 
 /**
- * Default cross-vendor fallback model. The per-agent primaries run on Google's
- * provider lane (gemini-2.5-flash); a same-key OpenRouter fallback on a
- * different vendor survives Google-side outages.
+ * Same-tier, previous-generation fallback: a "pro" primary falls back to the
+ * previous pro model, a "flash" primary to the previous flash model — the
+ * fallback is meant to survive a provider-side outage or rate limit on the
+ * exact primary, not to trade away the tier's capability. Every current
+ * primary is a flash model, but this stays tier-aware for when a pro model
+ * is added.
  */
-const FALLBACK_MODEL = "openai/gpt-4o-mini";
+const FALLBACK_MODEL_BY_TIER: Record<"pro" | "flash", string> = {
+  pro: "google/gemini-2.5-pro",
+  flash: "google/gemini-2.5-flash",
+};
+
+function fallbackModelFor(primaryModel: string): string {
+  return primaryModel.includes("pro") ? FALLBACK_MODEL_BY_TIER.pro : FALLBACK_MODEL_BY_TIER.flash;
+}
 
 /**
  * Creates the fallback ChatOpenAI for an agent, or undefined when fallbacks
@@ -159,8 +180,9 @@ const FALLBACK_MODEL = "openai/gpt-4o-mini";
  */
 export function createFallbackModel(agent: ModelAgent, config?: ModelConfig): ChatOpenAI | undefined {
   const cfg = getModelConfig(config)[agent] as ModelSettings;
-  if (cfg.model === FALLBACK_MODEL) return undefined;
-  return instantiateModel(agent, { ...cfg, model: FALLBACK_MODEL, reasoning: undefined }, config);
+  const fallbackModel = fallbackModelFor(cfg.model);
+  if (cfg.model === fallbackModel) return undefined;
+  return instantiateModel(agent, { ...cfg, model: fallbackModel, reasoning: undefined }, config);
 }
 
 /**
@@ -198,9 +220,10 @@ function withResilience<RunOutput>(
  * plus `.withRetry(...)` and `.withFallbacks([...])`.
  *
  * Retry covers transient provider errors *and* schema parse/validation
- * failures; the fallback model (see OPENROUTER_FALLBACK_MODEL) is bound to the
- * same schema so a provider outage degrades to a different vendor instead of
- * failing the call. Abort signals pass through: aborts are never retried and
+ * failures; the fallback model (see FALLBACK_MODEL_BY_TIER) is bound to the
+ * same schema so a provider outage or rate limit degrades to the previous
+ * generation of the same tier instead of failing the call. Abort signals
+ * pass through: aborts are never retried and
  * skip the fallback.
  *
  * @param agent - Key identifying which agent's model settings to use.

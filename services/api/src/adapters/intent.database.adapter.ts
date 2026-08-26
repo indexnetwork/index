@@ -678,10 +678,9 @@ export class IntentDatabaseAdapter {
 
   /**
    * The signals whose agent is waiting on the owner: the newest message in the
-   * signal's ('personal-intent', intentId) DM is agent-authored AND offered
-   * canned replies, so it is a question nobody has answered yet. A later
-   * message of any kind — the owner's typed answer or their tapped chip, both
-   * ordinary user messages — makes the newest row theirs and clears the flag.
+   * signal's ('personal-intent', intentId) DM is agent-authored AND carries
+   * structured decision questions, so it is a question nobody has answered
+   * yet. A later owner message makes the newest row theirs and clears the flag.
    *
    * Derived, never stored: there is no "answered" bit to drift out of sync,
    * and one DISTINCT ON read covers the whole page.
@@ -716,8 +715,8 @@ export class IntentDatabaseAdapter {
       );
     for (const row of rows) {
       if (row.role !== 'agent') continue;
-      const options = (row.metadata as { options?: unknown } | null)?.options;
-      if (Array.isArray(options) && options.length > 0) waiting.add(row.intentId);
+      const decisionQuestions = (row.metadata as { decisionQuestions?: unknown } | null)?.decisionQuestions;
+      if (Array.isArray(decisionQuestions) && decisionQuestions.length > 0) waiting.add(row.intentId);
     }
     return waiting;
   }

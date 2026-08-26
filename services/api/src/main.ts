@@ -19,7 +19,6 @@ import { UserController } from './controllers/user.controller';
 import { StorageController } from './controllers/storage.controller';
 import { StorageService } from './services/storage.service';
 import { SubscribeController } from './controllers/subscribe.controller';
-import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
 import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
@@ -114,6 +113,9 @@ fromIntentQueue.setRuntimeDeps({
   agentDispatcher: backgroundAgentDispatcher,
 });
 negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph);
+negotiationWatchdogQueue.setReflectEnqueue(async (job) => {
+  await personalAgentQueue.addAllPausedEvent(job);
+});
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({
@@ -259,9 +261,6 @@ const storageAdapter = new S3StorageAdapter({
   },
   bucket: process.env.S3_BUCKET,
 });
-
-// Set storage adapter on fileService for S3 file operations
-fileService.setStorageAdapter(storageAdapter);
 
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());

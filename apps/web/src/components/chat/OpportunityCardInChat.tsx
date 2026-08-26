@@ -1,42 +1,11 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Check, CheckCircle2, Clock, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import UserAvatar from "@/components/UserAvatar";
-import AskingFirstCard from "@/components/negotiations/AskingFirstCard";
-import type { AskingFirstState } from "@/components/negotiations/asking-first";
 import { toSignalProductLanguage } from "@/lib/product-language";
 import { cn } from "@/lib/utils";
-
-/**
- * Templated (no-LLM) live-negotiation presence for an opportunity card —
- * see docs/issues/2-presenter-negotiation-context.md. Derived from
- * ConversationContext negotiations via `deriveLiveNegotiations`.
- */
-export interface NegotiationPresence {
-  conversationId: string;
-  /** One-line latest move, e.g. "Their agent countered · 12m ago". */
-  latestMove: string;
-  turnCount: number | null;
-  maxTurns: number;
-}
-
-/** Templated "Currently negotiating · turn N of M" chip (always truthful, never LLM-generated). */
-export function NegotiationPresenceChip({
-  turnCount,
-  maxTurns,
-}: {
-  turnCount: number | null;
-  maxTurns: number;
-}) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold font-ibm-plex-mono text-amber-700">
-      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
-      Currently negotiating{turnCount !== null && turnCount > 0 ? ` · turn ${turnCount} of ${maxTurns}` : ""}
-    </span>
-  );
-}
 
 /**
  * Shared opportunity card data structure.
@@ -87,21 +56,14 @@ export interface OpportunityCardData {
    * fetch replaces the card.
    */
   presentationPending?: boolean;
-  /**
-   * Set while this opportunity's negotiation is parked before any contact,
-   * waiting on the viewer's answer (#1445). Replaces the body: the opportunity
-   * is `negotiating`, so the presenter's "your agent is still talking with
-   * theirs · no action needed yet" is the exact opposite of what happened.
-   */
-  askingFirst?: AskingFirstState;
 }
 
-/** Status values that allow user actions (accept/reject). Matches DB opportunity_status enum. */
-const ACTIONABLE_STATUSES = new Set(["latent", "draft", "pending", "negotiating"]);
+/** Only a promoted pending opportunity is a human decision. */
+const ACTIONABLE_STATUSES = new Set(["pending"]);
 
 /** Determine if a status allows actions. */
 function isActionableStatus(status?: string): boolean {
-  if (!status) return true; // Default to actionable if unknown
+  if (!status) return false;
   return ACTIONABLE_STATUSES.has(status);
 }
 
@@ -187,8 +149,34 @@ interface OpportunityCardProps {
   showScore?: boolean;
   /** Current status fetched from server (overrides card.status if provided). */
   currentStatus?: string;
-  /** Live negotiation presence for `negotiating` cards; renders the ambient chip. */
-  negotiationPresence?: NegotiationPresence;
+  /** Owner-seat inspector for a negotiating opportunity, if task state is known. */
+  negotiationInspectorHref?: string;
+  /** Current owner-relative task state, used for truthful responsibility copy. */
+  negotiationState?: {
+    state: string;
+    pause: { reason: string; by: "yours" | "theirs" } | null;
+  };
+  /** Intent Radar only: pending may be acted on after its negotiation completes. */
+  pendingActionable?: boolean;
+}
+
+function negotiationStatusCopy(negotiation: OpportunityCardProps["negotiationState"]): string {
+  if (!negotiation) return "This negotiation is in progress.";
+  if (negotiation.state !== "paused" || !negotiation.pause) {
+    return "Your PersonalAgent is handling this negotiation.";
+  }
+  if (negotiation.pause.by === "theirs") {
+    if (negotiation.pause.reason === "ready_for_verdict") return "The other side is deciding.";
+    if (negotiation.pause.reason === "needs_principal") return "The other side is waiting on its principal.";
+    return "Waiting for the other side.";
+  }
+  if (negotiation.pause.reason === "needs_principal") {
+    return "Your PersonalAgent needs your input. Questions appear in this intent's DM.";
+  }
+  if (negotiation.pause.reason === "ready_for_verdict") {
+    return "Your PersonalAgent is deciding what to do next.";
+  }
+  return "Your PersonalAgent is handling this negotiation.";
 }
 
 /**
@@ -241,7 +229,9 @@ export default function OpportunityCard({
   isLoading = false,
   showScore = false,
   currentStatus,
-  negotiationPresence,
+  negotiationInspectorHref,
+  negotiationState,
+  pendingActionable = true,
 }: OpportunityCardProps) {
   const navigate = useNavigate();
   const [actionTaken, setActionTaken] = useState<
@@ -253,7 +243,8 @@ export default function OpportunityCard({
   const effectiveStatus = currentStatus ?? card.status;
 
   // Check if the opportunity status allows actions
-  const canTakeAction = isActionableStatus(effectiveStatus);
+  const canTakeAction = isActionableStatus(effectiveStatus)
+    && (effectiveStatus !== "pending" || pendingActionable);
   const statusMessage = getStatusMessage(effectiveStatus);
 
 
@@ -492,48 +483,23 @@ export default function OpportunityCard({
         </div>
       )}
 
-      {/* Parked before any contact: the agent has a question for the viewer and
-          has said nothing to the counterparty. Takes precedence over both the
-          presence block and the body below — the presence chip would claim a
-          dialogue that has not started, and the presenter's negotiating copy
-          claims the agents are already talking. */}
-      {card.askingFirst && (
-        <div className="mb-3">
-          <AskingFirstCard state={card.askingFirst} counterpartName={card.name || "This person"} />
-        </div>
-      )}
-
-      {/* Ambient negotiation presence (Option C): templated chip + latest move
-          for in-flight negotiations. The human gate stays explicit. */}
-      {negotiationPresence && !card.askingFirst && effectiveStatus === "negotiating" && (
-        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <NegotiationPresenceChip
-              turnCount={negotiationPresence.turnCount}
-              maxTurns={negotiationPresence.maxTurns}
-            />
-            <span className="text-[10px] text-gray-400 font-ibm-plex-mono">
-              You&apos;ll be asked before anything is agreed
-            </span>
-          </div>
-          <p className="mt-1.5 text-xs text-[#3D3D3D]">
-            {negotiationPresence.latestMove}
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate(`/negotiations/${negotiationPresence.conversationId}`)}
-            className="mt-1.5 text-xs font-medium text-[#041729] hover:underline"
-          >
-            Watch the negotiation
-          </button>
+      {effectiveStatus === "negotiating" && (
+        <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">
+          <p>{negotiationStatusCopy(negotiationState)}</p>
+          {negotiationInspectorHref && (
+            <Link
+              to={negotiationInspectorHref}
+              className="mt-1.5 inline-block font-medium text-[#35799C] hover:underline"
+            >
+              Inspect negotiation seat
+            </Link>
+          )}
         </div>
       )}
 
       {/* Main Text (Personalized Summary) — shimmer while the presenter text is
-          still being generated. Suppressed for a pre-contact park: the card
-          above IS the body, and the presenter's negotiating template ("still
-          talking with theirs", "no action needed yet") contradicts it. */}
-      {card.askingFirst ? null : card.presentationPending ? (
+          still being generated. */}
+      {card.presentationPending ? (
         <div className="space-y-2 animate-pulse" aria-hidden="true">
           <div className="h-4 w-full bg-gray-200 rounded-sm" />
           <div className="h-4 w-[85%] bg-gray-200 rounded-sm" />

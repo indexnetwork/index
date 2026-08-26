@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../../lib/drizzle/drizzle';
 import { conversations, tasks, users, userSocials, networks, networkMembers, intents, intentNetworks, premises, premiseNetworks, opportunities } from '../../schemas/database.schema';
 import { IntentDatabaseAdapter, ChatDatabaseAdapter, EnrichmentDatabaseAdapter, OpportunityDatabaseAdapter, HydeDatabaseAdapter } from '../database.adapter';
+import { ConversationDatabaseAdapter } from '../conversation.database.adapter';
 import { PremiseEvents } from '../../events/premise.event';
 import { IntentEvents } from '../../events/intent.event';
 import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
@@ -813,6 +814,7 @@ describe('EnrichmentDatabaseAdapter', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 describe('OpportunityDatabaseAdapter', () => {
   const adapter = new OpportunityDatabaseAdapter();
+  const conversationAdapter = new ConversationDatabaseAdapter();
 
   it('should get profile when exists', async () => {
     const profile = await adapter.getProfile(fixture.userAId);
@@ -1273,7 +1275,7 @@ describe('OpportunityDatabaseAdapter', () => {
         ownerUserId: fixture.userAId,
         allowedNetworkIds: [fixture.networkId],
         triggerIntentId: eligibilityTriggerIntentId,
-      }, 30 * 24 * 60 * 60 * 1000);
+      });
       const inserted = await db
         .select({ id: opportunities.id })
         .from(opportunities)
@@ -1304,7 +1306,7 @@ describe('OpportunityDatabaseAdapter', () => {
         ownerUserId: fixture.userAId,
         allowedNetworkIds: [fixture.networkId],
         triggerIntentId: fixture.intent1Id,
-      }, 30 * 24 * 60 * 60 * 1000);
+      });
       const inserted = await db
         .select({ id: opportunities.id })
         .from(opportunities)
@@ -1314,22 +1316,228 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(inserted).toEqual([]);
     });
 
-    it('blocks final persistence while another trigger has a fresh active negotiation', async () => {
-      const triggerIntentId = uuidv4();
-      fixture.extraIntentIds.push(triggerIntentId);
+    it('fails closed when the counterparty actor has no intent', async () => {
+      const marker = `${TEST_PREFIX}missing-counterparty-intent-${uuidv4()}`;
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          createdBy: marker,
+          timestamp: new Date().toISOString(),
+          triggeredBy: fixture.intent1Id,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Unbound counterparty must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: fixture.intent1Id,
+      });
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'createdBy' = ${marker}`);
+
+      expect(result).toBeNull();
+      expect(inserted).toEqual([]);
+    });
+
+    it('fails closed when the counterparty intent belongs to another user', async () => {
+      const misownedIntentId = uuidv4();
+      fixture.extraIntentIds.push(misownedIntentId);
       await db.insert(intents).values({
-        id: triggerIntentId,
+        id: misownedIntentId,
         userId: fixture.userAId,
-        payload: `${TEST_PREFIX}active negotiation guard intent`,
+        payload: `${TEST_PREFIX}misowned counterparty intent`,
         sourceType: 'discovery_form',
         sourceId: fixture.userAId,
       });
-      await db.insert(intentNetworks).values({ intentId: triggerIntentId, networkId: fixture.networkId });
+      const marker = `${TEST_PREFIX}misowned-counterparty-intent-${uuidv4()}`;
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          createdBy: marker,
+          timestamp: new Date().toISOString(),
+          triggeredBy: fixture.intent1Id,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent', intent: misownedIntentId },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Misowned counterparty intent must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: fixture.intent1Id,
+      });
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'createdBy' = ${marker}`);
+
+      expect(result).toBeNull();
+      expect(inserted).toEqual([]);
+    });
+
+    it('fails closed when the counterparty intent is inactive, archived, or unassigned', async () => {
+      const candidateIntentId = uuidv4();
+      fixture.extraIntentIds.push(candidateIntentId);
+      await db.insert(intents).values({
+        id: candidateIntentId,
+        userId: fixture.userBId,
+        payload: `${TEST_PREFIX}ineligible counterparty intent`,
+        sourceType: 'discovery_form',
+        sourceId: fixture.userBId,
+        status: 'PAUSED',
+      });
+      await db.insert(intentNetworks).values({
+        intentId: candidateIntentId,
+        networkId: fixture.networkId,
+      });
+      const markerPrefix = `${TEST_PREFIX}ineligible-counterparty-${uuidv4()}`;
+      const persist = (suffix: string) => adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: {
+          source: 'opportunity_graph',
+          createdBy: `${markerPrefix}-${suffix}`,
+          timestamp: new Date().toISOString(),
+          triggeredBy: fixture.intent1Id,
+        },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent', intent: candidateIntentId },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Ineligible counterparty must not persist', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId: fixture.intent1Id,
+      });
+
+      const inactive = await persist('inactive');
+      await db.update(intents)
+        .set({ status: null })
+        .where(eq(intents.id, candidateIntentId));
+      const unsetStatus = await persist('unset-status');
+      await db.update(intents)
+        .set({ status: 'ACTIVE', archivedAt: new Date() })
+        .where(eq(intents.id, candidateIntentId));
+      const archived = await persist('archived');
+      await db.update(intents)
+        .set({ archivedAt: null })
+        .where(eq(intents.id, candidateIntentId));
+      await db.delete(intentNetworks).where(and(
+        eq(intentNetworks.intentId, candidateIntentId),
+        eq(intentNetworks.networkId, fixture.networkId),
+      ));
+      const unassigned = await persist('unassigned');
+      const inserted = await db
+        .select({ id: opportunities.id })
+        .from(opportunities)
+        .where(sql`${opportunities.detection}->>'createdBy' LIKE ${`${markerPrefix}%`}`);
+
+      expect([inactive, unsetStatus, archived, unassigned]).toEqual([null, null, null, null]);
+      expect(inserted).toEqual([]);
+    });
+
+    it('does not let an unbound legacy row suppress a fully bound intent pair', async () => {
+      const triggerIntentId = uuidv4();
+      const candidateIntentId = uuidv4();
+      fixture.extraIntentIds.push(triggerIntentId, candidateIntentId);
+      await db.insert(intents).values([
+        {
+          id: triggerIntentId,
+          userId: fixture.userAId,
+          payload: `${TEST_PREFIX}legacy wildcard trigger`,
+          sourceType: 'discovery_form',
+          sourceId: fixture.userAId,
+        },
+        {
+          id: candidateIntentId,
+          userId: fixture.userBId,
+          payload: `${TEST_PREFIX}legacy wildcard counterparty`,
+          sourceType: 'discovery_form',
+          sourceId: fixture.userBId,
+        },
+      ]);
+      await db.insert(intentNetworks).values([
+        { intentId: triggerIntentId, networkId: fixture.networkId },
+        { intentId: candidateIntentId, networkId: fixture.networkId },
+      ]);
+      const legacy = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: triggerIntentId },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: triggerIntentId },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Legacy unbound row', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'pending',
+      });
+
+      const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
+        detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: triggerIntentId },
+        actors: [
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: triggerIntentId },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent', intent: candidateIntentId },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Fully bound exact pair', confidence: 0.9 },
+        context: { networkId: fixture.networkId },
+        confidence: '0.9',
+        status: 'latent',
+      }, [], {
+        ownerUserId: fixture.userAId,
+        allowedNetworkIds: [fixture.networkId],
+        triggerIntentId,
+      });
+
+      expect(result && 'created' in result).toBe(true);
+      if (!result || !('created' in result)) throw new Error('expected fully bound opportunity');
+      expect(result.created.id).not.toBe(legacy.id);
+      expect(result.created.actors.find((actor) => actor.userId === fixture.userBId)?.intent)
+        .toBe(candidateIntentId);
+    });
+
+    it('persists and starts a distinct intent negotiation while another intent for the pair is paused', async () => {
+      const triggerIntentId = uuidv4();
+      const candidateIntentId = uuidv4();
+      fixture.extraIntentIds.push(triggerIntentId, candidateIntentId);
+      await db.insert(intents).values([
+        {
+          id: triggerIntentId,
+          userId: fixture.userAId,
+          payload: `${TEST_PREFIX}independent negotiation intent`,
+          sourceType: 'discovery_form',
+          sourceId: fixture.userAId,
+        },
+        {
+          id: candidateIntentId,
+          userId: fixture.userBId,
+          payload: `${TEST_PREFIX}counterparty negotiation intent`,
+          sourceType: 'discovery_form',
+          sourceId: fixture.userBId,
+        },
+      ]);
+      await db.insert(intentNetworks).values([
+        { intentId: triggerIntentId, networkId: fixture.networkId },
+        { intentId: candidateIntentId, networkId: fixture.networkId },
+      ]);
       const otherTrigger = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: fixture.intent1Id },
         actors: [
           { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: fixture.intent1Id },
-          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent', intent: candidateIntentId },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Other trigger active negotiation', confidence: 0.9 },
         context: { networkId: fixture.networkId },
@@ -1339,16 +1547,26 @@ describe('OpportunityDatabaseAdapter', () => {
       const [conversation] = await db.insert(conversations).values({}).returning();
       await db.insert(tasks).values({
         conversationId: conversation.id,
-        state: 'working',
-        metadata: { type: 'negotiation', opportunityId: otherTrigger.id },
+        state: 'paused',
+        metadata: {
+          type: 'negotiation',
+          opportunityId: otherTrigger.id,
+          seats: {
+            [fixture.intent1Id]: { userId: fixture.userAId, round: 1 },
+            [candidateIntentId]: { userId: fixture.userBId, round: 2 },
+          },
+          pause: { reason: 'ready_for_verdict', pausedBy: fixture.userAId },
+          drainGeneration: 0,
+        },
       });
+      const [attemptConversation] = await db.insert(conversations).values({}).returning();
 
       try {
         const result = await adapter.persistIntentScopedOpportunityIfNetworkEligible({
           detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: triggerIntentId },
           actors: [
             { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient', intent: triggerIntentId },
-            { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+            { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent', intent: candidateIntentId },
           ],
           interpretation: { category: 'collaboration', reasoning: 'Current trigger match', confidence: 0.9 },
           context: { networkId: fixture.networkId },
@@ -1358,26 +1576,101 @@ describe('OpportunityDatabaseAdapter', () => {
           ownerUserId: fixture.userAId,
           allowedNetworkIds: [fixture.networkId],
           triggerIntentId,
-        }, 30 * 24 * 60 * 60 * 1000);
+        });
 
-        expect(result && 'conflict' in result ? result.conflict.reason : null).toBe('pair_active_negotiation');
-        expect(result && 'conflict' in result ? result.conflict.existingOpportunityId : null).toBe(otherTrigger.id);
+        expect(result && 'created' in result).toBe(true);
+        if (!result || !('created' in result)) throw new Error('expected current-trigger opportunity');
+        expect(result.created.detection.triggeredBy).toBe(triggerIntentId);
+
+        const radarRows = await adapter.getOpportunitiesForUser(fixture.userAId, {
+          scopeType: 'intent',
+          scopeId: triggerIntentId,
+        });
+        expect(radarRows.map((row) => row.id)).toContain(result.created.id);
+
+        const attempt = await conversationAdapter.createNegotiationTaskForAttempt({
+          conversationId: attemptConversation.id,
+          opportunityId: result.created.id,
+          expectedStatus: result.created.status,
+          expectedUpdatedAt: result.created.updatedAt,
+          metadata: {
+            type: 'negotiation',
+            opportunityId: result.created.id,
+            seats: {
+              [triggerIntentId]: { userId: fixture.userAId, round: 3 },
+              [candidateIntentId]: { userId: fixture.userBId, round: 2 },
+            },
+            drainGeneration: 0,
+          },
+        });
+        expect(attempt).not.toBeNull();
+        expect(attempt?.conversationId).toBe(attemptConversation.id);
+        expect(attempt?.conversationId).not.toBe(conversation.id);
+        expect(attempt?.metadata).toMatchObject({
+          opportunityId: result.created.id,
+          seats: {
+            [triggerIntentId]: { userId: fixture.userAId, round: 3 },
+            [candidateIntentId]: { userId: fixture.userBId, round: 2 },
+          },
+          drainGeneration: 0,
+        });
+
+        const duplicateAttempt = await conversationAdapter.createNegotiationTaskForAttempt({
+          conversationId: attemptConversation.id,
+          opportunityId: result.created.id,
+          expectedStatus: result.created.status,
+          expectedUpdatedAt: result.created.updatedAt,
+          metadata: attempt!.metadata ?? {},
+        });
+        expect(duplicateAttempt).toBeNull();
+
+        const [currentOpportunity] = await db
+          .select({ status: opportunities.status })
+          .from(opportunities)
+          .where(eq(opportunities.id, result.created.id));
+        expect(currentOpportunity?.status).toBe('negotiating');
+
+        const [otherTaskAfter, currentTasks] = await Promise.all([
+          db.select({ state: tasks.state, metadata: tasks.metadata }).from(tasks)
+            .where(sql`${tasks.metadata}->>'opportunityId' = ${otherTrigger.id}`),
+          db.select({ id: tasks.id }).from(tasks)
+            .where(sql`${tasks.metadata}->>'opportunityId' = ${result.created.id}`),
+        ]);
+        expect(otherTaskAfter).toHaveLength(1);
+        expect(otherTaskAfter[0]).toMatchObject({
+          state: 'paused',
+          metadata: { pause: { reason: 'ready_for_verdict', pausedBy: fixture.userAId } },
+        });
+        expect(currentTasks).toHaveLength(1);
       } finally {
-        await db.delete(conversations).where(eq(conversations.id, conversation.id));
+        await db.delete(conversations).where(inArray(conversations.id, [conversation.id, attemptConversation.id]));
       }
     });
 
-    it('serializes parallel same-trigger creates and preserves exact intent visibility', async () => {
+    it('serializes parallel exact-intent-pair creates regardless of age', async () => {
       const triggerIntentId = uuidv4();
-      fixture.extraIntentIds.push(triggerIntentId);
-      await db.insert(intents).values({
-        id: triggerIntentId,
-        userId: fixture.userAId,
-        payload: `${TEST_PREFIX}parallel dedup intent`,
-        sourceType: 'discovery_form',
-        sourceId: fixture.userAId,
-      });
-      await db.insert(intentNetworks).values({ intentId: triggerIntentId, networkId: fixture.networkId });
+      const candidateIntentId = uuidv4();
+      fixture.extraIntentIds.push(triggerIntentId, candidateIntentId);
+      await db.insert(intents).values([
+        {
+          id: triggerIntentId,
+          userId: fixture.userAId,
+          payload: `${TEST_PREFIX}parallel dedup intent`,
+          sourceType: 'discovery_form',
+          sourceId: fixture.userAId,
+        },
+        {
+          id: candidateIntentId,
+          userId: fixture.userBId,
+          payload: `${TEST_PREFIX}parallel dedup counterpart intent`,
+          sourceType: 'discovery_form',
+          sourceId: fixture.userBId,
+        },
+      ]);
+      await db.insert(intentNetworks).values([
+        { intentId: triggerIntentId, networkId: fixture.networkId },
+        { intentId: candidateIntentId, networkId: fixture.networkId },
+      ]);
 
       const createData = {
         detection: {
@@ -1388,7 +1681,7 @@ describe('OpportunityDatabaseAdapter', () => {
         },
         actors: [
           { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' as const, intent: triggerIntentId },
-          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' as const },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' as const, intent: candidateIntentId },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Intent-specific pair match', confidence: 0.9 },
         context: { networkId: fixture.networkId },
@@ -1402,8 +1695,8 @@ describe('OpportunityDatabaseAdapter', () => {
       };
 
       const results = await Promise.all([
-        adapter.persistIntentScopedOpportunityIfNetworkEligible(createData, [], eligibility, 30 * 24 * 60 * 60 * 1000),
-        adapter.persistIntentScopedOpportunityIfNetworkEligible(createData, [], eligibility, 30 * 24 * 60 * 60 * 1000),
+        adapter.persistIntentScopedOpportunityIfNetworkEligible(createData, [], eligibility),
+        adapter.persistIntentScopedOpportunityIfNetworkEligible(createData, [], eligibility),
       ]);
 
       const created = results.filter((result) => result && 'created' in result);
@@ -1411,7 +1704,20 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(created).toHaveLength(1);
       expect(conflicts).toHaveLength(1);
       expect(conflicts[0] && 'conflict' in conflicts[0] ? conflicts[0].conflict.reason : null)
-        .toBe('same_trigger_recent_duplicate');
+        .toBe('same_intent_pair_duplicate');
+
+      const createdResult = created[0];
+      if (!createdResult || !('created' in createdResult)) throw new Error('expected one created opportunity');
+      await db.update(opportunities)
+        .set({ createdAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000) })
+        .where(eq(opportunities.id, createdResult.created.id));
+      const agedDuplicate = await adapter.persistIntentScopedOpportunityIfNetworkEligible(
+        createData,
+        [],
+        eligibility,
+      );
+      expect(agedDuplicate && 'conflict' in agedDuplicate ? agedDuplicate.conflict.reason : null)
+        .toBe('same_intent_pair_duplicate');
 
       const radarRows = await adapter.getOpportunitiesForUser(fixture.userAId, {
         scopeType: 'intent',

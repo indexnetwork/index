@@ -328,7 +328,7 @@ describe('persistOpportunities', () => {
         allowedNetworkIds: ['net-1'],
         triggerIntentId: 'intent-eligibility',
       },
-      intentDedupScope: { triggerIntentId: 'intent-dedup', dedupWindowMs: 1_000 },
+      intentDedupScope: { triggerIntentId: 'intent-dedup' },
     });
 
     expect(atomicCalls).toBe(0);
@@ -336,6 +336,50 @@ describe('persistOpportunities', () => {
     expect(result.errors).toHaveLength(1);
     expect((result.errors?.[0]?.error as Error).message)
       .toBe('Intent-scoped dedup trigger must match network eligibility');
+  });
+
+  it('fails closed before enrichment when an intent-scoped participant has no intent', async () => {
+    let findCalls = 0;
+    let atomicCalls = 0;
+    const database: PersistOpportunityDatabase = {
+      findOpportunitiesByActors: async () => {
+        findCalls += 1;
+        return [];
+      },
+      createOpportunity: async () => makeOpportunity(),
+      updateOpportunityStatus: async () => {},
+      persistIntentScopedOpportunityIfNetworkEligible: async () => {
+        atomicCalls += 1;
+        return { created: makeOpportunity(), expired: [] };
+      },
+    };
+    const result = await persistOpportunities({
+      database,
+      embedder: mockEmbedder,
+      items: [makeCreateData({
+        detection: {
+          source: 'opportunity_graph',
+          timestamp: new Date().toISOString(),
+          triggeredBy: 'intent-current' as never,
+        },
+        actors: [
+          { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'intent-current' },
+          { networkId: 'net-1', userId: 'user-2', role: 'agent' },
+        ] as never,
+      })],
+      networkEligibility: {
+        ownerUserId: 'user-1',
+        allowedNetworkIds: ['net-1'],
+        triggerIntentId: 'intent-current',
+      },
+      intentDedupScope: { triggerIntentId: 'intent-current' },
+    });
+
+    expect(findCalls).toBe(0);
+    expect(atomicCalls).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect((result.errors?.[0]?.error as Error).message)
+      .toBe('Intent-scoped opportunities require an intent for every participant');
   });
 
   it('replaces evaluator and enriched stale owner intents with the authorized trigger', async () => {
@@ -390,7 +434,7 @@ describe('persistOpportunities', () => {
         allowedNetworkIds: ['net-1'],
         triggerIntentId,
       },
-      intentDedupScope: { triggerIntentId, dedupWindowMs: 30 * 24 * 60 * 60 * 1000 },
+      intentDedupScope: { triggerIntentId },
     });
 
     expect(result.errors).toBeUndefined();
@@ -417,7 +461,7 @@ describe('persistOpportunities', () => {
         atomicCalls += 1;
         return {
           conflict: {
-            reason: 'same_trigger_recent_duplicate',
+            reason: 'same_intent_pair_duplicate',
             existingOpportunityId: 'opp-existing',
             existingTriggerIntentId: 'intent-current',
             existingStatus: 'pending',
@@ -434,7 +478,7 @@ describe('persistOpportunities', () => {
       },
       actors: [
         { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'intent-current' },
-        { networkId: 'net-1', userId: 'user-2', role: 'agent' },
+        { networkId: 'net-1', userId: 'user-2', role: 'agent', intent: 'intent-counterparty' },
       ] as never,
     });
 
@@ -447,7 +491,7 @@ describe('persistOpportunities', () => {
         allowedNetworkIds: ['net-1'],
         triggerIntentId: 'intent-current',
       },
-      intentDedupScope: { triggerIntentId: 'intent-current', dedupWindowMs: 30 * 24 * 60 * 60 * 1000 },
+      intentDedupScope: { triggerIntentId: 'intent-current' },
     });
 
     expect(atomicCalls).toBe(1);
@@ -455,7 +499,7 @@ describe('persistOpportunities', () => {
     expect(result.conflicts).toEqual([{
       itemIndex: 0,
       finalAtomic: true,
-      reason: 'same_trigger_recent_duplicate',
+      reason: 'same_intent_pair_duplicate',
       existingOpportunityId: 'opp-existing',
       existingTriggerIntentId: 'intent-current',
       existingStatus: 'pending',
@@ -490,7 +534,7 @@ describe('persistOpportunities', () => {
       detection: { source: 'opportunity_graph', timestamp: new Date().toISOString(), triggeredBy: 'intent-current' as never },
       actors: [
         { networkId: 'net-1', userId: 'user-1', role: 'patient', intent: 'intent-current' },
-        { networkId: 'net-1', userId: 'user-2', role: 'agent' },
+        { networkId: 'net-1', userId: 'user-2', role: 'agent', intent: 'intent-counterparty' },
       ] as never,
     });
 
@@ -499,7 +543,7 @@ describe('persistOpportunities', () => {
       embedder: mockEmbedder,
       items: [item],
       networkEligibility: { ownerUserId: 'user-1', allowedNetworkIds: ['net-1'], triggerIntentId: 'intent-current' },
-      intentDedupScope: { triggerIntentId: 'intent-current', dedupWindowMs: 1_000 },
+      intentDedupScope: { triggerIntentId: 'intent-current' },
     });
 
     expect(receivedExpireIds).toEqual([]);

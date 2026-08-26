@@ -47,11 +47,25 @@ const logLines = () =>
     .map((item) => item.textContent ?? '');
 
 describe('DiscoveryWarmupLog states', () => {
+  it('queued: shows discovery waiting to scan', () => {
+    render(
+      <DiscoveryWarmupLog
+        progress={progress({ status: 'queued', startedAt: null, updatedAt: QUEUED_AT })}
+        communities={communities}
+      />,
+    );
+
+    expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('queued');
+    expect(screen.getByText('Finding your first matches')).toBeInTheDocument();
+    expect(screen.getByText('Queued — 4 communities to scan.')).toBeInTheDocument();
+    expect(logLines().join('\n')).toContain('queued');
+  });
+
   it('running: narrates the run in progress and says the page can be left', () => {
     render(<DiscoveryWarmupLog progress={progress()} communities={communities} />);
 
     expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('scanning');
-    expect(screen.getByText('Finding your first conversations')).toBeInTheDocument();
+    expect(screen.getByText('Finding your first matches')).toBeInTheDocument();
     expect(screen.getByText('Scanning 4 communities for possible overlaps.')).toBeInTheDocument();
     expect(logLines().join('\n')).toContain('scanning 4 communities…');
     expect(screen.getByText(/matching continues in the background/i)).toBeInTheDocument();
@@ -92,7 +106,23 @@ describe('DiscoveryWarmupLog states', () => {
     expect(screen.getByText('Scanning is paused')).toBeInTheDocument();
   });
 
-  it('completed: keeps the tallies in the summary', () => {
+  it('failed: reports the stopped attempt without promising a retry', () => {
+    render(
+      <DiscoveryWarmupLog
+        progress={progress({ status: 'failed', attempt: 3 })}
+        communities={communities}
+      />,
+    );
+
+    expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('failed');
+    expect(screen.getByText('Scanning needs attention')).toBeInTheDocument();
+    expect(screen.getByText('Discovery stopped after 3 attempts.')).toBeInTheDocument();
+    expect(screen.queryByText(/picked up again/i)).toBeNull();
+    expect(logLines().join('\n')).toContain('scan started across 4 communities');
+    expect(logLines().join('\n')).not.toContain('scanned 4 communities');
+  });
+
+  it('completed with matches: reports the PersonalAgent handoff and pending kickoff', () => {
     render(
       <DiscoveryWarmupLog
         progress={progress({
@@ -108,8 +138,9 @@ describe('DiscoveryWarmupLog states', () => {
 
     expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('completed');
     expect(screen.getByText('First scan complete')).toBeInTheDocument();
-    expect(screen.getByText('Scanned 4 communities — 11 possible overlaps, 2 conversations started')).toBeInTheDocument();
-    expect(logLines().join('\n')).toContain('＋ 11 possible overlaps found, 2 conversations started');
+    expect(screen.getByText('Scanned 4 communities — 2 matches handed to the PersonalAgent. Kickoff has not started yet.')).toBeInTheDocument();
+    expect(logLines().join('\n')).toContain('＋ 2 matches handed to the PersonalAgent; kickoff has not started yet');
+    expect(screen.queryByText(/conversations? started/i)).toBeNull();
   });
 
   it('completed with nothing found: reports the zero run rather than an empty card', () => {
@@ -120,8 +151,8 @@ describe('DiscoveryWarmupLog states', () => {
       />,
     );
 
-    expect(screen.getByText('Scanned 4 communities — no overlaps yet')).toBeInTheDocument();
-    expect(logLines().join('\n')).toContain('＋ 0 possible overlaps found, 0 conversations started');
+    expect(screen.getByText('Scanned 4 communities — no matches yet.')).toBeInTheDocument();
+    expect(logLines().join('\n')).toContain('scan completed with no matches yet');
     // Past tense: the scan is over, so the line must not read as still running.
     expect(logLines().join('\n')).toContain('scanned 4 communities');
   });
@@ -130,7 +161,8 @@ describe('DiscoveryWarmupLog states', () => {
     render(<DiscoveryWarmupLog communities={communities} />);
 
     expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent('unknown');
-    expect(screen.getByText('Status unavailable.')).toBeInTheDocument();
+    expect(screen.getByText('Discovery status unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Progress is unavailable or stale.')).toBeInTheDocument();
     expect(screen.queryByTestId('discovery-warmup-log')).toBeNull();
   });
 
@@ -140,51 +172,6 @@ describe('DiscoveryWarmupLog states', () => {
 
     expect(screen.getByTestId('discovery-warmup-sweep')).toHaveAttribute('aria-hidden', 'true');
     expect(screen.getByTestId('discovery-warmup-log')).toBeInTheDocument();
-  });
-});
-
-describe('DiscoveryWarmupLog conversation lane', () => {
-  it('logs each started negotiation, merged into the progress lane by time', () => {
-    render(
-      <DiscoveryWarmupLog
-        progress={progress({
-          status: 'completed',
-          processedCommunityCount: 4,
-          possibleOverlapCount: 3,
-          conversationsStartedCount: 1,
-          completedAt: COMPLETED_AT,
-        })}
-        communities={communities}
-        conversations={[{ id: 'conv-1', counterpartLabel: 'Ashley', startedAt: '2026-08-19T09:18:00.000Z' }]}
-      />,
-    );
-
-    const lines = logLines();
-    expect(lines.some((line) => line.includes("conversation with Ashley's agent started"))).toBe(true);
-    // Merged chronologically: started 09:15 → conversation 09:18 → completed 09:21.
-    const order = lines.map((line) => line.replace(/^\d{2}:\d{2}/, ''));
-    expect(order.findIndex((line) => line.includes('scanned'))).toBeLessThan(
-      order.findIndex((line) => line.includes('Ashley')),
-    );
-    expect(order.findIndex((line) => line.includes('Ashley'))).toBeLessThan(
-      order.findIndex((line) => line.includes('possible overlaps found')),
-    );
-  });
-
-  it('marks the two lanes apart so the live feed is distinguishable', () => {
-    render(
-      <DiscoveryWarmupLog
-        progress={progress()}
-        communities={communities}
-        conversations={[{ id: 'conv-1', counterpartLabel: 'Ashley', startedAt: '2026-08-19T09:18:00.000Z' }]}
-      />,
-    );
-
-    const lanes = within(screen.getByTestId('discovery-warmup-log'))
-      .getAllByRole('listitem')
-      .map((item) => item.getAttribute('data-lane'));
-    expect(lanes).toContain('progress');
-    expect(lanes).toContain('conversation');
   });
 });
 
@@ -211,7 +198,6 @@ describe('buildWarmupLog', () => {
   it('drops rows with no timestamp instead of inventing one', () => {
     const entries = buildWarmupLog({
       progress: progress({ queuedAt: null, startedAt: null, completedAt: null, updatedAt: null }),
-      conversations: [{ id: 'conv-1', counterpartLabel: 'Ashley', startedAt: null }],
     });
 
     expect(entries).toEqual([]);
@@ -220,24 +206,9 @@ describe('buildWarmupLog', () => {
   it('is stable across reloads: the same snapshot yields the same log', () => {
     const snapshot = {
       progress: progress({ status: 'completed', completedAt: COMPLETED_AT }),
-      conversations: [{ id: 'conv-1', counterpartLabel: 'Ashley', startedAt: '2026-08-19T09:18:00.000Z' }],
     };
 
     expect(buildWarmupLog(snapshot)).toEqual(buildWarmupLog(snapshot));
-  });
-
-  it('caps the live lane at the most recent conversations', () => {
-    const conversations = Array.from({ length: 8 }, (_, index) => ({
-      id: `conv-${index}`,
-      counterpartLabel: `Person ${index}`,
-      startedAt: new Date(Date.parse(STARTED_AT) + index * 60_000).toISOString(),
-    }));
-
-    const lane = buildWarmupLog({ conversations }).filter((entry) => entry.lane === 'conversation');
-
-    expect(lane).toHaveLength(5);
-    expect(lane[0]!.text).toContain('Person 3');
-    expect(lane[4]!.text).toContain('Person 7');
   });
 
   it('marks only the line the run is currently sitting on', () => {

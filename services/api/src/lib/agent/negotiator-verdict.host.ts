@@ -170,6 +170,11 @@ export async function readSignalMatches(
     return rows
       .filter((row) => {
         if (!row?.id || !statuses.includes(row.status as OpportunityStatus)) return false;
+        // An unapproved introduction has not been admitted to either
+        // principal's signal yet. Do not number or narrate it to their
+        // PersonalAgent: it must not look like a second live match.
+        const introducers = (row.actors ?? []).filter((actor) => actor.role === 'introducer');
+        if (introducers.some((actor) => actor.approved !== true)) return false;
         const own = row.actors?.find((actor) => actor.userId === userId);
         return !own || own.role !== 'introducer';
       })
@@ -197,7 +202,7 @@ export async function readSignalMatches(
  *
  * This swallow is NOT for the PersonalAgent. Its turns are ABOUT this list —
  * a reflect that reads `[]` from a transient database error decides nothing,
- * succeeds, and permanently consumes the round's one retained reflect job.
+ * succeeds, and permanently consumes that drain generation's retained job.
  * That lane calls {@link readSignalMatches} and lets the error propagate.
  */
 export async function readActionableCounterparties(

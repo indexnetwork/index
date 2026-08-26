@@ -41,9 +41,15 @@ describe('host graph composition', () => {
     expect(personalAgentQueue).toContain("import { personalAgentGraph } from '../lib/negotiation/negotiation-graph'");
     expect(personalAgentQueue).toContain('personalAgentGraph.invoke(input)');
     expect(main).toContain('negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph)');
+    expect(main).toContain('negotiationWatchdogQueue.setReflectEnqueue');
     expect(opportunityService).toContain("await import('../lib/negotiation/negotiation-graph')");
-    expect(opportunityService).toContain('resolve: (input) => negotiationGraph.invoke(input)');
+    expect(opportunityService).toContain("close: { reason: 'owner_verdict'");
     expect(mcp).toContain("import { matchesReadyBestEffort, negotiationGraph } from '../lib/negotiation/negotiation-graph'");
     expect(mcp).toMatch(/negotiationGraph,\n[\s\S]*?matchesReady: protocolDeps\.matchesReady/);
+  });
+
+  it('binds reply text and safe activity to the same per-message transport', () => {
+    expect(composition).toContain('replyStream: { publish: publishPersonalAgentReplyChunk }');
+    expect(composition).toContain('activity: { publish: publishPersonalAgentActivity }');
   });
 });

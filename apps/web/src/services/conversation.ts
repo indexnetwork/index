@@ -2,8 +2,8 @@
  * Conversation service — typed API client for the conversations endpoints.
  */
 
-/** A negotiation task's lifecycle is now exactly these three states (negotiation-graph rewrite, #1494). */
-export type NegotiationTaskState = 'working' | 'paused' | 'completed';
+/** A negotiation task's lifecycle, including the queued state before its worker starts. */
+export type NegotiationTaskState = 'submitted' | 'working' | 'paused' | 'completed';
 
 /**
  * Every reason the protocol may pause a negotiation on — the wire vocabulary,
@@ -101,40 +101,90 @@ export interface ConversationMessage {
   role: 'user' | 'agent';
   /** Durable conversation-session binding for sectioned history reads. */
   sessionId?: string | null;
+  /** Negotiation task that owns this durable A2A turn, when applicable. */
+  taskId?: string | null;
   parts: unknown[];
   metadata?: Record<string, unknown>;
   createdAt: string;
 }
 
-export interface NegotiationActivityMessage {
+/** Debug projection for the PersonalAgent's intent-scoped negotiation cycle. */
+export interface IntentCycleSnapshot {
+  round: {
+    number: number;
+    size: number | null;
+    kickoffStartedAt: string | null;
+    active: number;
+    paused: number;
+  };
+  negotiations: Array<{
+    taskId: string;
+    conversationId: string;
+    opportunityId: string;
+    opportunityStatus: NegotiationOpportunityStatus;
+    counterpartLabel: string;
+    round: number;
+    state: NegotiationTaskState;
+    /** A pause reason is state, not its private payload. */
+    pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
+    latestActivity: {
+      actor: 'yours' | 'theirs';
+      verb: string | null;
+      /** Shared A2A prose only; pause payloads are never projected here. */
+      text: string | null;
+      createdAt: string;
+    } | null;
+    updatedAt: string;
+  }>;
+}
+
+/** Owner-only debugging detail for one seat in one negotiation. */
+export interface IntentCycleNegotiationDetail {
+  intent: { id: string; payload: string };
+  task: {
+    id: string;
+    conversationId: string;
+    opportunityId: string;
+    round: number;
+    state: NegotiationTaskState;
+    updatedAt: string;
+    brief: string | null;
+    pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null; payload?: unknown } | null;
+  };
+  transcript: Array<{
+    id: string;
+    actor: 'yours' | 'theirs';
+    verb: string | null;
+    pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
+    text: string | null;
+    createdAt: string;
+  }>;
+  /** Present only when this owner resolved the negotiation. */
+  outcome: { verdict: 'pending' | 'reject'; reasoning: string | null } | null;
+}
+
+/** Append-only, owner-scoped record of executed IS-A acts. */
+export interface IntentCycleTimelineEntry {
   id: string;
-  opportunityId: string;
-  sender: 'yours' | 'theirs';
-  /** The turn's verb (`outreach`, `counter`, `question`, `pause`) when it is one. */
-  verb?: string;
-  /** Set only when `verb === 'pause'`. */
-  pauseReason?: NegotiationPauseReason;
-  /** What the message renders as: a text part, or the turn's own message. */
-  text?: string;
-  parts: unknown[];
+  event: Record<string, unknown>;
+  act: Record<string, unknown>;
   createdAt: string;
 }
 
-/** One scored checklist dimension (checklist plan §2), as projected for the UI. */
-export interface NegotiationChecklistItem {
-  name: string;
-  kind: string;
-  result: string;
-  basis: string;
-}
-
-export interface NegotiationActivityGroup {
-  correspondentUserId: string;
-  correspondentLabel: string;
-  correspondentAvatar: string | null;
-  /** The checklist of the negotiation this group's latest exchange belongs to. */
-  checklist?: NegotiationChecklistItem[];
-  messages: NegotiationActivityMessage[];
+/** One authenticated owner's bound seat, regardless of intent or task state. */
+export interface NegotiationTaskIndexEntry {
+  intentId: string;
+  intentLabel: string;
+  taskId: string;
+  conversationId: string;
+  opportunityId: string;
+  opportunityStatus: NegotiationOpportunityStatus;
+  counterpartLabel: string;
+  round: number;
+  state: NegotiationTaskState;
+  pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
+  latestActivity: { actor: 'yours' | 'theirs'; verb: string | null; createdAt: string | null };
+  updatedAt: string;
 }
 
 export const createConversationService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
@@ -150,11 +200,30 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
     return response.conversations;
   },
 
-  getNegotiationActivity: async (intentId: string): Promise<NegotiationActivityGroup[]> => {
-    const response = await api.get<{ groups: NegotiationActivityGroup[] }>(
-      `/conversations/negotiations/activity?intentId=${encodeURIComponent(intentId)}`,
+  getNegotiationTaskIndex: async (): Promise<NegotiationTaskIndexEntry[]> => {
+    const response = await api.get<{ entries: NegotiationTaskIndexEntry[] }>('/conversations/negotiations/task-index');
+    return response.entries;
+  },
+
+  getIntentCycle: async (intentId: string): Promise<IntentCycleSnapshot> => {
+    const response = await api.get<{ cycle: IntentCycleSnapshot }>(
+      `/conversations/negotiations/intent-cycle?intentId=${encodeURIComponent(intentId)}`,
     );
-    return response.groups;
+    return response.cycle;
+  },
+
+  getIntentCycleTimeline: async (intentId: string): Promise<IntentCycleTimelineEntry[]> => {
+    const response = await api.get<{ entries: IntentCycleTimelineEntry[] }>(
+      `/conversations/negotiations/intent-cycle/timeline?intentId=${encodeURIComponent(intentId)}`,
+    );
+    return response.entries;
+  },
+
+  getIntentCycleNegotiation: async (intentId: string, taskId: string): Promise<IntentCycleNegotiationDetail> => {
+    const response = await api.get<{ negotiation: IntentCycleNegotiationDetail }>(
+      `/conversations/negotiations/intent-cycle/${encodeURIComponent(taskId)}?intentId=${encodeURIComponent(intentId)}`,
+    );
+    return response.negotiation;
   },
 
   /** Create a new conversation. */

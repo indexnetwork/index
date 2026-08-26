@@ -132,25 +132,6 @@ export class S3StorageAdapter {
   }
 
   /**
-   * Upload a library file to S3.
-   * @returns The S3 object key (e.g., files/userId/fileId.ext)
-   */
-  async uploadFile(
-    buffer: Buffer,
-    userId: string,
-    fileId: string,
-    extension: string,
-    contentType: string,
-  ): Promise<string> {
-    const safeExtension = normalizeExtension(extension);
-    if (!safeExtension) {
-      throw new Error('Invalid file extension');
-    }
-    const key = `files/${userId}/${fileId}.${safeExtension}`;
-    return this.uploadBuffer(buffer, key, contentType);
-  }
-
-  /**
    * Download a file from S3.
    * @param key - The S3 object key
    * @returns The file content as a Buffer

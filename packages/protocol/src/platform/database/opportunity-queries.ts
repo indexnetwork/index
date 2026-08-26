@@ -98,15 +98,14 @@ export interface DatabaseOpportunityQueries {
 
   /**
    * Intent-scoped discovery persistence boundary. Implementations serialize on
-   * normalized participant pair + trigger intent, re-check same-trigger recent
-   * duplicates and pair-global active negotiations, then create/expire while
-   * the existing network eligibility locks remain held.
+   * the normalized intent pair, reject any existing opportunity for that exact
+   * pair, then create/expire while the existing network eligibility locks
+   * remain held. Other intents remain fully independent.
    */
   persistIntentScopedOpportunityIfNetworkEligible?(
     data: CreateOpportunityData,
     expireIds: string[],
     eligibility: OpportunityNetworkEligibility & { triggerIntentId: string },
-    dedupWindowMs: number,
   ): Promise<IntentScopedOpportunityPersistenceResult | null>;
 
   /**

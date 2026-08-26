@@ -86,9 +86,8 @@ const discoverySummary = (overrides: Partial<OpportunityDiscoverySummary> = {}):
   evaluatedCount: 0,
   opportunitiesCreated: 0,
   completionReason: 'created_or_reactivated',
-  sameTriggerDuplicateSuppressions: 0,
-  pairActiveNegotiationSuppressions: 0,
-  crossTriggerAllowedCount: 0,
+  sameIntentPairDuplicateSuppressions: 0,
+  crossIntentPairAllowedCount: 0,
   finalAtomicConflictCount: 0,
   ...overrides,
 });
@@ -124,8 +123,33 @@ describe('FromIntentQueue', () => {
   });
 
   describe('addJob', () => {
+    it('records the attached community count while the job is queued', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getNetworkIdsForIntent: async () => ['idx1', 'idx2'],
+          getAssignmentNetworkMembershipsForUser: async () => [
+            { networkId: 'idx1', isPersonal: false },
+            { networkId: 'idx2', isPersonal: false },
+          ],
+          recordIntentDiscoveryProgress,
+        }),
+      });
+
+      await queue.addJob({ intentId: 'i1', userId: 'u1' });
+
+      expect(progressWrite(recordIntentDiscoveryProgress, 'queued')).toMatchObject({
+        assignedCommunityCount: 2,
+      });
+    });
+
     it('adds discover job with data and options', async () => {
-      const queue = new FromIntentQueue();
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+      });
       const job = await queue.addJob({ intentId: 'i1', userId: 'u1', networkIds: ['idx1'] });
       expect(job.id).toBe('job-1');
       expect(mockAdd).toHaveBeenCalledWith(
@@ -141,7 +165,11 @@ describe('FromIntentQueue', () => {
     });
 
     it('supports debounce and removal options', async () => {
-      const queue = new FromIntentQueue();
+      const queue = new FromIntentQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+      });
       await queue.addJob(
         { intentId: 'i1', userId: 'u1', trigger: 'intent_resume' },
         {
@@ -181,9 +209,14 @@ describe('FromIntentQueue', () => {
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded', attempt: 2 }));
     });
 
-    it('carries the graph summary tallies into the succeeded write', async () => {
+    it('records both persisted floor matches when one different intent pair was allowed', async () => {
       const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
-      nextDiscoverySummary = discoverySummary({ candidatesFound: 7, evaluatedCount: 4, opportunitiesCreated: 2 });
+      nextDiscoverySummary = discoverySummary({
+        candidatesFound: 2,
+        evaluatedCount: 2,
+        opportunitiesCreated: 2,
+        crossIntentPairAllowedCount: 1,
+      });
       const queue = new FromIntentQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
@@ -204,7 +237,7 @@ describe('FromIntentQueue', () => {
         // The graph runs once across every valid network, so the whole
         // still-valid set is what was processed.
         processedCommunityCount: 2,
-        possibleOverlapCount: 7,
+        possibleOverlapCount: 2,
         conversationsStartedCount: 2,
       }));
     });
@@ -514,15 +547,38 @@ describe('FromIntentQueue', () => {
         opportunities: [],
         persistenceOutcome: {
           evaluatedCount: 1,
-          sameTriggerDuplicateSuppressions: 1,
-          pairActiveNegotiationSuppressions: 0,
-          crossTriggerAllowedCount: 0,
+          sameIntentPairDuplicateSuppressions: 1,
+          crossIntentPairAllowedCount: 0,
           finalAtomicConflictCount: 0,
         },
       });
 
       expect(evaluatorZero.completionReason).toBe('evaluator_rejected_all');
-      expect(persistenceDedupZero.completionReason).toBe('same_trigger_duplicate_suppressed');
+      expect(persistenceDedupZero.completionReason).toBe('same_intent_pair_duplicate_suppressed');
+    });
+
+    it('reports persisted different-intent-pair matches as created without an atomic conflict', () => {
+      const summary = summarizeOpportunityDiscoveryResult({
+        candidates: [{}, {}],
+        evaluatedOpportunities: [{}, {}],
+        opportunities: [{}, {}],
+        persistenceOutcome: {
+          evaluatedCount: 2,
+          sameIntentPairDuplicateSuppressions: 0,
+          crossIntentPairAllowedCount: 1,
+          finalAtomicConflictCount: 0,
+        },
+      });
+
+      expect(summary).toMatchObject({
+        candidatesFound: 2,
+        evaluatedCount: 2,
+        opportunitiesCreated: 2,
+        completionReason: 'created_or_reactivated',
+        crossIntentPairAllowedCount: 1,
+        finalAtomicConflictCount: 0,
+      });
+      expect(summary).not.toHaveProperty('pairActiveNegotiationSuppressions');
     });
   });
 

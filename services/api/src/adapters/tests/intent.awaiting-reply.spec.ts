@@ -1,7 +1,7 @@
 /**
- * Canned replies and the your-move badge, against the real database.
+ * Decision questions and the your-move badge, against the real database.
  *
- * Two derived reads, one fact. An agent question carries its options in the
+ * Two derived reads, one fact. An agent question carries its questions in the
  * message's own metadata (no new table, no new column), and a signal is
  * "your move" exactly while the newest message in its ('negotiator-intent',
  * intentId) DM is such a question. Nothing records that it was answered:
@@ -25,7 +25,7 @@ const OTHER_EMAIL = 'test-intent-awaiting-reply-other@example.com';
 const beforeAll = withMinimumDatabaseHookBudget(bunBeforeAll, 30_000);
 const afterAll = withMinimumDatabaseHookBudget(bunAfterAll, 30_000);
 
-describe('agent question options and the per-signal your-move flag', () => {
+describe('agent decision questions and the per-signal your-move flag', () => {
   const users = new UserDatabaseAdapter();
   let userId: string;
   let otherUserId: string;
@@ -79,28 +79,37 @@ describe('agent question options and the per-signal your-move flag', () => {
     }
   });
 
-  test('an agent question keeps its options, and the signal reads as your move until the owner answers', async () => {
+  test('an agent question keeps its structure, and the signal reads as your move until the owner answers', async () => {
     const intentId = await createIntent(userId);
     const sessionId = await pinnedSession(userId, intentId);
     expect(await awaitingReplyFor(userId, intentId)).toBe(false);
 
-    const options = ['Hiring speed', 'Comp banding', 'Team shape'];
+    const questions = [{
+      title: 'Priority',
+      prompt: 'What should I push hardest on when I talk to her?',
+      options: [
+        { label: 'Hiring speed', description: 'Prioritize time to hire.' },
+        { label: 'Comp banding', description: 'Prioritize compensation.' },
+        { label: 'Team shape', description: 'Prioritize organization design.' },
+      ],
+      multiSelect: false,
+    }];
     await chatSessionService.addMessage({
       sessionId,
       role: 'assistant',
       content: 'What should I push hardest on when I talk to her?',
-      options,
+      questions,
     });
 
-    // The chips survive the round trip on the message itself.
+    // The question survives the round trip on the message itself.
     const history = await chatSessionService.getConversationSessionHistory(sessionId);
     const asked = history.messages[history.messages.length - 1]!;
     expect(asked.role).toBe('assistant');
-    expect(asked.options).toEqual(options);
+    expect(asked.decisionQuestions).toEqual(questions);
 
     expect(await awaitingReplyFor(userId, intentId)).toBe(true);
 
-    // A tapped chip is an ordinary user message — and that is what answers.
+    // A submitted answer is an ordinary user message — and that is what answers.
     await chatSessionService.addMessage({ sessionId, role: 'user', content: 'Hiring speed' });
     expect(await awaitingReplyFor(userId, intentId)).toBe(false);
   });
@@ -116,7 +125,7 @@ describe('agent question options and the per-signal your-move flag', () => {
     });
 
     const history = await chatSessionService.getConversationSessionHistory(sessionId);
-    expect(history.messages[history.messages.length - 1]!.options).toBeNull();
+    expect(history.messages[history.messages.length - 1]!.decisionQuestions).toBeNull();
     expect(await awaitingReplyFor(userId, intentId)).toBe(false);
   });
 
@@ -127,7 +136,15 @@ describe('agent question options and the per-signal your-move flag', () => {
       sessionId: foreignSessionId,
       role: 'assistant',
       content: 'Which of these matters more to you?',
-      options: ['Speed', 'Reach'],
+      questions: [{
+        title: 'Priority',
+        prompt: 'Which of these matters more to you?',
+        options: [
+          { label: 'Speed', description: 'Move quickly.' },
+          { label: 'Reach', description: 'Maximize distribution.' },
+        ],
+        multiSelect: false,
+      }],
     });
 
     expect(await awaitingReplyFor(otherUserId, foreignIntentId)).toBe(true);

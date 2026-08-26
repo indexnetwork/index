@@ -108,8 +108,6 @@ export type ChatTransport = "compatibility" | "web";
 export interface QueuedMessage {
   id: string;
   message: string;
-  fileIds?: string[];
-  attachmentNames?: string[];
   status: "pending" | "queued";
   /** Transport owned by the originating turn; queue drains must preserve it. */
   transport: ChatTransport;
@@ -123,6 +121,8 @@ export interface ChatSendOptions {
   existingMessageId?: string;
   /** Surface-specific recovery hook. Errors remain handled by the shared chat state machine. */
   onError?: (error: unknown) => void;
+  /** Structured question messages explicitly answered by this turn. */
+  decisionQuestionMessageIds?: string[];
 }
 
 interface ChatMessage {
@@ -135,7 +135,6 @@ interface ChatMessage {
   wasStoppedByUser?: boolean;
   /** Timestamp when user stopped; used to freeze trace duration display. */
   stoppedAt?: number;
-  attachmentNames?: string[];
   discoveries?: DiscoveryOpportunity[];
   /** Historical persisted draft cards retained for message compatibility. */
   streamingDrafts?: StreamingDraft[];
@@ -144,17 +143,26 @@ interface ChatMessage {
   decisionQuestions?: Question[];
   /** True once the user has submitted answers; disables/mutes the renderer. */
   decisionQuestionsSubmitted?: boolean;
+  /** Current user-facing activity for an empty streaming assistant placeholder. */
+  agentActivityLabel?: string;
   isPending?: boolean;
   isQueued?: boolean;
   wasInterrupted?: boolean;
   /** Durable timeline session that supplied this persisted message. */
   conversationSessionId?: string | null;
-  /**
-   * Canned replies the agent offered under a question — tap one and its exact
-   * text is sent as an ordinary user message. Nothing else reads them, so a
-   * chip is a shortcut for typing and never a separate answer channel.
-   */
-  options?: string[];
+}
+
+function safeAgentActivityLabel(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const withoutControls = Array.from(value, (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint < 32 || codePoint === 127 ? " " : character;
+  }).join("");
+  const label = withoutControls
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return label || undefined;
 }
 
 export type ChatScope =
@@ -206,15 +214,11 @@ interface AIChatContextType {
   stopStream: () => void;
   sendMessage: (
     message: string,
-    fileIds?: string[],
-    attachmentNames?: string[],
     options?: ChatSendOptions,
   ) => Promise<void>;
   /** Main-web transport. Queued and steered continuations inherit this route. */
   sendWebMessage: (
     message: string,
-    fileIds?: string[],
-    attachmentNames?: string[],
     options?: Omit<ChatSendOptions, "surface">,
   ) => Promise<void>;
   /** Clear messages and session state. */
@@ -233,7 +237,7 @@ interface AIChatContextType {
   updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>;
   pendingQueue: QueuedMessage[];
   cancelQueuedMessage: (id: string) => void;
-  submitMidStreamMessage: (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => void;
+  submitMidStreamMessage: (message: string, traceEvents: TraceEvent[]) => void;
 }
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
@@ -376,8 +380,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const steerPendingRef = useRef<Array<{
     id: string;
     message: string;
-    fileIds?: string[];
-    attachmentNames?: string[];
     transport: ChatTransport;
   }>>([]);
   /** Per-message timeout IDs so cancelling or resolving one pending message doesn't affect others. */
@@ -471,9 +473,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const submitMidStreamMessage = useCallback(
-    (message: string, traceEvents: TraceEvent[], fileIds?: string[], attachmentNames?: string[]) => {
+    (message: string, traceEvents: TraceEvent[]) => {
       const pendingMsgId = crypto.randomUUID();
-      const displayContent = message.trim() || (fileIds?.length ? "Attached file(s)." : "");
+      const displayContent = message.trim();
       if (!displayContent) return;
 
       const originatingOperation = activeSendRef.current;
@@ -481,15 +483,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       const entry: QueuedMessage = {
         id: pendingMsgId,
         message,
-        fileIds,
-        attachmentNames,
         status: "pending",
         transport,
       };
       setMessages((prev) => [...prev, {
         id: pendingMsgId, role: "user" as const, content: displayContent,
         timestamp: new Date(), isPending: true,
-        ...(attachmentNames?.length ? { attachmentNames } : {}),
       }]);
 
       // A new session has no id until the first stream receives its response
@@ -528,8 +527,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         steerPendingRef.current = [...steerPendingRef.current, {
           id: pendingMsgId,
           message,
-          fileIds,
-          attachmentNames,
           transport,
         }];
         pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingMsgId);
@@ -568,13 +565,10 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     async (
       transport: ChatTransport,
       message: string,
-      fileIds?: string[],
-      attachmentNames?: string[],
       options?: ChatSendOptions,
       targetSessionId?: string,
     ) => {
-      const displayContent =
-        message.trim() || (fileIds?.length ? "Attached file(s)." : "");
+      const displayContent = message.trim();
       if (!displayContent) return;
 
       const operationSessionId = targetSessionId ?? sessionId;
@@ -608,7 +602,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           role: "user",
           content: displayContent,
           timestamp: new Date(),
-          ...(attachmentNames?.length ? { attachmentNames } : {}),
         };
         setMessages((prev) => [...prev, userMessage]);
       }
@@ -652,12 +645,13 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const bodyPayload: Record<string, unknown> = {
-          message:
-            message.trim() || (fileIds?.length ? "Attached file(s)." : ""),
+          message: displayContent,
           sessionId: operationSessionId,
-          ...(fileIds?.length ? { fileIds } : {}),
           ...(chatScope ? { scopeType: chatScope.type, scopeId: chatScope.id } : {}),
           ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
+          ...(options?.decisionQuestionMessageIds?.length
+            ? { decisionQuestionMessageIds: options.decisionQuestionMessageIds }
+            : {}),
         };
 
         const streamEndpoint = effectiveTransport === "web"
@@ -757,11 +751,27 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     setMessages((prev) =>
                       prev.map((msg) =>
                         msg.id === assistantMessageId
-                          ? { ...msg, content: msg.content + event.content }
+                          ? {
+                              ...msg,
+                              content: msg.content + event.content,
+                              agentActivityLabel: undefined,
+                            }
                           : msg,
                       ),
                     );
                     break;
+                  case "agent_activity": {
+                    const label = safeAgentActivityLabel(event.label);
+                    if (!label) break;
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === assistantMessageId && !msg.content.trim()
+                          ? { ...msg, agentActivityLabel: label }
+                          : msg,
+                      ),
+                    );
+                    break;
+                  }
                   case "response_reset":
                     // Discard all previously streamed tokens — the agent detected
                     // hallucinated code blocks and is forcing a correction iteration.
@@ -995,8 +1005,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                         steerPendingRef.current = [...steerPendingRef.current, {
                           id: steerEntry.id,
                           message: steerEntry.message,
-                          fileIds: steerEntry.fileIds,
-                          attachmentNames: steerEntry.attachmentNames,
                           transport: steerEntry.transport,
                         }];
                         pendingQueueRef.current = pendingQueueRef.current.filter((q) => q.id !== pendingId);
@@ -1052,18 +1060,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                           msg.decisionQuestions && msg.decisionQuestions.length > 0
                             ? msg.decisionQuestions
                             : fromDone;
-                        // Chips ride the done event only so this turn shows
-                        // them without a reload; the persisted message carries
-                        // the same list for every later read.
-                        const options = Array.isArray(event.options)
-                          ? (event.options as string[])
-                          : undefined;
                         return {
                           ...msg,
                           content: finalContent,
                           isStreaming: false,
+                          agentActivityLabel: undefined,
                           ...(decisionQuestions ? { decisionQuestions } : {}),
-                          ...(options && options.length > 0 ? { options } : {}),
                         };
                       }),
                     );
@@ -1165,7 +1167,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, isStreaming: false }
+              ? { ...msg, isStreaming: false, agentActivityLabel: undefined }
               : msg,
           ),
         );
@@ -1187,23 +1189,19 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const sendMessage = useCallback((
     message: string,
-    fileIds?: string[],
-    attachmentNames?: string[],
     options?: ChatSendOptions,
   ) => {
     const transport: ChatTransport = options?.surface === "web"
       || sessionPersona === "personal"
       ? "web"
       : "compatibility";
-    return sendMessageWithTransport(transport, message, fileIds, attachmentNames, options);
+    return sendMessageWithTransport(transport, message, options);
   }, [sendMessageWithTransport, sessionPersona]);
 
   const sendWebMessage = useCallback((
     message: string,
-    fileIds?: string[],
-    attachmentNames?: string[],
     options?: Omit<ChatSendOptions, "surface">,
-  ) => sendMessageWithTransport("web", message, fileIds, attachmentNames, options), [sendMessageWithTransport]);
+  ) => sendMessageWithTransport("web", message, options), [sendMessageWithTransport]);
 
   const stopStream = useCallback(() => {
     const active = activeSendRef.current;
@@ -1226,39 +1224,28 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       void sendMessageWithTransport(
         nextMsg.transport,
         nextMsg.message,
-        nextMsg.fileIds,
-        nextMsg.attachmentNames,
         { hidden: true, existingMessageId: nextMsg.id },
       );
     } else if (steerPendingRef.current.length > 0) {
       const [steerMsg, ...rest] = steerPendingRef.current;
       steerPendingRef.current = rest;
-      // Preserve the originating transport so a web continuation cannot fall back.
       void sendMessageWithTransport(
         steerMsg.transport,
         steerMsg.message,
-        steerMsg.fileIds,
-        steerMsg.attachmentNames,
         { hidden: true, existingMessageId: steerMsg.id },
       );
     } else if (pendingQueueRef.current.length > 0) {
       const [nextMsg, ...rest] = pendingQueueRef.current;
       pendingQueueRef.current = rest;
       setPendingQueue(rest);
-      // Cancel any live fallback timer for this message (may still be running if
-      // the stream ended before the SSE decision arrived).
       const t = interruptTimeoutsRef.current.get(nextMsg.id);
       if (t !== undefined) { clearTimeout(t); interruptTimeoutsRef.current.delete(nextMsg.id); }
-      // Reset both isPending and isQueued so the placeholder no longer shows "classifying…".
       setMessages((prev) =>
         prev.map((msg) => msg.id === nextMsg.id ? { ...msg, isPending: false, isQueued: false } : msg),
       );
-      // Use hidden:true — the placeholder is the canonical user bubble.
       void sendMessageWithTransport(
         nextMsg.transport,
         nextMsg.message,
-        nextMsg.fileIds,
-        nextMsg.attachmentNames,
         { hidden: true, existingMessageId: nextMsg.id },
       );
     }
@@ -1352,7 +1339,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
           interrupted?: boolean | null;
-          options?: string[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1398,7 +1384,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(m.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(m.interrupted ? { wasInterrupted: true } : {}),
-        ...(Array.isArray(m.options) && m.options.length > 0 ? { options: m.options } : {}),
         conversationSessionId: data.sessionId,
       }));
 
@@ -1443,7 +1428,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           decisionQuestions?: Question[] | null;
           decisionQuestionsSubmitted?: boolean | null;
           interrupted?: boolean | null;
-          options?: string[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -1476,7 +1460,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(message.decisionQuestionsSubmitted ? { decisionQuestionsSubmitted: true } : {}),
         ...(message.interrupted ? { wasInterrupted: true } : {}),
-        ...(Array.isArray(message.options) && message.options.length > 0 ? { options: message.options } : {}),
         conversationSessionId: data.sessionId,
       }));
       setMessages((current) => {

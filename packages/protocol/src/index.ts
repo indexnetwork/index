@@ -239,6 +239,7 @@ export type {
 export { negotiationRoundReflectJobId, maybeEnqueueRoundReflect } from "./internal/negotiations/negotiation.round-reflect.js";
 export type {
   NegotiationRoundReflectJobData,
+  NegotiationRoundReflectCheck,
   NegotiationRoundReflectEnqueueFn,
 } from "./internal/negotiations/negotiation.round-reflect.js";
 // ─── PersonalAgent (AgentGraph) ─────────────────────────────────────────────
@@ -247,9 +248,9 @@ export type {
  * host implements the ports (signal DM, dossier, act ledger, reply
  * transport, the owner's accept path) and wires ONE graph.
  */
-export { PersonalAgentGraphFactory, PERSONAL_AGENT_REPLY_FALLBACK, chunkReplyText } from "./internal/agents/personal-agent/agent.graph.js";
+export { PersonalAgentGraphFactory, chunkReplyText, KICKOFF_STALE_AFTER_MS } from "./internal/agents/personal-agent/agent.graph.js";
 export type { PersonalAgentGraphLike } from "./internal/agents/personal-agent/agent.graph.js";
-export { PersonalAgentModel, renderPersonalAgentTurn, renderPersonalAgentReplyStage, normalizeMessageOptions, validateDecidedActs } from "./internal/agents/personal-agent/agent.judgment.js";
+export { PersonalAgentModel, renderPersonalAgentTurn, normalizeMessageQuestions, validateDecidedAct } from "./internal/agents/personal-agent/agent.judgment.js";
 export { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, PERSONAL_AGENT_SYSTEM_PROMPT_VERSION } from "./internal/agents/personal-agent/agent.prompt.js";
 export type {
   PersonalAgentInput,
@@ -259,8 +260,7 @@ export type {
   PersonalAgentDeps,
   PersonalAgentDecidedAct,
   PersonalAgentExecutedAct,
-  PersonalAgentReply,
-  PersonalAgentReplyFallbackReason,
+  PersonalAgentNonDurableObservation,
   PersonalAgentJudgment,
   PersonalAgentTurnContext,
   PersonalAgentThreadEntry,
@@ -273,6 +273,8 @@ export type {
   PersonalAgentLedgerPort,
   PersonalAgentConversationPort,
   PersonalAgentReplyStreamPort,
+  PersonalAgentActivity,
+  PersonalAgentActivityPort,
   PersonalAgentOpportunityPort,
   PersonalAgentIdentityPort,
 } from "./internal/agents/personal-agent/agent.types.js";

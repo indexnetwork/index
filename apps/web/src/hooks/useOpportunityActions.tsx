@@ -58,8 +58,6 @@ export function useOpportunityActions({
           onRemove?.(opportunityId);
           refreshConversations();
           // Always route to the h2h chat page (`/u/:peer/chat` renders `ChatView`).
-          // `/chat/:id` routes to the A2A NegotiationDetailPage and does not show
-          // the in-chat opportunity context.
           navigate(`/u/${result.counterpartUserId ?? fallbackUserId ?? ""}/chat`);
         } catch (error) {
           showError(error instanceof Error ? error.message : "Failed to start chat");

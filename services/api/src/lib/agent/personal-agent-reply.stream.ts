@@ -1,5 +1,5 @@
 /**
- * Token transport for the PersonalAgent's streaming reply stage.
+ * Transport for the PersonalAgent's checked replies and safe activity labels.
  *
  * The turn runs on the inbox worker — serialization stays THE inbox — so the
  * reply's chunks cross back to the waiting chat controller over Redis
@@ -12,9 +12,8 @@
  * channel, because the channel is a latency optimization and the job result
  * is the truth.
  *
- * Chunks are published only AFTER the reply passed the prose-safety check
- * and was persisted (check-then-stream — see the protocol reply stage):
- * nothing unchecked ever crosses this transport.
+ * Chunks are published only after each message passed its prose-safety check
+ * and was persisted; nothing unchecked crosses this transport.
  *
  * In hermetic test mode (the same `useHermeticRedis()` guard the queue
  * factory applies) the transport is an in-process emitter, so controller and
@@ -27,11 +26,15 @@ import { log } from '../log';
 
 const logger = log.lib.from('personal-agent-reply.stream');
 
-/** One ordered slice of the checked reply. `seq` starts at 1 per turn. */
+/** One ordered slice of a checked message. `seq` starts at 1 per turn. */
 export interface PersonalAgentReplyChunk {
   seq: number;
   content: string;
 }
+
+export type PersonalAgentReplyStreamEvent =
+  | { type: 'chunk'; seq: number; content: string }
+  | { type: 'activity'; label: string };
 
 export function personalAgentReplyChannel(messageId: string): string {
   return `personal-agent:reply:${messageId}`;
@@ -49,18 +52,33 @@ export async function publishPersonalAgentReplyChunk(
   messageId: string,
   chunk: PersonalAgentReplyChunk,
 ): Promise<void> {
+  await publishPersonalAgentReplyEvent(messageId, { type: 'chunk', ...chunk });
+}
+
+/** Publish only the user-safe label; protocol-internal activity state stays server-side. */
+export async function publishPersonalAgentActivity(
+  messageId: string,
+  activity: { label: string },
+): Promise<void> {
+  await publishPersonalAgentReplyEvent(messageId, { type: 'activity', label: activity.label });
+}
+
+async function publishPersonalAgentReplyEvent(
+  messageId: string,
+  event: PersonalAgentReplyStreamEvent,
+): Promise<void> {
   const channel = personalAgentReplyChannel(messageId);
   try {
     if (useHermeticRedis()) {
-      hermeticBus.emit(channel, JSON.stringify(chunk));
+      hermeticBus.emit(channel, JSON.stringify(event));
       return;
     }
     const { getRedisClient } = await import('../../adapters/cache.adapter');
-    await getRedisClient().publish(channel, JSON.stringify(chunk));
+    await getRedisClient().publish(channel, JSON.stringify(event));
   } catch (err) {
     logger.warn('personal_agent_reply_publish_failed', {
       messageId,
-      seq: chunk.seq,
+      ...(event.type === 'chunk' ? { seq: event.seq } : {}),
       error: err instanceof Error ? err.message : String(err),
     });
   }
@@ -74,13 +92,17 @@ export async function publishPersonalAgentReplyChunk(
  */
 export async function subscribePersonalAgentReply(
   messageId: string,
-  onChunk: (chunk: PersonalAgentReplyChunk) => void,
+  onEvent: (event: PersonalAgentReplyStreamEvent) => void,
 ): Promise<() => void> {
   const channel = personalAgentReplyChannel(messageId);
   const handle = (data: string) => {
     try {
-      const parsed = JSON.parse(data) as PersonalAgentReplyChunk;
-      if (typeof parsed?.seq === 'number' && typeof parsed?.content === 'string') onChunk(parsed);
+      const parsed = JSON.parse(data) as Partial<PersonalAgentReplyStreamEvent>;
+      if (parsed.type === 'chunk' && typeof parsed.seq === 'number' && typeof parsed.content === 'string') {
+        onEvent(parsed as Extract<PersonalAgentReplyStreamEvent, { type: 'chunk' }>);
+      } else if (parsed.type === 'activity' && typeof parsed.label === 'string') {
+        onEvent(parsed as Extract<PersonalAgentReplyStreamEvent, { type: 'activity' }>);
+      }
     } catch {
       // Malformed chunk: drop; the job-result fallback delivers the reply.
     }

@@ -47,6 +47,7 @@ const optionalOne = z.union([z.literal(''), z.literal('1')]).optional();
 const envSchema = z.object({
   // 1. Core
   DATABASE_URL: z.string().url(),
+  DATABASE_POOL_MAX: optionalPositiveInt,
   PORT: z.string().regex(/^\d+$/).default('3001'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_URL: optionalUrl,
@@ -63,7 +64,7 @@ const envSchema = z.object({
   // 3. LLM / AI (OpenRouter)
   OPENROUTER_API_KEY: requiredUnlessTest,
   CHAT_MODEL: z.string().optional(),
-  CHAT_REASONING_EFFORT: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+  CHAT_REASONING_EFFORT: z.enum(['low', 'medium', 'high']).optional(),
   // Eval-only per-agent model overrides (JSON). Ignored by the protocol in
   // production, and rejected outright above when NODE_ENV=production.
   EVAL_MODEL_OVERRIDES: z.string().optional(),
@@ -96,6 +97,8 @@ const envSchema = z.object({
   UNAVATAR_BASE: optionalUrl,
 
   // 8. Discovery / protocol runtime
+  PERSONAL_AGENT_WORKER_CONCURRENCY: optionalPositiveInt,
+  PERSONAL_AGENT_KICKOFF_CONCURRENCY: optionalPositiveInt,
 
   // Test harness (repo-root .env.test only)
   TEST_DATABASE_SAFE: optionalOne,
@@ -117,6 +120,12 @@ const envSchema = z.object({
   SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().optional(),
   SENTRY_RELEASE: z.string().optional(),
+  LANGSMITH_API_KEY: z.string().optional(),
+  LANGSMITH_TRACING: optionalBoolean,
+  LANGSMITH_PROJECT: z.string().optional(),
+  LANGCHAIN_CALLBACKS_BACKGROUND: optionalBoolean,
+  LANGSMITH_ENDPOINT: optionalUrl,
+  LANGSMITH_WORKSPACE_ID: z.string().optional(),
   LOG_LEVEL: z.union([z.literal(''), z.enum(['verbose', 'debug', 'info', 'warn', 'error'])]).optional(),
 
   // 12b. LangGraph checkpoint retention

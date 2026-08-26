@@ -5,32 +5,36 @@
  * The cycle this graph runs:
  *
  *   discovery persists matches ──► matches_ready ──► kickoff
- *     (may ask first) → strategy into the DM → one brief per match in
+ *     → strategy into the DM → one brief per match in
  *     parallel → open ALL of them. No selection at kickoff: the negotiator
  *     filters by negotiating, IS-A judges at reflect where it has turns to
  *     judge on.
  *
- *   every negotiation of the round paused ──► all_paused ──► reflect
- *     phase 1 ASK: the questions the principal must answer, merged across
- *     negotiations. If there are none, phase 2 ACT: reject / promote /
- *     re-kick the rest with fresh briefs. Verdicts NEVER execute in phase 1.
+ *   every negotiation of the round paused ──► all_paused ──► reflect,
+ *     where the agent can continue the conversation and take any supported
+ *     action in the order the current context warrants.
  *
- *   the principal wrote ──► user_message ──► a DM turn that can also ACT,
+ *   the principal wrote ──► user_message ──► a conversational tool turn,
  *     because answers to the reflect questions arrive as ordinary messages.
  *
- * `matches_ready` and `all_paused` are ONE node — "look at the state, maybe
- * ask, else act" — differing only in what ACT does. Judgment lives in the
+ * All intent events share one conversation loop. Judgment lives in the
  * prompt; this file is effects, and every effect leaves a ledger row.
  */
 import { END, StateGraph, Annotation } from "@langchain/langgraph";
 
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
+import { requestContext } from "../../shared/observability/request-context.js";
 import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
+import { maybeEnqueueRoundReflect } from "../../negotiations/negotiation.round-reflect.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
-import { PersonalAgentModel } from "./agent.judgment.js";
-import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentPausedNegotiation, PersonalAgentReply, PersonalAgentReplyFallbackReason, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
+import type { IntentRecord } from "../../../platform/database/entities.js";
+import { canonicalCounterpartyStatusProse, isSupportedPersonalAgentStatusProse, normalizeMessageQuestions, PersonalAgentModel } from "./agent.judgment.js";
+import type { Question } from "../../../protocol/question.js";
+import type { PersonalAgentActivity, PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgentGraph");
+
+class UnresolvedOwnedPauseError extends Error {}
 
 /** How much conversation memory a turn reads. */
 const MAX_DM_MESSAGES = 20;
@@ -38,18 +42,26 @@ const MAX_LEDGER_ACTS = 20;
 /**
  * How many matches a turn sees, newest kept — a prolific signal must not
  * flood the prompt, and kickoff opens exactly the set the agent decided from
- * (D19). What is over the cap waits for the next round, which is what rounds
+ * (D52). What is over the cap waits for the next round, which is what rounds
  * are for.
  */
 const MAX_MATCHES = 12;
 
 /**
  * How many opens run at once. A negotiation self-plays several model turns
- * inside its own invoke, so twelve at once is twelve concurrent conversations
- * plus twelve briefs — past the chat controller's wait and into provider rate
- * limits, whose failures then land in `compensateFailedOpen`.
+ * inside its own invoke, so this is that many concurrent conversations plus
+ * that many briefs. Not bounded by provider rate limits (none are enforced);
+ * a stalled/failed open lands in `compensateFailedOpen` regardless of how
+ * many run alongside it. PERSONAL_AGENT_KICKOFF_CONCURRENCY overrides it.
+ *
+ * Read lazily, inside the function that uses it — this package is bundled
+ * into the browser too (apps/web), which has no `process` global. A
+ * module-scope `process.env` read here throws on the client the instant the
+ * module loads, before this function ever runs server-side.
  */
-const KICKOFF_CONCURRENCY = 3;
+function kickoffConcurrency(): number {
+  return Number(process.env.PERSONAL_AGENT_KICKOFF_CONCURRENCY) || 8;
+}
 
 /**
  * How long a round may be "begun" before a later turn treats it as abandoned
@@ -59,7 +71,7 @@ const KICKOFF_CONCURRENCY = 3;
  * — leaves the round alone instead of settling it out from under the turn
  * still opening it.
  */
-const KICKOFF_STALE_AFTER_MS = 10 * 60 * 1000;
+export const KICKOFF_STALE_AFTER_MS = 10 * 60 * 1000;
 
 /** Attempts for a post-bump write before it is given up on loudly (D54). */
 const POST_BUMP_WRITE_ATTEMPTS = 3;
@@ -90,22 +102,25 @@ async function mapWithConcurrency<T, R>(
  */
 const NOT_KICKOFF_ELIGIBLE_STATUSES = new Set(["pending"]);
 
-/**
- * Fixed honest copy delivered when the reply stage could not produce prose
- * that passes the safety gate, or the reply model call itself failed.
- * Server-owned, never model text: the acts the turn executed are durable
- * either way, so the copy says that instead of pretending nothing happened.
- */
-export const PERSONAL_AGENT_REPLY_FALLBACK =
-  "I acted on your message and everything I did is recorded, but I could not compose a clean reply just now. "
-  + "Ask me where things stand and I will lay it out.";
+/** Bounded tool steps keep a faulty model from holding a serialized inbox forever. */
+const MAX_INTENT_TOOL_STEPS = 8;
+
+function hasUnresolvedOwnedPause(context: PersonalAgentTurnContext): boolean {
+  return context.paused.some((paused) => paused.pausedByUs && (
+    paused.reason === "ready_for_verdict" || paused.reason === "needs_principal"
+  ));
+}
+
+function isOwnedReadyPause(paused: PersonalAgentPausedNegotiation): boolean {
+  return paused.pausedByUs && paused.reason === "ready_for_verdict";
+}
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
 const PersonalAgentGraphState = Annotation.Root({
   input: Annotation<PersonalAgentInput>({ reducer: (c, n) => n ?? c, default: () => ({} as PersonalAgentInput) }),
   scope: Annotation<PersonalAgentScope>({ reducer: (c, n) => n ?? c, default: () => "global" }),
-  phase: Annotation<"intent" | "negotiation" | "error" | "done">({ reducer: (c, n) => n ?? c, default: () => "error" }),
+  phase: Annotation<"intent" | "counterparty_resolved" | "negotiation" | "error" | "done">({ reducer: (c, n) => n ?? c, default: () => "error" }),
   result: Annotation<PersonalAgentResult | null>({ reducer: (c, n) => n ?? c, default: () => null }),
   error: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
 });
@@ -116,13 +131,23 @@ type PersonalAgentState = typeof PersonalAgentGraphState.State;
 
 function routeNode(state: PersonalAgentState): Partial<PersonalAgentState> {
   const input = state.input;
-  if ("negotiationId" in input) return { scope: "negotiation", phase: "negotiation" };
+  if ("event" in input && input.event === "counterparty_resolved") return { scope: "intent", phase: "counterparty_resolved" };
+  // An intent event may name the negotiation that woke it. Events still
+  // belong to the principal's signal inbox; only an event-less input enters
+  // the negotiator seat.
   if ("event" in input) return { scope: "intent", phase: "intent" };
+  if ("negotiationId" in input) return { scope: "negotiation", phase: "negotiation" };
   return {
     scope: "global",
     phase: "error",
     error: "PersonalAgent global scope is not implemented; invoke with an intentId",
   };
+}
+
+function counterpartyResolutionMessage(verdict: "pending" | "reject"): string {
+  return verdict === "pending"
+    ? "The other agent considers this a potential fit and has put it in their principal's decision queue. This is not an acceptance."
+    : "The other agent declined this match for their principal. I have closed it on this signal.";
 }
 
 // ─── Context assembly ────────────────────────────────────────────────────────
@@ -145,6 +170,12 @@ async function loadThread(
   seatUserId: string,
 ): Promise<PersonalAgentThreadEntry[]> {
   return threadFromMessages(await deps.negotiationDatabase.getNegotiationMessages(taskId), seatUserId);
+}
+
+/** The task context a seat may show its model: never the other seat's brief. */
+function taskForSeat(task: NegotiationTaskRow, seatUserId: string): NegotiationTaskRow {
+  const brief = task.briefs[seatUserId];
+  return { ...task, briefs: brief === undefined ? {} : { [seatUserId]: brief } };
 }
 
 /**
@@ -191,7 +222,7 @@ async function assembleContext(
   // a matches_ready that cannot see its matches, or an all_paused that cannot
   // see its paused negotiations, must FAIL and be retried — swallowed, it
   // becomes a successful turn that saw nothing, decided nothing, and (for
-  // reflect) permanently consumed its once-per-round job id.
+  // reflect) permanently consumed that drain generation's job id.
   const [agentName, intent, allMatches, paused, dossier, recentActs] = await Promise.all([
     deps.identity.readAgentName(userId).catch(() => null),
     deps.negotiationDatabase.getIntent(intentId),
@@ -230,9 +261,22 @@ async function assembleContext(
     match,
     eligible: !match.awaitingIntroducerApproval
       && !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
+      && !paused.some((entry) => entry.opportunityId === match.opportunityId && !entry.pausedByUs)
       && !(await spentItsTurnBudget(deps, match)),
   })));
   const kickoffTargets = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
+  if (input.event === "matches_ready") {
+    logger.info("PersonalAgent matches_ready eligibility", {
+      intentId,
+      matches: matches.length,
+      kickoffTargets: kickoffTargets.length,
+      awaitingIntroducerApproval: eligibility.filter((entry) => entry.match.awaitingIntroducerApproval).length,
+      pending: eligibility.filter((entry) => NOT_KICKOFF_ELIGIBLE_STATUSES.has(entry.match.status)).length,
+      counterpartyPaused: eligibility.filter((entry) =>
+        paused.some((pausedEntry) => pausedEntry.opportunityId === entry.match.opportunityId && !pausedEntry.pausedByUs),
+      ).length,
+    });
+  }
   const name = agentName?.trim();
   return {
     userId,
@@ -268,7 +312,12 @@ async function appendLedger(
   await deps.ledger.append({
     userId: context.userId,
     intentId: context.intentId,
-    event: { kind: context.event, ...(context.round !== undefined ? { round: context.round } : {}) },
+    event: {
+      kind: context.event,
+      ...(context.traceId ? { traceId: context.traceId } : {}),
+      ...(context.message ? { messageId: context.message.messageId } : {}),
+      ...(context.round !== undefined ? { round: context.round } : {}),
+    },
     act: act as unknown as Record<string, unknown>,
   });
 }
@@ -277,7 +326,7 @@ async function deliverMessage(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
   text: string,
-  options?: string[],
+  questions?: Question[],
 ): Promise<{ sessionId: string; messageId: string } | null> {
   const resolved = await deps.conversation.resolveSession(context.userId, context.intentId);
   if ("error" in resolved) {
@@ -296,30 +345,89 @@ async function deliverMessage(
     sessionId: resolved.session.id,
     role: "assistant",
     content: text,
-    ...(options ? { options } : {}),
+    ...(questions ? { questions } : {}),
   });
   return { sessionId: resolved.session.id, messageId };
 }
 
 interface TurnAccumulator {
   acts: PersonalAgentExecutedAct[];
+  nonDurable: PersonalAgentNonDurableObservation[];
   messages: string[];
+  /** The model explicitly selected the natural terminal response. */
+  finalMessageChosen: boolean;
+}
+
+/**
+ * The model sees completed tool results, but context remains a snapshot for
+ * one serialized turn. Do not let that snapshot turn one kickoff into several
+ * rounds or call an irreversible target twice. Even an error outcome can be
+ * uncertain, so it still consumes that target's one call for this snapshot.
+ */
+function isRepeatedIrreversibleAct(
+  act: PersonalAgentDecidedAct,
+  executed: PersonalAgentExecutedAct[],
+): boolean {
+  if (act.tool === "kickoff") return executed.some((entry) => entry.tool === "kickoff");
+  if (act.tool === "promote" || act.tool === "reject") {
+    return executed.some((entry) =>
+      (entry.tool === "promote" || entry.tool === "reject")
+      && entry.negotiationId === act.negotiationId);
+  }
+  if (act.tool === "accept_opportunity") {
+    return executed.some((entry) => entry.tool === "accept_opportunity" && entry.opportunityId === act.opportunityId);
+  }
+  return false;
+}
+
+function refusedIrreversibleObservation(act: PersonalAgentDecidedAct): PersonalAgentNonDurableObservation {
+  if (act.tool === "kickoff") {
+    return {
+      kind: "irreversible_tool_refused",
+      tool: "kickoff",
+      reason: "A kickoff already executed against this turn's snapshot. Choose a different next step.",
+    };
+  }
+  if (act.tool === "promote" || act.tool === "reject") {
+    return {
+      kind: "irreversible_tool_refused",
+      tool: act.tool,
+      negotiationId: act.negotiationId,
+      reason: "A terminal verdict already executed for this negotiation against this turn's snapshot. Choose a different next step.",
+    };
+  }
+  if (act.tool === "accept_opportunity") {
+    return {
+      kind: "irreversible_tool_refused",
+      tool: "accept_opportunity",
+      opportunityId: act.opportunityId,
+      reason: "An acceptance already executed for this match against this turn's snapshot. Choose a different next step.",
+    };
+  }
+  throw new Error("Only repeated irreversible acts can be refused here");
+}
+
+function throwIfIntentAborted(): void {
+  requestContext.getStore()?.abortSignal?.throwIfAborted();
 }
 
 async function say(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
   accumulator: TurnAccumulator,
-  tool: "message_user" | "ask",
+  tool: "message_user",
   text: string,
-  options?: string[],
+  questions?: Question[],
 ): Promise<void> {
-  const delivered = await deliverMessage(deps, context, text, options);
+  if (text.includes("?")) throw new Error("PersonalAgent questions must use the structured questions field");
+  const safeQuestions = normalizeMessageQuestions(questions);
+  if (questions && !safeQuestions) throw new Error("PersonalAgent produced no safe questions");
+  const delivered = await deliverMessage(deps, context, text, safeQuestions);
   if (!delivered) return;
   const executed: PersonalAgentExecutedAct = {
     tool,
     text,
-    ...(options ? { options } : {}),
+    ...(safeQuestions ? { questions: safeQuestions } : {}),
     ...delivered,
   };
   // Guarded, like every other post-delivery ledger write: the message is on
@@ -347,31 +455,48 @@ async function ledgerOrLog(
   }
 }
 
+/** Record a terminal recovery even if its DM delivery itself is unavailable. */
+async function ledgerTerminalFallback(
+  deps: PersonalAgentDeps,
+  context: PersonalAgentTurnContext,
+  text: string,
+  cause: unknown,
+): Promise<void> {
+  try {
+    await deps.ledger.append({
+      userId: context.userId,
+      intentId: context.intentId,
+      event: { kind: context.event, ...(context.round !== undefined ? { round: context.round } : {}) },
+      act: {
+        tool: "terminal_fallback",
+        text,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      },
+    });
+  } catch (ledgerError) {
+    logger.error("Failed to ledger terminal fallback", { intentId: context.intentId, error: ledgerError });
+  }
+}
+
 /**
  * Fixed, server-owned copy for a kickoff that has no one to reach out to.
- * A background turn has no reply stage behind it, so without this the
- * principal is told nothing at all and — with no negotiation left active and
- * the round's reflect job retained forever — nothing can wake the agent for
- * this signal again.
+ * Without this, the principal is told nothing at all and — with no negotiation
+ * left active and that drain generation's reflect job retained forever —
+ * nothing can wake the agent for this signal again.
  */
 export const PERSONAL_AGENT_NOTHING_TO_OPEN =
   "There is nothing new for me to put to anyone on this signal right now — what I have is either "
   + "waiting on your decision or has run as far as it can. Tell me if you want me to change tack.";
 
-/**
- * Fixed, server-owned copy for a background turn that decided nothing at all.
- *
- * The doc's node is "look at the state, maybe ask, else act" — deciding
- * NEITHER is not a state that contract has. It is reachable anyway (the model
- * can return an empty act list), and on a background event there is no reply
- * stage behind it, so the turn would end in silence: for reflect that also
- * consumes the round's one retained job, and the signal is never heard from
- * again. Saying this keeps the loop reachable — the principal's next message
- * is an ordinary `user_message` turn that can ask or act.
- */
-export const PERSONAL_AGENT_NO_NEXT_STEP =
-  "I looked at where this signal stands and I do not have a next step for it right now. "
-  + "Tell me how you would like to proceed and I will pick it up.";
+/** Honest terminal response when the bounded loop has already done work. */
+export const PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED =
+  "I reached my turn limit before I could safely choose another step. "
+  + "I have recorded what happened; please tell me how you want to continue.";
+
+/** Honest terminal response when a later model choice fails after durable work. */
+export const PERSONAL_AGENT_POST_ACTION_FAILURE =
+  "I completed some work, but I could not safely continue this turn after that. "
+  + "I have recorded what happened; please tell me how you want to proceed.";
 
 export const PERSONAL_AGENT_NO_MATCHES_YET =
   "Nothing has come up for this signal yet. I will pick it up as soon as it does.";
@@ -386,7 +511,7 @@ export const PERSONAL_AGENT_STRATEGY_FALLBACK =
   + "this once — ask me what I am putting to them and I will lay it out.";
 
 /**
- * Kickoff / re-kick: the ACT both event turns can reach.
+ * Kickoff / re-kick: one tool available in every intent event.
  *
  * Strategy into the DM first (the principal sees and can correct the plan),
  * then ONE BRIEF PER MATCH IN PARALLEL, then every match opened together.
@@ -441,14 +566,17 @@ async function runKickoff(
   }
 
   if (matches.length === 0) {
-    // Say so. A background turn has no reply stage, and with nothing active
-    // and the reflect job retained forever, silence here ends the cycle for
+    throwIfIntentAborted();
+    // Say so. With nothing active
+    // and this drain's reflect job retained forever, silence here ends the cycle for
     // this signal with the principal never told.
     if (context.event !== "user_message") {
       await say(deps, context, accumulator, "message_user",
         context.matches.length === 0 ? PERSONAL_AGENT_NO_MATCHES_YET : PERSONAL_AGENT_NOTHING_TO_OPEN);
     }
-    await recordKickoff(deps, context, accumulator, { tool: "kickoff", round: lifecycle.round, opened: 0, reasoning });
+    await recordKickoff(deps, context, accumulator, {
+      tool: "kickoff", round: lifecycle.round, opened: 0, attempted: 0, failed: 0, reasoning,
+    });
     // Runs on this path too: it is the authoritative recovery for a batch the
     // inbox could not coalesce, and a turn with nothing to open is exactly
     // when a batch that landed mid-turn would otherwise be waited on forever.
@@ -460,15 +588,27 @@ async function runKickoff(
   // retry and propagates. The strategy itself falls back rather than throwing
   // — losing a whole wake because the prose gate disliked one sentence, three
   // times over an identical prompt, is not a trade worth making.
-  const strategy = await strategyOrFallback(judgment, context);
-  await say(deps, context, accumulator, "message_user", strategy);
+  const kickoffContext: PersonalAgentTurnContext = {
+    ...context,
+    dossier: await deps.dossier.readActiveEntries(context.userId, context.intentId),
+  };
+  const strategy = await strategyOrFallback(judgment, kickoffContext);
+  throwIfIntentAborted();
+  const publicStrategy = isSupportedPersonalAgentStatusProse(strategy, kickoffContext)
+    ? strategy
+    : canonicalCounterpartyStatusProse(kickoffContext) ?? PERSONAL_AGENT_STRATEGY_FALLBACK;
+  await say(deps, context, accumulator, "message_user", publicStrategy);
 
+  throwIfIntentAborted();
   const round = await deps.negotiationDatabase.bumpIntentNegotiationRound(context.intentId);
   // ─── from here down, nothing throws (D54) ───────────────────────────────
+  // There are deliberately no cancellation gates below the bump. This
+  // kickoff is already underway: abort-aware brief/open calls reject into the
+  // settled results so compensation and round settlement can still finish.
   const threadByOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.thread]));
 
-  const opens = await mapWithConcurrency(matches, KICKOFF_CONCURRENCY, async (match) => {
-    const brief = await judgment.brief(context, {
+  const opens = await mapWithConcurrency(matches, kickoffConcurrency(), async (match) => {
+    const brief = await judgment.brief(kickoffContext, {
       match,
       strategy,
       thread: threadByOpportunity.get(match.opportunityId) ?? [],
@@ -499,13 +639,17 @@ async function runKickoff(
       tool: "kickoff",
       round,
       opened: 0,
+      attempted: matches.length,
+      failed: failed.length,
       reasoning: `Could not open ${failed.length} of ${matches.length} match(es) this round.`,
     });
   }
 
   const opened = await settleRound(deps, context, round, { triggerReflect: true });
   if (opened === 0 && repairedRound !== null) await triggerRoundReflect(deps, context, repairedRound);
-  await recordKickoff(deps, context, accumulator, { tool: "kickoff", round, opened, reasoning });
+  await recordKickoff(deps, context, accumulator, {
+    tool: "kickoff", round, opened, attempted: matches.length, failed: failed.length, reasoning,
+  });
   if (opened > 0) await wakeForNewMatches(deps, context);
 }
 
@@ -656,11 +800,11 @@ async function triggerRoundReflect(
 ): Promise<void> {
   const enqueue = deps.reflectEnqueue;
   if (!enqueue) return;
-  await retryWrite(async () => {
-    const active = await deps.negotiationDatabase.countActiveNegotiationsForRound(context.intentId, round);
-    if (active !== 0) return;
-    await enqueue({ userId: context.userId, intentId: context.intentId, round });
-  }, "enqueue a round's reflect", { intentId: context.intentId, round });
+  await maybeEnqueueRoundReflect(deps.negotiationDatabase, enqueue, {
+    userId: context.userId,
+    intentId: context.intentId,
+    round,
+  });
 }
 
 /**
@@ -732,8 +876,7 @@ async function spentItsTurnBudget(deps: PersonalAgentDeps, match: PersonalAgentM
 }
 
 /**
- * Execute one decided act. Kickoff is not handled here — it runs last, after
- * every verdict, so it reads statuses the verdicts already moved.
+ * Execute one decided act. Kickoff uses its own multi-stage runner.
  */
 async function executeAct(
   deps: PersonalAgentDeps,
@@ -743,25 +886,23 @@ async function executeAct(
 ): Promise<void> {
   switch (act.tool) {
     case "message_user":
-    case "ask":
-      await say(deps, context, accumulator, act.tool, act.text, act.options);
+      await say(deps, context, accumulator, act.tool, act.text, act.questions);
       return;
     case "promote":
     case "reject": {
-      // `judgment` is a documented swap seam, so this id is only as bounded as
-      // whatever produced it. A ref that names nothing skips with a ledgered
-      // failure rather than throwing mid-turn, which would abandon the acts
-      // already executed above it and retry them all.
+      // `judgment` is a documented swap seam, so enforce both visibility and
+      // pause ownership again at the effects boundary. A refused ref is
+      // ledgered rather than thrown so earlier durable acts are not retried.
       const paused = context.paused.find((entry) => entry.negotiationId === act.negotiationId);
-      if (!paused) {
-        logger.warn("Decided a verdict on a negotiation this turn cannot see", {
+      if (!paused || !isOwnedReadyPause(paused)) {
+        logger.warn("Decided a verdict without an owned ready_for_verdict pause", {
           intentId: context.intentId,
           negotiationId: act.negotiationId,
         });
         const missing: PersonalAgentExecutedAct = {
           tool: act.tool,
           negotiationId: act.negotiationId,
-          opportunityId: "",
+          opportunityId: paused?.opportunityId ?? "",
           reasoning: act.reasoning,
           outcome: "error",
         };
@@ -787,6 +928,25 @@ async function executeAct(
       return;
     }
     case "accept_opportunity": {
+      // `judgment` is injectable, so production's numbered-reference
+      // validator is not the effects boundary. The host may read the signal's
+      // wider match set; never let an injected id reach a hidden match that
+      // was outside this turn's bounded snapshot.
+      if (!context.matches.some((match) => match.opportunityId === act.opportunityId)) {
+        logger.warn("Decided acceptance on a match this turn cannot see", {
+          intentId: context.intentId,
+          opportunityId: act.opportunityId,
+        });
+        const missing: PersonalAgentExecutedAct = {
+          tool: "accept_opportunity",
+          opportunityId: act.opportunityId,
+          outcome: "not_available",
+          ...(act.reason ? { reason: act.reason } : {}),
+        };
+        await ledgerOrLog(deps, context, missing);
+        accumulator.acts.push(missing);
+        return;
+      }
       // The principal's own explicit word, executing through the host's
       // untouched owner path. Nothing here re-decides explicitness: that law
       // is the prompt's.
@@ -819,6 +979,23 @@ async function executeAct(
       return;
     }
     case "retire_dossier": {
+      // As with verdict and acceptance ids, the documented judgment seam can
+      // bypass the numbered-reference validator. Retire only an entry in the
+      // active dossier snapshot the model was given.
+      if (!context.dossier.some((entry) => entry.id === act.entryId)) {
+        logger.warn("Decided retirement of a dossier entry this turn cannot see", {
+          intentId: context.intentId,
+          entryId: act.entryId,
+        });
+        const missing: PersonalAgentExecutedAct = {
+          tool: "retire_dossier",
+          entryId: act.entryId,
+          retired: false,
+        };
+        await ledgerOrLog(deps, context, missing);
+        accumulator.acts.push(missing);
+        return;
+      }
       const retired = await deps.dossier.retireEntry({ userId: context.userId, entryId: act.entryId });
       const executed: PersonalAgentExecutedAct = { tool: "retire_dossier", entryId: act.entryId, retired };
       await ledgerOrLog(deps, context, executed);
@@ -826,67 +1003,6 @@ async function executeAct(
       return;
     }
   }
-}
-
-/**
- * The reply stage: a principal-message turn always ends with the agent's
- * conversational reply — a second model call over the same context plus the
- * just-executed acts, checked BEFORE it is persisted or a chunk leaves the
- * host. A reply the model could not produce safely becomes the fixed
- * fallback copy, and the failure is ledgered on the act — never a thrown
- * error: the acts already executed, and re-running them to retry prose would
- * trade a wording problem for duplicate effects.
- */
-async function runReplyStage(
-  deps: PersonalAgentDeps,
-  context: PersonalAgentTurnContext,
-  accumulator: TurnAccumulator,
-): Promise<void> {
-  const judgment = deps.judgment ?? defaultJudgment();
-  let composed: PersonalAgentReply | null = null;
-  let fallback: PersonalAgentReplyFallbackReason | undefined;
-  try {
-    composed = await judgment.reply(context, accumulator.acts);
-    if (composed === null) fallback = "safety_check_failed";
-  } catch (err) {
-    logger.error("PersonalAgent reply stage failed", {
-      userId: context.userId,
-      intentId: context.intentId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    fallback = "model_error";
-  }
-
-  const content = composed?.text ?? PERSONAL_AGENT_REPLY_FALLBACK;
-  const options = composed?.options;
-  // Everything below is guarded, because the file's contract for this stage —
-  // "never a thrown error" — has to be true of the whole stage, not just the
-  // model call. The turn's acts are already executed and durable; letting a
-  // delivery or ledger blip out of here fails the job, and the retry
-  // re-decides and re-executes every verdict and kickoff on top of a reply
-  // the principal may already be reading.
-  let delivered: { sessionId: string; messageId: string } | null = null;
-  try {
-    delivered = await deliverMessage(deps, context, content, options);
-  } catch (err) {
-    logger.error("Failed to deliver a turn's reply", {
-      userId: context.userId,
-      intentId: context.intentId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-  if (!delivered) return;
-  const executed: PersonalAgentExecutedAct = {
-    tool: "message_user",
-    text: content,
-    ...(options ? { options } : {}),
-    ...delivered,
-    stage: "reply",
-    ...(fallback ? { fallback } : {}),
-  };
-  await ledgerOrLog(deps, context, executed);
-  accumulator.acts.push(executed);
-  accumulator.messages.push(content);
 }
 
 /**
@@ -931,48 +1047,248 @@ async function publishTurnMessages(
   }
 }
 
+const TOOL_ACTIVITY_LABELS: Record<Exclude<PersonalAgentDecidedAct["tool"], "message_user">, { before: string; after: string }> = {
+  kickoff: { before: "Preparing outreach", after: "Outreach prepared" },
+  promote: { before: "Updating a match", after: "Match updated" },
+  reject: { before: "Updating a match", after: "Match updated" },
+  note_dossier: { before: "Saving what you shared", after: "Saved what you shared" },
+  retire_dossier: { before: "Updating what I remember", after: "Updated what I remember" },
+  accept_opportunity: { before: "Recording your decision", after: "Decision recorded" },
+};
+
+/** Activity is best-effort UI feedback and must never decide turn success. */
+async function publishActivity(
+  deps: PersonalAgentDeps,
+  input: Extract<PersonalAgentInput, { event: PersonalAgentIntentEventKind }>,
+  activity: PersonalAgentActivity,
+): Promise<void> {
+  if (!deps.activity || input.event !== "user_message") return;
+  try {
+    await deps.activity.publish(input.messageId, activity);
+  } catch (err) {
+    logger.warn("Failed to publish PersonalAgent activity", { phase: activity.phase, error: err });
+  }
+}
+
 // ─── Nodes ───────────────────────────────────────────────────────────────────
 
 async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
   const input = state.input as Extract<PersonalAgentInput, { event: PersonalAgentIntentEventKind }>;
+  const traceId = crypto.randomUUID();
+  let context: PersonalAgentTurnContext | null = null;
+  let accumulator: TurnAccumulator | null = null;
   try {
-    const context = await assembleContext(deps, input);
-    const judgment = deps.judgment ?? defaultJudgment();
-    const decided = await judgment.decide(context);
-    logger.info("PersonalAgent turn decided", {
-      userId: context.userId,
+    await publishActivity(deps, input, { phase: "reviewing", label: "Reviewing the conversation" });
+    const contextStartedAt = Date.now();
+    context = { ...(await assembleContext(deps, input)), traceId };
+    logger.info("PersonalAgent context assembled", {
       intentId: context.intentId,
       event: context.event,
-      acts: decided.map((act) => act.tool),
+      durationMs: Date.now() - contextStartedAt,
+      matchCount: context.matches.length,
+      kickoffTargetCount: context.kickoffTargets.length,
+      pausedCount: context.paused.length,
     });
-
-    const accumulator: TurnAccumulator = { acts: [], messages: [] };
-    // Kickoff runs last, after every verdict — it re-reads the match list, and
-    // a match this turn promoted or rejected must not be re-opened.
-    const kickoff = decided.find((act): act is Extract<PersonalAgentDecidedAct, { tool: "kickoff" }> => act.tool === "kickoff");
-    for (const act of decided) {
-      if (act.tool === "kickoff") continue;
-      await executeAct(deps, context, accumulator, act);
+    const judgment = deps.judgment ?? defaultJudgment();
+    accumulator = { acts: [], nonDurable: [], messages: [], finalMessageChosen: false };
+    for (let step = 0; step < MAX_INTENT_TOOL_STEPS; step++) {
+      const judgmentStartedAt = Date.now();
+      let act: PersonalAgentDecidedAct;
+      try {
+        act = await judgment.next(context, accumulator.acts, accumulator.nonDurable);
+      } catch (err) {
+        logger.error("PersonalAgent judgment failed", {
+          intentId: context.intentId,
+          event: context.event,
+          step,
+          durationMs: Date.now() - judgmentStartedAt,
+          error: err,
+        });
+        throw err;
+      }
+      throwIfIntentAborted();
+      logger.info("PersonalAgent chose tool", {
+        intentId: context.intentId,
+        event: context.event,
+        step,
+        tool: act.tool,
+        judgmentDurationMs: Date.now() - judgmentStartedAt,
+      });
+      if (context.event === "matches_ready") {
+        logger.info("PersonalAgent matches_ready decision", {
+          intentId: context.intentId,
+          traceId,
+          step,
+          tool: act.tool,
+          matchCount: context.matches.length,
+          kickoffTargetCount: context.kickoffTargets.length,
+        });
+      }
+      if (act.tool === "message_user") {
+        const ownReady = context.paused.some((paused) =>
+          paused.pausedByUs && paused.reason === "ready_for_verdict");
+        const ownNeedsPrincipal = context.paused.some((paused) =>
+          paused.pausedByUs && paused.reason === "needs_principal");
+        const refusal = !isSupportedPersonalAgentStatusProse(act.text, context)
+          ? "Counterparty status prose must match the canonical public response exactly."
+          : ownReady
+          ? "Resolve every own ready_for_verdict pause with promote or reject before replying."
+          : ownNeedsPrincipal && !act.questions?.length
+            ? "An own needs_principal pause must be delivered as structured questions before replying."
+            : null;
+        if (refusal) {
+          logger.warn("PersonalAgent refused a terminal message while owning unresolved work", {
+            intentId: context.intentId,
+            event: context.event,
+            reason: refusal,
+          });
+          accumulator.nonDurable.push({ kind: "terminal_message_refused", reason: refusal });
+          continue;
+        }
+      }
+      if (act.tool === "accept_opportunity" && context.event !== "user_message") {
+        logger.warn("PersonalAgent refused acceptance without a client message", {
+          intentId: context.intentId,
+          event: context.event,
+        });
+        accumulator.nonDurable.push({
+          kind: "irreversible_tool_refused",
+          tool: "accept_opportunity",
+          opportunityId: act.opportunityId,
+          reason: "Acceptance requires an explicit verdict in a client message. Choose a different next step.",
+        });
+        continue;
+      }
+      if (isRepeatedIrreversibleAct(act, accumulator.acts)) {
+        logger.warn("PersonalAgent repeated an irreversible tool in one turn", {
+          intentId: context.intentId,
+          event: context.event,
+          tool: act.tool,
+        });
+        accumulator.nonDurable.push(refusedIrreversibleObservation(act));
+        continue;
+      }
+      const toolStartedAt = Date.now();
+      try {
+        if (act.tool === "message_user") {
+          await publishActivity(deps, input, { phase: "preparing_response", label: "Preparing a response" });
+          accumulator.finalMessageChosen = true;
+          await executeAct(deps, context, accumulator, act);
+        } else if (act.tool === "kickoff") {
+          await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS.kickoff.before });
+          await runKickoff(deps, context, accumulator, act.reasoning);
+          await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS.kickoff.after });
+        } else {
+          await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS[act.tool].before });
+          await executeAct(deps, context, accumulator, act);
+          await publishActivity(deps, input, { phase: "working", label: TOOL_ACTIVITY_LABELS[act.tool].after });
+        }
+      } catch (err) {
+        logger.error("PersonalAgent tool failed", {
+          intentId: context.intentId,
+          event: context.event,
+          step,
+          tool: act.tool,
+          durationMs: Date.now() - toolStartedAt,
+          error: err,
+        });
+        throw err;
+      }
+      logger.info("PersonalAgent tool completed", {
+        intentId: context.intentId,
+        event: context.event,
+        step,
+        tool: act.tool,
+        durationMs: Date.now() - toolStartedAt,
+      });
+      if (act.tool === "message_user") break;
+      // Every next choice — especially the final narration — reads the state
+      // the action actually persisted, not the turn's opening snapshot.
+      context = { ...(await assembleContext(deps, input)), traceId };
     }
-    if (kickoff) await runKickoff(deps, context, accumulator, kickoff.reasoning);
-
-    // A background event has no reply stage behind it, so a turn that decided
-    // nothing would end in silence — and for reflect, silently consume the
-    // round's one retained job. Never the empty end of a cycle.
-    if (context.event !== "user_message" && accumulator.acts.length === 0) {
-      logger.warn("A background turn decided nothing", { intentId: context.intentId, event: context.event });
-      await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_NO_NEXT_STEP);
+    if (!accumulator.finalMessageChosen) {
+      if (accumulator.acts.length === 0) throwIfIntentAborted();
+      if (hasUnresolvedOwnedPause(context)) {
+        throw new UnresolvedOwnedPauseError("PersonalAgent exhausted its tool budget with an unresolved owned pause");
+      }
+      logger.warn("PersonalAgent exhausted its intent tool budget", { intentId: context.intentId, event: context.event });
+      await publishActivity(deps, input, { phase: "preparing_response", label: "Preparing a response" });
+      await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED);
     }
-
-    if (context.event === "user_message") {
-      await runReplyStage(deps, context, accumulator);
-      await publishTurnMessages(deps, input.event === "user_message" ? input.messageId : "", accumulator.messages);
-    }
+    if (input.event === "user_message") await publishTurnMessages(deps, input.messageId, accumulator.messages);
 
     return {
       phase: "done",
       result: { scope: "intent", acts: accumulator.acts, messages: accumulator.messages },
     };
+  } catch (err) {
+    if (err instanceof UnresolvedOwnedPauseError) {
+      return { phase: "error", error: err.message };
+    }
+    // A generic terminal fallback would silently consume this drain without
+    // deciding the owned verdict or delivering its structured question.
+    if (context && hasUnresolvedOwnedPause(context)) {
+      return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+    }
+    // An outer queue retry repeats the entire turn. Once a durable tool has
+    // completed, a later invalid model choice must therefore terminate this
+    // turn rather than replaying its earlier effects.
+    const durableEffectExecuted = (accumulator?.acts.length ?? 0) > 0;
+    if (context && accumulator && durableEffectExecuted) {
+      logger.error("PersonalAgent failed after a durable effect; ending turn without retry", {
+        intentId: context.intentId,
+        event: context.event,
+        error: err,
+      });
+      try {
+        await publishActivity(deps, input, { phase: "preparing_response", label: "Preparing a response" });
+        await say(deps, context, accumulator, "message_user", PERSONAL_AGENT_POST_ACTION_FAILURE);
+      } catch (fallbackError) {
+        logger.error("PersonalAgent terminal fallback could not be delivered", {
+          intentId: context.intentId,
+          error: fallbackError,
+        });
+        await ledgerTerminalFallback(deps, context, PERSONAL_AGENT_POST_ACTION_FAILURE, err);
+      }
+      if (input.event === "user_message") await publishTurnMessages(deps, input.messageId, accumulator.messages);
+      return {
+        phase: "done",
+        result: { scope: "intent", acts: accumulator.acts, messages: accumulator.messages },
+      };
+    }
+    return { phase: "error", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * A completed counterpart verdict is a durable fact, not another judgment.
+ * Deliver fixed copy without a model call so the principal hears it promptly
+ * and the private reasoning behind the other seat's verdict stays private.
+ */
+async function counterpartyResolvedNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
+  const input = state.input as Extract<PersonalAgentInput, { event: "counterparty_resolved" }>;
+  try {
+    const resolved = await deps.conversation.resolveSession(input.userId, input.intentId);
+    if ("error" in resolved) return { phase: "error", error: `Signal conversation resolution failed: ${resolved.error}` };
+    const text = counterpartyResolutionMessage(input.verdict);
+    const messageId = await deps.conversation.addMessage({
+      sessionId: resolved.session.id,
+      role: "assistant",
+      content: text,
+    });
+    const act: PersonalAgentExecutedAct = {
+      tool: "message_user",
+      text,
+      sessionId: resolved.session.id,
+      messageId,
+    };
+    await deps.ledger.append({
+      userId: input.userId,
+      intentId: input.intentId,
+      event: { kind: input.event, negotiationId: input.negotiationId, verdict: input.verdict },
+      act: act as unknown as Record<string, unknown>,
+    });
+    return { phase: "done", result: { scope: "intent", acts: [act], messages: [text] } };
   } catch (err) {
     return { phase: "error", error: err instanceof Error ? err.message : String(err) };
   }
@@ -980,13 +1296,14 @@ async function intentNode(state: PersonalAgentState, deps: PersonalAgentDeps): P
 
 /**
  * The negotiation scope: the same PersonalAgent at the A2A table. It reads
- * the thread and ITS OWN brief — the brief is the only thing from a DM that
- * reaches a negotiation — and answers with exactly one verb or one pause. It
- * never ends a negotiation; NegotiationGraph's `apply` is the sink.
+ * the resolved intent of its own seat, task context, thread, and ITS OWN
+ * brief — a compact derived stance, not the source of truth — and answers
+ * with exactly one verb or one pause. It never ends a negotiation;
+ * NegotiationGraph's `apply` is the sink.
  *
  * A seat with no brief yet — the counterparty, always, since only the
  * initiator's kickoff wrote one — authors its own here, from what THIS side
- * knows, and persists it. That is the whole of D18: the counterparty's agent
+ * knows, and persists it. That is the whole of D51: the counterparty's agent
  * arrives with its own instructions rather than the initiator's.
  */
 async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDeps): Promise<Partial<PersonalAgentState>> {
@@ -994,11 +1311,16 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
   try {
     const task = await deps.negotiationDatabase.getNegotiationTask(input.negotiationId);
     if (!task) return { phase: "error", error: "Negotiation not found" };
+    const intent = await deps.negotiationDatabase.getIntent(input.intentId);
+    if (!intent) return { phase: "error", error: "Intent not found" };
     const messages = await deps.negotiationDatabase.getNegotiationMessages(task.id);
     const judgment = deps.judgment ?? defaultJudgment();
     const thread = threadFromMessages(messages, input.userId);
-    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, task, input.userId, thread);
+    const negotiation = taskForSeat(task, input.userId);
+    const brief = task.briefs[input.userId] ?? await authorSeatBrief(deps, judgment, negotiation, input.userId, intent, thread);
     const turn: NegotiationAuthoredTurn = await judgment.negotiationTurn({
+      intent,
+      negotiation,
       brief,
       thread,
       // Raw message count, not parsed-turn count: the negotiation graph's
@@ -1015,36 +1337,21 @@ async function negotiationNode(state: PersonalAgentState, deps: PersonalAgentDep
 /**
  * Author and persist the brief for a seat that has none.
  *
- * The seat's own signal is used when it can be established BEYOND DOUBT: a
- * premise-matched actor's `intent` field names the intent it matched AGAINST,
- * not one it owns, so an actor carrying this negotiation's own `intentId` is
- * ambiguous and is treated as unknown rather than guessed at. Without it the
- * brief is written from what this side can see honestly — why the match
- * exists, and whatever has been said so far — which is still its own
- * instructions rather than the counterparty's.
+ * The negotiation node resolves this seat's own intent once from the
+ * persisted opportunity actor and provides the same intent plus the actual
+ * task history to both brief authoring and the negotiation turn.
  */
 async function authorSeatBrief(
   deps: PersonalAgentDeps,
   judgment: NonNullable<PersonalAgentDeps["judgment"]>,
   task: NegotiationTaskRow,
   seatUserId: string,
+  intent: IntentRecord,
   thread: PersonalAgentThreadEntry[],
 ): Promise<string> {
-  const opportunity = await deps.negotiationDatabase.getOpportunity(task.metadata.opportunityId).catch(() => null);
-  // The seat's OWN binding, recorded when its own kickoff opened or re-kicked
-  // this negotiation. Never inferred from the opportunity's actor rows: a
-  // premise-matched actor's `intent` names the intent it matched AGAINST, so
-  // it cannot be trusted to name the seat's own signal. A seat that has not
-  // kicked off here yet simply has no signal to show, and the brief says so.
-  const seatIntentId = Object.entries(task.metadata.seats)
-    .find(([, binding]) => binding.userId === seatUserId)?.[0] ?? null;
-  const intent = seatIntentId ? await deps.negotiationDatabase.getIntent(seatIntentId).catch(() => null) : null;
-
   const brief = await judgment.seatBrief({
-    signalText: intent ? (intent.summary ?? intent.payload ?? null) : null,
-    matchReasoning: typeof (opportunity as { reasoning?: unknown } | null)?.reasoning === "string"
-      ? (opportunity as unknown as { reasoning: string }).reasoning
-      : null,
+    intent,
+    negotiation: task,
     thread,
   });
   await deps.negotiationDatabase.setNegotiationBrief(task.id, seatUserId, brief);
@@ -1085,6 +1392,7 @@ export class PersonalAgentGraphFactory {
     const compiled = new StateGraph(PersonalAgentGraphState)
       .addNode("route", routeNode)
       .addNode("intent", (s: PersonalAgentState) => intentNode(s, deps))
+      .addNode("counterparty_resolved", (s: PersonalAgentState) => counterpartyResolvedNode(s, deps))
       .addNode("negotiation", (s: PersonalAgentState) => negotiationNode(s, deps))
       // Named "fail", not "error": LangGraph rejects a node name that
       // collides with a state channel name, and "error" is one.
@@ -1092,10 +1400,12 @@ export class PersonalAgentGraphFactory {
       .addEdge("__start__", "route")
       .addConditionalEdges("route", (s: PersonalAgentState) => s.phase, {
         intent: "intent",
+        counterparty_resolved: "counterparty_resolved",
         negotiation: "negotiation",
         error: "fail",
       })
       .addConditionalEdges("intent", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
+      .addConditionalEdges("counterparty_resolved", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
       .addConditionalEdges("negotiation", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
       .addEdge("fail", END)
       .compile();

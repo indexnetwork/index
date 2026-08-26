@@ -10,51 +10,30 @@ import { FocusScope } from "@radix-ui/react-focus-scope";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import OpportunityCard, { NegotiationPresenceChip, OpportunitySkeleton, type NegotiationPresence } from "@/components/chat/OpportunityCardInChat";
+import AgentHandlingOpportunity from "@/components/AgentHandlingOpportunity";
+import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import IntentMemoryStrip from "@/components/IntentMemoryStrip";
 import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
-import DiscoveryWarmupLog from "@/components/DiscoveryWarmupLog";
-import NegotiationActivity from "@/components/NegotiationActivity";
+import IntentCycleInspector from "@/components/IntentCycleInspector";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useConversations, useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
-import { useRadarLiveRefresh } from "@/hooks/useRadarLiveRefresh";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
-import type { NegotiationActivityGroup } from "@/services/conversation";
+import type { IntentCycleSnapshot, IntentCycleTimelineEntry, NegotiationPauseReason } from "@/services/conversation";
 import type { RadarCardItem, OpportunityLifecycleStatus } from "@/services/opportunities";
 import type { IntentLifecycleStatus, MutableIntentLifecycleStatus } from "@/services/intents";
 import { cn } from "@/lib/utils";
-import { intentNegotiationActivityRevision } from "@/lib/intent-negotiation-activity";
-import { normalizeNegotiationActivity } from "@/lib/negotiation-activity";
-import { deriveLiveNegotiations, formatLatestMove, liveNegotiationsByOpportunity } from "@/lib/negotiation-presence";
-import type { WarmupConversation } from "@/lib/discovery-warmup-log";
-import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone } from "@/lib/radar-buckets";
+import { DEFAULT_RADAR_BUCKET, radarBucketBadgeTone, radarBucketForOpportunity, type RadarBucket } from "@/lib/radar-buckets";
 
-/** Raw opportunity status -> radar display bucket (mirrors the Hermes dashboard). */
-const STATUS_BUCKET: Record<string, string> = {
-  latent: "pending",
-  draft: "pending",
-  pending: "pending",
-  negotiating: "negotiating",
-  stalled: "negotiating",
-  accepted: "accepted",
-  rejected: "rejected",
-  expired: "expired",
-};
-
-const RADAR_BUCKETS: Array<{ key: string; label: string }> = [
-  { key: "pending", label: "Awaiting you" },
-  { key: "negotiating", label: "Negotiating" },
-  { key: "accepted", label: "Accepted" },
-  { key: "rejected", label: "Rejected" },
-  { key: "expired", label: "Missed" },
+const RADAR_BUCKETS: Array<{ key: RadarBucket; label: string }> = [
+  { key: "needs-you", label: "Needs you" },
+  { key: "agent-handling", label: "Agent handling" },
+  { key: "waiting", label: "Waiting" },
+  { key: "connected", label: "Connected" },
+  { key: "closed", label: "Closed" },
 ];
-
-function bucketForStatus(status?: string): string {
-  return STATUS_BUCKET[status ?? ""] ?? "pending";
-}
 
 function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus {
   if (
@@ -82,6 +61,31 @@ const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "rejected",
   "expired",
 ];
+
+function latestA2AActivity(message: { senderId: string; parts: unknown[]; createdAt: string }, viewerUserId: string) {
+  let verb: string | null = null;
+  let text: string | null = null;
+  let pauseReason: NegotiationPauseReason | null = null;
+  for (const part of message.parts) {
+    if (!part || typeof part !== "object" || Array.isArray(part)) continue;
+    const record = part as Record<string, unknown>;
+    if (typeof record.text === "string" && record.text.trim()) text = record.text.trim();
+    if (record.kind !== "data" || !record.data || typeof record.data !== "object" || Array.isArray(record.data)) continue;
+    const data = record.data as Record<string, unknown>;
+    if (typeof data.verb === "string") verb = data.verb;
+    if (verb === "pause" && typeof data.reason === "string") {
+      pauseReason = data.reason as NegotiationPauseReason;
+    } else if (typeof data.message === "string" && data.message.trim()) {
+      text = data.message.trim();
+    }
+  }
+  return {
+    actor: message.senderId === `agent:${viewerUserId}` ? "yours" as const : "theirs" as const,
+    verb,
+    text: verb === "pause" ? null : text,
+    pauseReason,
+  };
+}
 
 /** Icon-only action button in the intent detail header (Pause / Edit / Archive). */
 function ActionChip({
@@ -126,7 +130,7 @@ function StatPill({
   active,
   onSelect,
 }: {
-  bucketKey: string;
+  bucketKey: RadarBucket;
   value: number;
   label: string;
   active: boolean;
@@ -293,7 +297,7 @@ export default function IntentDetailPage() {
   useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
   const { user } = useAuthContext();
-  const { negotiations } = useConversation();
+  const { subscribePersonalAgentTurnCompleted, subscribeConversationMessage, subscribeIntentDiscoveryProgress, subscribeIntentInvalidation } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -313,28 +317,20 @@ export default function IntentDetailPage() {
   const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
   const opportunitiesLoadingRef = useRef(true);
   const [opportunitiesError, setOpportunitiesError] = useState(false);
-  const [negotiationActivity, setNegotiationActivity] = useState<NegotiationActivityGroup[]>([]);
-  const [negotiationActivityLoading, setNegotiationActivityLoading] = useState(true);
-  const [negotiationActivityError, setNegotiationActivityError] = useState(false);
-  /** Bumps make the intent negotiator reload its stable session after lifecycle changes. */
-  const [negotiatorRefreshVersion, setNegotiatorRefreshVersion] = useState(0);
-  const reactionTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  const clearReactionTimers = useCallback(() => {
-    for (const timer of reactionTimersRef.current) clearTimeout(timer);
-    reactionTimersRef.current = [];
-  }, []);
-  useEffect(
-    () => () => {
-      clearReactionTimers();
-    },
-    [clearReactionTimers],
-  );
+  const [intentCycle, setIntentCycle] = useState<IntentCycleSnapshot | null>(null);
+  const [intentCycleLoading, setIntentCycleLoading] = useState(true);
+  const [intentCycleError, setIntentCycleError] = useState(false);
+  const [intentTimeline, setIntentTimeline] = useState<IntentCycleTimelineEntry[]>([]);
+  const [intentTimelineLoading, setIntentTimelineLoading] = useState(true);
+  const [intentTimelineError, setIntentTimelineError] = useState(false);
+  const [liveInvalidation, setLiveInvalidation] = useState(0);
   const [refineText, setRefineText] = useState("");
   const [refining, setRefining] = useState(false);
   const [showRefine, setShowRefine] = useState(false);
   const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
+  const selectedBucketEffectRef = useRef<RadarBucket | null>(null);
   // The left column is the signal's agent chat window. `chatUnavailable` is
   // the runtime fallback if the bootstrap fails.
   const [chatUnavailable, setChatUnavailable] = useState(false);
@@ -370,10 +366,10 @@ export default function IntentDetailPage() {
     activeIntentIdRef.current = intentId;
     lifecycleGenerationRef.current += 1;
     lifecycleMutationRef.current = null;
+    selectedBucketEffectRef.current = null;
     setArchiveTargetId(null);
     setArchiving(false);
-    clearReactionTimers();
-  }, [intentId, clearReactionTimers]);
+  }, [intentId]);
 
   const scope = useMemo(
     () =>
@@ -393,22 +389,42 @@ export default function IntentDetailPage() {
   /** Monotonic load ids guard every intent-scoped feed against stale responses. */
   const loadSeqRef = useRef(0);
   const activityLoadSeqRef = useRef(0);
+  const timelineLoadSeqRef = useRef(0);
 
-  const loadNegotiationActivity = useCallback(async (showLoading = false) => {
+  const loadIntentCycle = useCallback(async (showLoading = false) => {
     if (!intentId) return;
     const seq = ++activityLoadSeqRef.current;
-    if (showLoading) setNegotiationActivityLoading(true);
+    if (showLoading) setIntentCycleLoading(true);
     try {
-      const groups = await conversationsService.getNegotiationActivity(intentId);
+      const cycle = await conversationsService.getIntentCycle(intentId);
       if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
-      setNegotiationActivity(normalizeNegotiationActivity(groups));
-      setNegotiationActivityError(false);
+      setIntentCycle(cycle);
+      setIntentCycleError(false);
     } catch {
       if (activeIntentIdRef.current !== intentId || activityLoadSeqRef.current !== seq) return;
-      setNegotiationActivityError(true);
+      setIntentCycleError(true);
     } finally {
       if (activeIntentIdRef.current === intentId && activityLoadSeqRef.current === seq) {
-        setNegotiationActivityLoading(false);
+        setIntentCycleLoading(false);
+      }
+    }
+  }, [conversationsService, intentId]);
+
+  const loadIntentTimeline = useCallback(async (showLoading = false) => {
+    if (!intentId) return;
+    const seq = ++timelineLoadSeqRef.current;
+    if (showLoading) setIntentTimelineLoading(true);
+    try {
+      const entries = await conversationsService.getIntentCycleTimeline(intentId);
+      if (activeIntentIdRef.current !== intentId || timelineLoadSeqRef.current !== seq) return;
+      setIntentTimeline(entries);
+      setIntentTimelineError(false);
+    } catch {
+      if (activeIntentIdRef.current !== intentId || timelineLoadSeqRef.current !== seq) return;
+      setIntentTimelineError(true);
+    } finally {
+      if (activeIntentIdRef.current === intentId && timelineLoadSeqRef.current === seq) {
+        setIntentTimelineLoading(false);
       }
     }
   }, [conversationsService, intentId]);
@@ -460,6 +476,9 @@ export default function IntentDetailPage() {
         // Skeleton phase is best-effort — fall through to the full fetch.
       }
     }
+    // Agent-owned buckets deliberately avoid the Opportunity Presenter. Their
+    // rows use the skeleton identity plus durable A2A state below.
+    if (selectedBucket === "agent-handling" || selectedBucket === "waiting") return;
     // Phase 2 (full): presenter text for cache misses; replaces the whole list.
     try {
       const res = await opportunitiesService.getRadarView(baseOptions);
@@ -476,76 +495,87 @@ export default function IntentDetailPage() {
     } finally {
       if (seq === loadSeqRef.current && !preserveExisting) settleLoading();
     }
-  }, [intentId, opportunitiesService]);
+  }, [intentId, opportunitiesService, selectedBucket]);
 
-  const negotiationActivityRevision = useMemo(
-    () => intentNegotiationActivityRevision(negotiations, intentId),
-    [intentId, negotiations],
-  );
-
-  // Ambient negotiation presence (Option C): in-flight negotiations, indexed
-  // by opportunity for card chips and filtered to this signal for the Radar panel.
-  const liveNegotiations = useMemo(
-    () => deriveLiveNegotiations(negotiations, user?.id),
-    [negotiations, user?.id],
-  );
-  const presenceByOpportunity = useMemo(() => {
-    const map = new Map<string, NegotiationPresence>();
-    for (const [opportunityId, item] of liveNegotiationsByOpportunity(liveNegotiations)) {
-      map.set(opportunityId, {
-        conversationId: item.conversationId,
-        latestMove: formatLatestMove(item.lastAction, item.timeAgo),
-        turnCount: item.turnCount,
-        maxTurns: item.maxTurns,
-      });
+  const negotiationByOpportunity = useMemo(() => {
+    const negotiations = new Map<string, IntentCycleSnapshot["negotiations"][number]>();
+    for (const negotiation of intentCycle?.negotiations ?? []) {
+      if (!negotiations.has(negotiation.opportunityId)) {
+        negotiations.set(negotiation.opportunityId, negotiation);
+      }
     }
-    return map;
-  }, [liveNegotiations]);
-  const intentLiveNegotiations = useMemo(
-    () => liveNegotiations.filter((item) => intentId !== undefined && item.intentIds.includes(intentId)),
-    [liveNegotiations, intentId],
-  );
-  /** The warmup card's live lane: one entry per in-flight negotiation on this signal. */
-  const warmupConversations = useMemo<WarmupConversation[]>(() => {
-    const byId = new Map(negotiations.map((conversation) => [conversation.id, conversation]));
-    return intentLiveNegotiations.map((item) => ({
-      id: item.conversationId,
-      counterpartLabel: item.counterpart.name,
-      // The conversation's own creation time — the moment the agents started
-      // talking. `sortTimestamp` is last-activity and would misdate the line.
-      startedAt: byId.get(item.conversationId)?.createdAt ?? null,
-    }));
-  }, [intentLiveNegotiations, negotiations]);
-
+    return negotiations;
+  }, [intentCycle?.negotiations]);
+  const inspectorHrefByOpportunity = useMemo(() => {
+    const hrefs = new Map<string, string>();
+    for (const [opportunityId, negotiation] of negotiationByOpportunity) {
+      hrefs.set(opportunityId, `/i/${intentId}/negotiations/${negotiation.taskId}`);
+    }
+    return hrefs;
+  }, [negotiationByOpportunity, intentId]);
   const refreshLiveRadar = useCallback(() => {
     void loadOpportunities(true);
-    void loadNegotiationActivity();
+    void loadIntentCycle();
+    void loadIntentTimeline();
     // The SSE feed never carries the intent snapshot, so a finished run's final
     // tallies would otherwise sit unread until the next 15s progress poll.
     if (intentId) void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
-  }, [intentId, intentsService, loadNegotiationActivity, loadOpportunities]);
+  }, [intentId, intentsService, loadIntentCycle, loadIntentTimeline, loadOpportunities]);
 
-  // Refresh only the owner-scoped progress snapshot while work is non-terminal;
-  // this intentionally leaves the negotiator chat mounted and untouched.
-  // `blocked` belongs here: a blocked card can only observe its own recovery
-  // (the signal joining an active community) by polling for it.
-  const discoveryStatus = intent?.discoveryProgress?.status;
+  const invalidateLiveIntent = useCallback(() => {
+    setLiveInvalidation((value) => value + 1);
+    refreshLiveRadar();
+  }, [refreshLiveRadar]);
+
   useEffect(() => {
-    // Depend on the status alone, not the whole intent: refetching the intent
-    // replaces the object on every live refresh, which would reset this
-    // interval before it ever fired.
-    if (!intentId || !["queued", "running", "retrying", "blocked"].includes(discoveryStatus ?? "")) return;
-    const timer = window.setInterval(() => {
-      void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
-    }, 15_000);
-    return () => window.clearInterval(timer);
-  }, [intentId, discoveryStatus, intentsService]);
+    return subscribePersonalAgentTurnCompleted((event) => {
+      if (event.intentId === intentId) invalidateLiveIntent();
+    });
+  }, [intentId, invalidateLiveIntent, subscribePersonalAgentTurnCompleted]);
 
-  useRadarLiveRefresh({
-    intentId,
-    activityRevision: negotiationActivityRevision,
-    onRefresh: refreshLiveRadar,
-  });
+  useEffect(() => {
+    if (!user?.id) return;
+    return subscribeConversationMessage(({ message }) => {
+      if (!message.taskId) return;
+      const activity = latestA2AActivity(message, user.id);
+      setIntentCycle((current) => {
+        if (!current || !current.negotiations.some((negotiation) => negotiation.taskId === message.taskId)) return current;
+        return {
+          ...current,
+          negotiations: current.negotiations.map((negotiation) => {
+            if (negotiation.taskId !== message.taskId) return negotiation;
+            const pause = activity.verb === "pause" && activity.pauseReason
+              ? { reason: activity.pauseReason, by: activity.actor }
+              : negotiation.pause;
+            return {
+              ...negotiation,
+              state: activity.verb === "pause" ? "paused" : negotiation.state,
+              pause,
+              latestActivity: {
+                actor: activity.actor,
+                verb: activity.verb,
+                text: activity.text,
+                createdAt: message.createdAt,
+              },
+              updatedAt: message.createdAt,
+            };
+          }),
+        };
+      });
+    });
+  }, [subscribeConversationMessage, user?.id]);
+
+  useEffect(() => {
+    return subscribeIntentDiscoveryProgress((event) => {
+      if (event.intentId === intentId) invalidateLiveIntent();
+    });
+  }, [intentId, invalidateLiveIntent, subscribeIntentDiscoveryProgress]);
+
+  useEffect(() => {
+    return subscribeIntentInvalidation((event) => {
+      if (event.intentId === intentId) invalidateLiveIntent();
+    });
+  }, [intentId, invalidateLiveIntent, subscribeIntentInvalidation]);
 
   useEffect(() => {
     if (!intentId) return;
@@ -563,24 +593,20 @@ export default function IntentDetailPage() {
         if (active) setIntentLoading(false);
       });
     void loadOpportunities();
-    void loadNegotiationActivity(true);
+    void loadIntentCycle(true);
+    void loadIntentTimeline(true);
     return () => {
       active = false;
     };
-  }, [intentId, intentsService, loadOpportunities, loadNegotiationActivity]);
+  }, [intentId, intentsService, loadOpportunities, loadIntentCycle, loadIntentTimeline]);
 
-  const refreshWorkspaceAfterReaction = useCallback(() => {
-    setNegotiatorRefreshVersion((version) => version + 1);
+  useEffect(() => {
+    if (selectedBucketEffectRef.current === null) {
+      selectedBucketEffectRef.current = selectedBucket;
+      return;
+    }
     void loadOpportunities(true);
-  }, [loadOpportunities]);
-
-  const scheduleBoundedWorkspaceRefresh = useCallback(() => {
-    clearReactionTimers();
-    refreshWorkspaceAfterReaction();
-    reactionTimersRef.current = [1_500, 65_000, 90_000, 120_000, 180_000].map((delay) =>
-      setTimeout(() => refreshWorkspaceAfterReaction(), delay),
-    );
-  }, [clearReactionTimers, refreshWorkspaceAfterReaction]);
+  }, [loadOpportunities, selectedBucket]);
 
   const handleArchive = useCallback(async () => {
     if (!archiveTargetId || archiving) return;
@@ -616,9 +642,6 @@ export default function IntentDetailPage() {
             ? { ...current, status: updated.status }
             : current,
         );
-        if (status === "ACTIVE" && updated.status === "ACTIVE") {
-          scheduleBoundedWorkspaceRefresh();
-        }
       } catch {
         if (!isCurrentRequest()) return;
         showError(
@@ -633,7 +656,7 @@ export default function IntentDetailPage() {
         }
       }
     },
-    [intentId, intentsService, scheduleBoundedWorkspaceRefresh, showError],
+    [intentId, intentsService, showError],
   );
 
   /** Feed free-form text to the intent's refine flow and reload matches.
@@ -670,12 +693,15 @@ export default function IntentDetailPage() {
   const bucketOf = useCallback(
     // Local actions (accept/reject in this session) override the fetched status.
     (item: RadarCardItem) =>
-      bucketForStatus(opportunityStatusMap[item.opportunityId] ?? item.status),
-    [opportunityStatusMap],
+      radarBucketForOpportunity(
+        (opportunityStatusMap[item.opportunityId] as OpportunityLifecycleStatus | undefined) ?? item.status,
+        negotiationByOpportunity.get(item.opportunityId),
+      ),
+    [opportunityStatusMap, negotiationByOpportunity],
   );
 
   const bucketCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
+    const counts: Partial<Record<RadarBucket, number>> = {};
     for (const item of opportunities) {
       const b = bucketOf(item);
       counts[b] = (counts[b] ?? 0) + 1;
@@ -687,9 +713,6 @@ export default function IntentDetailPage() {
     () => opportunities.filter((item) => bucketOf(item) === selectedBucket),
     [opportunities, bucketOf, selectedBucket],
   );
-  const hasActualNegotiationActivity = negotiationActivity.length > 0
-    || opportunities.some((item) => bucketOf(item) === "negotiating");
-
   const title = (
     intent?.summary && intent.summary.trim().length > 0
       ? intent.summary
@@ -809,7 +832,7 @@ export default function IntentDetailPage() {
                         </span>
                         live
                       </span>
-                      <span>background matching on — negotiation activity appears in Radar</span>
+                      <span>background matching on — the PersonalAgent cycle is shown below</span>
                     </>
                   )}
                   {lifecycleStatus === "PAUSED" && (
@@ -971,18 +994,21 @@ export default function IntentDetailPage() {
                     className="min-h-0 flex-1"
                   >
                     {user?.id && (
-                      <IntentMemoryStrip intentId={intentId} userId={user.id} />
+                      <IntentMemoryStrip intentId={intentId} userId={user.id} liveInvalidation={liveInvalidation} />
                     )}
                     <IntentNegotiatorChat
                       key={intentId}
                       intentId={intentId}
-                      refreshVersion={negotiatorRefreshVersion}
+                      timelineEntries={intentTimeline}
+                      timelineLoading={intentTimelineLoading}
+                      timelineError={intentTimelineError}
                       opportunityStatusMap={opportunityStatusMap}
                       opportunityActionLoading={opportunityActionLoading}
                       onOpportunityAction={(id, action, userId, role, name) =>
                         handleOpportunityAction(id, action, userId, role, name)
                       }
                       onUnavailable={() => setChatUnavailable(true)}
+                      onLiveInvalidation={invalidateLiveIntent}
                     />
                   </Panel>
                 ) : (
@@ -1025,10 +1051,11 @@ export default function IntentDetailPage() {
                 </DismissableLayer>
                 </FocusScope>
 
-                <div data-testid="radar-column" inert={sheetOverlayActive} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:flex-1">
+                <div data-testid="radar-column" inert={sheetOverlayActive} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
                 <Panel
                   title="Radar"
                   description="Opportunities the network surfaced for this signal."
+                  className="flex-1"
                   media={
                     <img
                       src="/eye.webp"
@@ -1039,29 +1066,16 @@ export default function IntentDetailPage() {
                     />
                   }
                 >
-                  {intentLiveNegotiations.length > 0 && (
-                    <div className="mb-3 shrink-0 space-y-2" data-testid="radar-live-negotiations">
-                      {intentLiveNegotiations.map((item) => (
-                        <button
-                          key={item.conversationId}
-                          type="button"
-                          onClick={() => navigate(`/negotiations/${item.conversationId}`)}
-                          aria-label={`Watch the negotiation with ${item.counterpart.name}`}
-                          className="w-full rounded-md border border-amber-200 bg-amber-50/50 px-3 py-2.5 text-left transition-colors hover:bg-amber-50"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="truncate text-xs font-semibold text-gray-900">
-                              {item.counterpart.name}
-                            </span>
-                            <NegotiationPresenceChip turnCount={item.turnCount} maxTurns={item.maxTurns} />
-                          </div>
-                          <p className="mt-1 text-[11px] text-[#3D3D3D]">
-                            {formatLatestMove(item.lastAction, item.timeAgo)}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <div className="mb-3 shrink-0 space-y-3 lg:max-h-64 lg:overflow-y-auto lg:pr-1">
+                    <IntentCycleInspector
+                      intentId={intentId ?? ""}
+                      cycle={intentCycle}
+                      loading={intentCycleLoading}
+                      error={intentCycleError}
+                      discoveryProgress={intent?.discoveryProgress}
+                      networks={intent?.networks}
+                    />
+                  </div>
                   <div className="mb-3 flex shrink-0 flex-wrap gap-1.5">
                     {RADAR_BUCKETS.map((bucket) => (
                       <StatPill
@@ -1075,18 +1089,6 @@ export default function IntentDetailPage() {
                     ))}
                   </div>
                   <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pr-1">
-                  {selectedBucket === "negotiating" && (
-                    <div className="mb-3">
-                      {negotiationActivity.length === 0 && !hasActualNegotiationActivity && !negotiationActivityLoading && !negotiationActivityError
-                        && (intent?.warming || intent?.discoveryProgress) ? (
-                          <DiscoveryWarmupLog
-                            progress={intent?.discoveryProgress}
-                            communities={intent?.networks ?? []}
-                            conversations={warmupConversations}
-                          />
-                        ) : <NegotiationActivity groups={negotiationActivity} loading={negotiationActivityLoading} error={negotiationActivityError} />}
-                    </div>
-                  )}
                   {opportunitiesLoading ? (
                     <div className="space-y-3" data-testid="radar-skeleton">
                       <OpportunitySkeleton />
@@ -1110,45 +1112,60 @@ export default function IntentDetailPage() {
                   ) : (
                     <div className="space-y-3">
                       {visibleOpportunities.map((item) => (
-                        <OpportunityCard
-                          key={item.opportunityId}
-                          card={item}
-                          currentStatus={
-                            opportunityStatusMap[item.opportunityId]
-                          }
-                          negotiationPresence={presenceByOpportunity.get(item.opportunityId)}
-                          onPrimaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                            counterpartName,
-                          ) =>
-                            handleOpportunityAction(
+                        selectedBucket === "agent-handling" || selectedBucket === "waiting" ? (
+                          <AgentHandlingOpportunity
+                            key={item.opportunityId}
+                            item={item}
+                            negotiation={negotiationByOpportunity.get(item.opportunityId)}
+                            waiting={selectedBucket === "waiting"}
+                            inspectorHref={inspectorHrefByOpportunity.get(item.opportunityId)}
+                          />
+                        ) : (
+                          <OpportunityCard
+                            key={item.opportunityId}
+                            card={item}
+                            currentStatus={
+                              opportunityStatusMap[item.opportunityId]
+                            }
+                            negotiationInspectorHref={inspectorHrefByOpportunity.get(item.opportunityId)}
+                            negotiationState={negotiationByOpportunity.get(item.opportunityId)}
+                            pendingActionable={
+                              ((opportunityStatusMap[item.opportunityId] as OpportunityLifecycleStatus | undefined) ?? item.status) !== "pending"
+                              || negotiationByOpportunity.get(item.opportunityId)?.state === "completed"
+                            }
+                            onPrimaryAction={(
                               oppId,
-                              "accepted",
                               userId,
                               viewerRole,
                               counterpartName,
-                            )
-                          }
-                          onSecondaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                            counterpartName,
-                          ) =>
-                            handleOpportunityAction(
+                            ) =>
+                              handleOpportunityAction(
+                                oppId,
+                                "accepted",
+                                userId,
+                                viewerRole,
+                                counterpartName,
+                              )
+                            }
+                            onSecondaryAction={(
                               oppId,
-                              "rejected",
                               userId,
                               viewerRole,
                               counterpartName,
-                            )
-                          }
-                          isLoading={
-                            !!opportunityActionLoading[item.opportunityId]
-                          }
-                        />
+                            ) =>
+                              handleOpportunityAction(
+                                oppId,
+                                "rejected",
+                                userId,
+                                viewerRole,
+                                counterpartName,
+                              )
+                            }
+                            isLoading={
+                              !!opportunityActionLoading[item.opportunityId]
+                            }
+                          />
+                        )
                       ))}
                     </div>
                   )}

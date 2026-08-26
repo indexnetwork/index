@@ -20,6 +20,110 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 36.0.0 - 2026-08-24
+
+### Breaking
+
+- **Intent matches and negotiations are isolated by their exact intent pair.**
+  `persistIntentScopedOpportunityIfNetworkEligible` no longer returns the
+  `pair_active_negotiation` conflict: any opportunity for the same two intent
+  seats deduplicates persistence. Hosts must allow different intent
+  pairs between the same users to persist and negotiate independently; task
+  creation remains idempotent per opportunity. Counterparty seats are bound
+  from authoritative discovery candidates rather than evaluator-generated
+  intent IDs, and intent-scoped persistence fails closed on an unbound seat.
+
+- **Negotiation drains are keyed by durable task generations and tasks bind
+  both seats at creation.** `NegotiationTaskMetadata` gains
+  `drainGeneration`; `NegotiationGraphDatabase.openNegotiationTask` accepts
+  the complete `seats` map; `NegotiationRoundReflectJobData` gains
+  `generation`; `NegotiationTaskState` includes the active `submitted` state;
+  and `negotiationRoundReflectJobId` now requires its generation. Reopening a
+  paused task advances its generation, so one pause is deduplicated exactly
+  once without suppressing a later pause in the same round.
+
+### Changed
+
+- PersonalAgent intent turns reload durable negotiation state after each
+  action, cannot finish while an own `ready_for_verdict` pause remains, and
+  expose counterparty pauses only through canonical public status prose.
+- Only the seat owning a `ready_for_verdict` pause may resolve it;
+  counterparty-owned pauses cannot be re-opened, and kickoff strategy copy
+  cannot bypass canonical public status narration.
+- The negotiation watchdog retries reflect delivery for durable
+  `ready_for_verdict` pauses, and intent-cycle projections count both
+  `submitted` and `working` tasks as active.
+- Verdict completion now atomically records the outcome, completes the task,
+  and preserves any concurrent terminal human decision. Post-verdict reflect
+  delivery remains durably marked until it succeeds, terminal owner actions
+  left beside active tasks are recovered by the watchdog, and bounded sweeps
+  rotate checked rows so newer pauses cannot starve.
+- Scheduled opportunity expiry now closes any active negotiation through a
+  distinct system lane, without fabricating an owner verdict, so expired work
+  cannot hold either seat's round open.
+
+## 35.0.0 - 2026-08-24
+
+### Breaking
+
+- **PersonalAgent questions use the canonical structured question contract.**
+  `message_user.options` is replaced by `message_user.questions` on decided
+  and executed acts and on the conversation delivery port. Questions are
+  safety-checked and delivered separately from the message introduction so
+  clients can render the guided question UI directly. The exported
+  `normalizeMessageOptions` helper is replaced by `normalizeMessageQuestions`.
+
+### Added
+
+- `PersonalAgentActivity` and `PersonalAgentActivityPort` provide bounded,
+  user-facing progress updates for live intent turns without exposing internal
+  identifiers, model reasoning, or private context.
+
+## 34.0.1 - 2026-08-24
+
+### Changed
+
+- All canonical agent defaults now use Google Gemini 3.7 Flash with its
+  required low reasoning effort. Non-Gemini model overrides do not receive
+  Gemini-specific reasoning parameters.
+
+## 34.0.0 - 2026-08-24
+
+### Breaking
+
+- **PersonalAgent intent turns use one sequential judgment choice at a time.**
+  `PersonalAgentJudgment.decide(context)` and
+  `PersonalAgentJudgment.reply(context, executed)` are replaced by
+  `next(context, executed, nonDurable?)`. Each call returns one
+  `PersonalAgentDecidedAct`; completed effects and refused irreversible calls
+  inform the next choice before the turn ends with `message_user`.
+- **The dedicated `ask` act is removed.** Questions are ordinary
+  `message_user` responses, so an unresolved question about one matter no
+  longer blocks an independent action on another. `PersonalAgentDecidedAct`
+  and `PersonalAgentExecutedAct` no longer include `ask`, and executed
+  `message_user` acts no longer carry reply-stage `stage` or `fallback`
+  fields.
+- **Executed kickoff results gain required attempt accounting.** Every
+  `PersonalAgentExecutedAct` with `tool: 'kickoff'` now includes `attempted`
+  and `failed` alongside `opened`.
+- **The separate reply-stage API is deleted.** Removed root exports:
+  `PERSONAL_AGENT_REPLY_FALLBACK`, `renderPersonalAgentReplyStage`,
+  `validateDecidedActs`, `PersonalAgentReply`, and
+  `PersonalAgentReplyFallbackReason`. Use the singular `validateDecidedAct`
+  for one choice.
+
+### Added
+
+- `PersonalAgentNonDurableObservation`, the feedback shape for an
+  irreversible tool choice refused before any write or ledger entry.
+
+### Changed
+
+- Intent-scope events now share one bounded, result-informed conversational
+  tool loop. Repeated irreversible calls are refused against the turn's
+  snapshot, and a failure after durable work or tool-budget exhaustion ends
+  with honest terminal copy instead of retrying earlier effects.
+
 ## 33.0.0 - 2026-08-24
 
 ### Breaking

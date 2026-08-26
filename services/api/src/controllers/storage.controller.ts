@@ -1,17 +1,13 @@
 import busboy from 'busboy';
 import path from 'path';
 import { Readable } from 'stream';
-import { v4 as uuidv4 } from 'uuid';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
-import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { StorageService } from '../services/storage.service';
-import { fileService } from '../services/file.service';
 import { validateFileByMetadata, FILE_SIZE_LIMITS } from '../lib/uploads.config';
-import { normalizeExtension } from '../lib/storage.utils';
 import { log } from '../lib/log';
-import type { FileRecord } from '../types/files.types';
 
 const logger = log.controller.from('storage');
 
@@ -20,7 +16,7 @@ type ParsedFile = { filename: string; mimeType: string; buffer: Buffer };
 function parseMultipartFile(
   req: Request,
   fieldName = 'file',
-  sizeLimit = FILE_SIZE_LIMITS.GENERAL
+  sizeLimit = FILE_SIZE_LIMITS.AVATAR
 ): Promise<ParsedFile> {
   return new Promise((resolve, reject) => {
     const contentType = req.headers.get('content-type') || '';
@@ -85,166 +81,11 @@ function parseMultipartFile(
 }
 
 /**
- * Unified storage controller handling all file operations.
- * - Library files: private, requires auth, streams content
- * - Avatars/index-images: public via presigned URL redirects
+ * Storage controller for avatar and network image uploads.
  */
 @Controller('/storage')
 export class StorageController {
   constructor(private storage: StorageService) {}
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Library Files (Private, Auth Required)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Upload a library file to S3.
-   * POST /api/storage/files
-   */
-  @Post('/files')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async uploadFile(req: Request, user: AuthenticatedUser): Promise<Response | object> {
-    let parsed: ParsedFile;
-    try {
-      parsed = await parseMultipartFile(req);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Invalid multipart body';
-      return Response.json({ error: message }, { status: 400 });
-    }
-
-    const { filename, mimeType, buffer } = parsed;
-    const size = buffer.length;
-
-    const validation = validateFileByMetadata(filename, mimeType, size, 'general');
-    if (!validation.isValid) {
-      return Response.json(
-        { error: validation.message || 'File validation failed' },
-        { status: 400 }
-      );
-    }
-
-    const fileId = uuidv4();
-    const ext = path.extname(filename).replace(/^\./, '');
-
-    try {
-      const key = await this.storage.uploadFile(buffer, user.id, fileId, ext, mimeType);
-
-      const inserted = await fileService.createFile({
-        id: fileId,
-        name: filename,
-        size: BigInt(size),
-        type: mimeType,
-        userId: user.id,
-      });
-
-      const fileRecord: FileRecord = {
-        id: inserted.id,
-        name: inserted.name,
-        size: inserted.size.toString(),
-        type: inserted.type,
-        createdAt: inserted.createdAt.toISOString(),
-        url: key,
-      };
-
-      logger.info('File uploaded', { userId: user.id, fileId, name: filename, size });
-
-      return { message: 'File uploaded successfully', file: fileRecord };
-    } catch (err) {
-      logger.error('File upload failed', {
-        userId: user.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return Response.json({ error: 'Failed to upload file' }, { status: 500 });
-    }
-  }
-
-  /**
-   * List library files for the authenticated user.
-   * GET /api/storage/files
-   */
-  @Get('/files')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async listFiles(req: Request, user: AuthenticatedUser): Promise<object> {
-    const url = new URL(req.url);
-    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '100', 10)));
-
-    const result = await fileService.listFiles(user.id, { page, limit });
-
-    const files: FileRecord[] = result.files.map((f) => ({
-      id: f.id,
-      name: f.name,
-      size: f.size.toString(),
-      type: f.type,
-      createdAt: f.createdAt.toISOString(),
-      url: `files/${user.id}/${f.id}.${normalizeExtension(path.extname(f.name))}`,
-    }));
-
-    return { files, pagination: result.pagination };
-  }
-
-  /**
-   * Download a library file (streams content from S3).
-   * GET /api/storage/files/:id
-   */
-  @Get('/files/:id')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async downloadFile(
-    _req: Request,
-    user: AuthenticatedUser,
-    params: { id: string }
-  ): Promise<Response> {
-    const file = await fileService.getById(params.id, user.id);
-    if (!file) {
-      return Response.json({ error: 'File not found' }, { status: 404 });
-    }
-
-    const ext = normalizeExtension(path.extname(file.name));
-    const key = `files/${user.id}/${file.id}.${ext}`;
-
-    try {
-      const buffer = await this.storage.downloadFile(key);
-      const safeName = file.name.replace(/["\\\r\n]/g, '_');
-      return new Response(buffer, {
-        status: 200,
-        headers: {
-          'Content-Type': file.type,
-          'Content-Length': String(buffer.length),
-          'Content-Disposition': `attachment; filename="${safeName}"`,
-          'Cache-Control': 'private, max-age=3600',
-        },
-      });
-    } catch (err) {
-      logger.error('File download failed', {
-        userId: user.id,
-        fileId: params.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return Response.json({ error: 'Failed to download file' }, { status: 500 });
-    }
-  }
-
-  /**
-   * Soft-delete a library file.
-   * DELETE /api/storage/files/:id
-   */
-  @Delete('/files/:id')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async deleteFile(
-    _req: Request,
-    user: AuthenticatedUser,
-    params: { id: string }
-  ): Promise<Response> {
-    const deleted = await fileService.softDelete(params.id, user.id);
-    if (!deleted) {
-      return Response.json({ error: 'File not found' }, { status: 404 });
-    }
-    return Response.json({ success: true });
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Avatars (Upload: Auth, Serve: Public via Presigned)
-  // ─────────────────────────────────────────────────────────────────────────
 
   /**
    * Upload an avatar image to S3.
@@ -302,10 +143,6 @@ export class StorageController {
     return this.servePublicFile(key);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Index Images (Upload: Auth, Serve: Public via Presigned)
-  // ─────────────────────────────────────────────────────────────────────────
-
   /**
    * Upload an index/network image to S3.
    * POST /api/storage/index-images
@@ -361,10 +198,6 @@ export class StorageController {
     const key = `index-images/${params.userId}/${params.filename}`;
     return this.servePublicFile(key);
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Helpers
-  // ─────────────────────────────────────────────────────────────────────────
 
   private async servePublicFile(key: string): Promise<Response> {
     try {

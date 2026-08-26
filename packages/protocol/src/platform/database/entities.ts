@@ -172,7 +172,7 @@ export interface CreateIntentData {
   /** Network IDs to associate with (optional, uses dynamic scoping if empty) */
   networkIds?: string[];
   /** Source type for provenance tracking */
-  sourceType?: 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment';
+  sourceType?: 'integration' | 'discovery_form' | 'enrichment';
   /** Source ID for provenance tracking */
   sourceId?: string;
   /** Confidence score from inference (0-1, required) */
@@ -587,9 +587,7 @@ export interface OpportunityNetworkEligibility {
   triggerIntentId?: string;
 }
 
-export type OpportunityDedupConflictReason =
-  | 'same_trigger_recent_duplicate'
-  | 'pair_active_negotiation';
+export type OpportunityDedupConflictReason = 'same_intent_pair_duplicate';
 
 export interface OpportunityDedupConflict {
   reason: OpportunityDedupConflictReason;

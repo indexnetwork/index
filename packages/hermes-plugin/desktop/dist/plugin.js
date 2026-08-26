@@ -331,9 +331,9 @@ window.__INDEX_NETWORK_DESKTOP_ENV__ = DESKTOP_ENV;
     let text = value.replace(SOCIAL_SCHEME, "").replace(/^\/\//, "");
     text = text.replace(/^www\./i, "");
     const cut = text.search(/[/?#]/);
-    const host = (cut === -1 ? text : text.slice(0, cut)).toLowerCase().replace(/\.$/, "");
+    const bareHost = (cut === -1 ? text : text.slice(0, cut)).toLowerCase().replace(/\.$/, "");
     const path = (cut === -1 ? "" : text.slice(cut)).replace(/\/+$/, "");
-    return { host: host, path: path };
+    return { host: bareHost, path: path };
   }
 
   function platformForHost(host) {

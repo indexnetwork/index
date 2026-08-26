@@ -4,6 +4,7 @@ import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, NETWORK_ID, OPPORTUN
 import type { NegotiationTurnAuthor, NegotiationTurnAuthorInput } from "../../internal/negotiations/negotiation.turn-author.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema } from "../../internal/negotiations/negotiation.turn.js";
 import type { NegotiationAuthoredTurn, NegotiationTurn } from "../../internal/negotiations/negotiation.turn.js";
+import { maybeEnqueueRoundReflect } from "../../internal/negotiations/negotiation.round-reflect.js";
 import { Negotiations } from "../negotiations.js";
 
 /**
@@ -60,6 +61,72 @@ class ScriptedTurnAuthor implements NegotiationTurnAuthor {
 }
 
 describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
+  test("records an author failure without falsely blaming a silent counterparty", async () => {
+    const host = new FakeNegotiationHost();
+    const graph = new Negotiations({
+      database: host.database,
+      author: { authorTurn: async () => { throw new Error("provider unavailable"); } },
+    }).createGraph();
+
+    const result = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+
+    expect(result).toMatchObject({ status: "paused", pause: { reason: "open_failed" } });
+    expect(host.taskFor(result.negotiationId).metadata.pause).toMatchObject({
+      reason: "open_failed",
+      failure: "provider_unavailable",
+      failureDetail: "Error: provider unavailable",
+    });
+  });
+
+  test("a submitted passive-round sibling prevents an early all-paused wake", async () => {
+    const host = new FakeNegotiationHost();
+    const passiveIntentId = "intent-bob-1";
+    const metadata = (opportunityId: string) => ({
+      type: "negotiation" as const,
+      opportunityId,
+      sourceUserId: SOURCE_USER_ID,
+      candidateUserId: CANDIDATE_USER_ID,
+      initiatorUserId: SOURCE_USER_ID,
+      networkId: NETWORK_ID,
+      seats: { [passiveIntentId]: { userId: CANDIDATE_USER_ID, round: 0 } },
+      drainGeneration: 0,
+    });
+    const paused = await host.createNegotiationTask({
+      conversationId: "conversation-paused",
+      briefs: {},
+      metadata: metadata("opportunity-paused"),
+    });
+    const submitted = await host.createNegotiationTask({
+      conversationId: "conversation-submitted",
+      briefs: {},
+      metadata: metadata("opportunity-submitted"),
+    });
+    await host.database.updateNegotiationTaskState(paused.id, "paused", {
+      reason: "needs_principal",
+      pausedBy: CANDIDATE_USER_ID,
+    });
+    host.tasks.set(submitted.id, { ...submitted, state: "submitted" });
+
+    const check = { userId: CANDIDATE_USER_ID, intentId: passiveIntentId, round: 0 };
+    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, check);
+    expect(host.reflectJobs).toEqual([]);
+
+    host.tasks.set(submitted.id, {
+      ...host.taskFor(submitted.id),
+      state: "paused",
+      metadata: {
+        ...host.taskFor(submitted.id).metadata,
+        pause: { reason: "needs_principal", pausedBy: CANDIDATE_USER_ID },
+      },
+    });
+    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, check);
+
+    expect(host.reflectJobs).toEqual([{
+      ...check,
+      generation: "task-1.0_task-2.0",
+    }]);
+  });
+
   test("concurrent opens that both miss the pre-read create one task and one opening outreach", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, [
@@ -102,6 +169,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       author,
       reflectEnqueue: async (job) => { host.enqueueReflect(job); },
     }).createGraph();
+    host.kickoffStartedAt = new Date();
 
     // open: self-play authors the opening turn (alice), loops straight into
     // the reply seat (bob), which immediately pauses per the script —
@@ -120,13 +188,21 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       payload: { question: "What equity split are you open to?" },
     });
     expect(host.taskFor(negotiationId).state).toBe("paused");
-    // The round is not stamped yet, so the all-paused trigger is deliberately
-    // silent: kickoff opens a round's negotiations in parallel and stamps its
-    // size only once they have all settled, and an early first pause seeing
-    // zero working tasks would otherwise dedupe away the round's real reflect.
-    expect(host.reflectJobs).toEqual([]);
+    // The initiating round waits for its size stamp, while Bob's passive seat
+    // is already durably bound and wakes immediately.
+    expect(host.reflectJobs).toEqual([{
+      userId: CANDIDATE_USER_ID,
+      intentId: "intent-bob-1",
+      round: 0,
+      generation: "task-1.0",
+    }]);
     // Kickoff's own post-settle stamp, replayed here by hand.
     await host.database.stampIntentNegotiationRoundSize(INTENT_ID, 1, 1);
+    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, {
+      userId: SOURCE_USER_ID,
+      intentId: INTENT_ID,
+      round: 1,
+    });
 
     // resume with brief: IS-A answered the equity question (read from the task directly,
     // the same privileged path IS-A will use — never from the graph's own public result).
@@ -140,9 +216,12 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       pausedBy: SOURCE_USER_ID,
       payload: { recommendation: "pending" },
     });
-    // Stamped now, and every negotiation of round 1 has stopped: exactly one
-    // reflect job, carrying the signal's owner.
-    expect(host.reflectJobs).toEqual([{ userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1 }]);
+    // The reopened pause is a new durable generation for both bound seats.
+    expect(host.reflectJobs).toEqual(expect.arrayContaining([
+      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1, generation: "task-1.0" },
+      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1, generation: "task-1.1" },
+      { userId: CANDIDATE_USER_ID, intentId: "intent-bob-1", round: 0, generation: "task-1.1" },
+    ]));
 
     // verdict: IS-A promotes to pending — the only terminal write
     const resolved = await graph.invoke({ negotiationId, verdict: "pending", reasoning: "Both sides converged on terms.", byUserId: SOURCE_USER_ID });
@@ -169,7 +248,12 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       { verb: "outreach", message: "Opening.", reasoning: "r" },
       { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const notifications: Array<{ userId: string; intentId: string; negotiationId: string; verdict: "pending" | "reject" }> = [];
+    const graph = new Negotiations({
+      database: host.database,
+      author,
+      resolutionEnqueue: async (input) => { notifications.push(input); },
+    }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
     expect(opened.status).toBe("paused");
@@ -179,10 +263,16 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       payload: { recommendation: "reject" },
     });
 
-    const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject", reasoning: "Not a fit.", byUserId: SOURCE_USER_ID });
+    const resolved = await graph.invoke({ negotiationId: opened.negotiationId, verdict: "reject", reasoning: "Not a fit.", byUserId: CANDIDATE_USER_ID });
     expect(resolved.status).toBe("resolved");
     expect(resolved.verdict).toBe("reject");
     expect(host.opportunityStatusUpdates.at(-1)).toEqual({ id: OPPORTUNITY_ID, status: "rejected" });
+    expect(notifications).toEqual([{
+      userId: SOURCE_USER_ID,
+      intentId: INTENT_ID,
+      negotiationId: opened.negotiationId,
+      verdict: "reject",
+    }]);
   });
 
   test("rejects a verdict from someone who is not a negotiation seat", async () => {
@@ -204,6 +294,86 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     expect(result).toMatchObject({ status: "error", error: "Only a negotiation seat may resolve it" });
     expect(host.outcomeArtifacts.get(opened.negotiationId)).toBeUndefined();
     expect(host.taskFor(opened.negotiationId).state).toBe("paused");
+  });
+
+  test("rejects a verdict from the seat that does not own the ready pause", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedTurnAuthor(host, [
+      { verb: "outreach", message: "Opening.", reasoning: "r" },
+      { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
+    ]);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    expect(host.taskFor(opened.negotiationId).metadata.pause?.pausedBy).toBe(CANDIDATE_USER_ID);
+    host.opportunity.status = "accepted";
+
+    const result = await graph.invoke({
+      negotiationId: opened.negotiationId,
+      verdict: "reject",
+      reasoning: "The other seat cannot decide this pause.",
+      byUserId: SOURCE_USER_ID,
+    });
+
+    expect(result).toMatchObject({
+      status: "error",
+      error: "Only the seat owning a ready_for_verdict pause may resolve it",
+    });
+    expect(host.taskFor(opened.negotiationId).state).toBe("paused");
+  });
+
+  test("a concurrent human verdict wins over PersonalAgent resolution", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedTurnAuthor(host, [
+      { verb: "outreach", message: "Opening.", reasoning: "r" },
+      { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
+    ]);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    host.beforeCompleteNegotiation = () => {
+      host.opportunity.status = "accepted";
+    };
+
+    const result = await graph.invoke({
+      negotiationId: opened.negotiationId,
+      verdict: "reject",
+      reasoning: "The agent's stale decision must not replace the human's.",
+      byUserId: CANDIDATE_USER_ID,
+    });
+
+    expect(result.status).toBe("resolved");
+    expect(host.taskFor(opened.negotiationId).state).toBe("completed");
+    expect(host.opportunity.status).toBe("accepted");
+    expect(host.opportunityStatusUpdates).not.toContainEqual({ id: OPPORTUNITY_ID, status: "rejected" });
+  });
+
+  test("an expired opportunity closes its active task without inventing an owner verdict", async () => {
+    const host = new FakeNegotiationHost();
+    const author = new ScriptedTurnAuthor(host, []);
+    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const task = await host.createNegotiationTask({
+      conversationId: "conversation-expired",
+      briefs: {},
+      metadata: {
+        type: "negotiation",
+        opportunityId: OPPORTUNITY_ID,
+        sourceUserId: SOURCE_USER_ID,
+        candidateUserId: CANDIDATE_USER_ID,
+        initiatorUserId: SOURCE_USER_ID,
+        networkId: NETWORK_ID,
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        drainGeneration: 0,
+      },
+    });
+    host.opportunity.status = "expired";
+
+    const result = await graph.invoke({
+      negotiationId: task.id,
+      close: { reason: "opportunity_expired" },
+    });
+
+    expect(result).toMatchObject({ status: "resolved", turns: [] });
+    expect(host.taskFor(task.id).state).toBe("completed");
+    expect(host.outcomeArtifacts.get(task.id)).toBeUndefined();
   });
 
   test("a system pause (stale-negotiation timeout) does not invoke the author", async () => {
@@ -335,13 +505,11 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(author.calls[2]).toMatchObject({ userId: SOURCE_USER_ID, isOpening: false });
   });
 
-  test("a premise-matched counterparty (same `intent` field as the source) still resolves to the correct seats", async () => {
+  test("refuses to open when a premise-matched counterparty has no owning intent", async () => {
     // The real shape a premise match produces: the counterparty actor's own
     // `intent` field names the intent it matched AGAINST (the source's), not
     // one it owns — so both actors can carry the exact same intent value.
-    // Selecting by `actor.intent === input.intentId` would resolve BOTH
-    // seats to the source, or none at all. Selection must key off who owns
-    // `input.intentId` (via getIntent) and exclude the introducer role.
+    // The source intent cannot be reused as Bob's private signal context.
     const host = new FakeNegotiationHost();
     host.opportunity.actors = [
       { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
@@ -351,10 +519,8 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     const graph = new Negotiations({ database: host.database, author }).createGraph();
 
     const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
-    expect(opened.status).toBe("paused"); // outreach, then bob's fallback pause
-    const task = host.taskFor(opened.negotiationId);
-    expect(task.metadata.sourceUserId).toBe(SOURCE_USER_ID);
-    expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
+    expect(opened).toMatchObject({ status: "error", error: "Counterparty actor intent is not owned by that seat" });
+    expect(host.tasks.size).toBe(0);
   });
 
   test("an introducer actor is never picked as a negotiation seat", async () => {

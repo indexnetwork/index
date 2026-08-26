@@ -57,7 +57,7 @@ interface PersonDefinition {
   interests: string[];
   premises: string[];
   intents: string[];
-  /** Defaults to the next `sandbox-person-NN@index-network.test` address. */
+  /** Defaults to a readable, name-based `@sandbox.test` address. */
   email?: string;
   fixedIds?: SandboxPersonaFixedIds;
 }
@@ -1941,6 +1941,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
   people: [
     {
       name: 'Maya Chen', role: 'Technical Co-founder', location: 'New York, NY',
+      email: 'maya.chen@sandbox.test',
       bio: 'Technical co-founder of a developer-tools startup building observability software for AI agents.',
       skills: ['product engineering', 'AI infrastructure', 'developer tools'], interests: ['B2B SaaS', 'agent reliability', 'seed-stage startups'],
       premises: [
@@ -1957,6 +1958,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
     },
     {
       name: 'Daniel Ruiz', role: 'Founding Engineer', location: 'Brooklyn, NY',
+      email: 'daniel.ruiz@sandbox.test',
       bio: 'Backend and infrastructure engineer who has built multi-tenant data platforms at two B2B SaaS startups.',
       skills: ['distributed systems', 'TypeScript', 'Postgres', 'cloud infrastructure'], interests: ['developer tools', 'early-stage teams', 'data systems'],
       premises: [
@@ -1972,6 +1974,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
     },
     {
       name: 'Aisha Okafor', role: 'Seed Investor', location: 'New York, NY',
+      email: 'aisha.okafor@sandbox.test',
       bio: 'Partner at an early-stage fund investing in developer tools, data infrastructure, and enterprise software.',
       skills: ['seed investing', 'enterprise GTM', 'fundraising'], interests: ['developer tools', 'AI infrastructure', 'B2B SaaS'],
       premises: [
@@ -1987,6 +1990,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
     },
     {
       name: 'Sofia Martinez', role: 'SaaS Founder', location: 'Austin, TX',
+      email: 'sofia.martinez@sandbox.test',
       bio: 'Founder of a workflow-automation company for independent healthcare practices.',
       skills: ['customer discovery', 'healthcare operations', 'B2B product'], interests: ['vertical SaaS', 'enterprise sales', 'founder communities'],
       premises: [
@@ -2002,6 +2006,7 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
     },
     {
       name: 'Ethan Brooks', role: 'Product-Led Growth Advisor', location: 'San Francisco, CA',
+      email: 'ethan.brooks@sandbox.test',
       bio: 'Former product leader who now advises seed-stage B2B founders on activation, onboarding, and early go-to-market systems.',
       skills: ['product strategy', 'activation', 'B2B growth'], interests: ['developer tools', 'vertical SaaS', 'founder coaching'],
       premises: [
@@ -2018,14 +2023,23 @@ const MINIMAL_SCENARIO: ScenarioDefinition = {
   ],
 };
 
-function buildPersonas(scenarios: ScenarioDefinition[], emailPrefix: string): SandboxPersona[] {
-  let personCounter = 0;
+function emailForName(name: string): string {
+  return `${name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ı/g, 'i')
+    .replace(/ø/g, 'o')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.|\.$/g, '')}@sandbox.test`;
+}
+
+function buildPersonas(scenarios: ScenarioDefinition[]): SandboxPersona[] {
   return scenarios.flatMap((scenario) =>
     scenario.people.map((person) => {
-      personCounter += 1;
       return {
         name: person.name,
-        email: person.email ?? `${emailPrefix}-${String(personCounter).padStart(2, '0')}@index-network.test`,
+        email: person.email ?? emailForName(person.name),
         ...(person.fixedIds ? { fixedIds: person.fixedIds } : {}),
         networkKeys: scenario.networks,
         profile: {
@@ -2041,11 +2055,68 @@ function buildPersonas(scenarios: ScenarioDefinition[], emailPrefix: string): Sa
 }
 
 /** The full curated population. */
-export const SANDBOX_PERSONAS: SandboxPersona[] = buildPersonas(SCENARIOS, 'sandbox-person');
+export const SANDBOX_PERSONAS: SandboxPersona[] = buildPersonas(SCENARIOS);
 
 /**
  * Five people in one shared startup network. Every intent belongs to Launch,
  * producing a connected founder / investor / technical-builder negotiation
  * pool rather than isolated category fixtures.
  */
-export const SANDBOX_MINIMAL_PERSONAS: SandboxPersona[] = buildPersonas([MINIMAL_SCENARIO], 'sandbox-minimal');
+export const SANDBOX_MINIMAL_PERSONAS: SandboxPersona[] = buildPersonas([MINIMAL_SCENARIO]);
+
+/**
+ * Stable people and signals used by the paid, live PersonalAgent E2E suite.
+ * They intentionally use email plus intent position: fixture ids are derived
+ * by the seeder and should remain an implementation detail of the fixture.
+ */
+export const SANDBOX_E2E_CASES = {
+  mayaDaniel: {
+    source: { email: 'maya.chen@sandbox.test', intentIndex: 1 },
+    candidate: { email: 'daniel.ruiz@sandbox.test', intentIndex: 0 },
+  },
+  mayaAisha: {
+    source: { email: 'aisha.okafor@sandbox.test', intentIndex: 0 },
+    candidate: { email: 'maya.chen@sandbox.test', intentIndex: 0 },
+  },
+  mayaSofia: {
+    source: { email: 'maya.chen@sandbox.test', intentIndex: 1 },
+    candidate: { email: 'sofia.martinez@sandbox.test', intentIndex: 0 },
+  },
+  unapprovedIntroducer: {
+    opportunityId: 'e8dd4e42-2f66-469d-8c0c-61e0bcb3e56b',
+    source: { email: 'maya.chen@sandbox.test', intentIndex: 1 },
+    candidate: { email: 'sofia.martinez@sandbox.test', intentIndex: 0 },
+    introducer: { email: 'ethan.brooks@sandbox.test' },
+  },
+} as const;
+
+/**
+ * A bounded market for live provider tests: the five designated Launch people
+ * plus these sixteen already-authored personas from the full curated
+ * population (still exported/named "twenty" — see docs/guides/development-
+ * reference.md's "Immutable local playground" — the count drifted by one
+ * pair in exchange for content relevance, see below).
+ */
+// Every name here is plausibly launch-adjacent by content, not just by an
+// authored network tag — a prior version included a nonprofit-grant-writing
+// trio that shared the 'launch' tag but had nothing to do with a dev-tools
+// startup, an "obvious non-fit" rather than a real judgment call. It also
+// included three trios with no shared network with the core five or each
+// other at all, which thinned matches across the whole population.
+const SANDBOX_TWENTY_AUTHORED_NAMES = [
+  'Amara Okafor', 'Julian Foster', 'Pilar Santos', 'Leo Martins', 'Ines Costa',
+  'Duarte Ferreira', 'Sarah Mitchell', 'Idris Campbell', 'Vanessa Hart',
+  'Raj Krishnan', 'Diego Alvarez', 'Carla Romero', 'Marta Vidal', 'Kwame Mensah',
+  'Zuri Boateng', 'Wanjiru Kamau',
+] as const;
+
+export const SANDBOX_TWENTY_PERSONAS: SandboxPersona[] = [
+  ...SANDBOX_MINIMAL_PERSONAS,
+  ...SANDBOX_PERSONAS
+    .filter((persona) => SANDBOX_TWENTY_AUTHORED_NAMES.includes(persona.name as typeof SANDBOX_TWENTY_AUTHORED_NAMES[number]))
+    // One shared network for the whole playground population: candidacy comes
+    // from being in the same network, so everyone is a candidate for everyone.
+    // Whether they actually match is left to real discovery and negotiation
+    // (semantic fit, then agent judgment) — not artificial network segregation.
+    .map((persona) => ({ ...persona, networkKeys: ['launch'] as SandboxNetworkKey[] })),
+];
