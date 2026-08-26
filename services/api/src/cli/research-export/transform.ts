@@ -324,9 +324,7 @@ It is intended for authorized research on matching and negotiation behavior. It 
 
 ## Identifiers
 
-Tenant/user/conversation identifiers are stable HMAC-SHA256 pseudonyms generated for this dump (\`user_\`, \`intent_\`, \`opp_\`, \`session_\`, \`network_\`). Raw platform identifiers are not included.
-
-This HMAC namespace is **not** the Hermes conversation namespace used by \`jshph/agentvillage-sanitized-conversations-edge-esmeralda-2026\`. Do not join \`user_*\` to that dataset's \`tenant_*\` values.
+User, intent, opportunity, and conversation identifiers are stable HMAC-SHA256 pseudonyms generated for this dump (\`user_\`, \`intent_\`, \`opp_\`, \`session_\`, \`network_\`). Raw platform identifiers are not included.
 
 ## Privacy processing
 
