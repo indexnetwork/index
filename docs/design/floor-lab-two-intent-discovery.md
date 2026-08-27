@@ -167,8 +167,22 @@ These solve **repeat discovery minting the same humans**. Not needed when pair i
 2. **Candidate representation** — Store match candidates without opportunity rows (new table) vs. lightweight `draft` row deleted if never opened?
 3. **Cross-intent production** — Production still needs cross-intent-pair rules when one user has multiple active intents; do not delete enricher globally until pair-at-kickoff is default everywhere.
 
+## Archive: carbon copy before removal
+
+The modules listed in **What becomes unnecessary** remain in production until Phase 2 lands. Before any deletion from `indexnetwork/index`, a **frozen snapshot** lives in [`indexnetwork/recycle`](https://github.com/indexnetwork/recycle) under `opportunity-discovery-dedup-merge/`.
+
+That archive records:
+
+- **Why we needed it** — discovery could run many times and mint multiple opportunity rows for the same people/intents; enricher merge, 30-day persist dedup, feed dedup, and cross-intent-pair rules prevented duplicate latent rows and noisy resurfacing.
+- **Why we used it** — production still persists `latent` opportunities at discovery time; PersonalAgent kickoff requires a pre-existing `opportunityId` ([`2026-08-23-personal-agent-and-negotiation-graphs.md`](../plans/2026-08-23-personal-agent-and-negotiation-graphs.md)).
+- **Why we remove it (for the pair path)** — Floor lab and the create-at-kickoff model have a canonical two-intent pair; idempotency is `exists or create` at `openNegotiationTask`, not semantic merge across rediscoveries.
+- **When to restore** — Multi-member networks, multiple active intents per user, introducer flows, enrichment/maintenance rediscovery, or any product that persists opportunities before kickoff and needs cross-run dedup.
+
+Each archive directory includes `SOURCE_COMMIT.txt` (exact `indexnetwork/index` SHA) and the copied source + tests.
+
 ## Related docs
 
 - [Personal agent + negotiation graphs](../plans/2026-08-23-personal-agent-and-negotiation-graphs.md) — `matches_ready`, kickoff, no auto-open at discovery
 - [Opportunity status lifecycle](opportunity-status-lifecycle.md) — atomic open, intent-scoped dedup
 - [Discovery positioning](discovery-positioning.md) — product framing
+- [Recycle archive](https://github.com/indexnetwork/recycle/tree/main/opportunity-discovery-dedup-merge) — frozen dedup/merge implementation
