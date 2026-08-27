@@ -29,8 +29,12 @@
 | Protocol architecture | `cd packages/protocol && bun run architecture:check` |
 | One API spec | `cd services/api && NODE_ENV=test bun test src/path/to/file.spec.ts` |
 | API isolated (needs DB) | `cd services/api && bun run test:isolated` |
-| Generate migration | `cd services/api && bun run db:generate` |
+| Write a migration | By hand in `services/api/drizzle/NNNN_name.sql` + a `drizzle/meta/_journal.json` entry. **Not** `db:generate` — see below. |
 | Apply to test DB | `cd services/api && bun run db:migrate:test` |
+
+**Migrations are hand-written in this repo.** The newest drizzle snapshot is `0128` but migrations run to `0153`; everything since is hand-authored and journal-registered. `db:generate` diffs against that stale snapshot, sees 25 migrations of drift, and blocks on an interactive rename prompt that needs a TTY. Write the `.sql` and append the `_journal.json` entry (`idx`, `version: '7'`, `when` = previous + 1, `tag`, `breakpoints: true`) directly.
+
+**Verifying against the test DB.** The app's Drizzle client refuses to connect unless `TEST_DATABASE_SAFE=1` is loaded (`set -a; . ../../.env.test; set +a`), and it additionally fails a schema-currency check on a pre-existing missing index unrelated to this work. For ad-hoc verification, connect with `new SQL(process.env.DATABASE_URL)` from `bun` and query `information_schema` directly.
 
 **Two known-noise traps — do not chase these:**
 1. `packages/protocol`'s `bun run test` runner *excludes* seven live-model spec files. A green run there does not prove those pass.
@@ -309,10 +313,9 @@ export const discoveryCandidateAdapter = new DiscoveryCandidateDatabaseAdapter()
 
 Wire both methods through `services/api/src/adapters/database.adapter.ts` the same way `createOpportunity` is wired there (delegate to `discoveryCandidateAdapter`).
 
-- [ ] **Step 8: Generate and apply the migration**
+- [ ] **Step 8: Write and apply the migration**
 
-Run: `cd services/api && bun run db:generate`
-Expected: a new `drizzle/0154_*.sql` creating `discovery_match_candidates`, its enum, and the three indexes. Read the generated SQL and confirm it contains `CREATE UNIQUE INDEX "discovery_match_candidates_pair_key_idx"`.
+Hand-write `services/api/drizzle/0154_discovery_match_candidates.sql` and append its `_journal.json` entry.
 
 Run: `cd services/api && bun run db:migrate:test`
 Expected: applies cleanly.
