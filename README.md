@@ -18,7 +18,7 @@ cp .env.example .env
 ## Usage
 
 ```ts
-import { Negotiator } from "./index.ts";
+import { Negotiator } from "@indexnetwork/negotiator";
 
 const negotiator = new Negotiator({ model: "openai/gpt-4o-mini" });
 
@@ -39,13 +39,15 @@ turn to get this side's next message.
 
 ### Local simulation (dev/test only)
 
-For local iteration you can run both sides in-process with `runNegotiation`,
-imported from the `./simulate` subpath. This isn't how a real negotiation
-works (both parties are usually separate agents), it's just a harness:
+`dev/simulate.ts` is a harness for local iteration inside this repo — it
+runs both sides in-process with `runNegotiation`. It isn't published (see
+`files` in `package.json`) and isn't how a real negotiation works (both
+parties are usually separate agents); it's only reachable via a relative
+import from within this repo, e.g. from a script or test:
 
 ```ts
-import { Negotiator } from "@indexnetwork/negotiator";
-import { runNegotiation } from "@indexnetwork/negotiator/simulate";
+import { Negotiator } from "../src/index.ts";
+import { runNegotiation } from "./simulate.ts";
 
 const seller = {
   party: { name: "Seller", objective: "Sell for as much as possible, ideally above $450" },
@@ -66,5 +68,16 @@ for (const entry of transcript) {
   console.log(`[${entry.speaker === 0 ? seller.party.name : buyer.party.name}] ${entry.content}`);
 }
 ```
+
+## Development
+
+```bash
+bun test        # run tests
+bun run typecheck  # tsc --noEmit
+bun run build    # bundle src/index.ts + emit .d.ts into dist/
+```
+
+`dist/` is what gets published (see `files`/`exports` in `package.json`); it's
+git-ignored and rebuilt via `prepublishOnly`, not committed.
 
 This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

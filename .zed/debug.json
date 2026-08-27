@@ -25,11 +25,11 @@
   },
   {
     "adapter": "JavaScript",
-    "label": "Debug negotiation test (Bun)",
+    "label": "Debug simulate test (Bun)",
     "type": "node",
     "request": "launch",
     "runtimeExecutable": "bun",
-    "runtimeArgs": ["test", "src/negotiation.test.ts"],
+    "runtimeArgs": ["test", "dev/simulate.test.ts"],
     "cwd": "$ZED_WORKTREE_ROOT",
     "skipFiles": ["<node_internals>/**"]
   }
