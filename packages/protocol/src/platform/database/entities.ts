@@ -615,6 +615,8 @@ export interface OpportunityQueryOptions {
   scopeType?: 'intent';
   scopeId?: string;
   role?: string;
+  /** When set, filter to opportunities this user is an actor on. Applied in the query so pagination counts only visible rows. */
+  actorUserId?: string;
   limit?: number;
   offset?: number;
   /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. radar view, API). */

@@ -949,7 +949,7 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForNetwork(
     networkId: string,
-    options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
+    options?: { status?: string; statuses?: string[]; actorUserId?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
     // Actor-anchored scope: an opportunity belongs to the network when at
     // least one actor was matched there. Replaces an earlier `context.networkId`
@@ -959,6 +959,16 @@ export class OpportunityDatabaseAdapter {
       SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
       WHERE actor->>'networkId' = ${networkId}
     )`];
+    // Per-actor visibility, as a separate predicate: the network scope asks
+    // whether *some* actor was matched here, this asks whether *this user* is
+    // one of them. Filtering here rather than after the read keeps limit/offset
+    // counting visible rows only.
+    if (options?.actorUserId) {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+        WHERE actor->>'userId' = ${options.actorUserId}
+      )`);
+    }
     if (options?.status && !options?.statuses?.length) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.statuses?.length) {
       conditions.push(inArray(opportunities.status, options.statuses as Array<typeof opportunities.$inferSelect.status>));

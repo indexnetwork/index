@@ -9,7 +9,7 @@
 
 import type { NegotiationGraphDatabase, OpportunityStatus } from '../../platform/database.js';
 import { NEGOTIATION_MAX_TURNS_AMBIENT } from '../../protocol/core.js';
-import { NegotiationTurnSchema, type NegotiationTurn } from "../negotiations/negotiation.turn.js";
+import { NegotiationTurnSchema, turnForViewer, type NegotiationTurnView } from "../negotiations/negotiation.turn.js";
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('NegotiationContextLoader');
@@ -34,7 +34,7 @@ export interface NegotiationContext {
   turnCount: number;
   /** Max turns before the negotiation pauses (`counterparty_silent`). */
   turnCap: number;
-  turns: NegotiationTurn[];
+  turns: NegotiationTurnView[];
   /** Present once the negotiation has paused. */
   pause?: { reason: string; payload?: unknown };
   /** The resolve artifact's private reasoning, present only for its resolver. */
@@ -69,7 +69,7 @@ export async function loadNegotiationContext(
     db.getNegotiationMessages(task.id),
     task.state === 'completed' ? db.getArtifactsForTask(task.id) : Promise.resolve([]),
   ]);
-  const turns = extractTurns(messages);
+  const turns = extractTurns(messages, viewerId);
 
   return {
     status: opportunityStatus,
@@ -77,9 +77,24 @@ export async function loadNegotiationContext(
     turnCount: turns.length,
     turnCap: NEGOTIATION_MAX_TURNS_AMBIENT,
     turns,
-    ...(task.state === 'paused' && task.metadata.pause ? { pause: task.metadata.pause } : {}),
+    ...(task.state === 'paused' && task.metadata.pause
+      ? { pause: pauseForViewer(task.metadata.pause, viewerId) }
+      : {}),
     ...outcomeReasoningForViewer(artifacts, viewerId),
   };
+}
+
+/** Pause payload is private to the pausing seat — other viewers see the reason only. */
+function pauseForViewer(
+  pause: { reason: string; payload?: unknown; pausedBy?: string },
+  viewerId: string,
+): { reason: string; payload?: unknown } {
+  if (pause.pausedBy === viewerId) {
+    return pause.payload !== undefined
+      ? { reason: pause.reason, payload: pause.payload }
+      : { reason: pause.reason };
+  }
+  return { reason: pause.reason };
 }
 
 function outcomeReasoningForViewer(
@@ -95,12 +110,17 @@ function outcomeReasoningForViewer(
   return reasoning ? { outcomeReasoning: reasoning } : {};
 }
 
-function extractTurns(messages: Array<{ parts: unknown[] }>): NegotiationTurn[] {
-  const turns: NegotiationTurn[] = [];
+/** Strip counterparty continue-turn reasoning; the authoring seat keeps its own. */
+function extractTurns(
+  messages: Array<{ senderId: string; parts: unknown[] }>,
+  viewerId: string,
+): NegotiationTurnView[] {
+  const turns: NegotiationTurnView[] = [];
   for (const message of messages) {
     const dataPart = (message.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === 'data');
     const parsed = dataPart ? NegotiationTurnSchema.safeParse(dataPart.data) : undefined;
-    if (parsed?.success) turns.push(parsed.data);
+    if (!parsed?.success) continue;
+    turns.push(turnForViewer(parsed.data, message.senderId, viewerId));
   }
   return turns;
 }

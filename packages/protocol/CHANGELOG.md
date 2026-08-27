@@ -20,6 +20,20 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 37.0.0 - 2026-08-27
+
+### Breaking
+
+- **`read_premises(userId)` is scoped to shared networks.** Cross-user premise
+  reads are denied unless the caller and target share at least one network
+  membership, and return only the premises assigned to a shared network — a
+  premise its author never put into a network you are both in stays private.
+  `includeRetracted` is own-only.
+- **`get_negotiation` redacts counterparty continue-turn `reasoning`.** The
+  shared thread still exposes `message`; each seat keeps its own `reasoning`.
+  Pause payloads remain private to the pausing seat (now also on the presenter
+  loader path).
+
 ## 36.0.0 - 2026-08-24
 
 ### Breaking
