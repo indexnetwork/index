@@ -20,7 +20,7 @@
  * services consume the same compiled graphs without a circular import back
  * into process startup.
  */
-import { NegotiationGraphFactory, PersonalAgentGraphFactory } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory, PersonalAgentGraphFactory, opportunityRef } from '@indexnetwork/protocol';
 import type { MatchesReadyFn, PersonalAgentGraphLike } from '@indexnetwork/protocol';
 
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
@@ -98,7 +98,7 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
     readMatches: async (userId, intentId) => (
       await readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)
     ).map((match) => ({
-      opportunityId: match.opportunityId,
+      ref: opportunityRef(match.opportunityId),
       label: match.label,
       status: match.status,
       ...(match.awaitingIntroducerApproval ? { awaitingIntroducerApproval: true } : {}),

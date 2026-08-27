@@ -356,7 +356,11 @@ Pure type change. Every match is still an `opportunity` ref — no candidate exi
 
 **Interfaces:**
 - Consumes: nothing from Task 1.
-- Produces: `PersonalAgentMatch { ref: { kind: 'candidate' | 'opportunity'; id: string }; label: string; status: string; }` — `opportunityId` and `awaitingIntroducerApproval` are gone.
+- Produces: `PersonalAgentMatch { ref: { kind: 'candidate' | 'opportunity'; id: string }; label: string; status: string; awaitingIntroducerApproval?: boolean }` — `opportunityId` is gone; `matchRefId(match)` and `opportunityRef(id)` are exported from the protocol barrel.
+
+**`awaitingIntroducerApproval` stays until Task 8.** It gates kickoff eligibility at `agent.graph.ts:262` — dropping it here would make unapproved introductions kickoff-eligible, a behavior change in the one task whose entire claim is that behavior is unchanged. It dies with the introducer role in Task 8.
+
+**The `ActionableCounterparty` → `PersonalAgentMatch` seam is in `services/api/src/lib/negotiation/negotiation-graph.ts`**, not in `negotiator-verdict.host.ts`. `readSignalMatches` keeps returning `ActionableCounterparty[]` with its own real-row `opportunityId`; the `readMatches` adapter there projects it to a ref. That is the only host site Task 2 changes.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -442,8 +446,8 @@ Expected: PASS. Behavior is unchanged; only the identifier's shape moved.
 
 - [ ] **Step 6: Run the API side**
 
-Run: `cd services/api && NODE_ENV=test bun test src/lib/agent/tests/signal-matches.host.spec.ts`
-Expected: PASS after updating the spec's assertions from `match.opportunityId` to `match.ref.id`. The `awaitingIntroducerApproval` assertions in that file (lines ~43-45) are deleted with the field — introducers are removed in Task 9, and this field only ever described one.
+Run: `cd services/api && NODE_ENV=test bun test src/lib/agent/tests/signal-matches.host.spec.ts src/lib/negotiation/`
+Expected: PASS unchanged. This spec asserts on `ActionableCounterparty`, which Task 2 does not touch, so it needs no edits.
 
 - [ ] **Step 7: Commit**
 

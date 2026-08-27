@@ -223,9 +223,21 @@ export interface PersonalAgentActivityPort {
   publish(messageId: string, activity: PersonalAgentActivity): Promise<void>;
 }
 
+/**
+ * What a match is addressed by for the whole turn.
+ *
+ * `opportunityId` used to be this identifier, but a match discovery has only
+ * found has no row yet. A second optional id would have made every dedup and
+ * re-check site ask "which one is this?"; one discriminated ref keeps them all
+ * reading a single value, and puts the only branch at the moment of open.
+ */
+export type PersonalAgentMatchRef =
+  | { kind: 'candidate'; id: string }
+  | { kind: 'opportunity'; id: string };
+
 /** One of this signal's matches, as the prompt numbers it. */
 export interface PersonalAgentMatch {
-  opportunityId: string;
+  ref: PersonalAgentMatchRef;
   /** One line the model may read and repeat: counterparty + state. */
   label: string;
   status: string;
@@ -235,6 +247,15 @@ export interface PersonalAgentMatch {
    * not theirs to act on until it is vouched for.
    */
   awaitingIntroducerApproval?: boolean;
+}
+
+/** The id every dedup, re-check and ledger site keys on. */
+export function matchRefId(match: PersonalAgentMatch): string {
+  return match.ref.id;
+}
+
+export function opportunityRef(id: string): PersonalAgentMatchRef {
+  return { kind: 'opportunity', id };
 }
 
 /**

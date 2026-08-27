@@ -5,6 +5,7 @@ import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, OPPORTUNITY_ID, SOUR
 import { PersonalAgentGraphFactory, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_POST_ACTION_FAILURE, PERSONAL_AGENT_STRATEGY_FALLBACK, PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
 import { canonicalCounterpartyStatusProse } from "../../internal/agents/personal-agent/agent.judgment.js";
 import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
+import { matchRefId } from "../../internal/agents/personal-agent/agent.types.js";
 import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
 import { requestContext, setRequestContextStore } from "../../internal/shared/observability/request-context.js";
@@ -81,7 +82,7 @@ class FakePrincipalHost {
       .map((opportunity): PersonalAgentMatch => {
         const introducers = opportunity.actors.filter((actor) => actor.role === "introducer");
         return {
-          opportunityId: opportunity.id,
+          ref: { kind: "opportunity" as const, id: opportunity.id },
           label: `Match on ${opportunity.id}`,
           status: opportunity.status,
           ...(introducers.length > 0 && !introducers.every((actor) => actor.approved === true)
@@ -185,11 +186,11 @@ class ScriptedJudgment implements PersonalAgentJudgment {
 
   async brief(context: PersonalAgentTurnContext, input: { match: PersonalAgentMatch; strategy: string }): Promise<string> {
     this.briefCalls.push({
-      opportunityId: input.match.opportunityId,
+      opportunityId: matchRefId(input.match),
       strategy: input.strategy,
       dossier: context.dossier.map((entry) => entry.text),
     });
-    return `Brief for ${input.match.opportunityId}: ${input.strategy}`;
+    return `Brief for ${matchRefId(input.match)}: ${input.strategy}`;
   }
 
   readonly seatBriefCalls: PersonalAgentSeatBriefInput[] = [];
@@ -1338,7 +1339,7 @@ describe("PersonalAgent — round-4 regressions", () => {
     await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
     // The host reader flags it, so the kickoff never reaches the open at all.
-    expect(judgmentMatches().some((match) => match.opportunityId === SECOND_OPPORTUNITY_ID
+    expect(judgmentMatches().some((match) => matchRefId(match) === SECOND_OPPORTUNITY_ID
       && match.awaitingIntroducerApproval === true)).toBe(true);
     expect(judgment.briefCalls.map((call) => call.opportunityId)).toEqual([OPPORTUNITY_ID]);
     expect(negotiationHost.tasks.size).toBe(1);
@@ -1617,7 +1618,7 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
 
     await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
-    expect(judgment.strategyCalls[0]!.kickoffTargets.map((match) => match.opportunityId)).toEqual([SECOND_OPPORTUNITY_ID]);
+    expect(judgment.strategyCalls[0]!.kickoffTargets.map((match) => matchRefId(match))).toEqual([SECOND_OPPORTUNITY_ID]);
     expect(judgment.briefCalls[0]).toMatchObject({
       opportunityId: SECOND_OPPORTUNITY_ID,
       strategy: "I will put your constraints to each of them and find out who can actually move.",
@@ -1953,8 +1954,8 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     const judgment = new ScriptedJudgment([(context) => {
       // The pending one is listed for the principal to accept, and is NOT a
       // kickoff target; the plain one is both.
-      expect(context.matches.map((match) => match.opportunityId).sort()).toEqual([OPPORTUNITY_ID, SECOND_OPPORTUNITY_ID]);
-      expect(context.kickoffTargets.map((match) => match.opportunityId)).toEqual([OPPORTUNITY_ID]);
+      expect(context.matches.map((match) => matchRefId(match)).sort()).toEqual([OPPORTUNITY_ID, SECOND_OPPORTUNITY_ID]);
+      expect(context.kickoffTargets.map((match) => matchRefId(match))).toEqual([OPPORTUNITY_ID]);
       return [{ tool: "kickoff", reasoning: "Reaching out." }];
     }]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);

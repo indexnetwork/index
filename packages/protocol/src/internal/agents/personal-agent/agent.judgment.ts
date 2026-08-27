@@ -22,6 +22,7 @@ import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema, type Negot
 import { QuestionSchema, type Question } from "../../../protocol/question.js";
 import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
 import type { PersonalAgentBriefInput, PersonalAgentSeatBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
+import { matchRefId } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgent:Judgment");
 
@@ -243,7 +244,7 @@ function renderNonDurableObservations(
     if (observation.kind === "terminal_message_refused") return `- Refused message_user: ${observation.reason}`;
     if (observation.tool === "kickoff") return `- Refused kickoff: ${observation.reason}`;
     if (observation.tool === "accept_opportunity") {
-      const position = context.matches.findIndex((match) => match.opportunityId === observation.opportunityId);
+      const position = context.matches.findIndex((match) => matchRefId(match) === observation.opportunityId);
       const match = position >= 0 ? `match ${position + 1}` : "a match";
       return `- Refused accept_opportunity for ${match}: ${observation.reason}`;
     }
@@ -504,7 +505,7 @@ export function validateDecidedAct(
         if (!act.opportunity || act.opportunity > context.matches.length) return null;
         return {
           tool: "accept_opportunity",
-          opportunityId: context.matches[act.opportunity - 1]!.opportunityId,
+          opportunityId: matchRefId(context.matches[act.opportunity - 1]!),
           ...(act.reason?.trim() ? { reason: act.reason.trim() } : {}),
         };
       }

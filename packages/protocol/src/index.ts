@@ -324,6 +324,13 @@ export type { MatchesReadyFn } from "./internal/opportunities/opportunity.graph.
 export {
   pairKeyOf,
 } from "./internal/opportunities/opportunity.candidates.js";
+export {
+  matchRefId,
+  opportunityRef,
+} from "./internal/agents/personal-agent/agent.types.js";
+export type {
+  PersonalAgentMatchRef,
+} from "./internal/agents/personal-agent/agent.types.js";
 export type {
   CreateAndOpenResult,
   CreateDiscoveryMatchCandidateData,
