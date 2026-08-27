@@ -11,7 +11,8 @@
 
 import type { Id } from '../../platform/database.js';
 import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type CandidateMatch } from './opportunity.state.js';
-import type { CandidateProfile, EvaluatorEntity, EvaluatorInput } from "./opportunity.evaluator.js";
+import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
+import type { MatchExplainerLike } from "./opportunity.match-explainer.js";
 import type { OpportunityGraphDatabase, Opportunity } from '../../platform/database.js';
 import type { Embedder } from '../../platform/discovery/embedder.js';
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
@@ -26,33 +27,6 @@ export type MatchesReadyFn = (input: { userId: string; intentId: string }) => Pr
 
 /** The graph's channel state, as every node sees it. */
 export type OpportunityState = typeof OpportunityGraphState.State;
-
-/** Optional evaluator for testing (avoids LLM calls). */
-export type OpportunityEvaluatorLike = {
-  invoke?: (
-    sourceProfileContext: string,
-    candidates: CandidateProfile[],
-    options: { minScore?: number }
-  ) => Promise<Array<{
-    sourceId: string;
-    candidateId: string;
-    score: number;
-    reasoning: string;
-    valencyRole: 'Agent' | 'Patient' | 'Peer';
-  }>>;
-  invokeEntityBundle?: (input: EvaluatorInput, options: { minScore?: number; returnAll?: boolean; signal?: AbortSignal }) => Promise<Array<{
-    reasoning: string;
-    score: number;
-    actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }>;
-    /**
-     * Diagnostic-only entry under `returnAll`, never itself persisted. A
-     * `not_accepted` rejection carries the model's actors (or a fallback pair)
-     * so the caller can surface it as a fill when too few candidates pass;
-     * `incomplete_actors`/`unsupported_claim` guard drops carry no actors.
-     */
-    rejection?: { candidateId: string; reason: 'not_accepted' | 'incomplete_actors' | 'unsupported_claim' };
-  }>>;
-};
 
 /** Input shape for the HyDE graph invoke call (query-based embedding). */
 export interface HydeGeneratorInvokeInput {
@@ -73,7 +47,6 @@ export interface OpportunityHydeGenerator {
 
 export interface OpportunityGraphThresholdOverrides {
   retrievalMinSimilarity?: number;
-  evaluatorMinScore?: number;
 }
 
 /**
@@ -84,8 +57,8 @@ export interface OpportunityGraphDeps {
   database: OpportunityGraphDatabase;
   embedder: Embedder;
   hydeGenerator: OpportunityHydeGenerator;
-  /** Resolved evaluator: the injected test double, or a real `OpportunityEvaluator`. */
-  evaluatorAgent: OpportunityEvaluatorLike;
+  /** Resolved match explainer: the injected test double, or a real `MatchExplainer`. Used by discovery-path evaluation. */
+  matchExplainer: MatchExplainerLike;
   queueNotification?: QueueOpportunityNotificationFn;
   /**
    * Emits `matches_ready` for a signal that just got matches. Discovery never
@@ -101,7 +74,6 @@ export interface OpportunityGraphDeps {
   /** Host-side P4b stamper. Omitted by manual/introducer/enrichment roots. */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   retrievalMinSimilarity: number;
-  evaluatorMinScore: number;
 }
 
 export const logger = protocolLogger('OpportunityGraph');

@@ -1,49 +1,48 @@
 /**
  * Discovery pipeline, stages 4–5: evaluation and ranking.
  *
- * Evaluation builds an entity bundle from the discoverer plus the top candidates,
- * asks the evaluator to score them, and maps the verdicts back onto graph state.
+ * Evaluation builds an entity bundle from the discoverer plus the top candidates
+ * and asks a lightweight explainer to write the "why this match" reasoning for
+ * each one — it does not judge accept/reject any more (negotiators own that
+ * downstream). Every eligible candidate that survives discovery's own similarity
+ * floor, membership checks, and the rejection cooldown is persisted; the only
+ * reason a candidate is dropped here is an unsupported-claim guard trip.
  */
 
 import type { Id } from '../../platform/database.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { CandidateMatch, EvaluatedOpportunity } from './opportunity.state.js';
-import { OpportunityEvaluator, type EvaluatorEntity, type EvaluatorInput, type EvaluatorRejection } from "./opportunity.evaluator.js";
+import type { EvaluatorEntity, MatchExplainerInput } from "./opportunity.match-explainer.js";
 import { getModelName } from '../shared/agent/model.config.js';
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
 import { mergeOpportunityEvidence } from './opportunity.evidence.js';
-import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_MATCHES } from './discovery.env.js';
 import { buildEvaluatorEvidenceKey, buildNetworkContexts, evaluationLog, networkMembershipPairKey, rankingLog, REJECTION_COOLDOWN_MS, REJECTION_COOLDOWN_SIMILARITY_PENALTY, safeOpportunityGraphError, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
-/** Pairwise verdict shape the evaluator returns, before actors are resolved. */
-type PairwiseOpportunity = {
+/** Explanation coupled to the authoritative discovery candidate that produced it. */
+type CandidateExplanation = {
   reasoning: string;
-  score: number;
-  actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null; evidenceKey?: string | null }>;
-  /** Diagnostic-only entry: the evaluator answered, but nothing persistable came of it. */
-  rejection?: EvaluatorRejection;
+  droppedUnsupportedClaim?: boolean;
+  candidate: CandidateMatch;
 };
-
-/** Pairwise verdict coupled to the authoritative discovery candidate that produced it. */
-type CandidateVerdict = PairwiseOpportunity & { candidate: CandidateMatch };
 
 /** Graph trace entry shape. */
 type TraceEntry = { node: string; detail?: string; data?: Record<string, unknown> };
 
 /**
- * Every candidate in the pool is evaluated — no early stop, no similarity
- * cutoff (pass rate does not track retrieval similarity). This still bounds
- * the pool by rank so a run can never fan out unboundedly against a very
- * large network.
+ * Every candidate in the pool is explained and persisted — no score cutoff,
+ * no similarity cutoff beyond discovery's own retrieval floor. This still
+ * bounds the pool by rank so a run can never fan out unboundedly against a
+ * very large network.
  */
 const MAX_EVALUATION_POOL = 80;
 
 /**
  * Node 3: Evaluation (Entity bundle)
- * Builds entity bundle from source + candidates, invokes entity-bundle evaluator, maps to EvaluatedOpportunity with networkId from entities.
+ * Builds entity bundle from source + candidates, asks the match explainer for
+ * reasoning, and maps every survivor to an `EvaluatedOpportunity`.
  */
 export async function evaluationNode(state: OpportunityState, deps: OpportunityGraphDeps) {
   return timed("OpportunityGraph.evaluation", async () => {
@@ -125,38 +124,26 @@ export async function evaluationNode(state: OpportunityState, deps: OpportunityG
         matchedVia: undefined,
       };
 
-      const minScore = state.targetUserId
-        ? DISCOVERY_EVALUATOR_MIN_SCORE
-        : deps.evaluatorMinScore;
-      const evaluatorSignalConfig = getAbortSignalConfig();
+      const explainerSignalConfig = getAbortSignalConfig();
 
-      const evaluator = typeof (deps.evaluatorAgent as OpportunityEvaluator).invokeEntityBundle === 'function'
-        ? (deps.evaluatorAgent as OpportunityEvaluator)
-        : new OpportunityEvaluator();
-
-      const { passed, filled, trace: traceEntries } = await evaluateCandidatePool({
+      const { evaluatedOpportunities, trace: traceEntries } = await evaluateCandidatePool({
         pool: boundedPool,
         sourceEntity,
         state,
         deps,
         discoveryUserId,
-        minScore,
-        evaluator,
-        evaluatorSignalConfig,
+        explainerSignalConfig,
         agentTimingsAccum,
       });
 
       evaluationLog.verbose('Evaluation complete', {
         evaluatedCandidates: boundedPool.length,
-        passed: passed.length,
-        filled: filled.length,
+        explained: evaluatedOpportunities.length,
       });
 
       return {
         candidates: eligibleCandidates,
-        // Passing opportunities are uncapped; best evaluated rejections fill
-        // the discovery floor so a sparse market still has a usable inbox.
-        evaluatedOpportunities: [...passed, ...filled],
+        evaluatedOpportunities,
         trace: traceEntries,
         agentTimings: agentTimingsAccum,
       };
@@ -188,38 +175,27 @@ interface CandidatePoolArgs {
   state: OpportunityState;
   deps: OpportunityGraphDeps;
   discoveryUserId: string;
-  minScore: number;
-  evaluator: OpportunityEvaluator;
-  evaluatorSignalConfig: ReturnType<typeof getAbortSignalConfig>;
+  explainerSignalConfig: ReturnType<typeof getAbortSignalConfig>;
   agentTimingsAccum: DebugMetaAgent[];
-}
-
-/** An {@link EvaluatedOpportunity} plus retrieval similarity for floor tiebreaking. */
-type ScoredOpportunity = EvaluatedOpportunity & { _similarity: number };
-
-function stripSimilarity(o: ScoredOpportunity): EvaluatedOpportunity {
-  const { _similarity: _drop, ...rest } = o;
-  return rest;
 }
 
 /**
  * Evaluate the whole candidate pool in one parallel round: hydrate entities,
- * invoke the evaluator once per candidate, map verdicts onto opportunities,
- * and emits diagnostics. Passing candidates are returned uncapped; the best
- * evaluated non-passing candidates fill the discovery floor.
+ * invoke the match explainer once per candidate, and map every survivor onto
+ * an `EvaluatedOpportunity`. The only candidates dropped here are ones whose
+ * explanation tripped the unsupported-claim guard.
  */
 async function evaluateCandidatePool(
   args: CandidatePoolArgs,
-): Promise<{ passed: EvaluatedOpportunity[]; filled: EvaluatedOpportunity[]; trace: TraceEntry[] }> {
+): Promise<{ evaluatedOpportunities: EvaluatedOpportunity[]; trace: TraceEntry[] }> {
   const {
     pool, sourceEntity, state, deps, discoveryUserId,
-    minScore, evaluator, evaluatorSignalConfig, agentTimingsAccum,
+    explainerSignalConfig, agentTimingsAccum,
   } = args;
   const evalStart = Date.now();
   const traceEntries: TraceEntry[] = [];
 
   const candidateEntities = await buildCandidateEntities(pool, deps);
-  const similarityByUserId = new Map(pool.map((candidate) => [candidate.candidateUserId, candidate.similarity]));
   const evidenceByEntityKey = new Map<string, OpportunityEvidence[]>();
   const entityKeysByUserId = new Map<string, string[]>();
   for (const e of candidateEntities) {
@@ -237,87 +213,53 @@ async function evaluateCandidatePool(
     const keys = entityKeysByUserId.get(actor.userId) ?? [];
     const intentKey = actor.intentId ? keys.find((key) => key.endsWith(`:${actor.intentId}`)) : undefined;
     if (intentKey) return evidenceByEntityKey.get(intentKey);
-    // Avoid leaking unrelated resource evidence when the evaluator collapsed multiple
-    // candidates for the same user into a profile-only actor.
+    // Avoid leaking unrelated resource evidence when a user has more than one
+    // candidate entity collapsed into a single profile-only actor.
     if (keys.length === 1) return evidenceByEntityKey.get(keys[0]);
     return undefined;
   }
 
   const networkContexts = await buildNetworkContexts([sourceEntity, ...candidateEntities], deps.database);
 
-  // One evaluator call per candidate, fired in parallel — the whole pool, one round.
-  const evaluatorVerdicts = await evaluateInParallel({
-    evaluator, sourceEntity, candidateEntities, candidateMatches: pool, state, discoveryUserId,
-    networkContexts, minScore, evaluatorSignalConfig, agentTimingsAccum, traceEntries,
+  // One explainer call per candidate, fired in parallel — the whole pool, one round.
+  const explanations = await explainInParallel({
+    matchExplainer: deps.matchExplainer, sourceEntity, candidateEntities, candidateMatches: pool, state, discoveryUserId,
+    networkContexts, explainerSignalConfig, agentTimingsAccum, traceEntries,
   });
 
-  // Verdicts the evaluator answered but nothing persistable came of. They carry the
-  // real score and reasoning, so the per-candidate trace can say what happened
-  // instead of claiming the candidate was never evaluated.
-  const rejections = evaluatorVerdicts.filter((op) => op.rejection !== undefined);
-  const pairwiseOpportunities = evaluatorVerdicts.filter((op) => op.rejection === undefined);
+  const dropped = explanations.filter((e) => e.droppedUnsupportedClaim);
+  const kept = explanations.filter((e) => !e.droppedUnsupportedClaim);
 
-  function mapActors(op: CandidateVerdict): EvaluatedOpportunity['actors'] {
-    const { actors, candidate } = op;
-    return actors.map((a) => {
-      const isSource = a.userId === discoveryUserId;
-      if (isSource) {
-        return {
-          userId: a.userId as Id<'users'>,
-          role: a.role,
-          intentId: a.intentId as Id<'intents'> | undefined,
-          networkId: candidate.networkId,
-        };
-      }
-      return {
-        userId: a.userId as Id<'users'>,
-        role: a.role,
+  function toEvaluatedOpportunity(explanation: CandidateExplanation): EvaluatedOpportunity {
+    const { candidate, reasoning } = explanation;
+    const actors: EvaluatedOpportunity['actors'] = [
+      {
+        userId: discoveryUserId as Id<'users'>,
+        role: 'peer',
+        intentId: state.resolvedTriggerIntentId ?? sourceEntity.intents?.[0]?.intentId as Id<'intents'> | undefined,
+        networkId: candidate.networkId,
+      },
+      {
+        userId: candidate.candidateUserId,
+        role: 'peer',
         intentId: candidate.candidateIntentId,
         networkId: candidate.networkId,
-      };
-    });
-  }
-
-  function toScoredOpportunity(op: CandidateVerdict): ScoredOpportunity {
-    const actors = mapActors(op);
+      },
+    ];
     return {
-      reasoning: op.reasoning,
-      score: op.score,
+      reasoning,
+      score: candidate.similarity * 100,
       evidence: mergeOpportunityEvidence(...actors.map(evidenceForActor)),
       actors,
-      _similarity: similarityByUserId.get(op.candidate.candidateUserId) ?? 0,
     };
   }
 
-  const evaluatedOpportunities = pairwiseOpportunities.map(toScoredOpportunity);
-  const passed = evaluatedOpportunities.filter((o) => o.score >= minScore);
-
-  const belowScore = evaluatedOpportunities.filter((o) => o.score < minScore);
-  const rejectedFillers = rejections
-    .filter((op) => op.rejection!.reason === 'not_accepted')
-    .map((op) => {
-      const candidateId = op.candidate.candidateUserId;
-      const actorIds = new Set(op.actors.map((actor) => actor.userId));
-      const actors = actorIds.size === 2 && actorIds.has(discoveryUserId) && actorIds.has(candidateId)
-        ? op.actors
-        : [
-          { userId: discoveryUserId, role: 'peer' as const, intentId: state.resolvedTriggerIntentId ?? sourceEntity.intents?.[0]?.intentId ?? null },
-          { userId: candidateId, role: 'peer' as const, intentId: op.candidate.candidateIntentId ?? null },
-        ];
-      return toScoredOpportunity({ ...op, actors });
-    });
-  const filled = [...belowScore, ...rejectedFillers]
-    .sort((a, b) => (b.score - a.score) || (b._similarity - a._similarity))
-    .slice(0, Math.max(0, DISCOVERY_MIN_MATCHES - passed.length));
-  const filledCandidateIds = new Set(
-    filled.map((opportunity) => opportunity.actors.find((actor) => actor.userId !== discoveryUserId)?.userId),
-  );
+  const evaluatedOpportunities = kept.map(toEvaluatedOpportunity);
 
   evaluationLog.verbose('Pool evaluated', {
-    evaluatedCount: evaluatedOpportunities.length,
-    rejectedCount: rejections.length,
-    passed: passed.length,
-    filled: filled.length,
+    evaluatedCount: explanations.length,
+    explainedCount: evaluatedOpportunities.length,
+    droppedCount: dropped.length,
   });
 
   // Threshold filter trace: how many candidates in the pool were above/below the retrieval similarity threshold.
@@ -331,82 +273,57 @@ async function evaluateCandidatePool(
     data: {
       aboveThreshold,
       belowThreshold,
-      minScore: deps.retrievalMinSimilarity,
+      minSimilarity: deps.retrievalMinSimilarity,
       retrievalMinSimilarity: deps.retrievalMinSimilarity,
-      evaluatorMinScore: minScore,
       poolSize: pool.length,
     },
   });
 
-  // Create a map of evaluated candidates by userId for quick lookup.
-  const evaluatedByUserId = new Map<string, { score: number; reasoning: string }>();
+  const explainedByUserId = new Map<string, { score: number; reasoning: string }>();
   for (const opp of evaluatedOpportunities) {
     const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
     if (candidateActor) {
-      evaluatedByUserId.set(candidateActor.userId, { score: opp.score, reasoning: opp.reasoning });
+      explainedByUserId.set(candidateActor.userId, { score: opp.score, reasoning: opp.reasoning });
     }
   }
-  const rejectedByUserId = new Map<string, { score: number; reasoning: string; reason: EvaluatorRejection['reason'] }>();
-  for (const op of rejections) {
-    const rejection = op.rejection!;
-    rejectedByUserId.set(op.candidate.candidateUserId, {
-      score: op.score,
-      reasoning: op.reasoning,
-      reason: rejection.reason,
-    });
+  const droppedByUserId = new Map<string, true>();
+  for (const explanation of dropped) {
+    droppedByUserId.set(explanation.candidate.candidateUserId, true);
   }
 
   traceEntries.push({
     node: "evaluation",
-    detail: filled.length > 0
-      ? `Evaluated ${candidateEntities.length} candidate(s) → ${passed.length} passed, ${filled.length} filled to reach the ${DISCOVERY_MIN_MATCHES}-match floor (min score ${minScore})`
-      : `Evaluated ${candidateEntities.length} candidate(s) → ${passed.length} passed (min score ${minScore})`,
+    detail: `Explained ${candidateEntities.length} candidate(s) → ${evaluatedOpportunities.length} persisted, ${dropped.length} dropped by claim-safety guard`,
     data: {
       inputCandidates: pool.length,
-      returnedFromEvaluator: evaluatedOpportunities.length,
-      rejectedByEvaluator: rejections.length,
-      passedCount: passed.length,
-      filledCount: filled.length,
-      matchFloor: DISCOVERY_MIN_MATCHES,
-      minScore,
+      explainedCount: evaluatedOpportunities.length,
+      droppedCount: dropped.length,
       durationMs: Date.now() - evalStart,
       model: getModelName("opportunityEvaluator"),
     },
   });
 
-  // Guard drops are not model judgements — surface them so they cannot look like
-  // an evaluator that simply had nothing to say.
-  const guardDropped = rejections.filter((op) => op.rejection!.reason !== 'not_accepted');
-  if (guardDropped.length > 0) {
+  if (dropped.length > 0) {
     traceEntries.push({
       node: "evaluation_dropped",
-      detail: `${guardDropped.length} accepted verdict(s) dropped by evaluator guards`,
+      detail: `${dropped.length} explanation(s) dropped by the unsupported-claim guard`,
       data: {
-        droppedCount: guardDropped.length,
-        drops: guardDropped.map((op) => ({
-          candidateUserId: op.rejection!.candidateId,
-          reason: op.rejection!.reason,
-          score: op.score,
-        })),
+        droppedCount: dropped.length,
+        drops: dropped.map((e) => ({ candidateUserId: e.candidate.candidateUserId })),
       },
     });
   }
 
-  // Individual candidate entries - show ALL candidates that went to evaluator
+  // Individual candidate entries - show ALL candidates that went to the explainer
   for (const entity of candidateEntities) {
     const candidateName = entity.profile?.name || entity.userId.slice(0, 8);
-    const evaluated = evaluatedByUserId.get(entity.userId);
-    const rejected = rejectedByUserId.get(entity.userId);
-    const score = evaluated?.score ?? rejected?.score;
-    const didPass = evaluated !== undefined && evaluated.score >= minScore;
-    const isFilled = filledCandidateIds.has(entity.userId);
-    const status = didPass
-      ? '✓ passed'
-      : isFilled
-        ? `~ filled (score ${score})`
-      : score !== undefined
-          ? `✗ score ${score}`
-          : '✗ no verdict';
+    const explained = explainedByUserId.get(entity.userId);
+    const wasDropped = droppedByUserId.has(entity.userId);
+    const status = explained
+      ? '✓ explained'
+      : wasDropped
+        ? '✗ dropped (unsupported claim)'
+        : '✗ no explanation';
 
     traceEntries.push({
       node: "candidate",
@@ -415,13 +332,10 @@ async function evaluateCandidatePool(
         userId: entity.userId,
         name: candidateName,
         bio: entity.profile?.bio,
-        score: score,
-        passed: didPass,
-        filled: isFilled,
-        reasoning: evaluated?.reasoning
-          ?? rejected?.reasoning
-          ?? 'Evaluator returned no verdict for this candidate',
-        rejectionReason: rejected?.reason,
+        score: explained?.score,
+        explained: !!explained,
+        dropped: wasDropped,
+        reasoning: explained?.reasoning ?? 'No explanation persisted for this candidate',
         matchedVia: entity.matchedVia,
         ragScore: entity.ragScore,
         model: getModelName("opportunityEvaluator"),
@@ -437,7 +351,7 @@ async function evaluateCandidatePool(
     });
   }
 
-  return { passed: passed.map(stripSimilarity), filled: filled.map(stripSimilarity), trace: traceEntries };
+  return { evaluatedOpportunities, trace: traceEntries };
 }
 /** Dedup by userId — when same similarity, prefer index with highest relevancyScore. */
 function dedupeCandidatesByUser(sortedCandidates: CandidateMatch[], state: OpportunityState): CandidateMatch[] {
@@ -491,7 +405,7 @@ async function filterToActiveMemberships(
  * the evaluation pool). This prevents cross-query re-surfacing of
  * false-positive matches that were already caught downstream.
  * The persist-node dedup is still the hard gate; this is a soft guard
- * that reduces evaluator cost and LLM false-positive rate.
+ * that reduces explainer cost and repeat surfacing of already-rejected pairs.
  */
 async function applyRejectionCooldown(
   eligibleCandidates: CandidateMatch[],
@@ -536,7 +450,7 @@ async function applyRejectionCooldown(
     : eligibleCandidates;
 }
 
-/** Hydrate each candidate into the profile/intent shape the evaluator reads. */
+/** Hydrate each candidate into the profile/intent shape the explainer reads. */
 async function buildCandidateEntities(
   batchToEvaluate: CandidateMatch[],
   deps: OpportunityGraphDeps,
@@ -586,22 +500,21 @@ async function buildCandidateEntities(
   );
 }
 
-/** Shared arguments for the two evaluator invocation shapes. */
-interface EvaluateArgs {
-  evaluator: OpportunityEvaluator;
+/** Shared arguments for the explainer invocation. */
+interface ExplainArgs {
+  matchExplainer: OpportunityGraphDeps['matchExplainer'];
   sourceEntity: EvaluatorEntity;
   candidateEntities: EvaluatorEntity[];
   candidateMatches: CandidateMatch[];
   state: OpportunityState;
   discoveryUserId: string;
   networkContexts: Record<string, string>;
-  minScore: number;
-  evaluatorSignalConfig: ReturnType<typeof getAbortSignalConfig>;
+  explainerSignalConfig: ReturnType<typeof getAbortSignalConfig>;
   agentTimingsAccum: DebugMetaAgent[];
 }
 
-/** Build the evaluator input for a given entity set. */
-function buildEvaluatorInput(args: EvaluateArgs, entities: EvaluatorEntity[]): EvaluatorInput {
+/** Build the explainer input for a given entity pair. */
+function buildExplainerInput(args: ExplainArgs, entities: EvaluatorEntity[]): MatchExplainerInput {
   return {
     discovererId: args.discoveryUserId,
     entities,
@@ -611,38 +524,37 @@ function buildEvaluatorInput(args: EvaluateArgs, entities: EvaluatorEntity[]): E
   };
 }
 
-/** Experimental: one LLM call per candidate, all fired in parallel. */
-async function evaluateInParallel(
-  args: EvaluateArgs & { traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> },
-): Promise<CandidateVerdict[]> {
-  const { evaluator, sourceEntity, candidateEntities, candidateMatches, minScore, evaluatorSignalConfig, agentTimingsAccum, traceEntries } = args;
-  evaluationLog.verbose('Running parallel evaluation', { candidates: candidateEntities.length });
+/** One LLM call per candidate, all fired in parallel. */
+async function explainInParallel(
+  args: ExplainArgs & { traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> },
+): Promise<CandidateExplanation[]> {
+  const { matchExplainer, sourceEntity, candidateEntities, candidateMatches, explainerSignalConfig, agentTimingsAccum, traceEntries } = args;
+  evaluationLog.verbose('Running parallel explanation', { candidates: candidateEntities.length });
   const parallelErrors: Array<{ candidateUserId: string; candidateName: string; error: string; durationMs: number }> = [];
 
   const parallelResults = await Promise.all(
     candidateEntities.map((candidateEntity, index) => {
       const candidate = candidateMatches[index];
       if (!candidate) throw new Error('Candidate entity has no discovery provenance');
-      const input = buildEvaluatorInput(args, [sourceEntity, candidateEntity]);
+      const input = buildExplainerInput(args, [sourceEntity, candidateEntity]);
       const _evalStart = Date.now();
       const _traceEmitter = requestContext.getStore()?.traceEmitter;
-      _traceEmitter?.({ type: "agent_start", name: "opportunity-evaluator" });
+      _traceEmitter?.({ type: "agent_start", name: "opportunity-match-explainer" });
       const _candidateName = candidateEntity.profile?.name ?? "Unknown";
-      return evaluator.invokeEntityBundle(input, { minScore, returnAll: true, ...evaluatorSignalConfig })
-        .then((res) => {
+      return matchExplainer.explain(input, explainerSignalConfig)
+        .then((res): CandidateExplanation => {
           const _evalDuration = Date.now() - _evalStart;
-          agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
-          const _topScore = res.length > 0 ? Math.max(...res.map(r => r.score)) : -1;
-          const _summary = _topScore < 0 ? `${_candidateName}: no match` : `${_candidateName}: ${_topScore}`;
-          _traceEmitter?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: _summary });
-          return res.map((opportunity) => ({ ...opportunity, candidate }));
+          agentTimingsAccum.push({ name: 'opportunity.match-explainer', durationMs: _evalDuration });
+          const _summary = res.droppedUnsupportedClaim ? `${_candidateName}: dropped` : `${_candidateName}: explained`;
+          _traceEmitter?.({ type: "agent_end", name: "opportunity-match-explainer", durationMs: _evalDuration, summary: _summary });
+          return { ...res, candidate };
         })
-        .catch((err) => {
+        .catch((err): CandidateExplanation => {
           const _evalDuration = Date.now() - _evalStart;
           const _errMsg = safeOpportunityGraphError(err);
-          agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
-          _traceEmitter?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `${_candidateName}: error — ${_errMsg}` });
-          evaluationLog.warn('Parallel eval failed for candidate', {
+          agentTimingsAccum.push({ name: 'opportunity.match-explainer', durationMs: _evalDuration });
+          _traceEmitter?.({ type: "agent_end", name: "opportunity-match-explainer", durationMs: _evalDuration, summary: `${_candidateName}: error — ${_errMsg}` });
+          evaluationLog.warn('Parallel explanation failed for candidate', {
             candidateUserId: candidateEntity.userId,
             error: _errMsg,
           });
@@ -652,16 +564,16 @@ async function evaluateInParallel(
             error: _errMsg,
             durationMs: _evalDuration,
           });
-          return [] as CandidateVerdict[];
+          return { reasoning: '', droppedUnsupportedClaim: true, candidate };
         });
     })
   );
 
-  // Record trace entries for candidates that failed during parallel evaluation
+  // Record trace entries for candidates that failed during parallel explanation
   if (parallelErrors.length > 0) {
     traceEntries.push({
       node: "evaluation_errors",
-      detail: `${parallelErrors.length}/${candidateEntities.length} candidate evaluation(s) failed`,
+      detail: `${parallelErrors.length}/${candidateEntities.length} candidate explanation(s) failed`,
       data: {
         failedCount: parallelErrors.length,
         totalCandidates: candidateEntities.length,
@@ -675,8 +587,7 @@ async function evaluateInParallel(
     });
   }
 
-  // Each call is already pairwise (source + 1 candidate) — flatten directly
-  return parallelResults.flat();
+  return parallelResults;
 }
 
 /**

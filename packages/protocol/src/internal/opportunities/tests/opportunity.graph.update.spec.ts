@@ -7,11 +7,6 @@ import type { Id } from '../../../platform/database.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
 import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
-import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
-
-const mockEvaluator: OpportunityEvaluatorLike = {
-  invokeEntityBundle: async () => [],
-};
 
 const dummyEmbedder = {
   generate: async () => [],
@@ -96,7 +91,7 @@ describe('opportunity graph — update node (accepted)', () => {
       },
     });
 
-    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, undefined, async () => undefined);
     const result = await operations.updateOpportunityStatus({
       userId: USER_ID,
       opportunityId: OPP_ID,
@@ -120,7 +115,7 @@ describe('opportunity graph — update node (accepted)', () => {
       },
     });
 
-    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, undefined, async () => undefined);
     const result = await operations.updateOpportunityStatus({
       userId: USER_ID,
       opportunityId: OPP_ID,
@@ -146,7 +141,7 @@ describe('opportunity graph — update node (accepted)', () => {
       },
     });
 
-    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, undefined, async () => undefined);
     const result = await operations.updateOpportunityStatus({
       userId: USER_ID,
       opportunityId: OPP_ID,

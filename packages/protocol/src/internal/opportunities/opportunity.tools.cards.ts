@@ -45,7 +45,7 @@ export function stripLeadingNarratorName(remark: string, narratorName: string): 
   }
   return t;
 }
-import type { EvaluatorEntity } from "./opportunity.evaluator.js";
+import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity } from "../../platform/database.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";

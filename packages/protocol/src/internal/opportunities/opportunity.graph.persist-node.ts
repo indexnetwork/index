@@ -366,7 +366,7 @@ function buildIntroductionOpportunity(
 }
 
 /**
- * Discovery path: opportunity_graph source, no introducer, lifecycle guard for agent/patient.
+ * Discovery path: opportunity_graph source, no introducer, every actor is a peer.
  */
 async function buildDiscoveryOpportunity(
   ctx: PersistPathContext,
@@ -388,7 +388,6 @@ async function buildDiscoveryOpportunity(
   }
 
   const actors = toOpportunityActors(evaluated, indexIdForActors as Id<'networks'>, premiseLookup);
-  applyDiscovererLifecycleSwap(actors, state.userId);
 
   const suppressed = await suppressDiscoveryDuplicate(ctx, evaluated);
   if (suppressed) return null;
@@ -411,7 +410,7 @@ async function buildDiscoveryOpportunity(
         {
           type: evaluated.actors.some((a) => a.intentId) ? 'intent_match' : 'profile_match',
           weight: evaluated.score / 100,
-          detail: 'Entity-bundle evaluator',
+          detail: 'Match explainer',
         },
       ],
     },
@@ -425,25 +424,6 @@ async function buildDiscoveryOpportunity(
       evidence: evaluated.evidence ?? [],
     },
   };
-}
-
-/**
- * The discoverer must be the patient so the opportunity shows up in their
- * lifecycle view; swap roles with the counterpart when the evaluator put them
- * in the agent seat. Introduced opportunities keep the evaluator's roles.
- */
-function applyDiscovererLifecycleSwap(actors: OpportunityActor[], discovererUserId: Id<'users'>): void {
-  if (actors.some(a => a.role === 'introducer')) return;
-  const discovererIdx = actors.findIndex(a => a.userId === discovererUserId);
-  if (discovererIdx < 0 || actors[discovererIdx].role !== 'agent') return;
-  const counterpartIdx = actors.findIndex((a, i) => i !== discovererIdx && a.role === 'patient');
-  actors[discovererIdx] = { ...actors[discovererIdx], role: 'patient' };
-  if (counterpartIdx >= 0) {
-    actors[counterpartIdx] = { ...actors[counterpartIdx], role: 'agent' };
-  }
-  persistLog.verbose('Swapped discoverer from agent to patient for lifecycle visibility', {
-    discovererId: discovererUserId,
-  });
 }
 
 /**
