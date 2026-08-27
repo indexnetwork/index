@@ -31,7 +31,10 @@ export class OpenRouterClient {
     this.title = options.title;
   }
 
-  async complete(messages: OpenRouterMessage[]): Promise<string> {
+  async complete(
+    messages: OpenRouterMessage[],
+    options: { jsonResponse?: boolean } = {},
+  ): Promise<string> {
     const response = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
@@ -43,6 +46,9 @@ export class OpenRouterClient {
       body: JSON.stringify({
         model: this.model,
         messages,
+        ...(options.jsonResponse
+          ? { response_format: { type: "json_object" } }
+          : {}),
       }),
     });
 

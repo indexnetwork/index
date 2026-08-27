@@ -144,3 +144,58 @@ describe("Negotiator", () => {
     await expect(negotiator.respond(state)).rejects.toThrow(/no content/);
   });
 });
+
+describe("Negotiator.decide", () => {
+  test("requests JSON output and returns the parsed action/message", async () => {
+    const fetchMock = mockFetchOnce(
+      JSON.stringify({ action: "counter", message: "Let's settle at $400." }),
+    );
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    const decision = await negotiator.decide(state, {
+      allowedActions: ["counter", "accept", "reject"],
+    });
+
+    expect(fetchMock.body.response_format).toEqual({ type: "json_object" });
+    expect(decision).toEqual({ action: "counter", message: "Let's settle at $400." });
+  });
+
+  test("lists the allowed actions in the system prompt", async () => {
+    const fetchMock = mockFetchOnce(
+      JSON.stringify({ action: "accept", message: "Deal." }),
+    );
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    await negotiator.decide(state, { allowedActions: ["accept", "reject"] });
+
+    const systemMessage = fetchMock.body.messages[0];
+    expect(systemMessage.content).toContain("accept, reject");
+  });
+
+  test("throws when the model chooses an action outside allowedActions", async () => {
+    mockFetchOnce(JSON.stringify({ action: "accept", message: "Deal." }));
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    await expect(
+      negotiator.decide(state, { allowedActions: ["counter", "reject"] }),
+    ).rejects.toThrow(/disallowed action/);
+  });
+
+  test("throws when the model does not return valid JSON", async () => {
+    mockFetchOnce("not json");
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    await expect(
+      negotiator.decide(state, { allowedActions: ["counter"] }),
+    ).rejects.toThrow(/did not return valid JSON/);
+  });
+
+  test("throws when the JSON is missing action or message", async () => {
+    mockFetchOnce(JSON.stringify({ action: "counter" }));
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    await expect(
+      negotiator.decide(state, { allowedActions: ["counter"] }),
+    ).rejects.toThrow(/malformed decision/);
+  });
+});

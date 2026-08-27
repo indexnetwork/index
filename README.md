@@ -1,19 +1,51 @@
-# nogotiator
+# @indexnetwork/negotiator
 
 An LLM-enhanced negotiator library, powered by [OpenRouter](https://openrouter.ai).
 
-## Install
+`Negotiator` plays one side of a negotiation: given a party's objective and
+the conversation so far, it returns that party's next message. It doesn't
+run or own the other side of the conversation — the caller owns the
+transcript and calls `respond()` once per turn.
+
+## Installation
 
 ```bash
-bun install
+bun add @indexnetwork/negotiator
 ```
 
-Set your OpenRouter API key (see `.env.example`):
+or with npm/yarn/pnpm:
 
 ```bash
-cp .env.example .env
-# then fill in OPENROUTER_API_KEY
+npm install @indexnetwork/negotiator
 ```
+
+## Configuration
+
+`Negotiator` needs an OpenRouter API key, either passed explicitly or read
+from the `OPENROUTER_API_KEY` environment variable:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+```
+
+| Option    | Type     | Required | Description                                                                 |
+| --------- | -------- | -------- | ---------------------------------------------------------------------------- |
+| `apiKey`  | `string` | No       | OpenRouter API key. Falls back to `OPENROUTER_API_KEY` if omitted.            |
+| `model`   | `string` | No       | OpenRouter model id. Defaults to `openai/gpt-4o-mini`.                        |
+| `referer` | `string` | No       | Sent as `HTTP-Referer`, per [OpenRouter's app attribution](https://openrouter.ai/docs). |
+| `title`   | `string` | No       | Sent as `X-Title`, per OpenRouter's app attribution.                         |
+
+```ts
+const negotiator = new Negotiator({
+  apiKey: "sk-or-...",
+  model: "openai/gpt-4o",
+  referer: "https://example.com",
+  title: "My App",
+});
+```
+
+Constructing a `Negotiator` throws immediately if no API key is available
+from either source.
 
 ## Usage
 
@@ -32,18 +64,24 @@ const reply = await negotiator.respond({
 console.log(reply);
 ```
 
-`Negotiator` represents **one side** of a negotiation. The other party is a
-separate personal agent this package doesn't run or own — the caller (e.g.
-Index Network) owns the shared conversation and calls `respond()` once per
-turn to get this side's next message.
+`respond()` takes a `NegotiationState`:
+
+| Field           | Type                                                   | Description                                                          |
+| --------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
+| `party.name`      | `string`                                                | Name of the party this `Negotiator` speaks for.                     |
+| `party.objective` | `string`                                                | That party's goal, given to the model as context.                   |
+| `history`         | `{ role: "incoming" \| "outgoing", content: string }[]` | Messages so far, oldest first, relative to this party (`"outgoing"` = this party's own past messages, `"incoming"` = the other side's). |
+
+It resolves to a `string`: the next message to send. It throws if the
+OpenRouter request fails or returns no content.
 
 ### Local simulation (dev/test only)
 
 `dev/simulate.ts` is a harness for local iteration inside this repo — it
-runs both sides in-process with `runNegotiation`. It isn't published (see
-`files` in `package.json`) and isn't how a real negotiation works (both
-parties are usually separate agents); it's only reachable via a relative
-import from within this repo, e.g. from a script or test:
+runs both sides of a negotiation in-process with `runNegotiation`. It isn't
+published (see `files` in `package.json`) and isn't how a real negotiation
+works (both parties are usually separate processes); it's only reachable via
+a relative import from within this repo, e.g. from a script or test:
 
 ```ts
 import { Negotiator } from "../src/index.ts";
@@ -72,7 +110,8 @@ for (const entry of transcript) {
 ## Development
 
 ```bash
-bun test        # run tests
+bun install      # install dependencies
+bun test         # run tests
 bun run typecheck  # tsc --noEmit
 bun run build    # bundle src/index.ts + emit .d.ts into dist/
 ```
@@ -81,3 +120,7 @@ bun run build    # bundle src/index.ts + emit .d.ts into dist/
 git-ignored and rebuilt via `prepublishOnly`, not committed.
 
 This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+
+## License
+
+[MIT](./LICENSE)

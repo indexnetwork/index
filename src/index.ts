@@ -3,10 +3,12 @@
 // (e.g. Index Network) drive the conversation and call `respond()` per turn.
 export { Negotiator } from "./negotiator.ts";
 export { OpenRouterClient } from "./openrouter-client.ts";
-export type { NegotiatorOptions } from "./negotiator.ts";
+export type { DecideOptions, NegotiatorOptions } from "./negotiator.ts";
 export type { OpenRouterClientOptions, OpenRouterMessage } from "./openrouter-client.ts";
 export type {
   MessageRole,
+  NegotiationAction,
+  NegotiationDecision,
   NegotiationMessage,
   NegotiationParty,
   NegotiationState,
