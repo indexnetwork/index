@@ -996,16 +996,15 @@ export class OpportunityService {
     // draft/latent and terminal-stale expired/rejected into the community view.
     // Default to live community statuses (no latent) unless an explicit
     // status/statuses filter is given. Non-owner members only see opportunities
-    // they are an actor on; owners keep the full curator list.
+    // they are an actor on; owners keep the full curator list. The actor filter
+    // goes to the query, not to the result, so limit/offset paginate visible rows.
     const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
+    const scoped = { ...options, ...(isOwner ? {} : { actorUserId: userId }) };
     const rows = await this.db.getOpportunitiesForNetwork(
       networkId,
-      hasExplicitStatus ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
+      hasExplicitStatus ? scoped : { ...scoped, statuses: DEFAULT_NETWORK_LIST_STATUSES },
     );
-    const visible = isOwner
-      ? rows
-      : rows.filter((opp) => opp.actors.some((actor) => actor.userId === userId));
-    return visible.map((opp) => sanitizeOpportunityForResponse(opp));
+    return rows.map((opp) => sanitizeOpportunityForResponse(opp));
   }
 
   /**

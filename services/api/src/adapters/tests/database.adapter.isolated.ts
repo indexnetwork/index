@@ -1164,6 +1164,40 @@ describe('OpportunityDatabaseAdapter', () => {
       }
     });
 
+    it('getOpportunitiesForNetwork narrows to actorUserId so pagination counts visible rows', async () => {
+      // Non-owner members read the network list through this predicate. It runs
+      // in SQL, not on the result, so `limit`/`offset` page over the rows the
+      // caller may actually see.
+      const mk = (userIds: [string, string]) =>
+        adapter.createOpportunity({
+          detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+          actors: [
+            { networkId: fixture.networkId, userId: userIds[0], role: 'patient' },
+            { networkId: fixture.networkId, userId: userIds[1], role: 'agent' },
+          ],
+          interpretation: { category: 'collaboration', reasoning: 'actor visibility', confidence: 0.8 },
+          context: { networkId: fixture.networkId },
+          confidence: '0.8',
+          status: 'pending',
+        });
+      const own = await mk([fixture.userAId, fixture.userBId]);
+      // Actors are jsonb, not a foreign key — a third pair needs no real rows.
+      const thirdParty = await mk([fixture.userBId, uuidv4()]);
+
+      try {
+        const mine = await adapter.getOpportunitiesForNetwork(fixture.networkId, { actorUserId: fixture.userAId });
+        expect(mine.some((o) => o.id === own.id)).toBe(true);
+        expect(mine.some((o) => o.id === thirdParty.id)).toBe(false);
+
+        // No actor filter (the owner's curator view) ⇒ both.
+        const all = await adapter.getOpportunitiesForNetwork(fixture.networkId);
+        expect(all.some((o) => o.id === own.id)).toBe(true);
+        expect(all.some((o) => o.id === thirdParty.id)).toBe(true);
+      } finally {
+        await db.delete(opportunities).where(inArray(opportunities.id, [own.id, thirdParty.id]));
+      }
+    });
+
     it('getOpportunitiesForNetwork narrows results by the statuses filter (IND-254)', async () => {
       // The network/community list relies on this SQL `statuses` filter to hide
       // stale/pre-draft opportunities (the service passes a live-status allow-list).

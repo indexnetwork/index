@@ -23,7 +23,7 @@ const EXPECTED_NETWORK_STATUSES = ["negotiating", "pending", "stalled", "accepte
 
 type Captured = { opts?: Record<string, unknown> };
 
-function createService() {
+function createService(overrides?: { isIndexOwner?: boolean }) {
   const userCall: Captured = {};
   const networkCall: Captured = {};
   const db = {
@@ -36,7 +36,7 @@ function createService() {
       return Promise.resolve([] as Opportunity[]);
     }),
     getUser: mock(() => Promise.resolve(null)),
-    isIndexOwner: mock(() => Promise.resolve(true)),
+    isIndexOwner: mock(() => Promise.resolve(overrides?.isIndexOwner ?? true)),
     isNetworkMember: mock(() => Promise.resolve(true)),
   } as unknown as OpportunityControllerDatabase;
   const service = new OpportunityService(db);
@@ -166,53 +166,25 @@ describe("OpportunityService list status filtering (IND-254)", () => {
       expect(JSON.stringify(rows[0])).not.toContain('attendee');
     });
 
-    it('filters non-owner members to opportunities they are an actor on', async () => {
-      const own = unsafeOpportunity();
-      const thirdParty: Opportunity = {
-        ...unsafeOpportunity(),
-        id: 'opp-third-party',
-        actors: [
-          { userId: 'user-a' as never, networkId: 'net-1' as never, role: 'peer' },
-          { userId: 'user-b' as never, networkId: 'net-1' as never, role: 'peer' },
-        ],
-      };
-      const db = {
-        getOpportunitiesForNetwork: mock(async () => [own, thirdParty]),
-        isIndexOwner: mock(async () => false),
-        isNetworkMember: mock(async () => true),
-      } as unknown as OpportunityControllerDatabase;
-      const service = new OpportunityService(db);
+    // The actor filter belongs in the query: applied to the result instead, a
+    // page of `limit` network rows could come back empty while later pages hold
+    // visible ones, and the caller cannot tell that from the end of the list.
+    it('scopes non-owner members to their own actor rows in the query', async () => {
+      const { service, networkCall } = createService({ isIndexOwner: false });
 
-      const rows = await service.getOpportunitiesForNetwork('net-1', 'user-1');
+      await service.getOpportunitiesForNetwork('net-1', 'user-1', { limit: 20, offset: 40 });
 
-      expect(Array.isArray(rows)).toBe(true);
-      if (!Array.isArray(rows)) throw new Error('Expected opportunity rows');
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.id).toBe('opp-unsafe');
+      expect(networkCall.opts?.actorUserId).toBe('user-1');
+      expect(networkCall.opts?.limit).toBe(20);
+      expect(networkCall.opts?.offset).toBe(40);
     });
 
-    it('keeps the full list for network owners', async () => {
-      const own = unsafeOpportunity();
-      const thirdParty: Opportunity = {
-        ...unsafeOpportunity(),
-        id: 'opp-third-party',
-        actors: [
-          { userId: 'user-a' as never, networkId: 'net-1' as never, role: 'peer' },
-          { userId: 'user-b' as never, networkId: 'net-1' as never, role: 'peer' },
-        ],
-      };
-      const db = {
-        getOpportunitiesForNetwork: mock(async () => [own, thirdParty]),
-        isIndexOwner: mock(async () => true),
-        isNetworkMember: mock(async () => true),
-      } as unknown as OpportunityControllerDatabase;
-      const service = new OpportunityService(db);
+    it('leaves the full curator list unscoped for network owners', async () => {
+      const { service, networkCall } = createService({ isIndexOwner: true });
 
-      const rows = await service.getOpportunitiesForNetwork('net-1', 'user-1');
+      await service.getOpportunitiesForNetwork('net-1', 'user-1');
 
-      expect(Array.isArray(rows)).toBe(true);
-      if (!Array.isArray(rows)) throw new Error('Expected opportunity rows');
-      expect(rows).toHaveLength(2);
+      expect(networkCall.opts?.actorUserId).toBeUndefined();
     });
   });
 

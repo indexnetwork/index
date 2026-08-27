@@ -91,6 +91,17 @@ export function createPremiseTools(defineTool: DefineTool, deps: PremiseToolDeps
     },
   });
 
+  /**
+   * Keeps only the premises their author assigned into one of `networkIds` —
+   * the co-membership that unlocked the read is per network, so the answer is
+   * too. Unassigned premises belong to nobody's community and stay private.
+   */
+  async function filterToSharedNetworks(premises: PremiseRecord[], networkIds: string[]): Promise<PremiseRecord[]> {
+    const shared = new Set(networkIds);
+    const assignments = await Promise.all(premises.map((p) => database.getPremiseNetworks(p.id)));
+    return premises.filter((_, i) => (assignments[i] ?? []).some((a) => shared.has(a.networkId)));
+  }
+
   const readPremises = defineTool({
     name: "read_premises",
     description:
@@ -98,7 +109,7 @@ export function createPremiseTools(defineTool: DefineTool, deps: PremiseToolDeps
       "Premises represent stable identity facts (assertive) and temporal context (contextual).\n\n" +
       "**Usage modes:**\n" +
       "- No parameters: returns the caller's own active premises.\n" +
-      "- With `userId`: returns that user's active premises when you share at least one network. " +
+      "- With `userId`: returns the active premises that user has shared into a network you are both in. " +
       "History (`includeRetracted`) is own-only.\n" +
       "- With `includeRetracted: true` (own premises only): returns all premises regardless of status " +
       "(active, retracted, expired) for history review.\n\n" +
@@ -121,14 +132,15 @@ export function createPremiseTools(defineTool: DefineTool, deps: PremiseToolDeps
         return error("includeRetracted is only allowed for your own premises.");
       }
 
+      let sharedNetworkIds: string[] = [];
       if (isCrossUser) {
         const [callerNetworks, targetNetworks] = await Promise.all([
-          database.getAssignmentNetworkIdsForUser(context.userId),
-          database.getAssignmentNetworkIdsForUser(targetUserId),
+          database.getAssignmentNetworkMembershipsForUser(context.userId),
+          database.getAssignmentNetworkMembershipsForUser(targetUserId),
         ]);
-        const targetSet = new Set(targetNetworks);
-        const sharesNetwork = callerNetworks.some((id) => targetSet.has(id));
-        if (!sharesNetwork) {
+        const targetSet = new Set(targetNetworks.map((m) => m.networkId));
+        sharedNetworkIds = callerNetworks.map((m) => m.networkId).filter((id) => targetSet.has(id));
+        if (sharedNetworkIds.length === 0) {
           return error("Access denied: no shared network with user.");
         }
       }
@@ -139,7 +151,14 @@ export function createPremiseTools(defineTool: DefineTool, deps: PremiseToolDeps
       // The graph's query node hardcodes ACTIVE status, so includeRetracted
       // would be dead code if we routed through it.
       const statusFilter = query.includeRetracted ? undefined : "ACTIVE" as const;
-      const premises = await database.getPremisesForUser(targetUserId, statusFilter);
+      const all = await database.getPremisesForUser(targetUserId, statusFilter);
+
+      // Sharing a network is the right to read what the other user put into
+      // *that* network, not their whole premise set: the indexer assigns each
+      // premise per network, and one it never assigned was never shared.
+      const premises = isCrossUser
+        ? await filterToSharedNetworks(all, sharedNetworkIds)
+        : all;
 
       const mapped = premises.map((p: PremiseRecord) => ({
         id: p.id,

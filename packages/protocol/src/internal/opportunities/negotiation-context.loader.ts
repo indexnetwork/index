@@ -9,7 +9,7 @@
 
 import type { NegotiationGraphDatabase, OpportunityStatus } from '../../platform/database.js';
 import { NEGOTIATION_MAX_TURNS_AMBIENT } from '../../protocol/core.js';
-import { NegotiationTurnSchema, type NegotiationTurn } from "../negotiations/negotiation.turn.js";
+import { NegotiationTurnSchema, turnForViewer, type NegotiationTurnView } from "../negotiations/negotiation.turn.js";
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 
 const logger = protocolLogger('NegotiationContextLoader');
@@ -34,7 +34,7 @@ export interface NegotiationContext {
   turnCount: number;
   /** Max turns before the negotiation pauses (`counterparty_silent`). */
   turnCap: number;
-  turns: NegotiationTurn[];
+  turns: NegotiationTurnView[];
   /** Present once the negotiation has paused. */
   pause?: { reason: string; payload?: unknown };
   /** The resolve artifact's private reasoning, present only for its resolver. */
@@ -114,20 +114,13 @@ function outcomeReasoningForViewer(
 function extractTurns(
   messages: Array<{ senderId: string; parts: unknown[] }>,
   viewerId: string,
-): NegotiationTurn[] {
-  const turns: NegotiationTurn[] = [];
-  const viewerAgentId = `agent:${viewerId}`;
+): NegotiationTurnView[] {
+  const turns: NegotiationTurnView[] = [];
   for (const message of messages) {
     const dataPart = (message.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === 'data');
     const parsed = dataPart ? NegotiationTurnSchema.safeParse(dataPart.data) : undefined;
     if (!parsed?.success) continue;
-    const turn = parsed.data;
-    if (turn.verb !== 'pause' && message.senderId !== viewerAgentId && 'reasoning' in turn) {
-      const { reasoning: _reasoning, ...rest } = turn;
-      turns.push(rest as NegotiationTurn);
-    } else {
-      turns.push(turn);
-    }
+    turns.push(turnForViewer(parsed.data, message.senderId, viewerId));
   }
   return turns;
 }

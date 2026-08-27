@@ -24,9 +24,11 @@ pin a supported release, use `latest`.
 
 ### Breaking
 
-- **`read_premises(userId)` requires a shared network.** Cross-user premise
+- **`read_premises(userId)` is scoped to shared networks.** Cross-user premise
   reads are denied unless the caller and target share at least one network
-  membership. `includeRetracted` is own-only.
+  membership, and return only the premises assigned to a shared network — a
+  premise its author never put into a network you are both in stays private.
+  `includeRetracted` is own-only.
 - **`get_negotiation` redacts counterparty continue-turn `reasoning`.** The
   shared thread still exposes `message`; each seat keeps its own `reasoning`.
   Pause payloads remain private to the pausing seat (now also on the presenter

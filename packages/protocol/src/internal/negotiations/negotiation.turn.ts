@@ -125,6 +125,29 @@ export const NegotiationOpeningTurnSchema = z.object({
   reasoning: z.string().min(1),
 });
 
+/**
+ * A turn as a reader sees it. `reasoning` on a continuing turn is why that
+ * seat said what it said — private to the seat that authored it — so it is
+ * optional here even though the persisted shape requires it. Anything that
+ * reads a transcript reads this type, and the compiler makes it handle the
+ * absence.
+ */
+export type NegotiationTurnView =
+  | NegotiationPauseTurn
+  | (Omit<NegotiationContinueTurn, "reasoning"> & { reasoning?: string });
+
+/**
+ * Projects one persisted turn into what `viewerId` may read: its own turns
+ * whole, the counterparty's without `reasoning`. Pause turns pass through —
+ * what reaches the shared thread is already the redacted `{verb, reason}`
+ * marker, and the real payload never leaves `task.metadata.pause`.
+ */
+export function turnForViewer(turn: NegotiationTurn, senderId: string, viewerId: string): NegotiationTurnView {
+  if (isPauseTurn(turn) || senderId === `agent:${viewerId}`) return turn;
+  const { reasoning: _reasoning, ...rest } = turn;
+  return rest;
+}
+
 export function isPauseTurn(turn: NegotiationTurn): turn is NegotiationPauseTurn {
   return (turn as { verb?: string }).verb === "pause";
 }

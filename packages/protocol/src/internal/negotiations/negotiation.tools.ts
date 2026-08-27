@@ -6,7 +6,7 @@ import { success, error } from '../shared/agent/tool.helpers.js';
 import { focusedIntentId, focusedNetworkId } from '../shared/agent/tool.scope.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
-import { NegotiationTurnSchema, NEGOTIATION_CONTINUE_VERBS } from './negotiation.turn.js';
+import { NegotiationTurnSchema, NEGOTIATION_CONTINUE_VERBS, turnForViewer } from './negotiation.turn.js';
 import type { NegotiationTaskMetadata, NegotiationTaskRow } from '../../platform/database/negotiation.js';
 
 export { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
@@ -35,22 +35,15 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
     messages: Array<{ senderId: string; parts: unknown[]; createdAt: Date }>,
     viewerId: string,
   ) {
-    const viewerAgentId = `agent:${viewerId}`;
     return messages.map((m, i) => {
       const part = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === 'data');
       const parsed = part ? NegotiationTurnSchema.safeParse(part.data) : undefined;
       const speaker = m.senderId === `agent:${task.metadata.sourceUserId}` ? 'source' : 'candidate';
-      let turn = parsed?.success ? parsed.data : null;
-      // Counterparty continue-turn reasoning is seat-private; keep message only.
-      if (turn && turn.verb !== 'pause' && m.senderId !== viewerAgentId && 'reasoning' in turn) {
-        const { reasoning: _reasoning, ...rest } = turn;
-        turn = rest as typeof turn;
-      }
       return {
         turnNumber: i + 1,
         speaker,
         senderId: m.senderId,
-        turn,
+        turn: parsed?.success ? turnForViewer(parsed.data, m.senderId, viewerId) : null,
         createdAt: m.createdAt,
       };
     });
