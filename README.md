@@ -225,6 +225,12 @@ The Task returned by the server is authoritative — `continue()` reads the
 full turn history from it, so the client doesn't need to track state itself
 beyond holding onto the last `task` it received.
 
+See `dev/a2a-demo.ts` for a runnable example of the fully symmetric
+shape — two agents, each running its own server *and* initiating its own
+negotiation against the other's endpoint (`bun run dev/a2a-demo.ts`, needs
+`OPENROUTER_API_KEY`; makes real, non-deterministic API calls, so it isn't
+part of `bun test`).
+
 ### Local simulation (dev/test only)
 
 `dev/simulate.ts` is a harness for local iteration inside this repo — it
