@@ -124,16 +124,21 @@ describe('NegotiationReflectQueue', () => {
       const alicePass = reflectCalls.find((c) => c.clientUser.id === 'u-alice')!;
       expect(alicePass.seat).toBe('initiator');
       expect(alicePass.counterpartyUser.id).toBe('u-bob');
+      // Each side reflects on its own reasoning and on what the other side
+      // actually said — never on why the other side said it.
       expect(alicePass.transcript).toEqual([
         { index: 0, speaker: 'client', action: 'outreach', message: 'hello', reasoning: 'outreach reasoning' },
-        { index: 1, speaker: 'counterparty', action: 'accept', message: 'deal', reasoning: 'accept reasoning' },
+        { index: 1, speaker: 'counterparty', action: 'accept', message: 'deal' },
       ]);
 
-      // Bob's pass: same transcript, flipped perspective, counterparty seat.
+      // Bob's pass: same transcript, flipped perspective, counterparty seat —
+      // so the reasoning that is his to keep flips with it.
       const bobPass = reflectCalls.find((c) => c.clientUser.id === 'u-bob')!;
       expect(bobPass.seat).toBe('counterparty');
       expect(bobPass.transcript[0].speaker).toBe('counterparty');
+      expect(bobPass.transcript[0]).not.toHaveProperty('reasoning');
       expect(bobPass.transcript[1].speaker).toBe('client');
+      expect(bobPass.transcript[1].reasoning).toBe('accept reasoning');
 
       // Both sides write with negotiation provenance and the counterparty as dossier subject.
       expect(writes.length).toBe(2);
