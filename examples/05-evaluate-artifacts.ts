@@ -13,7 +13,8 @@
  *   bun run examples/05-evaluate-artifacts.ts
  */
 import { A2ANegotiationClient, createA2AHandler } from "../src/a2a/index.ts";
-import { agentCard, logTurn, scriptedNegotiator } from "./shared.ts";
+import { Negotiator, type NegotiationDecision } from "../src/index.ts";
+import { agentCard, logTurn, MAX_TURNS } from "./shared.ts";
 
 const ALLOWED = ["propose", "counter", "accept", "reject"] as const;
 
@@ -23,11 +24,8 @@ function extractOffer(message: string): number | null {
 }
 
 const handler = createA2AHandler({
-  negotiator: scriptedNegotiator([
-    { action: "counter", message: "I need at least $450." },
-    { action: "accept", message: "Deal at $420." },
-  ]),
-  party: { name: "Seller", objective: "Sell high" },
+  negotiator: new Negotiator(),
+  party: { name: "Seller", objective: "Sell a used bike for as much as possible, ideally above $450" },
   allowedActions: [...ALLOWED],
   agentCard: agentCard("Seller Agent"),
   evaluate: (task, decision) => ({
@@ -50,29 +48,30 @@ const server = Bun.serve({ port: 0, fetch: handler });
 const url = server.url.toString();
 
 const client = new A2ANegotiationClient({
-  negotiator: scriptedNegotiator([
-    { action: "propose", message: "I'll offer $400." },
-    { action: "counter", message: "I can do $420." },
-  ]),
-  party: { name: "Buyer", objective: "Buy low" },
+  negotiator: new Negotiator(),
+  party: { name: "Buyer", objective: "Buy the bike for as little as possible, ideally under $400" },
   allowedActions: [...ALLOWED],
   evaluate: (_task, decision) => ({
     artifactId: crypto.randomUUID(),
     name: "buyer-side-note",
     parts: [{ kind: "text", text: `Buyer chose ${decision.action}` }],
   }),
+  // Prints the Buyer's line the instant it's decided — the local artifact
+  // only exists once evaluate() runs after the round trip, so it's still
+  // printed afterward, just without repeating the Buyer's message.
+  onDecision: (decision) => logTurn("Buyer", decision),
 });
 
-let { task, decision, artifact } = await client.initiate(url);
-logTurn("Buyer", decision);
+let { task, artifact } = await client.initiate(url);
 console.log("  buyer-local artifact:", artifact);
-logTurn("Seller", task.history.at(-1)!.parts[0]!.data as typeof decision);
+logTurn("Seller", task.history.at(-1)!.parts[0]!.data as NegotiationDecision);
 
-while (task.status.state === "input-required") {
-  ({ task, decision, artifact } = await client.continue(url, task));
-  logTurn("Buyer", decision);
+let turns = 1;
+while (task.status.state === "input-required" && turns < MAX_TURNS) {
+  ({ task, artifact } = await client.continue(url, task));
   console.log("  buyer-local artifact:", artifact);
-  logTurn("Seller", task.history.at(-1)!.parts[0]!.data as typeof decision);
+  logTurn("Seller", task.history.at(-1)!.parts[0]!.data as NegotiationDecision);
+  turns++;
 }
 
 console.log(`\nEnded: ${task.status.state}`);

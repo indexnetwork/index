@@ -73,14 +73,14 @@ export OPENROUTER_API_KEY=sk-or-...
 | Option    | Type     | Required | Description                                                                 |
 | --------- | -------- | -------- | ---------------------------------------------------------------------------- |
 | `apiKey`  | `string` | No       | OpenRouter API key. Falls back to `OPENROUTER_API_KEY` if omitted.            |
-| `model`   | `string` | No       | OpenRouter model id. Defaults to `openai/gpt-4o-mini`.                        |
+| `model`   | `string` | No       | OpenRouter model id. Defaults to `google/gemini-3.7-flash`.                        |
 | `referer` | `string` | No       | Sent as `HTTP-Referer`, per [OpenRouter's app attribution](https://openrouter.ai/docs). |
 | `title`   | `string` | No       | Sent as `X-Title`, per OpenRouter's app attribution.                         |
 
 ```ts
 const negotiator = new Negotiator({
   apiKey: "sk-or-...",
-  model: "openai/gpt-4o",
+  model: "google/gemini-3.5-flash",
   referer: "https://example.com",
   title: "My App",
 });
@@ -94,7 +94,7 @@ from either source.
 ```ts
 import { Negotiator } from "@indexnetwork/negotiator";
 
-const negotiator = new Negotiator({ model: "openai/gpt-4o-mini" });
+const negotiator = new Negotiator({ model: "google/gemini-3.7-flash" });
 
 const reply = await negotiator.respond({
   party: { name: "Seller", objective: "Sell the item for as much as possible" },
@@ -174,7 +174,7 @@ import { Negotiator } from "@indexnetwork/negotiator";
 import { createA2AHandler } from "@indexnetwork/negotiator/a2a";
 
 const handler = createA2AHandler({
-  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
   party: { name: "Seller", objective: "Sell the item for as much as possible" },
   allowedActions: ["propose", "counter", "accept", "reject"],
   agentCard: {
@@ -244,7 +244,7 @@ import { Negotiator } from "@indexnetwork/negotiator";
 import { A2ANegotiationClient } from "@indexnetwork/negotiator/a2a";
 
 const client = new A2ANegotiationClient({
-  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
   party: { name: "Buyer", objective: "Buy the item for as little as possible" },
   allowedActions: ["propose", "counter", "accept", "reject"],
 });
@@ -326,12 +326,12 @@ import { runNegotiation } from "./simulate.ts";
 
 const seller = {
   party: { name: "Seller", objective: "Sell for as much as possible, ideally above $450" },
-  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
 };
 
 const buyer = {
   party: { name: "Buyer", objective: "Buy for as little as possible, ideally under $400" },
-  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
 };
 
 const transcript = await runNegotiation([seller, buyer], {

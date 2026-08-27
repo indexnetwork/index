@@ -16,6 +16,10 @@ export interface A2ANegotiationClientOptions<A extends string> {
    * client doesn't own it); it's returned on `A2ATurnResult` for the caller
    * to use however it likes. */
   evaluate?: EvaluateHook<A>;
+  /** Fires as soon as this side's own decision is made, before it's sent
+   * over the network — useful for logging/streaming a turn the moment it
+   * happens instead of only after the counterparty's reply comes back too. */
+  onDecision?: (decision: NegotiationDecision<A>) => void;
 }
 
 export interface A2ATurnResult<A extends string = string> {
@@ -56,6 +60,7 @@ export class A2ANegotiationClient<A extends string> {
       { party: this.options.party, history },
       this.options.allowedActions,
     );
+    this.options.onDecision?.(decision);
     const message = decisionToMessage(decision, "user", refs);
     const task = await sendA2AMessage(url, message);
     const artifact = (await this.options.evaluate?.(task, decision)) ?? undefined;

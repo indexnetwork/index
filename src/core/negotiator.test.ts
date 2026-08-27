@@ -75,22 +75,22 @@ describe("Negotiator", () => {
     );
   });
 
-  test("defaults to openai/gpt-4o-mini when no model is given", async () => {
+  test("defaults to google/gemini-3.7-flash when no model is given", async () => {
     const fetchMock = mockFetchOnce("reply");
     const negotiator = new Negotiator({ apiKey: "test-key" });
 
     await negotiator.respond(state);
 
-    expect(fetchMock.body.model).toBe("openai/gpt-4o-mini");
+    expect(fetchMock.body.model).toBe("google/gemini-3.7-flash");
   });
 
   test("uses the given model", async () => {
     const fetchMock = mockFetchOnce("reply");
-    const negotiator = new Negotiator({ apiKey: "test-key", model: "openai/gpt-4o" });
+    const negotiator = new Negotiator({ apiKey: "test-key", model: "google/gemini-3.5-flash" });
 
     await negotiator.respond(state);
 
-    expect(fetchMock.body.model).toBe("openai/gpt-4o");
+    expect(fetchMock.body.model).toBe("google/gemini-3.5-flash");
   });
 
   test("builds a system prompt naming the party and its objective", async () => {

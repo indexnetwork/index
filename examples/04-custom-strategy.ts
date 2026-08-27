@@ -9,7 +9,8 @@
  *   bun run examples/04-custom-strategy.ts
  */
 import { A2ANegotiationClient, createA2AHandler } from "../src/a2a/index.ts";
-import { agentCard, logTurn, scriptedNegotiator } from "./shared.ts";
+import { Negotiator, type NegotiationDecision } from "../src/index.ts";
+import { agentCard, logTurn, MAX_TURNS } from "./shared.ts";
 
 const ALLOWED = ["propose", "counter", "accept", "reject"] as const;
 const FLOOR = 400;
@@ -20,7 +21,7 @@ function extractOffer(message: string): number | null {
 }
 
 const handler = createA2AHandler({
-  negotiator: scriptedNegotiator([]), // unused — the strategy never calls it
+  negotiator: new Negotiator(), // unused — the strategy never calls it
   party: { name: "Seller", objective: "Sell for at least $400" },
   allowedActions: [...ALLOWED],
   agentCard: agentCard("Seller Agent"),
@@ -42,22 +43,20 @@ const server = Bun.serve({ port: 0, fetch: handler });
 const url = server.url.toString();
 
 const client = new A2ANegotiationClient({
-  negotiator: scriptedNegotiator([
-    { action: "propose", message: "I'll offer $350." },
-    { action: "counter", message: "How about $400?" },
-  ]),
-  party: { name: "Buyer", objective: "Buy low" },
+  negotiator: new Negotiator(),
+  party: { name: "Buyer", objective: "Buy for as little as possible, starting around $350" },
   allowedActions: [...ALLOWED],
+  onDecision: (decision) => logTurn("Buyer", decision),
 });
 
-let { task, decision } = await client.initiate(url);
-logTurn("Buyer", decision);
-logTurn("Seller (rule-based)", task.history.at(-1)!.parts[0]!.data as typeof decision);
+let { task } = await client.initiate(url);
+logTurn("Seller (rule-based)", task.history.at(-1)!.parts[0]!.data as NegotiationDecision);
 
-while (task.status.state === "input-required") {
-  ({ task, decision } = await client.continue(url, task));
-  logTurn("Buyer", decision);
-  logTurn("Seller (rule-based)", task.history.at(-1)!.parts[0]!.data as typeof decision);
+let turns = 1;
+while (task.status.state === "input-required" && turns < MAX_TURNS) {
+  ({ task } = await client.continue(url, task));
+  logTurn("Seller (rule-based)", task.history.at(-1)!.parts[0]!.data as NegotiationDecision);
+  turns++;
 }
 
 console.log(`\nEnded: ${task.status.state}`);

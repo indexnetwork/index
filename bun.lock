@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "nogotiator",
+      "name": "negotiator",
       "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5",

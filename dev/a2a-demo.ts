@@ -26,12 +26,12 @@ function agentCard(name: string, url: string) {
 }
 
 const sellerCore = {
-  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
   party: { name: "Seller", objective: "Sell a used bike for as much as possible, ideally above $450" },
   allowedActions: [...ALLOWED],
 };
 const buyerCore = {
-  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
   party: { name: "Buyer", objective: "Buy a spare bike lock for as little as possible, ideally under $20" },
   allowedActions: [...ALLOWED],
 };
@@ -75,7 +75,7 @@ async function runNegotiation<A extends string>(
 
 // Buyer reaches out to Seller's server — buying the bike.
 const buyerClient = new A2ANegotiationClient({
-  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
   party: { name: "Buyer", objective: "Buy the bike for as little as possible, ideally under $400" },
   allowedActions: [...ALLOWED],
 });
@@ -84,7 +84,7 @@ await runNegotiation("Bike sale", { name: "Buyer", client: buyerClient }, "Selle
 // Seller reaches out to Buyer's server — a completely different negotiation,
 // proving Buyer is independently reachable, not just a driving client.
 const sellerClient = new A2ANegotiationClient({
-  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
   party: { name: "Seller", objective: "Sell a spare bike lock for as much as possible, ideally above $25" },
   allowedActions: [...ALLOWED],
 });

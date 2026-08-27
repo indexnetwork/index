@@ -6,12 +6,13 @@
  *   bun run examples/03-agent-card-trust-check.ts
  */
 import { createA2AHandler, fetchAgentCard } from "../src/a2a/index.ts";
-import { agentCard, scriptedNegotiator } from "./shared.ts";
+import { Negotiator } from "../src/index.ts";
+import { agentCard } from "./shared.ts";
 
 const server = Bun.serve({
   port: 0,
   fetch: createA2AHandler({
-    negotiator: scriptedNegotiator([{ action: "propose", message: "hi" }]),
+    negotiator: new Negotiator(),
     party: { name: "Seller", objective: "Sell" },
     allowedActions: ["propose"],
     agentCard: agentCard("Seller Agent"),

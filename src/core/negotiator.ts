@@ -23,7 +23,7 @@ function actionName<A extends string>(spec: ActionSpec<A>): A {
   return typeof spec === "string" ? spec : spec.action;
 }
 
-const DEFAULT_MODEL = "openai/gpt-4o-mini";
+const DEFAULT_MODEL = "google/gemini-3.7-flash";
 
 function buildSystemPrompt(state: NegotiationState): string {
   const { party } = state;

@@ -10,7 +10,8 @@
  *   bun run examples/06-custom-action-vocabulary.ts
  */
 import { A2ANegotiationClient, createA2AHandler } from "../src/a2a/index.ts";
-import { agentCard, logTurn, scriptedNegotiator } from "./shared.ts";
+import { Negotiator, type NegotiationDecision } from "../src/index.ts";
+import { agentCard, logTurn, MAX_TURNS } from "./shared.ts";
 
 const ALLOWED = [
   "clarify",
@@ -21,11 +22,12 @@ const ALLOWED = [
 const TERMINAL = new Set(["resolve", "escalate"]);
 
 const handler = createA2AHandler({
-  negotiator: scriptedNegotiator([
-    { action: "clarify", message: "Can you tell me which error code you saw?" },
-    { action: "resolve", message: "That's a known cache issue — clearing it fixed it. Closing this out." },
-  ]),
-  party: { name: "Support Agent", objective: "Resolve the customer's issue" },
+  negotiator: new Negotiator(),
+  party: {
+    name: "Support Agent",
+    objective:
+      "Resolve the customer's issue by asking clarifying questions until you can diagnose it, then resolve or escalate",
+  },
   allowedActions: [...ALLOWED],
   agentCard: agentCard("Support Agent"),
   isTerminal: (action) => TERMINAL.has(action),
@@ -36,22 +38,23 @@ const server = Bun.serve({ port: 0, fetch: handler });
 const url = server.url.toString();
 
 const client = new A2ANegotiationClient({
-  negotiator: scriptedNegotiator([
-    { action: "clarify", message: "My app crashes on startup with error E-4021." },
-    { action: "clarify", message: "It's error code E-4021, happens every time." },
-  ]),
-  party: { name: "Customer", objective: "Get the crash fixed" },
+  negotiator: new Negotiator(),
+  party: {
+    name: "Customer",
+    objective: "Get your crash fixed; your app crashes on startup with error code E-4021",
+  },
   allowedActions: [...ALLOWED],
+  onDecision: (decision) => logTurn("Customer", decision),
 });
 
-let { task, decision } = await client.initiate(url);
-logTurn("Customer", decision);
-logTurn("Support", task.history.at(-1)!.parts[0]!.data as typeof decision);
+let { task } = await client.initiate(url);
+logTurn("Support", task.history.at(-1)!.parts[0]!.data as NegotiationDecision);
 
-while (task.status.state === "input-required") {
-  ({ task, decision } = await client.continue(url, task));
-  logTurn("Customer", decision);
-  logTurn("Support", task.history.at(-1)!.parts[0]!.data as typeof decision);
+let turns = 1;
+while (task.status.state === "input-required" && turns < MAX_TURNS) {
+  ({ task } = await client.continue(url, task));
+  logTurn("Support", task.history.at(-1)!.parts[0]!.data as NegotiationDecision);
+  turns++;
 }
 
 console.log(`\nCase ended: ${task.status.state}`); // "completed" for resolve, "rejected" for escalate
