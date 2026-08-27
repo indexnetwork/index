@@ -196,22 +196,11 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       // AGAINST (the recipient's), not its own, so both actors can carry the
       // same value there. `input.intentId` uniquely identifies its OWNER
       // (intents are user-owned) — resolve the source seat from that owner
-      // and exclude any introducer actor, the same selection the old
-      // negotiateNode used.
-      // An introduction nobody vouched for is not a negotiation anyone may
-      // open. Discovery's own gate decides whether to WAKE an agent; this one
-      // decides whether a negotiation may EXIST, and it is the write, so it
-      // binds every caller — a kickoff that re-read the match list and swept
-      // this opportunity up with the others included.
-      const introducers = opportunity.actors.filter((a) => a.role === "introducer");
-      if (introducers.length > 0 && !introducers.every((a) => a.approved === true)) {
-        return { phase: "error", error: "Opportunity is awaiting introducer approval" };
-      }
-
+      // the same selection the old negotiateNode used.
       const intent = await deps.database.getIntent(input.intentId);
       if (!intent) return { phase: "error", error: "Intent not found" };
-      const sourceActor = opportunity.actors.find((a) => a.userId === intent.userId && a.role !== "introducer");
-      const candidateActor = opportunity.actors.find((a) => a.userId !== intent.userId && a.role !== "introducer");
+      const sourceActor = opportunity.actors.find((a) => a.userId === intent.userId);
+      const candidateActor = opportunity.actors.find((a) => a.userId !== intent.userId);
       if (!sourceActor || !candidateActor) return { phase: "error", error: "Opportunity does not have two actors" };
       if (!candidateActor.intent) return { phase: "error", error: "Counterparty actor has no owning intent" };
       const candidateIntent = await deps.database.getIntent(candidateActor.intent);

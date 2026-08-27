@@ -241,12 +241,6 @@ export interface PersonalAgentMatch {
   /** One line the model may read and repeat: counterparty + state. */
   label: string;
   status: string;
-  /**
-   * An introduction whose introducer has not approved it yet. Nothing may be
-   * opened on it and the principal is not offered it — the introduction is
-   * not theirs to act on until it is vouched for.
-   */
-  awaitingIntroducerApproval?: boolean;
 }
 
 /** The id every dedup, re-check and ledger site keys on. */

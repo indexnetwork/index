@@ -2096,7 +2096,6 @@ export const SANDBOX_E2E_CASES = {
     opportunityId: 'e8dd4e42-2f66-469d-8c0c-61e0bcb3e56b',
     source: { email: 'maya.chen@sandbox.test', intentIndex: 1 },
     candidate: { email: 'sofia.martinez@sandbox.test', intentIndex: 0 },
-    introducer: { email: 'ethan.brooks@sandbox.test' },
   },
 } as const;
 

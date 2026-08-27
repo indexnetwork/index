@@ -263,8 +263,7 @@ async function assembleContext(
   // `accept_opportunity` is for.
   const eligibility = await Promise.all(matches.map(async (match) => ({
     match,
-    eligible: !match.awaitingIntroducerApproval
-      && !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
+    eligible: !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
       && !paused.some((entry) => entry.opportunityId === matchRefId(match) && !entry.pausedByUs)
       && !(await spentItsTurnBudget(deps, match)),
   })));
@@ -274,7 +273,6 @@ async function assembleContext(
       intentId,
       matches: matches.length,
       kickoffTargets: kickoffTargets.length,
-      awaitingIntroducerApproval: eligibility.filter((entry) => entry.match.awaitingIntroducerApproval).length,
       pending: eligibility.filter((entry) => NOT_KICKOFF_ELIGIBLE_STATUSES.has(entry.match.status)).length,
       counterpartyPaused: eligibility.filter((entry) =>
         paused.some((pausedEntry) => pausedEntry.opportunityId === matchRefId(entry.match) && !pausedEntry.pausedByUs),
@@ -889,7 +887,6 @@ async function wakeForNewMatches(
     const known = new Set(context.knownMatchIds);
     const arrivals = (await deps.opportunities.readMatches(context.userId, context.intentId))
       .filter((match) => !known.has(matchRefId(match)))
-      .filter((match) => !match.awaitingIntroducerApproval)
       .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
     const unopened = await Promise.all(arrivals.map(async (match) =>
       (await deps.negotiationDatabase.getNegotiationTaskForOpportunity(matchRefId(match))) ? null : match));

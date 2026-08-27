@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import { RadarGraphFactory, presentOpportunity, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
@@ -194,14 +194,13 @@ interface ChatCardCached {
   headline: string;
   personalizedSummary: string;
   narratorRemark: string;
-  introducerName: string | null;
   peerName: string;
   peerAvatar: string | null;
   acceptedAt: string | null;
 }
 
 /**
- * Resolve the counterpart actor for a viewer: the first non-introducer actor
+ * Resolve the counterpart actor for a viewer: the first other actor
  * other than the viewer, falling back to the first non-viewer actor of any role.
  * Returns `undefined` when the viewer is the only actor.
  */
@@ -210,7 +209,7 @@ function resolveCounterpart<A extends { userId: string; role: string }>(
   viewerId: string,
 ): A | undefined {
   return (
-    actors.find((a) => a.role !== 'introducer' && a.userId !== viewerId)
+    actors.find((a) => a.userId !== viewerId)
     ?? actors.find((a) => a.userId !== viewerId)
   );
 }
@@ -255,7 +254,6 @@ export class OpportunityService {
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
   private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
-  private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
   /** Injected only by specs; production resolves the real graph lazily. */
@@ -363,26 +361,6 @@ export class OpportunityService {
       this.cache,
     ).createGraph();
     return this.radarGraph;
-  }
-
-  private getMaintenanceGraph(): ReturnType<MaintenanceGraphFactory['createGraph']> {
-    this.maintenanceGraph ??= new MaintenanceGraphFactory(
-      this.db as unknown as MaintenanceGraphDatabase,
-      this.cache as unknown as MaintenanceGraphCache,
-      {
-        addJob: async (
-          data: { intentId: string; userId: string; indexIds?: string[] },
-          options?: { priority?: number; jobId?: string },
-        ) => {
-          const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
-          return fromIntentQueue.addJob(
-            { intentId: data.intentId, userId: data.userId },
-            options,
-          );
-        },
-      } satisfies MaintenanceGraphQueue,
-    ).createGraph();
-    return this.maintenanceGraph;
   }
 
   /**
@@ -585,22 +563,16 @@ export class OpportunityService {
     opp = replacementResolution.opportunity;
 
     const myActor = opp.actors.find((a) => a.userId === viewerId)!;
-    const introducer = opp.actors.find((a) => a.role === 'introducer');
-    const introducerId = introducer?.userId;
-    const nonIntroducerActors = opp.actors.filter((a) => a.role !== 'introducer' && a.userId !== viewerId);
-    const otherPartyIds = nonIntroducerActors.map((a) => a.userId);
+    const otherActors = opp.actors.filter((a) => a.userId !== viewerId);
+    const otherPartyIds = otherActors.map((a) => a.userId);
 
     const contextNetworkId = opp.context?.networkId;
-    const actorNetworkId = nonIntroducerActors[0]?.networkId ?? myActor?.networkId;
+    const actorNetworkId = otherActors[0]?.networkId ?? myActor?.networkId;
     const networkIdForDisplay = contextNetworkId ?? actorNetworkId;
     const [indexRecord, ...userRecords] = await Promise.all([
       networkIdForDisplay ? this.db.getNetwork(networkIdForDisplay) : Promise.resolve(null),
       ...otherPartyIds.map((uid) => this.db.getUser(uid)),
     ]);
-    const introducerRecord = introducerId ? await this.db.getUser(introducerId) : null;
-    const introducerInfo: UserInfo | null = introducerRecord
-      ? { id: introducerRecord.id, name: introducerRecord.name ?? 'Unknown', avatar: introducerRecord.avatar ?? null }
-      : null;
 
     const userMap = new Map<string | null, UserInfo>();
     otherPartyIds.forEach((uid, i) => {
@@ -610,9 +582,9 @@ export class OpportunityService {
 
     const otherPartyInfo = otherPartyIds[0] ? userMap.get(otherPartyIds[0])! : { id: '', name: 'Unknown', avatar: null as string | null };
     const counterpartUser = userRecords[0];
-    const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, introducerInfo, 'card');
+    const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, 'card');
 
-    const otherParties = nonIntroducerActors.map((a) => {
+    const otherParties = otherActors.map((a) => {
       const info = userMap.get(a.userId) ?? { id: a.userId, name: 'Unknown', avatar: null as string | null };
       return { id: info.id, name: info.name, avatar: info.avatar, role: a.role };
     });
@@ -626,7 +598,6 @@ export class OpportunityService {
       presentation,
       myRole: myActor.role,
       otherParties,
-      introducedBy: introducerInfo ?? undefined,
       category: opp.interpretation.category,
       confidence: confidenceNum,
       index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
@@ -1023,13 +994,7 @@ export class OpportunityService {
       this.db.getUser(peerUserId),
     ]);
 
-    // Filter out opportunities where either chat participant is the introducer.
-    // Chat context should only show direct connections, not introductions they facilitated.
-    const rows = allRows.filter((opp) =>
-      !opp.actors.some((a) =>
-        (a.userId === userId || a.userId === peerUserId) && a.role === 'introducer'
-      )
-    );
+    const rows = allRows;
 
     // Check cache for all opportunities (graceful fallback if Redis unavailable)
     let cachedResults: (ChatCardCached | null)[] = [];
@@ -1065,7 +1030,6 @@ export class OpportunityService {
             headline: presented.headline,
             personalizedSummary: presented.personalizedSummary,
             narratorRemark: '',
-            introducerName: presenterInput.introducerName ?? null,
             peerName: peerUser?.name ?? 'Someone',
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
@@ -1084,12 +1048,9 @@ export class OpportunityService {
           return card;
         } catch (err) {
           logger.warn('getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });
-          const introducerActor = opp.actors.find((a) => a.role === 'introducer');
-          const introducerName = introducerActor ? opp.detection?.createdByName ?? null : null;
           // Shared sanitization standard — see opportunity.safe-presentation.ts in protocol.
           const fallbackSummary = safeFallbackSummary(opp.interpretation?.reasoning, {
             counterpartName: peerUser?.name ?? undefined,
-            introducerName,
             emptyText: 'Connection opportunity',
           });
           return {
@@ -1097,7 +1058,6 @@ export class OpportunityService {
             headline: truncateAtBoundary(fallbackSummary, 79) || 'Connection opportunity',
             personalizedSummary: fallbackSummary,
             narratorRemark: '',
-            introducerName,
             peerName: peerUser?.name ?? 'Someone',
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
@@ -1110,19 +1070,6 @@ export class OpportunityService {
   }
 
 
-  /**
-   * Trigger maintenance for a specific user via the maintenance graph.
-   * Fire-and-forget: logs errors but does not throw.
-   *
-   * @param userId - The user whose feed to evaluate
-   * @param source - What triggered this maintenance check
-   */
-  triggerMaintenance(userId: string, source: string): void {
-    logger.info('Triggering maintenance', { userId, source });
-    this.getMaintenanceGraph().invoke({ userId }).catch((err) =>
-      logger.warn('Maintenance graph failed', { userId, source, error: err })
-    );
-  }
 
   /**
    * Check if user has permission to create opportunities in an index.

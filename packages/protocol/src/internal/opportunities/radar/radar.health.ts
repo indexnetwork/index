@@ -3,7 +3,6 @@ import { RADAR_SOFT_TARGETS } from '../opportunity.utils.js';
 /** Input for computing radar health score. */
 export interface RadarHealthInput {
   connectionCount: number;
-  connectorFlowCount: number;
   expiredCount: number;
   totalActionable: number;
   /** Unix ms timestamp of last rediscovery, or null if never. */
@@ -35,10 +34,9 @@ const DEFAULT_THRESHOLD = 0.5;
  * Uses normalized distance: 1 - (|actual - target| / max(target, actual, 1)) per category,
  * then averages across categories.
  */
-function scoreComposition(connectionCount: number, connectorFlowCount: number, expiredCount: number): number {
+function scoreComposition(connectionCount: number, expiredCount: number): number {
   const categories = [
     { actual: connectionCount, target: RADAR_SOFT_TARGETS.connection },
-    { actual: connectorFlowCount, target: RADAR_SOFT_TARGETS.connectorFlow },
     { actual: expiredCount, target: RADAR_SOFT_TARGETS.expired },
   ];
 
@@ -82,7 +80,6 @@ function scoreExpirationRatio(expiredCount: number, totalActionable: number): nu
 export function computeRadarHealth(input: RadarHealthInput): RadarHealthResult {
   const {
     connectionCount,
-    connectorFlowCount,
     expiredCount,
     totalActionable,
     lastRediscoveryAt,
@@ -99,7 +96,7 @@ export function computeRadarHealth(input: RadarHealthInput): RadarHealthResult {
     };
   }
 
-  const composition = scoreComposition(connectionCount, connectorFlowCount, expiredCount);
+  const composition = scoreComposition(connectionCount, expiredCount);
   const freshness = scoreFreshness(lastRediscoveryAt, freshnessWindowMs);
   const expirationRatio = scoreExpirationRatio(expiredCount, totalActionable);
 

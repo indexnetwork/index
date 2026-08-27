@@ -150,8 +150,6 @@ export type {
   SynthesisResult,
 } from "./capabilities/intents.js";
 
-export { MaintenanceGraphFactory } from "./internal/maintenance/maintenance.graph.js";
-export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./internal/maintenance/maintenance.graph.js";
 export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────

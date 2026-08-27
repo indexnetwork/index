@@ -16,7 +16,7 @@ import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import { timed } from '../shared/observability/performance.js';
 import { safeFallbackSummary } from "./opportunity.presentation.js";
 import type { OpportunityMutationResult } from "./opportunity.lifecycle.js";
-import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
+import { deleteOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
 import { deleteLog, introEvaluationLog, introValidationLog, readLog, sendLog, updateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /** Identifies the caller and the opportunity every mutation mode acts on. */
@@ -78,7 +78,7 @@ export async function readOpportunities(
       // Dedupe by counterpart set (same people = one row) so chat does not show "You and X" per index
       const counterpartKey = (opp: (typeof list)[number]) =>
         opp.actors
-          .filter((a: OpportunityActor) => a.userId !== request.userId && a.role !== 'introducer')
+          .filter((a: OpportunityActor) => a.userId !== request.userId)
           .map((a: OpportunityActor) => a.userId)
           .sort()
           .join(',');
@@ -100,12 +100,10 @@ export async function readOpportunities(
 
       const enriched = await Promise.all(
         dedupedList.map(async (opp) => {
-          // "Other parties" = all actors who are not the current user (exclude introducer for suggestedBy).
-          // Opportunity graph persists roles as 'agent'|'patient'|'peer'; manual/createManual use 'party'.
-          const otherParties = opp.actors.filter((a: OpportunityActor) => a.userId !== request.userId && a.role !== 'introducer');
-          const introducer = opp.actors.find((a: OpportunityActor) => a.role === 'introducer');
+          // "Other parties" = every actor who is not the current user.
+          const otherParties = opp.actors.filter((a: OpportunityActor) => a.userId !== request.userId);
           const partyIds = otherParties.map((a: OpportunityActor) => a.userId);
-          const idsToResolve = introducer ? [...partyIds, introducer.userId] : partyIds;
+          const idsToResolve = partyIds;
           // Use the counterpart's (non-viewer) networkId — it reflects where the match was found.
           // actors[0] is typically the viewer with an arbitrary first-target-index value.
           const counterpartActor = opp.actors.find((a: OpportunityActor) => a.userId !== request.userId);
@@ -121,7 +119,7 @@ export async function readOpportunities(
             }),
           ]);
           const connectedWith = profileAndUserPairs.slice(0, partyIds.length);
-          const suggestedBy = introducer ? profileAndUserPairs[partyIds.length] ?? null : null;
+          const suggestedBy = null;
           const category = opp.interpretation?.category ?? 'connection';
           const confidence = opp.interpretation?.confidence ?? (opp.confidence ? Number(opp.confidence) : null);
           const source = opp.detection?.source ? (OPPORTUNITY_SOURCE_LABEL[opp.detection.source] ?? opp.detection.source) : null;
@@ -166,7 +164,6 @@ const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
   cron: 'Scheduled',
   member_added: 'Member added',
   // Read-only history: nothing stamps this source any more, but old rows carry it.
-  introducer_discovery: 'Suggested by contact',
 };
 
 /**

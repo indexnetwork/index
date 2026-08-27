@@ -167,20 +167,6 @@ describe('buildMinimalOpportunityCard - primary action label (IND-161)', () => {
     expect(card.primaryActionLabel).toBe('Start Chat');
   });
 
-  it('uses "Good match" when viewer is the introducer', () => {
-    const introOpp = {
-      ...baseOpp,
-      actors: [
-        { userId: 'introducer-1', role: 'introducer' },
-        { userId: 'ghost-user', role: 'party' },
-        { userId: 'other-party', role: 'party' },
-      ],
-    } as unknown as Opportunity;
-    const card = buildMinimalOpportunityCard(
-      introOpp, 'introducer-1', 'counterpart-user', 'Real User', null,
-    );
-    expect(card.primaryActionLabel).toBe('Good match');
-  });
 });
 
 describe('buildMinimalOpportunityCard - introducer discovery (IND-140)', () => {
@@ -199,22 +185,6 @@ describe('buildMinimalOpportunityCard - introducer discovery (IND-140)', () => {
     detection: { source: 'manual', createdByName: 'Introducer Name' },
   } as unknown as Opportunity;
 
-  it('should return viewerRole "introducer" when viewer is the introducer', () => {
-    const card = buildMinimalOpportunityCard(
-      mockIntroducerOpp,
-      'introducer-user',
-      'target-user',
-      'Target User',
-      null,
-      undefined,
-      null,
-      'Introducer Name',
-      'Bob',
-    );
-    expect(card.viewerRole).toBe('introducer');
-    expect(card.primaryActionLabel).toBe('Good match');
-    expect(card.headline).toBe('Target User → Bob');
-  });
 });
 
 import { buildOpportunityPresentation, attachProfileLink, attachOpportunityAppLink, buildProfileUrl, buildOpportunityAppUrl } from "../opportunity.tools.js";

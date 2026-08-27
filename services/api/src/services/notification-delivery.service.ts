@@ -32,16 +32,13 @@ export class NotificationDeliveryService {
     recipientId: string,
   ): Promise<NotificationStreamEvent> {
     const counterpart = counterpartForRecipient(opportunity, recipientId);
-    const introducer = opportunity.actors.find(({ role }) => role === 'introducer');
-    const [viewerIdentity, counterpartIdentity, introducerIdentity] = await Promise.all([
+    const [viewerIdentity, counterpartIdentity] = await Promise.all([
       this.deps.getIdentity(recipientId),
       counterpart ? this.deps.getIdentity(counterpart.userId) : Promise.resolve(null),
-      introducer ? this.deps.getIdentity(introducer.userId) : Promise.resolve(null),
     ]);
     const projection = buildOpportunityNotificationEvent(opportunity, {
       viewer: viewerIdentity,
       counterpart: counterpartIdentity,
-      introducer: introducerIdentity,
     });
     return {
       type: 'opportunity.new',

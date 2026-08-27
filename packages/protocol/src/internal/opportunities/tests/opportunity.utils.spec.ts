@@ -33,305 +33,68 @@ describe('opportunity.utils', () => {
   // - Agent: see if (status ∈ {accepted, rejected, expired}, or (status ≠ latent and no introducer)).
 
   describe('canUserSeeOpportunity', () => {
-    const STATUSES = ['latent', 'draft', 'pending', 'accepted', 'rejected', 'expired'] as const;
     const VIEWER = 'user-viewer';
+    const actors = [
+      { userId: VIEWER, role: 'party' },
+      { userId: 'user-other', role: 'party' },
+    ];
 
-    // Helper to build actors array
-    const actors = (viewerRole: string, hasIntroducer: boolean) => {
-      const list: Array<{ userId: string; role: string }> = [
-        { userId: VIEWER, role: viewerRole },
-        { userId: 'user-other', role: 'patient' },
-      ];
-      if (hasIntroducer && viewerRole !== 'introducer') {
-        list.push({ userId: 'user-intro', role: 'introducer' });
+    // The old four-way rule keyed on role, `latent`, and introducer approval.
+    // Neither `latent` nor the introducer role exists, so every branch
+    // collapsed to the same answer.
+    test('an actor may read the pairing, at any status and in any role', () => {
+      for (const status of ['negotiating', 'pending', 'accepted', 'rejected', 'expired', 'stalled']) {
+        expect(canUserSeeOpportunity(actors, status, VIEWER)).toBe(true);
       }
-      return list;
-    };
-
-    test('returns false when user is not an actor', () => {
-      const a = [{ userId: 'someone-else', role: 'patient' }];
-      for (const status of STATUSES) {
-        expect(canUserSeeOpportunity(a, status, VIEWER)).toBe(false);
+      for (const role of ['party', 'patient', 'agent', 'peer']) {
+        expect(canUserSeeOpportunity([{ userId: VIEWER, role }], 'negotiating', VIEWER)).toBe(true);
       }
     });
 
-    // Introducer: always sees (all statuses)
-    describe('introducer', () => {
-      for (const status of STATUSES) {
-        test(`sees at ${status}`, () => {
-          const a = [
-            { userId: VIEWER, role: 'introducer' },
-            { userId: 'user-b', role: 'patient' },
-            { userId: 'user-c', role: 'agent' },
-          ];
-          expect(canUserSeeOpportunity(a, status, VIEWER)).toBe(true);
-        });
-      }
-    });
-
-    // Peer: always sees (all statuses)
-    describe('peer', () => {
-      for (const status of STATUSES) {
-        test(`sees at ${status}`, () => {
-          const a = [
-            { userId: VIEWER, role: 'peer' },
-            { userId: 'user-other', role: 'peer' },
-          ];
-          expect(canUserSeeOpportunity(a, status, VIEWER)).toBe(true);
-        });
-      }
-    });
-
-    // Patient without introducer: sees at all statuses
-    describe('patient without introducer', () => {
-      for (const status of STATUSES) {
-        test(`sees at ${status}`, () => {
-          expect(canUserSeeOpportunity(actors('patient', false), status, VIEWER)).toBe(true);
-        });
-      }
-    });
-
-    // Patient with introducer: cannot see at latent, can see at all others
-    describe('patient with introducer', () => {
-      test('cannot see at latent', () => {
-        expect(canUserSeeOpportunity(actors('patient', true), 'latent', VIEWER)).toBe(false);
-      });
-      for (const status of ['pending', 'accepted', 'rejected', 'expired'] as const) {
-        test(`sees at ${status}`, () => {
-          expect(canUserSeeOpportunity(actors('patient', true), status, VIEWER)).toBe(true);
-        });
-      }
-    });
-
-    // Party: same as patient
-    describe('party without introducer', () => {
-      for (const status of STATUSES) {
-        test(`sees at ${status}`, () => {
-          expect(canUserSeeOpportunity(actors('party', false), status, VIEWER)).toBe(true);
-        });
-      }
-    });
-
-    describe('party with introducer', () => {
-      test('cannot see at latent', () => {
-        expect(canUserSeeOpportunity(actors('party', true), 'latent', VIEWER)).toBe(false);
-      });
-      for (const status of ['pending', 'accepted', 'rejected', 'expired'] as const) {
-        test(`sees at ${status}`, () => {
-          expect(canUserSeeOpportunity(actors('party', true), status, VIEWER)).toBe(true);
-        });
-      }
-    });
-
-    // Agent without introducer: cannot see at latent, can see at pending+
-    describe('agent without introducer', () => {
-      test('cannot see at latent', () => {
-        const a = [
-          { userId: VIEWER, role: 'agent' },
-          { userId: 'user-other', role: 'patient' },
-        ];
-        expect(canUserSeeOpportunity(a, 'latent', VIEWER)).toBe(false);
-      });
-      for (const status of ['pending', 'accepted', 'rejected', 'expired'] as const) {
-        test(`sees at ${status}`, () => {
-          const a = [
-            { userId: VIEWER, role: 'agent' },
-            { userId: 'user-other', role: 'patient' },
-          ];
-          expect(canUserSeeOpportunity(a, status, VIEWER)).toBe(true);
-        });
-      }
-    });
-
-    // Agent with introducer: only sees at accepted/rejected/expired
-    describe('agent with introducer', () => {
-      for (const status of ['latent', 'pending'] as const) {
-        test(`cannot see at ${status}`, () => {
-          const a = [
-            { userId: VIEWER, role: 'agent' },
-            { userId: 'user-intro', role: 'introducer' },
-            { userId: 'user-patient', role: 'patient' },
-          ];
-          expect(canUserSeeOpportunity(a, status, VIEWER)).toBe(false);
-        });
-      }
-      for (const status of ['accepted', 'rejected', 'expired'] as const) {
-        test(`sees at ${status}`, () => {
-          const a = [
-            { userId: VIEWER, role: 'agent' },
-            { userId: 'user-intro', role: 'introducer' },
-            { userId: 'user-patient', role: 'patient' },
-          ];
-          expect(canUserSeeOpportunity(a, status, VIEWER)).toBe(true);
-        });
-      }
+    test('a non-actor may not', () => {
+      expect(canUserSeeOpportunity(actors, 'negotiating', 'user-stranger')).toBe(false);
+      expect(canUserSeeOpportunity([], 'negotiating', VIEWER)).toBe(false);
     });
   });
 
-  // ─── isActionableForViewer ───────────────────────────────────────────────
-  // Rules:
-  //   (1) latent, no introducer            → all actors actionable
-  //   (2) latent, introducer !approved     → introducer only
-  //   (3) latent, introducer approved      → all non-introducer actors
-  //   (4) pending, any introducer config   → non-introducer actors who have not acted
-  //       (acting is per-user: any viewer actor row with actedAt means acted)
-  //   (5) terminal / stalled / draft / negotiating → never actionable
-
   describe('isActionableForViewer', () => {
     const VIEWER = 'user-viewer';
-    const OTHER = 'user-other';
-    const INTRO = 'user-intro';
+    const actors = (over: Record<string, unknown> = {}) => [
+      { userId: VIEWER, role: 'party', ...over },
+      { userId: 'user-other', role: 'party' },
+    ];
 
-    const NON_ACTIONABLE_STATUSES = [
-      'draft',
-      'negotiating',
-      'stalled',
-      'accepted',
-      'rejected',
-      'expired',
-    ] as const;
-
-    /**
-     * Build an actors array where `viewerRole` is the viewer's role. If
-     * `introducerApproved` is undefined, no introducer is present.
-     */
-    const actors = (
-      viewerRole: 'introducer' | 'patient' | 'party' | 'agent' | 'peer',
-      introducerApproved: boolean | undefined,
-    ) => {
-      const list: Array<{ userId: string; role: string; approved?: boolean }> = [];
-      if (viewerRole === 'introducer') {
-        list.push({ userId: VIEWER, role: 'introducer', approved: introducerApproved ?? false });
-        list.push({ userId: OTHER, role: 'patient' });
-      } else {
-        list.push({ userId: VIEWER, role: viewerRole });
-        list.push({ userId: OTHER, role: viewerRole === 'patient' ? 'agent' : 'patient' });
-        if (introducerApproved !== undefined) {
-          list.push({ userId: INTRO, role: 'introducer', approved: introducerApproved });
-        }
-      }
-      return list;
-    };
-
-    test('returns false when viewer is not an actor', () => {
-      const a = [{ userId: 'someone-else', role: 'patient' }];
-      expect(isActionableForViewer(a, 'latent', VIEWER)).toBe(false);
-      expect(isActionableForViewer(a, 'pending', VIEWER)).toBe(false);
+    test('is actionable at pending while the viewer has not acted', () => {
+      expect(isActionableForViewer(actors(), 'pending', VIEWER)).toBe(true);
     });
 
-    describe('introducer', () => {
-      it('is actionable only when latent and not yet approved', () => {
-        expect(isActionableForViewer(actors('introducer', false), 'latent', VIEWER)).toBe(true);
-      });
-
-      it('stops being actionable once approved=true (status stays latent)', () => {
-        expect(isActionableForViewer(actors('introducer', true), 'latent', VIEWER)).toBe(false);
-      });
-
-      it('is not actionable at pending or any terminal status', () => {
-        expect(isActionableForViewer(actors('introducer', false), 'pending', VIEWER)).toBe(false);
-        expect(isActionableForViewer(actors('introducer', true), 'pending', VIEWER)).toBe(false);
-        for (const status of NON_ACTIONABLE_STATUSES) {
-          expect(isActionableForViewer(actors('introducer', false), status, VIEWER)).toBe(false);
-          expect(isActionableForViewer(actors('introducer', true), status, VIEWER)).toBe(false);
-        }
-      });
+    test('is not actionable once the viewer has acted', () => {
+      expect(isActionableForViewer(actors({ actedAt: '2026-08-01T00:00:00Z' }), 'pending', VIEWER)).toBe(false);
     });
 
-    describe('duplicate viewer actor rows (re-detection)', () => {
-      it('pending stays non-actionable when any viewer row has actedAt, even with unstamped duplicates', () => {
-        // Re-detection appends duplicate viewer rows without actedAt; the
-        // viewer already accepted — the opportunity must NOT resurface.
-        expect(isActionableForViewer([
-          { userId: VIEWER, role: 'patient', actedAt: '2026-06-04T21:11:14.697Z' },
-          { userId: VIEWER, role: 'agent', actedAt: '2026-06-04T21:11:14.697Z' },
-          { userId: OTHER, role: 'patient' },
-          { userId: VIEWER, role: 'patient' }, // duplicate row from re-detection, no actedAt
-          { userId: VIEWER, role: 'patient' },
-        ], 'pending', VIEWER)).toBe(false);
-      });
-
-      it('pending remains actionable when no viewer row has actedAt', () => {
-        expect(isActionableForViewer([
-          { userId: VIEWER, role: 'patient' },
-          { userId: VIEWER, role: 'peer' },
-          { userId: OTHER, role: 'agent' },
-        ], 'pending', VIEWER)).toBe(true);
-      });
+    test('a negotiating pairing is the agents\' work, not the principal\'s', () => {
+      expect(isActionableForViewer(actors(), 'negotiating', VIEWER)).toBe(false);
     });
 
-    describe('non-introducer actor, no introducer', () => {
-      for (const role of ['patient', 'party', 'agent', 'peer'] as const) {
-        describe(role, () => {
-          it('is actionable at latent', () => {
-            expect(isActionableForViewer(actors(role, undefined), 'latent', VIEWER)).toBe(true);
-          });
-
-          it('is actionable at pending until the viewer has acted', () => {
-            expect(isActionableForViewer(actors(role, undefined), 'pending', VIEWER)).toBe(true);
-            expect(isActionableForViewer([
-              { userId: VIEWER, role, actedAt: '2026-05-12T10:00:00.000Z' },
-              { userId: OTHER, role: role === 'patient' ? 'agent' : 'patient' },
-            ], 'pending', VIEWER)).toBe(false);
-          });
-
-          it('is not actionable at terminal or internal statuses', () => {
-            for (const status of NON_ACTIONABLE_STATUSES) {
-              expect(isActionableForViewer(actors(role, undefined), status, VIEWER)).toBe(false);
-            }
-          });
-        });
+    test('never actionable at a terminal status', () => {
+      for (const status of ['accepted', 'rejected', 'expired', 'stalled']) {
+        expect(isActionableForViewer(actors(), status, VIEWER)).toBe(false);
       }
     });
 
-    describe('non-introducer actor, with introducer NOT approved', () => {
-      for (const role of ['patient', 'party', 'agent', 'peer'] as const) {
-        describe(role, () => {
-          it('is NOT actionable at latent (only introducer sees it)', () => {
-            expect(isActionableForViewer(actors(role, false), 'latent', VIEWER)).toBe(false);
-          });
-
-          it('is actionable at pending until the viewer has acted', () => {
-            expect(isActionableForViewer(actors(role, false), 'pending', VIEWER)).toBe(true);
-            expect(isActionableForViewer([
-              { userId: VIEWER, role, actedAt: '2026-05-12T10:00:00.000Z' },
-              { userId: OTHER, role: role === 'patient' ? 'agent' : 'patient' },
-              { userId: INTRO, role: 'introducer', approved: false },
-            ], 'pending', VIEWER)).toBe(false);
-          });
-
-          it('is not actionable at terminal or internal statuses', () => {
-            for (const status of NON_ACTIONABLE_STATUSES) {
-              expect(isActionableForViewer(actors(role, false), status, VIEWER)).toBe(false);
-            }
-          });
-        });
-      }
+    test('acting is per-user: one stamped row settles every duplicate row', () => {
+      // Re-detection can append a second actor row for the same user without
+      // `actedAt`; a single stamped row still means the viewer has decided.
+      const duplicated = [
+        { userId: VIEWER, role: 'party', actedAt: '2026-08-01T00:00:00Z' },
+        { userId: VIEWER, role: 'party' },
+        { userId: 'user-other', role: 'party' },
+      ];
+      expect(isActionableForViewer(duplicated, 'pending', VIEWER)).toBe(false);
     });
 
-    describe('non-introducer actor, with introducer approved', () => {
-      for (const role of ['patient', 'party', 'agent', 'peer'] as const) {
-        describe(role, () => {
-          it('is actionable at latent', () => {
-            expect(isActionableForViewer(actors(role, true), 'latent', VIEWER)).toBe(true);
-          });
-
-          it('is actionable at pending until the viewer has acted', () => {
-            expect(isActionableForViewer(actors(role, true), 'pending', VIEWER)).toBe(true);
-            expect(isActionableForViewer([
-              { userId: VIEWER, role, actedAt: '2026-05-12T10:00:00.000Z' },
-              { userId: OTHER, role: role === 'patient' ? 'agent' : 'patient' },
-              { userId: INTRO, role: 'introducer', approved: true },
-            ], 'pending', VIEWER)).toBe(false);
-          });
-
-          it('is not actionable at terminal or internal statuses', () => {
-            for (const status of NON_ACTIONABLE_STATUSES) {
-              expect(isActionableForViewer(actors(role, true), status, VIEWER)).toBe(false);
-            }
-          });
-        });
-      }
+    test('a non-actor is never actionable', () => {
+      expect(isActionableForViewer(actors(), 'pending', 'user-stranger')).toBe(false);
     });
   });
 
@@ -342,25 +105,6 @@ describe('opportunity.utils', () => {
         { role: 'party' },
       ];
       expect(() => validateOpportunityActors(actors)).not.toThrow();
-    });
-
-    test('rejects when there is an introducer and three non-introducer actors', () => {
-      const actors = [
-        { role: 'introducer' },
-        { role: 'party' },
-        { role: 'party' },
-        { role: 'party' },
-      ];
-      expect(() => validateOpportunityActors(actors)).toThrow(
-        /An opportunity with an introducer must have one or two other actors/
-      );
-    });
-
-    test('rejects when there is an introducer and zero non-introducer actors', () => {
-      const actors = [{ role: 'introducer' }];
-      expect(() => validateOpportunityActors(actors)).toThrow(
-        /An opportunity with an introducer must have one or two other actors/
-      );
     });
 
     test('accepts three actors: two party + one introducer', () => {
@@ -416,16 +160,6 @@ describe('opportunity.utils', () => {
           { userId: 'a1234567-b234-c345-d456-e56789abcdef', role: 'party' },
         ])
       ).not.toThrow();
-    });
-
-    test('rejects an introducer who is also a participant ("Amina introduced you to Amina")', () => {
-      const amina = 'a1234567-b234-c345-d456-e56789abcdef';
-      expect(() =>
-        validateOpportunityActors([
-          { userId: amina, role: 'introducer' },
-          { userId: amina, role: 'party' },
-        ])
-      ).toThrow(/both the introducer and a participant/);
     });
 
     test('accepts a 1:1 intro where introducer and party are distinct users', () => {
@@ -489,11 +223,6 @@ function makeConnectorFlowOpp(
 }
 
 describe('classifyOpportunity', () => {
-  it('classifies opportunity with viewer as introducer as connector-flow', () => {
-    const opp = makeConnectorFlowOpp('cf-1', 'viewer', 'party-a', 'party-b');
-    expect(classifyOpportunity(opp, 'viewer')).toBe('connector-flow');
-  });
-
   it('classifies direct connection as connection', () => {
     const opp = makeConnectionOpp('conn-1', 'viewer', 'other');
     expect(classifyOpportunity(opp, 'viewer')).toBe('connection');

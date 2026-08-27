@@ -70,7 +70,6 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'findOpportunitiesByActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
-  | 'updateOpportunityActorApproval'
   | 'stampOpportunityActorAction'
   | 'getOrCreateDM'
   // HyDE graph (used by OpportunityGraph)
@@ -171,7 +170,6 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
   | 'stampOpportunityActorAction'
-  | 'updateOpportunityActorApproval'
   | 'isNetworkMember'
   | 'isIndexOwner'
   | 'getUser'
@@ -233,8 +231,6 @@ export type OpportunityControllerDatabase = Pick<
   // owned by OpportunityService — services cannot import other services.
   | 'getOrCreateDM'
   | 'unhideConversation'
-  // Approve-introduction endpoint: flip introducer actor's approved flag.
-  | 'updateOpportunityActorApproval'
   // Self-accept guard + actedAt stamping on service-layer status flips.
   | 'stampOpportunityActorAction'
 >;

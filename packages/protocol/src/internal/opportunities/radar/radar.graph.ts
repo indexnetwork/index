@@ -158,14 +158,14 @@ const getRawConfidence = (opp: typeof RadarGraphState.State['opportunities'][num
   return 0;
 };
 
-/** Unique non-introducer, non-viewer userIds for an opportunity (actors can repeat). */
+/** Unique non-viewer userIds for an opportunity (actors can repeat). */
 const getUniqueCounterpartUserIds = (
   opp: typeof RadarGraphState.State['opportunities'][number],
   viewerId: string
 ): Set<string> => {
   const ids = new Set<string>();
   for (const a of opp.actors) {
-    if (a.role !== 'introducer' && a.userId !== viewerId && a.userId) {
+    if (a.userId !== viewerId && a.userId) {
       ids.add(a.userId);
     }
   }
@@ -177,7 +177,7 @@ const pickDisplayCounterpartActor = (
   viewerId: string
 ): { userId: string; role: string } | null => {
   const candidates = opportunity.actors.filter(
-    (actor) => actor.userId !== viewerId && actor.role !== 'introducer'
+    (actor) => actor.userId !== viewerId
   );
   if (candidates.length === 0) {
     return null;
@@ -248,7 +248,7 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
     }
     try {
       // Minimum of 50 ensures enough candidates across all radar categories
-      // (connection, connector-flow, expired) for selectByComposition to fill
+      // (connection, expired) for selectByComposition to fill
       // its soft targets, even after visibility filtering and dedup.
       const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
       const statuses = state.statuses ?? DEFAULT_RADAR_STATUSES;
@@ -302,12 +302,6 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
         return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
       }
       const sorted = [...visibleForRadar].sort((a, b) => {
-        // Connections before connector-flow so dedup claims counterpart IDs
-        // for direct connections first — prevents introducer cards from
-        // shadowing a user's own connection opportunities.
-        const aIsIntroducer = a.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
-        const bIsIntroducer = b.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
-        if (aIsIntroducer !== bIsIntroducer) return aIsIntroducer ? 1 : -1;
         const confA = getRawConfidence(a);
         const confB = getRawConfidence(b);
         if (confB !== confA) return confB - confA;
@@ -445,38 +439,23 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
         const cardIndex = oppIndexMap.get(opportunity.id) ?? (i + offset);
         const viewerActor = opportunity.actors.find((a) => a.userId === state.userId);
         const viewerRole = viewerActor?.role ?? 'party';
-        const isIntroducer = viewerRole === 'introducer';
         const preferredActor = pickDisplayCounterpartActor(opportunity, state.userId)
-          ?? opportunity.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
+          ?? opportunity.actors.find((a) => a.userId !== state.userId);
         const actorWithProfile = opportunity.actors.find(
-          (a) => a.userId !== state.userId && a.role !== 'introducer' && !!userMap.get(a.userId)
+          (a) => a.userId !== state.userId && !!userMap.get(a.userId)
         );
-        const introducer = opportunity.actors.find((a) => a.role === 'introducer');
-        let otherActor = (preferredActor && userMap.get(preferredActor.userId))
+        const otherActor = (preferredActor && userMap.get(preferredActor.userId))
           ? preferredActor
           : (actorWithProfile ?? preferredActor);
-        // When the only other participant is the introducer (no separate party), use introducer as display counterpart so the card shows a name instead of "Unknown"
-        if (!otherActor && introducer && introducer.userId !== state.userId && introducer.userId) {
-          otherActor = { userId: introducer.userId, role: introducer.role };
-        }
         const otherUser = otherActor ? userMap.get(otherActor.userId) ?? null : null;
-        const introducerCounterparts = opportunity.actors.filter(
-          (a) => a.userId !== state.userId && a.role !== 'introducer'
-        );
+        const counterparts = opportunity.actors.filter((a) => a.userId !== state.userId);
         // Deduplicate by userId — actors array can contain multiple rows per user
         // (e.g. from different intents), which would produce repeated names.
-        const uniqueCounterpartIds = [...new Set(introducerCounterparts.map((a) => a.userId))];
+        const uniqueCounterpartIds = [...new Set(counterparts.map((a) => a.userId))];
         const participantNames = uniqueCounterpartIds
           .map((uid) => userMap.get(uid)?.name ?? 'Unknown')
           .sort();
-        // When secondPartyData will be present (2+ counterparts), use single counterpart name
-        // because the frontend arrow layout renders "card.name → secondParty.name".
-        // Using the joined "A ↔ B" format here would produce redundant "A ↔ B → B".
-        // Only use the joined format when there is a single counterpart (no arrow layout).
-        const willHaveSecondParty = isIntroducer && uniqueCounterpartIds.length > 1;
-        let userName = isIntroducer && participantNames.length > 0 && !willHaveSecondParty
-          ? participantNames.join(' ↔ ')
-          : (otherUser?.name ?? 'Unknown');
+        let userName = otherUser?.name ?? 'Unknown';
         // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
         if ((userName === 'Unknown' || !userName?.trim()) && otherActor?.userId && db.getProfile) {
           const profile = await db.getProfile(otherActor.userId).catch((err) => {
@@ -513,19 +492,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           },
         );
 
-        // Build secondParty for introducer arrow layout (the party that isn't the display counterpart)
-        let secondPartyData: { name: string; avatar?: string | null; userId?: string } | undefined;
-        if (isIntroducer && introducerCounterparts.length > 1 && otherActor) {
-          const secondActor = introducerCounterparts.find((a) => a.userId !== otherActor.userId);
-          if (secondActor) {
-            const secondUser = userMap.get(secondActor.userId) ?? null;
-            secondPartyData = {
-              name: secondUser?.name ?? 'Unknown',
-              avatar: secondUser?.avatar ?? null,
-              userId: secondActor.userId,
-            };
-          }
-        }
 
         // Skeleton presentation: return an identity-only card without the
         // deps.presenter LLM or negotiation-context load. Name resolution and
@@ -542,14 +508,12 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             cta: '',
             primaryActionLabel: getPrimaryActionLabel(viewerRole),
             secondaryActionLabel: SECONDARY_ACTION_LABEL,
-            mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
+            mutualIntentsLabel: 'Shared interests',
             viewerRole,
-            ...(secondPartyData ? { secondParty: secondPartyData } : {}),
             presentationPending: true,
             _cardIndex: cardIndex,
           } satisfies RadarCardItem;
         }
-        const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
         const fallbackCard = (outcomeReasoning?: string): RadarCardItem => ({
           opportunityId: opportunity.id,
           status: opportunity.status,
@@ -557,17 +521,12 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           name: userName,
           avatar: userAvatar,
           mainText: outcomeReasoning ?? reasoningSnippet,
-          cta: isIntroducer
-            ? (isPendingIntroducerFallback ? 'Share this introduction to get things started.' : 'Take a look and decide if this is a good match.')
-            : 'Take a look and decide whether to reach out.',
+          cta: 'Take a look and decide whether to reach out.',
           primaryActionLabel: getPrimaryActionLabel(viewerRole),
           secondaryActionLabel: SECONDARY_ACTION_LABEL,
-          mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
-          narratorChip: isIntroducer
-            ? { name: 'You', text: 'Worth a look.', userId: state.userId }
-            : { name: 'Index', text: 'Worth a look.' },
+          mutualIntentsLabel: 'Shared interests',
+          narratorChip: { name: 'Index', text: 'Worth a look.' },
           viewerRole,
-          ...(secondPartyData ? { secondParty: secondPartyData } : {}),
           _presentationFallback: true,
           _cardIndex: cardIndex,
         });
@@ -599,24 +558,9 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           if (presentation.isFallback) {
             return fallbackCard(negotiationContext?.outcomeReasoning);
           }
-          let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
-          // Only show a person as narrator when they are the introducer and not the display counterpart
-          // (bad data can have same user as introducer and party, e.g. "Amina introduced you to Amina")
-          const introducerIsCounterpart = introducer && otherActor && introducer.userId === otherActor.userId;
-          if (introducer && introducer.userId !== state.userId && !introducerIsCounterpart) {
-            const introUser = userMap.get(introducer.userId) ?? null;
-            const narratorName = introUser?.name ?? 'Someone';
-            narratorChip = {
-              name: narratorName,
-              text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
-              avatar: introUser?.avatar ?? null,
-              userId: introducer.userId,
-            };
-          } else if (introducer?.userId === state.userId) {
-            narratorChip = { name: 'You', text: presentation.narratorRemark, userId: state.userId };
-          } else {
-            narratorChip = { name: 'Index', text: presentation.narratorRemark };
-          }
+          // Every card is system-discovered now: one narrator.
+          const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
+            { name: 'Index', text: presentation.narratorRemark };
           return {
             opportunityId: opportunity.id,
             status: opportunity.status,
@@ -634,7 +578,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             mutualIntentsLabel: presentation.mutualIntentsLabel,
             narratorChip,
             viewerRole,
-            ...(secondPartyData ? { secondParty: secondPartyData } : {}),
             _cardIndex: cardIndex,
           } satisfies RadarCardItem;
         } catch (e) {

@@ -65,14 +65,8 @@ export interface RadarCardItem {
   /** Presenter-generated subtitle under the other party name (e.g. "1 mutual signal"). */
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
-  /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
+  /** Viewer's role in this opportunity (e.g. 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
-  /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
-  secondParty?: {
-    name: string;
-    avatar?: string | null;
-    userId?: string;
-  };
   /**
    * True when this card came from a skeleton-presentation fetch: identity
    * fields are real but mainText/cta are empty (presenter LLM skipped).
@@ -118,7 +112,6 @@ export interface OpportunityDetailResponse {
   category?: string;
   confidence?: number;
   network?: { id: string; title: string };
-  introducedBy?: { id: string; name: string; avatar?: string | null };
   /** Present when the requested opportunity was superseded by this enriched opportunity. */
   resolvedFromOpportunityId?: string;
 }
@@ -129,7 +122,6 @@ export interface ChatContextOpportunity {
   headline: string;
   personalizedSummary: string;
   narratorRemark: string;
-  introducerName: string | null;
   peerName: string;
   peerAvatar: string | null;
   /** ISO-8601 acceptance time (from opportunities.updatedAt). May be null for legacy rows. */

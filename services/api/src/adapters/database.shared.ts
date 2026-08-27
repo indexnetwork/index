@@ -117,7 +117,7 @@ export interface IntentListRow {
   /**
    * Count of distinct `pending` opportunities awaiting this owner that are
    * attributed to this signal by `detection.triggeredBy` or the owner's
-   * non-introducer actor intent. Rows the owner already acted on are excluded.
+   * actor intent. Rows the owner already acted on are excluded.
    */
   waitingOpportunityCount: number;
   /** True while a fresh intent has not completed its first discovery run. */

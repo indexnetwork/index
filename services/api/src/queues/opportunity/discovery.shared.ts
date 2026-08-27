@@ -38,7 +38,7 @@ export function createOpportunityGraphDb(database: object = new ChatDatabaseAdap
 
 /**
  * Assemble the configured opportunity graph (HyDE sub-graph + matches_ready wiring).
- * Identical across from-intent / from-introducer / from-enrichment, so it lives here once.
+ * Shared by every discovery entry point, so it lives here once.
  */
 export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: OpportunityDiscoveryDeps) {
   const embedder: Embedder = new EmbedderAdapter();

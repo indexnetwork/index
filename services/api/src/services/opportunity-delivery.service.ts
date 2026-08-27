@@ -55,7 +55,7 @@ export interface PickupPendingResult {
 export interface PendingCandidate {
   opportunityId: string;
   counterpartUserId: string | null;
-  feedCategory: 'connection' | 'connector-flow';
+  feedCategory: 'connection';
   rendered: RenderedCard;
 }
 
@@ -428,11 +428,11 @@ export class OpportunityDeliveryService {
     const candidates = await Promise.all(
       sliced.map(async (row) => {
         const actors = row.actors as Array<{ userId: string; role: string }>;
-        const counterpart = actors.find((a) => a.userId !== userId && a.role !== 'introducer');
+        const counterpart = actors.find((a) => a.userId !== userId);
         const feedCategory = classifyOpportunity(
           { actors, status: row.status },
           userId,
-        ) as 'connection' | 'connector-flow';
+        ) as 'connection';
         return {
           opportunityId: row.id,
           counterpartUserId: counterpart?.userId ?? null,
@@ -495,7 +495,6 @@ export class OpportunityDeliveryService {
         AND o.accepted_by IS NOT NULL
         AND o.accepted_by <> ${userId}
         AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
-        AND NOT (o.actors::jsonb @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb)
         AND EXISTS (
           SELECT 1 FROM agents a
           WHERE a.id = ${agentId}

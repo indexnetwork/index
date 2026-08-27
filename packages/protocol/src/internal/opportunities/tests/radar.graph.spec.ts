@@ -492,69 +492,6 @@ describe('RadarGraph', () => {
     expect(statusById.get('opp-expired')).toBe('expired');
   }, 30000);
 
-  test('shows latent opportunity for introducer but not pending', async () => {
-    const viewerId = 'intro-1';
-    const memberA = 'member-a';
-    const memberB = 'member-b';
-    const latentOpportunity: Opportunity = {
-      id: 'opp-introducer-latent',
-      detection: { source: 'manual', timestamp: new Date().toISOString() },
-      actors: [
-        { userId: viewerId, role: 'introducer', networkId: 'idx-1' },
-        { userId: memberA, role: 'patient', networkId: 'idx-1' },
-        { userId: memberB, role: 'agent', networkId: 'idx-1' },
-      ],
-      interpretation: {
-        reasoning: 'These two members should meet based on aligned goals.',
-        category: 'connection',
-        confidence: 0.9,
-      },
-      context: { networkId: 'idx-1' },
-      confidence: '0.9',
-      status: 'latent',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      expiresAt: null,
-    };
-    const db = createMockDb([latentOpportunity]);
-    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
-
-    expect(result.error).toBeUndefined();
-    expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.items.length;
-    expect(totalItems).toBe(1);
-    expect(result.items[0]?.opportunityId).toBe('opp-introducer-latent');
-  }, 70000);
-
-  test('introducer does not see pending opportunity in radar', async () => {
-    const viewerId = 'intro-1';
-    const memberA = 'member-a';
-    const memberB = 'member-b';
-    const pendingOpportunity: Opportunity = {
-      id: 'opp-introducer-pending',
-      detection: { source: 'manual', timestamp: new Date().toISOString() },
-      actors: [
-        { userId: viewerId, role: 'introducer', networkId: 'idx-1' },
-        { userId: memberA, role: 'patient', networkId: 'idx-1' },
-        { userId: memberB, role: 'agent', networkId: 'idx-1' },
-      ],
-      interpretation: { reasoning: 'Pending.', category: 'connection', confidence: 0.9 },
-      context: { networkId: 'idx-1' },
-      confidence: '0.9',
-      status: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      expiresAt: null,
-    };
-    const db = createMockDb([pendingOpportunity]);
-    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
-
-    expect(result.error).toBeUndefined();
-    expect(result.meta.totalOpportunities).toBe(0);
-    const totalItems = result.items.length;
-    expect(totalItems).toBe(0);
-  }, 30000);
-
   test('agent without introducer sees pending but not latent', async () => {
     const patientId = 'patient-1';
     const agentId = 'agent-1';
@@ -614,60 +551,6 @@ describe('RadarGraph', () => {
   // with the same userId (e.g. from different intents), and introducerCounterparts
   // maps all of them to names without deduplicating, producing repeated names like
   // "Seref Yarar ↔ Seref Yarar ↔ jiawei ↔ jiawei" instead of "Seref Yarar ↔ jiawei".
-  test('introducer card deduplicates participant names when actors have duplicate userIds', async () => {
-    const viewerId = 'intro-1';
-    const memberA = 'member-a';
-    const memberB = 'member-b';
-
-    // Opportunity where each non-introducer userId appears multiple times
-    // (e.g. from different intents or discovery passes)
-    const duplicateActorsOpp: Opportunity = {
-      id: 'opp-dup-actors',
-      detection: { source: 'manual', timestamp: new Date().toISOString() },
-      actors: [
-        { userId: viewerId, role: 'introducer', networkId: 'idx-1' },
-        { userId: memberA, role: 'patient', networkId: 'idx-1', intent: 'intent-1' },
-        { userId: memberA, role: 'patient', networkId: 'idx-1', intent: 'intent-2' },
-        { userId: memberA, role: 'patient', networkId: 'idx-1', intent: 'intent-3' },
-        { userId: memberB, role: 'agent', networkId: 'idx-1', intent: 'intent-4' },
-        { userId: memberB, role: 'agent', networkId: 'idx-1', intent: 'intent-5' },
-        { userId: memberB, role: 'agent', networkId: 'idx-1', intent: 'intent-6' },
-      ],
-      interpretation: {
-        reasoning: 'These two should connect.',
-        category: 'connection',
-        confidence: 0.9,
-      },
-      context: { networkId: 'idx-1' },
-      confidence: '0.9',
-      status: 'latent',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      expiresAt: null,
-    };
-
-    const db = createMockDb([duplicateActorsOpp]);
-    const result = await new RadarGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
-
-    expect(result.error).toBeUndefined();
-    expect(result.meta.totalOpportunities).toBe(1);
-    const totalItems = result.items.length;
-    expect(totalItems).toBe(1);
-
-    const card = result.items[0];
-    expect(card).toBeDefined();
-
-    // With secondParty present (2 counterparts), card.name should be a single name,
-    // not the joined "A ↔ B" format. The frontend arrow layout renders card.name → secondParty.name.
-    const name = card!.name;
-    expect(name).not.toContain('↔');
-    // card.name and secondParty.name should cover both counterparts
-    expect(card!.secondParty).toBeDefined();
-    const allNames = [name, card!.secondParty!.name];
-    expect(allNames).toContain('User member-a');
-    expect(allNames).toContain('User member-b');
-  }, 70000);
-
 });
 
 describe('RadarGraph caching', () => {
@@ -843,24 +726,6 @@ function makeOpp(
 
 describe('radar fetch limit bug', () => {
   describe('selectByComposition includes connector-flow when candidates exist', () => {
-    test('returns connector-flow items when pool contains both connections and connector-flow', () => {
-      // Simulate a diverse pool: 10 connections + 5 connector-flow + 3 expired
-      const pool = [
-        ...Array.from({ length: 10 }, (_, i) => makeOpp(`conn-${i}`, 'patient', 'latent', `other-${i}`)),
-        ...Array.from({ length: 5 }, (_, i) => makeOpp(`intro-${i}`, 'introducer', 'latent', `intro-other-${i}`)),
-        ...Array.from({ length: 3 }, (_, i) => makeOpp(`exp-${i}`, 'patient', 'expired', `exp-other-${i}`)),
-      ];
-
-      const result = selectByComposition(pool, VIEWER);
-
-      // Should include connector-flow items
-      const connectorFlowCount = result.filter(
-        (opp) => classifyOpportunity(opp, VIEWER) === 'connector-flow'
-      ).length;
-      expect(connectorFlowCount).toBeGreaterThan(0);
-      expect(connectorFlowCount).toBe(RADAR_SOFT_TARGETS.connectorFlow);
-    });
-
     test('returns 0 connector-flow when pool contains ONLY connections (the bug scenario)', () => {
       // Simulate the bug: fetchLimit=15 returns only the 15 newest, all connections
       const pool = Array.from({ length: 15 }, (_, i) =>
@@ -960,39 +825,6 @@ function makeIntroducerOpportunity(introducerId: string, partyAId: string, party
 }
 
 describe('radar.graph introducer card name format', () => {
-  test('introducer card name should NOT use joined format when secondParty is present', async () => {
-    const viewerId = 'intro-1';
-    const opp = makeIntroducerOpportunity(viewerId, 'party-a', 'party-b');
-    const db = createIntroMockDb([opp]);
-    const cache = createMockCache();
-    const factory = new RadarGraphFactory(db, cache);
-    const graph = factory.createGraph();
-
-    const result = await graph.invoke({
-      userId: viewerId,
-      limit: 10,
-      noCache: true,
-    });
-
-    // The graph should produce cards
-    expect(result.cards.length).toBeGreaterThan(0);
-
-    const card = result.cards[0];
-    // card.name should be a single person's name, NOT "Mert Karadayi ↔ Yanki Ekin Yuksel"
-    expect(card.name).not.toContain('↔');
-
-    // secondParty should be populated
-    expect(card.secondParty).toBeDefined();
-    expect(card.secondParty?.name).toBeTruthy();
-
-    // card.name and secondParty.name should be different people
-    expect(card.name).not.toBe(card.secondParty?.name);
-
-    // Both names should be actual person names
-    const allNames = [card.name, card.secondParty?.name];
-    expect(allNames).toContain('Mert Karadayi');
-    expect(allNames).toContain('Yanki Ekin Yuksel');
-  }, 30_000);
 });
 
 describe('RadarGraph skeleton presentation', () => {

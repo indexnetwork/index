@@ -2554,13 +2554,6 @@ export class ChatDatabaseAdapter {
       expectedStatus,
     );
   }
-  async updateOpportunityActorApproval(
-    id: string,
-    introducerUserId: string,
-    approved: boolean,
-  ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
-  }
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
   }

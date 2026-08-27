@@ -22,10 +22,8 @@ export interface RadarCardItem {
   mutualIntentsLabel: string;
   /** Narrator chip for human-introduced opportunities; avatar set when narrator is a user */
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
-  /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
+  /** Viewer's role in this opportunity (e.g. 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
-  /** Second party in introducer arrow layout. Present when viewerRole is 'introducer'. */
-  secondParty?: { name: string; avatar?: string | null; userId?: string };
   /**
    * True when this card was produced by a skeleton-presentation run: identity
    * fields (name/avatar/status) are real but mainText/cta are empty because the

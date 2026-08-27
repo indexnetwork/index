@@ -2497,11 +2497,9 @@ export class ConversationDatabaseAdapter {
         .for('update');
       if (!opportunity || !NEGOTIATION_OPEN_STATUSES.has(opportunity.status)) return null;
 
-      const actors = opportunity.actors.filter((actor) => actor.role !== 'introducer');
-      const introducers = opportunity.actors.filter((actor) => actor.role === 'introducer');
+      const actors = opportunity.actors;
       if (
-        !introducers.every((actor) => actor.approved === true)
-        || !actors.some((actor) => actor.userId === input.sourceUserId && actor.networkId === input.networkId)
+        !actors.some((actor) => actor.userId === input.sourceUserId && actor.networkId === input.networkId)
         || !actors.some((actor) => actor.userId === input.candidateUserId)
         || !Object.values(input.seats).some((seat) => seat.userId === input.sourceUserId)
         || !Object.values(input.seats).some((seat) => seat.userId === input.candidateUserId)

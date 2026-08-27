@@ -72,7 +72,7 @@ export default function TopBar() {
       const latestByRecipient = new Map<string, number>();
       for (const opportunity of acceptedOpportunities) {
         const counterpart = opportunity.actors.find(
-          (actor) => actor.userId !== user.id && actor.role !== 'introducer',
+          (actor) => actor.userId !== user.id,
         ) ?? opportunity.actors.find((actor) => actor.userId !== user.id);
         if (!counterpart?.userId) continue;
         const ts = new Date(opportunity.updatedAt).getTime();

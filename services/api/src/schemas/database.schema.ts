@@ -384,8 +384,7 @@ export const hydeDocuments = pgTable('hyde_documents', {
 }));
 
 export interface OpportunityDetection {
-  /** `introducer_discovery` is read-only history: no path stamps it any more, but existing rows carry it. */
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
+  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -400,12 +399,10 @@ export interface OpportunityActor {
   /** Which premise grounded this match (set when discoverySource is 'premise-similarity'). */
   premise?: Id<'premises'>;
   role: string;
-  /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
-  approved?: boolean;
   /**
    * ISO-8601 timestamp set the first time this actor advanced the opportunity's
    * state (patient sending, agent accepting, peer "accepting" on draft = sending
-   * under the hood, peer accepting on pending, introducer sending). Once set,
+   * under the hood, peer accepting on pending). Once set,
    * this actor has committed and cannot be the one to subsequently `accept` the
    * same opportunity — enforced by the self-accept guard in `updateNode`.
    */

@@ -82,14 +82,10 @@ class FakePrincipalHost {
     readMatches: async () => [...this.negotiations.opportunities.values()]
       .filter((opportunity) => !TERMINAL_STATUSES.has(opportunity.status))
       .map((opportunity): PersonalAgentMatch => {
-        const introducers = opportunity.actors.filter((actor) => actor.role === "introducer");
         return {
           ref: { kind: "opportunity" as const, id: opportunity.id },
           label: `Match on ${opportunity.id}`,
           status: opportunity.status,
-          ...(introducers.length > 0 && !introducers.every((actor) => actor.approved === true)
-            ? { awaitingIntroducerApproval: true }
-            : {}),
         };
       }),
     createAndOpen: async (_userId, input) => {
@@ -1151,28 +1147,6 @@ describe("PersonalAgent — kickoff safety at the edges", () => {
 });
 
 describe("PersonalAgent — what a turn may open, and what it may claim", () => {
-  test("an introduction its introducer has not approved is never opened, even when another match wakes the turn", async () => {
-    // Discovery's gate only decides whom to WAKE. One plain match wakes this
-    // turn; the kickoff then re-reads the whole match list, and without a gate
-    // of its own it would open the unapproved introduction too — flipping it
-    // to `negotiating` and sending outreach on the introducer's behalf.
-    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
-    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
-    negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.actors.push({
-      userId: "dave-introducer", intent: INTENT_ID, networkId: "network-1", role: "introducer",
-    });
-
-    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
-
-    expect(negotiationHost.tasks.size).toBe(1);
-    expect([...negotiationHost.tasks.values()][0]!.metadata.opportunityId).toBe(OPPORTUNITY_ID);
-    expect(negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.status).toBe("latent");
-    expect(negotiationHost.opportunityStatusUpdates.map((update) => update.id)).toEqual([OPPORTUNITY_ID]);
-    // No brief was spent on it either.
-    expect(judgment.briefCalls.map((call) => call.opportunityId)).toEqual([OPPORTUNITY_ID]);
-    expect(principal.dmMessages).toHaveLength(2); // strategy, then natural terminal response
-  });
-
   test("an open that failed AFTER outreach is not labelled 'nothing has been said'", async () => {
     const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
@@ -1336,21 +1310,6 @@ describe("PersonalAgent — round-4 regressions", () => {
     expect(principal.ledgerRows.at(-1)?.act.tool).toBe("message_user");
   });
 
-  test("an unapproved introduction is filtered before a brief is spent on it", async () => {
-    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
-    const { agent, negotiationHost, judgmentMatches } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
-    negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.actors.push({
-      userId: "dave-introducer", intent: INTENT_ID, networkId: "network-1", role: "introducer",
-    });
-
-    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
-
-    // The host reader flags it, so the kickoff never reaches the open at all.
-    expect(judgmentMatches().some((match) => matchRefId(match) === SECOND_OPPORTUNITY_ID
-      && match.awaitingIntroducerApproval === true)).toBe(true);
-    expect(judgment.briefCalls.map((call) => call.opportunityId)).toEqual([OPPORTUNITY_ID]);
-    expect(negotiationHost.tasks.size).toBe(1);
-  });
 });
 
 describe("PersonalAgent — round-5 regressions", () => {

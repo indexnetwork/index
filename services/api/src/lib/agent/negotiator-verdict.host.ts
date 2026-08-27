@@ -76,13 +76,6 @@ export interface ActionableCounterparty {
   label: string;
   /** Ordering key for the union with pending candidates. */
   createdAt: Date | string;
-  /**
-   * An introduction whose introducer has not approved it yet. The negotiation
-   * graph refuses to open one; this flag is what keeps a kickoff from
-   * spending a brief on it and the prompt from offering it as a verdict
-   * target.
-   */
-  awaitingIntroducerApproval: boolean;
 }
 
 /** Structural slice of what the opportunity list returns for this purpose. */
@@ -153,9 +146,6 @@ const asTime = (value: Date | string): number => {
  * neighbour of the intended one, which is why the executed result names who it
  * hit and the persona is told to confirm by name.)
  *
- * Introducer rows are excluded: an introducer is not a party to the pairing,
- * and accept/reject is the parties' decision.
- *
  * THROWS. Every caller that reasons over this list — the PersonalAgent's
  * every turn — must see a read failure as a failure, not as an empty signal.
  * {@link readActionableCounterparties} is the degrading wrapper, for the tool
@@ -181,19 +171,12 @@ export async function readSignalMatches(
     return rows
       .filter((row) => {
         if (!row?.id || !statuses.includes(row.status as OpportunityStatus)) return false;
-        // An unapproved introduction has not been admitted to either
-        // principal's signal yet. Do not number or narrate it to their
-        // PersonalAgent: it must not look like a second live match.
-        const introducers = (row.actors ?? []).filter((actor) => actor.role === 'introducer');
-        if (introducers.some((actor) => actor.approved !== true)) return false;
-        const own = row.actors?.find((actor) => actor.userId === userId);
-        return !own || own.role !== 'introducer';
+        return true;
       })
       .sort((a, b) => asTime(a.createdAt) - asTime(b.createdAt) || a.id.localeCompare(b.id))
       .map((row, index) => {
         const name = row.counterpartName?.trim() || 'An unnamed match';
         const state = STATE_LINE[row.status] ?? row.status;
-        const introducers = (row.actors ?? []).filter((actor) => actor.role === 'introducer');
         return {
           position: index + 1,
           opportunityId: row.id,
@@ -201,7 +184,6 @@ export async function readSignalMatches(
           status: row.status,
           createdAt: row.createdAt,
           label: `${name} — ${state}`,
-          awaitingIntroducerApproval: introducers.length > 0 && !introducers.every((actor) => actor.approved === true),
         };
       });
   }
@@ -254,7 +236,6 @@ export async function readPersonalAgentMatches(
         ref: opportunityRef(counterparty.opportunityId),
         label: counterparty.label,
         status: counterparty.status,
-        ...(counterparty.awaitingIntroducerApproval ? { awaitingIntroducerApproval: true } : {}),
       } satisfies PersonalAgentMatch,
     })),
   ];

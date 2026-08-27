@@ -537,46 +537,6 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     expect(host.tasks.size).toBe(0);
   });
 
-  test("an introducer actor is never picked as a negotiation seat", async () => {
-    const host = new FakeNegotiationHost();
-    host.opportunity.actors = [
-      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
-      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
-      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer", approved: true },
-    ];
-    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
-    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
-
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
-    expect(opened.status).toBe("paused"); // outreach, then bob's fallback pause
-    const task = host.taskFor(opened.negotiationId);
-    expect(task.metadata.sourceUserId).toBe(SOURCE_USER_ID);
-    expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
-  });
-
-  test("an introduction its introducer has not approved is refused at the OPEN", async () => {
-    // The gate cannot live only where discovery decides whom to WAKE: a
-    // kickoff woken by one plain match re-reads the whole match list, and
-    // without a check here the unapproved introduction is opened too — flipped
-    // to `negotiating` with A2A outreach sent on the introducer's behalf.
-    const host = new FakeNegotiationHost();
-    host.opportunity.actors = [
-      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
-      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
-      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer" },
-    ];
-    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
-    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
-
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
-
-    expect(opened.status).toBe("error");
-    expect(opened.error).toContain("introducer approval");
-    expect([...host.tasks.values()]).toHaveLength(0);
-    expect(host.opportunityStatusUpdates).toEqual([]);
-    expect(author.calls).toHaveLength(0);
-  });
-
   test("re-kicking an existing task whose history is entirely pre-rewrite legacy messages does not error forever", async () => {
     // A pre-rewrite task with only old {action} shaped message parts: nothing
     // parses as a NegotiationTurn, so turnsFromMessages returns []. turnNode

@@ -43,14 +43,10 @@ export function useOpportunityActions({
       opportunityId: string,
       action: "accepted" | "rejected",
       fallbackUserId?: string,
-      viewerRole?: string,
-      counterpartName?: string,
     ) => {
-      const isIntroducer = viewerRole === "introducer";
-
-      // Accepted + non-introducer: atomically accept the opp and resolve the DM
-      // in one round-trip via POST /opportunities/:id/start-chat.
-      if (action === "accepted" && !isIntroducer) {
+      // Accept: atomically accept the opp and resolve the DM in one round-trip
+      // via POST /opportunities/:id/start-chat.
+      if (action === "accepted") {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
           const result = await opportunitiesService.startChat(opportunityId, scope);
@@ -67,34 +63,19 @@ export function useOpportunityActions({
         return;
       }
 
-      // For rejected or introducer accepted: proceed immediately without modal
+      // Reject: proceed immediately, no modal.
       setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
       try {
-        const effectiveStatus = isIntroducer && action === "accepted" ? "pending" : action;
-        const result = await opportunitiesService.updateStatus(opportunityId, effectiveStatus, scope);
-        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: effectiveStatus }));
-
-        if (action === "accepted" && isIntroducer) {
-          showSuccess(
-            "Introduction sent",
-            `${counterpartName || "They"} will be notified and can accept to start the conversation.`,
-          );
-        }
-
+        await opportunitiesService.updateStatus(opportunityId, action, scope);
+        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: action }));
         onRemove?.(opportunityId);
-
-        // For rejected accepted non-introducer (shouldn't happen but just in case)
-        const counterpartUserId = result.counterpartUserId ?? fallbackUserId;
-        if (action === "accepted" && !isIntroducer && counterpartUserId) {
-          navigate(`/u/${counterpartUserId}/chat`);
-        }
       } catch (error) {
         showError(error instanceof Error ? error.message : "Failed to update opportunity");
       } finally {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, navigate, showError, showSuccess, refreshConversations, onRemove, scope],
+    [opportunitiesService, navigate, showError, refreshConversations, onRemove, scope],
   );
 
   /**

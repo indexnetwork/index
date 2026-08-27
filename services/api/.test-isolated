@@ -29,8 +29,6 @@ src/services/tests/notification-delivery.service.isolated.ts
 src/services/tests/notification-projection.isolated.ts
 src/services/tests/notification.service.isolated.ts
 src/services/tests/network.service.master-key-rotation.isolated.ts
-src/services/tests/opportunity.service.rediscovery.isolated.ts
-src/services/tests/opportunity.service.maintenance.isolated.ts
 src/services/tests/user.service.setSocials.isolated.ts
 tests/network-invitation-resend.isolated.ts
 tests/network-scoped-import.isolated.ts

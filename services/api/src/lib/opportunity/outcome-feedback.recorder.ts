@@ -11,11 +11,11 @@
  * Eligibility (fail-closed — any doubt ⇒ no capture):
  *   1. Flag OUTCOME_QUESTIONS_MODE != off.
  *   2. Provenance is a VERIFIED explicit human owner action ('user_session').
- *   3. The caller is a genuine non-introducer actor on the opportunity.
+ *   3. The caller is a genuine actor on the opportunity.
  *   4. An exact selected intent must match a recipient actor; otherwise the
  *      recipient must have exactly one actor-intent scope. The resolved intent
  *      is re-read and confirmed owned by the recipient.
- *   5. Exactly one unique non-introducer counterpart exists. Multiparty,
+ *   5. Exactly one unique counterpart exists. Multiparty,
  *      counterpart-less, and ambiguous opportunities are excluded.
  *   6. A genuine recipient-specific presenter snapshot already exists in the
  *      trusted presentation cache. Raw evaluator reasoning is never a fallback.
@@ -130,7 +130,7 @@ export class OutcomeFeedbackRecorder implements OutcomeFeedbackRecorderLike {
 
     const { opportunity, recipientUserId, action } = input;
     const recipientActors = opportunity.actors.filter(
-      (actor) => actor.userId === recipientUserId && actor.role !== 'introducer',
+      (actor) => actor.userId === recipientUserId,
     );
     if (recipientActors.length === 0) return null;
 
@@ -157,7 +157,6 @@ export class OutcomeFeedbackRecorder implements OutcomeFeedbackRecorderLike {
 
     const participantIds = new Set(
       opportunity.actors
-        .filter((actor) => actor.role !== 'introducer')
         .map((actor) => actor.userId),
     );
     if (participantIds.size !== 2 || !participantIds.has(recipientUserId)) return null;

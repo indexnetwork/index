@@ -372,55 +372,6 @@ async function main(): Promise<void> {
         }
       }
 
-      // A durable but unapproved introduction gives the live E2E suite a
-      // normal fixture to observe. It is intentionally outside discovery:
-      // neither principal may see or open it until Ethan approves it.
-      const fixtureByEmail = new Map(personaFixtures.map((fixture) => [fixture.persona.email, fixture]));
-      const unapproved = SANDBOX_E2E_CASES.unapprovedIntroducer;
-      const source = fixtureByEmail.get(unapproved.source.email)!;
-      const candidate = fixtureByEmail.get(unapproved.candidate.email)!;
-      const introducer = fixtureByEmail.get(unapproved.introducer.email)!;
-      const sourceIntent = source.persona.fixedIds?.intentIds[unapproved.source.intentIndex]
-        ?? fixtureId('intent', `${source.persona.email}:${unapproved.source.intentIndex}`);
-      const candidateIntent = candidate.persona.fixedIds?.intentIds[unapproved.candidate.intentIndex]
-        ?? fixtureId('intent', `${candidate.persona.email}:${unapproved.candidate.intentIndex}`);
-      const launch = networkByKey.get('launch')!;
-      await tx.insert(schema.opportunities).values({
-        id: unapproved.opportunityId,
-        detection: {
-          source: 'manual',
-          createdBy: introducer.userId,
-          createdByName: introducer.persona.name,
-          triggeredBy: sourceIntent,
-          timestamp: '2026-01-01T00:00:00.000Z',
-        },
-        actors: [
-          { networkId: launch.id, userId: source.userId, intent: sourceIntent, role: 'patient' },
-          { networkId: launch.id, userId: candidate.userId, intent: candidateIntent, role: 'agent' },
-          { networkId: launch.id, userId: introducer.userId, role: 'introducer', approved: false },
-        ],
-        interpretation: {
-          category: 'collaboration',
-          reasoning: 'Fixture introduction awaiting introducer approval.',
-          confidence: 0.8,
-          signals: [{ type: 'curator_judgment', weight: 1, detail: 'Sandbox E2E unapproved introduction' }],
-        },
-        context: { networkId: launch.id },
-        confidence: '0.8',
-        status: 'latent',
-        metadata: { fixture: SANDBOX_DATABASE, purpose: 'unapproved_introducer_e2e' },
-      }).onConflictDoUpdate({
-        target: schema.opportunities.id,
-        set: {
-          status: 'latent',
-          updatedAt: new Date(),
-          actors: [
-            { networkId: launch.id, userId: source.userId, intent: sourceIntent, role: 'patient' },
-            { networkId: launch.id, userId: candidate.userId, intent: candidateIntent, role: 'agent' },
-            { networkId: launch.id, userId: introducer.userId, role: 'introducer', approved: false },
-          ],
-        },
-      });
     });
 
     // Remove stale discovery jobs for fixture owners. A reset stays paused;

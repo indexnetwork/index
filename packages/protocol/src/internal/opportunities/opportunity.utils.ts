@@ -50,169 +50,77 @@ export function deriveRolesFromCorpus(corpus: HydeTargetCorpus): DerivedRoles {
 }
 
 /**
- * Validates opportunity actors: if an opportunity has an introducer, it must have
- * one or two non-introducer actors (1 = 1:1 intro e.g. "I want to connect with X";
- * 2 = introducer connecting two others).
+ * Validates opportunity actors.
  *
- * Also rejects self-matches — the same person occupying both sides of a
- * connection. The discovery/persist pipeline trusts the LLM evaluator's actor
- * list, which can collapse onto a single user; downstream readers then garble
- * identity (e.g. a connect link/greeting rendered in one party's voice while the
- * card shows the viewer "matched with themselves"). Two degenerate shapes are
- * blocked here, at the single persist chokepoint:
- *   - every userId-bearing non-introducer actor collapses to the same user,
- *     e.g. `[X(agent), X(patient)]`
- *   - an introducer who is also a participant ("Amina introduced you to Amina")
- * Only `userId`-bearing actors are checked; role-only actors (legacy/tests) pass.
- * Duplicate rows for one participant are allowed when at least one other distinct
- * participant is present (some callers model multiple intents as multiple actor rows).
+ * Rejects self-matches — the same person occupying both sides of a pairing.
+ * The evaluator's actor list can collapse onto a single user; downstream
+ * readers then garble identity (a greeting rendered in one party's voice while
+ * the card shows the viewer "matched with themselves"). Only `userId`-bearing
+ * actors are checked; role-only actors (tests) pass. Duplicate rows for one
+ * participant are allowed when at least one other distinct participant is
+ * present.
  *
  * @param actors - Array of actors with at least a role and optional userId
  * @throws Error when the actor set is invalid
  */
 export function validateOpportunityActors(actors: Array<{ userId?: string; role: string }>): void {
-  const introducerCount = actors.filter((a) => a.role === 'introducer').length;
-  const nonIntroducerCount = actors.filter((a) => a.role !== 'introducer').length;
-
-  if (introducerCount > 0 && (nonIntroducerCount < 1 || nonIntroducerCount > 2)) {
-    throw new Error(
-      'An opportunity with an introducer must have one or two other actors.'
-    );
-  }
-
-  // Self-match guard. Compare only actors that carry a userId so role-only
-  // shapes (used by some callers/tests) are unaffected.
-  const introducerUserIds = new Set(
-    actors.filter((a) => a.role === 'introducer' && a.userId).map((a) => a.userId as string),
-  );
-  const nonIntroducerUserIds = actors
-    .filter((a) => a.role !== 'introducer' && a.userId)
-    .map((a) => a.userId as string);
-
-  for (const userId of nonIntroducerUserIds) {
-    if (introducerUserIds.has(userId)) {
-      throw new Error(
-        'An opportunity actor cannot be both the introducer and a participant (self-match).'
-      );
-    }
-  }
-
-  const uniqueNonIntroducerUserIds = new Set(nonIntroducerUserIds);
-  if (nonIntroducerUserIds.length > 1 && uniqueNonIntroducerUserIds.size === 1) {
+  const userIds = actors.filter((a) => a.userId).map((a) => a.userId as string);
+  if (userIds.length > 1 && new Set(userIds).size === 1) {
     throw new Error('An opportunity cannot match a user with themselves (duplicate participant).');
   }
 }
 
 /**
  * Read-level ACL: whether a user is an actor on the opportunity and may fetch
- * its details. Intentionally broader than `isActionableForViewer` — a user can
- * read an opportunity they are not currently expected to act on (e.g. an agent
- * viewing an accepted opportunity).
+ * its details.
  *
- * The feed graph and debug controller chain both predicates: an opportunity only
- * reaches the radar view if it passes `canUserSeeOpportunity` first, then
- * `isActionableForViewer`. For `agent with introducer at pending`,
- * `canUserSeeOpportunity` returns false (read gate blocks it), so the opportunity
- * never surfaces even though `isActionableForViewer` Rule 4 would return true in
- * isolation. This is by design — the agent is not granted read access through the
- * home path until the introducer path completes (negotiation → accepted).
- *
- * Compact Visibility Rule (see `docs/desi./opportunity-status-lifecycle.md`, §3.E):
- * - Introducer or peer: always see.
- * - Patient or party: see if (status is not latent, or there is no introducer).
- * - Agent: see if (status is accepted/rejected/expired, or (status is not latent and there is no introducer)).
+ * This used to be a four-way rule keyed on role, `latent`, and whether an
+ * introducer had approved. Neither `latent` nor the introducer role exists any
+ * more — an opportunity is born `negotiating` when a principal's agent opens
+ * it — so every branch collapsed to the same answer: the actors on a pairing
+ * may read it.
  */
 export function canUserSeeOpportunity(
   actors: Array<{ userId: string; role: string }>,
-  status: string,
+  _status: string,
   userId: string
 ): boolean {
-  const hasIntroducer = actors.some((a) => a.role === 'introducer');
-  const userRoles = actors.filter((a) => a.userId === userId).map((a) => a.role);
-  if (userRoles.length === 0) return false;
-
-  return userRoles.some((role) => {
-    if (role === 'introducer') return true;
-    if (role === 'peer') return true;
-    if (role === 'patient' || role === 'party')
-      return status !== 'latent' || !hasIntroducer;
-    if (role === 'agent')
-      return (
-        ['accepted', 'rejected', 'expired'].includes(status) ||
-        (status !== 'latent' && !hasIntroducer)
-      );
-    return false;
-  });
+  return actors.some((a) => a.userId === userId);
 }
 
 /**
  * Whether an opportunity should appear on the viewer's radar (actionable =
  * has a pending action for this user).
  *
- * Rules (see `docs/desi./opportunity-status-lifecycle.md`, §3.E):
+ * Only `pending` is actionable, and only while the viewer has not acted.
+ * Acting is per-user, not per-actor-row: re-detection can append duplicate
+ * actor rows for the same user without `actedAt`, so any viewer row carrying
+ * `actedAt` means the viewer has already decided.
  *
- *   (1) `latent`, no introducer                   → all actors actionable
- *   (2) `latent`, introducer `approved !== true`  → introducer only
- *   (3) `latent`, introducer `approved === true`  → all non-introducer actors
- *   (4) `pending` (any introducer config)         → non-introducer actors who have not acted.
- *       Acting is per-user, not per-actor-row: re-detection can append duplicate
- *       actor rows for the same user without `actedAt`, so any viewer row with
- *       `actedAt` means the viewer has already acted.
- *   (5) `accepted`/`rejected`/`expired`/`stalled`/`draft`/`negotiating`
- *                                                 → never actionable
- *
- * The introducer approval signal is stored on the `introducer`-roled actor's
- * `approved: boolean` field within the opportunity's `actors` JSONB. It flips
- * from `false` to `true` when the introducer approves; status stays `latent`
- * across the flip while a background negotiation runs.
+ * The old rules 1-3 were about `latent` and introducer approval. Neither
+ * exists: a pairing is born `negotiating`, and a negotiating pairing is the
+ * agents' to work, not the principal's to action.
  */
 export function isActionableForViewer(
   actors: Array<{ userId: string; role: string; approved?: boolean; actedAt?: string | null }>,
   status: string,
   viewerId: string
 ): boolean {
+  if (status !== 'pending') return false;
   const viewerActors = actors.filter((a) => a.userId === viewerId);
   if (viewerActors.length === 0) return false;
-
-  // Per-user acted signal: duplicate actor rows appended by re-detection may
-  // lack `actedAt` even though the viewer already accepted/rejected — a single
-  // stamped row means the viewer has acted on this opportunity.
-  const viewerActed = viewerActors.some((a) => !!a.actedAt);
-
-  const introducer = actors.find((a) => a.role === 'introducer');
-  const hasIntroducer = !!introducer;
-  const introducerApproved = introducer?.approved === true;
-
-  return viewerActors.some(({ role }) => {
-    if (role === 'introducer') {
-      // Rule 2: introducer sees own latent opp only while not yet approved.
-      return status === 'latent' && !introducerApproved;
-    }
-
-    // Non-introducer actors: patient / party / agent / peer.
-    if (status === 'latent') {
-      // Rule 1: no introducer → visible.
-      // Rule 3: introducer approved → visible.
-      return !hasIntroducer || introducerApproved;
-    }
-    if (status === 'pending') {
-      // Rule 4: pending is actionable only while the viewer has not acted.
-      // Once any of the viewer's actor rows has `actedAt`, the opportunity is
-      // waiting on the counterparty and should not appear in the viewer's feed.
-      return !viewerActed;
-    }
-    // Rule 5: never actionable at terminal or internal statuses.
-    return false;
-  });
+  return !viewerActors.some((a) => !!a.actedAt);
 }
 
 /** Feed category for home composition. */
-export type FeedCategory = 'connection' | 'connector-flow' | 'expired';
+export type FeedCategory = 'connection' | 'expired';
 
 /** Soft targets for radar composition. */
 export const RADAR_SOFT_TARGETS = {
-  connection: 3,
-  connectorFlow: 2,
+  // 3 + 2 connector-flow before that category was removed. The slots move to
+  // connections rather than shrinking the feed: the total a radar can hold is
+  // unchanged, and connections are the only kind of card left.
+  connection: 5,
   expired: 2,
 } as const;
 
@@ -229,8 +137,6 @@ export function classifyOpportunity(
   viewerId: string
 ): FeedCategory {
   if (opp.status === 'expired') return 'expired';
-  const viewerIsIntroducer = opp.actors.some((a) => a.userId === viewerId && a.role === 'introducer');
-  if (viewerIsIntroducer) return 'connector-flow';
   return 'connection';
 }
 
@@ -247,39 +153,26 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
   opportunities: T[],
   viewerId: string
 ): T[] {
-  const buckets: Record<FeedCategory, T[]> = {
-    connection: [],
-    'connector-flow': [],
-    expired: [],
-  };
-
+  const buckets: Record<FeedCategory, T[]> = { connection: [], expired: [] };
   for (const opp of opportunities) {
-    const category = classifyOpportunity(opp, viewerId);
-    buckets[category].push(opp);
+    buckets[classifyOpportunity(opp, viewerId)].push(opp);
   }
 
   const targets: Record<FeedCategory, number> = {
     connection: RADAR_SOFT_TARGETS.connection,
-    'connector-flow': RADAR_SOFT_TARGETS.connectorFlow,
     expired: RADAR_SOFT_TARGETS.expired,
   };
 
-  // First pass: fill each category up to its target
+  // First pass: fill each category up to its target.
   const selected: Record<FeedCategory, T[]> = {
     connection: buckets.connection.slice(0, targets.connection),
-    'connector-flow': buckets['connector-flow'].slice(0, targets['connector-flow']),
     expired: buckets.expired.slice(0, targets.expired),
   };
 
-  // Calculate unused slots and remaining items
-  const totalTarget = targets.connection + targets['connector-flow'] + targets.expired;
-  const usedSlots = selected.connection.length + selected['connector-flow'].length + selected.expired.length;
-  let unusedSlots = totalTarget - usedSlots;
-
-  // Second pass: redistribute unused slots to categories with remaining items
-  // Priority: connection > connector-flow > expired
-  const redistOrder: FeedCategory[] = ['connection', 'connector-flow', 'expired'];
-  for (const category of redistOrder) {
+  // Second pass: redistribute unused slots, connection before expired.
+  let unusedSlots = (targets.connection + targets.expired)
+    - (selected.connection.length + selected.expired.length);
+  for (const category of ['connection', 'expired'] as FeedCategory[]) {
     if (unusedSlots <= 0) break;
     const remaining = buckets[category].slice(selected[category].length);
     const take = Math.min(remaining.length, unusedSlots);
@@ -287,33 +180,19 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
     unusedSlots -= take;
   }
 
-  // Merge in category priority order: connection > connector-flow > expired
-  // Within each category, preserve original input order
+  // Within each category, preserve original input order.
   const indexMap = new Map(opportunities.map((opp, i) => [opp, i]));
   const sortByOriginal = (a: T, b: T) => (indexMap.get(a) ?? 0) - (indexMap.get(b) ?? 0);
   selected.connection.sort(sortByOriginal);
-  selected['connector-flow'].sort(sortByOriginal);
   selected.expired.sort(sortByOriginal);
 
   logger.info('Selected opportunities by composition', {
     input: opportunities.length,
-    buckets: {
-      connection: buckets.connection.length,
-      connectorFlow: buckets['connector-flow'].length,
-      expired: buckets.expired.length,
-    },
-    selected: {
-      connection: selected.connection.length,
-      connectorFlow: selected['connector-flow'].length,
-      expired: selected.expired.length,
-    },
+    buckets: { connection: buckets.connection.length, expired: buckets.expired.length },
+    selected: { connection: selected.connection.length, expired: selected.expired.length },
   });
 
-  return [
-    ...selected.connection,
-    ...selected['connector-flow'],
-    ...selected.expired,
-  ];
+  return [...selected.connection, ...selected.expired];
 }
 
 /**
@@ -321,7 +200,7 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
  * Keeps the opportunity with the highest interpretation.confidence per
  * counterpart userId. On ties, the first encountered wins (stable).
  *
- * Counterpart = first actor whose userId !== viewerId and role !== 'introducer'.
+ * Counterpart = first actor whose userId !== viewerId.
  * Opportunities without a derivable counterpart pass through undeduped.
  *
  * @param opportunities - Pre-sorted opportunities (e.g. by confidence/recency)
@@ -338,7 +217,7 @@ export function deduplicateByPerson<T extends {
   for (let i = 0; i < opportunities.length; i++) {
     const opp = opportunities[i];
     const counterpart = opp.actors.find(
-      (a) => a.userId !== viewerId && a.role !== 'introducer',
+      (a) => a.userId !== viewerId,
     );
 
     if (!counterpart) {
@@ -395,8 +274,6 @@ export interface DigestDeliveredRow {
  *    counterpart the viewer has already connected with (an `accepted`
  *    opportunity exists with that person) is dropped permanently. A new
  *    discovery run re-minting the same person must not resurface them.
- *    Connector-flow candidates (viewer is the introducer) are exempt: being
- *    connected with someone doesn't make an intro ask on their behalf stale.
  * 2. **Delivery-ledger dedup** — candidates with a committed delivery row at
  *    the same `(opportunityId, status)` key have already been shown. While any
  *    fresh (never-shown) candidate exists, shown ones are dropped entirely.
@@ -433,12 +310,8 @@ export function selectDigestCandidates<T extends {
 
   // Rule 1: accepted-counterpart suppression (direct connections only).
   const afterAccepted = candidates.filter((opp) => {
-    const viewerIsIntroducer = opp.actors.some(
-      (a) => a.role === 'introducer' && a.userId === viewerId,
-    );
-    if (viewerIsIntroducer) return true;
     const counterpart = opp.actors.find(
-      (a) => a.userId !== viewerId && a.role !== 'introducer',
+      (a) => a.userId !== viewerId,
     );
     return !counterpart || !acceptedCounterpartIds.has(counterpart.userId);
   });

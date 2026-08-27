@@ -328,7 +328,7 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 - **Specific Indefinites only**: Underspecified (high-entropy) intents do not enter the graph — they trigger elaboration
 - **Felicity-gated persistence**: Only intents classified as `felicitous` are persisted as active
 - **Dual synthesis**: Each opportunity has descriptions framed for both actors (Grice's Maxim of Relation)
-- **Role-based visibility**: Opportunity reveal follows a tiered cascade; agent visibility is deferred when a patient or introducer is present
+- **Role-based visibility**: the actors on a pairing may read it
 - **Encoding bottleneck**: HyDE hallucinations are never stored or shown — only their embeddings are used
 
 ## Shared Infrastructure
@@ -346,7 +346,6 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 | `internal/opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `internal/opportunities/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
 | `internal/opportunities/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, radar composition helpers |
-| `internal/opportunities/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | `internal/opportunities/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
 | `internal/opportunities/delivery-card.cache.ts` | Cached delivery-card batch builder for opportunity delivery |
 | `internal/opportunities/radar/radar.health.ts` | Radar health metrics computation |

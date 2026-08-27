@@ -59,9 +59,9 @@ describe('matches_ready wiring', () => {
     // read error becomes a reflect that saw nothing and burned the round.
     expect(composition).toContain('readPersonalAgentMatches(userId, intentId)');
     expect(composition).not.toContain('readActionableCounterparties(');
-    // The introducer gate rides along with the match, and the mapping that
-    // carries it now lives with the reader rather than at the binding.
-    expect(verdictHost).toContain('awaitingIntroducerApproval');
+    // The reader that throws is the one bound, and it is the union that
+    // brings candidates in alongside open opportunities.
+    expect(verdictHost).toContain('listPendingCandidates');
   });
 
   it('gives BOTH graphs the reflect enqueue and the agent its re-wake', () => {

@@ -259,17 +259,6 @@ export interface DatabaseOpportunityQueries {
   ): Promise<Opportunity | null>;
 
   /**
-   * Update the `approved` field on an opportunity's introducer actor.
-   * Fetches the opportunity, patches the matching actor in JS, and writes
-   * the updated actors JSONB back. Returns the updated opportunity or null.
-   */
-  updateOpportunityActorApproval(
-    id: string,
-    introducerUserId: string,
-    approved: boolean,
-  ): Promise<Opportunity | null>;
-
-  /**
    * Create one opportunity and expire others in a single transaction.
    * Atomic: insert then update status to 'expired' for each id in expireIds.
    * Used when enriching replaces overlapping opportunities so subscribers see consistent state.
@@ -306,7 +295,7 @@ export interface DatabaseOpportunityQueries {
    * Find opportunities whose actors contain all the given user IDs.
    *
    * The `includeIntroducers` flag controls actor matching: when false (default), matching
-   * is restricted to non-introducer roles; when true, any role in `actors` counts.
+   * is restricted by role; when true, any role in `actors` counts.
    *
    * Index-agnostic. Ordered by updatedAt desc.
    *

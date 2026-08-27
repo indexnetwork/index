@@ -57,7 +57,7 @@ export async function selectOpportunityFeed(
 
   const visible = callerScoped.filter((opportunity) => {
     if (opportunity.status !== 'latent') return true;
-    return opportunity.actors.find((actor) => actor.userId === args.viewerId)?.role === 'introducer';
+    return false;
   });
   const deduped = deduplicateByPerson(visible, args.viewerId);
   const isDigestMode = args.isMcp === true && args.includeDigestMarkers === true;
@@ -75,7 +75,7 @@ export async function selectOpportunityFeed(
       });
       for (const opportunity of acceptedOpportunities) {
         for (const actor of opportunity.actors) {
-          if (actor.userId && actor.userId !== args.viewerId && actor.role !== 'introducer') {
+          if (actor.userId && actor.userId !== args.viewerId) {
             acceptedCounterpartIds.add(actor.userId);
           }
         }

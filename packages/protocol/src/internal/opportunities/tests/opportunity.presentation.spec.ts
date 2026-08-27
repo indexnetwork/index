@@ -47,7 +47,6 @@ describe('presentOpportunity', () => {
       baseOpp,
       'alice',
       { id: 'bob', name: 'Bob', avatar: null },
-      null,
       'card'
     );
     expect(result.title).toBe('You can help Bob');
@@ -60,7 +59,6 @@ describe('presentOpportunity', () => {
       baseOpp,
       'bob',
       { id: 'alice', name: 'Alice', avatar: null },
-      null,
       'card'
     );
     expect(result.title).toBe('Alice might be able to help you');
@@ -79,7 +77,6 @@ describe('presentOpportunity', () => {
       unsafe,
       'alice',
       { id: 'bob', name: 'Bob', avatar: null },
-      null,
       'card',
     );
     expect(result.description).not.toContain('attended');
@@ -108,7 +105,6 @@ describe('presentOpportunity', () => {
       opp,
       'alice',
       { id: 'bob', name: 'Bob', avatar: null },
-      null,
       'notification'
     );
     expect(result.description.length).toBeLessThanOrEqual(100);
@@ -253,14 +249,6 @@ describe("safeFallbackSummary", () => {
       { counterpartName: "Alex Chen", viewerName: "Sam Viewer" },
     );
     expect(out.startsWith("Alex Chen")).toBe(true);
-  });
-
-  it("strips introducer mentions when introducerName is provided", () => {
-    const out = safeFallbackSummary(
-      "Maya Introducer introduced you to Alex Chen, who builds agent tooling.",
-      { counterpartName: "Alex Chen", introducerName: "Maya Introducer" },
-    );
-    expect(out).not.toContain("Maya");
   });
 
   it("removes unsafe claims while retaining safe sentences", () => {
@@ -473,17 +461,6 @@ describe("OpportunityPresenter – zero mutual intents label", () => {
     expect(result.mutualIntentsLabel).toBe("1 mutual intent");
   });
 
-  it("should return 'Connector match' for introducer role regardless of count", async () => {
-    presenter = createFallbackPresenter();
-    const result = await presenter.presentCard({
-      ...baseInput,
-      viewerRole: "introducer",
-      isIntroduction: true,
-      introducerName: "Carol",
-      mutualIntentCount: 0,
-    });
-    expect(result.mutualIntentsLabel).toBe("Connector match");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -624,30 +601,6 @@ describe("OpportunityPresenter - IND-113: Introducer should not appear in body t
     introducerName,
     mutualIntentCount: 1,
   });
-
-  it("should NOT include introducer name in personalizedSummary for introduction opportunities", async () => {
-    const input = createIntroducerInput("Seref Yarar", "Lucy Chen");
-
-    const result = await presenter.presentCard(input);
-
-    // Body text should NOT contain introducer
-    expect(result.personalizedSummary).not.toContain("Seref");
-    expect(result.personalizedSummary).not.toContain("Yarar");
-    expect(result.personalizedSummary).not.toContain("introduced you");
-
-    // Body text SHOULD contain counterpart
-    expect(result.personalizedSummary).toContain("Lucy");
-
-    // Narrator remark: non-empty string, within display length (e.g. ≤80)
-    expect(typeof result.narratorRemark).toBe("string");
-    expect(result.narratorRemark.length).toBeGreaterThan(0);
-    expect(result.narratorRemark.length).toBeLessThanOrEqual(80);
-
-    // Print output for manual review
-    console.log("Headline:", result.headline);
-    console.log("Summary:", result.personalizedSummary);
-    console.log("NarratorRemark:", result.narratorRemark);
-  }, 30000); // 30s timeout for LLM
 
   it("should include counterpart name in personalizedSummary", async () => {
     const input = createIntroducerInput("Bob Smith", "Alice Johnson");
