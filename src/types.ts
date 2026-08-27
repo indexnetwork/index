@@ -15,17 +15,7 @@ export interface NegotiationState {
   history: NegotiationMessage[];
 }
 
-export type NegotiationAction =
-  | "propose"
-  | "accept"
-  | "reject"
-  | "counter"
-  | "question"
-  | "outreach"
-  | "withdraw"
-  | "decline";
-
-export interface NegotiationDecision {
-  action: NegotiationAction;
+export interface NegotiationDecision<A extends string = string> {
+  action: A;
   message: string;
 }

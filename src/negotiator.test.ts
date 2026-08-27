@@ -172,6 +172,26 @@ describe("Negotiator.decide", () => {
     expect(systemMessage.content).toContain("accept, reject");
   });
 
+  test("includes descriptions for actions passed as { action, description }", async () => {
+    const fetchMock = mockFetchOnce(
+      JSON.stringify({ action: "escalate", message: "Handing this off." }),
+    );
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    const decision = await negotiator.decide(state, {
+      allowedActions: [
+        { action: "escalate", description: "Hand off to a human for review" },
+        "counter",
+      ],
+    });
+
+    const systemMessage = fetchMock.body.messages[0];
+    expect(systemMessage.content).toContain(
+      "escalate (Hand off to a human for review), counter",
+    );
+    expect(decision).toEqual({ action: "escalate", message: "Handing this off." });
+  });
+
   test("throws when the model chooses an action outside allowedActions", async () => {
     mockFetchOnce(JSON.stringify({ action: "accept", message: "Deal." }));
     const negotiator = new Negotiator({ apiKey: "test-key" });

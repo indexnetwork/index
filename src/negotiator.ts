@@ -1,5 +1,5 @@
 import { OpenRouterClient, type OpenRouterMessage } from "./openrouter-client.ts";
-import type { NegotiationAction, NegotiationDecision, NegotiationState } from "./types.ts";
+import type { NegotiationDecision, NegotiationState } from "./types.ts";
 
 export interface NegotiatorOptions {
   apiKey?: string;
@@ -8,9 +8,19 @@ export interface NegotiatorOptions {
   title?: string;
 }
 
-export interface DecideOptions {
-  /** Actions this turn may end in (e.g. from the caller's protocol/seat rules). */
-  allowedActions: NegotiationAction[];
+export type ActionSpec<A extends string> = A | { action: A; description: string };
+
+export interface DecideOptions<A extends string> {
+  /**
+   * Actions this turn may end in (e.g. from the caller's protocol/seat rules).
+   * Pass `{ action, description }` for action names whose meaning isn't
+   * self-evident, so the model knows what choosing them actually does.
+   */
+  allowedActions: ActionSpec<A>[];
+}
+
+function actionName<A extends string>(spec: ActionSpec<A>): A {
+  return typeof spec === "string" ? spec : spec.action;
 }
 
 const DEFAULT_MODEL = "openai/gpt-4o-mini";
@@ -20,14 +30,18 @@ function buildSystemPrompt(state: NegotiationState): string {
   return `You are negotiating on behalf of "${party.name}".\nObjective: ${party.objective}\nRespond with the next message you'd send to the other party.`;
 }
 
-function buildDecisionSystemPrompt(
+function describeAction<A extends string>(spec: ActionSpec<A>): string {
+  return typeof spec === "string" ? spec : `${spec.action} (${spec.description})`;
+}
+
+function buildDecisionSystemPrompt<A extends string>(
   state: NegotiationState,
-  allowedActions: NegotiationAction[],
+  allowedActions: ActionSpec<A>[],
 ): string {
   const { party } = state;
   return `You are negotiating on behalf of "${party.name}".
 Objective: ${party.objective}
-Decide how to respond to the other party, and choose exactly one action from: ${allowedActions.join(", ")}.
+Decide how to respond to the other party, and choose exactly one action from: ${allowedActions.map(describeAction).join(", ")}.
 Respond with ONLY a JSON object of the form {"action": "<one of the allowed actions>", "message": "<the message you'd send to the other party>"}.
 The message is the only thing the other party will see — do not include your private reasoning in it.`;
 }
@@ -60,10 +74,10 @@ export class Negotiator {
     return this.client.complete(messages);
   }
 
-  async decide(
+  async decide<A extends string>(
     state: NegotiationState,
-    options: DecideOptions,
-  ): Promise<NegotiationDecision> {
+    options: DecideOptions<A>,
+  ): Promise<NegotiationDecision<A>> {
     const messages: OpenRouterMessage[] = [
       { role: "system", content: buildDecisionSystemPrompt(state, options.allowedActions) },
       ...buildHistoryMessages(state),
@@ -88,12 +102,13 @@ export class Negotiator {
     }
 
     const { action, message } = parsed as { action: string; message: string };
-    if (!options.allowedActions.includes(action as NegotiationAction)) {
+    const allowedNames = options.allowedActions.map(actionName);
+    if (!(allowedNames as string[]).includes(action)) {
       throw new Error(
-        `Negotiator.decide(): model chose disallowed action "${action}" (allowed: ${options.allowedActions.join(", ")})`,
+        `Negotiator.decide(): model chose disallowed action "${action}" (allowed: ${allowedNames.join(", ")})`,
       );
     }
 
-    return { action: action as NegotiationAction, message };
+    return { action: action as A, message };
   }
 }
