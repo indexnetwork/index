@@ -31,6 +31,7 @@ import { intentDossierAdapter } from '../../adapters/intent-dossier.adapter';
 import { agentService } from '../../services/agent.service';
 import { AgentDispatcherImpl } from '../../services/agent-dispatcher.service';
 import { chatSessionService } from '../../services/chat.service';
+import { discoveryCandidateAdapter } from '../../adapters/discovery-candidate.database.adapter';
 import { passVerdictOnOpportunity, readPersonalAgentMatches } from '../agent/negotiator-verdict.host';
 import { publishPersonalAgentActivity, publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
 
@@ -97,6 +98,9 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
     // saw no negotiations, decided nothing, succeeded — and burned that drain
     // generation's one retained job.
     readMatches: (userId, intentId) => readPersonalAgentMatches(userId, intentId),
+    // The one place a candidate becomes a row. Returns rather than throws:
+    // it is called below the kickoff round bump.
+    createAndOpen: (_userId, input) => discoveryCandidateAdapter.createAndOpen(input.candidateId),
     // The owner's own verdict, through the untouched owner path — the SAME
     // `updateOpportunityStatus` the Radar's accept calls.
     accept: async (userId, input) => {

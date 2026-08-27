@@ -35,6 +35,8 @@ class FakePrincipalHost {
   readonly dossierEntries: Array<{ id: string; text: string; source: string; createdAt: Date }> = [];
   readonly ledgerRows: Array<{ event: Record<string, unknown>; act: Record<string, unknown> }> = [];
   readonly publishedChunks: Array<{ messageId: string; seq: number; content: string }> = [];
+  /** Candidate ids a kickoff materialized this run. */
+  readonly createdAndOpened: string[] = [];
   readonly accepted: Array<{ opportunityId: string; reason?: string }> = [];
   readonly retireCalls: string[] = [];
   private messageCounter = 0;
@@ -90,6 +92,11 @@ class FakePrincipalHost {
             : {}),
         };
       }),
+    createAndOpen: async (_userId, input) => {
+      this.createdAndOpened.push(input.candidateId);
+      const opportunityId = `opp-from-${input.candidateId}`;
+      return { status: "created", opportunityId };
+    },
     accept: async (_userId, input) => {
       this.accepted.push({ opportunityId: input.opportunityId, ...(input.reason ? { reason: input.reason } : {}) });
       return { status: "executed", counterparty: "the match" };

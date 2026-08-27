@@ -23,7 +23,7 @@
 import type { NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
 import type { NegotiationGraphDatabase, NegotiationRoundLogDatabase, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
-import type { IntentRecord } from "../../../platform/database/entities.js";
+import type { CreateAndOpenResult, IntentRecord } from "../../../platform/database/entities.js";
 import type { NegotiationRoundReflectEnqueueFn } from "../../negotiations/negotiation.round-reflect.js";
 import type { Question } from "../../../protocol/question.js";
 
@@ -266,6 +266,16 @@ export function opportunityRef(id: string): PersonalAgentMatchRef {
  */
 export interface PersonalAgentOpportunityPort {
   readMatches(userId: string, intentId: string): Promise<PersonalAgentMatch[]>;
+  /**
+   * Materialize a candidate as an opportunity, immediately before opening its
+   * negotiation. RETURNS rather than throws: it is called below the kickoff
+   * round bump, where a throw would be retried into a second strategy message
+   * and a second round.
+   */
+  createAndOpen(
+    userId: string,
+    input: { intentId: string; candidateId: string },
+  ): Promise<CreateAndOpenResult>;
   accept(
     userId: string,
     input: { intentId: string; opportunityId: string; reason?: string },
