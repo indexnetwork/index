@@ -1,6 +1,15 @@
 import type { Negotiator } from "./negotiator.ts";
 import type { NegotiationMessage, NegotiationParty } from "./types.ts";
 
+/**
+ * Local dev/test harness that runs both sides of a negotiation in-process.
+ *
+ * Real usage doesn't look like this: each side is a separate personal agent
+ * (often not even running this package), coordinating over a shared
+ * conversation it doesn't own. `Negotiator.respond()` is the actual public
+ * primitive — this file just simulates the other side for local iteration.
+ */
+
 export interface Participant {
   party: NegotiationParty;
   negotiator: Negotiator;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runNegotiation, type Participant } from "./negotiation.ts";
+import { runNegotiation, type Participant } from "./simulate.ts";
 import { Negotiator } from "./negotiator.ts";
 import type { NegotiationState } from "./types.ts";
 

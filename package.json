@@ -3,6 +3,10 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "exports": {
+    ".": "./index.ts",
+    "./simulate": "./src/simulate.ts"
+  },
   "scripts": {
     "test": "bun test"
   },

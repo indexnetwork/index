@@ -32,10 +32,20 @@ const reply = await negotiator.respond({
 console.log(reply);
 ```
 
-### Two negotiators, one negotiation
+`Negotiator` represents **one side** of a negotiation. The other party is a
+separate personal agent this package doesn't run or own — the caller (e.g.
+Index Network) owns the shared conversation and calls `respond()` once per
+turn to get this side's next message.
+
+### Local simulation (dev/test only)
+
+For local iteration you can run both sides in-process with `runNegotiation`,
+imported from the `./simulate` subpath. This isn't how a real negotiation
+works (both parties are usually separate agents), it's just a harness:
 
 ```ts
-import { Negotiator, runNegotiation } from "./index.ts";
+import { Negotiator } from "@indexnetwork/negotiator";
+import { runNegotiation } from "@indexnetwork/negotiator/simulate";
 
 const seller = {
   party: { name: "Seller", objective: "Sell for as much as possible, ideally above $450" },
