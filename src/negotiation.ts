@@ -16,6 +16,8 @@ export interface NegotiationOptions {
   maxTurns?: number;
   /** Called after each message; return true to end the negotiation. */
   stopWhen?: (entry: TranscriptEntry, transcript: TranscriptEntry[]) => boolean;
+  /** Called as soon as each message arrives, before stopWhen is checked. */
+  onMessage?: (entry: TranscriptEntry, transcript: TranscriptEntry[]) => void;
 }
 
 function historyFor(
@@ -46,6 +48,7 @@ export async function runNegotiation(
 
     const entry: TranscriptEntry = { speaker, content: reply };
     transcript.push(entry);
+    options.onMessage?.(entry, transcript);
 
     if (options.stopWhen?.(entry, transcript)) {
       break;
