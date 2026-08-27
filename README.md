@@ -18,6 +18,37 @@ Claude Agent implementation that just speaks A2A — can use the `./a2a`
 entry point to initiate or respond to a negotiation task with any other A2A
 agent, without needing to reimplement the protocol itself.
 
+## How to use this package
+
+There are two layers, and most projects only need to reach for one:
+
+- **Just need to draft a message or pick an action?** Use `Negotiator` directly
+  (`respond()` for a plain message, `decide()` for a structured action) — see
+  [Usage](#usage). This is the right level if you already have your own way
+  of sending/receiving negotiation turns (your own transport, or another A2A
+  implementation) and only need the "what do I say next" part.
+- **Need to actually talk to another agent over the network?** Use
+  `@indexnetwork/negotiator/a2a` — see [A2A](#a2a-sending-and-receiving-negotiations-over-the-wire).
+  It wraps a `Negotiator` with a real A2A client and server, so you can
+  `initiate()`/`continue()` a negotiation with another agent's endpoint, or
+  mount `createA2AHandler()` in your own server to receive one.
+
+Either way, install the package first:
+
+## Requirements
+
+- **Runtime**: Node ≥ 20, or Bun — anything with global `fetch` and
+  `crypto.randomUUID()`. The package ships as ESM only (`"type": "module"`),
+  no CommonJS build.
+- **TypeScript ≥ 5** if you're consuming it from a TS project (listed as a
+  peer dependency; not required at runtime — `dist/` ships plain JS + `.d.ts`).
+- **An [OpenRouter](https://openrouter.ai) API key** — required by `Negotiator`
+  (and therefore by `@indexnetwork/negotiator/a2a`, which wraps it). See
+  [Configuration](#configuration).
+- **A network-reachable HTTP endpoint** if you're using `@indexnetwork/negotiator/a2a`'s
+  server side (`createA2AHandler()`) to actually receive negotiations from
+  other agents — the library gives you the handler, you still need to host it.
+
 ## Installation
 
 ```bash
@@ -232,11 +263,26 @@ for (const entry of transcript) {
 bun install      # install dependencies
 bun test         # run tests
 bun run typecheck  # tsc --noEmit
-bun run build    # bundle src/index.ts + emit .d.ts into dist/
+bun run build    # bundle both entry points + emit .d.ts into dist/
 ```
 
 `dist/` is what gets published (see `files`/`exports` in `package.json`); it's
 git-ignored and rebuilt via `prepublishOnly`, not committed.
+
+### Project layout
+
+```
+src/
+  index.ts        # public entry point — re-exports core/ only
+  core/            # the decision engine: Negotiator.respond()/decide()
+  a2a/             # the A2A protocol layer, built on core/
+    index.ts       # public entry point for @indexnetwork/negotiator/a2a
+    wire/          # shared protocol types and NegotiationDecision <-> A2A message encoding
+    server/        # createA2AHandler() + Task storage
+    client/        # A2ANegotiationClient + the raw message/send transport call
+dev/
+  simulate.ts      # local two-sided harness (see "Local simulation" above), not published
+```
 
 This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
 
