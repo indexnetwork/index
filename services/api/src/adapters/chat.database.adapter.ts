@@ -3,6 +3,7 @@ import { readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveInten
 import { tasks } from '../schemas/conversation.schema';
 import { notArchivedNegotiationTaskWhere } from './negotiation-attempt.atomic';
 
+import { discoveryCandidateAdapter, type DiscoveryCandidateDatabaseAdapter } from './discovery-candidate.database.adapter';
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
@@ -2425,6 +2426,16 @@ export class ChatDatabaseAdapter {
     }
 
     await this.softDeleteNetwork(networkId);
+  }
+
+  // Discovery candidates (delegate to DiscoveryCandidateDatabaseAdapter)
+  async upsertDiscoveryMatchCandidates(
+    items: Parameters<DiscoveryCandidateDatabaseAdapter['upsertDiscoveryMatchCandidates']>[0],
+  ) {
+    return discoveryCandidateAdapter.upsertDiscoveryMatchCandidates(items);
+  }
+  async listPendingCandidatesForIntent(userId: string, intentId: string) {
+    return discoveryCandidateAdapter.listPendingCandidatesForIntent(userId, intentId);
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)

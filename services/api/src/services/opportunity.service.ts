@@ -1,10 +1,9 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
-import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
+import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
@@ -1007,100 +1006,6 @@ export class OpportunityService {
     return rows.map((opp) => sanitizeOpportunityForResponse(opp));
   }
 
-  /**
-   * Create a manual opportunity (curator feature).
-   *
-   * @param networkId - The network ID
-   * @param creatorId - User creating the opportunity
-   * @param data - Opportunity creation data
-   * @returns Created opportunity or error
-   */
-  async createManualOpportunity(
-    networkId: string,
-    creatorId: string,
-    data: {
-      parties: Array<{ userId: string; intentId?: string }>;
-      reasoning: string;
-      category?: string;
-      confidence?: number;
-    }
-  ) {
-    logger.verbose('Creating manual opportunity', { networkId, creatorId });
-
-    // Check permission
-    const permission = await this.checkCreatePermission(creatorId, data.parties, networkId);
-    if (!permission.allowed) {
-      return { error: 'Not authorized to create opportunities in this network', status: 403 };
-    }
-
-    // Check for duplicates
-    const partyIds = data.parties.map((p) => p.userId);
-    const exists = await this.db.opportunityExistsBetweenActors(partyIds, networkId);
-    if (exists) {
-      return { error: 'Opportunity already exists between these parties', status: 409 };
-    }
-
-    // Build actors (manual opportunities are single-index; all actors share networkId)
-    const actors: OpportunityActor[] = data.parties.map((p) => ({
-      networkId,
-      userId: p.userId,
-      role: 'party',
-      ...(p.intentId ? { intent: p.intentId } : {}),
-    }));
-    actors.push({ networkId, userId: creatorId, role: 'introducer' });
-
-    try {
-      validateOpportunityActors(actors);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Invalid opportunity actors';
-      return { error: message, status: 400 };
-    }
-
-    const conf = data.confidence ?? 0.8;
-    const opportunityData: CreateOpportunityData = {
-      detection: {
-        source: 'manual',
-        createdBy: creatorId,
-        timestamp: new Date().toISOString(),
-      },
-      actors,
-      interpretation: {
-        category: data.category ?? 'collaboration',
-        reasoning: data.reasoning,
-        confidence: conf,
-        signals: [{ type: 'curator_judgment', weight: 1, detail: 'Manual match by curator' }],
-      },
-      context: { networkId },
-      confidence: String(conf),
-      status: 'pending',
-    };
-
-    const embedder = new EmbedderAdapter();
-    try {
-      const { created, expired, errors } = await persistOpportunities({
-        database: this.db,
-        embedder,
-        items: [opportunityData],
-      });
-
-      if (!created?.length) {
-        const message =
-          errors?.length ? (errors[0].error instanceof Error ? errors[0].error.message : String(errors[0].error)) : 'Failed to persist opportunity';
-        logger.warn('createManualOpportunity persistence failed', { errors, creatorId, networkId });
-        return { error: message, status: 500 };
-      }
-
-      this.events.emit('created', { opportunity: created[0] });
-      for (const opp of expired) {
-        this.events.emit('expired', { opportunity: opp });
-      }
-      return sanitizeOpportunityForResponse(created[0]);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to persist opportunity';
-      logger.warn('createManualOpportunity persistence failed', { error: err, creatorId, networkId });
-      return { error: message, status: 500 };
-    }
-  }
 
   /**
    * Get chat context for a conversation between two users.

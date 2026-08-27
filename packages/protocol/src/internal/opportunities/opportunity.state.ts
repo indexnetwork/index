@@ -4,6 +4,7 @@ import type { Lens } from '../../platform/discovery/embedder.js';
 import type { EvaluatorEntity } from './opportunity.match-explainer.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
+import type { DiscoveryMatchCandidate } from '../../platform/database.js';
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -341,8 +342,8 @@ export const OpportunityGraphState = Annotation.Root({
 
   // ─── Output Fields (Overwrite per turn) ───
 
-  /** Final ranked and persisted opportunities */
-  opportunities: Annotation<Opportunity[]>({
+  /** Pairs discovery recorded this run. Discovery creates no opportunities. */
+  candidatesEmitted: Annotation<DiscoveryMatchCandidate[]>({
     reducer: (curr, next) => next,
     default: () => [],
   }),

@@ -20,7 +20,6 @@ import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { renderNetworkContext } from '../shared/network/metadata.renderer.js';
 import { requestContext } from '../shared/observability/request-context.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
-import type { StampNewbornOpportunitiesFn } from "./opportunity.newborn-stamping.js";
 
 /** Host callback that wakes a signal's PersonalAgent with `matches_ready`. */
 export type MatchesReadyFn = (input: { userId: string; intentId: string }) => Promise<void>;
@@ -71,8 +70,6 @@ export interface OpportunityGraphDeps {
    * (short timeout). Without it, the chat path always uses a short timeout.
    */
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  /** Host-side P4b stamper. Omitted by manual/introducer/enrichment roots. */
-  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
   retrievalMinSimilarity: number;
 }
 

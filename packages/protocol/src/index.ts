@@ -324,6 +324,7 @@ export type { MatchesReadyFn } from "./internal/opportunities/opportunity.graph.
 export {
   pairKeyOf,
 } from "./internal/opportunities/opportunity.candidates.js";
+export type { OpportunityEvidence } from "./protocol/schemas/network-assignment.schema.js";
 export {
   matchRefId,
   opportunityRef,
@@ -337,10 +338,6 @@ export type {
   DiscoveryMatchCandidate,
   DiscoveryMatchCandidateStatus,
 } from "./internal/opportunities/opportunity.candidates.js";
-export type {
-  StampNewbornOpportunitiesFn,
-  StampNewbornOpportunitiesInput,
-} from "./internal/opportunities/opportunity.newborn-stamping.js";
 export {
   opportunityOwnerActionForStatus,
 } from "./internal/opportunities/opportunity.owner-approval.js";
@@ -358,9 +355,6 @@ export type {
 export {
   bindOwnerApprovalProvenance,
 } from "./internal/opportunities/opportunity.owner-provenance.js";
-export {
-  persistOpportunities,
-} from "./internal/opportunities/opportunity.persist.js";
 export {
   gatherPresenterContext,
   OpportunityPresenter,

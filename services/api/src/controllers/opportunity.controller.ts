@@ -7,7 +7,6 @@ import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { queueOpportunityNotification } from '../queues/notification.queue';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('opportunity');
@@ -454,51 +453,4 @@ export class NetworkOpportunityController {
     return Response.json({ opportunities: result });
   }
 
-  /**
-   * POST /networks/:networkId/opportunities — create a manual opportunity (curator).
-   */
-  @Post('/:networkId/opportunities')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async createManual(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const networkId = params?.networkId;
-    if (!networkId) {
-      return Response.json({ error: 'Missing network id' }, { status: 400 });
-    }
-
-    await assertAgentNetworkScope(req, networkId);
-
-    let body: { parties?: Array<{ userId: string; intentId?: string }>; reasoning?: string; category?: string; confidence?: number };
-    try {
-      body = (await req.json()) as typeof body;
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-
-    const { parties, reasoning, category, confidence } = body ?? {};
-    if (!parties || !Array.isArray(parties) || parties.length < 2 || !reasoning || typeof reasoning !== 'string') {
-      return Response.json(
-        { error: 'Body must include parties (array of at least 2 { userId, intentId? }) and reasoning (string)' },
-        { status: 400 },
-      );
-    }
-
-    const result = await opportunityService.createManualOpportunity(networkId, user.id, {
-      parties,
-      reasoning,
-      category,
-      confidence,
-    });
-
-    if ('error' in result) {
-      return Response.json({ error: result.error }, { status: result.status });
-    }
-
-    // Queue notifications for non-introducer parties
-    const recipientIds = parties.map((p) => p.userId).filter((id) => id !== user.id);
-    for (const recipientId of recipientIds) {
-      await queueOpportunityNotification(result.id, recipientId, 'high');
-    }
-
-    return Response.json(result, { status: 201 });
-  }
 }

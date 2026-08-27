@@ -90,6 +90,30 @@ describe('createAndOpen under concurrent kickoff', () => {
     expect(candidate!.openedOpportunityId).toBeTruthy();
   });
 
+  it('refuses to open a pair whose participant left the network', async () => {
+    // The eligibility check the persist node used to hold. A membership can be
+    // revoked between discovery and kickoff, and the row is born here.
+    const goneUser = uuidv4();
+    const goneIntent = uuidv4();
+    await db.insert(users).values({ id: goneUser, email: PREFIX + goneUser + '@t.com', name: PREFIX + 'Gone' });
+    await db.insert(intents).values({
+      id: goneIntent, userId: goneUser, payload: PREFIX + 'G', summary: 'G',
+      sourceType: 'discovery_form', sourceId: goneUser,
+    });
+    const [orphan] = await discoveryCandidateAdapter.upsertDiscoveryMatchCandidates([{
+      pairKey: pairKeyOf(networkId, intentAId, goneIntent),
+      networkId, intentA: intentAId, intentB: goneIntent, userA: userAId, userB: goneUser,
+      score: 60, reasoning: 'r', evidence: [],
+    }]);
+
+    const result = await discoveryCandidateAdapter.createAndOpen(orphan!.id);
+    expect(result).toEqual({ status: 'failed', reason: 'participant_left_network' });
+
+    await db.delete(discoveryMatchCandidates).where(eq(discoveryMatchCandidates.id, orphan!.id));
+    await db.delete(intents).where(eq(intents.id, goneIntent));
+    await db.delete(users).where(eq(users.id, goneUser));
+  });
+
   it('reports a candidate that does not exist rather than throwing', async () => {
     const result = await discoveryCandidateAdapter.createAndOpen(uuidv4());
     expect(result).toEqual({ status: 'failed', reason: 'candidate_not_found' });

@@ -1254,140 +1254,36 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
   });
 });
 
-describe("update_opportunity tool (send via status pending)", () => {
+/**
+ * `pending` used to be the promote target: `update_opportunity` routed it
+ * through `sendOpportunity` to lift a `latent` or `draft` row into the
+ * principal's view. Nothing is latent or draft any more — an opportunity is
+ * born `negotiating` at kickoff — so there is nothing to promote, and the tool
+ * refuses `pending` like any other non-terminal status.
+ */
+describe("update_opportunity tool (pending is no longer a promote target)", () => {
   const opportunityId = "00000000-0000-0000-0000-000000000123";
 
-  test("when opportunity is latent and user is actor, status pending promotes to pending and returns success", async () => {
-    const latentOpportunity = {
-      id: opportunityId,
-      status: "latent" as const,
-      actors: [
-        { networkId: "idx-1", userId: testUserId, role: "party" as const },
-        { networkId: "idx-1", userId: "other-user-id", role: "party" as const },
-      ],
-      detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
-      interpretation: { category: "collaboration", reasoning: "Match", confidence: 0.8 },
-      context: { networkId: "idx-1" },
-      confidence: "0.8",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      expiresAt: null,
-    };
-    const stampSpy = mock(async () => ({ ...latentOpportunity, status: "pending" as const }));
+  test("refuses `pending` on a live pairing instead of promoting it", async () => {
     const mockDb = createMockDatabase(async () => [], {
-      getOpportunity: async () => latentOpportunity,
-      stampOpportunityActorAction: stampSpy,
+      getOpportunity: async () => ({
+        id: opportunityId,
+        status: "negotiating" as const,
+        actors: [
+          { networkId: "idx-1", userId: testUserId, role: "party" as const },
+          { networkId: "idx-1", userId: "other-user-id", role: "party" as const },
+        ],
+        detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
+      } as never),
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
-    const result = await tool.invoke({ opportunityId, status: "pending" });
-    const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(true);
-    expect(parsed.data.opportunityId).toBe(opportunityId);
-    expect(parsed.data.status).toBe("pending");
-    expect(stampSpy).toHaveBeenCalledWith(opportunityId, testUserId, "pending");
-  });
 
-  test("when opportunity is draft and user is actor, status pending promotes to pending and returns success", async () => {
-    const draftOpportunity = {
-      id: opportunityId,
-      status: "draft" as const,
-      actors: [
-        { networkId: "idx-1", userId: testUserId, role: "party" as const },
-        { networkId: "idx-1", userId: "other-user-id", role: "party" as const },
-      ],
-      detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
-      interpretation: { category: "collaboration", reasoning: "Match", confidence: 0.8 },
-      context: { networkId: "idx-1" },
-      confidence: "0.8",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      expiresAt: null,
-    };
-    const stampSpy = mock(async () => ({ ...draftOpportunity, status: "pending" as const }));
-    const mockDb = createMockDatabase(async () => [], {
-      getOpportunity: async () => draftOpportunity,
-      stampOpportunityActorAction: stampSpy,
-    });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
-    const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
-    const result = await tool.invoke({ opportunityId, status: "pending" });
-    const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(true);
-    expect(parsed.data.opportunityId).toBe(opportunityId);
-    expect(parsed.data.status).toBe("pending");
-    expect(stampSpy).toHaveBeenCalledWith(opportunityId, testUserId, "pending");
-  });
+    const parsed = JSON.parse(await tool.invoke({ opportunityId, status: "pending" }));
 
-  test("when opportunity not found, returns error", async () => {
-    const mockDb = createMockDatabase(async () => [], {
-      getOpportunity: async () => null,
-    });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
-    const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
-    const result = await tool.invoke({ opportunityId: "00000000-0000-0000-0000-000000000099", status: "pending" });
-    const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/Opportunity not found|not found|Valid opportunityId/i);
-  });
-
-  test("when opportunity status is not latent or draft (e.g. already pending), returns error", async () => {
-    const pendingOpportunity = {
-      id: opportunityId,
-      status: "pending" as const,
-      actors: [
-        { networkId: "idx-1", userId: testUserId, role: "party" as const },
-        { networkId: "idx-1", userId: "other-user-id", role: "party" as const },
-      ],
-      detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
-      interpretation: { category: "collaboration", reasoning: "Match", confidence: 0.8 },
-      context: { networkId: "idx-1" },
-      confidence: "0.8",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      expiresAt: null,
-    };
-    const mockDb = createMockDatabase(async () => [], {
-      getOpportunity: async () => pendingOpportunity,
-    });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
-    const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
-    const result = await tool.invoke({ opportunityId, status: "pending" });
-    const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/already|draft|latent|pending|Valid opportunityId/i);
-  });
-
-  test("when user is not part of the opportunity, returns error", async () => {
-    const opportunityWithoutUser = {
-      id: opportunityId,
-      status: "latent" as const,
-      actors: [
-        { networkId: "idx-1", userId: "user-a", role: "party" as const },
-        { networkId: "idx-1", userId: "user-b", role: "party" as const },
-      ],
-      detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
-      interpretation: { category: "collaboration", reasoning: "Match", confidence: 0.8 },
-      context: { networkId: "idx-1" },
-      confidence: "0.8",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      expiresAt: null,
-    };
-    const mockDb = createMockDatabase(async () => [], {
-      getOpportunity: async () => opportunityWithoutUser,
-    });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
-    const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
-    const result = await tool.invoke({ opportunityId, status: "pending" });
-    const parsed = JSON.parse(result);
-    expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/not part of this opportunity|not part|not found|Valid opportunityId/i);
+    expect(parsed.error).toBe("This opportunity is already negotiating and cannot be updated.");
   });
 });
 

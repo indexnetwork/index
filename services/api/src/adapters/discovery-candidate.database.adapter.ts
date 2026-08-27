@@ -5,7 +5,7 @@
  * is the whole dedup story: two discovery runs over the same two intents
  * converge on one row, so nothing downstream has to reconcile duplicates.
  */
-import { and, asc, db, discoveryMatchCandidates, eq, inArray, opportunities, or, sql, users } from './database.shared';
+import { and, asc, db, discoveryMatchCandidates, eq, inArray, networkMembers, opportunities, or, sql, users } from './database.shared';
 
 /**
  * API-local structural twin of protocol's `CreateAndOpenResult`. Adapters must
@@ -27,11 +27,11 @@ export interface CreateDiscoveryMatchCandidateInput {
   userB: string;
   score: number;
   reasoning: string;
-  evidence: unknown[];
+  evidence: CandidateRow['evidence'];
 }
 
 function toCandidate(row: CandidateRow) {
-  return { ...row, score: Number(row.score), evidence: (row.evidence ?? []) as unknown[] };
+  return { ...row, score: Number(row.score), evidence: row.evidence ?? [] };
 }
 
 export class DiscoveryCandidateDatabaseAdapter {
@@ -139,6 +139,21 @@ export class DiscoveryCandidateDatabaseAdapter {
           return locked.openedOpportunityId
             ? { status: 'existing', opportunityId: locked.openedOpportunityId } as const
             : { status: 'raced', reason: 'pair_opened_without_row' } as const;
+        }
+
+        // Both parties must still be on the network. The persist node used to
+        // hold this (createOpportunityIfNetworkEligible); the row is born here
+        // now, so the check belongs here — inside the same transaction, so a
+        // membership cannot be revoked between the check and the insert.
+        const members = await tx.select({ userId: networkMembers.userId })
+          .from(networkMembers)
+          .where(and(
+            eq(networkMembers.networkId, candidate.networkId),
+            inArray(networkMembers.userId, [candidate.userA, candidate.userB]),
+          ));
+        const present = new Set(members.map((row) => row.userId));
+        if (!present.has(candidate.userA) || !present.has(candidate.userB)) {
+          return { status: 'failed', reason: 'participant_left_network' } as const;
         }
 
         const score = Number(candidate.score);

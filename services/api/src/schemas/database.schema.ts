@@ -466,7 +466,7 @@ export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
   userB: text('user_b').notNull().references(() => users.id, { onDelete: 'cascade' }),
   score: numeric('score').notNull(),
   reasoning: text('reasoning').notNull(),
-  evidence: jsonb('evidence').$type<unknown[]>().notNull().default([]),
+  evidence: jsonb('evidence').$type<import('@indexnetwork/protocol').OpportunityEvidence[]>().notNull().default([]),
   status: discoveryMatchCandidateStatusEnum('status').notNull().default('pending'),
   /** Set when this candidate became a row, by `createAndOpen`. */
   openedOpportunityId: text('opened_opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),

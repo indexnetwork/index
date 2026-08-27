@@ -35,6 +35,9 @@ export type ChatGraphCompositeDatabase = Pick<
   Database,
   // Direct ChatGraph operations
   | 'getProfile'
+  // The chat/MCP discovery path builds an OpportunityGraph too, and its
+  // terminal stage records candidates.
+  | 'upsertDiscoveryMatchCandidates'
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
@@ -145,6 +148,7 @@ export type ChatGraphCompositeDatabase = Pick<
 export type OpportunityGraphDatabase = Pick<
   Database,
   | 'getProfile'
+  | 'upsertDiscoveryMatchCandidates'
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'

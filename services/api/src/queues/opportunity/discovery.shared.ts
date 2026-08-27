@@ -3,7 +3,7 @@ import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
+import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
 
 
 /**
@@ -27,8 +27,6 @@ export interface OpportunityDiscoveryDeps {
   /** Wakes a signal's PersonalAgent once the batch is persisted. */
   matchesReady?: MatchesReadyFn;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  /** Only intent-triggered roots provide this P4b pre-insert callback. */
-  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
 }
 
 type DiscoveryLogger = ReturnType<typeof log.job.from>;
@@ -56,7 +54,6 @@ export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: Opport
     undefined,
     deps?.matchesReady,
     deps?.agentDispatcher,
-    deps?.stampNewbornOpportunities,
   ).createGraph();
 }
 

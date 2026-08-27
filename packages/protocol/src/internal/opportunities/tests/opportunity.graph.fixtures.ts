@@ -19,6 +19,9 @@ export function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabas
   });
 
   return {
+    upsertDiscoveryMatchCandidates: async (items: unknown[]) => items.map((item, i) => ({
+      ...(item as object), id: `cand-${i}`, status: 'pending', createdAt: new Date(),
+    })),
     getProfile: async () => null,
     createOpportunity: async (data) => ({ ...emptyOpportunity('fixture-opportunity'), ...data }),
     createOpportunityIfNetworkEligible: async () => null,

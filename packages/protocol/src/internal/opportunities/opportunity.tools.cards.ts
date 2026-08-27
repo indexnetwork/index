@@ -49,7 +49,7 @@ import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity } from "../../platform/database.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import { sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
+import { updateOpportunityStatus } from "./opportunity.graph.modes.js";
 
 export const logger = protocolLogger("ChatTools:Opportunity");
 
