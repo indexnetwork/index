@@ -32,4 +32,29 @@ const reply = await negotiator.respond({
 console.log(reply);
 ```
 
+### Two negotiators, one negotiation
+
+```ts
+import { Negotiator, runNegotiation } from "./index.ts";
+
+const seller = {
+  party: { name: "Seller", objective: "Sell for as much as possible, ideally above $450" },
+  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+};
+
+const buyer = {
+  party: { name: "Buyer", objective: "Buy for as little as possible, ideally under $400" },
+  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+};
+
+const transcript = await runNegotiation([seller, buyer], {
+  maxTurns: 10,
+  stopWhen: (entry) => /deal|agreed/i.test(entry.content),
+});
+
+for (const entry of transcript) {
+  console.log(`[${entry.speaker === 0 ? seller.party.name : buyer.party.name}] ${entry.content}`);
+}
+```
+
 This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
