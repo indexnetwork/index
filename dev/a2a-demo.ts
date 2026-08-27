@@ -53,9 +53,9 @@ function logReply(name: string, message: { parts: { data?: unknown }[] }) {
   console.log(`[${name}] (${data.action}) ${data.message}\n`);
 }
 
-async function runNegotiation(
+async function runNegotiation<A extends string>(
   label: string,
-  initiator: { name: string; client: A2ANegotiationClient<string> },
+  initiator: { name: string; client: A2ANegotiationClient<A> },
   responderName: string,
   targetUrl: string,
 ) {

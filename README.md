@@ -165,8 +165,9 @@ synchronous HTTP request/response.
 
 `createA2AHandler()` builds a framework-agnostic `(Request) => Promise<Response>`
 you can mount in any HTTP server. It serves this agent's AgentCard at
-`/.well-known/agent-card.json`, and on `message/send` runs `negotiator.decide()`
-and replies with the updated Task:
+`/.well-known/agent-card.json`, and on `message/send` decides a turn (by
+default via `negotiator.decide()` — see [Customizing how a turn is decided](#customizing-how-a-turn-is-decided-and-extracting-value-from-it)
+below) and replies with the updated Task:
 
 ```ts
 import { Negotiator } from "@indexnetwork/negotiator";
@@ -191,7 +192,45 @@ Bun.serve({ port: 3000, fetch: handler });
 A negotiation ends (`task.status.state` becomes `completed`/`rejected`/`canceled`)
 once `decide()` picks a terminal action — `accept`, `reject`, or `withdraw` by
 default. Pass `isTerminal(action)` to `createA2AHandler()` to override which
-actions end the negotiation.
+actions end the negotiation, and `terminalState(action)` to override which
+final state a terminal action maps to (the accept/withdraw/else-rejected
+default only makes sense for that default vocabulary — a custom one, e.g.
+`resolve`/`escalate`, needs its own mapping).
+
+### Customizing how a turn is decided, and extracting value from it
+
+Two optional hooks, available on both `createA2AHandler()` and
+`A2ANegotiationClient`:
+
+- **`strategy(negotiator, state, allowedActions)`** — replaces the default
+  `negotiator.decide(state, { allowedActions })` call. Use this to customize
+  behavior per negotiation domain or personal agent type — gather extra
+  context first, consult a different model, whatever your case needs. The
+  A2A wire format doesn't change either way; this only affects what happens
+  before a decision is produced.
+- **`evaluate(task, decision)`** — runs after a turn is decided. Return an
+  Artifact (`{ artifactId, name?, parts }`) to attach structured findings —
+  a score, extracted terms, anything useful — to the Task, separate from the
+  negotiation message itself. On the server, artifacts accumulate on
+  `task.artifacts` (visible to anyone who can read that Task). On the
+  client, `evaluate()` runs locally and its result comes back on
+  `A2ATurnResult.artifact` instead — the client doesn't own the server's
+  Task, so its own evaluation never gets attached to it.
+
+```ts
+const handler = createA2AHandler({
+  // ...negotiator, party, allowedActions, agentCard,
+  strategy: async (negotiator, state, allowedActions) => {
+    // e.g. domain-specific context injection, multiple negotiators, etc.
+    return negotiator.decide(state, { allowedActions });
+  },
+  evaluate: (task, decision) => ({
+    artifactId: crypto.randomUUID(),
+    name: "turn-evaluation",
+    parts: [{ kind: "data", data: { action: decision.action, turn: task.history.length } }],
+  }),
+});
+```
 
 ### Client: initiating and continuing negotiations
 
@@ -252,11 +291,26 @@ mTLS, matching `AgentCard.capabilities`/security schemes against what you
 require) is out of scope for this library today; treat `fetchAgentCard()`
 as a building block for your own trust logic, not a complete solution.
 
-See `dev/a2a-demo.ts` for a runnable example of the fully symmetric
-shape — two agents, each running its own server *and* initiating its own
-negotiation against the other's endpoint (`bun run dev/a2a-demo.ts`, needs
-`OPENROUTER_API_KEY`; makes real, non-deterministic API calls, so it isn't
-part of `bun test`).
+### Examples
+
+`examples/` has runnable, self-contained scripts covering the A2A surface —
+each uses a scripted `Negotiator` (no API key needed, instant, deterministic)
+so you can see the *mechanics* without waiting on real model calls:
+
+| Script | Shows |
+| --- | --- |
+| `01-basic-negotiation.ts` | One server (Seller), one client (Buyer) — the minimal shape. |
+| `02-symmetric-peers.ts` | Both sides run their own server *and* initiate their own negotiation — real peer-to-peer. |
+| `03-agent-card-trust-check.ts` | `fetchAgentCard()` as an identity check before negotiating. |
+| `04-custom-strategy.ts` | A `strategy` hook that skips the LLM entirely for deterministic business logic. |
+| `05-evaluate-artifacts.ts` | An `evaluate` hook attaching structured findings to a Task, both server- and client-side. |
+| `06-custom-action-vocabulary.ts` | A non-price domain (support escalation) with custom actions and `terminalState`. |
+
+Run any of them directly: `bun run examples/01-basic-negotiation.ts`.
+
+For a real, non-deterministic demo against actual OpenRouter calls (needs
+`OPENROUTER_API_KEY`; not part of `bun test`), see `dev/a2a-demo.ts` —
+`bun run dev/a2a-demo.ts`.
 
 ### Local simulation (dev/test only)
 

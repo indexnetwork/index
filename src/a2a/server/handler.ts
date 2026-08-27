@@ -3,6 +3,7 @@ import type { ActionSpec } from "../../core/negotiator.ts";
 import type { NegotiationParty } from "../../core/types.ts";
 import { decisionToMessage, historyFromMessages } from "../wire/history.ts";
 import type { JsonRpcRequest, JsonRpcResponse } from "../wire/jsonrpc.ts";
+import { defaultStrategy, type DecisionStrategy, type EvaluateHook } from "../wire/strategy.ts";
 import type { A2AMessage, A2ATask, AgentCard } from "../wire/types.ts";
 import { TaskStore } from "./task-store.ts";
 
@@ -23,9 +24,18 @@ export interface A2AHandlerOptions<A extends string> {
   taskStore?: TaskStore;
   /** Which actions end the negotiation. Defaults to accept/reject/decline/withdraw. */
   isTerminal?: (action: A) => boolean;
+  /** Maps a terminal action to the Task's final state. Defaults to
+   * accept -> completed, withdraw -> canceled, anything else -> rejected —
+   * override this for a custom action vocabulary where those defaults
+   * don't apply (e.g. "resolve"/"escalate" instead of "accept"/"reject"). */
+  terminalState?: (action: A) => "completed" | "rejected" | "canceled";
+  /** Customize how a turn is decided. Defaults to a plain `negotiator.decide()` call. */
+  strategy?: DecisionStrategy<A>;
+  /** Runs after each turn's decision; return an Artifact to attach to the Task. */
+  evaluate?: EvaluateHook<A>;
 }
 
-function terminalState(action: string): "completed" | "rejected" | "canceled" {
+function defaultTerminalState(action: string): "completed" | "rejected" | "canceled" {
   if (action === "accept") return "completed";
   if (action === "withdraw") return "canceled";
   return "rejected"; // reject, decline
@@ -50,6 +60,8 @@ export function createA2AHandler<A extends string>(
 ): (request: Request) => Promise<Response> {
   const taskStore = options.taskStore ?? new TaskStore();
   const isTerminal = options.isTerminal ?? ((action: A) => DEFAULT_TERMINAL_ACTIONS.has(action));
+  const terminalState = options.terminalState ?? defaultTerminalState;
+  const strategy = options.strategy ?? (defaultStrategy as unknown as DecisionStrategy<A>);
 
   return async function handleRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -95,15 +107,17 @@ export function createA2AHandler<A extends string>(
         contextId: incoming.contextId ?? crypto.randomUUID(),
         status: { state: "working", timestamp: new Date().toISOString() },
         history: [],
+        artifacts: [],
       };
     }
 
     task.history.push(incoming);
 
     const history = historyFromMessages(task.history, "server");
-    const decision = await options.negotiator.decide(
+    const decision = await strategy(
+      options.negotiator,
       { party: options.party, history },
-      { allowedActions: options.allowedActions },
+      options.allowedActions,
     );
 
     const reply = decisionToMessage(decision, "agent", {
@@ -115,6 +129,9 @@ export function createA2AHandler<A extends string>(
       state: isTerminal(decision.action) ? terminalState(decision.action) : "input-required",
       timestamp: new Date().toISOString(),
     };
+
+    const artifact = await options.evaluate?.(task, decision);
+    if (artifact) task.artifacts.push(artifact);
 
     taskStore.save(task);
 

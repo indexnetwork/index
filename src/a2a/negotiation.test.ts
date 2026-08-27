@@ -118,6 +118,82 @@ describe("A2A client/server over real HTTP", () => {
     }
   });
 
+  test("server evaluate() attaches an artifact to the task, custom strategy overrides decide()", async () => {
+    const { negotiator } = scriptedNegotiator([{ action: "propose", message: "unused" }]);
+    const handler = createA2AHandler({
+      negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose", "counter"],
+      agentCard: agentCard("Seller"),
+      strategy: async () => ({ action: "counter", message: "from custom strategy" }),
+      evaluate: (_task, decision) => ({
+        artifactId: "eval-1",
+        name: "turn-evaluation",
+        parts: [{ kind: "data", data: { sawAction: decision.action } }],
+      }),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "propose", message: "hi" }]).negotiator,
+        party: { name: "Buyer", objective: "Buy" },
+        allowedActions: ["propose", "counter"],
+      });
+
+      const { task, decision } = await client.initiate(httpServer.url.toString());
+      // The server's custom strategy decided, not the default negotiator.decide().
+      const sellerReply = task.history.at(-1)!;
+      expect((sellerReply.parts[0]?.data as { message: string }).message).toBe(
+        "from custom strategy",
+      );
+      expect(decision.action).toBe("propose"); // client's own decision, unaffected
+
+      expect(task.artifacts).toEqual([
+        {
+          artifactId: "eval-1",
+          name: "turn-evaluation",
+          parts: [{ kind: "data", data: { sawAction: "counter" } }],
+        },
+      ]);
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("client evaluate() returns an artifact on the turn result without touching the server's task", async () => {
+    const { negotiator } = scriptedNegotiator([{ action: "propose", message: "hi" }]);
+    const handler = createA2AHandler({
+      negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose"],
+      agentCard: agentCard("Seller"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "propose", message: "opening offer" }]).negotiator,
+        party: { name: "Buyer", objective: "Buy" },
+        allowedActions: ["propose"],
+        evaluate: (_task, decision) => ({
+          artifactId: "client-eval",
+          parts: [{ kind: "text", text: `client saw ${decision.action}` }],
+        }),
+      });
+
+      const { task, artifact } = await client.initiate(httpServer.url.toString());
+      expect(artifact).toEqual({
+        artifactId: "client-eval",
+        parts: [{ kind: "text", text: "client saw propose" }],
+      });
+      // Server's task is untouched by the client's local evaluation.
+      expect(task.artifacts).toEqual([]);
+    } finally {
+      httpServer.stop();
+    }
+  });
+
   test("returns a JSON-RPC error for an unknown taskId", async () => {
     const { negotiator } = scriptedNegotiator([{ action: "propose", message: "hi" }]);
     const handler = createA2AHandler({

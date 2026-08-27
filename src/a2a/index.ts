@@ -8,7 +8,10 @@ export type {
   A2ATurnResult,
 } from "./client/negotiation-client.ts";
 export { decisionToMessage, historyFromMessages, messageToDecision } from "./wire/history.ts";
+export { defaultStrategy } from "./wire/strategy.ts";
+export type { DecisionStrategy, EvaluateHook } from "./wire/strategy.ts";
 export type {
+  A2AArtifact,
   A2AMessage,
   A2APart,
   A2ATask,

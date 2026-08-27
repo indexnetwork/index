@@ -28,11 +28,23 @@ export interface A2AMessage {
   contextId?: string;
 }
 
+export interface A2AArtifact {
+  artifactId: string;
+  name?: string;
+  parts: A2APart[];
+}
+
 export interface A2ATask {
   id: string;
   contextId: string;
   status: { state: A2ATaskState; timestamp: string };
   history: A2AMessage[];
+  /** Structured findings attached to this task, separate from the
+   * negotiation messages themselves — e.g. an evaluation score or
+   * extracted terms produced by an `evaluate` hook. Not sent to the
+   * counterparty as part of the negotiation; visible to whoever can read
+   * this Task (this agent, or a caller like Index Network). */
+  artifacts: A2AArtifact[];
 }
 
 export interface AgentCardSkill {
