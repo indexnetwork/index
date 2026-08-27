@@ -440,7 +440,7 @@ export interface OpportunityRow {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -454,7 +454,7 @@ export interface CreateOpportunityInput {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status?: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status?: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
   metadata?: Record<string, unknown> | null;
 }
@@ -607,7 +607,7 @@ export interface NegotiationLifecycleSummary {
   state: 'submitted' | 'working' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed' | 'paused';
   statusTimestamp: Date | null;
   opportunityId: string | null;
-  opportunityStatus: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
+  opportunityStatus: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
   /** Whether the authenticated owner, rather than their counterpart, started the chat. */
   acceptedByViewer: boolean;
   turnCount: number;

@@ -41,35 +41,6 @@ function identity(userId: string, name: string): UserIdentity {
 }
 
 describe('authoritative opportunity notification projection', () => {
-  test('latent opportunities without an introducer are actionable for every actor', () => {
-    const row = opportunity('latent', [
-      { userId: 'viewer', networkId: 'network-1', role: 'patient' },
-      { userId: 'peer', networkId: 'network-1', role: 'agent' },
-    ]);
-
-    expect(actionableRecipientIds(row)).toEqual(['viewer', 'peer']);
-  });
-
-  test('latent opportunities with an unapproved introducer are actionable only for the introducer', () => {
-    const latentWithUnapprovedIntroducer = opportunity('latent', [
-      { userId: 'viewer', networkId: 'network-1', role: 'patient' },
-      { userId: 'peer', networkId: 'network-1', role: 'agent' },
-      { userId: 'introducer', networkId: 'network-1', role: 'introducer', approved: false },
-    ]);
-
-    expect(actionableRecipientIds(latentWithUnapprovedIntroducer)).toEqual(['introducer']);
-  });
-
-  test('approved introducers stop being actionable while latent participants become actionable', () => {
-    const row = opportunity('latent', [
-      { userId: 'viewer', networkId: 'network-1', role: 'patient' },
-      { userId: 'peer', networkId: 'network-1', role: 'agent' },
-      { userId: 'introducer', networkId: 'network-1', role: 'introducer', approved: true },
-    ]);
-
-    expect(actionableRecipientIds(row)).toEqual(['viewer', 'peer']);
-  });
-
   test('pending opportunities exclude recipients who already acted, including duplicate actor rows', () => {
     const pendingWithActedViewer = opportunity('pending', [
       { userId: 'acted-user', networkId: 'network-1', role: 'patient', actedAt: now.toISOString() },
@@ -90,17 +61,6 @@ describe('authoritative opportunity notification projection', () => {
     for (const status of ['draft', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'] as const) {
       expect(actionableRecipientIds(opportunity(status, actors))).toEqual([]);
     }
-  });
-
-  test('counterpart selection prefers a non-introducer actor', () => {
-    const threePartyOpportunity = opportunity('pending', [
-      { userId: 'viewer', networkId: 'network-1', role: 'patient' },
-      { userId: 'introducer', networkId: 'network-1', role: 'introducer', approved: true },
-      { userId: 'peer', networkId: 'network-1', role: 'agent' },
-    ]);
-
-    expect(counterpartForRecipient(threePartyOpportunity, 'viewer')?.role).not.toBe('introducer');
-    expect(counterpartForRecipient(threePartyOpportunity, 'viewer')?.userId).toBe('peer');
   });
 
   test('notification copy uses the fixed headline, identity names, and sanitized reasoning', () => {

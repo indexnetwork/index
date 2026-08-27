@@ -41,8 +41,10 @@ function createMockDb(
 }
 
 describe('home graph status filter', () => {
-  test('DEFAULT_RADAR_STATUSES is exactly latent, pending', () => {
-    expect(DEFAULT_RADAR_STATUSES).toEqual(['latent', 'pending']);
+  test('DEFAULT_RADAR_STATUSES is exactly pending', () => {
+    // `pending` is the only status a principal can act on: a pairing is born
+    // `negotiating` and there is no pre-kickoff state before it.
+    expect(DEFAULT_RADAR_STATUSES).toEqual(['pending']);
   });
 
   test('ALL_OPPORTUNITY_STATUSES includes accepted/rejected/expired', () => {
@@ -50,7 +52,8 @@ describe('home graph status filter', () => {
     expect(ALL_OPPORTUNITY_STATUSES).toContain('rejected');
     expect(ALL_OPPORTUNITY_STATUSES).toContain('expired');
     expect(ALL_OPPORTUNITY_STATUSES).toContain('negotiating');
-    expect(ALL_OPPORTUNITY_STATUSES).toContain('draft');
+    expect(ALL_OPPORTUNITY_STATUSES).not.toContain('draft');
+    expect(ALL_OPPORTUNITY_STATUSES).not.toContain('latent');
   });
 
   test('default invocation passes DEFAULT_RADAR_STATUSES to the database', async () => {

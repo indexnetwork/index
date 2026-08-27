@@ -109,14 +109,10 @@ export function buildLifecycleNarration(
       return { ...common, connectionState: 'rejected', lifecycleLabel: 'The opportunity was rejected; no connection was established.' };
     case 'stalled':
       return { ...common, connectionState: 'negotiation_stalled', lifecycleLabel: 'The agent negotiation stalled; no connection was established.' };
-    case 'draft':
-      return { ...common, connectionState: 'draft_not_sent', lifecycleLabel: 'The opportunity is still a draft; it has not been sent or accepted.' };
     case 'expired':
       return { ...common, connectionState: 'expired', lifecycleLabel: 'The opportunity expired; no connection was established.' };
     case 'negotiating':
       return { ...common, connectionState: 'agents_negotiating', lifecycleLabel: 'The agents are still negotiating; no owner decision is recorded.' };
-    case 'latent':
-      return { ...common, connectionState: 'latent', lifecycleLabel: 'The potential match is latent; no owner decision is recorded.' };
     default:
       return {
         ...common,

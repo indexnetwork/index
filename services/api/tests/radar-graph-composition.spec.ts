@@ -79,8 +79,7 @@ describe('radar.graph.ts composition import', () => {
     );
     const expired = result.filter((o) => o.status === 'expired');
 
-    expect(connections.length).toBe(3);
-    expect(connectorFlows.length).toBe(2);
+    expect(connections.length).toBe(5);
     expect(expired.length).toBe(2);
   });
 });

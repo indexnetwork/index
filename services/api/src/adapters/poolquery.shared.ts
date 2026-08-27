@@ -3,7 +3,7 @@ import { inArray, sql } from 'drizzle-orm/sql';
 import { opportunities } from '../schemas/database.schema';
 
 /** Statuses in the exact mutable recipient+intent pool. */
-export const POOL_LIVE_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
+export const POOL_LIVE_STATUSES = ['pending', 'negotiating'] as const;
 
 /**
  * Terminal statuses added ONLY to the Lens C evidence pool (IND-465):
@@ -18,7 +18,7 @@ export const POOL_TERMINAL_STATUSES = ['stalled', 'accepted', 'rejected', 'expir
  */
 function recipientPoolVisibilityGuard(recipientUserId: string) {
   // The actors on a pairing may see it. This used to be a four-way rule keyed
-  // on role and `latent`/`draft`; none of
+  // on role and pre-kickoff statuses; none of
   // those exist any more, and every branch collapsed to the same answer.
   return sql`(
     EXISTS (

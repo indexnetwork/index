@@ -58,7 +58,7 @@ function createMockDb(opportunities: Opportunity[] = []): RadarGraphDatabase {
   };
 }
 
-/** Minimal opportunity: viewer as patient, other as agent, pending. Use when viewer should be patient (e.g. with introducer). */
+/** Minimal opportunity: viewer as patient, other as agent, pending. */
 function minimalOpportunity(viewerId: string, otherId: string): Opportunity {
   return {
     id: 'opp-minimal',
@@ -77,7 +77,7 @@ function minimalOpportunity(viewerId: string, otherId: string): Opportunity {
   };
 }
 
-/** Pending opportunity with viewer as agent (actionable for agent without introducer). */
+/** Pending opportunity with viewer as agent. */
 function minimalOpportunityAgentViewer(viewerId: string, otherId: string, id = 'opp-minimal'): Opportunity {
   return {
     id,
@@ -243,7 +243,7 @@ describe('RadarGraph', () => {
     expect(typeof firstItem?.mutualIntentsLabel).toBe('string');
   }, 30000);
 
-  test('manual source without introducer actor yields Index as narrator (no false intro attribution)', async () => {
+  test('every card names Index as narrator', async () => {
     const viewerId = 'viewer-1';
     const otherId = 'other-1';
     const opp = minimalOpportunityAgentViewer(viewerId, otherId);

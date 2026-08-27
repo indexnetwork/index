@@ -7,7 +7,7 @@ import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, 
 
 
 /**
- * Worker concurrency shared by the from-intent and from-enrichment discovery
+ * Worker concurrency for the from-intent discovery
  * queues. The factory default (1) serialized every user's scan behind every
  * other user's, which is what made a second onboarding look stalled. 4 lets a
  * handful of signals scan side by side; it stays low because one scan already
@@ -147,7 +147,7 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
   errorLabel?: string;
   /** Identifier fields merged into every log line (e.g. `{ intentId, userId }`). */
   logContext: Record<string, unknown>;
-  /** Whether to emit the verbose graph-trace line (from-enrichment opts out). Defaults to true. */
+  /** Whether to emit the verbose graph-trace line. Defaults to true. */
   logTrace?: boolean;
 }): Promise<OpportunityDiscoverySummary | null> {
   const { graphDb, deps, invokeOpts, logger, label, errorLabel = label, logContext, logTrace = true } = params;

@@ -16,15 +16,11 @@ const updateStatusLogger = log.service.from("OpportunityService.updateOpportunit
  * Lifecycle statuses surfaced in the default opportunity list (when no explicit
  * `status` filter is given). This is everything a user currently sees EXCEPT the
  * terminal-stale `expired` and `rejected`, which otherwise clutter the live list
- * inline with active matches (IND-254). Pre-send `draft` is excluded simply by
- * its absence from this list: passing an explicit `statuses` filter makes the
- * adapter treat it as a caller-chosen filter, which bypasses the adapter's own
- * `!= 'draft'` default branch — so the omission here is what keeps drafts out on
- * this path, not that branch. A caller can still request a single terminal status
- * explicitly (e.g. `?status=expired`) for a history view — that path bypasses
- * this default.
+ * inline with active matches (IND-254). A caller can still request a single
+ * terminal status explicitly (e.g. `?status=expired`) for a history view — that
+ * path bypasses this default.
  */
-const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['latent', 'negotiating', 'pending', 'stalled', 'accepted'];
+const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
 
 /**
  * Default statuses for the per-network community list. Stricter than
@@ -827,9 +823,9 @@ export class OpportunityService {
         opportunity: sanitizeOpportunityForResponse(opp),
       };
     }
-    if (opp.status !== 'pending' && opp.status !== 'draft' && opp.status !== 'latent') {
+    if (opp.status !== 'pending') {
       return {
-        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending, draft, or latent.`,
+        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending.`,
         status: 400,
       };
     }

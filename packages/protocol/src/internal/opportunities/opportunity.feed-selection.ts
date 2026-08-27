@@ -2,7 +2,7 @@ import type { DeliveryLedger } from '../../platform/runtime/delivery-ledger.js';
 import type { ChatGraphCompositeDatabase, Opportunity, OpportunityStatus } from '../../platform/database.js';
 import { deduplicateByPerson, selectByComposition, selectDigestCandidates, type DigestDeliveredRow } from './opportunity.utils.js';
 
-const ACTIONABLE_FEED_STATUSES: OpportunityStatus[] = ['draft', 'pending', 'latent'];
+const ACTIONABLE_FEED_STATUSES: OpportunityStatus[] = ['pending'];
 const FEED_FETCH_LIMIT = 30;
 const ACCEPTED_SUPPRESSION_FETCH_LIMIT = 200;
 
@@ -55,11 +55,7 @@ export async function selectOpportunityFeed(
     return false;
   });
 
-  const visible = callerScoped.filter((opportunity) => {
-    if (opportunity.status !== 'latent') return true;
-    return false;
-  });
-  const deduped = deduplicateByPerson(visible, args.viewerId);
+  const deduped = deduplicateByPerson(callerScoped, args.viewerId);
   const isDigestMode = args.isMcp === true && args.includeDigestMarkers === true;
 
   let digestPool = deduped;

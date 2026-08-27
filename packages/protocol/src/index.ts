@@ -450,9 +450,3 @@ export type {
 export {
   RadarGraphFactory,
 } from "./internal/opportunities/radar/radar.graph.js";
-export {
-  computeRadarHealth,
-} from "./internal/opportunities/radar/radar.health.js";
-export type {
-  RadarHealthInput,
-} from "./internal/opportunities/radar/radar.health.js";

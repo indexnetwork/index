@@ -54,7 +54,7 @@ function buildDb(overrides: Partial<NegotiationContextDatabase> = {}): Negotiati
 }
 
 describe("loadNegotiationContext", () => {
-  it("returns null for draft status without querying the database", async () => {
+  it("returns null for an expired opportunity without querying the database", async () => {
     let taskLookups = 0;
     const db = buildDb({
       getNegotiationTaskForOpportunity: async () => {
@@ -63,7 +63,7 @@ describe("loadNegotiationContext", () => {
       },
     });
 
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "draft", "u-source");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "expired", "u-source");
 
     expect(result).toBeNull();
     expect(taskLookups).toBe(0);

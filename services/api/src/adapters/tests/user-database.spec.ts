@@ -521,11 +521,6 @@ describe('createUserDatabase', () => {
       await expect(userDb.getOpportunity('opp-2')).rejects.toThrow('Access denied');
     });
 
-    it('getOpportunity throws for latent opportunity hidden by visibility rules', async () => {
-      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(latentWithIntroducer);
-      await expect(userDb.getOpportunity('opp-3')).rejects.toThrow('Access denied');
-    });
-
     it('updateOpportunityStatus succeeds when user is an actor', async () => {
       (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(ownedOpportunity);
       await userDb.updateOpportunityStatus('opp-1', 'accepted' as never);
@@ -540,11 +535,6 @@ describe('createUserDatabase', () => {
     it('updateOpportunityStatus throws when user is not an actor', async () => {
       (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(otherOpportunity);
       await expect(userDb.updateOpportunityStatus('opp-2', 'accepted' as never)).rejects.toThrow('Access denied');
-    });
-
-    it('updateOpportunityStatus throws for latent opportunity hidden by visibility rules', async () => {
-      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(latentWithIntroducer);
-      await expect(userDb.updateOpportunityStatus('opp-3', 'accepted' as never)).rejects.toThrow('Access denied');
     });
 
     it('acceptSiblingOpportunities delegates with authUserId', async () => {

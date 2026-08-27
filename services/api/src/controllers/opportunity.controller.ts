@@ -13,7 +13,7 @@ const logger = log.controller.from('opportunity');
 
 const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
 /** Full lifecycle enum for the radar view's explicit `statuses` filter (e.g. the intent radar). */
-const radarStatusSchema = z.enum(['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
+const radarStatusSchema = z.enum(['negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -248,8 +248,8 @@ export class OpportunityController {
     if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 
     const rawStatus = typeof body.status === 'string' ? body.status : undefined;
-    const status = rawStatus as 'latent' | 'draft' | 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
-    const allowed = ['latent', 'draft', 'pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
+    const status = rawStatus as 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const allowed = ['pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return Response.json({ error: 'Invalid status; use one of: ' + allowed.join(', ') }, { status: 400 });
     }
@@ -352,7 +352,7 @@ export class OpportunityController {
   }
 
   /**
-   * POST /opportunities/:id/start-chat — accept a `pending` or `draft`
+   * POST /opportunities/:id/start-chat — accept a `pending`
    * opportunity and resolve (find-or-create) the h2h conversation for the
    * actor pair. Used by the frontend's Start Chat button; returns the
    * conversationId to navigate to.

@@ -1098,7 +1098,7 @@ describe('ConversationDatabaseAdapter', () => {
         interpretation: { category: 'test', reasoning: 'Two-seat open.', confidence: 0.8 },
         context: {},
         confidence: '0.8',
-        status: 'latent',
+        status: 'negotiating',
       });
       createdOpportunityIds.push(opportunityId);
 

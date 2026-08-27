@@ -3,7 +3,7 @@ export type IntentDiscoveryTrigger = {
   searchQuery: string;
   operationMode: 'create';
   triggerIntentId: string;
-  options: { initialStatus: 'latent' };
+  options: Record<string, never>;
 } & (
   | { networkId: string; indexScope?: never }
   | { networkId?: never; indexScope: string[] }
@@ -26,6 +26,6 @@ export function buildIntentDiscoveryTrigger(input: {
       ? { networkId: input.networkIds[0]! }
       : { indexScope: [...input.networkIds] }),
     triggerIntentId: input.triggerIntentId,
-    options: { initialStatus: 'latent' },
+    options: {},
   };
 }

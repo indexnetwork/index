@@ -21,7 +21,7 @@ export interface OpportunityInterpretation {
 
 export interface OpportunityListItem {
   id: string;
-  status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   context: OpportunityContext;
   interpretation: OpportunityInterpretation;
   actors: OpportunityActor[];
@@ -39,8 +39,6 @@ export interface GetOpportunitiesOptions {
 
 /** Full lifecycle status union (see API OpportunityStatus). */
 export type OpportunityLifecycleStatus =
-  | 'latent'
-  | 'draft'
   | 'negotiating'
   | 'pending'
   | 'stalled'
@@ -92,7 +90,7 @@ export interface GetRadarViewOptions {
   presentation?: 'skeleton';
 }
 
-export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
 
 export interface OpportunityStatusUpdateResponse {
   opportunity: OpportunityListItem | null;

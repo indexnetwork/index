@@ -343,8 +343,6 @@ type PersistedOpportunityStatus = PersistedOpportunity['status'];
 
 // `pending` belongs to the principal's decision lane.
 const NEGOTIATION_OPEN_STATUSES = new Set<PersistedOpportunityStatus>([
-  'latent',
-  'draft',
   'negotiating',
   'stalled',
 ]);
@@ -353,8 +351,6 @@ const NEGOTIATION_OPEN_STATUSES = new Set<PersistedOpportunityStatus>([
 // status + updatedAt CAS below still applies, so only a caller that observed
 // the stalled row claims the attempt; terminal statuses stay refused.
 const NEGOTIATION_START_STATUSES = new Set<PersistedOpportunityStatus>([
-  'latent',
-  'draft',
   'pending',
   'negotiating',
   'stalled',
@@ -4268,9 +4264,9 @@ export class ConversationDatabaseAdapter {
    */
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
-  ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
+  ): Promise<{ id: string; status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
     if (status === 'accepted' && !acceptedBy) throw new Error('acceptedBy is required when status is accepted');
     const row = await db.transaction(async (tx) => {
       const updates: Record<string, unknown> = { status, updatedAt: new Date() };

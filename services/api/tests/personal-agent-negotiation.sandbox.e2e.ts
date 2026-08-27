@@ -170,7 +170,7 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
         const result = await introducerRadar();
         return result.items.find((opportunity) => opportunity.opportunityId === SANDBOX_E2E_CASES.unapprovedIntroducer.opportunityId);
       }, 'unapproved introduction fixture');
-      expect(unapprovedIntroduction.status).toBe('latent');
+      expect(unapprovedIntroduction.status).toBe('pending');
       expect(unapprovedIntroduction.viewerRole).toBe('introducer');
 
       const timelineFor = (jwt: string, intentId: string) => api<{ entries: TimelineEntry[] }>(jwt, `/api/conversations/negotiations/intent-cycle/timeline?intentId=${intentId}`);
@@ -251,7 +251,7 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
             if (question) return { kind: 'parked', question };
           }
           const task = await targetTaskForOpportunity(aishaJwt, aishaMaya.id, aishaMayaTask.opportunityId);
-          if (task && task.opportunityStatus !== 'latent' && task.opportunityStatus !== 'negotiating') return { kind: 'resolved', task };
+          if (task && task.opportunityStatus !== 'pending' && task.opportunityStatus !== 'negotiating') return { kind: 'resolved', task };
           return undefined;
         }, 'Aisha negotiation parks with a question-block, or resolves without one');
 
@@ -313,7 +313,7 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       expect(mayaSofiaCard?.status).not.toBe('pending');
       expect(mayaSofiaCard?.status).not.toBe('accepted');
       const stillUnapproved = await introducerRadar();
-      expect(stillUnapproved.items.some((opportunity) => opportunity.opportunityId === SANDBOX_E2E_CASES.unapprovedIntroducer.opportunityId && opportunity.status === 'latent')).toBe(true);
+      expect(stillUnapproved.items.some((opportunity) => opportunity.opportunityId === SANDBOX_E2E_CASES.unapprovedIntroducer.opportunityId && opportunity.status === 'pending')).toBe(true);
 
       // An agent never advances to accepted. The only accepted transition in
       // this suite is this explicit owner action through the normal API.

@@ -10,8 +10,7 @@
  * - Non-indexed intents cannot participate in discovery
  *
  * The graph is the discovery pipeline and nothing else. Read, update, delete,
- * send, approve_introduction and the introduction path are
- * plain functions in `opportunity.graph.modes.ts` — they never needed a state
+ * are plain functions in `opportunity.graph.modes.ts` — they never needed a state
  * machine, and routing them through one hid nine single-node paths behind a
  * conditional edge. Every node below is a top-level function taking the state
  * and an explicit {@link OpportunityGraphDeps}.
@@ -59,7 +58,7 @@ export {
  * Uses dependency injection for testability.
  *
  * `deps` is public so callers can invoke the non-discovery modes
- * (`readOpportunities`, `sendOpportunity`, …) against the same wiring.
+ * (`readOpportunities`, `updateOpportunityStatus`, …) against the same wiring.
  */
 export class OpportunityGraphFactory {
   /** Resolved dependency bag shared by the graph nodes and the standalone modes. */

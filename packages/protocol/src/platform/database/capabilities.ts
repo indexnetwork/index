@@ -126,7 +126,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'
-  // User context text for context-to-intent discovery in OpportunityGraph
+  // User context text for discovery in OpportunityGraph
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
 > & Pick<
@@ -183,10 +183,10 @@ export type OpportunityGraphDatabase = Pick<
   | 'getPremisesForUserInNetworks'
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'
-  // User context text for context-to-intent discovery
+  // User context text for discovery
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
-  // HyDE documents for context-to-intent HyDE search
+  // HyDE documents for HyDE search
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)
   | 'getRecentlyRejectedOpportunityCounterparties'

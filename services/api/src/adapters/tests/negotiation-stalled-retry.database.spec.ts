@@ -91,7 +91,7 @@ function attemptInput(opportunity: typeof opportunities.$inferSelect, conversati
 
 describe('post-stall retry attempt claim', () => {
   test('concurrent graph opens atomically create one live task and return it to the loser', async () => {
-    const opportunity = await seedOpportunity('latent');
+    const opportunity = await seedOpportunity('negotiating');
     const input = graphOpenInput(opportunity);
 
     const [first, second] = await Promise.all([
@@ -110,29 +110,6 @@ describe('post-stall retry attempt claim', () => {
     expect(persisted).toHaveLength(1);
     const [promoted] = await db.select().from(opportunities).where(eq(opportunities.id, opportunity.id));
     expect(promoted!.status).toBe('negotiating');
-  });
-
-  test('the durable open refuses an introduction whose gate is still closed', async () => {
-    const sourceUserId = randomUUID();
-    const candidateUserId = randomUUID();
-    const [opportunity] = await db.insert(opportunities).values({
-      detection: { kind: 'test', summary: 'introducer gate fixture' } as never,
-      actors: [
-        { userId: sourceUserId, networkId: randomUUID(), role: 'peer' },
-        { userId: candidateUserId, networkId: randomUUID(), role: 'peer' },
-        { userId: randomUUID(), networkId: randomUUID(), role: 'introducer', approved: false },
-      ] as never,
-      interpretation: { reasoning: 'fixture', category: 'test' } as never,
-      context: {} as never,
-      confidence: '0.8',
-      status: 'latent',
-    }).returning();
-    createdOpportunityIds.push(opportunity!.id);
-
-    expect(await conversationAdapter.openNegotiationTask(graphOpenInput(opportunity!))).toBeNull();
-    const persisted = await db.select({ id: tasks.id }).from(tasks)
-      .where(sql`${tasks.metadata}->>'opportunityId' = ${opportunity!.id}`);
-    expect(persisted).toHaveLength(0);
   });
 
   test("a stalled opportunity with a completed park task resumes into exactly one fresh attempt", async () => {

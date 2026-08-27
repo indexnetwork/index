@@ -97,9 +97,7 @@ describe('mergeStrategyCandidates', () => {
     const raws = [0.99, 0.97, 0.95, 0.93];
     const merged = mergeStrategyCandidates(
       raws.map((s, i) => candidate(`u${i}`, s, 'query')),
-      raws.map((s, i) => candidate(`u${i}`, s, 'premise-similarity')),
-      raws.map((s, i) => candidate(`u${i}`, s, 'context-to-intent')),
-      raws.map((s, i) => candidate(`u${i}`, s, 'context-similarity')),
+      raws.map((s, i) => candidate(`u${i}`, s, 'query')),
     );
 
     expect(merged).toHaveLength(raws.length);

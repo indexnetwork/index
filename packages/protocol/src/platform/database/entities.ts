@@ -122,7 +122,7 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
-  /** Which premise grounded this match (set when discoverySource is 'premise-similarity'). */
+  /** Which premise grounded this match, when the match was premise-grounded. */
   premise?: Id<'premises'>;
   role: string;
   /**
@@ -588,7 +588,7 @@ export interface CreateHydeDocumentData {
 // OPPORTUNITY TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type OpportunityStatus = 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
 
 /**
  * Minimal opportunity lifecycle evidence used to narrate an agent negotiation.

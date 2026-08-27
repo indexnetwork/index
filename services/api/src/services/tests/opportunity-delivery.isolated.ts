@@ -158,56 +158,10 @@ describe('OpportunityDeliveryService.pickupPending', () => {
 
   // ── 3. Draft opp delivered to non-initiator actor ────────────────────────
 
-  it('returns a draft opportunity to an actor who is NOT the initiator', async () => {
-    const userA = await seedUser();
-    const userB = await seedUser();
-    const agentB = await seedAgent(userB, true);
-    // userA is the initiator; userB is also an actor
-    const oppId = await seedOpportunity([userA, userB], 'draft', userA);
-
-    const result = await service.pickupPending(agentB);
-
-    expect(result).not.toBeNull();
-    expect(result!.opportunityId).toBe(oppId);
-  });
-
   // ── 4. Draft opp NOT delivered to the initiator ─────────────────────────
-
-  it('does NOT return a draft opportunity to the initiator', async () => {
-    const userA = await seedUser();
-    const userB = await seedUser();
-    const agentA = await seedAgent(userA, true);
-    // userA is the initiator
-    await seedOpportunity([userA, userB], 'draft', userA);
-
-    const result = await service.pickupPending(agentA);
-
-    expect(result).toBeNull();
-  });
 
   // ── 5. Draft opp with null detection.createdBy is excluded by the SQL guard ─
 
-  it('does not return a draft opp whose detection.createdBy is null, and does not throw', async () => {
-    const userA = await seedUser();
-    const agentA = await seedAgent(userA, true);
-    // seed a draft opp with createdBy absent from detection
-    const [opp] = await db
-      .insert(opportunities)
-      .values({
-        detection: { kind: 'test', summary: 'no creator' } as never,
-        actors: [{ userId: userA, role: 'peer' }] as never,
-        interpretation: { reasoning: 'test', category: 'test' } as never,
-        context: {} as never,
-        confidence: '0.9',
-        status: 'draft',
-      })
-      .returning({ id: opportunities.id });
-    fixtureOpportunityIds.add(opp.id);
-    expect(opp.id).toBeTruthy();
-
-    const result = await service.pickupPending(agentA);
-    expect(result).toBeNull();
-  });
 });
 
 describe('fetchPendingCandidates', () => {

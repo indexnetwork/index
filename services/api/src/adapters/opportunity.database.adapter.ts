@@ -202,7 +202,7 @@ export async function runAtomicOutcomeTransition<T extends OutcomeTransitionResu
 export function notificationSnapshotOpportunityWhere(userId: string) {
   return and(
     sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
-    inArray(opportunities.status, ['latent', 'pending']),
+    inArray(opportunities.status, ['pending']),
   )!;
 }
 
@@ -505,7 +505,6 @@ export class OpportunityDatabaseAdapter {
         .where(and(
           ...actorContainment,
           sameTrigger,
-          ne(opportunities.status, 'draft'),
         ))
         .orderBy(desc(opportunities.createdAt))
         .limit(1);
@@ -772,10 +771,8 @@ export class OpportunityDatabaseAdapter {
     const hasExplicitStatuses = (options?.statuses?.length ?? 0) > 0 || !!options?.status;
     if (!hasExplicitStatuses) {
       if (options?.conversationId == null) {
-        conditions.push(sql`${opportunities.status} != 'draft'`);
       } else {
         conditions.push(
-          sql`(${opportunities.status} != 'draft' OR (${opportunities.context}->>'conversationId') = ${options.conversationId})`
         );
       }
     }
@@ -897,7 +894,7 @@ export class OpportunityDatabaseAdapter {
    *    `candidatePremiseId` (recorded by `buildCandidateEvidence` at discovery
    *    time), or
    *  - any actor row carries it as the grounding `premise` (set when
-   *    discoverySource is 'premise-similarity').
+   *    the match was premise-grounded).
    *
    * Used by the premise retract/expire cascade so that only opportunities
    * actually motivated by the lapsed premise are invalidated — opportunities
@@ -969,7 +966,7 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
@@ -1021,7 +1018,7 @@ export class OpportunityDatabaseAdapter {
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
@@ -1253,8 +1250,8 @@ export class OpportunityDatabaseAdapter {
     actorIds: string[],
     options?: {
       includeIntroducers?: boolean;
-      statuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
-      excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+      statuses?: ('negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+      excludeStatuses?: ('negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
     }
   ): Promise<OpportunityRow[]> {
     if (actorIds.length === 0) return [];
@@ -1557,7 +1554,7 @@ export class OpportunityDatabaseAdapter {
           subsystem: 'database',
           'db.system': 'postgresql',
           'db.operation': 'vector_search',
-          'search.strategy': 'premise-similarity',
+          'search.strategy': 'premise-embedding',
           'search.index_scope_count': params.networkIds.length,
           'search.limit': params.limit,
         },
@@ -1631,7 +1628,7 @@ export class OpportunityDatabaseAdapter {
           subsystem: 'database',
           'db.system': 'postgresql',
           'db.operation': 'vector_search',
-          'search.strategy': 'premise-similarity-batch',
+          'search.strategy': 'premise-embedding-batch',
           'search.source_premise_count': params.sources.length,
           'search.index_scope_count': params.networkIds.length,
           'search.limit_per_source': params.limitPerSource,

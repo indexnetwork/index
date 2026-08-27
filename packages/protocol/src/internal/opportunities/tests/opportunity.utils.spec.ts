@@ -29,8 +29,6 @@ describe('opportunity.utils', () => {
   // ─── canUserSeeOpportunity ───────────────────────────────────────────────
   // Tests the Compact Visibility Rule documented in opportunity-status-lifecycle.md:
   // - Introducer or peer: always see.
-  // - Patient or party: see if (status ≠ latent, or there is no introducer).
-  // - Agent: see if (status ∈ {accepted, rejected, expired}, or (status ≠ latent and no introducer)).
 
   describe('canUserSeeOpportunity', () => {
     const VIEWER = 'user-viewer';
@@ -39,7 +37,7 @@ describe('opportunity.utils', () => {
       { userId: 'user-other', role: 'party' },
     ];
 
-    // The old four-way rule keyed on role, `latent`, and introducer approval.
+    // The old four-way rule keyed on role, pre-kickoff status, and vouching.
     // Neither `latent` nor the introducer role exists, so every branch
     // collapsed to the same answer.
     test('an actor may read the pairing, at any status and in any role', () => {

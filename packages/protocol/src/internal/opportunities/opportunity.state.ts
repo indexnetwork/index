@@ -47,11 +47,11 @@ export interface TargetNetwork {
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
-  /** Source premise that produced this candidate (set when discoverySource is 'premise-similarity'). */
+  /** Source premise that produced this candidate, when premise-grounded. */
   sourcePremiseId?: Id<'premises'>;
   /** Candidate premise that matched this candidate (set for premise-based matches). */
   candidatePremiseId?: Id<'premises'>;
-  /** Source context that produced this candidate (set when discoverySource is 'context-to-intent'). */
+  /** Source context that produced this candidate, when context-grounded. */
   sourceContextId?: string;
   /** Candidate context that matched this candidate (set for user_context-based matches). */
   candidateContextId?: string;
@@ -61,8 +61,8 @@ export interface CandidateMatch {
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found: 'query' (HyDE from search text), 'premise-similarity', 'context-to-intent', or 'context-similarity'. */
-  discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent' | 'context-similarity';
+  /** How this candidate was found. HyDE query retrieval is the only path. */
+  discoverySource?: 'query';
   /** Which discovery strategies found this candidate (set by mergeStrategyCandidates). */
   matchedStrategies?: string[];
   /** Typed evidence that explains why this candidate entered evaluation. */
@@ -120,8 +120,6 @@ export interface OpportunityPersistenceOutcome {
  * Options passed to the graph
  */
 export interface OpportunityGraphOptions {
-  /** Initial status for created opportunities (default: 'pending') */
-  initialStatus?: OpportunityStatus;
   /** Maximum opportunities to return (default: 20) */
   limit?: number;
   /** Pre-inferred lenses (if not provided, lens inference runs automatically in HyDE graph) */
@@ -264,7 +262,7 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** User context embeddings per network (from prep). Used for context-to-intent discovery. */
+  /** User context embeddings per network (from prep). Used for discovery. */
   sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; text: string; embedding: number[] }>>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],

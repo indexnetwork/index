@@ -75,7 +75,7 @@ export function validateOpportunityActors(actors: Array<{ userId?: string; role:
  * its details.
  *
  * This used to be a four-way rule keyed on role, `latent`, and whether an
- * introducer had approved. Neither `latent` nor the introducer role exists any
+ * a third party had vouched. None of that exists any
  * more — an opportunity is born `negotiating` when a principal's agent opens
  * it — so every branch collapsed to the same answer: the actors on a pairing
  * may read it.
@@ -97,7 +97,7 @@ export function canUserSeeOpportunity(
  * actor rows for the same user without `actedAt`, so any viewer row carrying
  * `actedAt` means the viewer has already decided.
  *
- * The old rules 1-3 were about `latent` and introducer approval. Neither
+ * The old rules 1-3 were about pre-kickoff states and vouching. Neither
  * exists: a pairing is born `negotiating`, and a negotiating pairing is the
  * agents' to work, not the principal's to action.
  */
@@ -117,7 +117,7 @@ export type FeedCategory = 'connection' | 'expired';
 
 /** Soft targets for radar composition. */
 export const RADAR_SOFT_TARGETS = {
-  // 3 + 2 connector-flow before that category was removed. The slots move to
+  // 3 + 2 in a second category before that category was removed. The slots move to
   // connections rather than shrinking the feed: the total a radar can hold is
   // unchanged, and connections are the only kind of card left.
   connection: 5,

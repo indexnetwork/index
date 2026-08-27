@@ -66,14 +66,12 @@ export type RadarGraphInvokeResult = {
 };
 
 /** Default radar statuses: the lifecycle stages a viewer can act on today. */
-export const DEFAULT_RADAR_STATUSES: OpportunityStatus[] = ['latent', 'pending'];
+export const DEFAULT_RADAR_STATUSES: OpportunityStatus[] = ['pending'];
 
 // Exhaustive registry — keys must cover every OpportunityStatus union member.
 // Adding a new status to OpportunityStatus without adding a key here is a TS error,
 // which is the whole point: prevents ALL_OPPORTUNITY_STATUSES from silently drifting.
 const OPPORTUNITY_STATUS_REGISTRY: Record<OpportunityStatus, true> = {
-  latent: true,
-  draft: true,
   negotiating: true,
   pending: true,
   stalled: true,
@@ -277,7 +275,7 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
       const requestedStatuses = new Set<OpportunityStatus>(statuses);
       const visibleForRadar = visible.filter((opp) => {
         if (!requestedStatuses.has(opp.status)) return false;
-        if (opp.status === 'latent' || opp.status === 'pending') {
+        if (opp.status === 'pending') {
           return isActionableForViewer(opp.actors, opp.status, state.userId);
         }
         return true;

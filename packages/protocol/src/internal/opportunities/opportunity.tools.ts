@@ -158,9 +158,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
       const _updateGraphStart = Date.now();
       const _updateTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-      // One transition path. `pending` used to route through `sendOpportunity`
-      // to promote a latent row; nothing is latent any more, so it is an
-      // ordinary status change like the rest.
+      // One transition path. `pending` used to promote a pre-kickoff row;
+      // there is no pre-kickoff state any more, so it is an ordinary status
+      // change like the rest.
       const operations = deps.opportunityOperations ?? { updateOpportunityStatus };
       const result = await operations.updateOpportunityStatus(deps, {
         userId: context.userId,

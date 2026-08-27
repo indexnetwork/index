@@ -34,20 +34,6 @@ describe('readSignalMatches', () => {
       .rejects.toThrow('connection reset');
   });
 
-  it('lists latent and draft matches, which a kickoff reaches out to', async () => {
-    const matches = await readSignalMatches('alice', 'intent-1', introduction(true), PERSONAL_AGENT_MATCH_STATUSES);
-    expect(matches.map((match) => match.status)).toEqual(['latent']);
-  });
-
-  it('keeps a persisted latent match eligible for PersonalAgent kickoff', async () => {
-    const matches = await readSignalMatches('alice', 'intent-1', {
-      listOpportunities: async () => [{
-        id: 'latent-match', status: 'latent', createdAt: new Date(), counterpartName: 'Match',
-        actors: [{ userId: 'alice', role: 'peer' }, { userId: 'bob', role: 'peer' }],
-      }],
-    }, PERSONAL_AGENT_MATCH_STATUSES);
-    expect(matches.map((match) => match.opportunityId)).toEqual(['latent-match']);
-  });
 });
 
 describe('readActionableCounterparties', () => {
@@ -95,21 +81,6 @@ describe('the two verdict lanes list what their own refs mean', () => {
 
     expect(listed[0]!.statuses).toEqual([...ACTIONABLE_VERDICT_STATUSES]);
     expect(outcome).toMatchObject({ status: 'executed', counterparty: 'Omar' });
-  });
-
-  it('the ID lane lists the wide set, so a latent match the agent numbered resolves', async () => {
-    const { listed, deps } = twoMatches();
-
-    const outcome = await passVerdictOnOpportunity(
-      'alice',
-      { intentId: 'intent-1', opportunityId: 'latent-1' },
-      'accepted',
-      deps,
-    );
-
-    expect(listed[0]!.statuses).toEqual([...PERSONAL_AGENT_MATCH_STATUSES]);
-    // It resolved rather than answering `unknown_counterparty`.
-    expect(outcome.status).not.toBe('unknown_counterparty');
   });
 
   it('the wide set is a strict superset of the narrow one, so the id lane can never see less', () => {

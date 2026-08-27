@@ -21,8 +21,6 @@ export const NEGOTIATION_PAUSE_REASONS = [
 export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
 
 export type NegotiationOpportunityStatus =
-  | 'latent'
-  | 'draft'
   | 'negotiating'
   | 'pending'
   | 'stalled'

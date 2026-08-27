@@ -52,13 +52,11 @@ export const ACTIONABLE_VERDICT_STATUSES: OpportunityStatus[] = ['pending', 'neg
  * on yet. A verdict named against one of those resolves to
  * `unknown_counterparty` and is reported honestly.
  */
-export const PERSONAL_AGENT_MATCH_STATUSES: OpportunityStatus[] = ['latent', 'draft', 'negotiating', 'stalled', 'pending'];
+export const PERSONAL_AGENT_MATCH_STATUSES: OpportunityStatus[] = ['negotiating', 'stalled', 'pending'];
 
 /** How each actionable status reads to the client, in one clause. */
 const STATE_LINE: Record<string, string> = {
   found: 'found, not contacted yet',
-  latent: 'found, not contacted yet',
-  draft: 'found, not contacted yet',
   pending: 'waiting on your decision',
   negotiating: 'your agents are still negotiating',
   stalled: 'paused',

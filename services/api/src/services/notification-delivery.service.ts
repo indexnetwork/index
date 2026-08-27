@@ -51,7 +51,7 @@ export class NotificationDeliveryService {
   async publishOpportunityActionable(payload: OpportunityActionablePayload): Promise<void> {
     try {
       const opportunity = await this.deps.opportunities.getOpportunity(payload.opportunity.id);
-      if (!opportunity || (opportunity.status !== 'latent' && opportunity.status !== 'pending')) return;
+      if (!opportunity || opportunity.status !== 'pending') return;
 
       await Promise.all(actionableRecipientIds(opportunity).map(async (recipientId) => {
         try {
