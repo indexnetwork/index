@@ -9,12 +9,8 @@
 /** Semantic retrieval cutoff, 0..1. */
 export const DISCOVERY_MIN_SIMILARITY = 0.20;
 
-/** Floor an evaluator score must clear for the opportunity to be accepted. */
-export const DISCOVERY_EVALUATOR_MIN_SCORE = 40;
-
 /**
  * Minimum opportunities a discovery run surfaces when the pool allows it.
- * The best evaluated candidates fill the floor when fewer pass admission.
  */
 export const DISCOVERY_MIN_MATCHES = 10;
 
@@ -27,8 +23,4 @@ function validateThreshold(name: string, value: number, max: number): number {
 
 export function validateDiscoveryMinSimilarity(value: number): number {
   return validateThreshold('DISCOVERY_MIN_SIMILARITY', value, 1);
-}
-
-export function validateDiscoveryEvaluatorMinScore(value: number): number {
-  return validateThreshold('DISCOVERY_EVALUATOR_MIN_SCORE', value, 100);
 }

@@ -11,16 +11,13 @@
  */
 
 import type { Id, OpportunityActor } from '../../platform/database.js';
-import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
-import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";
+import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import { timed } from '../shared/observability/performance.js';
-import { requestContext } from '../shared/observability/request-context.js';
-import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import { safeFallbackSummary } from "./opportunity.presentation.js";
 import type { OpportunityMutationResult } from "./opportunity.lifecycle.js";
 import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
-import { buildNetworkContexts, deleteLog, introEvaluationLog, introValidationLog, readLog, sendLog, updateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
+import { deleteLog, introEvaluationLog, introValidationLog, readLog, sendLog, updateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 import { persistNode } from "./opportunity.graph.persist-node.js";
 
 /** Identifies the caller and the opportunity every mutation mode acts on. */
@@ -395,33 +392,12 @@ export async function validateIntroduction(
 }
 
 /**
- * Build fallback reasoning and actors when the evaluator returns empty or throws.
- */
-function buildIntroFallback(
-  entities: EvaluatorEntity[],
-  state: Pick<OpportunityState, 'userId' | 'introductionHint'>,
-  primaryNetworkId: Id<'networks'>,
-  introducerName?: string
-): { reasoning: string; score: number; actors: EvaluatedOpportunityActor[] } {
-  const reasoning =
-    `${introducerName ?? 'A member'} believes these people should connect.` +
-    (state.introductionHint ? ` Context: ${state.introductionHint}` : '');
-  const score = 70;
-  const partyUserIds = entities.map((e) => e.userId).filter((id) => id !== state.userId);
-  const actors: EvaluatedOpportunityActor[] = partyUserIds.map((uid) => ({
-    userId: uid as Id<'users'>,
-    role: 'peer' as const,
-    networkId: primaryNetworkId,
-  }));
-  return { reasoning, score, actors };
-}
-
-/**
- * Introduction evaluation: runs the entity-bundle evaluator and sets
- * evaluatedOpportunities (one) + introductionContext.
+ * Introduction evaluation: a human already vouched for this pairing, so there
+ * is nothing to judge — just build the reasoning/actors deterministically and
+ * set evaluatedOpportunities (one) + introductionContext.
  */
 export async function evaluateIntroduction(
-  deps: Pick<OpportunityGraphDeps, 'database' | 'evaluatorAgent'>,
+  deps: Pick<OpportunityGraphDeps, 'database'>,
   state: Pick<OpportunityState, 'userId' | 'networkId' | 'introductionEntities' | 'introductionHint' | 'options' | 'error'>,
 ) {
   return timed("OpportunityGraph.introEvaluation", async () => {
@@ -437,76 +413,19 @@ export async function evaluateIntroduction(
       return { evaluatedOpportunities: [], error: 'Missing entities or network for introduction.', agentTimings: [] };
     }
 
-    const agentTimingsAccum: DebugMetaAgent[] = [];
-    let introducerName: string | undefined;
-    let reasoning: string;
-    let score: number;
-    let actors: EvaluatedOpportunityActor[] = [];
+    const introducerUser = await deps.database.getUser(state.userId);
+    const introducerName = introducerUser?.name ?? undefined;
 
-    const _traceEmitterIntro = requestContext.getStore()?.traceEmitter;
-    let _introEvalStarted = false;
-    let _evalStart = Date.now();
-    try {
-      const introducerUser = await deps.database.getUser(state.userId);
-      introducerName = introducerUser?.name ?? undefined;
-      const networkContexts = await buildNetworkContexts(entities, deps.database);
-      const input: EvaluatorInput = {
-        discovererId: state.userId,
-        entities,
-        introductionMode: true,
-        introducerName,
-        introductionHint: state.introductionHint ?? undefined,
-        networkContexts,
-      };
-
-      _evalStart = Date.now();
-      _traceEmitterIntro?.({ type: "agent_start", name: "intro-evaluator" });
-      _introEvalStarted = true;
-      const evaluated = await (deps.evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0, ...getAbortSignalConfig() });
-      const _introDuration = Date.now() - _evalStart;
-      agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introDuration });
-      _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introDuration, summary: "Evaluated introduction" });
-      if (evaluated.length > 0) {
-        const best = evaluated[0];
-        reasoning = best.reasoning;
-        score = best.score;
-        actors = best.actors.map((a) => ({
-          userId: a.userId as Id<'users'>,
-          role: a.role,
-          intentId: a.intentId ?? undefined,
-          networkId: primaryNetworkId,
-        }));
-      } else {
-        const fallback = buildIntroFallback(entities, state, primaryNetworkId, introducerName);
-        reasoning = fallback.reasoning;
-        score = fallback.score;
-        actors = fallback.actors;
-      }
-    } catch (evalErr) {
-      const errMsg = evalErr instanceof Error ? evalErr.message : String(evalErr);
-      // Close the intro-evaluator span if it was started before the error
-      if (_introEvalStarted) {
-        const _introErrDuration = Date.now() - _evalStart;
-        _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introErrDuration, summary: `error — ${errMsg}` });
-        agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introErrDuration });
-      }
-      introEvaluationLog.warn('Evaluator or getUser failed, using fallback', { error: evalErr });
-      const fallback = buildIntroFallback(entities, state, primaryNetworkId, introducerName);
-      reasoning = fallback.reasoning;
-      score = fallback.score;
-      actors = fallback.actors;
-      return {
-        evaluatedOpportunities: [{ actors, score, reasoning }],
-        introductionContext: { createdByName: introducerName },
-        options: { ...state.options, initialStatus: state.options.initialStatus ?? 'latent' },
-        agentTimings: agentTimingsAccum,
-        trace: [{
-          node: "intro_evaluation_fatal",
-          detail: `IntroEvaluation failed (using fallback): ${errMsg}`,
-          data: { error: errMsg },
-        }],
-      };
-    }
+    const reasoning =
+      `${introducerName ?? 'A member'} believes these people should connect.` +
+      (state.introductionHint ? ` Context: ${state.introductionHint}` : '');
+    const score = 70;
+    const partyUserIds = entities.map((e) => e.userId).filter((id) => id !== state.userId);
+    const actors: EvaluatedOpportunityActor[] = partyUserIds.map((uid) => ({
+      userId: uid as Id<'users'>,
+      role: 'peer' as const,
+      networkId: primaryNetworkId,
+    }));
 
     const evaluatedOpportunity: EvaluatedOpportunity = { actors, score, reasoning };
 
@@ -514,7 +433,7 @@ export async function evaluateIntroduction(
       evaluatedOpportunities: [evaluatedOpportunity],
       introductionContext: { createdByName: introducerName },
       options: { ...state.options, initialStatus: state.options.initialStatus ?? 'latent' },
-      agentTimings: agentTimingsAccum,
+      agentTimings: [],
     };
   });
 }

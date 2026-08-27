@@ -4,7 +4,7 @@
  *
  * Run with: OPENROUTER_API_KEY=test bun test opportunity.graph.dedup.spec.ts
  * The env var must be set BEFORE Bun loads this file because ESM static imports
- * are resolved before the module body runs, and opportunity.evaluator.ts calls
+ * are resolved before the module body runs, and opportunity.match-explainer.ts calls
  * createModel() at module load time.
  */
 
@@ -14,7 +14,8 @@ config({ path: '.env.test', override: true });
 
 import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
-import type { OpportunityEvaluatorLike, StampNewbornOpportunitiesFn } from '../opportunity.graph.js';
+import type { StampNewbornOpportunitiesFn } from '../opportunity.graph.js';
+import type { MatchExplainerLike } from '../opportunity.match-explainer.js';
 import type { Id } from '../../../platform/database.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
@@ -40,17 +41,12 @@ const INTENT_OTHER = 'intent-other' as Id<'intents'>;
 // Dummy embedding for HyDE and embedder mocks.
 const DUMMY_EMBEDDING = new Array(512).fill(0.1);
 
-const mockEvaluator: OpportunityEvaluatorLike = {
-  invokeEntityBundle: async () => [
-    {
-      reasoning: 'Good match',
-      score: 80,
-      actors: [
-        { userId: USER_A, role: 'patient' as const, intentId: INTENT_A },
-        { userId: USER_B, role: 'agent' as const, intentId: INTENT_B },
-      ],
-    },
-  ],
+// Discovery persists every candidate directly now — the explainer only supplies
+// reasoning text, never score/actors/accept-reject. This double is unused by
+// the discovery path in most tests but keeps the factory from making a real
+// LLM call.
+const mockExplainer: MatchExplainerLike = {
+  explain: async () => ({ reasoning: 'Good match' }),
 };
 
 // Embedder that returns USER_B as a query-based candidate so the graph
@@ -173,14 +169,14 @@ function buildGraph(
   stamper?: StampNewbornOpportunitiesFn,
   overrides?: {
     embedder?: Embedder;
-    evaluator?: OpportunityEvaluatorLike;
+    explainer?: MatchExplainerLike;
   },
 ) {
   return new OpportunityGraphFactory(
     db,
     overrides?.embedder ?? dummyEmbedder,
     dummyHyde,
-    overrides?.evaluator ?? mockEvaluator,
+    overrides?.explainer ?? mockExplainer,
     async () => undefined,
     undefined,
     undefined,
@@ -271,18 +267,6 @@ describe('opportunity graph — newborn stamping seam', () => {
         { type: 'intent' as const, id: 'intent-carol' as Id<'intents'>, userId: USER_C, score: 0.8, matchedVia: 'mirror' as const, networkId: NET_ID },
       ],
     } as unknown as Embedder;
-    const twoCandidateEvaluator: OpportunityEvaluatorLike = {
-      invokeEntityBundle: async () => [
-        {
-          reasoning: 'Bob match', score: 90,
-          actors: [{ userId: USER_A, role: 'patient' }, { userId: USER_B, role: 'agent' }],
-        },
-        {
-          reasoning: 'Carol match', score: 80,
-          actors: [{ userId: USER_A, role: 'patient' }, { userId: USER_C, role: 'agent' }],
-        },
-      ],
-    };
     const inserted: Array<Parameters<OpportunityGraphDatabase['createOpportunity']>[0]> = [];
     const db = buildDb({
       createOpportunity: async (data) => {
@@ -294,7 +278,7 @@ describe('opportunity graph — newborn stamping seam', () => {
     await buildGraph(
       db,
       async ({ items }) => [...items].reverse(),
-      { embedder: twoCandidateEmbedder, evaluator: twoCandidateEvaluator },
+      { embedder: twoCandidateEmbedder },
     ).invoke(intentInput);
 
     expect(inserted).toHaveLength(2);
@@ -499,18 +483,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
         return inserted;
       },
     });
-    const hallucinatingEvaluator: OpportunityEvaluatorLike = {
-      invokeEntityBundle: async () => [{
-        reasoning: 'Good match with a hallucinated intent binding',
-        score: 80,
-        actors: [
-          { userId: USER_A, role: 'patient' as const, intentId: INTENT_OTHER },
-          { userId: USER_B, role: 'agent' as const, intentId: INTENT_OTHER },
-        ],
-      }],
-    };
-    const result = await buildGraph(db, undefined, { evaluator: hallucinatingEvaluator })
-      .invoke(ownedIntentInput);
+    const result = await buildGraph(db, undefined).invoke(ownedIntentInput);
 
     expect(inserted?.actors.find((actor) => actor.userId === USER_B)?.intent).toBe(INTENT_B);
     expect(result.opportunities.map((opportunity) => opportunity.id)).toEqual(['different-intent-pair']);
@@ -639,18 +612,6 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
         { type: 'intent' as const, id: 'intent-carol' as Id<'intents'>, userId: USER_C, score: 0.8, matchedVia: 'mirror' as const, networkId: NET_ID },
       ],
     } as unknown as Embedder;
-    const twoCandidateEvaluator: OpportunityEvaluatorLike = {
-      invokeEntityBundle: async () => [
-        {
-          reasoning: 'Bob match', score: 90,
-          actors: [{ userId: USER_A, role: 'patient' }, { userId: USER_B, role: 'agent' }],
-        },
-        {
-          reasoning: 'Carol match', score: 80,
-          actors: [{ userId: USER_A, role: 'patient' }, { userId: USER_C, role: 'agent' }],
-        },
-      ],
-    };
     const inserted: Opportunity[] = [];
     const db = buildDb({
       findOpportunitiesByActors: async (actorIds) => actorIds.includes(USER_B) ? [otherNegotiating] : [],
@@ -675,7 +636,7 @@ describe('opportunity graph — time-based dedup (Persist node)', () => {
     const result = await buildGraph(
       db,
       undefined,
-      { embedder: twoCandidateEmbedder, evaluator: twoCandidateEvaluator },
+      { embedder: twoCandidateEmbedder },
     ).invoke(ownedIntentInput);
 
     expect(inserted).toHaveLength(2);

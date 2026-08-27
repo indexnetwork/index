@@ -304,12 +304,6 @@ export {
   getOrCreateDeliveryCardBatch,
 } from "./internal/opportunities/delivery-card.cache.js";
 export {
-  OpportunityEvaluator,
-} from "./internal/opportunities/opportunity.evaluator.js";
-export type {
-  EvaluatorInput,
-} from "./internal/opportunities/opportunity.evaluator.js";
-export {
   OpportunityGraphFactory,
 } from "./internal/opportunities/opportunity.graph.js";
 export type {
@@ -354,12 +348,8 @@ export {
   createOpportunityVerdictTools,
 } from "./internal/opportunities/opportunity.verdict.tools.js";
 export {
-  DISCOVERY_EVALUATOR_MIN_SCORE,
   DISCOVERY_MIN_SIMILARITY,
-  validateDiscoveryEvaluatorMinScore,
   validateDiscoveryMinSimilarity,
-} from "./internal/opportunities/discovery.env.js";
-export type {
 } from "./internal/opportunities/discovery.env.js";
 export {
   PoolDiscriminatorMiner,

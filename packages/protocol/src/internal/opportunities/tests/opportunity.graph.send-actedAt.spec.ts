@@ -5,9 +5,7 @@ import { describe, test, expect } from 'bun:test';
 import { OpportunityGraphFactory } from '../opportunity.graph.js';
 import type { Id, OpportunityGraphDatabase, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
-import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
 
-const mockEvaluator: OpportunityEvaluatorLike = { invokeEntityBundle: async () => [] };
 const dummyEmbedder = {
   generate: async () => [], search: async () => [],
   searchWithHydeEmbeddings: async () => [],
@@ -80,7 +78,7 @@ describe('opportunity graph — send node stamps actedAt', () => {
       },
     });
 
-    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, undefined, async () => undefined);
     const result = await operations.sendOpportunity({
       userId: USER_ID,
       opportunityId: OPP_ID,

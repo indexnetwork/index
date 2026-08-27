@@ -21,15 +21,16 @@
 
 import { StateGraph, START, END } from '@langchain/langgraph';
 import { OpportunityGraphState } from './opportunity.state.js';
-import { OpportunityEvaluator } from "./opportunity.evaluator.js";
+import { MatchExplainer } from "./opportunity.match-explainer.js";
+import type { MatchExplainerLike } from "./opportunity.match-explainer.js";
 import type { OpportunityGraphDatabase } from '../../platform/database.js';
 import type { Embedder } from '../../platform/discovery/embedder.js';
 import type { MatchesReadyFn } from "./opportunity.graph.shared.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
-import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_SIMILARITY, validateDiscoveryEvaluatorMinScore, validateDiscoveryMinSimilarity } from './discovery.env.js';
+import { DISCOVERY_MIN_SIMILARITY, validateDiscoveryMinSimilarity } from './discovery.env.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
 import type { StampNewbornOpportunitiesFn } from "./opportunity.newborn-stamping.js";
-import { routingLog, withNodeTrace, type OpportunityGraphDeps, type OpportunityGraphThresholdOverrides, type OpportunityHydeGenerator, type OpportunityEvaluatorLike, type OpportunityState } from "./opportunity.graph.shared.js";
+import { routingLog, withNodeTrace, type OpportunityGraphDeps, type OpportunityGraphThresholdOverrides, type OpportunityHydeGenerator, type OpportunityState } from "./opportunity.graph.shared.js";
 import { prepNode, prepTraceSummary, resolveNode, resolveTraceSummary, scopeNode, scopeTraceSummary } from "./opportunity.graph.prep.js";
 import { discoveryNode, discoveryTraceSummary } from "./opportunity.graph.discovery.js";
 import { evaluationNode, rankingNode, rankingTraceSummary } from "./opportunity.graph.evaluation.js";
@@ -42,7 +43,6 @@ export {
   buildDiscovererContext,
   safeOpportunityGraphError,
   type HydeGeneratorInvokeInput,
-  type OpportunityEvaluatorLike,
   type OpportunityGraphDeps,
   type OpportunityGraphThresholdOverrides,
 } from "./opportunity.graph.shared.js";
@@ -77,7 +77,8 @@ export class OpportunityGraphFactory {
     database: OpportunityGraphDatabase,
     embedder: Embedder,
     hydeGenerator: OpportunityHydeGenerator,
-    optionalEvaluator?: OpportunityEvaluatorLike,
+    /** Optional test double for the discovery-path match explainer (positional slot kept for existing call sites). */
+    optionalMatchExplainer?: MatchExplainerLike,
     queueNotification?: QueueOpportunityNotificationFn,
     matchesReady?: MatchesReadyFn,
     /**
@@ -95,7 +96,7 @@ export class OpportunityGraphFactory {
       database,
       embedder,
       hydeGenerator,
-      evaluatorAgent: optionalEvaluator ?? new OpportunityEvaluator(),
+      matchExplainer: optionalMatchExplainer ?? new MatchExplainer(),
       queueNotification,
       matchesReady,
       agentDispatcher,
@@ -103,9 +104,6 @@ export class OpportunityGraphFactory {
       retrievalMinSimilarity: thresholdOverrides?.retrievalMinSimilarity === undefined
         ? DISCOVERY_MIN_SIMILARITY
         : validateDiscoveryMinSimilarity(thresholdOverrides.retrievalMinSimilarity),
-      evaluatorMinScore: thresholdOverrides?.evaluatorMinScore === undefined
-        ? DISCOVERY_EVALUATOR_MIN_SCORE
-        : validateDiscoveryEvaluatorMinScore(thresholdOverrides.evaluatorMinScore),
     };
   }
 
