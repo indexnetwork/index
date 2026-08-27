@@ -4,7 +4,7 @@ import type { NegotiationParty } from "../../core/types.ts";
 import { decisionToMessage, historyFromMessages } from "../wire/history.ts";
 import type { JsonRpcRequest, JsonRpcResponse } from "../wire/jsonrpc.ts";
 import { defaultStrategy, type DecisionStrategy, type EvaluateHook } from "../wire/strategy.ts";
-import type { A2AMessage, A2ATask, AgentCard } from "../wire/types.ts";
+import type { A2AIdentity, A2AMessage, A2ATask, AgentCard } from "../wire/types.ts";
 import { TaskStore } from "./task-store.ts";
 
 const AGENT_CARD_PATH = "/.well-known/agent-card.json";
@@ -33,6 +33,14 @@ export interface A2AHandlerOptions<A extends string> {
   strategy?: DecisionStrategy<A>;
   /** Runs after each turn's decision; return an Artifact to attach to the Task. */
   evaluate?: EvaluateHook<A>;
+  /** Gates `message/send` calls: return the caller's identity to admit the
+   * request, or `null`/`undefined` to reject it with a 401. Doesn't gate
+   * the public AgentCard GET, matching the A2A spec's public-card model.
+   * Bring your own verification (bearer token, JWT/JWKS against an issuer,
+   * mTLS via a reverse proxy, whatever your deployment needs) — this
+   * library only enforces the hook's verdict, it doesn't implement any
+   * particular scheme. See `bearerTokenAuth()` for a minimal example. */
+  authenticate?: (request: Request) => A2AIdentity | null | undefined | Promise<A2AIdentity | null | undefined>;
 }
 
 function defaultTerminalState(action: string): "completed" | "rejected" | "canceled" {
@@ -72,6 +80,11 @@ export function createA2AHandler<A extends string>(
 
     if (request.method !== "POST") {
       return new Response("Not found", { status: 404 });
+    }
+
+    const identity = options.authenticate ? await options.authenticate(request) : undefined;
+    if (options.authenticate && !identity) {
+      return Response.json(jsonRpcError(null, -32003, "Unauthorized"), { status: 401 });
     }
 
     let rpcRequest: JsonRpcRequest<{ message: A2AMessage }>;

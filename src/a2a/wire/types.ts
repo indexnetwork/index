@@ -53,6 +53,23 @@ export interface AgentCardSkill {
   description?: string;
 }
 
+/** Declares one way to authenticate to this agent, mirroring the
+ * OpenAPI-style scheme shapes the A2A spec reuses for `securitySchemes`.
+ * Purely descriptive — declaring a scheme here doesn't enforce it; pair
+ * with `authenticate` on `createA2AHandler()` to actually require it. */
+export interface AgentCardSecurityScheme {
+  type: "apiKey" | "http" | "oauth2" | "openIdConnect";
+  /** For `type: "http"`: `"bearer"` or `"basic"`. */
+  scheme?: string;
+  /** For `type: "apiKey"`: where the key travels. */
+  in?: "header" | "query" | "cookie";
+  /** For `type: "apiKey"`: the header/query/cookie name. */
+  name?: string;
+  /** For `type: "openIdConnect"`. */
+  openIdConnectUrl?: string;
+  description?: string;
+}
+
 export interface AgentCard {
   name: string;
   description?: string;
@@ -60,4 +77,21 @@ export interface AgentCard {
   version: string;
   capabilities: { pushNotifications?: boolean; streaming?: boolean };
   skills: AgentCardSkill[];
+  /** Named security scheme declarations a caller can use to figure out how
+   * to authenticate, keyed by scheme name (e.g. `{ apiKeyAuth: { type:
+   * "apiKey", in: "header", name: "x-api-key" } }`). */
+  securitySchemes?: Record<string, AgentCardSecurityScheme>;
+  /** Which of `securitySchemes` (by name) this agent requires, and which
+   * scopes each grants — e.g. `[{ apiKeyAuth: [] }]`. An empty array or
+   * missing field means no authentication is required. */
+  security?: Record<string, string[]>[];
+}
+
+/** The caller identity `authenticate()` resolves an incoming request to.
+ * `subject` is whatever stable identifier your auth scheme provides (a
+ * token's owner, a JWT's `sub` claim, an API key's registered name);
+ * `claims` carries anything else worth passing through (scopes, issuer). */
+export interface A2AIdentity {
+  subject: string;
+  claims?: Record<string, unknown>;
 }

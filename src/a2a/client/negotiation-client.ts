@@ -3,6 +3,7 @@ import type { NegotiationDecision, NegotiationParty, NegotiationState } from "..
 import { decisionToMessage, historyFromMessages } from "../wire/history.ts";
 import { defaultStrategy, type DecisionStrategy, type EvaluateHook } from "../wire/strategy.ts";
 import type { A2AArtifact, A2ATask } from "../wire/types.ts";
+import type { A2ACredentials } from "./transport.ts";
 import { sendA2AMessage } from "./transport.ts";
 
 export interface A2ANegotiationClientOptions<A extends string> {
@@ -20,6 +21,10 @@ export interface A2ANegotiationClientOptions<A extends string> {
    * over the network — useful for logging/streaming a turn the moment it
    * happens instead of only after the counterparty's reply comes back too. */
   onDecision?: (decision: NegotiationDecision<A>) => void;
+  /** Attaches auth headers (e.g. a bearer token) to every `message/send`
+   * call this client makes. See `bearerCredentials()` for a minimal
+   * example, or write a custom one for token refresh/mTLS/etc. */
+  credentials?: A2ACredentials;
 }
 
 export interface A2ATurnResult<A extends string = string> {
@@ -62,7 +67,7 @@ export class A2ANegotiationClient<A extends string> {
     );
     this.options.onDecision?.(decision);
     const message = decisionToMessage(decision, "user", refs);
-    const task = await sendA2AMessage(url, message);
+    const task = await sendA2AMessage(url, message, this.options.credentials);
     const artifact = (await this.options.evaluate?.(task, decision)) ?? undefined;
     return { task, decision, artifact };
   }

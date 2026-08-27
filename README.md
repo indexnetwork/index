@@ -285,17 +285,77 @@ if (card.name !== "Seller Agent") {
 // proceed to client.initiate(...) / client.continue(...)
 ```
 
-There's no built-in identity/signature scheme yet — `card.name` is only as
-trustworthy as whatever's serving it. Real authentication (API keys, OAuth2,
-mTLS, matching `AgentCard.capabilities`/security schemes against what you
-require) is out of scope for this library today; treat `fetchAgentCard()`
-as a building block for your own trust logic, not a complete solution.
+There's no card signature scheme — `card.name` is only as trustworthy as
+whatever's serving it — but `message/send` calls can be gated with real
+authentication; see the next section.
+
+### Authenticating `message/send` calls
+
+`createA2AHandler()` takes an `authenticate` hook and `A2ANegotiationClient`/
+`sendA2AMessage()` take a matching `credentials` hook. Neither one hardcodes
+a scheme — the library only enforces whatever verdict `authenticate` returns,
+so it works the same whether you're calling a personal agent inside Index
+Network, or one built on Hermes, OpenClaw, Claude, or anything else that
+speaks A2A. The public AgentCard GET is left unauthenticated, matching the
+spec's public-card model; only `message/send` is gated.
+
+For a single trust boundary you control (e.g. two of your own agents talking
+over an internal network), a static bearer token is enough — use the
+built-in helpers:
+
+```ts
+import { bearerCredentials } from "@indexnetwork/negotiator/a2a"; // client side
+import { bearerTokenAuth } from "@indexnetwork/negotiator/a2a"; // server side
+
+const handler = createA2AHandler({
+  // ...negotiator, party, allowedActions, agentCard,
+  authenticate: bearerTokenAuth(process.env.A2A_SHARED_SECRET!),
+});
+
+const client = new A2ANegotiationClient({
+  // ...negotiator, party, allowedActions,
+  credentials: bearerCredentials(process.env.A2A_SHARED_SECRET!),
+});
+```
+
+Across separate deployments that don't share a secret (e.g. an Index
+Network personal agent negotiating with an agent hosted by a different
+product), verify a token issued by *its own* identity provider instead of
+comparing against a shared value — write a custom `authenticate` that
+checks a bearer JWT against the issuer's JWKS (e.g. with a library like
+`jose`), and declare the requirement on your `AgentCard` so callers can
+discover it before they connect:
+
+```ts
+const handler = createA2AHandler({
+  // ...
+  agentCard: {
+    // ...name, url, version, skills,
+    capabilities: {},
+    securitySchemes: {
+      bearerAuth: { type: "http", scheme: "bearer", description: "JWT signed by your agent's issuer" },
+    },
+    security: [{ bearerAuth: [] }],
+  },
+  authenticate: async (request) => {
+    const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
+    if (!token) return null;
+    const { payload } = await jwtVerify(token, jwks); // e.g. from `jose`
+    return { subject: payload.sub!, claims: payload };
+  },
+});
+```
+
+`authenticate`/`credentials` return/accept plain objects, so any scheme —
+mTLS terminated by a reverse proxy that forwards a verified client identity
+header, an OAuth2 access token, a signed request — plugs in the same way.
 
 ### Examples
 
 `examples/` has runnable, self-contained scripts covering the A2A surface —
-each uses a scripted `Negotiator` (no API key needed, instant, deterministic)
-so you can see the *mechanics* without waiting on real model calls:
+each uses real `Negotiator` instances making live OpenRouter calls (needs
+`OPENROUTER_API_KEY`), so outcomes are genuinely non-deterministic rather
+than scripted:
 
 | Script | Shows |
 | --- | --- |
@@ -306,10 +366,10 @@ so you can see the *mechanics* without waiting on real model calls:
 | `05-evaluate-artifacts.ts` | An `evaluate` hook attaching structured findings to a Task, both server- and client-side. |
 | `06-custom-action-vocabulary.ts` | A non-price domain (support escalation) with custom actions and `terminalState`. |
 
-Run any of them directly: `bun run examples/01-basic-negotiation.ts`.
+Run any of them directly: `OPENROUTER_API_KEY=... bun run examples/01-basic-negotiation.ts`
+(Bun loads `.env` automatically, so a project-root `.env` with the key works too).
 
-For a real, non-deterministic demo against actual OpenRouter calls (needs
-`OPENROUTER_API_KEY`; not part of `bun test`), see `dev/a2a-demo.ts` —
+For a similar real, non-deterministic demo, see `dev/a2a-demo.ts` —
 `bun run dev/a2a-demo.ts`.
 
 ### Local simulation (dev/test only)

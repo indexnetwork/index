@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Negotiator } from "../core/negotiator.ts";
 import type { NegotiationDecision, NegotiationState } from "../core/types.ts";
+import { bearerCredentials } from "./client/auth.ts";
 import { A2ANegotiationClient } from "./client/negotiation-client.ts";
 import { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
+import { bearerTokenAuth } from "./server/auth.ts";
 import { createA2AHandler } from "./server/handler.ts";
 import { decisionToMessage } from "./wire/history.ts";
 import type { AgentCard } from "./wire/types.ts";
@@ -214,6 +216,61 @@ describe("A2A client/server over real HTTP", () => {
       await expect(sendA2AMessage(httpServer.url.toString(), message)).rejects.toThrow(
         /Unknown task/,
       );
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("rejects message/send with no/wrong bearer token when authenticate is set", async () => {
+    const { negotiator } = scriptedNegotiator([{ action: "propose", message: "hi" }]);
+    const handler = createA2AHandler({
+      negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose"],
+      agentCard: agentCard("Seller"),
+      authenticate: bearerTokenAuth("secret-token"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const message = decisionToMessage({ action: "propose", message: "hi" }, "user", {});
+
+      await expect(sendA2AMessage(httpServer.url.toString(), message)).rejects.toThrow(
+        /401/,
+      );
+      await expect(
+        sendA2AMessage(httpServer.url.toString(), message, bearerCredentials("wrong-token")),
+      ).rejects.toThrow(/401/);
+
+      // The public AgentCard stays reachable without credentials.
+      const card = await fetchAgentCard(httpServer.url.toString());
+      expect(card).toEqual(agentCard("Seller"));
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("admits message/send with the correct bearer token, end to end via A2ANegotiationClient", async () => {
+    const server = scriptedNegotiator([{ action: "accept", message: "Deal." }]);
+    const handler = createA2AHandler({
+      negotiator: server.negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose", "accept"],
+      agentCard: agentCard("Seller"),
+      authenticate: bearerTokenAuth("secret-token"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "propose", message: "hi" }]).negotiator,
+        party: { name: "Buyer", objective: "Buy" },
+        allowedActions: ["propose", "accept"],
+        credentials: bearerCredentials("secret-token"),
+      });
+
+      const { task } = await client.initiate(httpServer.url.toString());
+      expect(task.status.state).toBe("completed");
     } finally {
       httpServer.stop();
     }
