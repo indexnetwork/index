@@ -321,6 +321,15 @@ export type {
   OpportunityGraphThresholdOverrides,
 } from "./internal/opportunities/opportunity.graph.js";
 export type { MatchesReadyFn } from "./internal/opportunities/opportunity.graph.shared.js";
+export {
+  pairKeyOf,
+} from "./internal/opportunities/opportunity.candidates.js";
+export type {
+  CreateAndOpenResult,
+  CreateDiscoveryMatchCandidateData,
+  DiscoveryMatchCandidate,
+  DiscoveryMatchCandidateStatus,
+} from "./internal/opportunities/opportunity.candidates.js";
 export type {
   StampNewbornOpportunitiesFn,
   StampNewbornOpportunitiesInput,

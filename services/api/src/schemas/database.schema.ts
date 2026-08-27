@@ -447,6 +447,37 @@ export const opportunities = pgTable('opportunities', {
   statusIdx: index('opportunities_status_idx').on(table.status),
 }));
 
+export const discoveryMatchCandidateStatusEnum = pgEnum('discovery_match_candidate_status', [
+  'pending', 'opened', 'superseded', 'expired',
+]);
+
+/**
+ * A pair discovery found, before anyone reached out. One row per pair — the
+ * unique `pair_key` is what stops both principals' discovery runs from
+ * producing two opportunities between the same two people.
+ */
+export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  pairKey: text('pair_key').notNull(),
+  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  intentA: text('intent_a').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  intentB: text('intent_b').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  userA: text('user_a').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userB: text('user_b').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  score: numeric('score').notNull(),
+  reasoning: text('reasoning').notNull(),
+  evidence: jsonb('evidence').$type<unknown[]>().notNull().default([]),
+  status: discoveryMatchCandidateStatusEnum('status').notNull().default('pending'),
+  /** Set when this candidate became a row, by `createAndOpen`. */
+  openedOpportunityId: text('opened_opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pairKeyIdx: uniqueIndex('discovery_match_candidates_pair_key_idx').on(table.pairKey),
+  intentAIdx: index('discovery_match_candidates_intent_a_idx').on(table.intentA),
+  intentBIdx: index('discovery_match_candidates_intent_b_idx').on(table.intentB),
+}));
+
 export interface QuestionDetection {
   mode: 'intent' | 'chat';
   /** Internal generation purpose; stripped from public API responses. */

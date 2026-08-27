@@ -161,7 +161,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, sessions, userSocials } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, discoveryMatchCandidates, userNotificationSettings, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),

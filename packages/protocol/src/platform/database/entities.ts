@@ -8,12 +8,57 @@
 
 import type { ScopeMembership } from '../../protocol/core.js';
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
-import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
+import type { NetworkAssignmentMetadata, OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
 
 // ─── Inlined types (previously imported from outside the protocol lib) ───────
 
 /** Branded string ID for type-safe entity references (keyed by Drizzle table name). */
 export type Id<T extends string = string> = string & { readonly __table?: T };
+
+// ─── Discovery match candidates ──────────────────────────────────────────────
+
+export type DiscoveryMatchCandidateStatus = 'pending' | 'opened' | 'superseded' | 'expired';
+
+/**
+ * A pair discovery found, before anyone reached out.
+ *
+ * Discovery does not create opportunities; it records the pair, keyed by
+ * `pairKey`. The uniqueness of that key IS the dedup — both principals'
+ * discovery runs converge on one row instead of racing to persist two
+ * opportunities between the same two people.
+ */
+export interface CreateDiscoveryMatchCandidateData {
+  pairKey: string;
+  networkId: Id<'networks'>;
+  intentA: Id<'intents'>;
+  intentB: Id<'intents'>;
+  userA: Id<'users'>;
+  userB: Id<'users'>;
+  score: number;
+  reasoning: string;
+  evidence: OpportunityEvidence[];
+}
+
+export interface DiscoveryMatchCandidate extends CreateDiscoveryMatchCandidateData {
+  id: string;
+  status: DiscoveryMatchCandidateStatus;
+  createdAt: Date;
+  /** Set once this candidate became a row. */
+  openedOpportunityId?: Id<'opportunities'> | null;
+  /** Resolved for the reader: the party on the other side of the pair. */
+  counterpartName?: string;
+}
+
+/**
+ * What materializing a candidate reports back.
+ *
+ * There is no error case because there is no throw: this is called below the
+ * kickoff round bump, where a throw would be retried into a second strategy
+ * message and a second round.
+ */
+export type CreateAndOpenResult =
+  | { status: 'created' | 'existing'; opportunityId: string }
+  | { status: 'raced' | 'failed'; reason: string };
 
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
