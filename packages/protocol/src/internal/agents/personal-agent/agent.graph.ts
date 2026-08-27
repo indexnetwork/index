@@ -33,6 +33,8 @@ import { canonicalCounterpartyStatusProse, isSupportedPersonalAgentStatusProse, 
 import type { Question } from "../../../protocol/question.js";
 import type { PersonalAgentActivity, PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 import { matchRefId } from "./agent.types.js";
+import type { CreateAndOpenResult } from "../../../platform/database.js";
+import type { PersonalAgentOpportunityPort } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgentGraph");
 
@@ -532,6 +534,25 @@ export const PERSONAL_AGENT_STRATEGY_FALLBACK =
  * Before the bump the opposite holds: those failures are safe to retry, so
  * they propagate.
  */
+/**
+ * One match → one opportunity id, resolved at the moment of open.
+ *
+ * This is the ONLY place a candidate becomes a row. Everything above it
+ * addresses matches by ref; everything below it needs a real id. Returns
+ * rather than throws — it is called below the round bump (D54).
+ */
+export async function resolveMatchToOpportunity(
+  opportunities: Pick<PersonalAgentOpportunityPort, "createAndOpen">,
+  userId: string,
+  intentId: string,
+  match: PersonalAgentMatch,
+): Promise<CreateAndOpenResult> {
+  if (match.ref.kind === "opportunity") {
+    return { status: "existing", opportunityId: match.ref.id };
+  }
+  return opportunities.createAndOpen(userId, { intentId, candidateId: match.ref.id });
+}
+
 async function runKickoff(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
@@ -606,13 +627,24 @@ async function runKickoff(
   const threadByOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.thread]));
 
   const opens = await mapWithConcurrency(matches, kickoffConcurrency(), async (match) => {
+    // The row first, then the brief. A brief written for a pair we then fail
+    // to materialize is a model call spent on nothing.
+    const resolved = await resolveMatchToOpportunity(
+      deps.opportunities, context.userId, context.intentId, match,
+    );
+    if (!("opportunityId" in resolved)) {
+      logger.warn("Could not materialize a match at kickoff", {
+        intentId: context.intentId, ref: match.ref, reason: resolved.reason,
+      });
+      return { status: "rejected" as const, reason: resolved.reason };
+    }
     const brief = await judgment.brief(kickoffContext, {
       match,
       strategy,
       thread: threadByOpportunity.get(matchRefId(match)) ?? [],
     });
     const result = await deps.negotiations.invoke({
-      opportunityId: matchRefId(match),
+      opportunityId: resolved.opportunityId,
       brief,
       intentId: context.intentId,
       batchId,
@@ -730,6 +762,15 @@ async function compensateFailedOpen(
   failure: unknown,
 ): Promise<void> {
   logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, batchId, error: failure });
+  // A candidate that never became a row has no task to compensate: the
+  // failure was the materialization itself, so there is nothing holding this
+  // batch open. Anything else would look up a task id that is a candidate id.
+  if (match.ref.kind === "candidate") {
+    logger.warn("Nothing to compensate: the match was never opened", {
+      intentId: context.intentId, batchId, candidateId: match.ref.id,
+    });
+    return;
+  }
   // Post-bump: a read that fails here must not fail the turn either.
   const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(matchRefId(match)).catch((err: unknown) => {
     logger.error("Could not look up a failed open's task", { opportunityId: matchRefId(match), error: err });
