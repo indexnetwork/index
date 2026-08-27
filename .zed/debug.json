@@ -1,0 +1,36 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  {
+    "adapter": "JavaScript",
+    "label": "Debug index.ts (Bun)",
+    "type": "node",
+    "request": "launch",
+    "runtimeExecutable": "bun",
+    "runtimeArgs": ["run", "index.ts"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "skipFiles": ["<node_internals>/**"]
+  },
+  {
+    "adapter": "JavaScript",
+    "label": "Debug tests (Bun)",
+    "type": "node",
+    "request": "launch",
+    "runtimeExecutable": "bun",
+    "runtimeArgs": ["test"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "skipFiles": ["<node_internals>/**"]
+  },
+  {
+    "adapter": "JavaScript",
+    "label": "Debug negotiation test (Bun)",
+    "type": "node",
+    "request": "launch",
+    "runtimeExecutable": "bun",
+    "runtimeArgs": ["test", "src/negotiation.test.ts"],
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "skipFiles": ["<node_internals>/**"]
+  }
+]
