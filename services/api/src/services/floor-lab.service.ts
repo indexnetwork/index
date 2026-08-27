@@ -8,7 +8,7 @@ import { CREDENTIAL_PROVIDER_ID, hashCredentialPassword } from '../lib/betteraut
 import db from '../lib/drizzle/drizzle';
 import { mintLabSessionJwt } from '../lib/floor-lab/session';
 import { log } from '../lib/log';
-import { intentQueue } from '../queues/intent.queue';
+import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
 import * as schema from '../schemas/database.schema';
 import { validateNetworkMetadata } from '../schemas/network.validation';
 
@@ -71,19 +71,20 @@ export class FloorLabService {
     await this.chatAdapter.addMemberToNetwork(network.id, owner.id, 'owner');
     await this.chatAdapter.addMemberToNetwork(network.id, registered[1]!.id, 'member');
 
-    const seatResults: FloorLabSeatResult[] = [];
-    for (const [index, seat] of seats.entries()) {
-      const user = registered[index]!;
-      const intentId = await this.admitIntent(user.id, network.id, seat.intent.trim());
-      const jwt = await mintLabSessionJwt(user.email, FLOOR_LAB_PASSWORD);
-      seatResults.push({
-        name: user.name,
-        userId: user.id,
-        email: user.email,
-        intentId,
-        jwt,
-      });
-    }
+    const seatResults = await Promise.all(
+      seats.map(async (seat, index) => {
+        const user = registered[index]!;
+        const intentId = await this.admitIntent(user.id, network.id, seat.intent.trim());
+        const jwt = await mintLabSessionJwt(user.email, FLOOR_LAB_PASSWORD);
+        return {
+          name: user.name,
+          userId: user.id,
+          email: user.email,
+          intentId,
+          jwt,
+        };
+      }),
+    );
 
     logger.info('Floor lab run started', { runId, networkId: network.id, seatCount: seatResults.length });
     return { runId, networkId: network.id, password: FLOOR_LAB_PASSWORD, seats: seatResults };
@@ -140,11 +141,10 @@ export class FloorLabService {
       sourceId: crypto.randomUUID(),
     });
     await this.intentAdapter.assignIntentToNetwork(created.id, networkId);
-    await intentQueue.runGenerateHydeSync({
+    await fromIntentQueue.addJob({
       intentId: created.id,
       userId,
-      scopeType: 'network',
-      scopeId: networkId,
+      networkIds: [networkId],
     });
     return created.id;
   }
