@@ -1,5 +1,5 @@
-import type { Negotiator } from "../src/negotiator.ts";
-import type { NegotiationMessage, NegotiationParty } from "../src/types.ts";
+import type { Negotiator } from "../src/core/negotiator.ts";
+import type { NegotiationMessage, NegotiationParty } from "../src/core/types.ts";
 
 /**
  * Local dev/test harness that runs both sides of a negotiation in-process.

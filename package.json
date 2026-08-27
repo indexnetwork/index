@@ -12,13 +12,17 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./a2a": {
+      "types": "./dist/a2a/index.d.ts",
+      "import": "./dist/a2a/index.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target node --format esm && tsc --project tsconfig.build.json",
+    "build": "rm -rf dist && bun build ./src/index.ts ./src/a2a/index.ts --outdir dist --target node --format esm --splitting && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepublishOnly": "bun run typecheck && bun run test && bun run build"

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { runNegotiation, type Participant } from "./simulate.ts";
-import { Negotiator } from "../src/negotiator.ts";
-import type { NegotiationState } from "../src/types.ts";
+import { Negotiator } from "../src/core/negotiator.ts";
+import type { NegotiationState } from "../src/core/types.ts";
 
 /** A Negotiator whose respond() is scripted instead of hitting OpenRouter. */
 function scriptedNegotiator(replies: string[]) {

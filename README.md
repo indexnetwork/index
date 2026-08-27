@@ -3,9 +3,20 @@
 An LLM-enhanced negotiator library, powered by [OpenRouter](https://openrouter.ai).
 
 `Negotiator` plays one side of a negotiation: given a party's objective and
-the conversation so far, it returns that party's next message. It doesn't
-run or own the other side of the conversation — the caller owns the
-transcript and calls `respond()` once per turn.
+the conversation so far, it returns that party's next message or decision.
+It doesn't run or own the other side of the conversation — the caller owns
+the transcript and calls `respond()`/`decide()` once per turn.
+
+## Purpose
+
+This package is the decision-making core for a personal agent's side of a
+negotiation, plus an [Agent2Agent (A2A)](https://a2a-protocol.org) client
+and server built on top of it (`@indexnetwork/negotiator/a2a`) so that core
+can actually send and receive negotiation turns over the wire. A personal
+agent — whether it's built with this package, or is an OpenClaw, Hermes, or
+Claude Agent implementation that just speaks A2A — can use the `./a2a`
+entry point to initiate or respond to a negotiation task with any other A2A
+agent, without needing to reimplement the protocol itself.
 
 ## Installation
 
@@ -74,6 +85,114 @@ console.log(reply);
 
 It resolves to a `string`: the next message to send. It throws if the
 OpenRouter request fails or returns no content.
+
+### Deciding a structured turn
+
+When the caller needs more than a message — e.g. an explicit action to
+record, such as `accept`/`reject`/`counter` — use `decide()` instead. It
+takes the same `NegotiationState`, plus the set of actions allowed for this
+turn, and returns one of them along with the message:
+
+```ts
+const decision = await negotiator.decide(
+  {
+    party: { name: "Seller", objective: "Sell the item for as much as possible" },
+    history: [{ role: "incoming", content: "I'll offer $300." }],
+  },
+  {
+    allowedActions: [
+      "counter",
+      "accept",
+      { action: "reject", description: "Refuse the offer outright" },
+    ],
+  },
+);
+
+console.log(decision); // { action: "counter", message: "..." }
+```
+
+`allowedActions` entries can be a bare string, or `{ action, description }`
+when the action's name alone isn't self-explanatory — the description is
+given to the model as context for what choosing that action means.
+
+`decide()` never includes reasoning in its output: the `message` is the only
+thing the other party sees, and internal reasoning for why an action was
+chosen is out of scope for this library (surfacing that to a human reviewer,
+if needed, is the caller's responsibility). It throws if the model returns
+invalid JSON, or chooses an action outside `allowedActions`.
+
+## A2A: sending and receiving negotiations over the wire
+
+`@indexnetwork/negotiator/a2a` implements a minimal subset of the
+[Agent2Agent protocol](https://a2a-protocol.org): agent discovery via an
+AgentCard, and negotiation turns as JSON-RPC `message/send` calls carrying
+this package's `NegotiationDecision` as a data part. Streaming (SSE) and
+push-notification webhooks aren't implemented yet — every turn is a
+synchronous HTTP request/response.
+
+### Server: responding to negotiations
+
+`createA2AHandler()` builds a framework-agnostic `(Request) => Promise<Response>`
+you can mount in any HTTP server. It serves this agent's AgentCard at
+`/.well-known/agent-card.json`, and on `message/send` runs `negotiator.decide()`
+and replies with the updated Task:
+
+```ts
+import { Negotiator } from "@indexnetwork/negotiator";
+import { createA2AHandler } from "@indexnetwork/negotiator/a2a";
+
+const handler = createA2AHandler({
+  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  party: { name: "Seller", objective: "Sell the item for as much as possible" },
+  allowedActions: ["propose", "counter", "accept", "reject"],
+  agentCard: {
+    name: "Seller Agent",
+    url: "https://seller.example.com/a2a",
+    version: "1.0.0",
+    capabilities: {},
+    skills: [{ id: "negotiate", name: "Negotiate a sale" }],
+  },
+});
+
+Bun.serve({ port: 3000, fetch: handler });
+```
+
+A negotiation ends (`task.status.state` becomes `completed`/`rejected`/`canceled`)
+once `decide()` picks a terminal action — `accept`, `reject`, or `withdraw` by
+default. Pass `isTerminal(action)` to `createA2AHandler()` to override which
+actions end the negotiation.
+
+### Client: initiating and continuing negotiations
+
+`A2ANegotiationClient` is the other side: it calls `negotiator.decide()` for
+this side's move, then sends it to another agent's A2A endpoint. `initiate()`
+starts a new negotiation; `continue()` keeps responding to one that's still
+`input-required`:
+
+```ts
+import { Negotiator } from "@indexnetwork/negotiator";
+import { A2ANegotiationClient } from "@indexnetwork/negotiator/a2a";
+
+const client = new A2ANegotiationClient({
+  negotiator: new Negotiator({ model: "openai/gpt-4o-mini" }),
+  party: { name: "Buyer", objective: "Buy the item for as little as possible" },
+  allowedActions: ["propose", "counter", "accept", "reject"],
+});
+
+let { task, decision } = await client.initiate("https://seller.example.com/a2a");
+console.log(decision); // { action: "propose", message: "..." }
+
+while (task.status.state === "input-required") {
+  ({ task, decision } = await client.continue("https://seller.example.com/a2a", task));
+  console.log(decision);
+}
+
+console.log(task.status.state); // "completed" | "rejected" | "canceled"
+```
+
+The Task returned by the server is authoritative — `continue()` reads the
+full turn history from it, so the client doesn't need to track state itself
+beyond holding onto the last `task` it received.
 
 ### Local simulation (dev/test only)
 
