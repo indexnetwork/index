@@ -90,7 +90,8 @@ describe('readActionableCounterparties', () => {
         opportunityId: CAMILLE,
         name: 'Camille Dubois',
         status: 'stalled',
-        label: 'Camille Dubois — parked, waiting on you',
+        label: 'Camille Dubois — paused',
+        createdAt: new Date('2026-08-01T00:00:00Z'),
         // Neither is an introduction, so neither is gated.
         awaitingIntroducerApproval: false,
       },
@@ -100,6 +101,7 @@ describe('readActionableCounterparties', () => {
         name: 'Ilya Roth',
         status: 'pending',
         label: 'Ilya Roth — waiting on your decision',
+        createdAt: new Date('2026-08-05T00:00:00Z'),
         awaitingIntroducerApproval: false,
       },
     ]);
@@ -180,7 +182,7 @@ describe('rejectOpportunity', () => {
     expect(result).toEqual({
       status: 'unknown_counterparty',
       count: 2,
-      actionable: ['Camille Dubois — parked, waiting on you', 'Ilya Roth — waiting on your decision'],
+      actionable: ['Camille Dubois — paused', 'Ilya Roth — waiting on your decision'],
     });
     expect(written).toHaveLength(0);
   });

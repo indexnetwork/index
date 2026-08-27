@@ -17,6 +17,7 @@ const composition = read('../negotiation-graph.ts');
 const mcp = read('../../../controllers/mcp.controller.ts');
 const toolService = read('../../../services/tool.service.ts');
 const main = read('../../../main.ts');
+const verdictHost = read('../../agent/negotiator-verdict.host.ts');
 
 describe('matches_ready wiring', () => {
   it('is exported from the one composition site, alongside the graphs it feeds', () => {
@@ -56,9 +57,11 @@ describe('matches_ready wiring', () => {
     // `readActionableCounterparties` swallows to `[]` for the tool surfaces.
     // Bound here it would undo the protocol-side throw entirely: a transient
     // read error becomes a reflect that saw nothing and burned the round.
-    expect(composition).toContain('readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)');
+    expect(composition).toContain('readPersonalAgentMatches(userId, intentId)');
     expect(composition).not.toContain('readActionableCounterparties(');
-    expect(composition).toContain('awaitingIntroducerApproval');
+    // The introducer gate rides along with the match, and the mapping that
+    // carries it now lives with the reader rather than at the binding.
+    expect(verdictHost).toContain('awaitingIntroducerApproval');
   });
 
   it('gives BOTH graphs the reflect enqueue and the agent its re-wake', () => {

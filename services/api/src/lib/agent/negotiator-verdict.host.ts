@@ -27,7 +27,10 @@
  * the successful result names WHO was acted on so the confirmation the client
  * reads comes from the write rather than from the model's belief about it.
  */
-import type { OpportunityStatus } from '@indexnetwork/protocol';
+import type { OpportunityStatus, PersonalAgentMatch } from '@indexnetwork/protocol';
+import { opportunityRef } from '@indexnetwork/protocol';
+
+import { discoveryCandidateAdapter } from '../../adapters/discovery-candidate.database.adapter';
 
 import { opportunityService } from '../../services/opportunity.service';
 import { log } from '../log';
@@ -53,6 +56,7 @@ export const PERSONAL_AGENT_MATCH_STATUSES: OpportunityStatus[] = ['latent', 'dr
 
 /** How each actionable status reads to the client, in one clause. */
 const STATE_LINE: Record<string, string> = {
+  found: 'found, not contacted yet',
   latent: 'found, not contacted yet',
   draft: 'found, not contacted yet',
   pending: 'waiting on your decision',
@@ -70,6 +74,8 @@ export interface ActionableCounterparty {
   status: string;
   /** The prompt line: name + one-line state. */
   label: string;
+  /** Ordering key for the union with pending candidates. */
+  createdAt: Date | string;
   /**
    * An introduction whose introducer has not approved it yet. The negotiation
    * graph refuses to open one; this flag is what keeps a kickoff from
@@ -90,6 +96,11 @@ interface ListedOpportunity {
 
 /** Injectable seams; production resolves the real service. */
 export interface NegotiatorVerdictHostDeps {
+  /** This signal's pairs discovery found and nobody has opened yet. */
+  listPendingCandidates?: (
+    userId: string,
+    intentId: string,
+  ) => Promise<Array<{ id: string; createdAt: Date; counterpartName?: string }>>;
   listOpportunities?: (
     userId: string,
     options: { statuses: OpportunityStatus[]; scopeType: 'intent'; scopeId: string },
@@ -188,11 +199,69 @@ export async function readSignalMatches(
           opportunityId: row.id,
           name,
           status: row.status,
+          createdAt: row.createdAt,
           label: `${name} — ${state}`,
           awaitingIntroducerApproval: introducers.length > 0 && !introducers.every((actor) => actor.approved === true),
         };
       });
   }
+}
+
+/**
+ * Everything this signal's PersonalAgent may act on: the pairs discovery found
+ * and has not opened, plus the opportunities already open.
+ *
+ * `ActionableCounterparty` is deliberately NOT widened to carry a candidate.
+ * That type is the verdict lane's, over real rows — a verdict on a pair nobody
+ * has opened would be a decision about nothing. The union lives here, at the
+ * one seam that feeds the agent.
+ *
+ * OLDEST FIRST, and that is a contract. The prompt renders this list numbered
+ * and the agent's tool call names a position, so a match arriving mid-turn
+ * must append rather than slide a different person under a number the agent
+ * already read.
+ *
+ * THROWS, on either read. The agent's every turn is about this list; a
+ * swallowed failure is a turn that decides nothing and reports success.
+ */
+export async function readPersonalAgentMatches(
+  userId: string,
+  intentId: string,
+  deps?: NegotiatorVerdictHostDeps,
+): Promise<PersonalAgentMatch[]> {
+  const readCandidates = deps?.listPendingCandidates
+    ?? ((uid: string, iid: string) => discoveryCandidateAdapter.listPendingCandidatesForIntent(uid, iid));
+
+  const [opportunities, candidates] = await Promise.all([
+    readSignalMatches(userId, intentId, deps, PERSONAL_AGENT_MATCH_STATUSES),
+    readCandidates(userId, intentId),
+  ]);
+
+  const entries = [
+    ...candidates.map((candidate) => ({
+      sortAt: asTime(candidate.createdAt),
+      sortId: candidate.id,
+      match: {
+        ref: { kind: 'candidate' as const, id: candidate.id },
+        label: `${candidate.counterpartName?.trim() || 'An unnamed match'} — ${STATE_LINE.found}`,
+        status: 'found',
+      } satisfies PersonalAgentMatch,
+    })),
+    ...opportunities.map((counterparty) => ({
+      sortAt: asTime(counterparty.createdAt),
+      sortId: counterparty.opportunityId,
+      match: {
+        ref: opportunityRef(counterparty.opportunityId),
+        label: counterparty.label,
+        status: counterparty.status,
+        ...(counterparty.awaitingIntroducerApproval ? { awaitingIntroducerApproval: true } : {}),
+      } satisfies PersonalAgentMatch,
+    })),
+  ];
+
+  return entries
+    .sort((a, b) => a.sortAt - b.sortAt || a.sortId.localeCompare(b.sortId))
+    .map((entry) => entry.match);
 }
 
 /**

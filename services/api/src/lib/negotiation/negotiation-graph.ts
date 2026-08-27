@@ -20,7 +20,7 @@
  * services consume the same compiled graphs without a circular import back
  * into process startup.
  */
-import { NegotiationGraphFactory, PersonalAgentGraphFactory, opportunityRef } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory, PersonalAgentGraphFactory } from '@indexnetwork/protocol';
 import type { MatchesReadyFn, PersonalAgentGraphLike } from '@indexnetwork/protocol';
 
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
@@ -31,7 +31,7 @@ import { intentDossierAdapter } from '../../adapters/intent-dossier.adapter';
 import { agentService } from '../../services/agent.service';
 import { AgentDispatcherImpl } from '../../services/agent-dispatcher.service';
 import { chatSessionService } from '../../services/chat.service';
-import { PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readSignalMatches } from '../agent/negotiator-verdict.host';
+import { passVerdictOnOpportunity, readPersonalAgentMatches } from '../agent/negotiator-verdict.host';
 import { publishPersonalAgentActivity, publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
 
 /**
@@ -90,19 +90,13 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
   dossier: intentDossierAdapter,
   ledger: intentAgentLedgerAdapter,
   opportunities: {
-    // `readSignalMatches`, NOT the degrading `readActionableCounterparties`:
-    // every one of the agent's turns is about this list, and a read that
+    // The union of pending candidates and open opportunities, through the
+    // reader that THROWS — not the degrading `readActionableCounterparties`.
+    // Every one of the agent's turns is about this list, and a read that
     // failed must fail the turn. Swallowed to `[]` it becomes a reflect that
     // saw no negotiations, decided nothing, succeeded — and burned that drain
     // generation's one retained job.
-    readMatches: async (userId, intentId) => (
-      await readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)
-    ).map((match) => ({
-      ref: opportunityRef(match.opportunityId),
-      label: match.label,
-      status: match.status,
-      ...(match.awaitingIntroducerApproval ? { awaitingIntroducerApproval: true } : {}),
-    })),
+    readMatches: (userId, intentId) => readPersonalAgentMatches(userId, intentId),
     // The owner's own verdict, through the untouched owner path — the SAME
     // `updateOpportunityStatus` the Radar's accept calls.
     accept: async (userId, input) => {
