@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Negotiator } from "../core/negotiator.ts";
 import type { NegotiationDecision, NegotiationState } from "../core/types.ts";
 import { A2ANegotiationClient } from "./client/negotiation-client.ts";
-import { sendA2AMessage } from "./client/transport.ts";
+import { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
 import { createA2AHandler } from "./server/handler.ts";
 import { decisionToMessage } from "./wire/history.ts";
 import type { AgentCard } from "./wire/types.ts";
@@ -95,6 +95,24 @@ describe("A2A client/server over real HTTP", () => {
       const response = await fetch(new URL("/.well-known/agent-card.json", httpServer.url));
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual(agentCard("Seller"));
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("fetchAgentCard() retrieves the card from a base URL", async () => {
+    const { negotiator } = scriptedNegotiator([{ action: "propose", message: "hi" }]);
+    const handler = createA2AHandler({
+      negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose"],
+      agentCard: agentCard("Seller"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const card = await fetchAgentCard(httpServer.url.toString());
+      expect(card).toEqual(agentCard("Seller"));
     } finally {
       httpServer.stop();
     }

@@ -225,6 +225,33 @@ The Task returned by the server is authoritative — `continue()` reads the
 full turn history from it, so the client doesn't need to track state itself
 beyond holding onto the last `task` it received.
 
+### Using the AgentCard as a trust check
+
+`createA2AHandler()` serves an AgentCard, but nothing negotiates *for* you
+whether to trust the agent at a given URL — this library doesn't fetch or
+verify a counterparty's card before sending it a message. If your caller
+already vets which agents can talk to which (e.g. a matching/orchestration
+layer that only hands out endpoints for agents it already knows), that's
+often enough and you can skip this. If you want a defense-in-depth check
+before negotiating with a URL you don't otherwise trust, use `fetchAgentCard()`
+and verify it identifies as who you expect:
+
+```ts
+import { fetchAgentCard } from "@indexnetwork/negotiator/a2a";
+
+const card = await fetchAgentCard("https://seller.example.com/a2a");
+if (card.name !== "Seller Agent") {
+  throw new Error(`Unexpected agent at this URL: ${card.name}`);
+}
+// proceed to client.initiate(...) / client.continue(...)
+```
+
+There's no built-in identity/signature scheme yet — `card.name` is only as
+trustworthy as whatever's serving it. Real authentication (API keys, OAuth2,
+mTLS, matching `AgentCard.capabilities`/security schemes against what you
+require) is out of scope for this library today; treat `fetchAgentCard()`
+as a building block for your own trust logic, not a complete solution.
+
 See `dev/a2a-demo.ts` for a runnable example of the fully symmetric
 shape — two agents, each running its own server *and* initiating its own
 negotiation against the other's endpoint (`bun run dev/a2a-demo.ts`, needs

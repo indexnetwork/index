@@ -1,7 +1,7 @@
 export { createA2AHandler } from "./server/handler.ts";
 export type { A2AHandlerOptions } from "./server/handler.ts";
 export { TaskStore } from "./server/task-store.ts";
-export { sendA2AMessage } from "./client/transport.ts";
+export { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
 export { A2ANegotiationClient } from "./client/negotiation-client.ts";
 export type {
   A2ANegotiationClientOptions,

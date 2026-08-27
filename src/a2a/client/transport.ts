@@ -1,5 +1,21 @@
 import { isJsonRpcError, type JsonRpcRequest, type JsonRpcResponse } from "../wire/jsonrpc.ts";
-import type { A2AMessage, A2ATask } from "../wire/types.ts";
+import type { A2AMessage, A2ATask, AgentCard } from "../wire/types.ts";
+
+/** Fetches another agent's AgentCard from its A2A base URL
+ * (`<url>/.well-known/agent-card.json`). Useful as a trust check before
+ * negotiating: confirm the endpoint identifies as who you expect before
+ * calling `sendA2AMessage`/`A2ANegotiationClient`. Throws if the fetch
+ * fails or the response isn't valid JSON. */
+export async function fetchAgentCard(url: string): Promise<AgentCard> {
+  const cardUrl = new URL("/.well-known/agent-card.json", url);
+  const response = await fetch(cardUrl);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch agent card from ${cardUrl} (${response.status})`);
+  }
+
+  return (await response.json()) as AgentCard;
+}
 
 /** POSTs a single `message/send` JSON-RPC call to another agent's A2A
  * endpoint and returns the resulting Task. Throws if the request fails at
