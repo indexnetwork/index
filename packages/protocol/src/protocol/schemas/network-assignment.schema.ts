@@ -49,9 +49,6 @@ export const OpportunityEvidenceKindSchema = z.enum([
   "query_intent",
   "query_premise",
   "query_context",
-  "premise_similarity",
-  "context_similarity",
-  "context_to_intent",
   "profile",
 ]);
 export type OpportunityEvidenceKind = z.infer<typeof OpportunityEvidenceKindSchema>;
@@ -61,7 +58,7 @@ export const OpportunityEvidenceSchema = z.object({
   networkId: z.string(),
   score: z.number().min(0).max(1).optional(),
   lens: z.string().optional(),
-  discoverySource: z.enum(["query", "premise-similarity", "context-to-intent", "context-similarity"]).optional(),
+  discoverySource: z.literal("query").optional(),
   matchedStrategies: z.array(z.string()).optional(),
   sourcePremiseId: z.string().optional(),
   candidatePremiseId: z.string().optional(),

@@ -33,9 +33,6 @@ const EXPECTED_SIGNAL_TOOLS = [
 ] as const;
 
 const FORBIDDEN_TOOLS = [
-  "discover_opportunities",
-  "get_discovery_run",
-  "cancel_discovery_run",
   "list_opportunities",
   "update_opportunity",
   "confirm_opportunity_delivery",

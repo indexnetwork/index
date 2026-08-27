@@ -1,5 +1,5 @@
 /**
- * Unit tests for chat tools (createChatTools, read_intents, read_indexes, read_users, discover_opportunities, update_opportunity, etc.).
+ * Unit tests for chat tools (createChatTools, read_intents, read_indexes, read_users, list_opportunities, update_opportunity, etc.).
  */
 /** Config */
 import { config } from "dotenv";

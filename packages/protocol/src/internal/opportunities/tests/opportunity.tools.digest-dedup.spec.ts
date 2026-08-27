@@ -380,7 +380,7 @@ describe('list_opportunities digest-mode cross-day suppression', () => {
     expect(result.data?.found).toBe(false);
     expect(String(result.data?.message)).toContain('Omit the people section');
     // Must NOT prompt discovery — opportunities exist, they were just shown.
-    expect(String(result.data?.message)).not.toContain('discover_opportunities');
+    expect(String(result.data?.message)).not.toContain('list_opportunities');
   });
 
   it('re-shows a past-cooldown candidate with a redelivery marker when nothing fresh exists', async () => {

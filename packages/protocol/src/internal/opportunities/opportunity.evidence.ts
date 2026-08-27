@@ -4,7 +4,7 @@ export interface EvidenceCandidateInput {
   networkId: string;
   similarity: number;
   lens: string;
-  discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent' | 'context-similarity';
+  discoverySource?: 'query';
   matchedStrategies?: string[];
   sourcePremiseId?: string;
   candidatePremiseId?: string;
@@ -92,9 +92,6 @@ export function renderOpportunityEvidenceForPrompt(evidence: OpportunityEvidence
 }
 
 function resolveEvidenceKind(candidate: EvidenceCandidateInput): OpportunityEvidence['kind'] {
-  if (candidate.discoverySource === 'premise-similarity') return 'premise_similarity';
-  if (candidate.discoverySource === 'context-similarity') return 'context_similarity';
-  if (candidate.discoverySource === 'context-to-intent') return 'context_to_intent';
   if (candidate.candidatePremiseId) return 'query_premise';
   if (candidate.candidateContextId) return 'query_context';
   if (candidate.candidateIntentId) return 'query_intent';

@@ -145,7 +145,7 @@ const TOOL_PATH_WAKE_RETRY_MS = 100;
 /**
  * The same hand-off for the surfaces with NOTHING behind them to retry: the
  * chat and MCP tool graphs, where the caller is a user waiting on a
- * `discover_opportunities` answer.
+ * discovery answer.
  *
  * Throwing there would turn a discovery that genuinely persisted matches into
  * a failed tool call, losing the user's results over a transport blip. So it

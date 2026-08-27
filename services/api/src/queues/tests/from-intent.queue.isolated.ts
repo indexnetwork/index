@@ -7,7 +7,7 @@ config({ path: '.env.test', override: true });
 import { beforeEach, describe, expect, it, mock, afterAll } from 'bun:test';
 import type { OpportunityDiscoverySummary } from '../opportunity/discovery.shared';
 
-const mockAdd = mock(async () => ({ id: 'job-1', name: 'discover_opportunities', data: {} }));
+const mockAdd = mock(async () => ({ id: 'job-1', name: 'discover', data: {} }));
 const mockCreateWorker = mock(() => ({}));
 
 mock.module('../../lib/bullmq/bullmq', () => ({
@@ -116,7 +116,7 @@ describe('FromIntentQueue', () => {
       const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>);
       const db = { getIntentForIndexing };
       const queue = new FromIntentQueue({ database: asDb(db) });
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
       expect(getIntentForIndexing).toHaveBeenCalledWith('i1');
     });
 
@@ -153,7 +153,7 @@ describe('FromIntentQueue', () => {
       const job = await queue.addJob({ intentId: 'i1', userId: 'u1', networkIds: ['idx1'] });
       expect(job.id).toBe('job-1');
       expect(mockAdd).toHaveBeenCalledWith(
-        'discover_opportunities',
+        'discover',
         { intentId: 'i1', userId: 'u1', networkIds: ['idx1'] },
         expect.objectContaining({
           attempts: 3,
@@ -181,7 +181,7 @@ describe('FromIntentQueue', () => {
         },
       );
       expect(mockAdd).toHaveBeenCalledWith(
-        'discover_opportunities',
+        'discover',
         { intentId: 'i1', userId: 'u1', trigger: 'intent_resume' },
         expect.objectContaining({
           priority: 1,
@@ -204,7 +204,7 @@ describe('FromIntentQueue', () => {
         }),
         invokeOpportunityGraph: async () => {},
       });
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 2);
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 2);
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'running', attempt: 2, assignedCommunityCount: 1 }));
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded', attempt: 2 }));
     });
@@ -229,7 +229,7 @@ describe('FromIntentQueue', () => {
         }),
       });
 
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 1);
 
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({
         status: 'succeeded',
@@ -252,7 +252,7 @@ describe('FromIntentQueue', () => {
         }),
       });
 
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 1);
 
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({
         status: 'succeeded', processedCommunityCount: 1, possibleOverlapCount: 0, conversationsStartedCount: 0,
@@ -269,7 +269,7 @@ describe('FromIntentQueue', () => {
         invokeOpportunityGraph: async () => {},
       });
 
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 1);
 
       const succeeded = progressWrite(recordIntentDiscoveryProgress, 'succeeded');
       // Omitted, not zeroed: the adapter leaves stored counts untouched, so an
@@ -290,7 +290,7 @@ describe('FromIntentQueue', () => {
         invokeOpportunityGraph: async () => {},
       });
 
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }, 1);
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 1);
 
       const blocked = progressWrite(recordIntentDiscoveryProgress, 'blocked');
       expect(blocked).toMatchObject({ status: 'blocked', attempt: 0, assignedCommunityCount: 0 });
@@ -310,7 +310,7 @@ describe('FromIntentQueue', () => {
         getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>,
       };
       const queue = new FromIntentQueue({ database: asDb(db) });
-      await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
+      await queue.processJob('discover', { intentId: 'missing', userId: 'u1' });
     });
 
     it('discover: skips paused, archived, and wrong-owner jobs at admission', async () => {
@@ -326,7 +326,7 @@ describe('FromIntentQueue', () => {
           database: asDb({ getIntentForIndexing: async () => row, markIntentFirstDiscoverySucceeded }),
           invokeOpportunityGraph,
         });
-        await queue.processJob('discover_opportunities', { intentId: row.id, userId: 'u1' });
+        await queue.processJob('discover', { intentId: row.id, userId: 'u1' });
       }
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
@@ -341,7 +341,7 @@ describe('FromIntentQueue', () => {
         }),
       };
       const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph });
-      await queue.processJob('discover_opportunities', {
+      await queue.processJob('discover', {
         intentId: 'i1', userId: 'u1', trigger: 'intent_resume',
       });
       expect(invokeOpportunityGraph).toHaveBeenCalledTimes(1);
@@ -355,7 +355,7 @@ describe('FromIntentQueue', () => {
         markIntentFirstDiscoverySucceeded,
       });
       const queue = new FromIntentQueue({ database: db, invokeOpportunityGraph });
-      await queue.processJob('discover_opportunities', {
+      await queue.processJob('discover', {
         intentId: 'i1',
         userId: 'u1',
         networkIds: ['idx1'],
@@ -383,7 +383,7 @@ describe('FromIntentQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
+      await expect(queue.processJob('discover', { intentId: 'i1', userId: 'u1' }))
         .rejects.toThrow('graph failed');
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
     });
@@ -401,7 +401,7 @@ describe('FromIntentQueue', () => {
         }),
         invokeOpportunityGraph: async () => {},
       });
-      await expect(queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' }))
+      await expect(queue.processJob('discover', { intentId: 'i1', userId: 'u1' }))
         .rejects.toThrow('stamp precondition failed');
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
     });
@@ -419,7 +419,7 @@ describe('FromIntentQueue', () => {
       });
       const queue = new FromIntentQueue({ database: db, invokeOpportunityGraph });
 
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({
         indexScope: ['idx-a', 'idx-b'],
@@ -440,7 +440,7 @@ describe('FromIntentQueue', () => {
       });
       const queue = new FromIntentQueue({ database: db, invokeOpportunityGraph });
 
-      await queue.processJob('discover_opportunities', {
+      await queue.processJob('discover', {
         intentId: 'i1', userId: 'u1', networkIds: ['idx-foreign', 'idx-b'],
       });
 
@@ -459,7 +459,7 @@ describe('FromIntentQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await queue.processJob('discover_opportunities', {
+      await queue.processJob('discover', {
         intentId: 'i1', userId: 'u1', networkIds: ['idx-foreign'],
       });
 
@@ -479,7 +479,7 @@ describe('FromIntentQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
@@ -497,7 +497,7 @@ describe('FromIntentQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
     });
@@ -513,7 +513,7 @@ describe('FromIntentQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
+      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({ networkId: 'personal-net' }));
     });
@@ -526,7 +526,7 @@ describe('FromIntentQueue', () => {
         }),
         invokeOpportunityGraph,
       });
-      await queue.processJob('discover_opportunities', {
+      await queue.processJob('discover', {
         intentId: 'i1', userId: 'u1', networkIds: [],
       });
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
@@ -613,7 +613,7 @@ describe('FromIntentQueue', () => {
       expect(capturedProcessor).not.toBeNull();
       await capturedProcessor!({
         id: 'job-1',
-        name: 'discover_opportunities',
+        name: 'discover',
         data: { intentId: 'i1', userId: 'u1' },
       });
     });

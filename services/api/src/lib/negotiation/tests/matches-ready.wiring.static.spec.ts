@@ -41,7 +41,7 @@ describe('matches_ready wiring', () => {
     // The from-intent/enrichment queues retry, so `matchesReady` throws: a
     // batch that persisted with nobody woken is not a successful discovery.
     // The chat/MCP tool graphs have NOTHING behind them — the caller is a user
-    // waiting on discover_opportunities — so they take the best-effort wake,
+    // waiting on discovery — so they take the best-effort wake,
     // which retries and then RECORDS the loss rather than failing the call.
     expect(composition).toContain('export const matchesReady: MatchesReadyFn');
     expect(composition).toContain('export const matchesReadyBestEffort: MatchesReadyFn');

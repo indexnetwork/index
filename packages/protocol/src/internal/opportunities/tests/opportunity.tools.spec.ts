@@ -17,6 +17,8 @@ describe("opportunity tool registry", () => {
 
     createOpportunityTools(defineTool as never, {} as ToolDeps);
 
+    // The retired direct-discovery tools. Named here on purpose: this guard is
+    // what stops them coming back.
     expect(names).not.toContain("discover_opportunities");
     expect(names).not.toContain("get_discovery_run");
     expect(names).not.toContain("cancel_discovery_run");

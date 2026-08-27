@@ -239,8 +239,8 @@ describe("ToolController Integration", () => {
 
     // ── Opportunity (CLI: discover modes) ────────────────────────
 
-    test("POST /tools/discover_opportunities reports the retained not-found contract", async () => {
-      const { status, data } = await invokeTool("discover_opportunities", {});
+    test("POST /tools/list_opportunities reports the retained not-found contract", async () => {
+      const { status, data } = await invokeTool("list_opportunities", {});
       expect(status).toBe(404);
       expect(String(data.error)).toContain("not found");
     }, 60_000);
