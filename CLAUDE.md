@@ -18,6 +18,19 @@ bun run dev/stress.ts               # live scenarios — real model calls, real 
 `examples/` and `dev/stress.ts` hit OpenRouter. Tests don't: they script
 `negotiator.decide` and serve counterparties on ephemeral ports.
 
+## Testing
+
+Before trusting a test, break the code and check the test notices. Every
+defect found in this package's history was invisible to a passing suite —
+an assertion reading a copy of the data the fix doesn't touch, a fixture
+sitting where both the right and wrong implementation agree, a loop that
+stopped at its first failure so later cases were never evaluated. Green
+told us nothing in all three; removing the fix did. It costs a minute, and
+the minute falls exactly when you are most confident you are finished.
+
+Related: prefer one assertion over a collected array to several inside a
+loop. It cannot short-circuit, and the failure shows every case at once.
+
 ## Invariants worth not breaking
 
 These were each a bug at some point, and the code reads oddly without them.

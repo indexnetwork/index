@@ -1419,6 +1419,11 @@ describe("one clock", () => {
       // Rendered first, asserted once. Asserting inside the loop would stop
       // at the first failure, and a green run could then mean the second
       // pair was never evaluated at all.
+      // The instants differ on purpose. 23:30Z is tomorrow in Auckland but
+      // still the same local day in Los Angeles, so reusing one instant for
+      // both leaves the western pair guarding nothing — while still reading
+      // like it covers that direction. Failures show the two lines moving
+      // in opposite directions, which is what says each pair is live.
       const rendered = ([
         ["Pacific/Auckland", "2026-08-31T23:30:00Z"], // locally the 1st
         ["America/Los_Angeles", "2026-08-31T00:30:00Z"], // locally the 30th
