@@ -1,3 +1,54 @@
+# @indexnetwork/agent
+
+A host-run personal agent: one identity, scopeable to an intent, that can
+stop to ask the party it represents a question and negotiate with other
+agents over A2A. The host owns everything — instructions, operations,
+state. See README.md for the API.
+
+## Working here
+
+```bash
+cd ../negotiator && bun run build   # required: `file:../negotiator` resolves to its dist/
+bun test                            # 81 tests, no network
+bun run typecheck
+bun run chat                        # talk to an agent in a terminal
+bun run dev/stress.ts               # live scenarios — real model calls, real money
+```
+
+`examples/` and `dev/stress.ts` hit OpenRouter. Tests don't: they script
+`negotiator.decide` and serve counterparties on ephemeral ports.
+
+## Invariants worth not breaking
+
+These were each a bug at some point, and the code reads oddly without them.
+
+- **The Task is the record.** A2A puts the task on the server side, so
+  whether a negotiation ended is read from `task.status.state`, never
+  asserted from this side's own action. `endedBy` is what each side *did*;
+  `settlement` is whether anything was agreed. Two agents once walked away
+  from one negotiation believing different things because this was
+  reversed.
+- **A settled negotiation stays settled.** Taking another turn in an ended
+  exchange doesn't reopen the question, it erases the answer — the task
+  falls out of its terminal state and the agreement vanishes from the
+  record. If terms must change, that's a new negotiation.
+- **The agent holds no state.** Everything lives with the host and travels:
+  `messages`, `negotiations`, `sessions`, `taskStore`. Adding instance
+  state breaks resuming in another process, which is the whole suspend
+  design.
+- **Reading negotiations is uniform; acting on them is not.** An inbound
+  negotiation has no URL — the counterparty called us — so it can be known
+  but not continued.
+- **Retries live in `ModelClient` only.** The negotiator deliberately has
+  none; two layers would multiply, and neither backoff would see the other.
+- **Index Network operations are host-injected as tools.** This package
+  must not learn Index transport, auth, or vocabulary. `cli/directory.ts`
+  is a local stand-in for the match layer, not the real thing.
+- **`files` is `dist`.** `cli/`, `dev/` and `examples/` are never
+  published; `@indexnetwork/negotiator` is externalized, not bundled.
+
+## Bun
+
 
 Default to using Bun instead of Node.js.
 
