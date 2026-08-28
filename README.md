@@ -395,9 +395,13 @@ A retry looks exactly like slowness from the outside, so `onRetry` fires
 before each one. The terminal chat puts it in the spinner; a headless host
 should at least log it.
 
-> The negotiator's own model client and the A2A calls have no timeout of
-> their own, so a negotiation *turn* can still hang where the agent loop no
-> longer does. Run those under a `signal` if that matters to you.
+Negotiation turns are bounded too, one layer down: `run()`'s signal reaches
+the request in flight — this side's model call *and* the wait on the
+counterparty — so an interrupted run stops a turn rather than orphaning it.
+`turnTimeout` adjusts the transport deadline behind that (180s by default,
+`0` to disable). Retries stay here rather than in both packages, since two
+layers retrying would multiply: three attempts each is nine requests, with
+neither backoff aware of the other.
 
 ### Options
 
@@ -415,6 +419,7 @@ should at least log it.
 | `negotiator` | `Negotiator` | Defaults to one built from `model`/`apiKey`. |
 | `allowedActions` | `ActionSpec[]` | Defaults to `DEFAULT_ACTIONS`. |
 | `maxTurns` | `number` | Turn cap for `negotiate()`. Default 10. |
+| `turnTimeout` | `number` | Deadline for one negotiation turn, in ms. Default 180000. |
 | `skills`, `card` | | Published on the AgentCard; `card` merges last. |
 | `publishTools` | `boolean` | Also publish tools as skills. Off by default — the card is public. |
 | `onTurn` | function | Fires per negotiation turn, both sides, in order. |

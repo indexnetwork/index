@@ -1136,3 +1136,88 @@ describe("what the agent knows it negotiated", () => {
     }
   });
 });
+
+describe("interrupting a negotiation", () => {
+  /** A counterparty that accepts the connection and never answers — the
+   * failure that used to park the caller with no way out. */
+  function silent() {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => new Promise<Response>(() => {}),
+    });
+    return { url: server.url.toString(), stop: () => server.stop(true) };
+  }
+
+  test("a run's signal reaches the turn in flight", async () => {
+    const server = silent();
+    const controller = new AbortController();
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$430?" }]).negotiator,
+      });
+
+      setTimeout(() => controller.abort(new Error("interrupted")), 100);
+      const started = Date.now();
+
+      expect(
+        agent.negotiate(server.url, { discover: false, signal: controller.signal }),
+      ).rejects.toThrow();
+
+      await Bun.sleep(400);
+      // Stopped on the abort, not on the 180s transport deadline.
+      expect(Date.now() - started).toBeLessThan(3_000);
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("an already-aborted signal never opens the negotiation", async () => {
+    const server = silent();
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$430?" }]).negotiator,
+      });
+
+      expect(
+        agent.negotiate(server.url, {
+          discover: false,
+          signal: AbortSignal.abort(new Error("already gone")),
+        }),
+      ).rejects.toThrow();
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("the tool loop's signal covers a negotiation a tool opened", async () => {
+    const server = silent();
+    const controller = new AbortController();
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$430?" }]).negotiator,
+      });
+
+      setTimeout(() => controller.abort(new Error("interrupted")), 100);
+
+      // Exactly what `negotiate_open` does, with the context the loop hands
+      // its tools.
+      expect(
+        agent.openNegotiation(
+          server.url,
+          { discover: false },
+          { negotiations: new Map(), signal: controller.signal },
+        ),
+      ).rejects.toThrow();
+
+      await Bun.sleep(400);
+    } finally {
+      server.stop();
+    }
+  });
+});

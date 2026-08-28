@@ -18,6 +18,7 @@ import {
   type A2ATask,
   type A2ATaskState,
   type AgreementBasis,
+  type DeadlineOptions,
   type AgentCardSkill,
   type DecisionStrategy,
   type EvaluateHook,
@@ -175,6 +176,10 @@ export interface AgentOptions<A extends string = DefaultAction> {
   allowedActions?: ActionSpec<A>[];
   /** Turn cap for `negotiate()`. Defaults to 10. */
   maxTurns?: number;
+  /** How long one negotiation turn may wait on the counterparty, in ms.
+   * Defaults to the negotiator's 180s; `0` disables it and leaves a
+   * `signal` as the only stop. */
+  turnTimeout?: number;
   /**
    * Describes the structured terms decisions should carry — e.g.
    * `"amount (number, USD), pickupDay (day of week)"`.
@@ -271,6 +276,8 @@ export interface OpenNegotiationOptions {
 
 export interface NegotiateOptions extends OpenNegotiationOptions {
   maxTurns?: number;
+  /** Stops the exchange, including the turn in flight. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -493,8 +500,8 @@ export class Agent<A extends string = DefaultAction> {
 
   /** Fetches a counterparty's AgentCard without saying anything to them —
    * a trust check before negotiating. */
-  async inspect(url: string): Promise<IdentifiedAgentCard> {
-    return fetchAgentCard(url, this.options.credentials);
+  async inspect(url: string, options: DeadlineOptions = {}): Promise<IdentifiedAgentCard> {
+    return fetchAgentCard(url, this.options.credentials, options);
   }
 
   // --- inbound -------------------------------------------------------
@@ -589,9 +596,10 @@ export class Agent<A extends string = DefaultAction> {
   async openNegotiation(
     url: string,
     options: OpenNegotiationOptions = {},
-    context?: Pick<ToolContext, "negotiations">,
+    context?: Pick<ToolContext, "negotiations" | "signal">,
   ): Promise<NegotiationTurn<A>> {
-    const peer = options.discover === false ? null : await this.inspect(url);
+    const signal = context?.signal;
+    const peer = options.discover === false ? null : await this.inspect(url, { signal });
     const objective = this.objectiveFor(options.objective);
 
     const session: NegotiationSession = {
@@ -603,7 +611,7 @@ export class Agent<A extends string = DefaultAction> {
       task: undefined as unknown as A2ATask,
     };
 
-    const turn = await this.takeTurn(session, undefined);
+    const turn = await this.takeTurn(session, undefined, signal);
     context?.negotiations.set(session.id, session);
     return turn;
   }
@@ -616,7 +624,7 @@ export class Agent<A extends string = DefaultAction> {
   async continueNegotiation(
     session: NegotiationSession | string,
     options: { guidance?: string } = {},
-    context?: Pick<ToolContext, "negotiations">,
+    context?: Pick<ToolContext, "negotiations" | "signal">,
   ): Promise<NegotiationTurn<A>> {
     const resolved =
       typeof session === "string"
@@ -635,7 +643,7 @@ export class Agent<A extends string = DefaultAction> {
       );
     }
 
-    const turn = await this.takeTurn(resolved, options.guidance);
+    const turn = await this.takeTurn(resolved, options.guidance, context?.signal);
     context?.negotiations.set(resolved.id, resolved);
     return turn;
   }
@@ -644,6 +652,7 @@ export class Agent<A extends string = DefaultAction> {
   private async takeTurn(
     session: NegotiationSession,
     guidance?: string,
+    signal?: AbortSignal,
   ): Promise<NegotiationTurn<A>> {
     let sent: NegotiationDecision<A> | undefined;
 
@@ -657,6 +666,7 @@ export class Agent<A extends string = DefaultAction> {
       strategy: this.strategy,
       evaluate: this.options.evaluate,
       credentials: this.options.credentials,
+      timeoutMs: this.options.turnTimeout,
       onDecision: (decision) => {
         sent = decision;
         this.options.onTurn?.({ speaker: "self", decision }, "outbound");
@@ -669,9 +679,12 @@ export class Agent<A extends string = DefaultAction> {
       );
     }
 
+    // The signal covers the whole turn — this side's model call and the
+    // wait on the counterparty — so an interrupted run stops the request in
+    // flight instead of orphaning it.
     const result = session.task
-      ? await client.continue(session.url, session.task)
-      : await client.initiate(session.url);
+      ? await client.continue(session.url, session.task, { signal })
+      : await client.initiate(session.url, { signal });
 
     session.task = result.task;
     session.id = result.task.id;
@@ -809,7 +822,8 @@ export class Agent<A extends string = DefaultAction> {
     const artifacts: A2AArtifact[] = [];
 
     const negotiations = new Map<string, NegotiationSession>();
-    let turn = await this.openNegotiation(url, options, { negotiations });
+    const context = { negotiations, signal: options.signal };
+    let turn = await this.openNegotiation(url, options, context);
     let turns = 1;
 
     const collect = (result: NegotiationTurn<A>) => {
@@ -823,7 +837,7 @@ export class Agent<A extends string = DefaultAction> {
     // terminal action shouldn't carry on bargaining just because the
     // counterparty's reply left the Task open.
     while (!turn.done && !turn.settlement && turns < maxTurns) {
-      turn = await this.continueNegotiation(turn.id, {}, { negotiations });
+      turn = await this.continueNegotiation(turn.id, {}, context);
       collect(turn);
       turns++;
     }
