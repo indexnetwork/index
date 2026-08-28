@@ -52,7 +52,9 @@ export class Directory {
   async register(entry: Omit<DirectoryEntry, "live" | "updatedAt">): Promise<void> {
     const entries = await this.read();
     const next = entries.filter((other) => other.id !== entry.id);
-    next.push({ ...entry, live: true, updatedAt: new Date().toISOString() });
+    // An intent with no endpoint is published but not reachable — someone
+    // said what they want and there is nobody to say it to.
+    next.push({ ...entry, live: Boolean(entry.url), updatedAt: new Date().toISOString() });
     await this.write(next);
   }
 

@@ -11,7 +11,7 @@ state. See README.md for the API.
 cd ../negotiator && bun run build   # required: `file:../negotiator` resolves to its dist/
 bun test                            # 81 tests, no network
 bun run typecheck
-bun run chat                        # talk to an agent in a terminal
+bun run console                     # drive several agents in one terminal
 bun run dev/stress.ts               # live scenarios — real model calls, real money
 ```
 
@@ -60,7 +60,8 @@ These were each a bug at some point, and the code reads oddly without them.
   none; two layers would multiply, and neither backoff would see the other.
 - **Index Network operations are host-injected as tools.** This package
   must not learn Index transport, auth, or vocabulary. `cli/directory.ts`
-  is a local stand-in for the match layer, not the real thing.
+  is a local stand-in for the match layer, not the real thing, and
+  `cli/roster.ts` injects it as each party's `find_matches` tool.
 - **`files` is `dist`.** `cli/`, `dev/` and `examples/` are never
   published; `@indexnetwork/negotiator` is externalized, not bundled.
 

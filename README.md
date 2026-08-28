@@ -491,110 +491,66 @@ non-deterministic rather than scripted:
 OPENROUTER_API_KEY=... bun run examples/03-negotiating-agent.ts
 ```
 
-### Chatting with it from a terminal
+### The console
 
-`cli/chat.ts` is the smallest possible host: it builds an `Agent`, injects
-the operations it may perform, calls `run()`, and carries `messages` and
-`negotiations` from one call to the next. When a run comes back
-`needs-input` the question becomes the prompt and your reply resumes it —
-the live-chat loop from above, with a terminal on the other end.
-
-The agent is doing two things at once, so the screen is split in two: the
-conversation with the party it acts for on the left, the negotiation
-traffic with other agents on the right. Interleaved in one log, they read
-as noise.
-
-```
- Bob's Agent · did:example:bob · Buy a reliable used road bike · serving :8081
- chat                                  │  negotiation
-───────────────────────────────────────────────────────────────────────────────
- › Find my best match and negotiate    │ ▸ Bob's Agent (counter) I can offer
-   with them for me.                   │   $430, and weekday evening pickup
- ⚒ find_matches {}                     │   works for me.
-   → Alice's Agent 0.78 live           │ ◂ them (counter) $430 is lower than I
-                                       │   can manage. The lowest is $460.
- ? Alice's lowest is $460 and your     │ ⚒ negotiate_turn {"guidance":"Offer
-   budget is $450. Accept $460?        │   $430, within the $450 budget…
-   Accept $460  ·  Walk away           │   → 5477fe2c · input-required
- ⠧ thinking 25s   ^C interrupt
- answer › _
-```
-
-Tab switches panes, PageUp/PageDown scroll the focused one (the other keeps
-following its tail), ^C interrupts a run in flight — twice to exit — and ^D
-exits. Under about 76 columns the panes stack instead of sitting side by
-side. When stdout is a pipe there is nowhere to put a pane, so the two
-streams interleave with markers and `bun run chat < script.txt` keeps
-working.
+`cli/console.ts` stands the whole arrangement up in one process: several
+parties, each with its own agent and its own A2A endpoint, so an
+arrangement meant to span machines can be exercised from one terminal.
 
 ```bash
-bun run chat
-bun run chat -- --intent "Buy a used road bike under $450" --serve 8081
+bun run console
+bun run console -- --with Alice --with Bob
 ```
 
-`OPENROUTER_API_KEY` comes from `.env`. `--name`/`--id` set the identity,
-`--system` (or `--system-file`) the standing instructions, `--intent` the
-scope, `--serve <port>` answers inbound negotiations while you chat, and
-`--resume <file>` picks a saved session back up.
-
-Commands: `/matches` and `/intent` for discovery and scope,
-`/negotiate <url>` to run one exchange outside the loop, `/inspect <url>`
-for a counterparty's card, `/card` and `/instructions` for what this agent
-publishes and what the model is told, `/negotiations` for open exchanges,
-`/save` to write the session out, `/help` for the rest.
-
-#### Intents and matches
-
-Discovery is the host's job — Index Network is where parties publish
-intents and get matched, and the package knows nothing about it. To make
-that testable with two terminals, `cli/directory.ts` keeps the same shape
-in a JSON file: an agent started with `--serve` publishes its intent and
-A2A URL to `.agents.json`, and a `find_matches` tool pairs intents that
-want opposite ends of the same thing.
+A column per party for its conversation, and one shared pane for the
+traffic between them — an exchange shows up once, attributed, rather than
+twice from two points of view.
 
 ```
-› /matches
-  ● Alice's Agent http://localhost:8080/ 0.78 · live
-    Selling a Trek Domane 54cm road bike in good condition, asking $520
-    both mention road, bike, condition; you are looking, they are offering
-  ○ Frank's Agent http://localhost:8093 0.46 · offline
-    Looking to buy a used road bike in good condition, budget 600 euros
-    both mention buy, used, road, bike; you are both looking — nothing to trade
+ agent console · 3 parties · .agents.json
+ Alice                        │ Bob                          │  Carol
+ Selling a Trek Domane, $520  │ Buy a road bike under $460   │ Offering bike servicing
+────────────────────────────────────────────────────────────────────────────────────────
+ › find my best match         │ ⚒ find_matches {}            │
+ ⚒ ask_user                   │   → [{"name":"Alice", …}]    │
+ ? What's your lowest price?  │                              │
+────────────────────────────────────────────────────────────────────────────────────────
+ wire
+ → Bob    I'd like to offer $420 for the Trek Domane, pickup Monday evening 2026-08-31.
+ ↩ Alice  Yes, that works. $420 on Monday evening.
+   ⚖ agreed (reference) {"amount":420,"pickup_date":"2026-08-31"}
+────────────────────────────────────────────────────────────────────────────────────────
+ tab agent · pgup/pgdn scroll · shift-↑/↓ wire · /help · ^D exit
+ Bob ›
 ```
 
-The matcher is a placeholder — word overlap, plus a bonus for wanting
-opposite ends and a penalty for wanting the same one. It is there to be
-replaced: swap `score()`, or replace the whole tool with a call into Index
-Network, and nothing above it moves. `cli/fixtures/intents.json` seeds a
-few made-up intents with nobody behind them, so a two-terminal test still
-reads like a directory; `--no-seed` drops them, `--registry` moves the
-file, and `--peer <url>` offers a counterparty without matching at all.
+Typing talks to the party in focus; Tab moves focus. Runs are detached, so
+you can tell one party something while another is still negotiating, and
+each column shows its own spinner. ^C interrupts the focused party's run,
+^D exits.
 
-Matches carry a `status`, because an intent is not a running agent:
-`live`, `offline` (a seeded intent), or `unreachable` (registered, but the
-port is gone).
+| | |
+| --- | --- |
+| `/add <name> [--intent "..."]` | stand up another party |
+| `/rm <name>`, `/use <name>`, `/who` | manage and switch between them |
+| `/intent <text>` | scope the party in focus (`none` to unscope) |
+| `/intent add "<text>"`, `/intent rm <id>` | publish an intent with no agent behind it, or remove one |
+| `/intents` | everything published, live or not |
+| `/match` | who this party's intent pairs with |
+| `/negotiate <party> [objective]` | run one exchange to completion |
+| `/card`, `/instructions`, `/steps`, `/negotiations` | look inside the agent in focus |
+| `/clear`, `/wire`, `/exit` | |
 
-#### Two terminals
+Discovery is host-injected here as it would be anywhere: each party gets a
+`find_matches` tool backed by `cli/directory.ts`, the file-backed stand-in
+for the intent/match layer described below. `--seed` loads made-up intents
+with nobody behind them, so a two-party test still reads like a directory;
+matches carry `live` or `offline` so an agent doesn't negotiate with a
+port that isn't there.
 
-```bash
-# Alice, selling
-bun run chat -- --name "Alice's Agent" --id did:example:alice --serve 8080 \
-  --intent "Selling a Trek Domane 54cm road bike in good condition, asking \$520" \
-  --system "You act for Alice. She will go down to \$460 but no lower. Weekday evening collection."
-
-# Bob, buying
-bun run chat -- --name "Bob's Agent" --id did:example:bob --serve 8081 \
-  --intent "Buy a reliable used road bike in good condition, under \$450"
-› Find my best match and negotiate with them for me.
-```
-
-Bob's agent matches on intent, opens a negotiation with what it found, and
-stops to ask Bob whatever it wasn't told — a ceiling, a collection day —
-before carrying on in the same exchange. Both terminals print every turn as
-it lands, each from its own side.
-
-Like `dev/`, none of this is published — `files` is `dist` only. It exists
-to drive the package by hand.
+Under about 26 columns per party the console shows as many as fit, centred
+on the one in focus. With stdout piped it reads lines from stdin and prints
+each party's output prefixed with its name, so scripted runs still work.
 
 ### Local simulation (dev/test only)
 
@@ -607,7 +563,7 @@ different owners on different machines. It exists for local iteration.
 
 ```bash
 bun install        # install dependencies
-bun run chat       # talk to an agent in the terminal
+bun run console    # drive several agents in one terminal
 bun test           # run tests
 bun run typecheck  # tsc --noEmit
 bun run build      # bundle + emit .d.ts into dist/
@@ -630,11 +586,10 @@ src/
     tools.ts      # Tool, askUserTool(), negotiationTools()
     types.ts      # identity/intent, RunResult/Step, negotiation types
 cli/
-  chat.ts         # terminal chat: a minimal host around run(), not published
+  console.ts      # the console: parties, commands, the run loop
+  roster.ts       # the parties being driven, and their injected discovery
+  tui.ts          # columns, the shared wire, and the line editor
   directory.ts    # stand-in for the intent/match layer, file-backed
-  surface.ts      # where output goes: panes on a terminal, lines in a pipe
-  tui.ts          # the two-pane screen and its line editor
-  line.ts         # the line-based fallback
   format.ts       # colour, ANSI-aware measuring and wrapping
   fixtures/       # made-up intents to match against
 dev/

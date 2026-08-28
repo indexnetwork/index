@@ -18,7 +18,7 @@
     "dist"
   ],
   "scripts": {
-    "chat": "bun run cli/chat.ts",
+    "console": "bun run cli/console.ts",
     "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target node --format esm --packages external && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",

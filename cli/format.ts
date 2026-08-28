@@ -4,7 +4,7 @@
  * Everything here is ANSI-aware: the TUI has to know how wide a coloured
  * string *looks* to lay it out, which is not how long it is.
  */
-import type { AgentTurn, Direction, Step } from "../src/index.ts";
+import type { AgentTurn, Step } from "../src/index.ts";
 
 const enabled = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 const sgr = (n: string) => (text: string) => (enabled ? `\x1b[${n}m${text}\x1b[0m` : text);
@@ -20,6 +20,36 @@ export const magenta = sgr("35");
 export const cyan = sgr("36");
 
 export const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/** 256-colour foreground, falling back to plain text where colour is off. */
+export const ink = (code: number) => (text: string) =>
+  enabled ? `\x1b[38;5;${code}m${text}\x1b[0m` : text;
+
+/**
+ * One colour per party, so a name reads the same in its column heading, in
+ * its prompt, and on the wire. Picked to stay apart on both dark and light
+ * terminals, and to avoid the red/green already carrying meaning.
+ */
+const ACCENTS = [39, 213, 214, 84, 141, 179, 45, 204];
+
+export function accent(index: number): (text: string) => string {
+  return ink(ACCENTS[index % ACCENTS.length]!);
+}
+
+/** Box drawing, kept in one place so the panes agree. */
+export const BOX = {
+  h: "─",
+  v: "│",
+  tl: "╭",
+  tr: "╮",
+  bl: "╰",
+  br: "╯",
+  tee: "┬",
+  bottomTee: "┴",
+  cross: "┼",
+  leftTee: "├",
+  rightTee: "┤",
+} as const;
 
 const ESCAPE = /\x1b\[[0-9;]*m/g;
 
@@ -139,14 +169,19 @@ export function formatStep(step: Step): string[] {
   return output ? [head, `  ${dim(`→ ${output}`)}`] : [head];
 }
 
-/** A negotiation turn, for the negotiation pane. Rendered as speech,
- * since that is what it is. */
-export function formatTurn(self: string, turn: AgentTurn, direction: Direction): string {
-  const mine = turn.speaker === "self";
-  const arrow = mine ? green("▸") : blue("◂");
-  const who = mine ? self : "them";
-  const tag = dim(`(${turn.decision.action}${direction === "inbound" && mine ? ", reply" : ""})`);
-  return `${arrow} ${bold(who)} ${tag} ${turn.decision.message}`;
+/**
+ * A negotiation turn on the wire: who said it, to whom, and what.
+ *
+ * The console shows both sides of an exchange in one place, so a turn has
+ * to name its speaker rather than being "mine" or "theirs" — which is only
+ * meaningful from inside one of the two agents.
+ */
+export function formatTurn(
+  from: { name: string; paint: (text: string) => string },
+  to: string,
+  turn: AgentTurn,
+): string {
+  return `${from.paint(from.name)} ${dim("→")} ${dim(to)} ${dim(`(${turn.decision.action})`)} ${turn.decision.message}`;
 }
 
 /** Negotiation tool results repeat what the turns already said, so they
