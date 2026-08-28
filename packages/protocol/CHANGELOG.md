@@ -2017,7 +2017,7 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
 
 ### Removed
 
-- **Breaking (37.0.0): single-path opportunities.** Discovery no longer creates
+- **Breaking (38.0.0): single-path opportunities.** Discovery no longer creates
   opportunities. It records one `discovery_match_candidates` row per pair, keyed by
   `pairKeyOf(networkId, intentA, intentB)`, and the `opportunities` row is INSERTed at
   kickoff by `createAndOpen` when a principal's PersonalAgent decides to reach out.
