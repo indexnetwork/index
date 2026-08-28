@@ -19,6 +19,7 @@ import {
   type A2ATask,
   type A2ATaskState,
   type AgreementBasis,
+  type AgreementResult,
   type DeadlineOptions,
   type AgentCardSkill,
   type DecisionStrategy,
@@ -79,6 +80,25 @@ function negotiateSkill(actions: string[]): AgentCardSkill {
 /** Mirrors the negotiator's own default terminal set, so an `Agent` and the
  * handler underneath it always agree on which actions end a task. */
 const DEFAULT_TERMINAL: ReadonlySet<string> = new Set(["accept", "reject", "decline", "withdraw"]);
+
+/**
+ * The one action a negotiation under the fan-out pump may take that a
+ * one-vs-one turn may not: stop and ask the party. It is intercepted
+ * before the wire, so the counterparty never sees it.
+ */
+export const ASK_ACTION = {
+  action: "ask",
+  description:
+    "use only when your next move depends on something the party you act for has not told you — a limit, a date, a preference. State what you need to know. Nothing is sent to the counterparty",
+} as const;
+
+/** Thrown by the pump's strategy wrapper when the negotiator decides to
+ * `ask`, so the turn stops before `sendTurn` reaches the network. */
+class Escalation extends Error {
+  constructor(readonly decision: NegotiationDecision<string>) {
+    super(decision.message);
+  }
+}
 
 /**
  * What terms to ask for when the host hasn't said. Deliberately generic:
@@ -441,11 +461,14 @@ export class Agent<A extends string = DefaultAction> {
     const lines = sessions.slice(-RECORDED_NEGOTIATIONS).map((session) => {
       const who = session.direction === "outbound" ? "you contacted them" : "they contacted you";
       const peer = session.peer?.name ? ` with ${session.peer.name}` : "";
-      const agreement = verifyAgreement(session.task);
+      const agreement: AgreementResult = session.task
+        ? verifyAgreement(session.task)
+        : { status: "open", basis: "state" };
       const terms = agreement.terms ? `: ${JSON.stringify(agreement.terms)}` : "";
-      const detail =
-        agreement.status === "open"
-          ? `still open, ${session.task.history.length} turns so far`
+      const detail = session.pending
+        ? `waiting on your guidance: ${JSON.stringify(session.pending.question)}`
+        : agreement.status === "open"
+          ? `still open, ${session.task?.history.length ?? 0} turns so far`
           : `${agreement.status}${terms}`;
 
       return `- ${session.id}${peer} — ${who}; ${detail}`;
@@ -741,6 +764,41 @@ export class Agent<A extends string = DefaultAction> {
     return this.pump(session, context);
   }
 
+  /**
+   * Folds the party's answer into a parked negotiation and pumps it on.
+   * Refusals are `skipped` events rather than throws, so a batch of
+   * resumes reports every id.
+   */
+  async resumeNegotiation(
+    id: string,
+    guidance: string,
+    context?: Pick<ToolContext, "negotiations" | "signal">,
+  ): Promise<NegotiationEvent<A>> {
+    const session = context?.negotiations.get(id) ?? this.sessions.get(id);
+    const skip = (reason: string): NegotiationEvent<A> => ({
+      kind: "skipped",
+      id,
+      peer: session?.peer?.name,
+      reason,
+    });
+
+    if (!session) return skip(`No negotiation "${id}".`);
+    if (session.direction === "inbound") {
+      return skip("They contacted you; you answer their turns as they arrive.");
+    }
+    const state = session.task?.status.state;
+    if (state && isTerminalTaskState(state)) {
+      return skip(`already ended (${state}) — open a new negotiation if the terms need to change.`);
+    }
+    if (!session.pending) return skip("not waiting on you.");
+
+    session.guidance = [...(session.guidance ?? []), guidance];
+    delete session.pending;
+    this.sessions.save(session);
+    context?.negotiations.set(session.id, session);
+    return this.pump(session, context);
+  }
+
   /** Takes turns until an event. Turns are counted from the Task, so a
    * session resumed in another process picks up the right count. */
   private async pump(
@@ -755,11 +813,31 @@ export class Agent<A extends string = DefaultAction> {
         return { kind: "budget", id: session.id, peer, last: lastPeerDecision(session), turns };
       }
 
+      const before = session.id;
       let turn: NegotiationTurn<A>;
       try {
-        turn = await this.takeTurn(session, undefined, context?.signal);
+        turn = await this.takeTurn(session, undefined, context?.signal, true);
       } catch (cause) {
+        if (cause instanceof Escalation) {
+          session.pending = { question: cause.decision.message };
+          this.sessions.save(session);
+          context?.negotiations.set(session.id, session);
+          return {
+            kind: "asking",
+            id: session.id,
+            peer,
+            question: cause.decision.message,
+            last: lastPeerDecision(session),
+            turns,
+          };
+        }
         return { kind: "failed", id: session.id, peer, error: describe(cause), turns };
+      }
+      // A negotiation parked before its first turn was keyed by a
+      // provisional id; now the Task exists, the record uses the real one.
+      if (before.startsWith("local:") && session.id !== before) {
+        context?.negotiations.delete(before);
+        this.sessions.delete?.(before);
       }
       context?.negotiations.set(session.id, session);
 
@@ -781,17 +859,36 @@ export class Agent<A extends string = DefaultAction> {
     session: NegotiationSession,
     guidance?: string,
     signal?: AbortSignal,
+    escalate = false,
   ): Promise<NegotiationTurn<A>> {
     let sent: NegotiationDecision<A> | undefined;
+
+    // Standing guidance from the party holds for the rest of this
+    // negotiation; per-turn guidance is for this turn only.
+    const standing = session.guidance?.length
+      ? `${session.objective}\n\nGuidance from the party you act for:\n${session.guidance.join("\n")}`
+      : session.objective;
+
+    // Under the pump, `ask` is on the menu — and taking it throws before
+    // anything is sent, which is the whole point of offering it.
+    const strategy: DecisionStrategy<A> = escalate
+      ? async (negotiator, state, actions, opts) => {
+          const decision = await this.strategy(negotiator, state, actions, opts);
+          if ((decision.action as string) === ASK_ACTION.action) throw new Escalation(decision);
+          return decision;
+        }
+      : this.strategy;
 
     const client = new A2ANegotiationClient<A>({
       negotiator: this.negotiator,
       party: {
         name: this.identity.name,
-        objective: guidance ? `${session.objective}\n\nFor this turn: ${guidance}` : session.objective,
+        objective: guidance ? `${standing}\n\nFor this turn: ${guidance}` : standing,
       },
-      allowedActions: this.allowedActions,
-      strategy: this.strategy,
+      allowedActions: escalate
+        ? [...this.allowedActions, ASK_ACTION as unknown as ActionSpec<A>]
+        : this.allowedActions,
+      strategy,
       evaluate: this.options.evaluate,
       credentials: this.options.credentials,
       timeoutMs: this.options.turnTimeout,

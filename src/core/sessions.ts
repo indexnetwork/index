@@ -24,4 +24,8 @@ export class MemoryNegotiationStore implements NegotiationStore {
   list(): NegotiationSession[] {
     return [...this.sessions.values()];
   }
+
+  delete(id: string): void {
+    this.sessions.delete(id);
+  }
 }

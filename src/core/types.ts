@@ -129,6 +129,14 @@ export interface NegotiationSession {
    * nothing was fetched. */
   peer: IdentifiedAgentCard | null;
   task: A2ATask;
+  /** Set while the negotiation is parked on a question for the party this
+   * agent acts for. Cleared by `resumeNegotiation()`. */
+  pending?: { question: string };
+  /** Standing guidance from the party, oldest first, folded into the
+   * objective of every later turn. Unlike `negotiate_turn`'s per-turn
+   * guidance, an answer given to a parked negotiation has to hold for
+   * the rest of it. */
+  guidance?: string[];
 }
 
 /**
@@ -144,6 +152,10 @@ export interface NegotiationStore {
   save(session: NegotiationSession): void;
   /** Most recently updated last. */
   list(): NegotiationSession[];
+  /** Removes a session. Optional: only needed to drop the provisional
+   * `local:` key once a parked negotiation has a Task id. A store
+   * without it keeps a duplicate line in the record. */
+  delete?(id: string): void;
 }
 
 /**
