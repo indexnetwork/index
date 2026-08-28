@@ -171,7 +171,6 @@ void frameDriftQueue.start().catch((error) => {
 hydeQueue.startCrons();
 negotiationReflectQueue.startCrons();
 personalAgentQueue.startWorker();
-premiseQueue.startWorker();
 premiseQueue.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -574,7 +573,6 @@ const shutdown = async () => {
   await Promise.allSettled([
     negotiationWatchdogQueue.close(),
     personalAgentQueue.close(),
-    premiseQueue.close(),
     frameDriftQueue.close(),
   ]);
   logger.info('Workers closed');

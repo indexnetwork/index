@@ -92,7 +92,7 @@ describe('PremiseQueue — premise_cascade', () => {
       updateOpportunityStatus: async () => {},
     };
     const queue = new PremiseQueue(deps);
-    await queue.processJob('premise_cascade', { premiseId: 'p-0', userId: 'u-0', event: 'retracted' });
+    await queue.premiseCascade({ premiseId: 'p-0', userId: 'u-0', event: 'retracted' });
     expect(fetchArgs).toEqual([['u-0', 'p-0']]);
   });
 
@@ -109,7 +109,7 @@ describe('PremiseQueue — premise_cascade', () => {
       },
     };
     const queue = new PremiseQueue(deps);
-    await queue.processJob('premise_cascade', { premiseId: 'p-1', userId: 'u-1', event: 'retracted' });
+    await queue.premiseCascade({ premiseId: 'p-1', userId: 'u-1', event: 'retracted' });
     expect(transitions).toEqual([
       ['opp-1', 'expired'],
       ['opp-2', 'expired'],
@@ -129,7 +129,7 @@ describe('PremiseQueue — premise_cascade', () => {
       },
     };
     const queue = new PremiseQueue(deps);
-    await queue.processJob('premise_cascade', { premiseId: 'p-2', userId: 'u-2', event: 'expired' });
+    await queue.premiseCascade({ premiseId: 'p-2', userId: 'u-2', event: 'expired' });
     expect(transitions).toEqual([
       ['opp-1', 'expired'],
       ['opp-2', 'expired'],
@@ -151,7 +151,7 @@ describe('PremiseQueue — premise_cascade', () => {
       },
     };
     const queue = new PremiseQueue(deps);
-    await queue.processJob('premise_cascade', { premiseId: 'p-3', userId: 'u-3', event: 'retracted' });
+    await queue.premiseCascade({ premiseId: 'p-3', userId: 'u-3', event: 'retracted' });
     expect(transitions).toEqual([
       ['opp-a', 'expired'],
       ['opp-b', 'expired'],
@@ -169,7 +169,7 @@ describe('PremiseQueue — premise_cascade', () => {
     };
     const queue = new PremiseQueue(deps);
     await expect(
-      queue.processJob('premise_cascade', { premiseId: 'p-4', userId: 'u-4', event: 'retracted' })
+      queue.premiseCascade({ premiseId: 'p-4', userId: 'u-4', event: 'retracted' })
     ).resolves.toBeUndefined();
     expect(updateOpportunityStatus).not.toHaveBeenCalled();
   });
@@ -185,7 +185,7 @@ describe('PremiseQueue — premise_cascade', () => {
       updateOpportunityStatus,
     };
     const queue = new PremiseQueue(deps);
-    await queue.processJob('premise_cascade', { premiseId: 'p-5', userId: 'u-5', event: 'retracted' });
+    await queue.premiseCascade({ premiseId: 'p-5', userId: 'u-5', event: 'retracted' });
     expect(updateOpportunityStatus).toHaveBeenCalledTimes(2);
   });
 });
@@ -226,7 +226,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
       },
     };
     const queue = new PremiseQueue(deps);
-    await queue.processJob('premise_cascade', { premiseId: 'p-1', userId: 'u-1', event: 'retracted' });
+    await queue.premiseCascade({ premiseId: 'p-1', userId: 'u-1', event: 'retracted' });
     expect(verified).toEqual([
       'Looking for a co-founder in Berlin',
       'Seeking Berlin-based investors',
@@ -245,7 +245,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
       getGroundedIntents,
     };
     const queue = new PremiseQueue(deps);
-    await queue.processJob('premise_cascade', { premiseId: 'p-2', userId: 'u-2', event: 'expired' });
+    await queue.premiseCascade({ premiseId: 'p-2', userId: 'u-2', event: 'expired' });
     expect(getGroundedIntents).not.toHaveBeenCalled();
   });
 
@@ -260,7 +260,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
       verifyIntent,
     };
     const queue = new PremiseQueue(deps);
-    await queue.processJob('premise_cascade', { premiseId: 'p-3', userId: 'u-3', event: 'retracted' });
+    await queue.premiseCascade({ premiseId: 'p-3', userId: 'u-3', event: 'retracted' });
     expect(getUserProfileContext).not.toHaveBeenCalled();
     expect(verifyIntent).not.toHaveBeenCalled();
   });
@@ -285,7 +285,7 @@ describe('PremiseQueue — grounded intent re-verification', () => {
     };
     const queue = new PremiseQueue(deps);
     await expect(
-      queue.processJob('premise_cascade', { premiseId: 'p-4', userId: 'u-4', event: 'retracted' })
+      queue.premiseCascade({ premiseId: 'p-4', userId: 'u-4', event: 'retracted' })
     ).resolves.toBeUndefined();
     expect(applied).toEqual(['intent-good']);
   });
@@ -301,21 +301,9 @@ describe('PremiseQueue — grounded intent re-verification', () => {
     };
     const queue = new PremiseQueue(deps);
     await expect(
-      queue.processJob('premise_cascade', { premiseId: 'p-5', userId: 'u-5', event: 'retracted' })
+      queue.premiseCascade({ premiseId: 'p-5', userId: 'u-5', event: 'retracted' })
     ).resolves.toBeUndefined();
     expect(transitions).toEqual(['opp-1']);
   });
 });
 
-// ---------------------------------------------------------------------------
-// PremiseQueue routing tests
-// ---------------------------------------------------------------------------
-describe('PremiseQueue — job routing', () => {
-  it('does not throw for unknown job names', async () => {
-    const deps: PremiseQueueDeps = {};
-    const queue = new PremiseQueue(deps);
-    await expect(
-      queue.processJob('unknown_job_type', { premiseId: 'p-x', userId: 'u-x', event: 'retracted' })
-    ).resolves.toBeUndefined();
-  });
-});

@@ -1,14 +1,10 @@
 import cron from 'node-cron';
-import { Job, JobsOptions } from 'bullmq';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
-import { QueueFactory } from '../lib/bullmq/bullmq';
+import { background } from '../lib/background';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
-
-/** BullMQ queue name for premise cascade and profile regeneration jobs. */
-export const QUEUE_NAME = 'premise-queue';
 
 // ---------------------------------------------------------------------------
 // Payload types
@@ -29,9 +25,6 @@ export interface PremiseDecomposeProfileData {
   /** The user whose profile (name/location/intro) should be decomposed into premises. */
   userId: string;
 }
-
-/** Union of all job payloads accepted by the premise queue. */
-export type PremiseJobPayload = PremiseCascadeData | PremiseDecomposeProfileData;
 
 // ---------------------------------------------------------------------------
 // Opportunity status helpers (kept local to avoid importing schema at queue layer)
@@ -191,21 +184,14 @@ function buildProfileInputFromUser(user: { name?: string | null; intro?: string 
  * lapsed premise (embedding-proximity heuristic) so their felicity scores
  * don't go stale.
  *
- * @remarks
- * Workers are started only by the protocol server via {@link PremiseQueue.startWorker}.
  */
 export class PremiseQueue {
-  static readonly QUEUE_NAME = QUEUE_NAME;
-
-  readonly queue = QueueFactory.createQueue<PremiseJobPayload>(QUEUE_NAME);
-
   private readonly logger = log.job.from('PremiseJob');
   private readonly expiryLogger = log.job.from('PremiseJob:ExpiryCheck');
   private readonly cascadeLogger = log.job.from('PremiseJob:Cascade');
   private readonly decomposeLogger = log.job.from('PremiseJob:DecomposeProfile');
   private readonly queueLogger = log.queue.from('PremiseQueue');
   private readonly deps: PremiseQueueDeps | undefined;
-  private worker: ReturnType<typeof QueueFactory.createWorker<PremiseJobPayload>> | null = null;
   private cronTask: ReturnType<typeof cron.schedule> | null = null;
 
   constructor(deps?: PremiseQueueDeps) {
@@ -213,97 +199,25 @@ export class PremiseQueue {
   }
 
   // -------------------------------------------------------------------------
-  // Convenience enqueue methods
+  // Fire-and-forget triggers
   // -------------------------------------------------------------------------
 
   /**
-   * Enqueue a premise cascade job.
-   * Job ID is deduplicated per premise+event so duplicate triggers are safe.
+   * Trigger a premise cascade in the background.
    * @param data - Cascade payload
    */
-  addCascadeJob(data: PremiseCascadeData): Promise<Job<PremiseJobPayload>> {
-    return this.addJob('premise_cascade', data, {
-      jobId: `premise-cascade-${data.premiseId}-${data.event}`,
-    });
+  addCascadeJob(data: PremiseCascadeData): Promise<void> {
+    background('premise', () => this.premiseCascade(data));
+    return Promise.resolve();
   }
 
   /**
-   * Enqueue a profile-decomposition job. Deduplicated by user so rapid
-   * successive profile/social saves coalesce into one run.
+   * Trigger profile decomposition in the background.
    * @param userId - The user whose profile should be decomposed
    */
-  addDecomposeProfileJob(userId: string): Promise<Job<PremiseJobPayload>> {
-    return this.addJob('premise_decompose_profile', { userId }, {
-      jobId: `premise-decompose-profile-${userId}`,
-    });
-  }
-
-  // -------------------------------------------------------------------------
-  // Core enqueue method
-  // -------------------------------------------------------------------------
-
-  /**
-   * Add a named job to the premise queue.
-   * @param name - Job type (`premise_cascade` or `premise_decompose_profile`)
-   * @param data - Job payload
-   * @param options - Optional jobId, priority, and removeOnComplete/removeOnFail overrides
-   */
-  async addJob(
-    name: 'premise_cascade' | 'premise_decompose_profile',
-    data: PremiseJobPayload,
-    options?: {
-      jobId?: string;
-      priority?: number;
-      removeOnComplete?: JobsOptions['removeOnComplete'];
-      removeOnFail?: JobsOptions['removeOnFail'];
-    }
-  ): Promise<Job<PremiseJobPayload>> {
-    return this.queue.add(name, data, {
-      jobId: options?.jobId,
-      priority: options?.priority,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: options?.removeOnComplete ?? { age: 24 * 60 * 60 },
-      removeOnFail: options?.removeOnFail ?? { age: 7 * 24 * 60 * 60 },
-    });
-  }
-
-  // -------------------------------------------------------------------------
-  // Job routing
-  // -------------------------------------------------------------------------
-
-  /**
-   * Route and dispatch a job by name. Called by the worker and directly by tests.
-   * @param name - Job name
-   * @param data - Job payload
-   */
-  async processJob(name: string, data: PremiseJobPayload): Promise<void> {
-    switch (name) {
-      case 'premise_cascade':
-        await this.handlePremiseCascade(data as PremiseCascadeData);
-        break;
-      case 'premise_decompose_profile':
-        await this.handleDecomposeProfile(data as PremiseDecomposeProfileData);
-        break;
-      default:
-        this.queueLogger.warn('Unknown job name', { name });
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Worker lifecycle
-  // -------------------------------------------------------------------------
-
-  /**
-   * Start the BullMQ worker. Idempotent; call from the protocol server only.
-   */
-  startWorker(): void {
-    if (this.worker) return;
-    const processor = async (job: Job<PremiseJobPayload>) => {
-      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
-      await this.processJob(job.name, job.data);
-    };
-    this.worker = QueueFactory.createWorker<PremiseJobPayload>(QUEUE_NAME, processor);
+  addDecomposeProfileJob(userId: string): Promise<void> {
+    background('premise', () => this.decomposeProfile({ userId }));
+    return Promise.resolve();
   }
 
   /**
@@ -345,21 +259,6 @@ export class PremiseQueue {
 
     this.expiryLogger.info('Expired premises', { count: expired.length });
     return expired.length;
-  }
-
-  /**
-   * Gracefully close the worker and queue connections.
-   */
-  async close(): Promise<void> {
-    if (this.cronTask) {
-      this.cronTask.stop();
-      this.cronTask = null;
-    }
-    if (this.worker) {
-      await this.worker.close();
-      this.worker = null;
-    }
-    await this.queue.close();
   }
 
   // -------------------------------------------------------------------------
@@ -414,7 +313,7 @@ export class PremiseQueue {
     await adapter.updatePremise(premiseId, { status: 'EXPIRED' });
   }
 
-  private async handlePremiseCascade(data: PremiseCascadeData): Promise<void> {
+  async premiseCascade(data: PremiseCascadeData): Promise<void> {
     const { premiseId, userId, event } = data;
     this.cascadeLogger.info('Starting cascade', { premiseId, userId, event });
 
@@ -461,7 +360,7 @@ export class PremiseQueue {
     });
   }
 
-  private async handleDecomposeProfile(data: PremiseDecomposeProfileData): Promise<void> {
+  async decomposeProfile(data: PremiseDecomposeProfileData): Promise<void> {
     const { userId } = data;
     this.decomposeLogger.info('Starting profile decomposition', { userId });
 

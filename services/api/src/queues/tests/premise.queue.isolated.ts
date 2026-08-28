@@ -1,21 +1,11 @@
 /**
- * Unit tests for PremiseQueue enqueue helpers and job dispatch. Injected deps
- * avoid Redis/DB/LLM; QueueFactory and the protocol/adapter modules are mocked.
+ * Unit tests for PremiseQueue triggers and handlers. Injected deps avoid
+ * Redis/DB/LLM; adapter and protocol modules are mocked.
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, expect, it, mock, afterAll } from 'bun:test';
-
-const mockAdd = mock(async () => ({ id: 'job-1', name: 'premise_decompose_profile', data: {} }));
-
-mock.module('../../lib/bullmq/bullmq', () => ({
-  QueueFactory: {
-    createQueue: () => ({ add: mockAdd, close: async () => {} }),
-    createWorker: () => ({}),
-    createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
-  },
-}));
 
 const mockGetUser = mock(async (_userId: string) => ({
   id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', intro: 'Engineer.', location: 'Berlin', socials: [],
@@ -48,26 +38,28 @@ afterAll(() => {
 import { PremiseQueue } from '../premise.queue';
 
 describe('PremiseQueue — addDecomposeProfileJob', () => {
-  it('enqueues with a per-user jobId so rapid successive saves coalesce', async () => {
-    const queue = new PremiseQueue();
-    await queue.addDecomposeProfileJob('user-1');
-
-    expect(mockAdd).toHaveBeenCalledWith(
-      'premise_decompose_profile',
-      { userId: 'user-1' },
-      expect.objectContaining({ jobId: 'premise-decompose-profile-user-1' }),
-    );
-  });
-});
-
-describe('PremiseQueue — job dispatch', () => {
-  it('routes premise_decompose_profile to the injected decomposeProfile dep', async () => {
+  it('triggers decomposeProfile in the background for the user', async () => {
     const calls: string[] = [];
     const queue = new PremiseQueue({
       decomposeProfile: async (userId) => { calls.push(userId); },
     });
 
-    await queue.processJob('premise_decompose_profile', { userId: 'user-2' });
+    const result = await queue.addDecomposeProfileJob('user-1');
+    expect(result).toBeUndefined();
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(calls).toEqual(['user-1']);
+  });
+});
+
+describe('PremiseQueue — decomposeProfile', () => {
+  it('routes to the injected decomposeProfile dep', async () => {
+    const calls: string[] = [];
+    const queue = new PremiseQueue({
+      decomposeProfile: async (userId) => { calls.push(userId); },
+    });
+
+    await queue.decomposeProfile({ userId: 'user-2' });
 
     expect(calls).toEqual(['user-2']);
   });
@@ -78,7 +70,7 @@ describe('PremiseQueue — job dispatch', () => {
     mockGraphInvoke.mockClear();
 
     const queue = new PremiseQueue();
-    await queue.processJob('premise_decompose_profile', { userId: 'user-1' });
+    await queue.decomposeProfile({ userId: 'user-1' });
 
     expect(mockGetUser).toHaveBeenCalledWith('user-1');
     expect(mockGraphInvoke).toHaveBeenCalledWith({
@@ -94,7 +86,7 @@ describe('PremiseQueue — job dispatch', () => {
     mockGetUser.mockResolvedValueOnce({ id: 'user-3', name: '', email: 'x@example.com', intro: null, location: null, socials: [] });
 
     const queue = new PremiseQueue();
-    await queue.processJob('premise_decompose_profile', { userId: 'user-3' });
+    await queue.decomposeProfile({ userId: 'user-3' });
 
     expect(mockGraphInvoke).not.toHaveBeenCalled();
   });
