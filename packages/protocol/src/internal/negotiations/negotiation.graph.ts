@@ -526,9 +526,13 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
 
 /**
  * Append one round-log event (stopped or resumed) for every seat bound to
- * this negotiation that has ever run a kickoff of its own (`batchId !==
- * null`). A seat whose intent has never kicked off has no batch to log
- * against — its own reflect will start once its first kickoff bumps one.
+ * this negotiation that has a batch to log against. Two cases skip: a seat
+ * whose intent has never kicked off (`batchId` is `null`) — its own reflect
+ * starts once its first kickoff bumps one — and a seat bound before this
+ * mechanism existed, whose stored `{userId, round}` shape has no `batchId`
+ * field at all (`undefined`, not `null`); `!binding.batchId` catches both,
+ * where `=== null` alone would let a pre-cutover task try to log an
+ * `undefined` batch id and fail the NOT NULL write.
  */
 async function appendRoundLogEventForEverySeat(
   deps: NegotiationGraphDeps,
@@ -537,7 +541,7 @@ async function appendRoundLogEventForEverySeat(
   event: { kind: "resumed" } | { kind: "stopped"; via: "paused" | "completed"; reason?: NegotiationPauseReason },
 ): Promise<void> {
   await Promise.all(Object.entries(meta.seats).map(async ([intentId, binding]) => {
-    if (binding.batchId === null) return;
+    if (!binding.batchId) return;
     if (event.kind === "resumed") {
       await deps.roundLog.appendNegotiationRoundLogEvent(intentId, { kind: "resumed", taskId, batchId: binding.batchId });
       return;
@@ -554,12 +558,13 @@ async function appendRoundLogEventForEverySeat(
  * Both sides batch their own kickoffs, so one pause can be the last one of
  * either side's — checking only the opener's would leave the counterparty's
  * batch waiting on a negotiation that had already stopped. A seat with no
- * batch (`batchId === null`) has never kicked off and has nothing to fold.
+ * batch — never kicked off (`batchId` is `null`), or bound before this
+ * mechanism existed (`batchId` is `undefined`) — has nothing to fold.
  */
 async function triggerReflectForEverySeat(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<boolean> {
   let succeeded = true;
   for (const [intentId, binding] of Object.entries(meta.seats)) {
-    if (binding.batchId === null) continue;
+    if (!binding.batchId) continue;
     const checked = await maybeEnqueueRoundReflect(deps.roundLog, deps.reflectEnqueue, {
       userId: binding.userId,
       intentId,
