@@ -1416,20 +1416,23 @@ describe("one clock", () => {
     const original = process.env.TZ;
 
     try {
-      for (const [timezone, instant] of [
+      // Rendered first, asserted once. Asserting inside the loop would stop
+      // at the first failure, and a green run could then mean the second
+      // pair was never evaluated at all.
+      const rendered = ([
         ["Pacific/Auckland", "2026-08-31T23:30:00Z"], // locally the 1st
         ["America/Los_Angeles", "2026-08-31T00:30:00Z"], // locally the 30th
-      ] as const) {
+      ] as const).map(([timezone, instant]) => {
         process.env.TZ = timezone;
-
         const agent = new Agent({
           ...buyer,
           negotiator: scripted([]).negotiator,
           now: () => new Date(instant),
         });
+        return agent.instructions().match(/Today is ([^.]+)\./)?.[1];
+      });
 
-        expect(agent.instructions()).toContain("Monday, 31 August 2026");
-      }
+      expect(rendered).toEqual(["Monday, 31 August 2026", "Monday, 31 August 2026"]);
     } finally {
       if (original === undefined) delete process.env.TZ;
       else process.env.TZ = original;
