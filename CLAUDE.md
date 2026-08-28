@@ -115,7 +115,6 @@ bun run db:generate                          # Generate migrations after schema 
 bun run db:migrate                           # Apply pending migrations
 bun run db:studio                            # Drizzle Studio
 bun run db:seed:sandbox -- --confirm --minimal  # Seed protocol_sandbox, five-person market
-bun run integration-worker | social-worker   # Background workers
 
 # apps/web
 bun run dev | build | start | lint
