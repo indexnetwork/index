@@ -23,6 +23,8 @@ import type { LensEmbedding as ProtocolLensEmbedding, HydeSearchOptions as Proto
 
 import type { UserDatabase as ProtocolUserDatabase, SystemDatabase as ProtocolSystemDatabase } from '@indexnetwork/protocol';
 
+import type { NegotiationRoundLogEventRecord as ProtocolNegotiationRoundLogEventRecord } from '@indexnetwork/protocol';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Adapter local types (the structurally-aligned copies)
@@ -32,6 +34,8 @@ import type { Cache as AdapterCache, CacheOptions as AdapterCacheOptions } from 
 import type { LensEmbedding as AdapterLensEmbedding, HydeSearchOptions as AdapterHydeSearchOptions, HydeCandidate as AdapterHydeCandidate, VectorSearchResult as AdapterVectorSearchResult, VectorStoreOption as AdapterVectorStoreOption } from '../embedder.adapter';
 
 import { createUserDatabase, createSystemDatabase } from '../database.adapter';
+
+import type { NegotiationRoundLogEventRecord as AdapterNegotiationRoundLogEventRecord } from '../negotiation-round-log.database.adapter';
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -130,6 +134,22 @@ describe('Database adapter ↔ protocol interface alignment', () => {
   it('createSystemDatabase return type is assignable to protocol SystemDatabase', () => {
     type SystemDbReturn = ReturnType<typeof createSystemDatabase>;
     const check: (_: SystemDbReturn) => ProtocolSystemDatabase = (v) => v;
+    expect(check).toBeDefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NEGOTIATION ROUND LOG ADAPTER ALIGNMENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('Negotiation round log adapter ↔ protocol interface alignment', () => {
+  it('NegotiationRoundLogEventRecord: adapter → protocol', () => {
+    const check: (_: AdapterNegotiationRoundLogEventRecord) => ProtocolNegotiationRoundLogEventRecord = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('NegotiationRoundLogEventRecord: protocol → adapter', () => {
+    const check: (_: ProtocolNegotiationRoundLogEventRecord) => AdapterNegotiationRoundLogEventRecord = (v) => v;
     expect(check).toBeDefined();
   });
 });

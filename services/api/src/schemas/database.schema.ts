@@ -553,25 +553,13 @@ export const intents = pgTable('intents', {
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   /**
-   * Bumped by NegotiationGraph at every fresh kickoff of a round of
-   * negotiations for this intent. The reflect trigger's key, alongside the
-   * negotiation task's `round` metadata (design doc 2026-08-23).
+   * Written by NegotiationGraph at every fresh kickoff batch for this intent.
+   * A fresh UUID per kickoff; null means this signal has never itself kicked
+   * off (#1494). The reflect trigger's key, alongside the negotiation task's
+   * `batchId` metadata — settlement itself is folded from
+   * `negotiation_round_log_events`, not read from a size/timestamp pair here.
    */
-  negotiationRound: integer('negotiation_round').notNull().default(0),
-  /**
-   * How many negotiations the current round actually opened, stamped by
-   * kickoff only after every parallel open has settled. NULL means the round
-   * is still opening, and the all-paused → reflect check is a no-op until the
-   * stamp lands (design doc 2026-08-23, decision D2).
-   */
-  negotiationRoundSize: integer('negotiation_round_size'),
-  /**
-   * When a kickoff for the CURRENT round began — stamped by the round bump,
-   * the one write that begins one. Read with `negotiationRoundSize`: set with
-   * a null size is a kickoff that did not finish; null means no kickoff has
-   * ever run for this signal, which is where every pre-0146 intent starts.
-   */
-  negotiationKickoffStartedAt: timestamp('negotiation_kickoff_started_at', { withTimezone: true }),
+  negotiationBatchId: text('negotiation_batch_id'),
   /**
    * When the intent's first background discovery run completed successfully
    * (any path: web from-intent queue or async MCP discovery-run). Null until
@@ -1159,6 +1147,40 @@ export const intentAgentActs = pgTable(
 
 export type IntentAgentAct = typeof intentAgentActs.$inferSelect;
 export type NewIntentAgentAct = typeof intentAgentActs.$inferInsert;
+
+export const negotiationRoundLogEventKindEnum = pgEnum('negotiation_round_log_event_kind', ['opened', 'stopped', 'resumed', 'opening_complete']);
+export const negotiationRoundLogEventViaEnum = pgEnum('negotiation_round_log_event_via', ['paused', 'completed']);
+
+/**
+ * Append-only event log a batch's "has everything settled" answer is folded
+ * from (`@indexnetwork/protocol`'s `foldNegotiationRoundLog`), replacing the
+ * racy quartet of separately-written fields (`intents.negotiation_round`,
+ * `negotiation_round_size`, `negotiation_kickoff_started_at`,
+ * `metadata.drainGeneration`) that used to live on `intents`/`tasks`.
+ */
+export const negotiationRoundLogEvents = pgTable(
+  'negotiation_round_log_events',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    intentId: text('intent_id').notNull(),
+    batchId: text('batch_id').notNull(),
+    /** Absent only for 'opening_complete', which has no task. */
+    taskId: text('task_id'),
+    kind: negotiationRoundLogEventKindEnum('kind').notNull(),
+    /** Only set on 'stopped' events. */
+    via: negotiationRoundLogEventViaEnum('via'),
+    /** Only set on 'stopped' events whose `via` is 'paused' (a `NegotiationPauseReasonName`). */
+    reason: text('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // The fold's read: one intent's one batch, in append order.
+    batchIdx: index('idx_negotiation_round_log_events_batch').on(t.intentId, t.batchId, t.createdAt),
+  }),
+);
+
+export type NegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$inferSelect;
+export type NewNegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations

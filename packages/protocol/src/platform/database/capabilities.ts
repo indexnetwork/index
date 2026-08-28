@@ -132,7 +132,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // Orphan heal in OpportunityGraph persist node
   | 'getNegotiationTaskForOpportunity'
   // negotiateNode bumps the round once per (intentId) in a kickoff batch
-  | 'bumpIntentNegotiationRound'
+  | 'bumpIntentNegotiationBatch'
 >;
 
 /**
@@ -194,7 +194,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'getNegotiationTaskForOpportunity'
   // negotiateNode bumps the round once per (intentId) in a kickoff batch and
   // passes it to every open() in that batch — a round is the batch, not one opportunity.
-  | 'bumpIntentNegotiationRound'
+  | 'bumpIntentNegotiationBatch'
 >;
 export interface OutcomeOutbox {
   event: unknown;

@@ -233,6 +233,14 @@ export type {
   NegotiationRoundReflectCheck,
   NegotiationRoundReflectEnqueueFn,
 } from "./internal/negotiations/negotiation.round-reflect.js";
+export { foldNegotiationRoundLog } from "./internal/negotiations/negotiation.round-log.js";
+export type {
+  NegotiationRoundLogEvent,
+  NegotiationRoundLogOpenedEvent,
+  NegotiationRoundLogStoppedEvent,
+  NegotiationRoundLogResumedEvent,
+  NegotiationRoundLogFoldResult,
+} from "./internal/negotiations/negotiation.round-log.js";
 // ─── PersonalAgent (AgentGraph) ─────────────────────────────────────────────
 /**
  * One persona, three scopes, routed on the shape of the invoke input. The
@@ -290,6 +298,9 @@ export type {
   NegotiationSeatBinding,
   NegotiationTaskState,
   NegotiationMessageRow,
+  NegotiationRoundLogDatabase,
+  NegotiationRoundLogEventKind,
+  NegotiationRoundLogEventRecord,
 } from "./platform/database/negotiation.js";
 
 // ─── Opportunity compatibility exports ─────────────────────────────────────

@@ -191,23 +191,23 @@ export class PersonalAgentQueue {
   }
 
   /**
-   * Every negotiation of a round has paused. The deterministic job id is the
-   * whole dedup: duplicate delivery of one durable drain produces one reflect,
-   * and the completed job is retained so that generation cannot run twice. A
-   * reopened task increments its durable generation and therefore gets a new
-   * job. The queue's
+   * Every negotiation of a batch has paused. The deterministic job id is the
+   * whole dedup: duplicate delivery of one durable settle produces one
+   * reflect, and the completed job is retained so that dedupe key cannot run
+   * twice. A reopened task produces a new dedupe key (the round-log fold's
+   * own position marker) and therefore a new job. The queue's
    * default `removeOnComplete: { age: 24h }` would free the id, and a late
    * watchdog delivery of the same durable pause would then wake the agent to
-   * re-decide work it already closed out. One retained row per drain
-   * generation is the price of exactly-once.
+   * re-decide work it already closed out. One retained row per settle's
+   * dedupe key is the price of exactly-once.
    *
    * `removeOnFail` keeps the default 7-day window on purpose: a reflect lost
    * to a transient model outage should become reachable again, and a genuinely
-   * dead drain is better re-run once than never.
+   * dead settle is better re-run once than never.
    */
   addAllPausedEvent(job: NegotiationRoundReflectJobData): Promise<Job<PersonalAgentEvent>> {
     return this.queue.add('all_paused', { ...job, event: 'all_paused' }, {
-      jobId: negotiationRoundReflectJobId(job.intentId, job.round, job.generation),
+      jobId: negotiationRoundReflectJobId(job.intentId, job.batchId, job.dedupeKey),
       removeOnComplete: false,
     });
   }

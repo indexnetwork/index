@@ -244,14 +244,14 @@ describe('ConversationDatabaseAdapter', () => {
       createdIds.push(conv.id);
 
       const staleSubmitted = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-submitted', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', batchId: 'batch-1' } },
       });
       const staleWorking = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-working', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', batchId: 'batch-1' } },
       });
       await adapter.updateTaskState(staleWorking.id, 'working');
       const freshSubmitted = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-fresh', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', batchId: 'batch-1' } },
       });
       const terminalOpportunityId = `watchdog-terminal-${crypto.randomUUID()}`;
       await db.insert(schema.opportunities).values({
@@ -265,7 +265,7 @@ describe('ConversationDatabaseAdapter', () => {
       });
       createdOpportunityIds.push(terminalOpportunityId);
       const terminalActive = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: terminalOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+        type: 'negotiation', opportunityId: terminalOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', batchId: 'batch-1' } },
       });
       await adapter.updateTaskState(terminalActive.id, 'working');
       const expiredOpportunityId = `watchdog-expired-${crypto.randomUUID()}`;
@@ -280,17 +280,17 @@ describe('ConversationDatabaseAdapter', () => {
       });
       createdOpportunityIds.push(expiredOpportunityId);
       const expiredActive = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: expiredOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+        type: 'negotiation', opportunityId: expiredOpportunityId, sourceUserId: 'watchdog-user', candidateUserId: 'watchdog-peer', seats: { 'watchdog-intent': { userId: 'watchdog-user', batchId: 'batch-1' } },
       });
       await adapter.updateTaskState(expiredActive.id, 'working');
       const readyForVerdict = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-ready', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-ready', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', batchId: 'batch-1' } },
       });
       await adapter.updateNegotiationTaskState(readyForVerdict.id, 'paused', {
         reason: 'ready_for_verdict', pausedBy: 'watchdog-user',
       });
       const completed = await adapter.createTask(conv.id, {
-        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', round: 1 } },
+        type: 'negotiation', opportunityId: 'watchdog-opportunity-completed', sourceUserId: 'watchdog-user', seats: { 'watchdog-intent': { userId: 'watchdog-user', batchId: 'batch-1' } },
       });
       await adapter.updateTaskState(completed.id, 'completed');
       const nonNegotiation = await adapter.createTask(conv.id, { type: 'chat' });
@@ -348,8 +348,7 @@ describe('ConversationDatabaseAdapter', () => {
           opportunityId: `watchdog-rotation-opportunity-${index}`,
           sourceUserId: 'watchdog-rotation-user',
           candidateUserId: 'watchdog-rotation-peer',
-          seats: { 'watchdog-rotation-intent': { userId: 'watchdog-rotation-user', round: 1 } },
-          drainGeneration: 0,
+          seats: { 'watchdog-rotation-intent': { userId: 'watchdog-rotation-user', batchId: 'batch-1' } },
         });
         await adapter.updateNegotiationTaskState(task.id, 'paused', {
           reason: 'ready_for_verdict', pausedBy: 'watchdog-rotation-user',
@@ -455,8 +454,8 @@ describe('ConversationDatabaseAdapter', () => {
       ]);
       createdUserIds.push(ownerId, counterpartId);
       await db.insert(schema.intents).values([
-        { id: ownerIntentId, userId: ownerId, payload: 'Owner intent', negotiationRound: 1, negotiationRoundSize: 1 },
-        { id: counterpartIntentId, userId: counterpartId, payload: 'Counterpart intent', negotiationRound: 1, negotiationRoundSize: 1 },
+        { id: ownerIntentId, userId: ownerId, payload: 'Owner intent', negotiationBatchId: 'batch-1' },
+        { id: counterpartIntentId, userId: counterpartId, payload: 'Counterpart intent', negotiationBatchId: 'batch-1' },
       ]);
       createdIntentIds.push(ownerIntentId, counterpartIntentId);
       await db.insert(schema.opportunities).values({
@@ -486,10 +485,9 @@ describe('ConversationDatabaseAdapter', () => {
         initiatorUserId: ownerId,
         networkId: 'pause-network',
         seats: {
-          [ownerIntentId]: { userId: ownerId, round: 1 },
-          [counterpartIntentId]: { userId: counterpartId, round: 1 },
+          [ownerIntentId]: { userId: ownerId, batchId: 'batch-1' },
+          [counterpartIntentId]: { userId: counterpartId, batchId: 'batch-1' },
         },
-        drainGeneration: 0,
         pause: {
           reason: 'ready_for_verdict',
           payload: { recommendation: 'pending', reasoning: 'Owner recommends proceeding.' },
@@ -497,13 +495,13 @@ describe('ConversationDatabaseAdapter', () => {
         },
       });
       const submittedCycle = await adapter.getIntentCycleForIntent(ownerId, ownerIntentId);
-      expect(submittedCycle?.round.active).toBe(1);
+      expect(submittedCycle?.batch.active).toBe(1);
       expect(submittedCycle?.negotiations[0]?.state).toBe('submitted');
       await adapter.updateTaskState(task.id, 'paused');
 
       const ownerCycle = await adapter.getIntentCycleForIntent(ownerId, ownerIntentId);
       const counterpartCycle = await adapter.getIntentCycleForIntent(counterpartId, counterpartIntentId);
-      expect(ownerCycle?.round.active).toBe(0);
+      expect(ownerCycle?.batch.active).toBe(0);
       expect(ownerCycle?.negotiations[0]?.pause?.by).toBe('yours');
       expect(counterpartCycle?.negotiations[0]?.pause?.by).toBe('theirs');
 
@@ -568,10 +566,9 @@ describe('ConversationDatabaseAdapter', () => {
         initiatorUserId: ownerId,
         networkId: 'pause-network',
         seats: {
-          [ownerIntentId]: { userId: ownerId, round: 1 },
-          [counterpartIntentId]: { userId: counterpartId, round: 1 },
+          [ownerIntentId]: { userId: ownerId, batchId: "batch-1" },
+          [counterpartIntentId]: { userId: counterpartId, batchId: "batch-1" },
         },
-        drainGeneration: 0,
       });
       await adapter.updateTaskState(expiredTask.id, 'working');
       const expiredClosed = await adapter.completeNegotiation({
@@ -918,7 +915,7 @@ describe('ConversationDatabaseAdapter', () => {
         type: 'negotiation',
         sourceUserId: userId,
         candidateUserId: counterpart,
-        seats: { 'intent-live': { userId, round: 1 } },
+        seats: { 'intent-live': { userId, batchId: 'batch-1' } },
       });
 
       // A pre-rewrite row (no seat binding) is inert: the graph reads it back as
@@ -976,12 +973,13 @@ describe('ConversationDatabaseAdapter', () => {
   });
 
   describe('pre-rewrite negotiations are inert to the new lifecycle (#1494 round-4)', () => {
-    it('a legacy row without a seat binding is invisible to the round count and to every graph lookup', async () => {
+    it('a legacy row without a seat binding is invisible to the batch count and to every graph lookup', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;
       const intentId = `legacy-inert-intent-${run}`;
       const userId = `legacy-inert-user-${run}`;
       const counterpart = `legacy-inert-counterpart-${run}`;
       const legacyOpportunityId = `legacy-inert-opportunity-${run}`;
+      const batchId = `legacy-inert-batch-${run}`;
 
       const conversation = await adapter.createConversation([
         { participantId: `agent:${userId}`, participantType: 'agent' as const },
@@ -994,11 +992,11 @@ describe('ConversationDatabaseAdapter', () => {
         opportunityId: `legacy-inert-current-${run}`,
         sourceUserId: userId,
         candidateUserId: counterpart,
-        seats: { [intentId]: { userId, round: 3 } },
+        seats: { [intentId]: { userId, batchId } },
       });
-      // A just-created negotiation is submitted, and still holds the round
+      // A just-created negotiation is submitted, and still holds the batch
       // active until its worker starts and eventually pauses or completes it.
-      expect(await adapter.countActiveNegotiationsForRound(intentId, 3)).toBe(1);
+      expect(await adapter.countActiveNegotiationsForBatch(intentId, batchId)).toBe(1);
       await adapter.updateTaskState(current.id, 'working');
 
       // Pre-rewrite rows have no seat binding.
@@ -1019,9 +1017,9 @@ describe('ConversationDatabaseAdapter', () => {
       });
       await adapter.updateTaskState(legacyOffContract.id, 'paused');
 
-      // Only the round-3 row counts; a legacy row can neither inflate the
+      // Only the batch row counts; a legacy row can neither inflate the
       // count nor sit outside it while still being resumable.
-      expect(await adapter.countActiveNegotiationsForRound(intentId, 3)).toBe(1);
+      expect(await adapter.countActiveNegotiationsForBatch(intentId, batchId)).toBe(1);
 
       expect((await adapter.getNegotiationTask(current.id))?.id).toBe(current.id);
       expect(await adapter.getNegotiationTask(legacyWorking.id)).toBeNull();
@@ -1045,8 +1043,7 @@ describe('ConversationDatabaseAdapter', () => {
         type: 'negotiation',
         sourceUserId: userId,
         candidateUserId: counterpart,
-        seats: { 'intent-a': { userId, round: 1 } },
-        drainGeneration: 0,
+        seats: { 'intent-a': { userId, batchId: 'batch-1' } },
       });
 
       // The old select-then-spread-then-update shape had a lost-update race
@@ -1055,26 +1052,25 @@ describe('ConversationDatabaseAdapter', () => {
       // key. jsonb_set merges one key server-side, so both survive
       // regardless of interleaving.
       await Promise.all([
-        adapter.bindNegotiationSeat(task.id, 'intent-a', { userId, round: 7 }),
+        adapter.bindNegotiationSeat(task.id, 'intent-a', { userId, batchId: 'batch-7' }),
         adapter.updateNegotiationTaskState(task.id, 'paused', { reason: 'counterparty_silent' }),
       ]);
 
       const reread = await adapter.getNegotiationTask(task.id);
-      expect(reread?.metadata.seats['intent-a']).toEqual({ userId, round: 7 });
+      expect(reread?.metadata.seats['intent-a']).toEqual({ userId, batchId: 'batch-7' });
       expect(reread?.metadata.pause).toMatchObject({ reason: 'counterparty_silent' });
       expect(reread?.state).toBe('paused');
 
       const firstResume = await adapter.updateNegotiationTaskState(task.id, 'working', null);
-      expect(firstResume.metadata.drainGeneration).toBe(1);
       expect(firstResume.metadata.pause).toBeNull();
       await adapter.updateNegotiationTaskState(task.id, 'paused', { reason: 'counterparty_silent' });
       const secondResume = await adapter.updateNegotiationTaskState(task.id, 'working', null);
-      expect(secondResume.metadata.drainGeneration).toBe(2);
+      expect(secondResume.metadata.pause).toBeNull();
     });
   });
 
   describe('openNegotiationTask — durable seat binding', () => {
-    it('creates the task with both actor intents and generation zero in one write', async () => {
+    it('creates the task with both actor intents bound in one write', async () => {
       const run = `${Date.now()}-${crypto.randomUUID()}`;
       const ownerId = `open-owner-${run}`;
       const counterpartId = `open-counterpart-${run}`;
@@ -1112,18 +1108,17 @@ describe('ConversationDatabaseAdapter', () => {
         candidateUserId: counterpartId,
         brief: 'Owner brief',
         seats: {
-          [ownerIntentId]: { userId: ownerId, round: 3 },
-          [counterpartIntentId]: { userId: counterpartId, round: 5 },
+          [ownerIntentId]: { userId: ownerId, batchId: 'batch-3' },
+          [counterpartIntentId]: { userId: counterpartId, batchId: 'batch-5' },
         },
         networkId: 'open-network',
       });
 
       expect(opened?.disposition).toBe('created');
       expect(opened?.task.metadata.seats).toEqual({
-        [ownerIntentId]: { userId: ownerId, round: 3 },
-        [counterpartIntentId]: { userId: counterpartId, round: 5 },
+        [ownerIntentId]: { userId: ownerId, batchId: 'batch-3' },
+        [counterpartIntentId]: { userId: counterpartId, batchId: 'batch-5' },
       });
-      expect(opened?.task.metadata.drainGeneration).toBe(0);
       if (opened) createdIds.push(opened.task.conversationId);
     }, 30000);
   });

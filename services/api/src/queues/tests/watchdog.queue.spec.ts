@@ -35,9 +35,17 @@ function makeDeps(task: ReturnType<typeof makeTask> | null = makeTask()) {
     recordNegotiationWatchdogAttempt: mock(async () => task),
     recordNegotiationWatchdogRecoveryCheck: mock(async () => true),
     clearNegotiationReflectPending: mock(async () => undefined),
-    getIntentNegotiationRound: mock(async () => ({ round: 1, roundSize: 1, kickoffStartedAt: null })),
-    getNegotiationTasksForIntentRound: mock(async () => task ? [task as never] : []),
     getIntentsWithInterruptedKickoff: mock(async () => []),
+  };
+  // Settled by default: an opening_complete marker plus every opened task
+  // already stopped, so `maybeEnqueueRoundReflect` enqueues immediately.
+  const roundLog = {
+    appendNegotiationRoundLogEvent: mock(async () => undefined),
+    readNegotiationRoundLogEvents: mock(async () => [
+      { kind: 'opened' as const, taskId: 'task-1', batchId: 'batch-1' },
+      { kind: 'opening_complete' as const, batchId: 'batch-1' },
+      { kind: 'stopped' as const, taskId: 'task-1', batchId: 'batch-1', via: 'completed' as const },
+    ]),
   };
   const opportunities = {
     getOpportunity: mock(async () => ({ id: 'opportunity-1', status: 'negotiating' })),
@@ -45,7 +53,7 @@ function makeDeps(task: ReturnType<typeof makeTask> | null = makeTask()) {
   const negotiationGraph = { invoke: mock(async () => ({ negotiationId: task?.id ?? '', status: 'paused' as const, turns: [] })) };
   const reflectEnqueue = mock(async () => undefined);
   const matchesReady = mock(async () => undefined);
-  return { database, opportunities, negotiationGraph, reflectEnqueue, matchesReady };
+  return { database, roundLog, opportunities, negotiationGraph, reflectEnqueue, matchesReady };
 }
 
 beforeEach(() => {
@@ -126,7 +134,7 @@ describe('NegotiationWatchdogQueue', () => {
     });
   });
 
-  it('retries a failed durable reflect generation on the next ready_for_verdict sweep', async () => {
+  it('retries a failed durable reflect dedupe key on the next ready_for_verdict sweep', async () => {
     const task = makeTask({
       state: 'paused',
       metadata: {
@@ -136,8 +144,7 @@ describe('NegotiationWatchdogQueue', () => {
         candidateUserId: 'user-2',
         initiatorUserId: 'user-1',
         networkId: 'network-1',
-        seats: { 'intent-1': { userId: 'user-1', round: 1 } },
-        drainGeneration: 0,
+        seats: { 'intent-1': { userId: 'user-1', batchId: 'batch-1' } },
         pause: { reason: 'ready_for_verdict', pausedBy: 'user-1' },
       },
     });
@@ -156,8 +163,8 @@ describe('NegotiationWatchdogQueue', () => {
     expect(deps.reflectEnqueue).toHaveBeenLastCalledWith({
       userId: 'user-1',
       intentId: 'intent-1',
-      round: 1,
-      generation: 'task-1.0',
+      batchId: 'batch-1',
+      dedupeKey: 'task-1.2',
     });
     expect(deps.reflectEnqueue).toHaveBeenCalledTimes(4);
     expect(deps.negotiationGraph.invoke).not.toHaveBeenCalled();
@@ -213,8 +220,7 @@ describe('NegotiationWatchdogQueue', () => {
         opportunityId: 'opportunity-1',
         sourceUserId: 'user-1',
         candidateUserId: 'user-2',
-        seats: { 'intent-1': { userId: 'user-1', round: 1 } },
-        drainGeneration: 0,
+        seats: { 'intent-1': { userId: 'user-1', batchId: 'batch-1' } },
         watchdogReflectPending: true,
       },
     });

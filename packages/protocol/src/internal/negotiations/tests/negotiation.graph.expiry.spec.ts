@@ -10,8 +10,7 @@ function task(state: 'paused' | 'completed' = 'paused') {
     id: 'task-1', conversationId: 'conversation-1', state, briefs: {}, createdAt: updatedAt, updatedAt,
     metadata: {
       type: 'negotiation' as const, opportunityId: 'opportunity-1', sourceUserId: 'user-1', candidateUserId: 'user-2',
-      initiatorUserId: 'user-1', networkId: 'network-1', seats: { 'intent-1': { userId: 'user-1', round: 2 } },
-      drainGeneration: 0,
+      initiatorUserId: 'user-1', networkId: 'network-1', seats: { 'intent-1': { userId: 'user-1', batchId: 'batch-2' } },
       pause: { reason: 'needs_principal' as const },
     },
   };
@@ -22,24 +21,31 @@ function graph(overrides: Record<string, unknown> = {}) {
     getNegotiationTask: mock(async () => task()),
     expirePausedNegotiation: mock(async () => ({ ...task(), state: 'completed' as const })),
     createNegotiationOutcomeArtifact: mock(async () => undefined),
-    getIntentNegotiationRound: mock(async () => ({ round: 2, roundSize: 1, kickoffStartedAt: updatedAt })),
-    getNegotiationTasksForIntentRound: mock(async () => [task('completed')]),
     ...overrides,
+  };
+  const roundLog = {
+    appendNegotiationRoundLogEvent: mock(async () => undefined),
+    readNegotiationRoundLogEvents: mock(async () => [
+      { kind: 'opened' as const, taskId: 'task-1', batchId: 'batch-2', createdAt: updatedAt },
+      { kind: 'opening_complete' as const, batchId: 'batch-2', createdAt: updatedAt },
+      { kind: 'stopped' as const, taskId: 'task-1', batchId: 'batch-2', via: 'completed' as const, createdAt: updatedAt },
+    ]),
   };
   const reflectEnqueue = mock(async () => undefined);
   return {
     database,
+    roundLog,
     reflectEnqueue,
-    graph: new NegotiationGraphFactory({ database: database as never, author: {} as never, reflectEnqueue }).createGraph(),
+    graph: new NegotiationGraphFactory({ database: database as never, roundLog: roundLog as never, author: {} as never, reflectEnqueue }).createGraph(),
   };
 }
 
 describe('NegotiationGraph system expiry', () => {
   it('uses a BullMQ-safe id for a durable all-paused reflect', () => {
-    expect(negotiationRoundReflectJobId('intent-1', 2, 'task-1.0')).toBe('reflect.intent-1.2.task-1.0');
+    expect(negotiationRoundReflectJobId('intent-1', 'batch-2', 'task-1.0')).toBe('reflect.intent-1.batch-2.task-1.0');
   });
 
-  it('completes an eligible paused task without authoring a verdict and reflects its round', async () => {
+  it('completes an eligible paused task without authoring a verdict and reflects its batch', async () => {
     const fixture = graph();
 
     const result = await fixture.graph.invoke({
@@ -50,7 +56,7 @@ describe('NegotiationGraph system expiry', () => {
     expect(fixture.database.expirePausedNegotiation).toHaveBeenCalledWith({ taskId: 'task-1', expectedUpdatedAt: updatedAt, reason: 'needs_principal' });
     expect(fixture.database.createNegotiationOutcomeArtifact).not.toHaveBeenCalled();
     expect(fixture.reflectEnqueue).toHaveBeenCalledWith({
-      userId: 'user-1', intentId: 'intent-1', round: 2, generation: 'task-1.0',
+      userId: 'user-1', intentId: 'intent-1', batchId: 'batch-2', dedupeKey: 'task-1.2',
     });
   });
 

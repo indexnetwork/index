@@ -1,12 +1,13 @@
 /**
- * In-memory host implementing the exact `NegotiationGraphDatabase` port both
- * the NegotiationGraph and the PersonalAgent read and write through.
+ * In-memory host implementing the exact `NegotiationGraphDatabase` and
+ * `NegotiationRoundLogDatabase` ports the NegotiationGraph and the
+ * PersonalAgent read and write through.
  *
  * Deliberately provider-free and dependency-free: the e2e specs that use it
  * run in the credential-free CI gate, driving the REAL compiled graphs
  * against this fake rather than mocking the graphs themselves.
  */
-import type { NegotiationGraphDatabase, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
+import type { NegotiationGraphDatabase, NegotiationRoundLogDatabase, NegotiationRoundLogEventRecord, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 
 export const NETWORK_ID = "network-1";
 export const SOURCE_USER_ID = "alice";
@@ -28,10 +29,8 @@ export interface FakeMessage {
 }
 
 export class FakeNegotiationHost {
-  /** The intent's round lifecycle, exactly as the three columns behave. */
-  round = 1;
-  roundSize: number | null = null;
-  kickoffStartedAt: Date | null = null;
+  /** Per-intent batch lifecycle, exactly as `intents.negotiation_batch_id` behaves. */
+  readonly batchIds = new Map<string, string>();
   readonly opportunities = new Map<string, FakeOpportunity>();
   readonly tasks = new Map<string, NegotiationTaskRow>();
   readonly messages = new Map<string, FakeMessage[]>();
@@ -39,10 +38,13 @@ export class FakeNegotiationHost {
   readonly outcomeArtifacts = new Map<string, { verdict: 'pending' | 'reject'; reasoning?: string; resolvedByUserId: string }>();
   /** Test-only interleave immediately before the atomic completion snapshot. */
   beforeCompleteNegotiation?: () => void;
-  /** Deduped by one durable drain generation, exactly as BullMQ does. */
-  readonly reflectJobs: Array<{ userId: string; intentId: string; round: number; generation: string }> = [];
+  /** Deduped by one durable dedupe key, exactly as BullMQ does. */
+  readonly reflectJobs: Array<{ userId: string; intentId: string; batchId: string; dedupeKey: string }> = [];
+  /** `${intentId}::${batchId}` → append-order event log. */
+  readonly roundLogEvents = new Map<string, NegotiationRoundLogEventRecord[]>();
   private taskCounter = 0;
   private messageCounter = 0;
+  private batchCounter = 0;
 
   constructor(counterpartyUserIds: string[] = [CANDIDATE_USER_ID]) {
     counterpartyUserIds.forEach((userId, index) => {
@@ -63,6 +65,22 @@ export class FakeNegotiationHost {
     return this.opportunities.get(OPPORTUNITY_ID)!;
   }
 
+  /** Convenience accessor for INTENT_ID's own current batch — most specs only ever kick off one signal. */
+  get batchId(): string | null {
+    return this.batchIds.get(INTENT_ID) ?? null;
+  }
+
+  set batchId(value: string | null) {
+    if (value === null) this.batchIds.delete(INTENT_ID);
+    else this.batchIds.set(INTENT_ID, value);
+  }
+
+  /** Whether the given batch's round-log carries its opening_complete marker. */
+  isOpeningComplete(intentId: string = INTENT_ID, batchId: string | null = this.batchId): boolean {
+    if (!batchId) return false;
+    return (this.roundLogEvents.get(`${intentId}::${batchId}`) ?? []).some((event) => event.kind === "opening_complete");
+  }
+
   async createNegotiationTask(input: {
     conversationId: string;
     briefs: Record<string, string>;
@@ -73,7 +91,7 @@ export class FakeNegotiationHost {
       conversationId: input.conversationId,
       state: 'working',
       briefs: { ...input.briefs },
-      metadata: { drainGeneration: 0, ...input.metadata },
+      metadata: { ...input.metadata },
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -81,6 +99,17 @@ export class FakeNegotiationHost {
     this.messages.set(task.id, []);
     return task;
   }
+
+  readonly roundLog: NegotiationRoundLogDatabase = {
+    appendNegotiationRoundLogEvent: async (intentId, event) => {
+      const key = `${intentId}::${event.batchId}`;
+      const list = this.roundLogEvents.get(key) ?? [];
+      list.push({ ...event, createdAt: new Date() });
+      this.roundLogEvents.set(key, list);
+    },
+    readNegotiationRoundLogEvents: async (intentId, batchId) =>
+      [...(this.roundLogEvents.get(`${intentId}::${batchId}`) ?? [])],
+  };
 
   readonly database: NegotiationGraphDatabase = {
     getOpportunity: async (id: string) => (this.opportunities.get(id) as never) ?? null,
@@ -120,7 +149,6 @@ export class FakeNegotiationHost {
           initiatorUserId: input.sourceUserId,
           networkId: input.networkId,
           seats: input.seats,
-          drainGeneration: 0,
         },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -146,9 +174,6 @@ export class FakeNegotiationHost {
         state,
         metadata: {
           ...task.metadata,
-          ...(state === "working" && task.state === "paused"
-            ? { drainGeneration: task.metadata.drainGeneration + 1 }
-            : {}),
           ...(pause !== undefined || state === "working" ? { pause: pause ?? null } : {}),
         },
         updatedAt: new Date(),
@@ -232,49 +257,42 @@ export class FakeNegotiationHost {
       });
     },
     getArtifactsForTask: async () => [],
-    getNegotiationTasksForIntentRound: async (intentId, round) =>
-      [...this.tasks.values()].filter((t) => t.metadata.seats[intentId]?.round === round),
-    // Signal-scoped on purpose: a negotiation a later round left behind must
+    getNegotiationTasksForIntentBatch: async (intentId, batchId) =>
+      [...this.tasks.values()].filter((t) => t.metadata.seats[intentId]?.batchId === batchId),
+    // Signal-scoped on purpose: a negotiation a later batch left behind must
     // stay visible, or it can never be promoted or rejected.
     getPausedNegotiationTasksForIntent: async (intentId) =>
       [...this.tasks.values()].filter((t) => intentId in t.metadata.seats && t.state === "paused"),
-    // One write: the bump clears the stamp AND marks the kickoff as begun.
-    bumpIntentNegotiationRound: async () => {
-      this.roundSize = null;
-      this.kickoffStartedAt = new Date();
-      return (this.round += 1);
+    bumpIntentNegotiationBatch: async (intentId: string) => {
+      const batchId = `batch-${++this.batchCounter}`;
+      this.batchIds.set(intentId, batchId);
+      return { batchId };
     },
-    getIntentNegotiationRound: async (intentId) => intentId === INTENT_ID ? ({
-      round: this.round,
-      roundSize: this.roundSize,
-      kickoffStartedAt: this.kickoffStartedAt,
-    }) : ({
-      // A counterparty that did not initiate a kickoff still owns a durable
-      // drain. Its passive round has no in-progress size gate.
-      round: 0,
-      roundSize: null,
-      kickoffStartedAt: null,
+    getIntentNegotiationBatch: async (intentId) => ({
+      batchId: this.batchIds.get(intentId) ?? null,
     }),
-    stampIntentNegotiationRoundSize: async (_intentId, round, size) => {
-      if (round === this.round) this.roundSize = size;
-    },
-    countActiveNegotiationsForRound: async (intentId, round) =>
+    countActiveNegotiationsForBatch: async (intentId, batchId) =>
       [...this.tasks.values()].filter((t) =>
-        t.metadata.seats[intentId]?.round === round && t.state !== "paused" && t.state !== "completed").length,
+        t.metadata.seats[intentId]?.batchId === batchId && t.state !== "paused" && t.state !== "completed").length,
   };
 
   /**
-   * Push the kickoff marker past the staleness bound, so a later turn reads
-   * the round as abandoned rather than in flight (D20).
+   * Push every event of the given batch's log past the staleness bound, so a
+   * later turn reads the batch as abandoned rather than in flight (D20).
    */
-  ageKickoff(byMs = 11 * 60 * 1000): void {
-    if (this.kickoffStartedAt) this.kickoffStartedAt = new Date(this.kickoffStartedAt.getTime() - byMs);
+  ageKickoff(byMs = 11 * 60 * 1000, intentId: string = INTENT_ID, batchId?: string | null): void {
+    const resolvedBatchId = batchId ?? this.batchIds.get(intentId) ?? null;
+    if (!resolvedBatchId) return;
+    const key = `${intentId}::${resolvedBatchId}`;
+    const list = this.roundLogEvents.get(key);
+    if (!list) return;
+    this.roundLogEvents.set(key, list.map((event) => ({ ...event, createdAt: new Date(event.createdAt.getTime() - byMs) })));
   }
 
-  /** Records a reflect job the way the queue does: once per durable generation. */
-  enqueueReflect(job: { userId: string; intentId: string; round: number; generation: string }): void {
+  /** Records a reflect job the way the queue does: once per durable dedupe key. */
+  enqueueReflect(job: { userId: string; intentId: string; batchId: string; dedupeKey: string }): void {
     if (this.reflectJobs.some((existing) =>
-      existing.intentId === job.intentId && existing.round === job.round && existing.generation === job.generation)) return;
+      existing.intentId === job.intentId && existing.batchId === job.batchId && existing.dedupeKey === job.dedupeKey)) return;
     this.reflectJobs.push(job);
   }
 
