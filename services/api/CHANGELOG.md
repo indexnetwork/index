@@ -26,6 +26,13 @@ section before promoting to `main`).
   through its existing honest terminal response or kickoff compensation path.
 
 ### Removed
+- **Breaking:** recycle unused daily frame-drift monitoring (IND-430 / IND-468).
+  Drop `FrameDriftQueue`, the observation service and adapters, and tables
+  `frame_centroid_snapshots`, `cross_network_yield_snapshots`,
+  `frame_drift_observation_runs`, `frame_drift_execution_attempts`
+  (migration `0159`). Nothing in the product read the snapshots. Frozen copy:
+  [`indexnetwork/recycle/frame-drift-monitoring`](https://github.com/indexnetwork/recycle/tree/main/frame-drift-monitoring)
+  from `061d0c51e`.
 - **Breaking:** remove the retired `negotiation-run-existing` queue and
   `POST /api/opportunities/:id/reopen`. The old endpoint only enqueued that
   queue's no-op `negotiate_existing` job; reopening requires a future

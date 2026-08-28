@@ -51,7 +51,6 @@ import { discoveryQueue } from './queues/opportunity/discovery.queue';
 import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
-import { frameDriftQueue } from './queues/frame-drift.queue';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
@@ -166,12 +165,6 @@ if (isNegotiationWatchdogEnabled()) {
 }
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
-void frameDriftQueue.start().catch((error) => {
-  log.queue.from('FrameDriftQueue').error('Frame-drift queue startup failed', {
-    event: 'frame_drift_monitoring_startup_failed',
-    error,
-  });
-});
 notificationQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
@@ -586,7 +579,6 @@ const shutdown = async () => {
     emailQueue.close(),
     personalAgentQueue.close(),
     premiseQueue.close(),
-    frameDriftQueue.close(),
   ]);
   logger.info('Workers closed');
   await Sentry.close(2000);

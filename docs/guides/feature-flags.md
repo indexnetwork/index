@@ -42,9 +42,9 @@ in a state nobody has tested.
 
 **Pass it as an argument.** When two callers genuinely need different
 behaviour, that is a parameter on the function, injected by the composition
-root — not a process-wide switch read at the point of use. The frame-drift
-cohort bounds and the opportunity graph's threshold overrides both work this
-way: production uses the constant, a test injects something else.
+root — not a process-wide switch read at the point of use. The opportunity
+graph's threshold overrides work this way: production uses the constant, a
+test injects something else.
 
 **Shadow it in code, not in config.** A pipeline that mines and measures
 without writing is a mode of the pipeline, expressed as a constant beside it
