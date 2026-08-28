@@ -118,8 +118,8 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
     try {
       const { SANDBOX_E2E_CASES, SANDBOX_MINIMAL_PERSONAS, SANDBOX_TWENTY_PERSONAS } = await import('../src/cli/sandbox-personas');
       const people = [...SANDBOX_MINIMAL_PERSONAS, ...SANDBOX_TWENTY_PERSONAS];
-      const [mayaJwt, danielJwt, aishaJwt, ethanJwt] = await Promise.all([
-        login('maya.chen@sandbox.test'), login('daniel.ruiz@sandbox.test'), login('aisha.okafor@sandbox.test'), login('ethan.brooks@sandbox.test'),
+      const [mayaJwt, danielJwt, aishaJwt] = await Promise.all([
+        login('maya.chen@sandbox.test'), login('daniel.ruiz@sandbox.test'), login('aisha.okafor@sandbox.test'),
       ]);
       const intent = async (jwt: string, email: string, index: number): Promise<Intent> => {
         const person = people.find((candidate) => candidate.email === email)!;
@@ -138,7 +138,7 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       await Promise.all([[mayaJwt, mayaDaniel], [danielJwt, daniel], [aishaJwt, aishaMaya], [mayaJwt, mayaAisha]].map(([jwt, item]) =>
         api(jwt as string, `/api/intents/${(item as Intent).id}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'ACTIVE' }) })));
 
-      const radar = (jwt: string, intentId: string) => api<{ items: RadarCard[] }>(jwt, `/api/opportunities/radar?scopeType=intent&scopeId=${intentId}&statuses=latent,draft,negotiating,stalled,pending,accepted,rejected&presentation=skeleton&noCache=1`);
+      const radar = (jwt: string, intentId: string) => api<{ items: RadarCard[] }>(jwt, `/api/opportunities/radar?scopeType=intent&scopeId=${intentId}&statuses=negotiating,stalled,pending,accepted,rejected&presentation=skeleton&noCache=1`);
       const findCard = async (jwt: string, intentId: string, opportunityId: string) => (await radar(jwt, intentId)).items.find((card) => card.opportunityId === opportunityId);
       const cycle = (jwt: string, intentId: string) => api<{ cycle: Cycle }>(jwt, `/api/conversations/negotiations/intent-cycle?intentId=${intentId}`);
       const targetTaskForOpportunity = async (jwt: string, intentId: string, opportunityId: string) =>
@@ -164,14 +164,6 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       ]);
       expect(mayaDanielTask.opportunityStatus).not.toBe('accepted');
       expect(aishaMayaTask.opportunityStatus).not.toBe('accepted');
-
-      const introducerRadar = () => api<{ items: RadarCard[] }>(ethanJwt, '/api/opportunities/radar?statuses=latent&presentation=skeleton&noCache=1');
-      const unapprovedIntroduction = await waitFor(async () => {
-        const result = await introducerRadar();
-        return result.items.find((opportunity) => opportunity.opportunityId === SANDBOX_E2E_CASES.unapprovedIntroducer.opportunityId);
-      }, 'unapproved introduction fixture');
-      expect(unapprovedIntroduction.status).toBe('pending');
-      expect(unapprovedIntroduction.viewerRole).toBe('introducer');
 
       const timelineFor = (jwt: string, intentId: string) => api<{ entries: TimelineEntry[] }>(jwt, `/api/conversations/negotiations/intent-cycle/timeline?intentId=${intentId}`);
       const negotiatorMessages = async (jwt: string, intentId: string): Promise<Array<{ role: string; content: string }>> => {
@@ -312,8 +304,6 @@ describe.skipIf(!enabled)('PersonalAgent + negotiation sandbox HTTP E2E', () => 
       expect(mayaSofiaCard?.status).not.toBe('negotiating');
       expect(mayaSofiaCard?.status).not.toBe('pending');
       expect(mayaSofiaCard?.status).not.toBe('accepted');
-      const stillUnapproved = await introducerRadar();
-      expect(stillUnapproved.items.some((opportunity) => opportunity.opportunityId === SANDBOX_E2E_CASES.unapprovedIntroducer.opportunityId && opportunity.status === 'pending')).toBe(true);
 
       // An agent never advances to accepted. The only accepted transition in
       // this suite is this explicit owner action through the normal API.

@@ -1263,7 +1263,7 @@ def main() -> None:
         assert radar["items"][0]["name"] == "Ada"
         assert radar["items"][0]["counterpartUserId"] == "other"
         assert radar["items"][0]["intentScopeId"] == "intent-1"
-        assert "statuses=latent,pending,negotiating,stalled,accepted,expired" in captured[-1]["url"]
+        assert "statuses=pending,negotiating,stalled,accepted,expired" in captured[-1]["url"]
 
         captured = []
         install_fake_urlopen(
