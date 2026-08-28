@@ -375,11 +375,14 @@ describe("Negotiator clock", () => {
   test("renders the date in UTC even when the host timezone says otherwise", async () => {
     // Pinning the zone here, rather than inheriting the machine's, is what
     // makes this fail on a local-time implementation *anywhere*. On a UTC
-    // box — CI, most containers — local and UTC formatting are the same
-    // function, so no fixture can tell them apart and a green run there is
-    // not evidence. Each pair is an instant plus a zone in which it falls
-    // on a different local day, straddling midnight in both directions.
+    // box — CI, most containers — the process's own clock makes local and
+    // UTC the same function, so a fixture that inherits it proves nothing.
+    // Each pair is an instant plus a zone in which it falls on a different
+    // local day, straddling midnight in both directions. The instants must
+    // differ: 23:30Z is tomorrow in Auckland but the same local day in Los
+    // Angeles, so reusing one would leave the western direction vacuous.
     const originalTz = process.env.TZ;
+    const rendered: string[] = [];
     try {
       for (const [tz, instant] of [
         ["Pacific/Auckland", "2026-08-28T23:30:00Z"], // local: the 29th
@@ -394,12 +397,19 @@ describe("Negotiator clock", () => {
 
         await negotiator.respond(state);
 
-        expect(fetchMock.body.messages[0].content).toContain("2026-08-28 (Friday)");
+        const prompt = String(fetchMock.body.messages[0].content);
+        rendered.push(prompt.match(/Today's date is (.+)\./)?.[1] ?? prompt);
       }
     } finally {
       if (originalTz === undefined) delete process.env.TZ;
       else process.env.TZ = originalTz;
     }
+
+    // Compared as one array rather than asserted inside the loop: an
+    // assertion in the loop short-circuits on the first zone, so a pair
+    // that stopped discriminating would be masked by the one that still
+    // does, and the failure would print only half the story.
+    expect(rendered).toEqual(["2026-08-28 (Friday)", "2026-08-28 (Friday)"]);
   });
 
   test("shifting the instant moves the model onto another day", async () => {
