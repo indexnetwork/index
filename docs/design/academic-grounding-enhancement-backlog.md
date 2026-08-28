@@ -96,7 +96,7 @@ Implemented a canonical three-value QUD taxonomy across IntentClarifier and the 
 **Theory:** the report's own "Index Frame Drift Problem" — its most original contribution. Real even in the centralized implementation: per-network prompts, vocabularies, and embedding-model versions drift independently.
 
 **Work items:**
-- ~~Start with measurement, not mechanism: track privacy-thresholded per-network embedding-centroid movement.~~ Shipped in IND-430, then recycled: no API, UI, or product consumer read the snapshots. Frozen copy: [`indexnetwork/recycle/frame-drift-monitoring`](https://github.com/indexnetwork/recycle/tree/main/frame-drift-monitoring) (from `061d0c51e`).
+- ~~Start with measurement, not mechanism: track privacy-thresholded per-network embedding-centroid movement.~~ Shipped in IND-430, then recycled: no API, UI, or product consumer read the snapshots. Restore from `061d0c51e`.
 - The S-sized cross-network metric was only a **non-causal intent-assignment-pair normalized opportunity-yield proxy**. Immutable per-discovery frame-pair/attempt provenance remains future work and is required before causal diagnosis.
 - Only after that provenance exists and actual drift/decay is observed should periodic vocabulary/prompt realignment be considered. Evolutionary-game machinery remains premature; do not restore the writer without a named consumer.
 

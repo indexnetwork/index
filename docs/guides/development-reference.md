@@ -338,9 +338,9 @@ Intent creation is synchronous; complex processing (indexing, generation) is asy
 ### Frame-Drift Monitoring (retired)
 
 The unused daily observation pipeline (IND-430 / IND-468) was recycled. It had
-no API or UI; nothing in the product read the snapshots. Frozen copy:
-[`indexnetwork/recycle/frame-drift-monitoring`](https://github.com/indexnetwork/recycle/tree/main/frame-drift-monitoring).
-Restore from `061d0c51e` by path.
+no API or UI; nothing in the product read the snapshots. Restore from
+`061d0c51e` by path. The recycle repo path is not published yet (`cursor[bot]`
+cannot write to `indexnetwork/recycle`).
 
 ### Pool-Aware Intent Questions (retired)
 
