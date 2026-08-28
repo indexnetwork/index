@@ -1,4 +1,4 @@
-export { createA2AHandler } from "./server/handler.ts";
+export { createA2AHandler, OUTCOME_ARTIFACT_ID } from "./server/handler.ts";
 export type { A2AHandlerOptions } from "./server/handler.ts";
 export { TaskStore } from "./server/task-store.ts";
 export { bearerTokenAuth } from "./server/auth.ts";
@@ -14,7 +14,7 @@ export { decisionToMessage, historyFromMessages, messageToDecision } from "./wir
 export { defaultStrategy, strategyWithTerms } from "./wire/strategy.ts";
 export type { DecisionStrategy, EvaluateHook } from "./wire/strategy.ts";
 export { verifyAgreement } from "./wire/agreement.ts";
-export type { AgreementResult, AgreementStatus } from "./wire/agreement.ts";
+export type { AgreementBasis, AgreementResult, AgreementStatus } from "./wire/agreement.ts";
 export type {
   A2AArtifact,
   A2AIdentity,

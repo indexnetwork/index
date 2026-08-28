@@ -11,6 +11,9 @@ export interface NegotiatorOptions {
   model?: string;
   referer?: string;
   title?: string;
+  /** Caps output tokens per call. Defaults to 2048 — raise it if decisions
+   * carry large structured terms and you hit truncation errors. */
+  maxTokens?: number;
 }
 
 export type ActionSpec<A extends string> = A | { action: A; description: string };
@@ -99,6 +102,7 @@ export class Negotiator {
       model: options.model ?? DEFAULT_MODEL,
       referer: options.referer,
       title: options.title,
+      maxTokens: options.maxTokens,
     });
   }
 

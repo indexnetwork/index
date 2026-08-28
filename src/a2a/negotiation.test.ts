@@ -5,7 +5,7 @@ import { bearerCredentials } from "./client/auth.ts";
 import { A2ANegotiationClient } from "./client/negotiation-client.ts";
 import { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
 import { bearerTokenAuth } from "./server/auth.ts";
-import { createA2AHandler } from "./server/handler.ts";
+import { createA2AHandler, OUTCOME_ARTIFACT_ID } from "./server/handler.ts";
 import { verifyAgreement } from "./wire/agreement.ts";
 import { decisionToMessage } from "./wire/history.ts";
 import type { AgentCard } from "./wire/types.ts";
@@ -348,15 +348,17 @@ describe("A2A client/server over real HTTP", () => {
       expect(outcome).toBe("completed");
       expect(verifyAgreement(task)).toEqual({
         status: "agreed",
+        basis: "reference",
         terms: { amount: 450, pickupDay: "Wed" },
       });
 
       // The settled terms are recorded on the Task as an artifact, which is
       // where the spec puts results.
-      const outcomeArtifact = task.artifacts.find((a) => a.name === "negotiation-outcome");
+      const outcomeArtifact = task.artifacts.find((a) => a.artifactId === OUTCOME_ARTIFACT_ID);
       expect(outcomeArtifact?.parts[0]?.data).toEqual({
         state: "completed",
         status: "agreed",
+        basis: "reference",
         terms: { amount: 450, pickupDay: "Wed" },
       });
     } finally {
@@ -415,7 +417,7 @@ describe("A2A client/server over real HTTP", () => {
       const fromClient = verifyAgreement(task);
       const fromServer = verifyAgreement(structuredClone(task));
       expect(fromClient).toEqual(fromServer);
-      expect(fromClient).toEqual({ status: "agreed", terms: { amount: 500 } });
+      expect(fromClient).toEqual({ status: "agreed", basis: "reference", terms: { amount: 500 } });
     } finally {
       httpServer.stop();
     }

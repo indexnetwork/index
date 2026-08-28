@@ -10,13 +10,20 @@ export interface OpenRouterClientOptions {
   model: string;
   referer?: string;
   title?: string;
+  maxTokens?: number;
 }
+
+/** Default output cap. Generous enough that a decision carrying structured
+ * terms doesn't get cut off mid-JSON, which is otherwise a confusing
+ * "malformed response" failure rather than an obvious truncation. */
+const DEFAULT_MAX_TOKENS = 2048;
 
 export class OpenRouterClient {
   private readonly apiKey: string;
   private readonly model: string;
   private readonly referer?: string;
   private readonly title?: string;
+  private readonly maxTokens: number;
 
   constructor(options: OpenRouterClientOptions) {
     const apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
@@ -29,6 +36,7 @@ export class OpenRouterClient {
     this.model = options.model;
     this.referer = options.referer;
     this.title = options.title;
+    this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
   }
 
   async complete(
@@ -46,6 +54,7 @@ export class OpenRouterClient {
       body: JSON.stringify({
         model: this.model,
         messages,
+        max_tokens: this.maxTokens,
         ...(options.jsonResponse
           ? { response_format: { type: "json_object" } }
           : {}),
@@ -60,12 +69,21 @@ export class OpenRouterClient {
     }
 
     const data = (await response.json()) as {
-      choices: { message: { content: string } }[];
+      choices: { message: { content: string }; finish_reason?: string }[];
     };
 
-    const content = data.choices[0]?.message.content;
+    const choice = data.choices[0];
+    const content = choice?.message.content;
     if (!content) {
       throw new Error("OpenRouter response had no content.");
+    }
+    // Truncation produces syntactically broken output, which downstream
+    // reads as "the model returned nonsense" unless we name the real cause.
+    if (choice?.finish_reason === "length") {
+      throw new Error(
+        `OpenRouter response was truncated at the ${this.maxTokens}-token limit. ` +
+          "Raise `maxTokens`, or ask for shorter messages/terms.",
+      );
     }
     return content;
   }

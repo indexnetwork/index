@@ -80,6 +80,7 @@ export OPENROUTER_API_KEY=sk-or-...
 | `model`   | `string` | No       | OpenRouter model id. Defaults to `google/gemini-3.7-flash`.                        |
 | `referer` | `string` | No       | Sent as `HTTP-Referer`, per [OpenRouter's app attribution](https://openrouter.ai/docs). |
 | `title`   | `string` | No       | Sent as `X-Title`, per OpenRouter's app attribution.                         |
+| `maxTokens` | `number` | No     | Output token cap per call. Defaults to 2048; raise it if decisions carrying large structured terms hit truncation. |
 
 ```ts
 const negotiator = new Negotiator({
@@ -157,6 +158,29 @@ Shared options across commands: `--model <id>` to pick an OpenRouter model,
 `propose,counter,accept,reject`), `--terminal <list>` for which of those end
 the negotiation (default `accept,reject,decline,withdraw`), and `--turns <n>`
 as a safety cap. Run `negotiator help` for the full list.
+
+`--terms <fields>` (on `sim`, `serve`, and `connect`) turns on structured
+terms, so you can watch acceptance bind to a specific offer instead of
+living in prose — see [Knowing what actually happened](#knowing-what-actually-happened):
+
+```bash
+negotiator sim \
+  --a Buyer  --a-objective "Buy a used bike; hard max \$440. Settle a pickup day too." \
+  --b Seller --b-objective "Sell it above \$450 ideally; accept over \$420." \
+  --terms "amount (number, USD), pickupDay (day of week)"
+```
+
+```
+Buyer (counter) Could you do $410? If that works, I can pick it up this Saturday.
+    terms {"amount":410,"pickupDay":"Saturday"}
+Seller (counter) I could meet you at $430 for pickup this Saturday.
+    terms {"amount":430,"pickupDay":"Saturday"}
+Buyer (accept) $430 sounds fair! I'll pick it up this Saturday.
+    terms {"amount":430,"pickupDay":"Saturday"} accepts:6d8eb29a
+
+ended after 7 turns — Buyer chose "accept"
+agreed {"amount":430,"pickupDay":"Saturday"}
+```
 
 ## Usage
 
@@ -375,7 +399,7 @@ same verdict:
 
 ```ts
 const result = verifyAgreement(task);
-// { status: "agreed", terms: { amount: 430, pickupDay: "Saturday" } }
+// { status: "agreed", basis: "reference", terms: { amount: 430, pickupDay: "Saturday" } }
 ```
 
 | `status` | Meaning |
@@ -386,9 +410,55 @@ const result = verifyAgreement(task);
 | `conflict` | Completed, but the two closing moves bound to different terms. **Don't act on this as a deal.** |
 | `unconfirmed` | Completed, but no decision carried structured terms — there's nothing to verify. Enable `terms` to fix. |
 
-On a terminal action the server also records this on the Task as a
-`negotiation-outcome` artifact, which is where the spec wants results to
-live rather than in message prose.
+`basis` says what evidence the verdict rests on, so a caller can accept
+weaker evidence for a low-stakes deal and demand stronger evidence when
+something irreversible depends on it. `status` means the same thing either
+way:
+
+| `basis` | Meaning |
+| --- | --- |
+| `reference` | The closing move named the `offerId` it accepted — provenance. |
+| `terms` | The closing moves' terms were compared directly, with no reference between them — content equality, not provenance. |
+| `state` | From the server-stamped task state alone, no terms involved. |
+| `prose` | Never produced here; reserved so a caller layering its own text-level fallback can label it in the same vocabulary. |
+
+To require provenance rather than mere agreement, check
+`status === "agreed" && basis === "reference"`. Expect this union to grow —
+a signed or content-addressed acceptance would arrive as a new `basis`, not
+as a change to what `status` means.
+
+#### When you don't know the domain ahead of time
+
+`DecideOptions.terms` is a free-text prompt fragment, not a schema, so a
+host negotiating over arbitrary subjects can pass a generic description
+instead of enumerating fields:
+
+```ts
+strategyWithTerms("whatever terms are material to this deal, as flat key/value pairs")
+```
+
+That works — the model picks domain-appropriate keys, and both sides
+converge on the same ones because each sees the other's terms in the
+history. One caveat: key naming isn't stable *across* negotiations (one run
+produces `price`/`pickup_day`, another `amount`/`pickupDay`), and
+`basis: "terms"` comparison is exact-match. `basis: "reference"` is immune,
+since it compares offer ids rather than shapes.
+
+#### The outcome artifact
+
+On a terminal action the server records the verdict on the Task as an
+artifact, which is where the spec wants results to live rather than in
+message prose. It has a stable id, exported as `OUTCOME_ARTIFACT_ID`
+(`"negotiator:negotiation-outcome"`), so consumers can look it up directly
+instead of filtering on the display `name`, and so a task that closes twice
+replaces the entry rather than appending a contradictory second one.
+
+> **Note for existing callers:** this appends to `task.artifacts` on
+> terminal turns only. Code that asserts an exact artifact list, or indexes
+> `artifacts[0]`, will see a change on the first negotiation that closes —
+> which passes in dev and surprises in production. Match on
+> `artifactId === OUTCOME_ARTIFACT_ID` to find it, and prefer `toContain`
+> over exact-list assertions for your own `evaluate()` artifacts.
 
 ### Using the AgentCard as a trust check
 

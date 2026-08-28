@@ -5,10 +5,15 @@ import { verifyAgreement } from "../wire/agreement.ts";
 import { decisionToMessage, historyFromMessages } from "../wire/history.ts";
 import type { JsonRpcRequest, JsonRpcResponse } from "../wire/jsonrpc.ts";
 import { defaultStrategy, type DecisionStrategy, type EvaluateHook } from "../wire/strategy.ts";
-import type { A2AIdentity, A2AMessage, A2ATask, AgentCard } from "../wire/types.ts";
+import type { A2AArtifact, A2AIdentity, A2AMessage, A2ATask, AgentCard } from "../wire/types.ts";
 import { TaskStore } from "./task-store.ts";
 
 const AGENT_CARD_PATH = "/.well-known/agent-card.json";
+
+/** Stable id of the artifact recording what a task settled on. Namespaced so
+ * it can't collide with a caller's own `evaluate()` artifact ids, and fixed
+ * so consumers can look the outcome up rather than filtering on `name`. */
+export const OUTCOME_ARTIFACT_ID = "negotiator:negotiation-outcome";
 
 const DEFAULT_TERMINAL_ACTIONS = new Set([
   "accept",
@@ -147,10 +152,14 @@ export function createA2AHandler<A extends string>(
     // The spec puts task results in Artifacts, not in messages: on a
     // terminal action, record what the task actually settled on so a reader
     // of the Task doesn't have to parse anyone's prose to find out.
+    //
+    // The id is stable rather than random so consumers can look it up
+    // directly instead of sniffing `name`, and so re-closing a task replaces
+    // the entry rather than appending a second, contradictory one.
     if (isTerminal(decision.action)) {
       const agreement = verifyAgreement(task);
-      task.artifacts.push({
-        artifactId: crypto.randomUUID(),
+      const outcomeArtifact: A2AArtifact = {
+        artifactId: OUTCOME_ARTIFACT_ID,
         name: "negotiation-outcome",
         parts: [
           {
@@ -158,12 +167,18 @@ export function createA2AHandler<A extends string>(
             data: {
               state: task.status.state,
               status: agreement.status,
+              basis: agreement.basis,
               ...(agreement.terms ? { terms: agreement.terms } : {}),
               ...(agreement.reason ? { reason: agreement.reason } : {}),
             },
           },
         ],
-      });
+      };
+      const existing = task.artifacts.findIndex(
+        (artifact) => artifact.artifactId === OUTCOME_ARTIFACT_ID,
+      );
+      if (existing === -1) task.artifacts.push(outcomeArtifact);
+      else task.artifacts[existing] = outcomeArtifact;
     }
 
     const artifact = await options.evaluate?.(task, decision);
