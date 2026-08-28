@@ -379,17 +379,17 @@ async function main(): Promise<void> {
     const currentFixtureUserIds = personaFixtures.map((fixture) => fixture.userId);
     if (wipedFixtureUserIds.length > 0 || minimal) {
       try {
-        const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
+        const { discoveryQueue } = await import('../queues/opportunity/discovery.queue');
         const wiped = new Set([...wipedFixtureUserIds, ...currentFixtureUserIds]);
         let removed = 0;
-        for (const job of await fromIntentQueue.queue.getJobs(['completed', 'failed', 'delayed', 'waiting'])) {
+        for (const job of await discoveryQueue.queue.getJobs(['completed', 'failed', 'delayed', 'waiting'])) {
           const jobUserId = (job?.data as { userId?: string } | undefined)?.userId;
           if (jobUserId && wiped.has(jobUserId)) {
             await job.remove();
             removed += 1;
           }
         }
-        await fromIntentQueue.queue.close();
+        await discoveryQueue.queue.close();
         if (removed > 0) console.log(`Removed ${removed} stale discovery job(s) for wiped fixture users.`);
       } catch (error) {
         console.warn(`Discovery queue sweep skipped: ${error instanceof Error ? error.message : String(error)}`);

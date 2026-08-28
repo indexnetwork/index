@@ -24,8 +24,8 @@ mock.module('../../adapters/embedder.adapter', () => ({
   EmbedderAdapter: class EmbedderAdapter {},
   embedderAdapter: {},
 }));
-mock.module('../opportunity/from-intent.queue', () => ({
-  fromIntentQueue: { addJob: async () => ({ id: '1' }) },
+mock.module('../opportunity/discovery.queue', () => ({
+  discoveryQueue: { addJob: async () => ({ id: '1' }) },
 }));
 let mockBuildProfileFromUser = async (_userId: string) => null as null | { identity: { name: string; bio: string; location: string } };
 mock.module('../../adapters/database.shared', () => ({

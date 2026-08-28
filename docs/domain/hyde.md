@@ -152,7 +152,7 @@ humans define canonical retrieval and grounding truth.
 
 The harness invokes the unchanged production agents and graph with empty cache/database
 ports and embeds each case's candidate pool once for all modes/runs. To match the current
-`FromIntentQueue` and `OpportunityGraph`, it privately maps `saved-intent` to graph
+`DiscoveryQueue` and `OpportunityGraph`, it privately maps `saved-intent` to graph
 `sourceType: 'query'`; `query` is an internal background-branch label fed a stored intent,
 not a direct user request. `user-context` maps to `sourceType: 'context'` with a stable
 synthetic source ID. Collection provenance and paired blocks record both names, while the

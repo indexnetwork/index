@@ -124,7 +124,7 @@ Legacy rows whose `status` is null are treated as **ACTIVE**.
 
 Pausing is non-destructive. Existing opportunities (including Radar cards), pending questions, conversations, intent-network assignments, and HyDE documents remain in place. A paused intent cannot admit not-yet-started intent-driven discovery, be returned as a candidate match, start new pool mining or question generation, or schedule an answer-triggered Tier-1 discovery rerun. Work that already passed its lifecycle admission check may still finish.
 
-Existing pending questions remain answerable while paused. Their deterministic Tier-0 preference adjustment can still re-rank the existing pool, but the answer does not start Tier-1 discovery or chain a new question. Resuming changes the intent to **ACTIVE** and immediately enqueues one lifecycle-version-deduplicated from-intent discovery run; ordinary pool mining and question generation then follow the normal discovery flow. If that enqueue is not acknowledged, a changed resume is compare-and-set back to **PAUSED** when no concurrent lifecycle write intervened, and the client receives a retryable failure rather than false success.
+Existing pending questions remain answerable while paused. Their deterministic Tier-0 preference adjustment can still re-rank the existing pool, but the answer does not start Tier-1 discovery or chain a new question. Resuming changes the intent to **ACTIVE** and immediately enqueues one lifecycle-version-deduplicated discovery run; ordinary pool mining and question generation then follow the normal discovery flow. If that enqueue is not acknowledged, a changed resume is compare-and-set back to **PAUSED** when no concurrent lifecycle write intervened, and the client receives a retryable failure rather than false success.
 
 An archived intent (with an `archivedAt` timestamp) is effectively removed from active consideration.
 
@@ -270,7 +270,7 @@ Explicit updates are the exception to general create-versus-update reconciliatio
 
 Intent state changes emit events that other parts of the system react to asynchronously:
 
-- **onCreated**: Fired when a new intent is created; its handler enqueues from-intent discovery and triggers opportunity maintenance.
+- **onCreated**: Fired when a new intent is created; its handler enqueues discovery and triggers opportunity maintenance.
 - **onPaused**: Fired only when an intent actually changes to **PAUSED**. It records the lifecycle transition without deleting existing workspace state.
-- **onResumed**: Invoked for **ACTIVE** requests, including idempotent retries. Its async handler enqueues the lifecycle-version-deduplicated from-intent discovery job, and the status request waits for that enqueue acknowledgement. A failed enqueue returns `enqueue_failed`; a changed resume is narrowly compensated back to **PAUSED** when still at the same lifecycle version.
+- **onResumed**: Invoked for **ACTIVE** requests, including idempotent retries. Its async handler enqueues the lifecycle-version-deduplicated discovery job, and the status request waits for that enqueue acknowledgement. A failed enqueue returns `enqueue_failed`; a changed resume is narrowly compensated back to **PAUSED** when still at the same lifecycle version.
 - **onArchived**: Fired after archive handling removes intent-network assignments, expires opportunities that reference the intent, and enqueues HyDE deletion; its handler triggers opportunity maintenance.

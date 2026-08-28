@@ -17,13 +17,13 @@ async function main(): Promise<void> {
     throw new Error('This resumes every paused playground intent. Re-run with --confirm.');
   }
 
-  const [{ and, eq, isNull }, { default: db, closeDb }, { intentService }, { intents }, { intentQueue }, { fromIntentQueue }] = await Promise.all([
+  const [{ and, eq, isNull }, { default: db, closeDb }, { intentService }, { intents }, { intentQueue }, { discoveryQueue }] = await Promise.all([
     import('drizzle-orm/sql'),
     import('../lib/drizzle/drizzle'),
     import('../services/intent.service'),
     import('../schemas/database.schema'),
     import('../queues/intent.queue'),
-    import('../queues/opportunity/from-intent.queue'),
+    import('../queues/opportunity/discovery.queue'),
   ]);
 
   const pausedIntents = await db
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   const resumed = outcomes.filter((outcome) => outcome.kind === 'success' && outcome.changed).length;
   const failed = outcomes.filter((outcome) => outcome.kind !== 'success');
 
-  await fromIntentQueue.queue.close();
+  await discoveryQueue.queue.close();
   await intentQueue.queue.close();
   await closeDb();
 

@@ -1136,7 +1136,7 @@ Expected: PASS. Two specs in this directory flake only on whole-directory runs â
 - [ ] **Step 7: Assert discovery creates nothing**
 
 Run: `cd services/api && NODE_ENV=test bun test src/queues/tests/`
-Expected: PASS, with the from-intent queue test asserting zero `createOpportunity` calls. If no such assertion exists, add it.
+Expected: PASS, with the discovery queue test asserting zero `createOpportunity` calls. If no such assertion exists, add it.
 
 - [ ] **Step 8: Commit**
 

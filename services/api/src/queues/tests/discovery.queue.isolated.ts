@@ -1,5 +1,5 @@
 /**
- * Unit tests for FromIntentQueue. Use injected deps to avoid Redis/DB; QueueFactory is mocked.
+ * Unit tests for DiscoveryQueue. Use injected deps to avoid Redis/DB; QueueFactory is mocked.
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
@@ -60,15 +60,15 @@ afterAll(() => {
   mock.restore();
 });
 
-import type { FromIntentJobData, FromIntentDatabase, FromIntentDeps, FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
+import type { DiscoveryJobData, DiscoveryDatabase, DiscoveryDeps, DiscoveryGraphInvokeOptions } from '../opportunity/discovery.queue';
 import { buildIntentDiscoveryTrigger } from '../opportunity/discovery-trigger.builders';
 
-const { FromIntentQueue, QUEUE_NAME } = await import('../opportunity/from-intent.queue');
+const { DiscoveryQueue, QUEUE_NAME } = await import('../opportunity/discovery.queue');
 const { summarizeOpportunityDiscoveryResult, DISCOVERY_WORKER_CONCURRENCY } = await import('../opportunity/discovery.shared');
 
-type FromIntentDatabaseOverrides = Partial<FromIntentDatabase> & Pick<FromIntentDatabase, 'getIntentForIndexing'>;
+type DiscoveryDatabaseOverrides = Partial<DiscoveryDatabase> & Pick<DiscoveryDatabase, 'getIntentForIndexing'>;
 
-const asDb = (db: FromIntentDatabaseOverrides): FromIntentDatabase => ({
+const asDb = (db: DiscoveryDatabaseOverrides): DiscoveryDatabase => ({
   getIntentForIndexing: db.getIntentForIndexing,
   getNetworkIdsForIntent: db.getNetworkIdsForIntent ?? (async () => ['idx1']),
   getAssignmentNetworkMembershipsForUser:
@@ -78,7 +78,7 @@ const asDb = (db: FromIntentDatabaseOverrides): FromIntentDatabase => ({
   recordIntentDiscoveryProgress: db.recordIntentDiscoveryProgress ?? (async () => {}),
 });
 
-type ProgressWrite = Parameters<NonNullable<FromIntentDatabase['recordIntentDiscoveryProgress']>>[0];
+type ProgressWrite = Parameters<NonNullable<DiscoveryDatabase['recordIntentDiscoveryProgress']>>[0];
 
 /** A complete summary; overrides name only the tallies a test is about. */
 const discoverySummary = (overrides: Partial<OpportunityDiscoverySummary> = {}): OpportunityDiscoverySummary => ({
@@ -101,21 +101,21 @@ const progressWrite = (
   return call[0] as ProgressWrite;
 };
 
-describe('FromIntentQueue', () => {
+describe('DiscoveryQueue', () => {
   beforeEach(() => {
     nextDiscoverySummary = null;
   });
 
   describe('constructor and static', () => {
     it('exposes QUEUE_NAME on class', () => {
-      expect(FromIntentQueue.QUEUE_NAME).toBe(QUEUE_NAME);
-      expect(QUEUE_NAME).toBe('opportunity-from-intent');
+      expect(DiscoveryQueue.QUEUE_NAME).toBe(QUEUE_NAME);
+      expect(QUEUE_NAME).toBe('opportunity-discovery');
     });
 
     it('uses provided database when deps given', async () => {
-      const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>);
+      const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<DiscoveryDatabase['getIntentForIndexing']>>);
       const db = { getIntentForIndexing };
-      const queue = new FromIntentQueue({ database: asDb(db) });
+      const queue = new DiscoveryQueue({ database: asDb(db) });
       await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
       expect(getIntentForIndexing).toHaveBeenCalledWith('i1');
     });
@@ -125,7 +125,7 @@ describe('FromIntentQueue', () => {
   describe('addJob', () => {
     it('records the attached community count while the job is queued', async () => {
       const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getNetworkIdsForIntent: async () => ['idx1', 'idx2'],
@@ -145,7 +145,7 @@ describe('FromIntentQueue', () => {
     });
 
     it('adds discover job with data and options', async () => {
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
         }),
@@ -165,7 +165,7 @@ describe('FromIntentQueue', () => {
     });
 
     it('supports debounce and removal options', async () => {
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
         }),
@@ -197,7 +197,7 @@ describe('FromIntentQueue', () => {
   describe('processJob', () => {
     it('records aggregate queued, running, and completed lifecycle states without candidate data', async () => {
       const recordIntentDiscoveryProgress = mock(async () => {});
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           recordIntentDiscoveryProgress,
@@ -217,7 +217,7 @@ describe('FromIntentQueue', () => {
         opportunitiesCreated: 2,
         crossIntentPairAllowedCount: 1,
       });
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getNetworkIdsForIntent: async () => ['idx1', 'idx2'],
@@ -245,7 +245,7 @@ describe('FromIntentQueue', () => {
     it('writes a zero-result run honestly rather than skipping the tallies', async () => {
       const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
       nextDiscoverySummary = discoverySummary({ completionReason: 'no_search_candidates' });
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           recordIntentDiscoveryProgress,
@@ -261,7 +261,7 @@ describe('FromIntentQueue', () => {
 
     it('omits the tallies entirely when the graph was injected and returned no summary', async () => {
       const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           recordIntentDiscoveryProgress,
@@ -281,7 +281,7 @@ describe('FromIntentQueue', () => {
 
     it('leaves the blocked write free of tallies', async () => {
       const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getAssignmentNetworkMembershipsForUser: async () => [],
@@ -299,7 +299,7 @@ describe('FromIntentQueue', () => {
     });
 
     it('unknown job name logs warning and does not throw', async () => {
-      const queue = new FromIntentQueue();
+      const queue = new DiscoveryQueue();
       await expect(
         queue.processJob('unknown_job', { intentId: 'i1', userId: 'u1' })
       ).resolves.toBeUndefined();
@@ -307,14 +307,14 @@ describe('FromIntentQueue', () => {
 
     it('discover: intent not found skips', async () => {
       const db = {
-        getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>,
+        getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<DiscoveryDatabase['getIntentForIndexing']>>,
       };
-      const queue = new FromIntentQueue({ database: asDb(db) });
+      const queue = new DiscoveryQueue({ database: asDb(db) });
       await queue.processJob('discover', { intentId: 'missing', userId: 'u1' });
     });
 
     it('discover: skips paused, archived, and wrong-owner jobs at admission', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
       const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
       const rows = [
         { id: 'paused', payload: 'P', userId: 'u1', sourceType: null, sourceId: null, status: 'PAUSED' as const, archivedAt: null },
@@ -322,7 +322,7 @@ describe('FromIntentQueue', () => {
         { id: 'foreign', payload: 'P', userId: 'u2', sourceType: null, sourceId: null, status: 'ACTIVE' as const, archivedAt: null },
       ];
       for (const row of rows) {
-        const queue = new FromIntentQueue({
+        const queue = new DiscoveryQueue({
           database: asDb({ getIntentForIndexing: async () => row, markIntentFirstDiscoverySucceeded }),
           invokeOpportunityGraph,
         });
@@ -333,14 +333,14 @@ describe('FromIntentQueue', () => {
     });
 
     it('intent-resume follows the ordinary discovery path', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
       const db = {
         getIntentForIndexing: async () => ({
           id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null,
           status: 'ACTIVE' as const, archivedAt: null,
         }),
       };
-      const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph });
+      const queue = new DiscoveryQueue({ database: asDb(db), invokeOpportunityGraph });
       await queue.processJob('discover', {
         intentId: 'i1', userId: 'u1', trigger: 'intent_resume',
       });
@@ -348,13 +348,13 @@ describe('FromIntentQueue', () => {
     });
 
     it('discover: stamps first-discovery success after the graph completes', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
       const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
       const db = asDb({
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
         markIntentFirstDiscoverySucceeded,
       });
-      const queue = new FromIntentQueue({ database: db, invokeOpportunityGraph });
+      const queue = new DiscoveryQueue({ database: db, invokeOpportunityGraph });
       await queue.processJob('discover', {
         intentId: 'i1',
         userId: 'u1',
@@ -371,11 +371,11 @@ describe('FromIntentQueue', () => {
     });
 
     it('discover: does not stamp when the graph fails', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {
         throw new Error('graph failed');
       });
       const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
           markIntentFirstDiscoverySucceeded,
@@ -393,7 +393,7 @@ describe('FromIntentQueue', () => {
       const getNetworkIdsForIntent = mock()
         .mockResolvedValueOnce(['idx1'])
         .mockResolvedValueOnce([]);
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getNetworkIdsForIntent,
@@ -407,7 +407,7 @@ describe('FromIntentQueue', () => {
     });
 
     it('forwards every assigned active network through deterministic indexScope', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
       const db = asDb({
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
         getNetworkIdsForIntent: async () => ['idx-b', 'idx-a', 'idx-b', 'idx-foreign'],
@@ -417,7 +417,7 @@ describe('FromIntentQueue', () => {
           { networkId: 'idx-owner-only', isPersonal: false },
         ],
       });
-      const queue = new FromIntentQueue({ database: db, invokeOpportunityGraph });
+      const queue = new DiscoveryQueue({ database: db, invokeOpportunityGraph });
 
       await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
 
@@ -428,7 +428,7 @@ describe('FromIntentQueue', () => {
     });
 
     it('allows explicit networkIds to narrow but never broaden authoritative scope', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
       const db = asDb({
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
         getNetworkIdsForIntent: async () => ['idx-a', 'idx-b'],
@@ -438,7 +438,7 @@ describe('FromIntentQueue', () => {
           { networkId: 'idx-foreign', isPersonal: false },
         ],
       });
-      const queue = new FromIntentQueue({ database: db, invokeOpportunityGraph });
+      const queue = new DiscoveryQueue({ database: db, invokeOpportunityGraph });
 
       await queue.processJob('discover', {
         intentId: 'i1', userId: 'u1', networkIds: ['idx-foreign', 'idx-b'],
@@ -449,8 +449,8 @@ describe('FromIntentQueue', () => {
     });
 
     it('fails closed for foreign explicit scope', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
-      const queue = new FromIntentQueue({
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getNetworkIdsForIntent: async () => ['idx-assigned'],
@@ -467,9 +467,9 @@ describe('FromIntentQueue', () => {
     });
 
     it('fails closed when the intent has no network assignments', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
       const markIntentFirstDiscoverySucceeded = mock(async (_intentId: string) => {});
-      const queue = new FromIntentQueue({
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getNetworkIdsForIntent: async () => [],
@@ -486,8 +486,8 @@ describe('FromIntentQueue', () => {
     });
 
     it('fails closed when assignment membership lookup excludes a soft-deleted membership', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
-      const queue = new FromIntentQueue({
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getNetworkIdsForIntent: async () => ['idx-soft-deleted'],
@@ -503,8 +503,8 @@ describe('FromIntentQueue', () => {
     });
 
     it('keeps an assigned owner personal network eligible', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
-      const queue = new FromIntentQueue({
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
           getNetworkIdsForIntent: async () => ['personal-net'],
@@ -519,8 +519,8 @@ describe('FromIntentQueue', () => {
     });
 
     it('discover: empty explicit networkIds skips fail-closed instead of broadening', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
-      const queue = new FromIntentQueue({
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
+      const queue = new DiscoveryQueue({
         database: asDb({
           getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
         }),
@@ -584,14 +584,14 @@ describe('FromIntentQueue', () => {
 
   describe('startWorker', () => {
     it('is idempotent: second call does not create another worker', () => {
-      const queue = new FromIntentQueue();
+      const queue = new DiscoveryQueue();
       queue.startWorker();
       queue.startWorker();
       expect(mockCreateWorker).toHaveBeenCalledTimes(1);
     });
 
     it('runs scans for different signals side by side instead of one at a time', () => {
-      const queue = new FromIntentQueue();
+      const queue = new DiscoveryQueue();
       queue.startWorker();
       expect(DISCOVERY_WORKER_CONCURRENCY).toBeGreaterThan(1);
       expect(mockCreateWorker).toHaveBeenLastCalledWith(
@@ -602,13 +602,13 @@ describe('FromIntentQueue', () => {
     });
 
     it('processor invokes processJob when worker runs a job', async () => {
-      let capturedProcessor: ((job: { id: string; name: string; data: FromIntentJobData }) => Promise<void>) | null = null;
+      let capturedProcessor: ((job: { id: string; name: string; data: DiscoveryJobData }) => Promise<void>) | null = null;
       (mockCreateWorker as import('bun:test').Mock<(n: string, p: (job: unknown) => Promise<void>) => unknown>).mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-        capturedProcessor = processor as (job: { id: string; name: string; data: FromIntentJobData }) => Promise<void>;
+        capturedProcessor = processor as (job: { id: string; name: string; data: DiscoveryJobData }) => Promise<void>;
         return {};
       });
-      const db = { getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>> };
-      const queue = new FromIntentQueue({ database: asDb(db) });
+      const db = { getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<DiscoveryDatabase['getIntentForIndexing']>> };
+      const queue = new DiscoveryQueue({ database: asDb(db) });
       queue.startWorker();
       expect(capturedProcessor).not.toBeNull();
       await capturedProcessor!({

@@ -253,9 +253,7 @@ describe("QuestionDetection", () => {
       recovery: {
         version: 1,
         intentFingerprint: "a".repeat(64),
-        completionSource: "discovery_run",
-        rejectedNegotiationCount: 2,
-        runId: "run-1",
+        completionSource: "intent_creation",
       },
     };
     expect(QuestionDetectionSchema.safeParse(base).success).toBe(true);
@@ -266,12 +264,8 @@ describe("QuestionDetection", () => {
     expect(QuestionDetectionSchema.safeParse({ ...base, purpose: undefined }).success).toBe(false);
     expect(QuestionDetectionSchema.safeParse({
       ...base,
-      recovery: { ...base.recovery, rejectedNegotiationCount: 51 },
+      recovery: { ...base.recovery, completionSource: "from_intent" },
     }).success).toBe(false);
-    expect(QuestionDetectionSchema.safeParse({
-      ...base,
-      recovery: { ...base.recovery, completionSource: "intent_creation" },
-    }).success).toBe(true);
   });
 
   it("accepts only canonical internal void reasons", () => {
