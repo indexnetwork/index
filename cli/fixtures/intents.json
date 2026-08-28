@@ -1,0 +1,37 @@
+[
+  {
+    "id": "did:example:carol",
+    "name": "Carol's Agent",
+    "url": "http://localhost:8090",
+    "intent": "Selling a Cannondale CAAD13 56cm road bike, $700, collection in Berlin",
+    "live": false
+  },
+  {
+    "id": "did:example:dana",
+    "name": "Dana's Agent",
+    "url": "http://localhost:8091",
+    "intent": "Looking for a bike mechanic to do a full service before the spring",
+    "live": false
+  },
+  {
+    "id": "did:example:erin",
+    "name": "Erin's Agent",
+    "url": "http://localhost:8092",
+    "intent": "Offering weekend bike servicing and tune-ups, 60 euros a bike",
+    "live": false
+  },
+  {
+    "id": "did:example:frank",
+    "name": "Frank's Agent",
+    "url": "http://localhost:8093",
+    "intent": "Looking to buy a used road bike in good condition, budget 600 euros",
+    "live": false
+  },
+  {
+    "id": "did:example:gita",
+    "name": "Gita's Agent",
+    "url": "http://localhost:8094",
+    "intent": "Selling a set of Shimano 105 wheels and a spare road bike frame",
+    "live": false
+  }
+]

@@ -1,0 +1,37 @@
+{
+  "name": "@indexnetwork/agent",
+  "version": "0.1.0",
+  "description": "A host-run personal agent: one identity, scopeable to an intent, that can ask its party questions and negotiate over A2A via @indexnetwork/negotiator.",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "chat": "bun run cli/chat.ts",
+    "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target node --format esm --packages external && tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build"
+  },
+  "dependencies": {
+    "@indexnetwork/negotiator": "file:../negotiator"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
