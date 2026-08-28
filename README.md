@@ -313,6 +313,43 @@ and the others are the negotiate skill.
 inferred from an opaque `authenticate` function, so declare them through
 `card`, which merges last.
 
+### What the agent knows it negotiated
+
+An agent takes part in negotiations two ways: it dials a counterparty, or a
+counterparty dials it. Only the first passes through the agent loop —
+inbound turns are answered by `Negotiator` directly, because a
+counterparty's turn needs one reply, not a work session.
+
+That would leave the agent unable to speak about half of what it did. Ask
+the answering side what it agreed and it would deny the deal, because the
+conversation contains no trace of a negotiation that never passed through
+it.
+
+So negotiations are recorded, both directions, in a `NegotiationStore`:
+
+```ts
+new Agent({ identity, systemPrompt, sessions: myStore });
+```
+
+Same shape as `taskStore`, and the same reasoning — the agent holds no
+state of its own, so this is the host's. It defaults to in-memory; swap it
+and an agent knows what it negotiated after a restart, or from another
+process. `for()` shares it, the way it shares the identity: an intent
+scopes what the agent is working on, not what it remembers.
+
+Each run's system message then carries the record:
+
+```
+Negotiations you are party to. This is the record of what happened, which is
+not the same as what you remember saying — trust it over the conversation above:
+- 61b3061c with Alice's Agent — you contacted them; agreed: {"price":460,"collection":"Wednesday evening"}
+- 9f2a1c3d — they contacted you; still open, 4 turns so far
+```
+
+Reading is uniform; acting is not. An inbound negotiation has no URL — a
+`message/send` call carries no return address — so `negotiate_turn` refuses
+it and says why. The counterparty calls; this agent answers.
+
 ### Receiving negotiations
 
 `handler()` serves the AgentCard at `/.well-known/agent-card.json` and
@@ -342,6 +379,26 @@ There's no override — `buildSystemPrompt` is private to that package. So
 instructions that aren't negotiation-shaped still arrive, but read as a
 negotiator's brief. Write the prompt so that framing is true.
 
+### When the model doesn't answer
+
+Each model request is bounded by `timeout` (120s by default) and transient
+failures are retried up to `attempts` times (3): a timeout, a dropped
+connection, a rate limit, a 5xx. Backoff is 1s, 2s, 4s, or whatever
+`Retry-After` asked for.
+
+Nothing else is retried. A 401 or a malformed request fails the same way
+however many times it is sent, and an interrupted run is a decision rather
+than a failure — a caller's `signal` aborts immediately and is never
+retried.
+
+A retry looks exactly like slowness from the outside, so `onRetry` fires
+before each one. The terminal chat puts it in the spinner; a headless host
+should at least log it.
+
+> The negotiator's own model client and the A2A calls have no timeout of
+> their own, so a negotiation *turn* can still hang where the agent loop no
+> longer does. Run those under a `signal` if that matters to you.
+
 ### Options
 
 | Option | Type | Description |
@@ -352,6 +409,9 @@ negotiator's brief. Write the prompt so that framing is true.
 | `tools` | `Tool[]` | Defaults to `defaultTools()`. |
 | `model`, `apiKey`, `referer`, `title` | | OpenRouter configuration. |
 | `maxSteps` | `number` | Step cap for `run()`. Default 10. |
+| `timeout` | `number` | Per-request deadline in ms. Default 120000. |
+| `attempts` | `number` | Model attempts per step. Default 3. |
+| `onRetry` | function | Fires before a retry, with the attempt and the reason. |
 | `negotiator` | `Negotiator` | Defaults to one built from `model`/`apiKey`. |
 | `allowedActions` | `ActionSpec[]` | Defaults to `DEFAULT_ACTIONS`. |
 | `maxTurns` | `number` | Turn cap for `negotiate()`. Default 10. |
@@ -366,6 +426,7 @@ negotiator's brief. Write the prompt so that framing is true.
 | `authenticate` | function | Gates inbound `message/send`. |
 | `credentials` | `A2ACredentials` | Auth headers on outbound calls. |
 | `taskStore` | `TaskStore` | Inbound Task storage. In-memory by default. |
+| `sessions` | `NegotiationStore` | Where negotiations are recorded, both directions. In-memory by default. |
 
 ### Examples
 
@@ -518,6 +579,7 @@ src/
   core/
     agent.ts      # Agent: for(), run(), handler(), the negotiation methods
     loop.ts       # the agent loop, and suspend/resume
+    sessions.ts   # the in-memory NegotiationStore
     model.ts      # OpenRouter client with tool calling
     tools.ts      # Tool, askUserTool(), negotiationTools()
     types.ts      # identity/intent, RunResult/Step, negotiation types

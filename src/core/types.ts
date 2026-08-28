@@ -114,13 +114,36 @@ export interface AgentTurn<A extends string = string> {
 export interface NegotiationSession {
   /** The A2A task id, and how the agent refers to this negotiation. */
   id: string;
-  /** The counterparty's A2A endpoint. */
-  url: string;
+  /** Whether this agent dialed the counterparty or answered them. It
+   * decides what can be done with the session, not what can be known: an
+   * inbound negotiation is one this agent cannot take a turn in, because
+   * the counterparty is the one who calls. */
+  direction: Direction;
+  /** The counterparty's A2A endpoint. Absent on inbound negotiations —
+   * they contacted us, and a `message/send` call carries no return
+   * address. */
+  url?: string;
   /** What this agent is trying to get out of this negotiation. */
   objective: string;
-  /** The counterparty's AgentCard, if it was fetched. */
+  /** The counterparty's AgentCard, if it was fetched. Null inbound, where
+   * nothing was fetched. */
   peer: IdentifiedAgentCard | null;
   task: A2ATask;
+}
+
+/**
+ * Where an agent's negotiations live.
+ *
+ * The same shape as the A2A `TaskStore` and for the same reason: the agent
+ * itself holds no state, and a real deployment swaps the in-memory default
+ * for something shared. Both directions go here, so what the agent knows
+ * doesn't depend on who happened to dial.
+ */
+export interface NegotiationStore {
+  get(id: string): NegotiationSession | undefined;
+  save(session: NegotiationSession): void;
+  /** Most recently updated last. */
+  list(): NegotiationSession[];
 }
 
 /**

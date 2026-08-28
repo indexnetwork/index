@@ -3,6 +3,7 @@ import { Negotiator, type NegotiationDecision, type NegotiationState } from "@in
 import { messageToDecision } from "@indexnetwork/negotiator/a2a";
 
 import { Agent } from "./agent.ts";
+import { MemoryNegotiationStore } from "./sessions.ts";
 import { defaultTools } from "./tools.ts";
 import type { AgentTurn, Direction, NegotiationSession, Settlement } from "./types.ts";
 
@@ -993,5 +994,145 @@ describe("published skills", () => {
     });
 
     expect(agent.card().skills).toEqual([{ id: "only", name: "Only" }]);
+  });
+});
+
+describe("what the agent knows it negotiated", () => {
+  // The bug this exists for: an inbound negotiation is answered by the
+  // handler, never by the agent loop, so nothing about it reaches the
+  // conversation. The responder's agent would deny a deal it had just made.
+  test("records negotiations it answered, not only ones it opened", async () => {
+    const responder = new Agent({
+      ...seller,
+      negotiator: scripted([{ action: "accept", message: "$450 works." }]).negotiator,
+    });
+    const server = serve(responder);
+
+    try {
+      const initiator = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "counter", message: "$450, Wednesday." }]).negotiator,
+      });
+      await initiator.negotiate(server.url, { maxTurns: 2 });
+    } finally {
+      server.stop();
+    }
+
+    expect(responder.instructions()).toContain("they contacted you");
+    expect(responder.instructions()).toContain("Negotiations you are party to");
+  });
+
+  test("tells the model the record, both directions, with the verdict", async () => {
+    const server = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([
+          {
+            action: "accept",
+            message: "Done.",
+            acceptsOfferId: "offer-450",
+          },
+        ]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          {
+            action: "counter",
+            message: "$450, Wednesday.",
+            offerId: "offer-450",
+            terms: { amount: 450, pickupDay: "Wednesday" },
+          },
+        ]).negotiator,
+      });
+      await agent.negotiate(server.url, { maxTurns: 2 });
+
+      const instructions = agent.instructions();
+      expect(instructions).toContain("you contacted them");
+      expect(instructions).toContain("agreed");
+      expect(instructions).toContain('"amount":450');
+    } finally {
+      server.stop();
+    }
+  });
+
+  // Reading is uniform; acting is not. The counterparty dialed us, so
+  // there is no address to call back on.
+  test("refuses to take a turn in a negotiation it did not open", async () => {
+    const responder = new Agent({
+      ...seller,
+      negotiator: scripted([{ action: "counter", message: "Still $460." }]).negotiator,
+    });
+    const server = serve(responder);
+
+    let id = "";
+    try {
+      const initiator = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$430?" }]).negotiator,
+      });
+      const negotiation = await initiator.negotiate(server.url, { maxTurns: 1 });
+      id = negotiation.task.id;
+    } finally {
+      server.stop();
+    }
+
+    expect(responder.continueNegotiation(id)).rejects.toThrow(
+      /opened by the counterparty/,
+    );
+  });
+
+  test("an intent scope shares the record rather than starting a new one", async () => {
+    const server = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Fine." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "counter", message: "$450?" }]).negotiator,
+      });
+      await agent.negotiate(server.url, { maxTurns: 2 });
+
+      expect(agent.for("Buy a bike").instructions()).toContain("you contacted them");
+    } finally {
+      server.stop();
+    }
+  });
+
+  test("a host can supply the store, so the record survives the process", async () => {
+    const sessions = new MemoryNegotiationStore();
+    const server = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Fine." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        sessions,
+        negotiator: scripted([{ action: "counter", message: "$450?" }]).negotiator,
+      });
+      await agent.negotiate(server.url, { maxTurns: 2 });
+
+      // A fresh Agent over the same store knows what the old one did.
+      const restarted = new Agent({
+        ...buyer,
+        sessions,
+        negotiator: scripted([]).negotiator,
+      });
+      expect(restarted.instructions()).toContain("you contacted them");
+      expect(sessions.list()).toHaveLength(1);
+    } finally {
+      server.stop();
+    }
   });
 });

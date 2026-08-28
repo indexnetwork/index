@@ -19,6 +19,7 @@ export {
 } from "./core/tools.ts";
 export type { NegotiationToolOptions, Tool, ToolContext } from "./core/tools.ts";
 
+export { MemoryNegotiationStore } from "./core/sessions.ts";
 export { ModelClient, DEFAULT_MODEL } from "./core/model.ts";
 export type {
   ModelClientOptions,
@@ -36,6 +37,7 @@ export type {
   Negotiation,
   NegotiationEnd,
   NegotiationSession,
+  NegotiationStore,
   NegotiationTurn,
   PendingQuestion,
   RunEnd,

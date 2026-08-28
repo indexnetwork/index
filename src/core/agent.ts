@@ -25,6 +25,7 @@ import {
 } from "@indexnetwork/negotiator/a2a";
 
 import { runLoop } from "./loop.ts";
+import { MemoryNegotiationStore } from "./sessions.ts";
 import { ModelClient, type ModelMessage } from "./model.ts";
 import { defaultTools, type Tool, type ToolContext } from "./tools.ts";
 import type {
@@ -35,6 +36,7 @@ import type {
   Intent,
   Negotiation,
   NegotiationSession,
+  NegotiationStore,
   NegotiationTurn,
   Settlement,
   SettlementOutcome,
@@ -51,6 +53,11 @@ export type DefaultAction = (typeof DEFAULT_ACTIONS)[number];
 const DEFAULT_MAX_STEPS = 10;
 const DEFAULT_MAX_TURNS = 10;
 const DEFAULT_VERSION = "0.1.0";
+
+/** How many negotiations the system message lists. Enough to answer "what
+ * did we agree", bounded so a busy agent's prompt doesn't grow without
+ * limit. */
+const RECORDED_NEGOTIATIONS = 10;
 
 /** The negotiating skill, described with the vocabulary this agent
  * actually understands. A counterparty reading the card learns which
@@ -151,6 +158,15 @@ export interface AgentOptions<A extends string = DefaultAction> {
   title?: string;
   /** Step cap for `run()`. Defaults to 10. */
   maxSteps?: number;
+  /** How long one model request may take, in ms. Defaults to 120s. A hung
+   * connection otherwise stalls the agent until someone interrupts it. */
+  timeout?: number;
+  /** Model attempts per step, including the first. Defaults to 3; only
+   * transient failures are retried. */
+  attempts?: number;
+  /** Fires before a model call is retried. A retry looks like slowness
+   * from the outside, so a host with a UI generally wants to say so. */
+  onRetry?: (attempt: number, reason: string) => void;
 
   /** The negotiation engine. Defaults to a `Negotiator` built from `model`
    * and `apiKey`. */
@@ -220,6 +236,16 @@ export interface AgentOptions<A extends string = DefaultAction> {
   /** Where inbound Tasks are stored. Defaults to the negotiator's
    * in-memory store, which is per-process. */
   taskStore?: TaskStore;
+  /**
+   * Where this agent's negotiations are recorded — both the ones it opened
+   * and the ones it answered.
+   *
+   * The agent holds no state of its own; this is the host's, like
+   * `taskStore`, and defaults to an in-memory store. Swap it for something
+   * shared and an agent knows what it negotiated after a restart, or from
+   * another process.
+   */
+  sessions?: NegotiationStore;
 }
 
 export interface RunOptions {
@@ -277,6 +303,8 @@ export class Agent<A extends string = DefaultAction> {
   /** How each turn is decided. Defaults to asking for structured terms, so
    * an agreement can be verified rather than read. */
   private readonly strategy: DecisionStrategy<A>;
+  /** What this agent has negotiated, in either direction. */
+  private readonly sessions: NegotiationStore;
 
   constructor(private readonly options: AgentOptions<A>) {
     this.identity = options.identity;
@@ -289,6 +317,9 @@ export class Agent<A extends string = DefaultAction> {
       model: options.model,
       referer: options.referer,
       title: options.title,
+      timeout: options.timeout,
+      attempts: options.attempts,
+      onRetry: options.onRetry,
     });
     this.negotiator =
       options.negotiator ?? new Negotiator({ apiKey: options.apiKey, model: options.model });
@@ -298,6 +329,7 @@ export class Agent<A extends string = DefaultAction> {
     this.maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
     this.maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
     this.isTerminal = options.isTerminal ?? ((action: A) => DEFAULT_TERMINAL.has(action));
+    this.sessions = options.sessions ?? new MemoryNegotiationStore();
 
     // An explicit strategy wins. Otherwise terms are on unless the host
     // turned them off with `terms: ""` — a decision that carries no terms
@@ -322,13 +354,16 @@ export class Agent<A extends string = DefaultAction> {
     return new Agent<A>({
       ...this.options,
       identity: this.identity,
+      // Shared, not copied — an intent scopes what the agent is working
+      // on, not what it remembers negotiating.
+      sessions: this.sessions,
       intent: typeof intent === "string" ? { statement: intent } : intent,
     });
   }
 
   /** The system message the loop actually runs under: the host's standing
    * instructions, plus who this agent is, plus the current intent. */
-  instructions(): string {
+  instructions(sessions: NegotiationSession[] = this.sessions.list()): string {
     const parts = [
       this.systemPrompt,
       `You are ${this.identity.name}, acting on behalf of ${this.identity.id}.`,
@@ -338,7 +373,40 @@ export class Agent<A extends string = DefaultAction> {
         `Current intent: ${this.intent.statement}\nEverything you do in this session serves that intent. If something falls outside it, say so rather than acting.`,
       );
     }
+
+    // What this agent has actually negotiated, from the record rather than
+    // from the conversation. A negotiation it answered never passed
+    // through this loop, so without this the agent would deny a deal it
+    // made — and even its own outbound deals would vanish the moment the
+    // transcript was trimmed.
+    const record = this.record(sessions);
+    if (record) parts.push(record);
+
     return parts.join("\n\n");
+  }
+
+  /** The negotiations block of the system message. */
+  private record(sessions: NegotiationSession[]): string {
+    if (!sessions.length) return "";
+
+    const lines = sessions.slice(-RECORDED_NEGOTIATIONS).map((session) => {
+      const who = session.direction === "outbound" ? "you contacted them" : "they contacted you";
+      const peer = session.peer?.name ? ` with ${session.peer.name}` : "";
+      const agreement = verifyAgreement(session.task);
+      const terms = agreement.terms ? `: ${JSON.stringify(agreement.terms)}` : "";
+      const detail =
+        agreement.status === "open"
+          ? `still open, ${session.task.history.length} turns so far`
+          : `${agreement.status}${terms}`;
+
+      return `- ${session.id}${peer} — ${who}; ${detail}`;
+    });
+
+    return [
+      "Negotiations you are party to. This is the record of what happened, which is not the same as what you remember saying — trust it over the conversation above:",
+      ...lines,
+      "Only negotiations you opened can be continued with negotiate_turn; in the others the counterparty calls you.",
+    ].join("\n");
   }
 
   // --- the agent loop ------------------------------------------------
@@ -352,13 +420,20 @@ export class Agent<A extends string = DefaultAction> {
    * `messages`, and the run picks up from the question.
    */
   async run(input: string, options: RunOptions = {}): Promise<RunResult> {
+    // The store is the record; `options.negotiations` is what the host
+    // carried back from a previous run. Either is enough on its own, so a
+    // host can keep passing sessions around message-style or lean on a
+    // shared store, and both hosts get an agent that knows the same things.
+    for (const session of options.negotiations ?? []) {
+      if (!this.sessions.get(session.id)) this.sessions.save(session);
+    }
     const negotiations = new Map(
-      (options.negotiations ?? []).map((session) => [session.id, session]),
+      this.sessions.list().map((session) => [session.id, session]),
     );
 
     return runLoop({
       model: this.model,
-      systemPrompt: this.instructions(),
+      systemPrompt: this.instructions([...negotiations.values()]),
       tools: this.tools,
       messages: options.messages ?? [],
       input,
@@ -446,7 +521,6 @@ export class Agent<A extends string = DefaultAction> {
     });
 
     const { onTurn, onSettled } = this.options;
-    if (!onTurn && !onSettled) return inner;
 
     // Report both turns of the round trip, in order. The counterparty's has
     // to be decoded from the request before the handler runs, and this
@@ -466,6 +540,23 @@ export class Agent<A extends string = DefaultAction> {
 
       const answered = await peek<{ result?: A2ATask }>(response);
       const task = answered?.result;
+
+      // A negotiation this agent answered is one it was party to, so it
+      // goes in the same record as the ones it opened. Without this the
+      // agent can only know about negotiations it happened to dial, which
+      // is an accident of transport rather than anything its party cares
+      // about.
+      if (task) {
+        this.sessions.save({
+          ...this.sessions.get(task.id),
+          id: task.id,
+          direction: "inbound",
+          objective: this.objectiveFor(),
+          peer: null,
+          task,
+        });
+      }
+
       const reply = task?.history.at(-1);
       const decision = reply ? messageToDecision(reply) : null;
       if (decision && task) {
@@ -505,6 +596,7 @@ export class Agent<A extends string = DefaultAction> {
 
     const session: NegotiationSession = {
       id: "",
+      direction: "outbound",
       url,
       objective,
       peer,
@@ -527,11 +619,19 @@ export class Agent<A extends string = DefaultAction> {
     context?: Pick<ToolContext, "negotiations">,
   ): Promise<NegotiationTurn<A>> {
     const resolved =
-      typeof session === "string" ? context?.negotiations.get(session) : session;
+      typeof session === "string"
+        ? (context?.negotiations.get(session) ?? this.sessions.get(session))
+        : session;
 
     if (!resolved) {
       throw new Error(
         `No open negotiation "${String(session)}". Open one with negotiate_open first.`,
+      );
+    }
+
+    if (resolved.direction === "inbound") {
+      throw new Error(
+        `Negotiation "${resolved.id}" was opened by the counterparty. You answer their turns as they arrive; you cannot take one on your own initiative.`,
       );
     }
 
@@ -563,6 +663,12 @@ export class Agent<A extends string = DefaultAction> {
       },
     });
 
+    if (!session.url) {
+      throw new Error(
+        `Negotiation "${session.id}" was opened by the counterparty, so there is nowhere to call. They take the next turn by contacting this agent.`,
+      );
+    }
+
     const result = session.task
       ? await client.continue(session.url, session.task)
       : await client.initiate(session.url);
@@ -585,6 +691,8 @@ export class Agent<A extends string = DefaultAction> {
     }
 
     // Outbound: this agent spoke first and they replied.
+    this.sessions.save(session);
+
     const settlement = this.settle(result.task, result.decision, received, true);
     if (settlement) this.options.onSettled?.(settlement, "outbound");
 

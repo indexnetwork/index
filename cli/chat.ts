@@ -31,7 +31,18 @@ import {
   TaskStore,
 } from "../src/index.ts";
 import { Directory, type DirectoryEntry } from "./directory.ts";
-import { bold, cyan, dim, formatStep, formatTurn, green, magenta, red, yellow } from "./format.ts";
+import {
+  bold,
+  cyan,
+  dim,
+  formatStep,
+  formatTurn,
+  green,
+  magenta,
+  red,
+  short,
+  yellow,
+} from "./format.ts";
 import { createSurface, type Surface } from "./surface.ts";
 
 // --- arguments -------------------------------------------------------
@@ -138,6 +149,11 @@ const base = new Agent({
   // Fires on both sides of a close, so this terminal and the counterparty's
   // reach the same verdict rather than each reporting its own action.
   onSettled: (settlement) => settled(settlement),
+  // A retry looks exactly like slowness unless it says so.
+  onRetry: (attempt, reason) => {
+    surface.start(`retrying (${attempt}/3) — ${short(reason, 60)}`);
+    say(dim(`⟳ retrying: ${short(reason, 120)}`));
+  },
 });
 
 let intent: Intent | undefined =
