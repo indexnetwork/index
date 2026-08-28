@@ -11,7 +11,7 @@ import type { PersonalAgentInput, PersonalAgentResult } from '@indexnetwork/prot
 import { UnrecoverableError } from 'bullmq';
 
 import { requestContext as hostRequestContext } from '../../lib/request-context';
-import { PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS, PERSONAL_AGENT_EXECUTION_BUDGET_MS, PersonalAgentQueue } from '../personal-agent.queue';
+import { PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS, PersonalAgentQueue } from '../personal-agent.queue';
 
 setRequestContextStore(hostRequestContext);
 
@@ -67,12 +67,16 @@ describe('PersonalAgentQueue serialization', () => {
       const jobs = await Promise.all([
         queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-1' }),
         queue.addAllPausedEvent({ userId: 'user-1', intentId: 'intent-1', batchId: 'batch-3', dedupeKey: 'task-1.0' }),
-        queue.addUserMessageEvent({
+      ]);
+      await Promise.all([
+        ...jobs.map((job) => job.waitUntilFinished(undefined as never, 10_000)),
+        // user_message is not queued: it runs directly on the same
+        // per-intent lane, alongside the two queued events above.
+        queue.runUserMessageTurn({
           userId: 'user-1', intentId: 'intent-1', event: 'user_message',
           sessionId: 'session-1', messageId: 'reply-1', text: 'hello',
         }),
       ]);
-      await Promise.all(jobs.map((job) => job.waitUntilFinished(undefined as never, 10_000)));
 
       expect(spans).toHaveLength(3);
       const ordered = [...spans].sort((a, b) => a.start - b.start);
@@ -95,19 +99,6 @@ describe('PersonalAgentQueue serialization', () => {
       expect(spans).toHaveLength(2);
       const [first, second] = [...spans].sort((a, b) => a.start - b.start);
       expect(second!.start).toBeLessThan(first!.end);
-    });
-  });
-
-  it('a redelivered user message coalesces on its message id — one turn, not two', async () => {
-    await withQueue(buildQueue(() => idle), async ({ queue, invocations }) => {
-      const event = {
-        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
-        sessionId: 'session-1', messageId: 'reply-dup', text: 'hello',
-      } as const;
-      const [first, second] = await Promise.all([queue.addUserMessageEvent(event), queue.addUserMessageEvent(event)]);
-      expect(second.id).toBe(first.id);
-      await first.waitUntilFinished(undefined as never, 10_000);
-      expect(invocations()).toBe(1);
     });
   });
 
@@ -251,11 +242,6 @@ describe('PersonalAgentQueue serialization', () => {
       messages: ['Right here.'],
     };
     await withQueue(buildQueue(() => result), async ({ queue }) => {
-      const queued = await queue.addUserMessageEvent({
-        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
-        sessionId: 'session-1', messageId: 'reply-priority', text: 'priority please',
-      });
-      expect(queued.opts.lifo).toBe(true);
       const turn = await queue.runUserMessageTurn({
         userId: 'user-1', intentId: 'intent-1', event: 'user_message',
         sessionId: 'session-1', messageId: 'reply-2', text: 'where are we?',
@@ -276,49 +262,70 @@ describe('PersonalAgentQueue serialization', () => {
     }
   });
 
-  it('a graph-level error fails the turn — the awaited lane rejects and the job stays retryable', async () => {
+  it('a graph-level error fails the turn — the direct call rejects, with no retry', async () => {
     await withQueue(buildQueue(() => ({ scope: 'intent', acts: [], messages: [], error: 'provider down' })), async ({ queue, invocations }) => {
       await expect(queue.runUserMessageTurn({
         userId: 'user-1', intentId: 'intent-1', event: 'user_message',
         sessionId: 'session-1', messageId: 'reply-3', text: 'hello',
-      }, { timeoutMs: 500 })).rejects.toThrow();
-      expect(invocations()).toBe(3);
+      })).rejects.toThrow('provider down');
+      expect(invocations()).toBe(1);
     });
   });
 
-  it('a stale queued user message is unrecoverable and never invokes the graph', async () => {
-    const built = buildQueue(() => idle);
-    try {
-      const job = await built.queue.addUserMessageEvent({
-        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
-        sessionId: 'session-1', messageId: 'reply-stale', text: 'hello',
-      });
-      job.timestamp = Date.now() - PERSONAL_AGENT_EXECUTION_BUDGET_MS - 1;
-      built.queue.startWorker();
-
-      await expect(job.waitUntilFinished(undefined as never, 1_000)).rejects.toBeInstanceOf(UnrecoverableError);
-      expect(built.invocations()).toBe(0);
-      expect(job.attemptsMade).toBe(1);
-    } finally {
-      await built.queue.close();
-    }
-  });
-
-  it('a deadline abort that fails invocation becomes unrecoverable', async () => {
+  it("runUserMessageTurn's deadline rejects the caller and also aborts the graph invocation", async () => {
+    let observedAbort = false;
     const queue = new PersonalAgentQueue(async () => {
       const signal = requestContext.getStore()?.abortSignal;
-      await new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
+      await new Promise<void>((resolve) => signal?.addEventListener('abort', () => { observedAbort = true; resolve(); }, { once: true }));
       throw new Error('model aborted');
     });
     try {
-      const job = await queue.addUserMessageEvent({
+      // The caller sees the deadline itself, not the invocation's own
+      // eventual abort-throw — that happens at least a microtask later.
+      await expect(queue.runUserMessageTurn({
         userId: 'user-1', intentId: 'intent-1', event: 'user_message',
         sessionId: 'session-1', messageId: 'reply-deadline', text: 'hello',
-      });
-      job.timestamp = Date.now() - PERSONAL_AGENT_EXECUTION_BUDGET_MS + 25;
-
-      await expect(queue.processJob(job)).rejects.toBeInstanceOf(UnrecoverableError);
+      }, { timeoutMs: 25 })).rejects.toThrow(/25ms deadline/);
+      // The same signal still reaches the invocation, even though the
+      // caller has already stopped waiting on it.
+      await sleep(10);
+      expect(observedAbort).toBe(true);
     } finally {
+      await queue.close();
+    }
+  });
+
+  it("a second same-intent turn queued behind a slow first is bounded by its own call-relative deadline", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const queue = new PersonalAgentQueue(async (input) => {
+      if ('messageId' in input && input.messageId === 'reply-first') await firstGate;
+      return idle;
+    });
+    try {
+      const first = queue.runUserMessageTurn({
+        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
+        sessionId: 'session-1', messageId: 'reply-first', text: 'first',
+      }, { timeoutMs: 10_000 });
+      // Let the first turn claim the lane before the second is called.
+      await sleep(10);
+
+      const start = performance.now();
+      const second = queue.runUserMessageTurn({
+        userId: 'user-1', intentId: 'intent-1', event: 'user_message',
+        sessionId: 'session-1', messageId: 'reply-second', text: 'second',
+      }, { timeoutMs: 50 });
+
+      // Bounded by the second call's OWN deadline, not a fresh budget that
+      // only starts once the lane frees — the first turn is still gated and
+      // would not free the lane for ~10s.
+      await expect(second).rejects.toThrow(/50ms deadline/);
+      expect(performance.now() - start).toBeLessThan(500);
+
+      releaseFirst?.();
+      await first;
+    } finally {
+      releaseFirst?.();
       await queue.close();
     }
   });
@@ -340,7 +347,9 @@ describe('PersonalAgentQueue serialization', () => {
     });
     try {
       const job = await queue.addMatchesReadyEvent({ userId: 'user-1', intentId: 'intent-background' });
-      job.timestamp = Date.now() - PERSONAL_AGENT_EXECUTION_BUDGET_MS * 2;
+      // A stale enqueue timestamp: the background budget is a fresh window
+      // from pickup, not queue-wait-relative, so this must not shrink it.
+      job.timestamp = Date.now() - 10 * 60_000;
 
       const result = await hostRequestContext.run(
         { originUrl: 'https://queue.example.test' },

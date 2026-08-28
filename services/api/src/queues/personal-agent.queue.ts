@@ -7,8 +7,8 @@
  * other signal's kickoff.
  *
  * Four events, one graph input each:
- * - `user_message` — keyed by the reply message id, so a redelivery cannot
- *   double-speak. Removed on completion; the chat controller awaits it.
+ * - `user_message` — the chat controller calls {@link PersonalAgentQueue.runUserMessageTurn}
+ *   directly, on the signal's serialized lane; it is not queued.
  * - `matches_ready` — keyed by the signal, so a burst of discovery batches
  *   coalesces into one kickoff turn rather than one per batch.
  * - `all_paused` — keyed by one durable all-paused generation and NOT removed on
@@ -17,8 +17,7 @@
  * - `counterparty_resolved` — keyed by the negotiation, recipient signal and
  *   verdict; a counterpart receives one factual terminal announcement.
  */
-import { Job, UnrecoverableError } from 'bullmq';
-import type { QueueEvents } from 'bullmq';
+import { Job } from 'bullmq';
 import { negotiationRoundReflectJobId, requestContext } from '@indexnetwork/protocol';
 import type { NegotiationRoundReflectJobData, PersonalAgentInput, PersonalAgentResult } from '@indexnetwork/protocol';
 
@@ -30,14 +29,13 @@ import { publishPersonalAgentTurnCompletedEvent } from '../lib/conversation-even
 export const QUEUE_NAME = 'personal-agent-queue';
 
 /**
- * How long the chat controller waits for an awaited `user_message` turn
- * before answering with fixed copy. The worker's 70-second enqueue-relative
- * deadline leaves twenty seconds inside this response boundary.
+ * How long the chat controller waits for a `user_message` turn — awaited
+ * directly, on the signal's serialized lane — before answering with fixed
+ * copy. The same deadline bounds the graph invocation itself, so a slow model
+ * call is aborted rather than left running past the point the controller
+ * gives up on it.
  */
 export const PERSONAL_AGENT_TURN_WAIT_MS = 90_000;
-
-/** Leave the controller twenty seconds to finish its own 90-second response path. */
-export const PERSONAL_AGENT_EXECUTION_BUDGET_MS = 70_000;
 
 /** A kickoff may author several briefs and A2A turns; it is not constrained by an HTTP response. */
 export const PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS = 5 * 60_000;
@@ -59,10 +57,6 @@ export const PERSONAL_AGENT_WORKER_CONCURRENCY =
 export type PersonalAgentEvent = Extract<PersonalAgentInput, { event: string }>;
 
 export type PersonalAgentUserMessageEvent = Extract<PersonalAgentEvent, { event: 'user_message' }>;
-
-export function personalAgentUserMessageJobId(messageId: string): string {
-  return `personal-agent-msg.${messageId}`;
-}
 
 export function personalAgentMatchesReadyJobId(intentId: string): string {
   return `personal-agent-matches.${intentId}`;
@@ -89,7 +83,6 @@ export class PersonalAgentQueue {
   private readonly invoke: (input: PersonalAgentInput) => Promise<PersonalAgentResult>;
   private readonly publishTurnCompleted: (input: { userId: string; intentId: string }) => Promise<void>;
   private worker: ReturnType<typeof QueueFactory.createWorker<PersonalAgentEvent>> | null = null;
-  private queueEvents: QueueEvents | null = null;
   /** Tail promise for each signal's actor lane. Resolved even after a failed turn. */
   private readonly intentTails = new Map<string, Promise<void>>();
 
@@ -99,19 +92,6 @@ export class PersonalAgentQueue {
   ) {
     this.invoke = invoke ?? ((input) => personalAgentGraph.invoke(input));
     this.publishTurnCompleted = publishTurnCompleted;
-  }
-
-  /** Wake the agent with the principal's message. */
-  addUserMessageEvent(event: PersonalAgentUserMessageEvent): Promise<Job<PersonalAgentEvent>> {
-    return this.queue.add('user_message', event, {
-      jobId: personalAgentUserMessageJobId(event.messageId),
-      // A principal is waiting on this turn over HTTP. Put it ahead of
-      // background discovery and reflect work that has not started yet;
-      // running turns remain intentionally non-preemptive.
-      lifo: true,
-      removeOnComplete: true,
-      removeOnFail: true,
-    });
   }
 
   /**
@@ -234,22 +214,42 @@ export class PersonalAgentQueue {
   }
 
   /**
-   * The chat controller's lane: enqueue the principal's message and wait for
-   * the serialized turn, returning what the agent did so the controller can
-   * emit its messages as the turn's response. Throws on turn failure or wait
-   * timeout; the worker's enqueue-relative deadline prevents a stale user
-   * turn from mutating state after the controller has already answered.
+   * The chat controller's lane: run the principal's message turn on the
+   * signal's serialized lane and return what the agent did so the controller
+   * can emit its messages as the turn's response. Throws on turn failure or
+   * deadline. The deadline is call-relative — it starts counting here, before
+   * the lane is even joined — so a turn queued behind a slow sibling on the
+   * same signal cannot pin the controller past its own budget; the queued
+   * turn still runs to completion afterward (in this process, on this lane),
+   * it is just no longer what the controller is waiting on. The same signal
+   * also bounds the graph invocation itself, wherever in the deadline it
+   * happens to start.
    */
   async runUserMessageTurn(
     event: PersonalAgentUserMessageEvent,
     options?: { timeoutMs?: number },
   ): Promise<PersonalAgentResult> {
-    const job = await this.addUserMessageEvent(event);
-    const result = await job.waitUntilFinished(
-      this.getQueueEvents(),
-      options?.timeoutMs ?? PERSONAL_AGENT_TURN_WAIT_MS,
+    const timeoutMs = options?.timeoutMs ?? PERSONAL_AGENT_TURN_WAIT_MS;
+    const deadlineSignal = AbortSignal.timeout(timeoutMs);
+    const existing = requestContext.getStore() ?? {};
+    const abortSignal = existing.abortSignal
+      ? AbortSignal.any([existing.abortSignal, deadlineSignal])
+      : deadlineSignal;
+
+    const turn = this.serializeIntent(
+      event.intentId,
+      () => requestContext.run({ ...existing, abortSignal }, () => this.processEvent(event)),
     );
-    return result as PersonalAgentResult;
+    const deadline = new Promise<never>((_, reject) => {
+      const fail = () => reject(new Error(`PersonalAgent user-message turn exceeded its ${timeoutMs}ms deadline`));
+      if (abortSignal.aborted) fail();
+      else abortSignal.addEventListener('abort', fail, { once: true });
+    });
+    // `abortSignal` still fires after `turn` wins the race (the timer is not
+    // cancelled), so give `deadline` a handler of its own — otherwise that
+    // later rejection has no listener left and surfaces as unhandled.
+    deadline.catch(() => {});
+    return Promise.race([turn, deadline]);
   }
 
   /** Run one event's turn (used by the worker and by tests with an injected graph). */
@@ -270,6 +270,16 @@ export class PersonalAgentQueue {
       });
     }
     return result;
+  }
+
+  /** Bound `fn` with an abort signal that fires after `timeoutMs`, composed with any inherited cancellation. */
+  private async runWithDeadline<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
+    const deadlineSignal = AbortSignal.timeout(timeoutMs);
+    const existing = requestContext.getStore() ?? {};
+    const abortSignal = existing.abortSignal
+      ? AbortSignal.any([existing.abortSignal, deadlineSignal])
+      : deadlineSignal;
+    return requestContext.run({ ...existing, abortSignal }, fn);
   }
 
   /**
@@ -293,7 +303,7 @@ export class PersonalAgentQueue {
     return previous.then(work).finally(finish);
   }
 
-  /** Apply the queue-time/user deadline or a fresh, retryable background budget to one invocation. */
+  /** Apply a fresh, retryable background budget to one queued invocation. */
   async processJob(job: Job<PersonalAgentEvent>): Promise<PersonalAgentResult> {
     return this.serializeIntent(job.data.intentId, () => this.processSerializedJob(job));
   }
@@ -301,24 +311,10 @@ export class PersonalAgentQueue {
   private async processSerializedJob(job: Job<PersonalAgentEvent>): Promise<PersonalAgentResult> {
     const startedAt = Date.now();
     const queueWaitMs = Math.max(0, startedAt - job.timestamp);
-    const isUserMessage = job.data.event === 'user_message';
-    let deadlineSignal: AbortSignal | undefined;
     try {
-      const remaining = isUserMessage
-        ? job.timestamp + PERSONAL_AGENT_EXECUTION_BUDGET_MS - Date.now()
-        : PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS;
-      if (remaining <= 0) {
-        throw new UnrecoverableError('PersonalAgent user-message execution deadline expired before pickup');
-      }
-
-      deadlineSignal = AbortSignal.timeout(remaining);
-      const existing = requestContext.getStore() ?? {};
-      const abortSignal = existing.abortSignal
-        ? AbortSignal.any([existing.abortSignal, deadlineSignal])
-        : deadlineSignal;
-      const result = await requestContext.run(
-        { ...existing, abortSignal },
+      const result = await this.runWithDeadline(
         () => this.processEvent(job.data),
+        PERSONAL_AGENT_BACKGROUND_EXECUTION_BUDGET_MS,
       );
       const finishedAt = Date.now();
       this.logger.info('PersonalAgent turn completed', {
@@ -337,14 +333,6 @@ export class PersonalAgentQueue {
       });
       return result;
     } catch (error) {
-      // A user-message retry could mutate state after the controller has
-      // already returned its timeout response, so its deadline is terminal.
-      // Background wakes have no waiting caller and are the only path back to
-      // persisted matches/paused rounds; their pre-effect expiry must retain
-      // the queue's ordinary retry policy instead of stranding that work.
-      const failure = isUserMessage && deadlineSignal?.aborted
-        ? new UnrecoverableError('PersonalAgent execution deadline expired')
-        : error;
       const finishedAt = Date.now();
       this.logger.error('PersonalAgent turn failed', {
         jobId: job.id,
@@ -354,9 +342,9 @@ export class PersonalAgentQueue {
         queueWaitMs,
         executionDurationMs: finishedAt - startedAt,
         totalDurationMs: finishedAt - job.timestamp,
-        error: failure instanceof Error ? failure.message : String(failure),
+        error: error instanceof Error ? error.message : String(error),
       });
-      throw failure;
+      throw error;
     }
   }
 
@@ -372,20 +360,11 @@ export class PersonalAgentQueue {
     });
   }
 
-  private getQueueEvents(): QueueEvents {
-    if (!this.queueEvents) this.queueEvents = QueueFactory.createQueueEvents(QUEUE_NAME);
-    return this.queueEvents;
-  }
-
   /** Close the worker and queue connections (graceful shutdown). */
   async close(): Promise<void> {
     if (this.worker) {
       await this.worker.close();
       this.worker = null;
-    }
-    if (this.queueEvents) {
-      await this.queueEvents.close();
-      this.queueEvents = null;
     }
     await this.queue.close();
   }
