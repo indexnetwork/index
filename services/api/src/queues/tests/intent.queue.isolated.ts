@@ -261,6 +261,29 @@ describe('IntentQueue', () => {
       expect(sequence.indexOf('discovery')).toBe(sequence.length - 1);
     });
 
+    it('generate_hyde: fails the job when assignment rejects, even though HyDE succeeds', async () => {
+      const invokeHyde = mock(async () => {});
+      const addOpportunityJob = mock(async () => ({}));
+      let getIntentForIndexingCalls = 0;
+      const db = {
+        // First call is handleGenerateHyde's own admission check (must succeed);
+        // second call is inside assignIntentToNetworks (the un-try'd call that can reject).
+        getIntentForIndexing: async () => {
+          getIntentForIndexingCalls += 1;
+          if (getIntentForIndexingCalls > 1) throw new Error('db unavailable');
+          return { id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null };
+        },
+        getUserIndexIds: async () => ['idx1'],
+        assignIntentToNetwork: async () => {},
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
+
+      await expect(queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' })).rejects.toThrow('db unavailable');
+      expect(invokeHyde).toHaveBeenCalledTimes(1);
+      expect(addOpportunityJob).not.toHaveBeenCalled();
+    });
+
     it('generate_hyde: builds profileContext from the users row (name/bio/location) + active intents', async () => {
       const invokeHyde = mock(async () => {});
       const addOpportunityJob = mock(async () => ({}));
