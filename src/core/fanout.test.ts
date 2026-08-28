@@ -287,6 +287,86 @@ describe("escalation", () => {
       stop();
     }
   });
+
+  test("negotiate_turn refuses a negotiation parked before its first turn", async () => {
+    const { url, stop } = serve(
+      new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator }),
+    );
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "ask", message: "What is Bob's ceiling?" }]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+      const parked = await agent.runNegotiation(url, {}, { negotiations });
+      expect(parked.kind).toBe("asking");
+
+      await expect(agent.continueNegotiation(parked.id, {}, { negotiations })).rejects.toThrow(
+        /negotiate_resume/,
+      );
+    } finally {
+      stop();
+    }
+  });
+
+  test("negotiate_turn after a resume re-key leaves one record entry", async () => {
+    // Ask on the very first turn, before anything is sent — the case
+    // that keys the session under a provisional `local:` id in the store
+    // (see "an ask before the first turn gets a local id" above). Only
+    // this shape can reveal a stale `local:` entry surviving a re-key:
+    // once the first send succeeds the id is already real, and there is
+    // nothing provisional left in the store to leak.
+    const server = scripted([
+      { action: "counter", message: "$480, Saturday?" },
+      { action: "counter", message: "$470?" },
+      { action: "accept", message: "Fine." },
+    ]);
+    const { url, stop } = serve(new Agent({ ...seller, negotiator: server.negotiator }));
+    try {
+      const sessions = new MemoryNegotiationStore();
+      const client = scripted([
+        { action: "ask", message: "Latest pickup day?" },
+        { action: "counter", message: "$450, Sunday." },
+        { action: "counter", message: "$460, Sunday." },
+        { action: "accept", message: "Deal." },
+      ]);
+      const agent = new Agent({ ...buyer, sessions, maxTurns: 2, negotiator: client.negotiator });
+      const negotiations = new Map<string, NegotiationSession>();
+
+      const parked = await agent.runNegotiation(url, {}, { negotiations });
+      expect(parked.kind).toBe("asking");
+      expect(parked.id).toStartWith("local:");
+
+      const resumed = await agent.resumeNegotiation(parked.id, "Sunday at the latest", { negotiations });
+      // maxTurns caps the pump, not negotiate_turn: the exchange is still
+      // open, which is what makes this a legal negotiate_turn target.
+      expect(resumed.kind).toBe("budget");
+      if (resumed.kind !== "budget") return;
+
+      const taskId = resumed.id;
+      expect(taskId).not.toStartWith("local:");
+
+      const turn = await agent.continueNegotiation(taskId, {}, { negotiations });
+      expect(turn.done).toBe(true);
+
+      expect(sessions.list()).toHaveLength(1);
+      expect([...negotiations.keys()]).toEqual([taskId]);
+      expect(agent.instructions().split("\n").filter((l) => l.startsWith("- "))).toHaveLength(1);
+    } finally {
+      stop();
+    }
+  });
+
+  test("a send-time failure leaves nothing in the record", async () => {
+    const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator });
+    const negotiations = new Map<string, NegotiationSession>();
+
+    const event = await agent.runNegotiation("http://127.0.0.1:1", { discover: false }, { negotiations });
+
+    expect(event.kind).toBe("failed");
+    expect(negotiations.size).toBe(0);
+    expect(agent.instructions()).not.toContain("local:");
+  });
 });
 
 describe("digest()", () => {
@@ -414,36 +494,42 @@ describe("negotiate_many / negotiate_resume", () => {
     const mk = () => scripted([{ action: "counter", message: "$480?" }, { action: "accept", message: "OK." }]);
     const a = serve(new Agent({ ...seller, negotiator: mk().negotiator }));
     const b = serve(new Agent({ ...seller, identity: { name: "Seller B", id: "did:example:b" }, negotiator: mk().negotiator }));
+    // A third counterparty, parked alongside a and b but never resumed —
+    // it should sit untouched, still waiting, while the other two settle.
+    const c = serve(new Agent({ ...seller, identity: { name: "Seller C", id: "did:example:c" }, negotiator: mk().negotiator }));
     try {
-      // Two negotiations interleave on one shared client. `scripted()`'s
+      // Negotiations interleave on one shared client. `scripted()`'s
       // call-order counter can't tell them apart — whichever session's
       // network round trip resolves first claims the next script entry,
       // so on an unlucky interleaving one session would get a second
       // "propose" and skip straight to a settlement (the seller's second
       // scripted reply is "accept"), never reaching "ask". Script each
-      // session (keyed by its own objective, "a" or "b") independently
+      // session (keyed by its own objective, "a"/"b"/"c") independently
       // instead, via `scriptedBySession`.
-      const client = scriptedBySession({
-        a: [
-          { action: "propose", message: "$400?" },
-          { action: "ask", message: "Ceiling?" },
-          { action: "counter", message: "$450." },
-        ],
-        b: [
-          { action: "propose", message: "$400?" },
-          { action: "ask", message: "Ceiling?" },
-          { action: "counter", message: "$450." },
-        ],
-      });
+      const script = [
+        { action: "propose", message: "$400?" },
+        { action: "ask", message: "Ceiling?" },
+        { action: "counter", message: "$450." },
+      ];
+      const client = scriptedBySession({ a: script, b: script, c: script });
       const agent = new Agent({ ...buyer, negotiator: client.negotiator });
       const context = { agent: agent as unknown as Agent, negotiations: new Map<string, NegotiationSession>() };
 
       const first = (await tool("negotiate_many").run!(
-        { targets: [{ url: a.url, objective: "a" }, { url: b.url, objective: "b" }] } as never,
+        {
+          targets: [
+            { url: a.url, objective: "a" },
+            { url: b.url, objective: "b" },
+            { url: c.url, objective: "c" },
+          ],
+        } as never,
         context,
       )) as string;
-      expect(first).toContain("Waiting on you (2)");
-      const ids = [...context.negotiations.keys()];
+      expect(first).toContain("Waiting on you (3)");
+
+      const sessionFor = (tag: string) =>
+        [...context.negotiations.values()].find((s) => s.objective.includes(`In this negotiation: ${tag}`))!;
+      const ids = [sessionFor("a").id, sessionFor("b").id];
 
       const second = (await tool("negotiate_resume").run!(
         { ids, guidance: "Bob's ceiling is $460" } as never,
@@ -451,12 +537,22 @@ describe("negotiate_many / negotiate_resume", () => {
       )) as string;
 
       expect(second).toStartWith("Settled (2):");
-      const after = client.calls.slice(4);
-      expect(after.every((c) => c.state.party.objective.includes("ceiling is $460"))).toBe(true);
+      // Three sessions × 2 pre-resume calls (propose, ask) each = 6, then
+      // the resume drives one more decide per resumed session.
+      const after = client.calls.slice(6);
       expect(after).toHaveLength(2);
+      expect(after.every((call) => call.state.party.objective.includes("ceiling is $460"))).toBe(true);
+
+      // c was never resumed: still parked, and no call for it ever saw
+      // the guidance meant for a and b.
+      expect(sessionFor("c").pending).toBeDefined();
+      const cCalls = client.calls.filter((call) => call.state.party.objective.includes("In this negotiation: c"));
+      expect(cCalls.length).toBeGreaterThan(0);
+      expect(cCalls.every((call) => !call.state.party.objective.includes("ceiling is $460"))).toBe(true);
     } finally {
       a.stop();
       b.stop();
+      c.stop();
     }
   });
 });

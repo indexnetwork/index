@@ -1,7 +1,7 @@
 import type { Agent } from "./agent.ts";
 import { digest } from "./digest.ts";
 import type { ToolDefinition } from "./model.ts";
-import type { NegotiationSession } from "./types.ts";
+import type { NegotiationEvent, NegotiationSession } from "./types.ts";
 
 /** What a tool receives besides its own arguments. `agent` is the agent
  * running it, so a tool can reach the agent's own capabilities without a
@@ -96,6 +96,25 @@ export interface NegotiationToolOptions {
 const SETTLEMENT_NOTE =
   " The result carries a `settlement` once either side closes. Read it before telling anyone what happened: `agreed` means both sides closed on the same deal; `conflict` or `unconfirmed` means nothing is agreed yet — whatever your own action was — so say that plainly, or take another turn to settle it.";
 
+/** The digest tools (`negotiate_many`/`negotiate_resume`) return prose, not
+ * an object with `settlement` — this is `SETTLEMENT_NOTE`'s equivalent for
+ * reading a `Settled` line in that text. */
+const DIGEST_SETTLEMENT_NOTE =
+  " Each Settled line names the outcome: `agreed` means both sides closed on the same deal; `conflict` or `unconfirmed` means nothing is agreed yet, whatever your own action was — say that plainly, or open a new negotiation to settle it.";
+
+/** Turns a rejection from a promise in a `Promise.all` batch into the same
+ * `failed` shape a negotiation itself would report, so one host-store
+ * write failing (`sessions.save`, `lastPeerDecision`) can't sink the whole
+ * batch the way an unhandled rejection would. */
+function asFailed<A extends string>(id: string, cause: unknown): NegotiationEvent<A> {
+  return {
+    kind: "failed",
+    id,
+    error: cause instanceof Error ? cause.message : String(cause),
+    turns: 0,
+  };
+}
+
 export function negotiationTools(options: NegotiationToolOptions = {}): Tool<never>[] {
   const open: Tool<{ url: string; objective: string }> = {
     name: "negotiate_open",
@@ -142,7 +161,7 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
     name: "negotiate_many",
     description:
       "Open negotiations with several agents at once and run each one on its own until it settles, needs something only the party you represent can tell you, or runs out of turns. Returns one digest with a line per negotiation. Prefer this over negotiate_open whenever there is more than one counterparty: you only hear about what needs you. For lines under 'Waiting on you', ask your party once with ask_user, then call negotiate_resume with every id the answer applies to." +
-      SETTLEMENT_NOTE,
+      DIGEST_SETTLEMENT_NOTE,
     parameters: {
       type: "object",
       properties: {
@@ -167,11 +186,16 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
       digest(
         await Promise.all(
           targets.map((target) =>
-            context.agent.runNegotiation(
-              target.url,
-              { objective: target.objective, discover: options.discover },
-              context,
-            ),
+            context.agent
+              .runNegotiation(
+                target.url,
+                { objective: target.objective, discover: options.discover },
+                context,
+              )
+              // The Task id isn't known until the negotiation opens, so a
+              // rejection this early has nothing better to key on than
+              // the target it was for.
+              .catch((cause) => asFailed(target.url, cause)),
           ),
         ),
       ),
@@ -181,7 +205,7 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
     name: "negotiate_resume",
     description:
       "Give parked negotiations the answer they were waiting for and run them on. Pass every id the answer applies to; the guidance holds for the rest of each negotiation. Returns the same digest as negotiate_many. A negotiation that has already ended is not resumed — open a new one if the terms need to change." +
-      SETTLEMENT_NOTE,
+      DIGEST_SETTLEMENT_NOTE,
     parameters: {
       type: "object",
       properties: {
@@ -195,7 +219,13 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
     },
     run: async ({ ids, guidance }, context) =>
       digest(
-        await Promise.all(ids.map((id) => context.agent.resumeNegotiation(id, guidance, context))),
+        await Promise.all(
+          // De-duplicated, so an id repeated in the call doesn't pump the
+          // same session twice concurrently.
+          [...new Set(ids)].map((id) =>
+            context.agent.resumeNegotiation(id, guidance, context).catch((cause) => asFailed(id, cause)),
+          ),
+        ),
       ),
   };
 

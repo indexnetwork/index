@@ -85,6 +85,13 @@ const DEFAULT_TERMINAL: ReadonlySet<string> = new Set(["accept", "reject", "decl
  * The one action a negotiation under the fan-out pump may take that a
  * one-vs-one turn may not: stop and ask the party. It is intercepted
  * before the wire, so the counterparty never sees it.
+ *
+ * That interception is `takeTurn`'s doing, not something inherent to this
+ * value: it happens only when this package's own pump offers `ask` among
+ * `allowedActions`. A host that adds `ASK_ACTION` to its own
+ * `allowedActions` — outside the pump, e.g. on a one-vs-one `negotiate()`
+ * — gets no such interception, and `ask` goes out over the wire to the
+ * counterparty like any other action.
  */
 export const ASK_ACTION = {
   action: "ask",
@@ -477,7 +484,7 @@ export class Agent<A extends string = DefaultAction> {
     return [
       "Negotiations you are party to. This is the record of what happened, which is not the same as what you remember saying — trust it over the conversation above:",
       ...lines,
-      "Only negotiations you opened can be continued with negotiate_turn; in the others the counterparty calls you.",
+      "Only negotiations you opened can be continued — with negotiate_turn, or negotiate_resume for one waiting on your guidance; in the others the counterparty calls you.",
     ].join("\n");
   }
 
@@ -720,7 +727,18 @@ export class Agent<A extends string = DefaultAction> {
       );
     }
 
+    // Parked on a question for the party. Taking a turn here anyway would
+    // send without the answer it's waiting for; negotiate_resume is the
+    // way back in, and keeps the answer for the rest of the negotiation.
+    if (resolved.pending) {
+      throw new Error(
+        `Negotiation "${resolved.id}" is waiting on your party ("${resolved.pending.question}") — answer with negotiate_resume, which keeps the answer for the rest of the negotiation.`,
+      );
+    }
+
+    const before = resolved.id;
     const turn = await this.takeTurn(resolved, options.guidance, context?.signal);
+    if (before !== resolved.id) context?.negotiations.delete(before);
     context?.negotiations.set(resolved.id, resolved);
     return turn;
   }
@@ -831,14 +849,20 @@ export class Agent<A extends string = DefaultAction> {
             turns,
           };
         }
+        // Failed before a Task ever existed — a provisional `local:`
+        // session with nothing on the other side to resume. Left in
+        // place it's a zombie: findable, but forever stuck on a URL that
+        // just refused it.
+        if (!session.task) {
+          context?.negotiations.delete(session.id);
+          this.sessions.delete?.(session.id);
+        }
         return { kind: "failed", id: session.id, peer, error: describe(cause), turns };
       }
       // A negotiation parked before its first turn was keyed by a
-      // provisional id; now the Task exists, the record uses the real one.
-      if (before.startsWith("local:") && session.id !== before) {
-        context?.negotiations.delete(before);
-        this.sessions.delete?.(before);
-      }
+      // provisional id; `takeTurn` re-keys the store the moment the Task
+      // exists, and this re-keys the map the loop's caller sees.
+      if (before !== session.id) context?.negotiations.delete(before);
       context?.negotiations.set(session.id, session);
 
       if (turn.done || turn.settlement) {
@@ -907,12 +931,18 @@ export class Agent<A extends string = DefaultAction> {
     // The signal covers the whole turn — this side's model call and the
     // wait on the counterparty — so an interrupted run stops the request in
     // flight instead of orphaning it.
+    const before = session.id;
     const result = session.task
       ? await client.continue(session.url, session.task, { signal })
       : await client.initiate(session.url, { signal });
 
     session.task = result.task;
     session.id = result.task.id;
+
+    // The Task's id is the real one now; drop whatever provisional key
+    // (`local:...`, or the empty id `openNegotiation` starts with) this
+    // session was saved under before, so the store never carries both.
+    if (before !== session.id) this.sessions.delete?.(before);
 
     const reply = result.task.history.at(-1);
     const received = reply ? (messageToDecision(reply) as NegotiationDecision<A> | null) : null;
