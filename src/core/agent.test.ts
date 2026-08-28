@@ -1406,17 +1406,25 @@ describe("one clock", () => {
     expect(seen[0]).toContain("Monday, 31 August 2026");
   });
 
-  // A host in UTC+13 at 23:30 UTC is already on the next day locally.
-  // Formatting in UTC keeps the loop and the negotiator naming one day.
+  // Straddles midnight from both sides, so a local-time implementation
+  // fails wherever the machine is: 23:30Z is already tomorrow east of UTC,
+  // 00:30Z is still yesterday west of it. A midday fixture would pass
+  // under a local-time bug on half the planet.
   test("reads the clock as UTC rather than the server's timezone", () => {
-    const agent = new Agent({
-      ...buyer,
-      negotiator: scripted([]).negotiator,
-      now: () => new Date("2026-08-31T23:30:00Z"),
-    });
+    const at = (iso: string) =>
+      new Agent({
+        ...buyer,
+        negotiator: scripted([]).negotiator,
+        now: () => new Date(iso),
+      }).instructions();
 
-    expect(agent.instructions()).toContain("Monday, 31 August 2026");
-    expect(agent.instructions()).not.toContain("1 September");
+    // Tomorrow in Auckland, still the 31st in UTC.
+    expect(at("2026-08-31T23:30:00Z")).toContain("Monday, 31 August 2026");
+    expect(at("2026-08-31T23:30:00Z")).not.toContain("September");
+
+    // Yesterday in Los Angeles, already the 1st in UTC.
+    expect(at("2026-09-01T00:30:00Z")).toContain("Tuesday, 1 September 2026");
+    expect(at("2026-09-01T00:30:00Z")).not.toContain("August");
   });
 
   test("reads the clock per call, so a long-lived agent doesn't freeze", () => {
