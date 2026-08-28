@@ -18,6 +18,10 @@ import {
 import { accent, dim, red } from "./format.ts";
 import type { Directory } from "./directory.ts";
 
+/** What a party may say in a negotiation. `hold` is the one the default
+ * vocabulary lacks: a way to not agree yet without ending the exchange. */
+export type Action = "propose" | "counter" | "hold" | "accept" | "reject";
+
 export interface PartyOptions {
   name: string;
   id?: string;
@@ -33,7 +37,7 @@ export interface Party {
   id: string;
   intent?: string;
   systemPrompt: string;
-  agent: Agent;
+  agent: Agent<Action>;
   /** Colour used for this party everywhere it appears. */
   paint: (text: string) => string;
   url: string;
@@ -74,6 +78,7 @@ const DEFAULT_PROMPT = (name: string) =>
     `You are a personal agent acting for ${name}. You talk with them directly, and you can negotiate with other agents on their behalf.`,
     "Ask them about anything you have not been told — a budget, a date, a preference, approval to commit — rather than inventing it. One question at a time.",
     "When they describe something they want or are offering and it is not already your intent, offer to publish it as one so other agents can find them — check the wording with them first, then use create_intent.",
+    "Never tell a counterparty what your party's limit is, or that they have none. Their budget, their floor and their flexibility are yours to use, not to disclose.",
     "Keep your replies short and plain.",
   ].join(" ");
 
@@ -116,7 +121,7 @@ export class Roster {
       messages: [],
       negotiations: [],
       steps: [],
-      agent: undefined as unknown as Agent,
+      agent: undefined as unknown as Agent<Action>,
     };
 
     const agent = new Agent({
@@ -127,6 +132,26 @@ export class Roster {
       tools: [...defaultTools(), this.matchTool(party), this.intentTool(party)],
       ...(options.intent ? { intent: { statement: options.intent } } : {}),
       model: this.options.model,
+      // An agent acting for someone often can't commit yet — it needs to
+      // go back and ask. Without a word for that, the only way to not
+      // agree is to reject, which ends the exchange: a message reading
+      // "I'll get back to you" arrives as a dead task, and both sides then
+      // tell their parties a story about who walked away.
+      allowedActions: [
+        { action: "propose", description: "Open with terms." },
+        { action: "counter", description: "Answer with different terms." },
+        {
+          action: "hold",
+          description:
+            "Say you cannot commit yet because you need to check with the party you act for. The exchange stays open and they can reply. Use this — never reject — when you lack the instruction rather than the will.",
+        },
+        { action: "accept", description: "Agree to the terms on the table. Ends the exchange." },
+        {
+          action: "reject",
+          description:
+            "End the exchange with no deal, because your party would not want these terms. Only when you mean it: this cannot be undone.",
+        },
+      ],
       onTurn: (turn) => {
         // Both halves, from this party's side: what it said and what came
         // back. The counterparty keeps its own account of the same

@@ -550,6 +550,15 @@ each column shows its own spinner. ^C interrupts the focused party's run,
 | `/card`, `/instructions`, `/steps`, `/negotiations` | look inside the agent in focus |
 | `/clear` | forget the conversation · `/wire` clears this party's traffic |
 
+Parties here can also say **`hold`** — "I can't commit yet, I need to check
+with the person I act for" — alongside propose/counter/accept/reject. The
+default vocabulary has no word for it, so an agent that lacks an
+instruction rather than the will has only `reject`, which is terminal: a
+message reading *"I'll get back to you as soon as possible"* arrives as a
+dead negotiation, and both sides then tell their parties a story about who
+walked away. `hold` isn't in `DEFAULT_TERMINAL`, so it needs no other
+change — it's an example of what `allowedActions` is for.
+
 Discovery is host-injected here as it would be anywhere: each party gets
 `find_matches` and `create_intent`, both backed by `cli/directory.ts`, the
 file-backed stand-in for the intent/match layer described below.
