@@ -502,27 +502,36 @@ bun run console
 bun run console -- --with Alice --with Bob
 ```
 
-A column per party for its conversation, and one shared pane for the
-traffic between them — an exchange shows up once, attributed, rather than
-twice from two points of view.
+Each party gets a column: its conversation on top, and beneath it the A2A
+traffic **as that party saw it** — what it said, what came back, and the
+verdict it reached.
 
 ```
- agent console · 3 parties · .agents.json
- Alice                        │ Bob                          │  Carol
- Selling a Trek Domane, $520  │ Buy a road bike under $460   │ Offering bike servicing
-────────────────────────────────────────────────────────────────────────────────────────
- › find my best match         │ ⚒ find_matches {}            │
- ⚒ ask_user                   │   → [{"name":"Alice", …}]    │
- ? What's your lowest price?  │                              │
-────────────────────────────────────────────────────────────────────────────────────────
- wire
- → Bob    I'd like to offer $420 for the Trek Domane, pickup Monday evening 2026-08-31.
- ↩ Alice  Yes, that works. $420 on Monday evening.
-   ⚖ agreed (reference) {"amount":420,"pickup_date":"2026-08-31"}
-────────────────────────────────────────────────────────────────────────────────────────
- tab agent · pgup/pgdn scroll · shift-↑/↓ wire · /help · ^D exit
+ agent console · 2 parties · .agents.json
+ Alice                                    │  Bob
+ Selling a Trek Domane, $520              │ Buy a road bike under $460
+──────────────────────────────────────────────────────────────────────────────────────
+ › what are you asking?                   │ › find my best match and negotiate
+ $520, collection weekday evenings.       │ ⚒ find_matches {}
+                                          │   → [{"name":"Alice","url":"http://…"}]
+─ wire · 3 ───────────────────────────────── wire · 3 ────────────────────────────────
+ ← them  I'd like to offer $420, pickup   │ → me  I'd like to offer $420, pickup
+   Monday evening 2026-08-31.             │   Monday evening 2026-08-31.
+ → me  That works. See you Monday.        │ ← them  That works. See you Monday.
+   ⚖ agreed (reference) {"amount":420,…}  │   ⚖ agreed (reference) {"amount":420,…}
+──────────────────────────────────────────────────────────────────────────────────────
+ tab agent · pgup/pgdn scroll · ^W hide wire · /help · ^D exit
  Bob ›
 ```
+
+The traffic is per party rather than shared, for the same reason
+`settlement` exists at all: two parties can end one negotiation believing
+different things, and that is only visible if each keeps its own account.
+A single merged log would show one exchange and quietly hide the
+disagreement — and it would be a view no real host has, since Alice's host
+sees Alice's traffic and nothing else. Here the two accounts sit next to
+each other and you read across. `^W` collapses the band when the
+conversations are what matter.
 
 Typing talks to the party in focus; Tab moves focus. Runs are detached, so
 you can tell one party something while another is still negotiating, and
@@ -539,7 +548,7 @@ each column shows its own spinner. ^C interrupts the focused party's run,
 | `/match` | who this party's intent pairs with |
 | `/negotiate <party> [objective]` | run one exchange to completion |
 | `/card`, `/instructions`, `/steps`, `/negotiations` | look inside the agent in focus |
-| `/clear`, `/wire`, `/exit` | |
+| `/clear` | forget the conversation · `/wire` clears this party's traffic |
 
 Discovery is host-injected here as it would be anywhere: each party gets
 `find_matches` and `create_intent`, both backed by `cli/directory.ts`, the

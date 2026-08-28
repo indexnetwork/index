@@ -59,7 +59,6 @@ if (!process.env.OPENROUTER_API_KEY) {
 // --- state -----------------------------------------------------------
 
 const directory = new Directory(values.registry ?? ".agents.json", await seeds());
-const wire: string[] = [];
 let focus = 0;
 let closing = false;
 
@@ -68,22 +67,8 @@ const roster = new Roster({
   model: values.model,
   basePort: values.port ? Number(values.port) : 0,
   onChange: () => tui?.render(),
-  onTurn: (from, direction, message) => {
-    // Who spoke, and whether they opened the exchange or answered it. In a
-    // shared log the counterparty is the adjacent line, so naming it adds
-    // nothing the reader can't see.
-    const arrow = direction === "outbound" ? "→" : "↩";
-    wire.push(`${dim(arrow)} ${from.paint(from.name)}  ${message}`);
-    tui?.render();
-  },
-  onSettled: (from, line, disputed) => {
-    // Both sides reach the same verdict independently — that's the design
-    // — but the wire is shared, so it belongs on it once.
-    const rendered = `  ${disputed ? red(`⚠ ${line}`) : dim(`⚖ ${line}`)}`;
-    if (wire.at(-1) !== rendered) wire.push(rendered);
-    if (disputed) say(from, red(`⚠ ${line}`));
-    tui?.render();
-  },
+  onWire: () => tui?.render(),
+  onDisputed: (party, line) => say(party, red(`⚠ ${line}`)),
   onRetry: (party, attempt, reason) =>
     say(party, dim(`⟳ retrying (${attempt}/3) — ${short(reason, 80)}`)),
 });
@@ -127,11 +112,11 @@ function view(): View {
       name: party.name,
       intent: party.intent,
       lines: party.lines,
+      wire: party.wire,
       paint: party.paint,
       ...(party.busy ? { busy: { label: party.busy.label, since: party.busy.since } } : {}),
       pending: Boolean(party.pending),
     })),
-    wire,
     focus,
     prompt: current
       ? `${current.paint(current.name)}${current.pending ? yellow(" ?") : ""}${dim(" › ")}`
@@ -264,7 +249,6 @@ async function command(line: string, party: Party | undefined): Promise<void> {
       const removed = await roster.remove(argument);
       if (!removed) return tell(red(`No party called "${argument}".`));
       focus = Math.min(focus, Math.max(0, roster.list().length - 1));
-      wire.push(dim(`— ${removed.name} left`));
       tui?.render();
       return;
     }
@@ -413,7 +397,8 @@ async function command(line: string, party: Party | undefined): Promise<void> {
       return;
 
     case "wire":
-      wire.length = 0;
+      if (!party) return;
+      party.wire.length = 0;
       tui?.render();
       return;
 
@@ -433,9 +418,9 @@ async function negotiate(party: Party, url: string, objective: string): Promise<
       ...(objective ? { objective } : {}),
       signal: controller.signal,
     });
-    wire.push(dim(`  — ${result.end}, task ${result.state}`));
+    party.wire.push(dim(`  — ${result.end}, task ${result.state}`));
   } catch (cause) {
-    wire.push(red(`  ✗ ${message(cause)}`));
+    party.wire.push(red(`  ✗ ${message(cause)}`));
   } finally {
     party.busy = undefined;
     tui?.render();
@@ -459,7 +444,7 @@ function help(): string {
     `  ${bold("/negotiate")} <party> [objective] run an exchange to completion`,
     "",
     `  ${bold("/card")} ${bold("/instructions")} ${bold("/steps")} ${bold("/negotiations")}`,
-    `  ${bold("/clear")} ${dim("this party")} · ${bold("/wire")} ${dim("the shared log")} · ${bold("/exit")}`,
+    `  ${bold("/clear")} ${dim("conversation")} · ${bold("/wire")} ${dim("this party's traffic")} · ${bold("/exit")}`,
     "",
   ].join("\n");
 }
@@ -480,9 +465,10 @@ async function piped(): Promise<void> {
         party.lines.length = 0;
       }
     }
-    if (wire.length) {
-      console.log(wire.map((text) => `  ${text}`).join("\n"));
-      wire.length = 0;
+    for (const party of roster.list()) {
+      if (!party.wire.length) continue;
+      console.log(party.wire.map((text) => `  [${party.name}] ${text}`).join("\n"));
+      party.wire.length = 0;
     }
   }
   await shutdown();

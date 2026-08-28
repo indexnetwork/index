@@ -29,6 +29,8 @@ export interface ViewParty {
   intent?: string;
   /** This party's conversation, newest last. */
   lines: string[];
+  /** A2A traffic as this party saw it. */
+  wire: string[];
   paint: (text: string) => string;
   busy?: { label: string; since: number };
   pending?: boolean;
@@ -37,8 +39,6 @@ export interface ViewParty {
 export interface View {
   title: string;
   parties: ViewParty[];
-  /** Shared A2A traffic. */
-  wire: string[];
   focus: number;
   /** What the input line is prefixed with. */
   prompt: string;
@@ -62,6 +62,9 @@ export class Tui {
   /** Rows scrolled up from the bottom, per column and for the wire. */
   private readonly scroll = new Map<string, number>();
   private wireScroll = 0;
+  /** The wire band can be collapsed when the conversations are what
+   * matters. Ctrl-W. */
+  private showWire = true;
   private frame = 0;
   private timer?: ReturnType<typeof setInterval>;
 
@@ -170,6 +173,9 @@ export class Tui {
         }
         case "l":
           return this.render();
+        case "w":
+          this.showWire = !this.showWire;
+          return this.render();
       }
       return;
     }
@@ -267,14 +273,15 @@ export class Tui {
     const { columns, rows } = this.size();
     const parties = this.visible(view, columns);
 
-    // Chrome: title, names, intents, rule, rule, wire title, rule, hints,
-    // input. Everything left over is split between the columns and the wire.
-    const body = Math.max(2, rows - 9);
-    const wireHeight = Math.max(3, Math.min(8, Math.floor(body * 0.35)));
-    const chatHeight = Math.max(1, body - wireHeight);
+    // Chrome: title, names, intents, rule, rule, hints, input. What's left
+    // is split between each column's conversation and its own A2A traffic
+    // — the traffic per party rather than shared, because two parties
+    // disagreeing about one negotiation is only visible if each keeps its
+    // own account of it.
+    const body = Math.max(2, rows - 7);
+    const wireHeight = this.showWire ? Math.max(3, Math.min(9, Math.floor(body * 0.4))) : 0;
+    const chatHeight = Math.max(1, body - (wireHeight ? wireHeight + 1 : 0));
 
-    // Every cell carries its own left margin, so the first column lines up
-    // with the ones that get theirs from the divider.
     const count = Math.max(1, parties.length);
     const columnWidth = Math.max(MIN_COLUMN, Math.floor((columns - (count - 1)) / count));
     const divider = dim(BOX.v);
@@ -283,7 +290,6 @@ export class Tui {
     const frame: string[] = [];
     frame.push(dim(clip(view.title, columns)));
 
-    // Column headings: name, then what it's working on.
     const focused = view.parties[view.focus];
     frame.push(
       parties
@@ -293,12 +299,10 @@ export class Tui {
         })
         .join(divider),
     );
-    frame.push(
-      parties.map((party) => cell(dim(party.intent ?? "no intent"))).join(divider),
-    );
+    frame.push(parties.map((party) => cell(dim(party.intent ?? "no intent"))).join(divider));
     frame.push(dim(BOX.h.repeat(columns)));
 
-    const bodies = parties.map((party) =>
+    const chats = parties.map((party) =>
       this.window(
         party.busy
           ? [...party.lines, dim(`${SPINNER[this.frame]} ${party.busy.label}${elapsed(party.busy.since)}`)]
@@ -309,20 +313,35 @@ export class Tui {
       ),
     );
     for (let row = 0; row < chatHeight; row++) {
-      frame.push(bodies.map((lines) => cell(lines[row] ?? "")).join(divider));
+      frame.push(chats.map((lines) => cell(lines[row] ?? "")).join(divider));
     }
 
-    frame.push(dim(BOX.h.repeat(columns)));
-    frame.push(dim(` wire${this.wireScroll ? ` ↓${this.wireScroll}` : ""}`));
-    for (const line of this.window(view.wire, columns - 1, wireHeight, this.wireScroll)) {
-      frame.push(` ${clip(line, columns - 1)}`);
+    if (wireHeight) {
+      // The label doubles as the rule that separates conversation from
+      // traffic, so the band costs one row rather than two.
+      frame.push(
+        parties
+          .map((party) => {
+            const label = ` wire${party.wire.length ? ` · ${party.wire.length}` : ""} `;
+            return dim(
+              `${BOX.h}${label}${BOX.h.repeat(Math.max(0, columnWidth - width(label) - 1))}`,
+            );
+          })
+          .join(divider),
+      );
+      const wires = parties.map((party) =>
+        this.window(party.wire, columnWidth - 1, wireHeight, this.wireScroll),
+      );
+      for (let row = 0; row < wireHeight; row++) {
+        frame.push(wires.map((lines) => cell(lines[row] ?? "")).join(divider));
+      }
     }
 
     frame.push(dim(BOX.h.repeat(columns)));
     frame.push(
       dim(
         clip(
-          " tab agent · shift-tab back · pgup/pgdn scroll · shift-↑/↓ wire · /help · ^D exit",
+          " tab agent · pgup/pgdn scroll · shift-↑/↓ wire · ^W hide wire · /help · ^D exit",
           columns,
         ),
       ),

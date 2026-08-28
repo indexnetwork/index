@@ -15,7 +15,7 @@ import {
   type Step,
   type Tool,
 } from "../src/index.ts";
-import { accent } from "./format.ts";
+import { accent, dim, red } from "./format.ts";
 import type { Directory } from "./directory.ts";
 
 export interface PartyOptions {
@@ -40,6 +40,11 @@ export interface Party {
   stop: () => void;
   /** This party's own conversation, as rendered lines. */
   lines: string[];
+  /** A2A traffic as *this* party saw it — both sides of every exchange it
+   * took part in, and the verdict it reached. Per-party, because that is
+   * what a host actually sees, and because two parties disagreeing about
+   * one negotiation is only visible if each keeps its own account. */
+  wire: string[];
   /** What travels between runs. */
   messages: ModelMessage[];
   negotiations: NegotiationSession[];
@@ -56,11 +61,11 @@ export interface RosterOptions {
   basePort: number;
   /** Notified whenever anything visible changes. */
   onChange: () => void;
-  /** A negotiation turn, from whoever produced it. `direction` says
-   * whether they opened the exchange or answered one. */
-  onTurn: (from: Party, direction: "outbound" | "inbound", message: string) => void;
-  /** A settled exchange, for the wire log. */
-  onSettled: (from: Party, line: string, disputed: boolean) => void;
+  /** Anything that lands on a party's wire. */
+  onWire: (party: Party) => void;
+  /** A settlement that went against the party — worth saying in its
+   * conversation as well as on its wire. */
+  onDisputed: (party: Party, line: string) => void;
   onRetry: (party: Party, attempt: number, reason: string) => void;
 }
 
@@ -107,6 +112,7 @@ export class Roster {
       url: "",
       stop: () => {},
       lines: [],
+      wire: [],
       messages: [],
       negotiations: [],
       steps: [],
@@ -121,21 +127,23 @@ export class Roster {
       tools: [...defaultTools(), this.matchTool(party), this.intentTool(party)],
       ...(options.intent ? { intent: { statement: options.intent } } : {}),
       model: this.options.model,
-      onTurn: (turn, direction) => {
-        // Only this side's own moves are reported here; the counterparty's
-        // half arrives through *their* agent, so the wire shows each turn
-        // once, attributed to whoever said it.
-        if (turn.speaker !== "self") return;
-        this.options.onTurn(party, direction, turn.decision.message);
+      onTurn: (turn) => {
+        // Both halves, from this party's side: what it said and what came
+        // back. The counterparty keeps its own account of the same
+        // exchange, and the two are worth comparing.
+        const mine = turn.speaker === "self";
+        party.wire.push(
+          `${dim(mine ? "→" : "←")} ${mine ? party.paint("me") : dim("them")}  ${turn.decision.message}`,
+        );
+        this.options.onWire(party);
       },
       onSettled: (settlement) => {
         const disputed = settlement.outcome === "conflict" || settlement.outcome === "unconfirmed";
         const terms = settlement.terms ? ` ${JSON.stringify(settlement.terms)}` : "";
-        this.options.onSettled(
-          party,
-          `${settlement.outcome} (${settlement.basis})${terms} — ${settlement.reason}`,
-          disputed,
-        );
+        const line = `${settlement.outcome} (${settlement.basis})${terms} — ${settlement.reason}`;
+        party.wire.push(disputed ? red(`  ⚠ ${line}`) : dim(`  ⚖ ${line}`));
+        this.options.onWire(party);
+        if (disputed) this.options.onDisputed(party, line);
       },
       onRetry: (attempt, reason) => this.options.onRetry(party, attempt, reason),
     });
