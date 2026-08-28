@@ -372,21 +372,33 @@ describe("Negotiator clock", () => {
     expect(second.body.messages[0].content).toContain("2026-09-04");
   });
 
-  test("renders the date in UTC, whatever the host's timezone", async () => {
-    // Two instants that straddle midnight in opposite directions: late-UTC
-    // reads as tomorrow east of UTC, early-UTC reads as yesterday west of
-    // it. Both must still render 2026-08-28, so this fails on a local-time
-    // bug no matter which timezone the test machine is in.
-    for (const instant of ["2026-08-28T23:30:00Z", "2026-08-28T00:30:00Z"]) {
-      const fetchMock = mockFetchOnce("reply");
-      const negotiator = new Negotiator({
-        apiKey: "test-key",
-        now: () => new Date(instant),
-      });
+  test("renders the date in UTC even when the host timezone says otherwise", async () => {
+    // Pinning the zone here, rather than inheriting the machine's, is what
+    // makes this fail on a local-time implementation *anywhere*. On a UTC
+    // box — CI, most containers — local and UTC formatting are the same
+    // function, so no fixture can tell them apart and a green run there is
+    // not evidence. Each pair is an instant plus a zone in which it falls
+    // on a different local day, straddling midnight in both directions.
+    const originalTz = process.env.TZ;
+    try {
+      for (const [tz, instant] of [
+        ["Pacific/Auckland", "2026-08-28T23:30:00Z"], // local: the 29th
+        ["America/Los_Angeles", "2026-08-28T00:30:00Z"], // local: the 27th
+      ] as const) {
+        process.env.TZ = tz;
+        const fetchMock = mockFetchOnce("reply");
+        const negotiator = new Negotiator({
+          apiKey: "test-key",
+          now: () => new Date(instant),
+        });
 
-      await negotiator.respond(state);
+        await negotiator.respond(state);
 
-      expect(fetchMock.body.messages[0].content).toContain("2026-08-28 (Friday)");
+        expect(fetchMock.body.messages[0].content).toContain("2026-08-28 (Friday)");
+      }
+    } finally {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
     }
   });
 
