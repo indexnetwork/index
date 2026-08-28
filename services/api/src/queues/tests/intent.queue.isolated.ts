@@ -227,7 +227,7 @@ describe('IntentQueue', () => {
       expect(addOpportunityJob).not.toHaveBeenCalled();
     });
 
-    it('generate_hyde: assigns first, generates HyDE, then enqueues discovery exactly once', async () => {
+    it('generate_hyde: runs assignment concurrently with HyDE, then enqueues discovery exactly once', async () => {
       const sequence: string[] = [];
       const invokeHyde = mock(async () => { sequence.push('hyde'); });
       const addOpportunityJob = mock(async () => { sequence.push('discovery'); return {}; });
@@ -254,7 +254,11 @@ describe('IntentQueue', () => {
       );
       expect(addOpportunityJob).toHaveBeenCalledTimes(1);
       expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1' });
-      expect(sequence).toEqual(['assignment', 'hyde', 'discovery']);
+      // Assignment and HyDE now run concurrently, so their relative order isn't
+      // guaranteed — only that discovery waits for both.
+      expect(sequence).toContain('assignment');
+      expect(sequence).toContain('hyde');
+      expect(sequence.indexOf('discovery')).toBe(sequence.length - 1);
     });
 
     it('generate_hyde: builds profileContext from the users row (name/bio/location) + active intents', async () => {
@@ -595,7 +599,7 @@ describe('IntentQueue', () => {
       expect(assignIntentToNetwork.mock.calls[0][3]).toMatchObject({ source: 'intent-reconcile-queue', assigned: true });
     });
 
-    it('reconcile_orphaned_intent: re-admits missing artifacts in normal assignment → HyDE → discovery order', async () => {
+    it('reconcile_orphaned_intent: re-admits missing artifacts, assignment and HyDE concurrent, discovery last', async () => {
       const sequence: string[] = [];
       const queue = new IntentQueue({
         database: asIntentDb({
@@ -609,7 +613,9 @@ describe('IntentQueue', () => {
         addOpportunityJob: async () => { sequence.push('discovery'); },
       });
       await queue.processJob('reconcile_orphaned_intent', { intentId: 'i1', userId: 'u1' });
-      expect(sequence).toEqual(['assignment', 'hyde', 'discovery']);
+      expect(sequence).toContain('assignment');
+      expect(sequence).toContain('hyde');
+      expect(sequence.indexOf('discovery')).toBe(sequence.length - 1);
     });
 
     it('reconcile_orphaned_intent: skips paused intents before assignment or regeneration', async () => {

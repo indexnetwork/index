@@ -320,8 +320,11 @@ export class IntentQueue implements IntentGraphQueue {
     }
     this.hydeLogger.info('Starting HyDE generation', { intentId, userId });
     this.hydeLogger.debug('Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
-    const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, scope);
-    this.hydeLogger.info('Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
+    // Assignment only needs its intent_networks write to land before discovery is
+    // enqueued below, so run it concurrently with the HyDE graph instead of blocking on it.
+    const assignmentPromise = this.assignIntentToNetworks(intentId, userId, scope).then(({ assignedNetworkIds }) => {
+      this.hydeLogger.info('Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
+    });
 
     // Fetch discoverer profile (users row) + active intents for HyDE context (best-effort).
     let profileContext: string | undefined;
@@ -354,26 +357,32 @@ export class IntentQueue implements IntentGraphQueue {
 
     try {
       if (this.deps?.invokeHyde) {
-        await this.deps.invokeHyde({
-          sourceText: intent.payload,
-          sourceType: 'intent',
-          sourceId: intentId,
-          forceRegenerate: true,
-          profileContext,
-        });
+        await Promise.all([
+          this.deps.invokeHyde({
+            sourceText: intent.payload,
+            sourceType: 'intent',
+            sourceId: intentId,
+            forceRegenerate: true,
+            profileContext,
+          }),
+          assignmentPromise,
+        ]);
       } else {
         const embedder = new EmbedderAdapter();
         const cache = new RedisCacheAdapter();
         const inferrer = new LensInferrer();
         const generator = new HydeGenerator();
         const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, inferrer, generator).createGraph();
-        await hydeGraph.invoke({
-          sourceText: intent.payload,
-          sourceType: 'intent',
-          sourceId: intentId,
-          forceRegenerate: true,
-          profileContext,
-        });
+        await Promise.all([
+          hydeGraph.invoke({
+            sourceText: intent.payload,
+            sourceType: 'intent',
+            sourceId: intentId,
+            forceRegenerate: true,
+            profileContext,
+          }),
+          assignmentPromise,
+        ]);
       }
     } catch (error) {
       this.hydeLogger.error('HyDE generation failed; BullMQ will retry admission', {
