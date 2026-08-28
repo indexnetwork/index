@@ -7,6 +7,7 @@ import {
 } from "@indexnetwork/negotiator";
 
 import { Agent } from "./agent.ts";
+import { digest } from "./digest.ts";
 import type { NegotiationSession } from "./types.ts";
 
 /** A Negotiator whose decide() replays a script, recording both the
@@ -282,5 +283,43 @@ describe("escalation", () => {
     } finally {
       stop();
     }
+  });
+});
+
+describe("digest()", () => {
+  test("groups events, one line each, and omits empty groups", () => {
+    const text = digest([
+      {
+        kind: "settled", id: "61b3061c", peer: "Alice's Agent", state: "completed", turns: 3,
+        settlement: { outcome: "agreed", basis: "terms", reason: "", terms: { amount: 460 } } as never,
+      },
+      { kind: "settled", id: "9f2a1c3d", peer: "Bob's Agent", state: "rejected", turns: 2,
+        settlement: { outcome: "declined", basis: "state", reason: "They refused." } as never },
+      { kind: "asking", id: "1a2b3c4d", peer: "Carol's Agent", turns: 1,
+        question: "Latest pickup day?", last: { action: "counter", message: "$480, Saturday", terms: { amount: 480 } } },
+      { kind: "budget", id: "5e6f7a8b", peer: "Dan's Agent", turns: 10, last: { action: "counter", message: "$500" } },
+      { kind: "failed", id: "local:x", turns: 0, error: "fetch failed" },
+      { kind: "skipped", id: "abcd", reason: "already ended (completed)" },
+    ]);
+
+    expect(text).toBe(
+      [
+        "Settled (2):",
+        '- 61b3061c with Alice\'s Agent — agreed: {"amount":460}',
+        "- 9f2a1c3d with Bob's Agent — declined: They refused.",
+        "Waiting on you (1) — ask your party once with ask_user, then call negotiate_resume with every id the answer applies to:",
+        '- 1a2b3c4d with Carol\'s Agent — asks: "Latest pickup day?" (their last move: "$480, Saturday" {"amount":480})',
+        "Out of turns (1):",
+        '- 5e6f7a8b with Dan\'s Agent — 10 turns, still open (their last move: "$500")',
+        "Failed (1):",
+        "- local:x — fetch failed",
+        "Not resumed (1):",
+        "- abcd — already ended (completed)",
+      ].join("\n"),
+    );
+  });
+
+  test("an empty batch says so", () => {
+    expect(digest([])).toBe("No negotiations.");
   });
 });
