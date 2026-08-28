@@ -9,6 +9,17 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- Delete the test suite and its harness: all specs under `src/**/tests/` and
+  `tests/`, plus `src/preload.test.ts`, `src/lib/testing/`, `bunfig.toml`,
+  `scripts/test-safe.sh`, `scripts/test-isolated.sh`, `.test-isolated`,
+  `tsconfig.spec.json` and the `test:*`/`typecheck:specs` scripts. The
+  now-unreachable `test-database-readiness` exports go with them
+  (`readOriginalProcessArgv`, `shouldRequireTestDatabase`,
+  `resolveTestDatabasePreloadPolicy` and the isolated-import-harness constant);
+  `ensureTestDatabaseReady` and `hasParentTestDatabaseReadiness` still back
+  `drizzle.ts`. Runtime behaviour is unchanged.
+
 ### Fixed
 - Isolate discovery and negotiation by exact intent pair: active negotiations
   between the same users no longer suppress another intent's opportunity or

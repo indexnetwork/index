@@ -122,7 +122,7 @@ The system models human collaboration through a linguistic and information-theor
 
 ## Opportunity Lifecycle and Role-Based Visibility
 
-The authoritative lifecycle, actor-state rules, and code citations live in [`docs/design/opportunity-status-lifecycle.md`](../../../docs/design/opportunity-status-lifecycle.md). The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `internal/opportunities/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
+The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `internal/opportunities/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
 
 ## How a User Message Flows Through the System
 

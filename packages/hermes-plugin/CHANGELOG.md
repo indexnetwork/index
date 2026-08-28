@@ -7,6 +7,9 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+- Delete `tests/`. No source or tool-contract change.
+
 ### Breaking
 - **`index_respond_negotiation` submits the MCP authored-turn contract.** It
   now requires `negotiationId` plus exactly one continuing verb

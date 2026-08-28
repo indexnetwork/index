@@ -21,8 +21,6 @@ const ROOT = new URL("../src", import.meta.url).pathname;
  */
 export const LIVE_MODEL_SPECS = new Set([
   "capabilities/tests/intents.spec.ts",
-  "negotiations/tests/insight.generator.spec.ts",
-  "negotiations/tests/negotiator-discovery-query.spec.ts",
   "opportunities/tests/opportunity.graph.spec.ts",
   "premises/tests/premise.decomposer.spec.ts",
 ]);

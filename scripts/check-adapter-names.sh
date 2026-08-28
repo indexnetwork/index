@@ -2,7 +2,6 @@
 set -euo pipefail
 
 # Check that adapter files are named by concept, not technology.
-# See: docs/superpowers/specs/2026-04-02-architectural-enforcement-design.md
 
 ADAPTER_DIR="services/api/src/adapters"
 VIOLATIONS=0

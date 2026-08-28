@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.97.2",
+  "version": "0.97.3",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -10,9 +10,6 @@
     "start": "bun --preload ./dist/instrument.js dist/main.js",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "typecheck:specs": "tsc -p tsconfig.spec.json",
-    "test:isolated": "NODE_ENV=test bash scripts/test-isolated.sh",
-    "test:all": "NODE_ENV=test API_TEST_REQUIRE_DATABASE=1 bun test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:test": "NODE_ENV=test drizzle-kit migrate",
@@ -31,10 +28,7 @@
     "maintenance:backfill-intent-networks": "bun ./src/cli/backfill-intent-networks.ts",
     "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
     "maintenance:reenqueue-orphaned-discovery": "bun ./src/cli/reenqueue-orphaned-discovery.ts",
-    "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
-    "test:sandbox:e2e": "bun test ./tests/personal-agent-negotiation.sandbox.e2e.ts",
-    "test": "NODE_ENV=test bash scripts/test-safe.sh",
-    "test:raw": "NODE_ENV=test bun test"
+    "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",

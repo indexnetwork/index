@@ -24,10 +24,6 @@ The native app may show the same owner controls as the web, but it is not requir
 cd apps/mac
 python3 assemble.py       # regenerates Resources/index.html
 ./scripts/build.sh                # macOS Swift build
-
-cd ..
-bun test api/native-api-bridge.spec.mjs api/agent-runtime.spec.mjs \
-  api/agent-runtime-saga.spec.mjs hermes-runtime.spec.mjs
 ```
 
 Generated HTML must be regenerated through `assemble.py`, never hand-edited. The production source boundary disables Web Inspector; development inspection requires the explicit development build flag.
@@ -77,8 +73,8 @@ closed without the authorized owner group. Override with
 ### Deep links
 
 The app opens two URL families, and **all** routing lives in one pure function,
-`parseDeepLink` in `api/deeplink.mjs` (unit tested in `api/deeplink.spec.mjs`,
-inlined into the bundle as `window.IndexApi.parseDeepLink`). The Swift shell
+`parseDeepLink` in `api/deeplink.mjs`, inlined into the bundle as
+`window.IndexApi.parseDeepLink`. The Swift shell
 only delivers URLs — it raises the window and forwards the raw string to the
 page as an `index-deeplink` `CustomEvent`, queuing anything that arrives before
 the web view has finished loading (cold launch).
