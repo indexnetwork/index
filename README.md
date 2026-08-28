@@ -257,6 +257,24 @@ new Agent({
 });
 ```
 
+#### A settled negotiation stays settled
+
+Taking another turn in an exchange that has ended doesn't reopen the
+question — it destroys the answer. The counterparty's handler replies, the
+Task falls back out of its terminal state, and the agreement that was on
+the record is no longer there, so `verifyAgreement()` reports `open` where
+it just reported `agreed`.
+
+`negotiate_turn` therefore refuses a negotiation whose Task has ended, and
+says to open a new one if the terms need to change. This is also what makes
+an agent look like it is haggling over a settled price: once the record is
+walked backwards, both sides see an open negotiation, and continuing to
+bargain is the *correct* reading of it.
+
+> This guards a well-behaved agent, not a well-behaved counterparty.
+> Nothing here stops someone else sending a message on a Task of theirs
+> that has already completed.
+
 #### Terms are what make it checkable
 
 Decisions carry structured `terms`, and an accepting move names the
@@ -312,6 +330,26 @@ and the others are the negotiate skill.
 `skills` replaces the derived list entirely. Security schemes can't be
 inferred from an opaque `authenticate` function, so declare them through
 `card`, which merges last.
+
+### Knowing the time
+
+The agent is told today's date, because otherwise it can only repeat what a
+counterparty says rather than reason about it — "next Tuesday" has no
+meaning without a clock, and a relative date recorded in the settled terms
+stops meaning the same thing a week later.
+
+It matters more than it sounds. In a scenario where a seller was away
+"until next Tuesday" and a buyer needed the item "before the end of the
+month", the agent without a clock agreed the deal and recorded
+`{"collection": "from next Tuesday onwards"}`. With one, it resolves that
+to 1 September, notices it falls outside the buyer's window, and declines.
+
+`now` fixes the clock — for tests, or to run an agent in its party's
+timezone rather than the server's.
+
+```ts
+new Agent({ identity, systemPrompt, now: () => new Date("2026-08-31T09:00:00Z") });
+```
 
 ### What the agent knows it negotiated
 
@@ -416,6 +454,7 @@ neither backoff aware of the other.
 | `timeout` | `number` | Per-request deadline in ms. Default 120000. |
 | `attempts` | `number` | Model attempts per step. Default 3. |
 | `onRetry` | function | Fires before a retry, with the attempt and the reason. |
+| `now` | `() => Date` | The clock the agent reasons about dates with. Defaults to the host's. |
 | `negotiator` | `Negotiator` | Defaults to one built from `model`/`apiKey`. |
 | `allowedActions` | `ActionSpec[]` | Defaults to `DEFAULT_ACTIONS`. |
 | `maxTurns` | `number` | Turn cap for `negotiate()`. Default 10. |
@@ -598,6 +637,7 @@ cli/
   fixtures/       # made-up intents to match against
 dev/
   local.ts        # in-process two-agent negotiation harness, not published
+  stress.ts       # live scenarios: settled terms, location, time, currency
 examples/         # runnable scripts against real OpenRouter calls
 ```
 

@@ -36,11 +36,19 @@ function call(name: string, args: unknown, id = `call_${name}`): ToolCall {
   return { id, type: "function", function: { name, arguments: JSON.stringify(args) } };
 }
 
+/** A fixed clock, so the system message is the same on every run. The
+ * agent is told the date so it can resolve "next Tuesday"; a test that
+ * asserts the prompt shouldn't drift with the calendar. */
+const TODAY = new Date("2026-08-28T09:00:00Z");
+const TODAY_LINE =
+  'Today is Friday, 28 August 2026. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.';
+
 function agent(tools: Tool<never>[], systemPrompt = "You act for Alice.") {
   return new Agent({
     identity: { name: "Alice's Agent", id: "did:example:alice" },
     systemPrompt,
     apiKey: "test-key",
+    now: () => TODAY,
     tools,
   });
 }
@@ -76,8 +84,7 @@ describe("run()", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content:
-          "You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.",
+        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}`,
       },
       { role: "user", content: "Sell the bike" },
     ]);
@@ -246,8 +253,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content:
-          "New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.",
+        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },

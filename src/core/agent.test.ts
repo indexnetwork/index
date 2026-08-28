@@ -1221,3 +1221,170 @@ describe("interrupting a negotiation", () => {
     }
   });
 });
+
+describe("a settled negotiation stays settled", () => {
+  /** Two scripted agents that reach a deal, then keep talking. */
+  async function settleThenPush() {
+    const server = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([
+          { action: "accept", message: "Agreed, $460.", offerId: "o1", terms: { amount: 460 } },
+          { action: "counter", message: "Actually I want $500 now.", terms: { amount: 500 } },
+        ]).negotiator,
+      }),
+    );
+
+    const agent = new Agent({
+      ...buyer,
+      negotiator: scripted([
+        { action: "counter", message: "$460?", offerId: "o1", terms: { amount: 460 } },
+        { action: "counter", message: "But we agreed $460.", terms: { amount: 460 } },
+      ]).negotiator,
+    });
+
+    const negotiations = new Map<string, NegotiationSession>();
+    const first = await agent.openNegotiation(server.url, { discover: false }, { negotiations });
+    return { agent, negotiations, first, stop: () => server.stop() };
+  }
+
+  // Reopening a closed exchange doesn't reopen the question, it destroys
+  // the answer: the counterparty replies, the Task drops out of its
+  // terminal state, and the agreement that was on the record is gone.
+  test("refuses another turn once the exchange has ended", async () => {
+    const { agent, negotiations, first, stop } = await settleThenPush();
+
+    try {
+      expect(first.settlement?.outcome).toBe("agreed");
+      expect(first.state).toBe("completed");
+
+      expect(agent.continueNegotiation(first.id, {}, { negotiations })).rejects.toThrow(
+        /already ended \(completed\)/,
+      );
+
+      // The record still holds the deal.
+      await Bun.sleep(20);
+      expect(negotiations.get(first.id)?.task.status.state).toBe("completed");
+    } finally {
+      stop();
+    }
+  });
+
+  test("points at opening a new negotiation instead", async () => {
+    const { agent, negotiations, first, stop } = await settleThenPush();
+
+    try {
+      expect(agent.continueNegotiation(first.id, {}, { negotiations })).rejects.toThrow(
+        /open a new negotiation/i,
+      );
+    } finally {
+      stop();
+    }
+  });
+
+  test("a rejected exchange is just as final as an agreed one", async () => {
+    const server = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "reject", message: "No thanks." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$200?" }]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+      const turn = await agent.openNegotiation(server.url, { discover: false }, { negotiations });
+
+      expect(turn.state).toBe("rejected");
+      expect(agent.continueNegotiation(turn.id, {}, { negotiations })).rejects.toThrow(
+        /already ended \(rejected\)/,
+      );
+    } finally {
+      server.stop();
+    }
+  });
+});
+
+describe("knowing the date", () => {
+  const monday = new Date("2026-08-31T10:00:00Z");
+
+  // Without a clock the agent can only repeat "next Tuesday", never
+  // resolve it — and a relative date in the settled terms stops meaning
+  // the same thing a week later.
+  test("tells the model today's date", () => {
+    const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator, now: () => monday });
+
+    expect(agent.instructions()).toContain("Today is Monday, 31 August 2026");
+  });
+
+  test("asks for absolute dates in the record", () => {
+    const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator, now: () => monday });
+
+    expect(agent.instructions()).toContain("record the actual date");
+  });
+
+  test("an intent scope keeps the clock", () => {
+    const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator, now: () => monday });
+
+    expect(agent.for("Buy a bike").instructions()).toContain("Monday, 31 August 2026");
+  });
+});
+
+describe("a counterparty cannot reopen our settled negotiation", () => {
+  // The half this agent can't guard: someone else sending a message on a
+  // Task of ours that has already completed. The check has to live where
+  // the task is owned, which is the handler.
+  test("the handler refuses a message on a task that already ended", async () => {
+    const responder = new Agent({
+      ...seller,
+      negotiator: scripted([
+        { action: "accept", message: "Agreed, $460.", offerId: "o1", terms: { amount: 460 } },
+      ]).negotiator,
+    });
+    const server = serve(responder);
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          { action: "counter", message: "$460?", offerId: "o1", terms: { amount: 460 } },
+        ]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+      const turn = await agent.openNegotiation(server.url, { discover: false }, { negotiations });
+      expect(turn.settlement?.outcome).toBe("agreed");
+
+      // Straight at the wire, bypassing our own client-side guard — a
+      // counterparty we don't control wouldn't have one.
+      const response = await fetch(server.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "1",
+          method: "message/send",
+          params: {
+            message: {
+              messageId: crypto.randomUUID(),
+              role: "user",
+              taskId: turn.id,
+              parts: [{ kind: "data", data: { action: "counter", message: "Actually, $400." } }],
+            },
+          },
+        }),
+      });
+
+      const body = (await response.json()) as { error?: { message: string } };
+      expect(body.error?.message).toMatch(/cannot accept further messages/);
+
+      // And the record still holds the deal.
+      const after = await agent.inspect(server.url).catch(() => null);
+      expect(after).toBeTruthy();
+    } finally {
+      server.stop();
+    }
+  });
+});

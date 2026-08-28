@@ -120,7 +120,7 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
   const turn: Tool<{ id: string; guidance?: string }> = {
     name: "negotiate_turn",
     description:
-      "Take one more turn in a negotiation you already opened. Use `guidance` to fold in anything you have learned since the last turn — an answer from the party you represent, a limit, a change of position." +
+      "Take one more turn in a negotiation you already opened and that is still open. Use `guidance` to fold in anything you have learned since the last turn — an answer from the party you represent, a limit, a change of position. Once an exchange has ended, it is finished: do not take another turn in it to revisit the price or the terms, because that erases what was settled. Open a new negotiation instead." +
       SETTLEMENT_NOTE,
     parameters: {
       type: "object",

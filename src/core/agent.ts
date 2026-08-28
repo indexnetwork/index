@@ -8,6 +8,7 @@ import {
   createA2AHandler,
   fetchAgentCard,
   defaultStrategy,
+  isTerminalTaskState,
   messageToDecision,
   strategyWithTerms,
   verifyAgreement,
@@ -85,21 +86,18 @@ const DEFAULT_TERMINAL: ReadonlySet<string> = new Set(["accept", "reject", "decl
  * where the domain is known.
  */
 const DEFAULT_TERMS =
-  "the material terms of this deal as flat key/value pairs, using the plainest field name for each (amount, currency, date, quantity, location) — only what has actually been discussed, and the same field names the other side used";
+  "the material terms of this deal as flat key/value pairs, using the plainest field name for each (amount, currency, date, quantity, location) — only what has actually been discussed, and the same field names the other side used. Write dates as YYYY-MM-DD rather than relative ones, and always name the currency alongside an amount";
 
-/**
- * Task states that mean the exchange is over.
- *
- * A2A puts the Task on the server side — ids are server-generated and only
- * the server transitions state — so this, not this agent's own action, is
- * the record of whether a negotiation ended.
- */
-const ENDED_STATES: ReadonlySet<A2ATaskState> = new Set<A2ATaskState>([
-  "completed",
-  "canceled",
-  "failed",
-  "rejected",
-]);
+/** "Friday, 28 August 2026" — a weekday included, since half of what gets
+ * negotiated is stated as one. */
+function formatDate(now: Date): string {
+  return now.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
 
 /** Mirrors the A2A handler's own mapping, so both halves agree on which
  * terminal action means a deal rather than a refusal. */
@@ -168,6 +166,12 @@ export interface AgentOptions<A extends string = DefaultAction> {
   /** Fires before a model call is retried. A retry looks like slowness
    * from the outside, so a host with a UI generally wants to say so. */
   onRetry?: (attempt: number, reason: string) => void;
+  /**
+   * The current time, for resolving what a counterparty means by "next
+   * Tuesday". Defaults to the host's clock; pass one to fix it for tests,
+   * or to run an agent in its party's timezone rather than the server's.
+   */
+  now?: () => Date;
 
   /** The negotiation engine. Defaults to a `Negotiator` built from `model`
    * and `apiKey`. */
@@ -374,6 +378,10 @@ export class Agent<A extends string = DefaultAction> {
     const parts = [
       this.systemPrompt,
       `You are ${this.identity.name}, acting on behalf of ${this.identity.id}.`,
+      // Without this the agent has no clock, and a counterparty's "next
+      // Tuesday" can only be repeated, never resolved. Terms then record a
+      // date that stops meaning the same thing a week later.
+      `Today is ${formatDate((this.options.now ?? (() => new Date()))())}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`,
     ];
     if (this.intent) {
       parts.push(
@@ -643,6 +651,18 @@ export class Agent<A extends string = DefaultAction> {
       );
     }
 
+    // A settled exchange is finished. Taking another turn in it doesn't
+    // reopen the question — it destroys the answer: the counterparty
+    // replies, the Task falls back out of its terminal state, and the
+    // agreement that was on the record is no longer there. If the terms
+    // need to change, that is a new negotiation.
+    const state = resolved.task?.status.state;
+    if (state && isTerminalTaskState(state)) {
+      throw new Error(
+        `Negotiation "${resolved.id}" already ended (${state}). Taking another turn would erase what was settled — open a new negotiation if the terms need to change.`,
+      );
+    }
+
     const turn = await this.takeTurn(resolved, options.guidance, context?.signal);
     context?.negotiations.set(resolved.id, resolved);
     return turn;
@@ -719,7 +739,7 @@ export class Agent<A extends string = DefaultAction> {
       // is over is read off the record, not asserted from this side's own
       // action. An accept the counterparty answered with a counter leaves
       // the Task open, whatever this agent meant by it.
-      done: ENDED_STATES.has(result.task.status.state),
+      done: isTerminalTaskState(result.task.status.state),
       endedBy,
       ...(settlement ? { settlement } : {}),
       ...(result.artifact ? { artifact: result.artifact } : {}),
