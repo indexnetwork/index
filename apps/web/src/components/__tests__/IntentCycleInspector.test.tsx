@@ -6,15 +6,16 @@ import IntentCycleInspector from '../IntentCycleInspector';
 import type { IntentCycleSnapshot } from '@/services/conversation';
 import type { DiscoveryProgress } from '@/services/intents';
 
-const cycle = (number: number): IntentCycleSnapshot => ({
-  round: {
-    number,
-    size: number === 0 ? null : 2,
-    kickoffStartedAt: number === 0 ? null : '2026-08-24T12:00:00.000Z',
-    active: number === 0 ? 0 : 2,
-    paused: 0,
-  },
-  negotiations: [],
+const negotiation = (taskId: string, batchId: string): IntentCycleSnapshot['negotiations'][number] => ({
+  taskId, conversationId: `conversation-${taskId}`, opportunityId: `opportunity-${taskId}`,
+  opportunityStatus: 'negotiating', counterpartLabel: 'Counterpart', batchId,
+  state: 'working', pause: null, latestActivity: null,
+  updatedAt: '2026-08-24T12:00:00.000Z',
+});
+
+const cycle = (batchId: string | null): IntentCycleSnapshot => ({
+  batch: { id: batchId, active: batchId === null ? 0 : 2, paused: 0 },
+  negotiations: batchId === null ? [] : [negotiation('task-1', batchId), negotiation('task-2', batchId)],
 });
 
 const progress: DiscoveryProgress = {
@@ -40,11 +41,11 @@ describe('IntentCycleInspector discovery progress', () => {
   it.each([
     ['queued', 'queued'],
     ['running', 'scanning'],
-  ] as const)('shows %s discovery during round zero', (status, chip) => {
+  ] as const)('shows %s discovery before the first batch', (status, chip) => {
     render(
       <IntentCycleInspector
         intentId="intent-1"
-        cycle={cycle(0)}
+        cycle={cycle(null)}
         loading={false}
         error={false}
         discoveryProgress={{
@@ -61,11 +62,11 @@ describe('IntentCycleInspector discovery progress', () => {
     expect(screen.getByTestId('discovery-warmup-status')).toHaveTextContent(chip);
   });
 
-  it('shows durable discovery progress while round zero waits for kickoff', () => {
+  it('shows durable discovery progress while the intent waits for kickoff', () => {
     render(
       <IntentCycleInspector
         intentId="intent-1"
-        cycle={cycle(0)}
+        cycle={cycle(null)}
         loading={false}
         error={false}
         discoveryProgress={progress}
@@ -76,35 +77,34 @@ describe('IntentCycleInspector discovery progress', () => {
     expect(screen.getByText('Waiting for kickoff')).toBeInTheDocument();
     expect(screen.getByTestId('discovery-warmup')).toBeInTheDocument();
     expect(screen.getAllByText(/2 matches handed to the PersonalAgent/)).toHaveLength(2);
-    expect(screen.queryByText('No negotiation round has been started.')).toBeNull();
   });
 
   it('removes discovery progress and preserves the existing cycle state after kickoff', () => {
     render(
-      <IntentCycleInspector
+      <MemoryRouter><IntentCycleInspector
         intentId="intent-1"
-        cycle={cycle(1)}
+        cycle={cycle('batch-1')}
         loading={false}
         error={false}
         discoveryProgress={progress}
         networks={networks}
-      />,
+      /></MemoryRouter>,
     );
 
     expect(screen.queryByTestId('discovery-warmup')).toBeNull();
-    expect(screen.getByText('Round 1 negotiating')).toBeInTheDocument();
+    expect(screen.getByText('Batch negotiating')).toBeInTheDocument();
     expect(screen.getByText('2 active · 0 paused')).toBeInTheDocument();
   });
 
-  it('keeps a round negotiating while a submitted task is active', () => {
+  it('keeps a batch negotiating while a submitted task is active', () => {
     render(
       <MemoryRouter><IntentCycleInspector
         intentId="intent-1"
         cycle={{
-          round: { number: 1, size: 1, kickoffStartedAt: null, active: 1, paused: 0 },
+          batch: { id: 'batch-1', active: 1, paused: 0 },
           negotiations: [{
             taskId: 'task-1', conversationId: 'conversation-1', opportunityId: 'opportunity-1',
-            opportunityStatus: 'negotiating', counterpartLabel: 'Counterpart', round: 1,
+            opportunityStatus: 'negotiating', counterpartLabel: 'Counterpart', batchId: 'batch-1',
             state: 'submitted', pause: null, latestActivity: null,
             updatedAt: '2026-08-24T12:00:00.000Z',
           }],
@@ -114,7 +114,7 @@ describe('IntentCycleInspector discovery progress', () => {
       /></MemoryRouter>,
     );
 
-    expect(screen.getByText('Round 1 negotiating')).toBeInTheDocument();
-    expect(screen.queryByText('Round 1 ready to reflect')).toBeNull();
+    expect(screen.getByText('Batch negotiating')).toBeInTheDocument();
+    expect(screen.queryByText('Batch ready to reflect')).toBeNull();
   });
 });

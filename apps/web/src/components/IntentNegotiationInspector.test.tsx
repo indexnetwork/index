@@ -10,7 +10,7 @@ function detail(reason: IntentCycleNegotiationDetail['task']['pause']['reason'])
   return {
     intent: { id: 'intent-1', payload: 'Find a collaborator' },
     task: {
-      id: 'task-1', conversationId: 'conversation-1', opportunityId: 'opportunity-1', round: 1,
+      id: 'task-1', conversationId: 'conversation-1', opportunityId: 'opportunity-1', batchId: 'batch-1',
       state: 'paused', updatedAt: new Date(now.getTime() - 10 * 60 * 60 * 1000).toISOString(), brief: null,
       pause: { reason, by: 'yours' },
     },

@@ -4,12 +4,12 @@ import DiscoveryWarmupLog from "@/components/DiscoveryWarmupLog";
 import type { IntentCycleSnapshot, NegotiationPauseReason } from "@/services/conversation";
 import type { DiscoveryProgress } from "@/services/intents";
 
-function cyclePhase(cycle: IntentCycleSnapshot): { label: string; detail: string; active: number } {
-  const { round } = cycle;
-  if (round.number === 0) return { label: "Waiting for kickoff", detail: "", active: 1 };
-  if (round.size === null) return { label: `Opening round ${round.number}`, detail: "The agent is creating this round's negotiations.", active: 3 };
-  if (round.active > 0) return { label: `Round ${round.number} negotiating`, detail: `${round.active} active · ${round.paused} paused`, active: 4 };
-  return { label: `Round ${round.number} ready to reflect`, detail: `${round.paused} paused · the intent agent decides the next step`, active: 5 };
+function cyclePhase(cycle: IntentCycleSnapshot, opened: number): { label: string; detail: string; active: number } {
+  const { batch } = cycle;
+  if (batch.id === null) return { label: "Waiting for kickoff", detail: "", active: 1 };
+  if (opened === 0) return { label: "Opening this batch", detail: "The agent is creating this batch's negotiations.", active: 3 };
+  if (batch.active > 0) return { label: "Batch negotiating", detail: `${batch.active} active · ${batch.paused} paused`, active: 4 };
+  return { label: "Batch ready to reflect", detail: `${batch.paused} paused · the intent agent decides the next step`, active: 5 };
 }
 
 function pauseLabel(reason: NegotiationPauseReason, by: 'yours' | 'theirs' | null): string {
@@ -48,7 +48,8 @@ export default function IntentCycleInspector({
   if (loading) return <p role="status" className="text-xs text-gray-500">Loading negotiation cycle…</p>;
   if (error || !cycle) return <p role="status" className="text-xs text-red-600">Negotiation cycle could not be loaded.</p>;
 
-  const phase = cyclePhase(cycle);
+  const opened = cycle.negotiations.filter((negotiation) => negotiation.batchId === cycle.batch.id).length;
+  const phase = cyclePhase(cycle, opened);
   const stages = ['Discovery', 'Strategy', 'Kickoff', 'A2A', 'Reflect'];
   return (
     <section className="space-y-3" aria-label="Intent cycle inspector">
@@ -69,11 +70,11 @@ export default function IntentCycleInspector({
           ))}
         </ol>
         <p className="mt-3 font-ibm-plex-mono text-[10px] text-slate-500">
-          round {cycle.round.number} · {cycle.round.size === null ? 'opening not yet stamped' : `${cycle.round.size} opened`}
+          {cycle.batch.id === null ? 'no batch opened yet' : `batch ${cycle.batch.id.slice(0, 8)} · ${opened} opened`}
         </p>
       </div>
 
-      {cycle.round.number === 0 && (
+      {cycle.batch.id === null && (
         <DiscoveryWarmupLog progress={discoveryProgress} communities={networks} />
       )}
 
@@ -86,7 +87,7 @@ export default function IntentCycleInspector({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold text-gray-900">{negotiation.counterpartLabel}</p>
-                  <p className="font-ibm-plex-mono text-[10px] text-gray-500">round {negotiation.round} · {negotiation.state} · {negotiation.opportunityStatus}</p>
+                  <p className="font-ibm-plex-mono text-[10px] text-gray-500">batch {negotiation.batchId ? negotiation.batchId.slice(0, 8) : 'none'} · {negotiation.state} · {negotiation.opportunityStatus}</p>
                   <p className="mt-0.5 font-ibm-plex-mono text-[9px] text-gray-400" title={`task ${negotiation.taskId} · opportunity ${negotiation.opportunityId}`}>
                     task {negotiation.taskId.slice(0, 8)} · opportunity {negotiation.opportunityId.slice(0, 8)}
                   </p>

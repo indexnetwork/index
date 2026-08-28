@@ -13,7 +13,7 @@ function toolResult(act: Record<string, unknown>): { tool: string; result: strin
       const opened = typeof act.opened === "number" ? act.opened : null;
       const failed = typeof act.failed === "number" ? act.failed : null;
       const counts = [
-        typeof act.round === "number" ? `round ${act.round}` : null,
+        typeof act.batchId === "string" ? `batch ${act.batchId.slice(0, 8)}` : null,
         typeof act.attempted === "number" ? `${act.attempted} attempted` : null,
         opened !== null ? `${opened} opened` : null,
         failed !== null ? `${failed} failed` : null,

@@ -27,7 +27,7 @@ export default function NegotiationTaskIndex({ entries }: { entries: Negotiation
             <div className="min-w-0">
               <p className="text-sm font-semibold text-gray-900">{entry.counterpartLabel}</p>
               <p className="mt-1 truncate font-ibm-plex-mono text-[11px] text-slate-600">intent · {entry.intentLabel}</p>
-              <p className="mt-1 font-ibm-plex-mono text-[10px] text-gray-500">round {entry.round} · task {entry.state} · opportunity {entry.opportunityStatus}</p>
+              <p className="mt-1 font-ibm-plex-mono text-[10px] text-gray-500">batch {entry.batchId ? entry.batchId.slice(0, 8) : 'none'} · task {entry.state} · opportunity {entry.opportunityStatus}</p>
             </div>
             <Link to={`/i/${entry.intentId}/negotiations/${entry.taskId}`} className="text-xs font-medium text-[#35799C] hover:underline">Inspect seat</Link>
           </div>
