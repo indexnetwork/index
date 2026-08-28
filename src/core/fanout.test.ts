@@ -326,6 +326,41 @@ describe("digest()", () => {
   });
 });
 
+/** A Negotiator shared by several concurrently pumped sessions, whose
+ * decide() is scripted per session instead of by call order.
+ *
+ * `scripted()`'s shared call counter assumes one negotiation is in
+ * flight at a time; under `Promise.all` two sessions' calls interleave
+ * unpredictably. Keying on `state.history.length` doesn't work either —
+ * an `ask` is intercepted locally before anything is sent, so it and the
+ * decide that follows a resume see the *same* history length. What does
+ * stay stable per session is the negotiation's own objective: `objectiveFor`
+ * always renders it as "...In this negotiation: <objective>", untouched by
+ * whatever guidance gets appended after it. So key each call on that
+ * `<objective>` tag and give each session its own sequential index. */
+function scriptedBySession(scripts: Record<string, NegotiationDecision[]>) {
+  const negotiator = new Negotiator({ apiKey: "test-key" });
+  const calls: { state: NegotiationState; options: DecideOptions<string> }[] = [];
+  const counts = new Map<string, number>();
+
+  (negotiator as unknown as { decide: unknown }).decide = async (
+    state: NegotiationState,
+    options: DecideOptions<string>,
+  ) => {
+    const { signal: _signal, ...clonable } = options;
+    calls.push({ state: structuredClone(state), options: structuredClone(clonable) as DecideOptions<string> });
+    const key = /In this negotiation: (\S+)/.exec(state.party.objective)?.[1];
+    const decisions = (key && scripts[key]) || [];
+    const index = counts.get(key ?? "") ?? 0;
+    counts.set(key ?? "", index + 1);
+    const decision = decisions[index] ?? decisions.at(-1);
+    if (!decision) throw new Error(`no scripted decision left for "${key}"`);
+    return decision;
+  };
+
+  return { negotiator, calls };
+}
+
 function tool(name: string) {
   const found = negotiationTools().find((t) => t.name === name) as Tool<never> | undefined;
   if (!found?.run) throw new Error(`no tool ${name}`);
@@ -379,15 +414,26 @@ describe("negotiate_many / negotiate_resume", () => {
     const a = serve(new Agent({ ...seller, negotiator: mk().negotiator }));
     const b = serve(new Agent({ ...seller, identity: { name: "Seller B", id: "did:example:b" }, negotiator: mk().negotiator }));
     try {
-      // Two negotiations interleave on one scripted client, so the script
-      // is symmetric: propose, ask, then counter for whichever comes next.
-      const client = scripted([
-        { action: "propose", message: "$400?" },
-        { action: "propose", message: "$400?" },
-        { action: "ask", message: "Ceiling?" },
-        { action: "ask", message: "Ceiling?" },
-        { action: "counter", message: "$450." },
-      ]);
+      // Two negotiations interleave on one shared client. `scripted()`'s
+      // call-order counter can't tell them apart — whichever session's
+      // network round trip resolves first claims the next script entry,
+      // so on an unlucky interleaving one session would get a second
+      // "propose" and skip straight to a settlement (the seller's second
+      // scripted reply is "accept"), never reaching "ask". Script each
+      // session (keyed by its own objective, "a" or "b") independently
+      // instead, via `scriptedBySession`.
+      const client = scriptedBySession({
+        a: [
+          { action: "propose", message: "$400?" },
+          { action: "ask", message: "Ceiling?" },
+          { action: "counter", message: "$450." },
+        ],
+        b: [
+          { action: "propose", message: "$400?" },
+          { action: "ask", message: "Ceiling?" },
+          { action: "counter", message: "$450." },
+        ],
+      });
       const agent = new Agent({ ...buyer, negotiator: client.negotiator });
       const context = { agent: agent as unknown as Agent, negotiations: new Map<string, NegotiationSession>() };
 
