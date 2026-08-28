@@ -1,6 +1,6 @@
 /**
  * Everything together: the agent opens a negotiation, stops partway to ask
- * Bob a question, and carries on in the *same* exchange once he answers.
+ * Tomas a question, and carries on in the *same* exchange once he answers.
  *
  * That pause is why negotiation is one turn per tool call. If `negotiate()`
  * ran the whole exchange inside a single tool call there would be no gap to
@@ -17,31 +17,39 @@ import { Agent, askUserTool, negotiationTools, type RunResult, type Tool } from 
 import { logStep, serve } from "./shared.ts";
 
 // A plain A2A responder: it answers turns with Negotiator, no loop involved.
-const seller = new Agent({
-  identity: { name: "Seller", id: "did:example:alice", description: "Sells one used road bike" },
+const advisor = new Agent({
+  identity: {
+    name: "Idris's Agent",
+    id: "did:example:idris",
+    description: "Acts for a fractional CFO",
+  },
   systemPrompt:
-    "Sell a used road bike for as much as possible, ideally above $450. Bring up collection arrangements before agreeing anything.",
+    "You act for Idris, a fractional CFO taking on early-stage clients. He wants two days a month at 1,200 euros a day, and would take less cash for a small equity grant. Settle how many days and what it costs before agreeing anything.",
 });
 
-const { url, stop } = serve(seller.handler());
+const { url, stop } = serve(advisor.handler());
 
-const buyer = new Agent({
-  identity: { name: "Bob's Agent", id: "did:example:bob" },
+const founder = new Agent({
+  identity: { name: "Tomas's Agent", id: "did:example:tomas" },
   systemPrompt:
-    "You act for Bob. Negotiate on his behalf, but ask him directly about anything you have not been told — a price ceiling, dates, collection. Do not invent his preferences. When the negotiation ends, report back plainly.",
+    "You act for Tomas, who is looking for a fractional CFO for his pre-seed company. Negotiate on his behalf, but ask him directly about anything you have not been told — what he can pay, how much equity he would part with, when he wants to start. Do not invent his position. When the negotiation ends, report back plainly.",
   tools: [askUserTool() as Tool<never>, ...negotiationTools()],
   maxSteps: 6,
-}).for({ id: "int_bike", statement: "Buy a reliable used road bike" });
+}).for({ id: "int_cfo", statement: "Bring in a fractional CFO before the round closes" });
 
-// The host's side of the conversation with Bob. In production these come
+// The host's side of the conversation with Tomas. In production these come
 // from a chat message, a push notification, a form.
 const answers = [
-  "Up to $460, and I can collect any weekday evening after 6.",
-  "Yes, go ahead and close it.",
+  "Two days a month, up to 1,000 a day. No equity until after the round closes.",
+  // The negotiation turns up a trade-off neither side could resolve alone:
+  // Idris wants 1,200 in cash, or 1,000 plus equity now. Only Tomas can
+  // say which, and his answer is a third thing neither agent proposed.
+  "1,000 a day, and 0.25% granted once the round closes — not before.",
+  "Yes, agree that.",
 ];
 
-let result: RunResult = await buyer.run(
-  `There is a seller agent at ${url}. Get the bike for Bob on the best terms you can.`,
+let result: RunResult = await founder.run(
+  `There is an agent for a fractional CFO at ${url}. Agree terms for Tomas on the best basis you can.`,
   { onStep: logStep },
 );
 
@@ -50,7 +58,7 @@ while (result.end === "needs-input" && asked < answers.length) {
   const answer = answers[asked++]!;
   console.log(`  > ${answer}\n`);
 
-  result = await buyer.run(answer, {
+  result = await founder.run(answer, {
     messages: result.messages,
     negotiations: result.negotiations, // the open A2A task travels with it
     onStep: logStep,

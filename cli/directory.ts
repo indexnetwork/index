@@ -100,8 +100,24 @@ export class Directory {
 // ends of it. That is the whole heuristic, and it is a placeholder for a
 // real matcher — enough to pair "selling a road bike" with "buying a road
 // bike" and to leave "looking for a mechanic" out of it.
-const SEEKING = /\b(buy|buying|looking|need|needs|want|wants|seeking|seek|find|hire|rent|after)\b/;
-const OFFERING = /\b(sell|selling|offer|offering|have|available|providing|provide|let|lease)\b/;
+const SEEKING =
+  /\b(buy|buying|looking|need|needs|want|wants|seeking|seek|find|hire|hiring|recruiting|rent|after|raising|fundraising)\b/;
+const OFFERING =
+  /\b(sell|selling|offer|offering|have|available|providing|provide|let|lease|invest|investing|investor|angel|advising|consulting|mentoring)\b/;
+
+/**
+ * Trades where the two sides use different words for the same thing, and
+ * the side test below can't see it: someone hiring and someone looking for
+ * a role are both "looking", for different objects. Listed as pairs rather
+ * than sides, in either order.
+ */
+const COMPLEMENTS: [RegExp, RegExp][] = [
+  [
+    /\b(hiring|recruiting|hire)\b/,
+    /\b(job|jobs|role|roles|position|freelance|contract work|open to work|available for)\b/,
+  ],
+  [/\b(raising|fundraising)\b/, /\b(invest|investing|investor|angel)\b/],
+];
 
 const STOPWORDS = new Set([
   "a", "an", "and", "any", "are", "as", "at", "be", "but", "by", "can", "for", "from", "good",
@@ -134,6 +150,24 @@ function score(mine: string, theirs: string): { score: number; why: string } {
  * against a match rather than for it.
  */
 function compare(mine: string, theirs: string): { weight: number; why: string } {
+  const ours = mine.toLowerCase();
+  const yours = theirs.toLowerCase();
+
+  // A named pair beats the general test — it knows what is being traded,
+  // where the side test only knows which direction the words point. An
+  // intent counts as a side only if it sits on that side and not the
+  // other: "raising a round, looking for angel investors" names both, so
+  // it is not the investor to somebody else's founder.
+  const side = (on: RegExp, off: RegExp, text: string) => on.test(text) && !off.test(text);
+  for (const [left, right] of COMPLEMENTS) {
+    if (
+      (side(left, right, ours) && side(right, left, yours)) ||
+      (side(right, left, ours) && side(left, right, yours))
+    ) {
+      return { weight: 0.35, why: "the two of you want opposite ends of the same thing" };
+    }
+  }
+
   const seeking = SEEKING.test(mine.toLowerCase());
   const offering = OFFERING.test(mine.toLowerCase());
   const theySeek = SEEKING.test(theirs.toLowerCase());

@@ -12,22 +12,22 @@ import { Agent } from "../src/index.ts";
 
 const agent = new Agent({
   identity: {
-    name: "Bob's Agent",
-    id: "did:example:bob",
-    description: "Acts for Bob",
-    url: "https://bob.example",
+    name: "Tomas's Agent",
+    id: "did:example:tomas",
+    description: "Acts for Tomas",
+    url: "https://tomas.example",
   },
-  systemPrompt: "You act for Bob. Be direct and never commit him to a price he hasn't approved.",
+  systemPrompt: "You act for Tomas. Be direct, and never commit him to terms he has not approved.",
 });
 
-const buying = agent.for({ id: "int_bike", statement: "Find a used road bike under $450" });
-const selling = agent.for("Sell Bob's old commuter bike for whatever it will fetch this month");
+const raising = agent.for({ id: "int_round", statement: "Raise a 400k pre-seed round" });
+const hiring = agent.for("Hire a senior backend engineer, remote within Europe");
 
 // Same identity, same card — in every scope.
-console.log("cards identical:", JSON.stringify(buying.card()) === JSON.stringify(agent.card()));
-console.log("identity shared:", buying.identity === agent.identity && selling.identity === agent.identity);
+console.log("cards identical:", JSON.stringify(raising.card()) === JSON.stringify(agent.card()));
+console.log("identity shared:", raising.identity === agent.identity && hiring.identity === agent.identity);
 console.log(JSON.stringify(agent.card(), null, 2));
 
 // What differs is the instructions the model actually runs under.
 console.log("\n--- unscoped ---\n" + agent.instructions());
-console.log("\n--- scoped to buying ---\n" + buying.instructions());
+console.log("\n--- scoped to raising ---\n" + raising.instructions());

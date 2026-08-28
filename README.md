@@ -23,7 +23,7 @@ into every scope and into every negotiation the agent opens.
 
 ```ts
 const agent = new Agent({ identity, systemPrompt, tools });  // one per party
-const buying = agent.for("Find a used road bike under $450"); // same identity
+const raising = agent.for("Raise a 400k pre-seed round");     // same identity
 ```
 
 Two loops, doing different jobs:
@@ -69,9 +69,9 @@ cd ../agent && bun install
 import { Agent, askUserTool, negotiationTools, type Tool } from "@indexnetwork/agent";
 
 const agent = new Agent({
-  identity: { name: "Bob's Agent", id: "did:example:bob" },
+  identity: { name: "Tomas's Agent", id: "did:example:tomas" },
   systemPrompt:
-    "You act for Bob. Ask him directly about anything you have not been told — " +
+    "You act for Tomas. Ask him directly about anything you have not been told — " +
     "a price ceiling, dates, collection. Do not invent his preferences.",
   tools: [
     ...indexOperations(session),  // yours; see Tools
@@ -80,7 +80,7 @@ const agent = new Agent({
   ],
 });
 
-const scoped = agent.for({ id: "int_bike", statement: "Buy a reliable used road bike" });
+const scoped = agent.for({ id: "int_cfo", statement: "Bring in a fractional CFO" });
 const result = await scoped.run("Find a seller and get the best terms you can.");
 ```
 
@@ -191,10 +191,10 @@ before starting or after finishing. `guidance` is how an answer gets folded
 back in, for that turn only:
 
 ```
-negotiate_open({ url, objective: "ask about the bike and its terms" })
+negotiate_open({ url, objective: "ask what they charge and on what terms" })
 ask_user({ question: "It's $520. What's your ceiling?" })
-  -> run() returns "needs-input"; host asks Bob; resumes
-negotiate_turn({ id, guidance: "Offer $430; Bob's ceiling is $460" })
+  -> run() returns "needs-input"; host asks Tomas; resumes
+negotiate_turn({ id, guidance: "Offer 900 a day; Tomas can go to 1,100" })
 ```
 
 The same methods are available directly — `openNegotiation()`,
@@ -382,7 +382,7 @@ Each run's system message then carries the record:
 ```
 Negotiations you are party to. This is the record of what happened, which is
 not the same as what you remember saying — trust it over the conversation above:
-- 61b3061c with Alice's Agent — you contacted them; agreed: {"price":460,"collection":"Wednesday evening"}
+- 61b3061c with Idris's Agent — you contacted them; agreed: {"day_rate":1000,"days_per_month":2}
 - 9f2a1c3d — they contacted you; still open, 4 turns so far
 ```
 
@@ -481,10 +481,10 @@ non-deterministic rather than scripted:
 
 | Script | Shows |
 | --- | --- |
-| `01-ask-user.ts` | Suspend and resume, with a host-injected operation alongside. |
-| `02-intent-scope.ts` | One identity across scopes; identical cards, different instructions. |
-| `03-negotiating-agent.ts` | The whole thing: opens a negotiation, asks the user mid-way, continues the same task. |
-| `04-custom-actions.ts` | A support desk: custom actions and terminal states. |
+| `01-ask-user.ts` | A founder's agent, asked to agree a day rate it was never given. Suspend and resume, with a host-injected operation alongside. |
+| `02-intent-scope.ts` | One identity across scopes — raising a round, hiring an engineer. Identical cards, different instructions. |
+| `03-negotiating-agent.ts` | The whole thing: agreeing terms with a fractional CFO, stopping mid-negotiation to ask the founder about equity, continuing the same task. |
+| `04-custom-actions.ts` | An introduction, negotiated. No price anywhere: the actions are `introduce`, `refer` and `decline`, and what's being agreed is access to a person. |
 | `05-authenticated.ts` | `inspect()`, a declared security scheme, a call refused without credentials. |
 
 ```bash
@@ -499,7 +499,7 @@ arrangement meant to span machines can be exercised from one terminal.
 
 ```bash
 bun run console
-bun run console -- --with Alice --with Bob
+bun run console -- --with Tomas --with Idris
 ```
 
 Each party gets a column: its conversation on top, and beneath it the A2A
@@ -508,20 +508,20 @@ verdict it reached.
 
 ```
  agent console · 2 parties · .agents.json
- Alice                                    │  Bob
- Selling a Trek Domane, $520              │ Buy a road bike under $460
+ Tomas                                    │  Idris
+ Bring in a fractional CFO                │ Offering fractional CFO work
 ──────────────────────────────────────────────────────────────────────────────────────
- › what are you asking?                   │ › find my best match and negotiate
- $520, collection weekday evenings.       │ ⚒ find_matches {}
-                                          │   → [{"name":"Alice","url":"http://…"}]
+ › find my best match and agree terms     │ › what are they offering?
+ ⚒ find_matches {}                        │ Two days a month at 1,200 a day.
+   → [{"name":"Idris","url":"http://…"}]  │
 ─ wire · 3 ───────────────────────────────── wire · 3 ────────────────────────────────
- ← them  I'd like to offer $420, pickup   │ → me  I'd like to offer $420, pickup
-   Monday evening 2026-08-31.             │   Monday evening 2026-08-31.
- → me  That works. See you Monday.        │ ← them  That works. See you Monday.
-   ⚖ agreed (reference) {"amount":420,…}  │   ⚖ agreed (reference) {"amount":420,…}
+ → me  Would 1,000 a day work, two days   │ ← them  Would 1,000 a day work, two days
+   a month, starting 2026-09-07?          │   a month, starting 2026-09-07?
+ ← them  That works. Two days a month.    │ → me  That works. Two days a month.
+   ⚖ agreed (reference) {"day_rate":1000,…}│   ⚖ agreed (reference) {"day_rate":1000,…}
 ──────────────────────────────────────────────────────────────────────────────────────
  tab agent · pgup/pgdn scroll · ^W hide wire · /help · ^D exit
- Bob ›
+ Tomas ›
 ```
 
 The traffic is per party rather than shared, for the same reason
@@ -564,17 +564,20 @@ Discovery is host-injected here as it would be anywhere: each party gets
 file-backed stand-in for the intent/match layer described below.
 
 `create_intent` is what makes a party findable from a conversation. Say
-*"I want to sell my old Trek Domane, hoping for about $500"* and the agent
-proposes the wording, asks before publishing, and only then puts it on the
-directory:
+*"I'm raising a pre-seed round, about 400k"* and the agent proposes the
+wording, asks before publishing, and only then puts it on the directory:
 
 ```
-› I want to sell my old Trek Domane road bike, 54cm, hoping for about $500
-? Would you like me to publish your intent as: "Selling a 54cm Trek Domane
-  road bike for around $500"?
+› I'm raising a pre-seed round, about 400k, for a developer tools company
+? Would you like me to publish your intent as: "Raising a 400k pre-seed
+  round for a developer tools company"?
 › Yes, publish that
-⚒ create_intent {"statement":"Selling a 54cm Trek Domane road bike for around $500"}
+⚒ create_intent {"statement":"Raising a 400k pre-seed round for a developer tools company"}
 ```
+
+It refuses when they already have one — an intent is published under their
+name and is what everyone else is matching against, so withdrawing from
+that is theirs to decide, not something to do on a passing remark.
 
 The asking is deliberate and costs nothing extra — it's the same
 suspend/resume the agent already uses for every other question. An intent

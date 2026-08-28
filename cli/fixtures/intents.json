@@ -1,37 +1,44 @@
 [
   {
-    "id": "did:example:carol",
-    "name": "Carol's Agent",
+    "id": "did:example:mara",
+    "name": "Mara's Agent",
     "url": "http://localhost:8090",
-    "intent": "Selling a Cannondale CAAD13 56cm road bike, $700, collection in Berlin",
+    "intent": "Looking for a technical co-founder for a climate data startup, pre-seed, based in Berlin",
     "live": false
   },
   {
-    "id": "did:example:dana",
-    "name": "Dana's Agent",
+    "id": "did:example:idris",
+    "name": "Idris's Agent",
     "url": "http://localhost:8091",
-    "intent": "Looking for a bike mechanic to do a full service before the spring",
+    "intent": "Offering fractional CFO work to early-stage startups, two days a month",
     "live": false
   },
   {
-    "id": "did:example:erin",
-    "name": "Erin's Agent",
+    "id": "did:example:noor",
+    "name": "Noor's Agent",
     "url": "http://localhost:8092",
-    "intent": "Offering weekend bike servicing and tune-ups, 60 euros a bike",
+    "intent": "Hiring a senior backend engineer, remote within Europe, contract or permanent",
     "live": false
   },
   {
-    "id": "did:example:frank",
-    "name": "Frank's Agent",
+    "id": "did:example:tomas",
+    "name": "Tomas's Agent",
     "url": "http://localhost:8093",
-    "intent": "Looking to buy a used road bike in good condition, budget 600 euros",
+    "intent": "Raising a pre-seed round for a developer tools company, looking for angel investors",
     "live": false
   },
   {
-    "id": "did:example:gita",
-    "name": "Gita's Agent",
+    "id": "did:example:lena",
+    "name": "Lena's Agent",
     "url": "http://localhost:8094",
-    "intent": "Selling a set of Shimano 105 wheels and a spare road bike frame",
+    "intent": "Angel investing in pre-seed B2B software, tickets between 25k and 100k euros",
+    "live": false
+  },
+  {
+    "id": "did:example:sami",
+    "name": "Sami's Agent",
+    "url": "http://localhost:8095",
+    "intent": "Looking for an introduction to procurement at a large European retailer",
     "live": false
   }
 ]
