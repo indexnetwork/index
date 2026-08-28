@@ -28,7 +28,7 @@ let mockGetUserForNewsletter: (id: string) => Promise<{
 } | null> = async () => null;
 let mockRedisSet: (key: string, value: string, ...args: unknown[]) => Promise<string | null> = async () => 'OK';
 const mockEmitOpportunityNotification = mock(() => {});
-const mockAddEmailJob = mock(async () => {});
+const mockExecuteSendEmail = mock(async () => {});
 
 mock.module('../../services/user.service', () => ({
   userService: {
@@ -40,10 +40,8 @@ mock.module('../../adapters/cache.adapter', () => ({
     set: mockRedisSet,
   }),
 }));
-mock.module('../email.queue', () => ({
-  emailQueue: {
-    addJob: (payload: unknown, opts?: unknown) => (mockAddEmailJob as (a: unknown, b?: unknown) => Promise<unknown>)(payload, opts),
-  },
+mock.module('../../lib/email/transport.helper', () => ({
+  executeSendEmail: (payload: unknown) => (mockExecuteSendEmail as (a: unknown) => Promise<unknown>)(payload),
 }));
 const _telegramEmitter = new EventEmitter();
 _telegramEmitter.setMaxListeners(100);
@@ -95,7 +93,7 @@ describe('NotificationQueue', () => {
     mockGetUserForNewsletter = async () => null;
     mockRedisSet = async () => 'OK';
     mockEmitOpportunityNotification.mockClear();
-    mockAddEmailJob.mockClear();
+    mockExecuteSendEmail.mockClear();
   });
 
   describe('constructor and static', () => {
@@ -170,7 +168,7 @@ describe('NotificationQueue', () => {
         recipientId: 'r1',
         priority: 'high',
       });
-      expect(mockAddEmailJob).not.toHaveBeenCalled();
+      expect(mockExecuteSendEmail).not.toHaveBeenCalled();
     });
 
     it('priority high: onboarding not completed skips email', async () => {
@@ -188,7 +186,7 @@ describe('NotificationQueue', () => {
         recipientId: 'r1',
         priority: 'high',
       });
-      expect(mockAddEmailJob).not.toHaveBeenCalled();
+      expect(mockExecuteSendEmail).not.toHaveBeenCalled();
     });
 
     it('priority high: connectionUpdates false skips email', async () => {
@@ -206,7 +204,7 @@ describe('NotificationQueue', () => {
         recipientId: 'r1',
         priority: 'high',
       });
-      expect(mockAddEmailJob).not.toHaveBeenCalled();
+      expect(mockExecuteSendEmail).not.toHaveBeenCalled();
     });
 
     it('priority high: dedupe key already set skips email', async () => {
@@ -225,7 +223,7 @@ describe('NotificationQueue', () => {
         recipientId: 'r1',
         priority: 'high',
       });
-      expect(mockAddEmailJob).not.toHaveBeenCalled();
+      expect(mockExecuteSendEmail).not.toHaveBeenCalled();
     });
 
     it('priority high: sends email with unsubscribe when token present', async () => {
@@ -245,8 +243,8 @@ describe('NotificationQueue', () => {
         recipientId: 'r1',
         priority: 'high',
       });
-      expect(mockAddEmailJob).toHaveBeenCalled();
-      const calls = (mockAddEmailJob as { mock: { calls: unknown[] } }).mock.calls;
+      expect(mockExecuteSendEmail).toHaveBeenCalled();
+      const calls = (mockExecuteSendEmail as { mock: { calls: unknown[] } }).mock.calls;
       const firstCall = calls[0];
       expect(firstCall).toBeDefined();
       expect((firstCall as unknown[])[0]).toMatchObject({ to: 'a@b.com' });
@@ -269,8 +267,8 @@ describe('NotificationQueue', () => {
         recipientId: 'r1',
         priority: 'high',
       });
-      expect(mockAddEmailJob).toHaveBeenCalled();
-      const calls = (mockAddEmailJob as { mock: { calls: unknown[] } }).mock.calls;
+      expect(mockExecuteSendEmail).toHaveBeenCalled();
+      const calls = (mockExecuteSendEmail as { mock: { calls: unknown[] } }).mock.calls;
       const args = (calls[0] as unknown[])?.[0] as { headers?: unknown } | undefined;
       expect(args?.headers).toBeUndefined();
     });
@@ -285,7 +283,7 @@ describe('NotificationQueue', () => {
         priority: 'unknown' as NotificationPriority,
       });
       expect(mockEmitOpportunityNotification).not.toHaveBeenCalled();
-      expect(mockAddEmailJob).not.toHaveBeenCalled();
+      expect(mockExecuteSendEmail).not.toHaveBeenCalled();
     });
 
     it('uses summary fallback when interpretation.reasoning missing', async () => {

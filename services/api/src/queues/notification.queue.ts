@@ -4,7 +4,7 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { userService } from '../services/user.service';
-import { emailQueue } from './email.queue';
+import { executeSendEmail } from '../lib/email/transport.helper';
 import { opportunityNotificationTemplate } from '../lib/email/templates/opportunity-notification.template';
 import { emitOpportunityNotification, emitTelegramNotification } from '../lib/notification-events';
 import { publishNotificationStreamEvent, type NotificationStreamPublisher } from '../lib/notification-stream-events';
@@ -249,22 +249,19 @@ export class NotificationQueue {
       unsubscribeUrl
     );
 
-    await emailQueue.addJob(
-      {
-        to: recipient.email,
-        subject: template.subject,
-        html: template.html,
-        text: template.text,
-        headers: unsubscribeUrl
-          ? {
-              'List-Unsubscribe': `<mailto:hello@index.network?subject=Unsubscribe>, <${unsubscribeUrl}>`,
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            }
-          : undefined,
-      },
-      { jobId: `opportunity-email-${recipientId}-${opportunityId}` }
-    );
-    this.logger.info('Enqueued high-priority opportunity email', {
+    await executeSendEmail({
+      to: recipient.email,
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+      headers: unsubscribeUrl
+        ? {
+            'List-Unsubscribe': `<mailto:hello@index.network?subject=Unsubscribe>, <${unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          }
+        : undefined,
+    });
+    this.logger.info('Sent high-priority opportunity email', {
       recipientId,
       opportunityId,
     });

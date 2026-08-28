@@ -55,7 +55,6 @@ import { frameDriftQueue } from './queues/frame-drift.queue';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
-import { emailQueue } from './queues/email.queue';
 import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
 import { personalAgentQueue } from './queues/personal-agent.queue';
@@ -174,7 +173,6 @@ void frameDriftQueue.start().catch((error) => {
 });
 notificationQueue.startWorker();
 hydeQueue.startCrons();
-emailQueue.startWorker();
 negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
 personalAgentQueue.startWorker();
@@ -583,7 +581,6 @@ const shutdown = async () => {
     discoveryQueue.close(),
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
-    emailQueue.close(),
     personalAgentQueue.close(),
     premiseQueue.close(),
     frameDriftQueue.close(),
