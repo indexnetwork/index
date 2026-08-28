@@ -11,4 +11,5 @@ export type {
   NegotiationMessage,
   NegotiationParty,
   NegotiationState,
+  NegotiationTerms,
 } from "./core/types.ts";

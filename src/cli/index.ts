@@ -24,6 +24,11 @@ ${bold("COMMON OPTIONS")}
                       (default: propose,counter,accept,reject)
   --terminal <list>   Which actions end the negotiation
                       (default: accept,reject,decline,withdraw)
+  --terms <fields>    Ask for structured terms alongside each message, e.g.
+                      "amount (number, USD), pickupDay (day of week)". Makes
+                      acceptance name the offer it binds to, so the agreed
+                      terms are verifiable instead of buried in prose.
+                      (sim, serve, connect)
 
 ${bold("EXAMPLES")}
   ${dim("# watch two agents haggle")}
@@ -62,6 +67,7 @@ async function main(): Promise<void> {
           terminal: { type: "string" },
           model: { type: "string" },
           turns: { type: "string" },
+          terms: { type: "string" },
         },
       });
       await sim({
@@ -73,6 +79,7 @@ async function main(): Promise<void> {
         terminal: values.terminal,
         model: values.model,
         turns: values.turns,
+        terms: values.terms,
       });
       return;
     }
@@ -111,6 +118,7 @@ async function main(): Promise<void> {
           terminal: { type: "string" },
           model: { type: "string" },
           token: { type: "string" },
+          terms: { type: "string" },
         },
       });
       await serve({
@@ -121,6 +129,7 @@ async function main(): Promise<void> {
         terminal: values.terminal,
         model: values.model,
         token: values.token,
+        terms: values.terms,
       });
       return;
     }
@@ -137,6 +146,7 @@ async function main(): Promise<void> {
           token: { type: "string" },
           turns: { type: "string" },
           expect: { type: "string" },
+          terms: { type: "string" },
         },
       });
       await connect({
@@ -148,6 +158,7 @@ async function main(): Promise<void> {
         token: values.token,
         turns: values.turns,
         expect: values.expect,
+        terms: values.terms,
       });
       return;
     }

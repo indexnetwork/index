@@ -1,6 +1,7 @@
 import type { Negotiator } from "../../core/negotiator.ts";
 import type { ActionSpec } from "../../core/negotiator.ts";
 import type { NegotiationParty } from "../../core/types.ts";
+import { verifyAgreement } from "../wire/agreement.ts";
 import { decisionToMessage, historyFromMessages } from "../wire/history.ts";
 import type { JsonRpcRequest, JsonRpcResponse } from "../wire/jsonrpc.ts";
 import { defaultStrategy, type DecisionStrategy, type EvaluateHook } from "../wire/strategy.ts";
@@ -142,6 +143,28 @@ export function createA2AHandler<A extends string>(
       state: isTerminal(decision.action) ? terminalState(decision.action) : "input-required",
       timestamp: new Date().toISOString(),
     };
+
+    // The spec puts task results in Artifacts, not in messages: on a
+    // terminal action, record what the task actually settled on so a reader
+    // of the Task doesn't have to parse anyone's prose to find out.
+    if (isTerminal(decision.action)) {
+      const agreement = verifyAgreement(task);
+      task.artifacts.push({
+        artifactId: crypto.randomUUID(),
+        name: "negotiation-outcome",
+        parts: [
+          {
+            kind: "data",
+            data: {
+              state: task.status.state,
+              status: agreement.status,
+              ...(agreement.terms ? { terms: agreement.terms } : {}),
+              ...(agreement.reason ? { reason: agreement.reason } : {}),
+            },
+          },
+        ],
+      });
+    }
 
     const artifact = await options.evaluate?.(task, decision);
     if (artifact) task.artifacts.push(artifact);

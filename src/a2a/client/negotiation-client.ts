@@ -2,7 +2,7 @@ import type { ActionSpec, Negotiator } from "../../core/negotiator.ts";
 import type { NegotiationDecision, NegotiationParty, NegotiationState } from "../../core/types.ts";
 import { decisionToMessage, historyFromMessages } from "../wire/history.ts";
 import { defaultStrategy, type DecisionStrategy, type EvaluateHook } from "../wire/strategy.ts";
-import type { A2AArtifact, A2ATask } from "../wire/types.ts";
+import type { A2AArtifact, A2ATask, A2ATaskState } from "../wire/types.ts";
 import type { A2ACredentials } from "./transport.ts";
 import { sendA2AMessage } from "./transport.ts";
 
@@ -29,6 +29,15 @@ export interface A2ANegotiationClientOptions<A extends string> {
 
 export interface A2ATurnResult<A extends string = string> {
   task: A2ATask;
+  /** What the negotiation actually is now, copied from the server-stamped
+   * `task.status.state`. The A2A spec makes the server the single authority
+   * on task state, so this — not `decision.action` — is the outcome. */
+  outcome: A2ATaskState;
+  /** This side's own move. An *input* to the outcome, not a verdict on it:
+   * the counterparty may have rejected in the same round trip, so a
+   * `decision.action` of "accept" can sit on a task whose `outcome` is
+   * "rejected". Read `outcome` to know what happened, and
+   * `verifyAgreement(task)` to know what was agreed. */
   decision: NegotiationDecision<A>;
   artifact?: A2AArtifact;
 }
@@ -69,6 +78,6 @@ export class A2ANegotiationClient<A extends string> {
     const message = decisionToMessage(decision, "user", refs);
     const task = await sendA2AMessage(url, message, this.options.credentials);
     const artifact = (await this.options.evaluate?.(task, decision)) ?? undefined;
-    return { task, decision, artifact };
+    return { task, outcome: task.status.state, decision, artifact };
   }
 }

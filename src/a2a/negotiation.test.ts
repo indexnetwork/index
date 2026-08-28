@@ -6,6 +6,7 @@ import { A2ANegotiationClient } from "./client/negotiation-client.ts";
 import { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
 import { bearerTokenAuth } from "./server/auth.ts";
 import { createA2AHandler } from "./server/handler.ts";
+import { verifyAgreement } from "./wire/agreement.ts";
 import { decisionToMessage } from "./wire/history.ts";
 import type { AgentCard } from "./wire/types.ts";
 
@@ -245,6 +246,176 @@ describe("A2A client/server over real HTTP", () => {
       // The public AgentCard stays reachable without credentials.
       const card = await fetchAgentCard(httpServer.url.toString());
       expect(card).toEqual(agentCard("Seller"));
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("outcome reports the server-stamped task state, not this side's own action", async () => {
+    // The counterparty rejects in the same round trip in which we accept.
+    // Reading our own decision.action would tell this side there's a deal.
+    const handler = createA2AHandler({
+      negotiator: scriptedNegotiator([{ action: "reject", message: "Sold to someone else." }])
+        .negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose", "accept", "reject"],
+      agentCard: agentCard("Seller"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "accept", message: "Deal!" }]).negotiator,
+        party: { name: "Buyer", objective: "Buy" },
+        allowedActions: ["propose", "accept", "reject"],
+      });
+
+      const { outcome, decision, task } = await client.initiate(httpServer.url.toString());
+      expect(decision.action).toBe("accept");
+      expect(outcome).toBe("rejected");
+      expect(outcome).toBe(task.status.state);
+      expect(verifyAgreement(task).status).toBe("declined");
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("verifyAgreement() flags two accepts that name different terms", async () => {
+    const handler = createA2AHandler({
+      negotiator: scriptedNegotiator([
+        { action: "counter", message: "Lowest is $460.", terms: { amount: 460 }, offerId: "o1" },
+        { action: "accept", message: "Deal — $450 it is.", terms: { amount: 450 } },
+      ]).negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose", "counter", "accept"],
+      agentCard: agentCard("Seller"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([
+          { action: "propose", message: "I offer $430.", terms: { amount: 430 }, offerId: "o0" },
+          { action: "accept", message: "Deal at $460.", terms: { amount: 460 }, acceptsOfferId: "o1" },
+        ]).negotiator,
+        party: { name: "Buyer", objective: "Buy" },
+        allowedActions: ["propose", "counter", "accept"],
+      });
+
+      let result = await client.initiate(httpServer.url.toString());
+      result = await client.continue(httpServer.url.toString(), result.task);
+
+      // The task completes — but the two sides bound to different numbers.
+      expect(result.outcome).toBe("completed");
+      expect(verifyAgreement(result.task).status).toBe("conflict");
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("verifyAgreement() confirms terms when the closing move names the offer it accepts", async () => {
+    const OFFER = "offer-450";
+    const handler = createA2AHandler({
+      negotiator: scriptedNegotiator([
+        {
+          action: "accept",
+          message: "Confirmed.",
+          terms: { amount: 450, pickupDay: "Wed" },
+          acceptsOfferId: OFFER,
+        },
+      ]).negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose", "accept"],
+      agentCard: agentCard("Seller"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([
+          {
+            action: "propose",
+            message: "$450, pickup Wednesday?",
+            terms: { amount: 450, pickupDay: "Wed" },
+            offerId: OFFER,
+          },
+        ]).negotiator,
+        party: { name: "Buyer", objective: "Buy" },
+        allowedActions: ["propose", "accept"],
+      });
+
+      const { task, outcome } = await client.initiate(httpServer.url.toString());
+      expect(outcome).toBe("completed");
+      expect(verifyAgreement(task)).toEqual({
+        status: "agreed",
+        terms: { amount: 450, pickupDay: "Wed" },
+      });
+
+      // The settled terms are recorded on the Task as an artifact, which is
+      // where the spec puts results.
+      const outcomeArtifact = task.artifacts.find((a) => a.name === "negotiation-outcome");
+      expect(outcomeArtifact?.parts[0]?.data).toEqual({
+        state: "completed",
+        status: "agreed",
+        terms: { amount: 450, pickupDay: "Wed" },
+      });
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("verifyAgreement() reports unconfirmed for a prose-only completion", async () => {
+    const handler = createA2AHandler({
+      negotiator: scriptedNegotiator([{ action: "accept", message: "Deal at $450." }]).negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose", "accept"],
+      agentCard: agentCard("Seller"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "propose", message: "I offer $450." }]).negotiator,
+        party: { name: "Buyer", objective: "Buy" },
+        allowedActions: ["propose", "accept"],
+      });
+
+      const { task } = await client.initiate(httpServer.url.toString());
+      expect(verifyAgreement(task).status).toBe("unconfirmed");
+    } finally {
+      httpServer.stop();
+    }
+  });
+
+  test("both sides reach the same verdict from the same task, regardless of who spoke last", async () => {
+    const OFFER = "offer-500";
+    const handler = createA2AHandler({
+      negotiator: scriptedNegotiator([
+        { action: "accept", message: "Agreed.", acceptsOfferId: OFFER },
+      ]).negotiator,
+      party: { name: "Seller", objective: "Sell" },
+      allowedActions: ["propose", "accept"],
+      agentCard: agentCard("Seller"),
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([
+          { action: "propose", message: "$500?", terms: { amount: 500 }, offerId: OFFER },
+        ]).negotiator,
+        party: { name: "Buyer", objective: "Buy" },
+        allowedActions: ["propose", "accept"],
+      });
+
+      const { task } = await client.initiate(httpServer.url.toString());
+
+      // Client's view and the server's stored view are the same Task, so the
+      // verdict doesn't depend on which side asks.
+      const fromClient = verifyAgreement(task);
+      const fromServer = verifyAgreement(structuredClone(task));
+      expect(fromClient).toEqual(fromServer);
+      expect(fromClient).toEqual({ status: "agreed", terms: { amount: 500 } });
     } finally {
       httpServer.stop();
     }

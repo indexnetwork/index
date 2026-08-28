@@ -12,6 +12,7 @@ export interface ServeOptions {
   terminal?: string;
   model?: string;
   token?: string;
+  terms?: string;
 }
 
 /**
@@ -56,8 +57,12 @@ export async function serve(options: ServeOptions): Promise<void> {
       const incoming = [...state.history].reverse().find((entry) => entry.role === "incoming");
       if (incoming) printTurn("them", 0, "incoming", incoming.content);
 
-      const decision = await negotiator.decide(state, { allowedActions: actions });
+      const decision = await negotiator.decide(state, {
+        allowedActions: actions,
+        ...(options.terms ? { terms: options.terms } : {}),
+      });
       printTurn(options.name, 1, decision.action, decision.message);
+      if (decision.terms) console.log(dim(`    terms ${JSON.stringify(decision.terms)}`));
       if (isTerminal(decision.action)) console.log(dim("  (negotiation ended)\n"));
       return decision;
     },

@@ -1,8 +1,13 @@
-import { A2ANegotiationClient, fetchAgentCard } from "../../a2a/index.ts";
+import {
+  A2ANegotiationClient,
+  fetchAgentCard,
+  strategyWithTerms,
+  verifyAgreement,
+} from "../../a2a/index.ts";
 import { bearerCredentials } from "../../a2a/client/auth.ts";
 import type { NegotiationDecision } from "../../core/types.ts";
 import { buildNegotiator, parseActions } from "../options.ts";
-import { dim, printTurn, yellow } from "../ui.ts";
+import { dim, green, printTurn, yellow } from "../ui.ts";
 
 export interface ConnectOptions {
   url: string;
@@ -13,6 +18,7 @@ export interface ConnectOptions {
   token?: string;
   turns?: string;
   expect?: string;
+  terms?: string;
 }
 
 /**
@@ -45,6 +51,7 @@ export async function connect(options: ConnectOptions): Promise<void> {
     party: { name: options.name, objective: options.objective },
     allowedActions,
     ...(credentials ? { credentials } : {}),
+    ...(options.terms ? { strategy: strategyWithTerms<string>(options.terms) } : {}),
     // Print our own turn the moment it's decided rather than after the
     // round trip, so turns appear one at a time instead of in pairs.
     onDecision: (decision) => printTurn(options.name, 0, decision.action, decision.message),
@@ -55,15 +62,26 @@ export async function connect(options: ConnectOptions): Promise<void> {
     if (last) printTurn(card.name, 1, last.action, last.message);
   };
 
-  let { task } = await client.initiate(options.url);
+  let { task, outcome } = await client.initiate(options.url);
   printReply(task);
 
   let turns = 1;
-  while (task.status.state === "input-required" && turns < maxTurns) {
-    ({ task } = await client.continue(options.url, task));
+  while (outcome === "input-required" && turns < maxTurns) {
+    ({ task, outcome } = await client.continue(options.url, task));
     printReply(task);
     turns++;
   }
 
-  console.log(dim(`\ntask ${task.id} ended: ${task.status.state}`));
+  // `outcome` is the server-stamped state, not our own last action — the
+  // two can disagree when the counterparty closes in the same round trip.
+  console.log(dim(`\ntask ${task.id} ended: ${outcome}`));
+
+  const agreement = verifyAgreement(task);
+  if (agreement.status === "agreed") {
+    console.log(`${green("agreed")} ${JSON.stringify(agreement.terms)}`);
+  } else if (agreement.status === "conflict") {
+    console.log(yellow(`conflict: ${agreement.reason}`));
+  } else {
+    console.log(dim(`${agreement.status}${agreement.reason ? `: ${agreement.reason}` : ""}`));
+  }
 }

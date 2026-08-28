@@ -18,6 +18,15 @@ export type DecisionStrategy<A extends string> = (
 export const defaultStrategy: DecisionStrategy<string> = (negotiator, state, allowedActions) =>
   negotiator.decide(state, { allowedActions });
 
+/** Builds the default strategy with structured terms enabled — see
+ * `DecideOptions.terms`. Pass the result as `strategy` on
+ * `createA2AHandler()`/`A2ANegotiationClient` so accepting moves name the
+ * offer they bind to and `verifyAgreement()` can check them. */
+export function strategyWithTerms<A extends string>(terms: string): DecisionStrategy<A> {
+  return (negotiator, state, allowedActions) =>
+    negotiator.decide(state, { allowedActions, terms });
+}
+
 /**
  * Runs after a turn's decision is made. Produces an optional Artifact —
  * structured findings (a score, extracted terms, whatever's useful) kept

@@ -1,6 +1,45 @@
-import type { NegotiationMessage } from "../../core/types.ts";
+import type {
+  NegotiationDecision,
+  NegotiationMessage,
+  NegotiationTerms,
+} from "../../core/types.ts";
 import { buildNegotiator, parseActions, parseTerminal } from "../options.ts";
-import { dim, printTurn } from "../ui.ts";
+import { dim, green, printTurn, yellow } from "../ui.ts";
+
+interface TranscriptEntry {
+  side: 0 | 1;
+  content: string;
+  terms?: NegotiationTerms;
+  offerId?: string;
+}
+
+/** Mirrors what `verifyAgreement()` does for A2A tasks, over the local
+ * transcript: did the closing move bind to an offer that was actually
+ * made, and do the two sides' closing terms match? */
+function reportAgreement(transcript: TranscriptEntry[], closing: NegotiationDecision): void {
+  if (closing.acceptsOfferId) {
+    const accepted = transcript.find((entry) => entry.offerId === closing.acceptsOfferId);
+    if (!accepted) {
+      console.log(yellow(`conflict: accepted offer ${closing.acceptsOfferId}, which was never made`));
+      return;
+    }
+    console.log(`${green("agreed")} ${JSON.stringify(accepted.terms)}`);
+    return;
+  }
+  const previous = transcript.at(-2);
+  if (closing.terms && previous?.terms) {
+    const same = JSON.stringify(previous.terms) === JSON.stringify(closing.terms);
+    console.log(
+      same
+        ? `${green("agreed")} ${JSON.stringify(closing.terms)}`
+        : yellow(
+            `conflict: closing moves name different terms — ${JSON.stringify(previous.terms)} vs ${JSON.stringify(closing.terms)}`,
+          ),
+    );
+    return;
+  }
+  console.log(dim("unconfirmed: the closing move named no offer"));
+}
 
 export interface SimOptions {
   a: string;
@@ -11,6 +50,7 @@ export interface SimOptions {
   terminal?: string;
   model?: string;
   turns?: string;
+  terms?: string;
 }
 
 /**
@@ -34,7 +74,7 @@ export async function sim(options: SimOptions): Promise<void> {
   console.log(dim(`actions: ${allowedActions.join(", ")} · max turns: ${maxTurns}\n`));
 
   // One shared transcript; each side sees it from its own perspective.
-  const transcript: { side: 0 | 1; content: string }[] = [];
+  const transcript: TranscriptEntry[] = [];
 
   for (let turn = 0; turn < maxTurns; turn++) {
     const side = (turn % 2) as 0 | 1;
@@ -43,18 +83,33 @@ export async function sim(options: SimOptions): Promise<void> {
     const history: NegotiationMessage[] = transcript.map((entry) => ({
       role: entry.side === side ? "outgoing" : "incoming",
       content: entry.content,
+      terms: entry.terms,
+      offerId: entry.offerId,
     }));
 
     const decision = await current.negotiator.decide(
       { party: { name: current.name, objective: current.objective }, history },
-      { allowedActions },
+      { allowedActions, ...(options.terms ? { terms: options.terms } : {}) },
     );
 
     printTurn(current.name, side, decision.action, decision.message);
-    transcript.push({ side, content: decision.message });
+    if (decision.terms) {
+      console.log(
+        dim(
+          `    terms ${JSON.stringify(decision.terms)}${decision.acceptsOfferId ? ` accepts:${decision.acceptsOfferId.slice(0, 8)}` : ""}`,
+        ),
+      );
+    }
+    transcript.push({
+      side,
+      content: decision.message,
+      terms: decision.terms,
+      offerId: decision.offerId,
+    });
 
     if (isTerminal(decision.action)) {
       console.log(dim(`\nended after ${turn + 1} turns — ${current.name} chose "${decision.action}"`));
+      if (options.terms) reportAgreement(transcript, decision);
       return;
     }
   }

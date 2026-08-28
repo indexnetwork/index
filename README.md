@@ -318,20 +318,77 @@ const client = new A2ANegotiationClient({
   allowedActions: ["propose", "counter", "accept", "reject"],
 });
 
-let { task, decision } = await client.initiate("https://seller.example.com/a2a");
-console.log(decision); // { action: "propose", message: "..." }
+let { task, decision, outcome } = await client.initiate("https://seller.example.com/a2a");
+console.log(decision); // { action: "propose", message: "..." } — this side's own move
+console.log(outcome); // "input-required" — what the negotiation actually is now
 
-while (task.status.state === "input-required") {
-  ({ task, decision } = await client.continue("https://seller.example.com/a2a", task));
-  console.log(decision);
+while (outcome === "input-required") {
+  ({ task, decision, outcome } = await client.continue("https://seller.example.com/a2a", task));
 }
 
-console.log(task.status.state); // "completed" | "rejected" | "canceled"
+console.log(outcome); // "completed" | "rejected" | "canceled"
 ```
 
 The Task returned by the server is authoritative — `continue()` reads the
 full turn history from it, so the client doesn't need to track state itself
 beyond holding onto the last `task` it received.
+
+### Knowing what actually happened
+
+Two things are easy to conflate, and getting them backwards is how two
+agents end up reporting different results for the same negotiation:
+
+- **`decision.action`** is *this side's own move* — an input to the outcome,
+  never a verdict on it. Your agent can pick `accept` in the very round trip
+  where the counterparty picks `reject`.
+- **`outcome`** (`=== task.status.state`) is *what the negotiation is*. The
+  A2A spec makes the server the single authority on task state, so this is
+  the answer to "did we close?". Read this, not your own action.
+
+That covers *whether* a deal closed. **What** was agreed is a separate
+question, and prose can't answer it: two agents can both say `accept` while
+naming different numbers, and nothing in the message text makes that
+detectable. A `NegotiationDecision` can therefore carry structured terms:
+
+| Field | Meaning |
+| --- | --- |
+| `terms` | The concrete offer this decision puts on the table, as data — `{ amount: 450, pickupDay: "Wed" }`. |
+| `offerId` | Identifies this decision's own offer. Assigned automatically whenever a decision carries `terms`. |
+| `acceptsOfferId` | For an accepting move: which `offerId` it binds to. Without it, "accept" names no particular offer. |
+
+Pass `DecideOptions.terms` (or `strategyWithTerms()` on the A2A layer) to
+describe the fields a decision should emit, and the model is asked to fill
+them in and to name the offer it accepts:
+
+```ts
+import { strategyWithTerms, verifyAgreement } from "@indexnetwork/negotiator/a2a";
+
+const client = new A2ANegotiationClient({
+  // ...negotiator, party, allowedActions,
+  strategy: strategyWithTerms("amount (number, USD), pickupDay (day of week)"),
+});
+```
+
+Then `verifyAgreement(task)` reports what the task settled on, computed from
+the Task itself — so both sides run it over the same record and reach the
+same verdict:
+
+```ts
+const result = verifyAgreement(task);
+// { status: "agreed", terms: { amount: 430, pickupDay: "Saturday" } }
+```
+
+| `status` | Meaning |
+| --- | --- |
+| `agreed` | The closing move bound to a specific offer. `result.terms` holds it. |
+| `declined` | The task ended without a deal. |
+| `open` | Not terminal yet. |
+| `conflict` | Completed, but the two closing moves bound to different terms. **Don't act on this as a deal.** |
+| `unconfirmed` | Completed, but no decision carried structured terms — there's nothing to verify. Enable `terms` to fix. |
+
+On a terminal action the server also records this on the Task as a
+`negotiation-outcome` artifact, which is where the spec wants results to
+live rather than in message prose.
 
 ### Using the AgentCard as a trust check
 
