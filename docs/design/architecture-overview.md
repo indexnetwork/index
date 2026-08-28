@@ -32,7 +32,7 @@ index/
     hermes-plugin/   Hermes-native plugin distribution with generated skills, subtree-synced publicly
 ```
 
-**API service** is a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
+**API service** is a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, background work, and event infrastructure.
 
 **Web app** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the API service. In production, `apps/web/server.ts` serves the Vite output and falls back to `index.html` only for document navigations. HTML is `no-store`, generated `/assets/*` files are immutable, and missing assets return a non-HTML 404 so stale lazy imports can be detected and recovered safely. React Router lazy imports make one bounded, URL-preserving reload attempt per stale route load before the application error boundary presents an explicit refresh action.
 
@@ -81,7 +81,7 @@ The protocol backend enforces strict layering to maintain separation of concerns
 +------------------------------------------------------------------+
 |                                                                  |
 |   Infrastructure                                                 |
-|   PostgreSQL + pgvector, Redis (BullMQ), OpenRouter (LLM),      |
+|   PostgreSQL + pgvector, Redis (cache/rate-limit/auth), OpenRouter (LLM), |
 |   S3 (storage), external APIs                                    |
 |                                                                  |
 +------------------------------------------------------------------+
@@ -377,8 +377,8 @@ When a user says "I'm looking for a React co-founder":
    - **Verification node**: `IntentVerifier` checks felicity conditions (semantic entropy, referential anchors, sincerity)
    - **Reconciliation node**: `IntentReconciler` decides whether to create, update, or expire existing intents
    - **Execution node**: Persists the intent to the database with embedding
-3. `IntentEvents.onCreated` fires, which enqueues an opportunity discovery job
-4. The opportunity queue picks up the job asynchronously
+3. `IntentEvents.onCreated` fires, which triggers opportunity discovery in the background
+4. Discovery runs asynchronously, unbounded (no queue, no concurrency cap)
 
 ### Intent Pause/Resume Admission
 
@@ -386,7 +386,7 @@ When a user says "I'm looking for a React co-founder":
 
 Pause is an admission gate, not cleanup. It preserves existing opportunities/Radar cards, pending questions, conversations, intent-network assignments, and HyDE documents. Lifecycle checks prevent a paused intent from admitting not-yet-started intent-driven discovery, appearing as a candidate match, or starting new pool mining, question generation, and answer-triggered Tier-1 runs. Work that passed its admission check before the pause may finish. A pending question can still be answered and its deterministic Tier-0 re-ranking can still affect the existing pool.
 
-Resume atomically restores `ACTIVE` and invokes `IntentEvents.onResumed`. The HTTP response awaits enqueue acknowledgement for a discovery job whose ID includes the stable lifecycle version, so retries deduplicate. If enqueue fails after a real `PAUSED` → `ACTIVE` transition, a narrow owner/scope/version compare-and-set compensates back to `PAUSED`; concurrent lifecycle writes are not overwritten, and an idempotent `ACTIVE` request is not mutated. The endpoint returns retryable `503 enqueue_failed` with the authoritative resulting status instead of claiming success. An acknowledged run proceeds through the ordinary discovery-completion pool mining and question flow.
+Resume atomically restores `ACTIVE` and invokes `IntentEvents.onResumed`. The HTTP response awaits only the 'queued' progress-row write before the scan itself starts in the background — a failure there (not the scan) is what the endpoint can still reject with. If that write fails after a real `PAUSED` → `ACTIVE` transition, a narrow owner/scope/version compare-and-set compensates back to `PAUSED`; concurrent lifecycle writes are not overwritten, and an idempotent `ACTIVE` request is not mutated. The endpoint returns retryable `503 enqueue_failed` with the authoritative resulting status instead of claiming success. There is no jobId-based dedup on resume any more — a duplicate resume triggers a duplicate background scan; this trade-off was accepted deliberately when the queue removal shipped (2026-08-28) rather than rebuilding dedup in-process. An acknowledged run proceeds through the ordinary discovery-completion pool mining and question flow.
 
 ---
 
@@ -407,14 +407,11 @@ export const IntentEvents = {
 };
 ```
 
-These are assigned concrete handlers in `main.ts`. `onCreated` enqueues discovery and triggers opportunity maintenance; `onPaused` records the transition without cleanup; `onResumed` awaits enqueue acknowledgement for the deduplicated resume discovery job; and `onArchived` triggers maintenance after archive cleanup. The awaited resume handler makes the status response acknowledge queue admission rather than merely starting a fire-and-forget enqueue; service-level compare-and-set compensation restores `PAUSED` when a changed resume cannot be admitted:
+These are assigned concrete handlers in `main.ts`. `onCreated` triggers discovery in the background and triggers opportunity maintenance; `onPaused` records the transition without cleanup; `onResumed` awaits the 'queued' progress-row write before the resume discovery scan starts in the background; and `onArchived` triggers maintenance after archive cleanup. The awaited resume handler makes the status response acknowledge admission rather than merely starting a fire-and-forget scan; service-level compare-and-set compensation restores `PAUSED` when a changed resume cannot be admitted:
 
 ```typescript
 IntentEvents.onResumed = async (intentId, userId, lifecycleVersionMs) => {
-  await discoveryQueue.addJob(
-    { intentId, userId, trigger: 'intent_resume' },
-    { priority: 10, jobId: intentResumeDiscoveryJobId(userId, intentId, lifecycleVersionMs) },
-  );
+  await intentQueue.addResumeDiscoveryJob({ intentId, userId, lifecycleVersionMs });
 };
 ```
 
@@ -439,49 +436,40 @@ When a user joins an index, this event triggers an enrichment job (`ensure_profi
 
 ---
 
-## 7. Queue System
+## 7. Background Work
 
-BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions live in `src/queues/`, and workers are started in `main.ts`.
+There is no queue and no Redis-backed job system. Asynchronous work is a fire-and-forget async function invoked via `background()` (`src/lib/background.ts`), which catches everything, logs failures, wraps the call in the same Sentry span shape the old BullMQ workers used, and optionally retries with exponential backoff. Two periodic sweeps run as `node-cron` schedules instead of BullMQ repeatable jobs. "Queue" modules in `src/queues/` are unchanged in shape (classes named `*Queue`, orchestration-only) but no longer own a Redis-backed queue or worker — the name is a holdover, not a claim about mechanism.
 
-### Queue Types
+### Modules
 
-| Queue | Purpose |
-|-------|---------|
-| `intent.queue` | Intent indexing and generation jobs |
-| `opportunity/discovery` | BullMQ queue: intent-triggered opportunity discovery |
-| `opportunity/from-introducer` | BullMQ queue: introducer-triggered opportunity discovery |
-| `opportunity/expiration` | **node-cron task** (not a BullMQ queue — does not appear in Bull-Board): scans and expires stale opportunities on a schedule |
-| `negotiations/timeout` | BullMQ queue: AI fallback when personal agent lacks heartbeat |
-| `negotiations/claim-timeout` | BullMQ queue: expire stale claims stuck in `claimed` state |
-| `enrichment.queue` | User enrichment (premise decomposition) and HyDE document creation |
-| `hyde.queue` | HyDE document generation and cron-based refresh |
-| `email.queue` | Email delivery via Resend |
-| `notification.queue` | Notification delivery |
-| `integration-sync-queue` | Periodic Google Calendar sync for event networks |
-| `frame-drift-monitoring` | Disabled-by-default daily BullMQ scheduler for atomically claimed, immutable capture-time centroid observations and a non-causal intent-assignment-pair normalized opportunity-yield proxy; intentionally omitted from Bull Board |
+| Module | Purpose | Mechanism |
+|--------|---------|-----------|
+| `intent.queue` | Intent HyDE generation/deletion, network reconciliation, resume-triggered discovery | `background()`, unbounded, no retry |
+| `opportunity/discovery` | Intent- and resume-triggered opportunity discovery | `background()`, unbounded, no retry; an in-process same-intent lock (bounded wait) replaces the old Redis lock |
+| `opportunity/expiration` | Scans and expires stale opportunities on a schedule | `node-cron` |
+| `negotiations/watchdog` | Sweeps for stalled negotiations every 5 minutes | `node-cron` (disabled by default) |
+| `negotiations/reflect` | Post-round reflection, and debounced per-session chat reflection | `background()`; chat reflection debounces via an in-process `setTimeout` map keyed by session |
+| `personal-agent` | The PersonalAgent's inbox — `user_message` awaited directly on the signal's serialized lane; `matches_ready`/`all_paused`/`needs_principal`/`counterparty_resolved` via `background()` on the same lane | direct await (`user_message`) or `background()` (the other four); `all_paused`/`counterparty_resolved`/`needs_principal` dedupe in-process by a durable key, forgotten on restart |
+| `premise.queue` | Premise cascade on retract/expire, profile decomposition, hourly expiry sweep | `background()` for cascades/decompose; `node-cron` for the expiry sweep |
+| `hyde.queue` | HyDE document generation and cron-based refresh | `background()` plus `node-cron` |
+| `notification.queue` | Opportunity notification delivery (WebSocket/email) | `background()` with 3 retries — the only retry site in the codebase, since a failed delivery has no reconciler behind it |
+| `checkpoint/retention` | Periodic checkpoint cleanup | `node-cron` |
+| `frame-drift.queue` | Disabled-by-default daily capture of centroid/yield observations | `node-cron` |
 
-### Job Patterns
+### Orchestration Rule
 
-- **Retries**: 3 attempts with exponential backoff (1-second base delay)
-- **Cleanup**: Completed jobs removed after 24 hours, failed jobs after 7 days
-- **Concurrency**: Default is 1 (sequential processing) to avoid race conditions
-- **Naming**: Snake_case job names (e.g., `generate_hyde`, `discover_opportunities`)
-- **Deduplication**: Jobs use deterministic IDs where appropriate (e.g., time-bucketed rediscovery jobs) to prevent duplicate processing
-
-### Queue Orchestration Rule
-
-Queues orchestrate by calling services, graphs, or adapters. They contain no business logic themselves. A queue handler might:
+These modules orchestrate by calling services, graphs, or adapters. They contain no business logic themselves. A handler might:
 
 1. Load context from the database adapter
 2. Invoke a graph factory to run a pipeline
 3. Persist results via the adapter
 4. Emit events if further processing is needed
 
-### Monitoring
+### Accepted Risks
 
-Bull Board UI is served at `http://localhost:3001/dev/queues/` when the protocol server is running. It provides job status visibility, retry controls, and queue metrics. Internal measurement schedulers such as frame-drift monitoring are not registered there.
+No BullMQ means no Redis persistence, no cross-process work queue, no automatic retry-with-backoff except where `background()` is called with `{ retries }`, and no concurrency cap anywhere (a burst of intents can start unboundedly many discovery scans or HyDE runs at once). In-flight work is lost on process restart; recovery is via existing reconcilers (CLI scripts, the negotiation watchdog sweep) rather than a durable queue redelivering it. The API is already single-replica and already depended on that for its unguarded `node-cron` schedules before this change — dropping BullMQ adds the SSE-backed live-update channels to that same single-replica dependency, it does not introduce it.
 
-Daily frame-drift measurement is implemented as queue orchestration → service calculation → adapter-owned `REPEATABLE READ` observation. A unique run header claims the whole bucket before source reads, and metric rows reference that header, preventing duplicate captures from appending newly eligible rows. Privacy thresholding applies both to user-balanced centroids and to each side of a yield pair; historical qualifying aggregates are not recomputed after later user deletion. The pipeline is measurement-only and has no API/UI or realignment side effects. See [Frame-Drift Monitoring](./frame-drift-monitoring.md).
+Daily frame-drift measurement is implemented as cron orchestration → service calculation → adapter-owned `REPEATABLE READ` observation. A unique run header claims the whole bucket before source reads, and metric rows reference that header, preventing duplicate captures from appending newly eligible rows. Privacy thresholding applies both to user-balanced centroids and to each side of a yield pair; historical qualifying aggregates are not recomputed after later user deletion. The pipeline is measurement-only and has no API/UI or realignment side effects. See [Frame-Drift Monitoring](./frame-drift-monitoring.md).
 
 ---
 
@@ -643,11 +631,11 @@ Service
   v
 IntentEvents.onCreated(intentId, userId)
   |
-  |  Enqueues job
+  |  background()
   v
-discoveryQueue.addJob({intentId, userId})
+discoveryQueue.runDiscover({intentId, userId})
   |
-  |  Worker picks up job
+  |  Fire-and-forget async function
   v
 OpportunityGraphFactory.createGraph().invoke(...)
   |
@@ -708,4 +696,4 @@ Sandbox is not a production requirement for this distribution model.
 - **Protocol package README**: `packages/protocol/src/README.md` — graph, agent, and tool documentation
 - **Protocol design references**: `docs/design/protocol-deep-dive.md` and `docs/design/opportunity-status-lifecycle.md`
 - **Research and historical analysis**: `docs/research/`
-- **Template files**: `services/api/src/controllers/controller.template.md`, `services/api/src/services/service.template.md`, `services/api/src/queues/queue.template.md`
+- **Template files**: `services/api/src/controllers/controller.template.md`, `services/api/src/services/service.template.md`

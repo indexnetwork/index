@@ -41,7 +41,6 @@ import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
@@ -53,9 +52,7 @@ import { opportunityExpirationCron } from './queues/opportunity/expiration.queue
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
 import { frameDriftQueue } from './queues/frame-drift.queue';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
-import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
-import { emailQueue } from './queues/email.queue';
 import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
 import { personalAgentQueue } from './queues/personal-agent.queue';
@@ -132,7 +129,7 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
   // regen / opportunity discovery); scoped to this network.
   intentQueue.addNetworkReconcileForUser(userId, networkId).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue intent network reconcile', { userId, networkId, error: err });
+    log.job.from('NetworkMembership').error('Failed to trigger intent network reconcile', { userId, networkId, error: err });
   });
 };
 
@@ -157,8 +154,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
 };
 
-intentQueue.startWorker();
-discoveryQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
   void negotiationWatchdogQueue.start().catch((error) => {
     log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
@@ -172,13 +167,8 @@ void frameDriftQueue.start().catch((error) => {
     error,
   });
 });
-notificationQueue.startWorker();
 hydeQueue.startCrons();
-emailQueue.startWorker();
-negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
-personalAgentQueue.startWorker();
-premiseQueue.startWorker();
 premiseQueue.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -280,7 +270,6 @@ function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return 'mcp';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/tools')) return 'protocol';
-  if (pathname.startsWith('/dev/queues')) return 'queue-admin';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
 }
@@ -335,14 +324,6 @@ const server = Bun.serve({
         },
         { headers: corsHeaders }
       );
-    }
-
-    // Bull Board UI at /dev/queues (before API loop so it is always served in dev)
-    if (!IS_PRODUCTION && (url.pathname === '/dev/queues' || url.pathname.startsWith('/dev/queues/'))) {
-      const res = await adminQueuesApp.fetch(req);
-      const newHeaders = new Headers(res.headers);
-      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
-      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
     // Better Auth handles its own /api/auth/* routes (sign-in, sign-up, session, etc.)
@@ -575,20 +556,9 @@ bindLimiterServer(server);
 logger.info('Server running', { port: PORT });
 
 
-// Graceful shutdown: close BullMQ workers so stale workers don't linger after restart
+// Graceful shutdown
 const shutdown = async () => {
-  logger.info('Shutting down workers...');
-  await Promise.allSettled([
-    intentQueue.close(),
-    discoveryQueue.close(),
-    negotiationWatchdogQueue.close(),
-    notificationQueue.close(),
-    emailQueue.close(),
-    personalAgentQueue.close(),
-    premiseQueue.close(),
-    frameDriftQueue.close(),
-  ]);
-  logger.info('Workers closed');
+  logger.info('Shutting down...');
   await Sentry.close(2000);
   process.exit(0);
 };

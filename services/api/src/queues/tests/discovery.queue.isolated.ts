@@ -1,5 +1,5 @@
 /**
- * Unit tests for DiscoveryQueue. Use injected deps to avoid Redis/DB; QueueFactory is mocked.
+ * Unit tests for DiscoveryQueue. Use injected deps to avoid Redis/DB.
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
@@ -7,18 +7,6 @@ config({ path: '.env.test', override: true });
 import { beforeEach, describe, expect, it, mock, afterAll } from 'bun:test';
 import type { OpportunityDiscoverySummary } from '../opportunity/discovery.shared';
 
-const mockAdd = mock(async () => ({ id: 'job-1', name: 'discover', data: {} }));
-const mockCreateWorker = mock(() => ({}));
-
-mock.module('../../lib/bullmq/bullmq', () => ({
-  QueueFactory: {
-    createQueue: () => ({ add: mockAdd }),
-    createWorker: mockCreateWorker,
-    createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
-  },
-  // The same-intent lock picks its in-process implementation off this guard.
-  useHermeticRedis: () => true,
-}));
 mock.module('../../adapters/database.adapter', () => ({
   ChatDatabaseAdapter: class ChatDatabaseAdapter {},
   chatDatabaseAdapter: {},
@@ -60,11 +48,11 @@ afterAll(() => {
   mock.restore();
 });
 
-import type { DiscoveryJobData, DiscoveryDatabase, DiscoveryDeps, DiscoveryGraphInvokeOptions } from '../opportunity/discovery.queue';
+import type { DiscoveryDatabase, DiscoveryGraphInvokeOptions } from '../opportunity/discovery.queue';
 import { buildIntentDiscoveryTrigger } from '../opportunity/discovery-trigger.builders';
 
-const { DiscoveryQueue, QUEUE_NAME } = await import('../opportunity/discovery.queue');
-const { summarizeOpportunityDiscoveryResult, DISCOVERY_WORKER_CONCURRENCY } = await import('../opportunity/discovery.shared');
+const { DiscoveryQueue } = await import('../opportunity/discovery.queue');
+const { summarizeOpportunityDiscoveryResult } = await import('../opportunity/discovery.shared');
 
 type DiscoveryDatabaseOverrides = Partial<DiscoveryDatabase> & Pick<DiscoveryDatabase, 'getIntentForIndexing'>;
 
@@ -106,28 +94,23 @@ describe('DiscoveryQueue', () => {
     nextDiscoverySummary = null;
   });
 
-  describe('constructor and static', () => {
-    it('exposes QUEUE_NAME on class', () => {
-      expect(DiscoveryQueue.QUEUE_NAME).toBe(QUEUE_NAME);
-      expect(QUEUE_NAME).toBe('opportunity-discovery');
-    });
-
+  describe('constructor', () => {
     it('uses provided database when deps given', async () => {
       const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<DiscoveryDatabase['getIntentForIndexing']>>);
       const db = { getIntentForIndexing };
       const queue = new DiscoveryQueue({ database: asDb(db) });
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
       expect(getIntentForIndexing).toHaveBeenCalledWith('i1');
     });
-
   });
 
   describe('addJob', () => {
-    it('records the attached community count while the job is queued', async () => {
+    it('records the attached community count as queued, then runs the scan in the background', async () => {
       const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      const getIntentForIndexing = mock(async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }));
       const queue = new DiscoveryQueue({
         database: asDb({
-          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          getIntentForIndexing,
           getNetworkIdsForIntent: async () => ['idx1', 'idx2'],
           getAssignmentNetworkMembershipsForUser: async () => [
             { networkId: 'idx1', isPersonal: false },
@@ -135,66 +118,21 @@ describe('DiscoveryQueue', () => {
           ],
           recordIntentDiscoveryProgress,
         }),
+        invokeOpportunityGraph: async () => {},
       });
 
-      await queue.addJob({ intentId: 'i1', userId: 'u1' });
+      const result = await queue.addJob({ intentId: 'i1', userId: 'u1' });
 
+      expect(result).toBeUndefined();
       expect(progressWrite(recordIntentDiscoveryProgress, 'queued')).toMatchObject({
         assignedCommunityCount: 2,
       });
-    });
-
-    it('adds discover job with data and options', async () => {
-      const queue = new DiscoveryQueue({
-        database: asDb({
-          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-        }),
-      });
-      const job = await queue.addJob({ intentId: 'i1', userId: 'u1', networkIds: ['idx1'] });
-      expect(job.id).toBe('job-1');
-      expect(mockAdd).toHaveBeenCalledWith(
-        'discover',
-        { intentId: 'i1', userId: 'u1', networkIds: ['idx1'] },
-        expect.objectContaining({
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 1000 },
-          removeOnComplete: { age: 24 * 60 * 60 },
-          removeOnFail: { age: 24 * 60 * 60 },
-        })
-      );
-    });
-
-    it('supports debounce and removal options', async () => {
-      const queue = new DiscoveryQueue({
-        database: asDb({
-          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
-        }),
-      });
-      await queue.addJob(
-        { intentId: 'i1', userId: 'u1', trigger: 'intent_resume' },
-        {
-          priority: 1,
-          delay: 60_000,
-          removeOnComplete: true,
-          removeOnFail: true,
-          deduplication: { id: 'intent-i1', ttl: 60_000, extend: true, replace: true, keepLastIfActive: true },
-        },
-      );
-      expect(mockAdd).toHaveBeenCalledWith(
-        'discover',
-        { intentId: 'i1', userId: 'u1', trigger: 'intent_resume' },
-        expect.objectContaining({
-          priority: 1,
-          delay: 60_000,
-          removeOnComplete: true,
-          removeOnFail: true,
-          deduplication: { id: 'intent-i1', ttl: 60_000, extend: true, replace: true, keepLastIfActive: true },
-        }),
-      );
+      // The scan itself is backgrounded, not awaited by addJob.
+      expect(getIntentForIndexing).not.toHaveBeenCalled();
     });
   });
 
-  describe('processJob', () => {
+  describe('handlers', () => {
     it('records aggregate queued, running, and completed lifecycle states without candidate data', async () => {
       const recordIntentDiscoveryProgress = mock(async () => {});
       const queue = new DiscoveryQueue({
@@ -204,9 +142,9 @@ describe('DiscoveryQueue', () => {
         }),
         invokeOpportunityGraph: async () => {},
       });
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 2);
-      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'running', attempt: 2, assignedCommunityCount: 1 }));
-      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded', attempt: 2 }));
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'running', attempt: 1, assignedCommunityCount: 1 }));
+      expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({ status: 'succeeded', attempt: 1 }));
     });
 
     it('records both persisted floor matches when one different intent pair was allowed', async () => {
@@ -229,7 +167,7 @@ describe('DiscoveryQueue', () => {
         }),
       });
 
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 1);
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
 
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({
         status: 'succeeded',
@@ -252,7 +190,7 @@ describe('DiscoveryQueue', () => {
         }),
       });
 
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 1);
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
 
       expect(recordIntentDiscoveryProgress).toHaveBeenCalledWith(expect.objectContaining({
         status: 'succeeded', processedCommunityCount: 1, possibleOverlapCount: 0, conversationsStartedCount: 0,
@@ -269,7 +207,7 @@ describe('DiscoveryQueue', () => {
         invokeOpportunityGraph: async () => {},
       });
 
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 1);
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
 
       const succeeded = progressWrite(recordIntentDiscoveryProgress, 'succeeded');
       // Omitted, not zeroed: the adapter leaves stored counts untouched, so an
@@ -290,7 +228,7 @@ describe('DiscoveryQueue', () => {
         invokeOpportunityGraph: async () => {},
       });
 
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' }, 1);
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
 
       const blocked = progressWrite(recordIntentDiscoveryProgress, 'blocked');
       expect(blocked).toMatchObject({ status: 'blocked', attempt: 0, assignedCommunityCount: 0 });
@@ -298,19 +236,12 @@ describe('DiscoveryQueue', () => {
       expect(blocked).not.toHaveProperty('conversationsStartedCount');
     });
 
-    it('unknown job name logs warning and does not throw', async () => {
-      const queue = new DiscoveryQueue();
-      await expect(
-        queue.processJob('unknown_job', { intentId: 'i1', userId: 'u1' })
-      ).resolves.toBeUndefined();
-    });
-
     it('discover: intent not found skips', async () => {
       const db = {
         getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<DiscoveryDatabase['getIntentForIndexing']>>,
       };
       const queue = new DiscoveryQueue({ database: asDb(db) });
-      await queue.processJob('discover', { intentId: 'missing', userId: 'u1' });
+      await queue.runDiscover({ intentId: 'missing', userId: 'u1' });
     });
 
     it('discover: skips paused, archived, and wrong-owner jobs at admission', async () => {
@@ -326,7 +257,7 @@ describe('DiscoveryQueue', () => {
           database: asDb({ getIntentForIndexing: async () => row, markIntentFirstDiscoverySucceeded }),
           invokeOpportunityGraph,
         });
-        await queue.processJob('discover', { intentId: row.id, userId: 'u1' });
+        await queue.runDiscover({ intentId: row.id, userId: 'u1' });
       }
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
@@ -341,7 +272,7 @@ describe('DiscoveryQueue', () => {
         }),
       };
       const queue = new DiscoveryQueue({ database: asDb(db), invokeOpportunityGraph });
-      await queue.processJob('discover', {
+      await queue.runDiscover({
         intentId: 'i1', userId: 'u1', trigger: 'intent_resume',
       });
       expect(invokeOpportunityGraph).toHaveBeenCalledTimes(1);
@@ -355,7 +286,7 @@ describe('DiscoveryQueue', () => {
         markIntentFirstDiscoverySucceeded,
       });
       const queue = new DiscoveryQueue({ database: db, invokeOpportunityGraph });
-      await queue.processJob('discover', {
+      await queue.runDiscover({
         intentId: 'i1',
         userId: 'u1',
         networkIds: ['idx1'],
@@ -383,7 +314,7 @@ describe('DiscoveryQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await expect(queue.processJob('discover', { intentId: 'i1', userId: 'u1' }))
+      await expect(queue.runDiscover({ intentId: 'i1', userId: 'u1' }))
         .rejects.toThrow('graph failed');
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
     });
@@ -401,7 +332,7 @@ describe('DiscoveryQueue', () => {
         }),
         invokeOpportunityGraph: async () => {},
       });
-      await expect(queue.processJob('discover', { intentId: 'i1', userId: 'u1' }))
+      await expect(queue.runDiscover({ intentId: 'i1', userId: 'u1' }))
         .rejects.toThrow('stamp precondition failed');
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
     });
@@ -419,7 +350,7 @@ describe('DiscoveryQueue', () => {
       });
       const queue = new DiscoveryQueue({ database: db, invokeOpportunityGraph });
 
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({
         indexScope: ['idx-a', 'idx-b'],
@@ -440,7 +371,7 @@ describe('DiscoveryQueue', () => {
       });
       const queue = new DiscoveryQueue({ database: db, invokeOpportunityGraph });
 
-      await queue.processJob('discover', {
+      await queue.runDiscover({
         intentId: 'i1', userId: 'u1', networkIds: ['idx-foreign', 'idx-b'],
       });
 
@@ -459,7 +390,7 @@ describe('DiscoveryQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await queue.processJob('discover', {
+      await queue.runDiscover({
         intentId: 'i1', userId: 'u1', networkIds: ['idx-foreign'],
       });
 
@@ -479,7 +410,7 @@ describe('DiscoveryQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
       expect(markIntentFirstDiscoverySucceeded).not.toHaveBeenCalled();
@@ -497,7 +428,7 @@ describe('DiscoveryQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
     });
@@ -513,7 +444,7 @@ describe('DiscoveryQueue', () => {
         invokeOpportunityGraph,
       });
 
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
+      await queue.runDiscover({ intentId: 'i1', userId: 'u1' });
 
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(expect.objectContaining({ networkId: 'personal-net' }));
     });
@@ -526,7 +457,7 @@ describe('DiscoveryQueue', () => {
         }),
         invokeOpportunityGraph,
       });
-      await queue.processJob('discover', {
+      await queue.runDiscover({
         intentId: 'i1', userId: 'u1', networkIds: [],
       });
       expect(invokeOpportunityGraph).not.toHaveBeenCalled();
@@ -582,40 +513,72 @@ describe('DiscoveryQueue', () => {
     });
   });
 
-  describe('startWorker', () => {
-    it('is idempotent: second call does not create another worker', () => {
-      const queue = new DiscoveryQueue();
-      queue.startWorker();
-      queue.startWorker();
-      expect(mockCreateWorker).toHaveBeenCalledTimes(1);
+  describe('same-intent overlap guard', () => {
+    it('a second run for an intent already scanning waits, then runs once the first releases', async () => {
+      let releaseFirst: (() => void) | undefined;
+      const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+      const started: string[] = [];
+      const invokeOpportunityGraph = mock(async (opts: DiscoveryGraphInvokeOptions) => {
+        started.push(opts.triggerIntentId ?? '?');
+        if (started.length === 1) await firstGate;
+      });
+      const queue = new DiscoveryQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'intent-same', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+        invokeOpportunityGraph,
+        sameIntentDeferDelayMs: 10,
+      });
+
+      const first = queue.runDiscover({ intentId: 'intent-same', userId: 'u1' });
+      await Bun.sleep(5);
+      // Arrives while the first scan is in flight; without the guard both would run at once.
+      const second = queue.runDiscover({ intentId: 'intent-same', userId: 'u1' });
+      await Bun.sleep(30);
+      expect(started).toEqual(['intent-same']);
+
+      releaseFirst?.();
+      await Promise.all([first, second]);
+      expect(started).toEqual(['intent-same', 'intent-same']);
     });
 
-    it('runs scans for different signals side by side instead of one at a time', () => {
-      const queue = new DiscoveryQueue();
-      queue.startWorker();
-      expect(DISCOVERY_WORKER_CONCURRENCY).toBeGreaterThan(1);
-      expect(mockCreateWorker).toHaveBeenLastCalledWith(
-        QUEUE_NAME,
-        expect.any(Function),
-        expect.objectContaining({ concurrency: DISCOVERY_WORKER_CONCURRENCY }),
-      );
+    it('two different intents scan side by side, unbounded', async () => {
+      const started: string[] = [];
+      const invokeOpportunityGraph = mock(async (opts: DiscoveryGraphInvokeOptions) => {
+        started.push(opts.triggerIntentId ?? '?');
+      });
+      const queue = new DiscoveryQueue({
+        database: asDb({
+          getIntentForIndexing: async (id: string) => ({ id, payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        }),
+        invokeOpportunityGraph,
+      });
+
+      await Promise.all([
+        queue.runDiscover({ intentId: 'intent-a', userId: 'u1' }),
+        queue.runDiscover({ intentId: 'intent-b', userId: 'u1' }),
+      ]);
+
+      expect(started.sort()).toEqual(['intent-a', 'intent-b']);
     });
 
-    it('processor invokes processJob when worker runs a job', async () => {
-      let capturedProcessor: ((job: { id: string; name: string; data: DiscoveryJobData }) => Promise<void>) | null = null;
-      (mockCreateWorker as import('bun:test').Mock<(n: string, p: (job: unknown) => Promise<void>) => unknown>).mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-        capturedProcessor = processor as (job: { id: string; name: string; data: DiscoveryJobData }) => Promise<void>;
-        return {};
+    it('a waiter that never wins the lock gives up rather than spinning forever', async () => {
+      const recordIntentDiscoveryProgress = mock(async (_input: ProgressWrite) => {});
+      const invokeOpportunityGraph = mock(async (_opts: DiscoveryGraphInvokeOptions) => {});
+      const queue = new DiscoveryQueue({
+        database: asDb({
+          getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+          recordIntentDiscoveryProgress,
+        }),
+        invokeOpportunityGraph,
+        intentLock: { tryAcquire: async () => false, release: async () => {} },
+        sameIntentDeferDelayMs: 5,
+        maxSameIntentWaitMs: 20,
       });
-      const db = { getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<DiscoveryDatabase['getIntentForIndexing']>> };
-      const queue = new DiscoveryQueue({ database: asDb(db) });
-      queue.startWorker();
-      expect(capturedProcessor).not.toBeNull();
-      await capturedProcessor!({
-        id: 'job-1',
-        name: 'discover',
-        data: { intentId: 'i1', userId: 'u1' },
-      });
+
+      await expect(queue.runDiscover({ intentId: 'i1', userId: 'u1' })).rejects.toThrow(/same-intent/i);
+      expect(invokeOpportunityGraph).not.toHaveBeenCalled();
+      expect(progressWrite(recordIntentDiscoveryProgress, 'failed')).toBeDefined();
     });
   });
 });

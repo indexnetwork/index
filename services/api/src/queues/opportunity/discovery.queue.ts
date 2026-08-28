@@ -1,18 +1,14 @@
 // services/api/src/queues/opportunity/discovery.queue.ts
-import { Job } from 'bullmq';
-import type { DeduplicationOptions } from 'bullmq';
 import { log } from '../../lib/log';
-import { QueueFactory } from '../../lib/bullmq/bullmq';
+import { background } from '../../lib/background';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import type { MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
 
-import { createOpportunityGraphDb, runOpportunityDiscovery, DISCOVERY_WORKER_CONCURRENCY, type OpportunityGraphDb } from './discovery.shared';
+import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 import { buildIntentDiscoveryTrigger, type DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
 export type { DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
 import { createIntentDiscoveryLock, type IntentDiscoveryLock } from './discovery.intent-lock';
 import { maybeRunNegotiationEvidenceShadow } from '../pool/negotiation-evidence.shadow';
-
-export const QUEUE_NAME = 'opportunity-discovery';
 
 /**
  * Same-intent overlap guard (see discovery.intent-lock.ts). The lock outlives
@@ -20,14 +16,23 @@ export const QUEUE_NAME = 'opportunity-discovery';
  * without releasing only blocks that intent's next run for this long.
  */
 export const SAME_INTENT_LOCK_TTL_MS = 10 * 60 * 1000;
-/** How long a job that found its intent already running waits before re-checking. */
+/** How long a run that found its intent already scanning waits before re-checking. */
 export const SAME_INTENT_DEFER_DELAY_MS = 30 * 1000;
+/**
+ * Ceiling on total time a run spends waiting for the same-intent lock before
+ * giving up. A contended intent with unbounded, repeated triggers could
+ * otherwise keep a waiter re-checking forever with no cap and no visibility
+ * beyond a log line. Two lock TTLs is enough for at least one full
+ * acquire→(die without releasing)→TTL-expiry cycle to resolve the contention
+ * before this gives up.
+ */
+export const MAX_SAME_INTENT_WAIT_MS = SAME_INTENT_LOCK_TTL_MS * 2;
 
 export interface DiscoveryJobData {
   intentId: string;
   userId: string;
   networkIds?: string[];
-  /** What enqueued this run. `intent_resume` identifies lifecycle resume runs. */
+  /** What triggered this run. `intent_resume` identifies lifecycle resume runs. */
   trigger?: 'intent_resume';
 }
 
@@ -41,25 +46,27 @@ export interface DiscoveryDeps {
   invokeOpportunityGraph?: (opts: DiscoveryGraphInvokeOptions) => Promise<void>;
   matchesReady?: MatchesReadyFn;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  /** Same-intent overlap guard; defaults to Redis (in-process map under the hermetic test baseline). */
+  /** Same-intent overlap guard; defaults to an in-process map. */
   intentLock?: IntentDiscoveryLock;
-  /** Test hook: shortens the re-check delay of a deferred same-intent job. */
+  /** Test hook: shortens the re-check delay of a deferred same-intent run. */
   sameIntentDeferDelayMs?: number;
+  /** Test hook: shortens the total same-intent wait ceiling before giving up. */
+  maxSameIntentWaitMs?: number;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class DiscoveryQueue {
-  static readonly QUEUE_NAME = QUEUE_NAME;
-
-  readonly queue = QueueFactory.createQueue<DiscoveryJobData>(QUEUE_NAME);
-
   private readonly logger = log.job.from('DiscoveryJob');
   private readonly queueLogger = log.queue.from('DiscoveryQueue');
   private readonly database: DiscoveryDatabase | ChatDatabaseAdapter;
   private readonly graphDb: OpportunityGraphDb;
   private readonly intentLock: IntentDiscoveryLock;
   private readonly sameIntentDeferDelayMs: number;
+  private readonly maxSameIntentWaitMs: number;
   private deps: DiscoveryDeps | undefined;
-  private worker: ReturnType<typeof QueueFactory.createWorker<DiscoveryJobData>> | null = null;
 
   constructor(deps?: DiscoveryDeps) {
     this.deps = deps;
@@ -67,48 +74,70 @@ export class DiscoveryQueue {
     this.graphDb = createOpportunityGraphDb(this.database);
     this.intentLock = deps?.intentLock ?? createIntentDiscoveryLock();
     this.sameIntentDeferDelayMs = deps?.sameIntentDeferDelayMs ?? SAME_INTENT_DEFER_DELAY_MS;
+    this.maxSameIntentWaitMs = deps?.maxSameIntentWaitMs ?? MAX_SAME_INTENT_WAIT_MS;
   }
 
   setRuntimeDeps(runtimeDeps: Pick<DiscoveryDeps, 'matchesReady' | 'agentDispatcher'>): void {
     this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
-  async addJob(
-    data: DiscoveryJobData,
-    options?: {
-      jobId?: string;
-      priority?: number;
-      delay?: number;
-      removeOnComplete?: boolean;
-      removeOnFail?: boolean;
-      deduplication?: DeduplicationOptions;
-    },
-  ): Promise<Job<DiscoveryJobData>> {
+  /**
+   * Record the run as queued, then trigger the scan in the background,
+   * unbounded — one call per trigger, no cap, no retry, no dedup.
+   */
+  async addJob(data: DiscoveryJobData): Promise<void> {
     const assignedCommunityCount = (await this.getValidDiscoveryNetworkIds(
       data.intentId,
       data.userId,
       data.networkIds,
     )).length;
     await this.recordProgress(data, 'queued', 0, assignedCommunityCount);
-    return this.enqueueDiscover(data, options);
+    background('discovery', () => this.runDiscover(data));
   }
 
-  private enqueueDiscover(
-    data: DiscoveryJobData,
-    options?: Parameters<DiscoveryQueue['addJob']>[1],
-  ): Promise<Job<DiscoveryJobData>> {
-    return this.queue.add('discover', data, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: options?.removeOnComplete ?? { age: 24 * 60 * 60 },
-      removeOnFail: options?.removeOnFail ?? { age: 24 * 60 * 60 },
-      deduplication: options?.deduplication,
-      jobId: options?.jobId,
-      priority: options?.priority,
-      // Tier-1 debounce (IND-419): callers use BullMQ deduplication with
-      // replace+extend+keepLastIfActive for sliding and trailing semantics.
-      delay: options?.delay,
-    });
+  /**
+   * Run one discovery scan to completion: the same-intent overlap guard, the
+   * admission checks, and the graph itself. Exported at module level for
+   * callers (CLI scripts) that need the scan to finish before they exit,
+   * rather than firing it into the background.
+   *
+   * The wait for the same-intent lock is bounded by `maxSameIntentWaitMs`: a
+   * contended intent with unbounded, repeated triggers must not keep a
+   * waiter re-checking forever.
+   */
+  async runDiscover(data: DiscoveryJobData): Promise<void> {
+    const waitDeadline = Date.now() + this.maxSameIntentWaitMs;
+    for (;;) {
+      const release = await this.acquireIntentLock(data);
+      if (release) {
+        try {
+          await this.handleDiscover(data);
+        } catch (error) {
+          await this.recordProgress(data, 'failed', 1);
+          throw error;
+        } finally {
+          await release();
+        }
+        return;
+      }
+      if (Date.now() >= waitDeadline) {
+        this.queueLogger.warn('Gave up waiting for the same-intent lock; scan skipped', {
+          event: 'intent_discovery_overlap_wait_exhausted',
+          intentId: data.intentId,
+          userId: data.userId,
+          waitedMs: this.maxSameIntentWaitMs,
+        });
+        await this.recordProgress(data, 'failed', 1);
+        throw new Error(`Gave up waiting for the same-intent discovery lock for ${data.intentId} after ${this.maxSameIntentWaitMs}ms`);
+      }
+      this.queueLogger.info('Discovery already running for intent; waiting to retry', {
+        event: 'intent_discovery_overlap_deferred',
+        intentId: data.intentId,
+        userId: data.userId,
+        retryInMs: this.sameIntentDeferDelayMs,
+      });
+      await delay(this.sameIntentDeferDelayMs);
+    }
   }
 
   private async recordProgress(
@@ -120,25 +149,15 @@ export class DiscoveryQueue {
     counts?: { processedCommunityCount: number; possibleOverlapCount: number; conversationsStartedCount: number },
   ): Promise<void> {
     const record = (this.database as Partial<DiscoveryDatabase>).recordIntentDiscoveryProgress;
-    // Isolated queue tests and a rolling deploy may run a worker before its
-    // adapter has been updated. Production adapters always provide this.
+    // Isolated queue tests and a rolling deploy may run before its adapter has
+    // been updated. Production adapters always provide this.
     if (!record) return;
     await record.call(this.database, {
       intentId: data.intentId, userId: data.userId, status, attempt, assignedCommunityCount, ...counts,
     });
   }
 
-  async processJob(name: string, data: DiscoveryJobData, attempt = 1): Promise<void> {
-    switch (name) {
-      case 'discover':
-        await this.handleDiscover(data, attempt);
-        break;
-      default:
-        this.queueLogger.warn('Unknown job name', { name });
-    }
-  }
-
-  private async handleDiscover(data: DiscoveryJobData, attempt: number): Promise<void> {
+  private async handleDiscover(data: DiscoveryJobData): Promise<void> {
     const { intentId, userId, networkIds } = data;
     // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()` and
     // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
@@ -181,7 +200,7 @@ export class DiscoveryQueue {
       return;
     }
 
-    await this.recordProgress(data, 'running', attempt, validNetworkIds.length);
+    await this.recordProgress(data, 'running', 1, validNetworkIds.length);
 
     this.logger.info('Starting discovery', { intentId, userId, networkIds: validNetworkIds });
 
@@ -213,7 +232,7 @@ export class DiscoveryQueue {
     const stampNetworkIds = await this.getValidDiscoveryNetworkIds(intentId, userId, networkIds);
     if (stampNetworkIds.length === 0) {
       const error = new Error('Intent discovery stamp precondition failed: no active assigned networks remain');
-      this.logger.error('Discovery success stamp precondition violated; BullMQ will retry', {
+      this.logger.error('Discovery success stamp precondition violated', {
         event: 'intent_discovery_stamp_precondition_violation',
         intentId,
         userId,
@@ -227,7 +246,7 @@ export class DiscoveryQueue {
     // the read-side WARMING derivation clears immediately instead of waiting
     // out the 24-hour freshness window (IND-482). Failed runs throw above and
     // skipped runs return earlier, so neither reaches this stamp. Stamp
-    // failures must not fail the (already successful) discovery job.
+    // failures must not fail the (already successful) discovery run.
     try {
       await this.database.markIntentFirstDiscoverySucceeded(intentId);
     } catch (error) {
@@ -237,7 +256,7 @@ export class DiscoveryQueue {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    await this.recordProgress(data, 'succeeded', attempt, stampNetworkIds.length, summary ? {
+    await this.recordProgress(data, 'succeeded', 1, stampNetworkIds.length, summary ? {
       // The graph runs once across every valid network, so "processed" is the
       // set that was still valid at the success stamp — there is no per-community
       // boundary observable from here.
@@ -274,13 +293,12 @@ export class DiscoveryQueue {
   }
 
   /**
-   * Same-intent overlap guard around the processor. With worker concurrency
-   * above 1, a second job for an intent whose scan is still running would
-   * otherwise start alongside it; enqueue-time dedup cannot see active jobs.
-   * Returns a release function when this job owns the intent, or null when
-   * another run already holds it. Fails open: the lock only saves provider
-   * budget (persistence tolerates overlap), so a Redis hiccup must not fail a
-   * scan.
+   * Same-intent overlap guard around a scan. Discovery is unbounded and runs
+   * concurrently for different signals; a second run for one already-scanning
+   * intent would otherwise start alongside it. Returns a release function when
+   * this run owns the intent, or null when another run already holds it.
+   * Fails open: the lock only saves provider budget (persistence tolerates
+   * overlap), so a lock error must not fail a scan.
    */
   private async acquireIntentLock(data: DiscoveryJobData): Promise<(() => Promise<void>) | null> {
     const token = crypto.randomUUID();
@@ -304,61 +322,14 @@ export class DiscoveryQueue {
       }
     };
   }
-
-  /**
-   * A job that found its intent already running is re-added as a fresh delayed
-   * job rather than dropped: it may carry a newer trigger (an edit, a resume)
-   * than the run in flight read. No custom jobId — the original id is still
-   * occupied by this job — and no progress write: the running job's lifecycle
-   * writes for this intent are the authoritative ones.
-   */
-  private async deferOverlappingJob(job: Job<DiscoveryJobData>): Promise<void> {
-    this.queueLogger.info('Discovery already running for intent; deferring job', {
-      event: 'intent_discovery_overlap_deferred',
-      jobId: job.id,
-      intentId: job.data.intentId,
-      userId: job.data.userId,
-      retryInMs: this.sameIntentDeferDelayMs,
-    });
-    await this.enqueueDiscover(job.data, {
-      priority: job.opts?.priority,
-      delay: this.sameIntentDeferDelayMs,
-    });
-  }
-
-  startWorker(): void {
-    if (this.worker) return;
-    const processor = async (job: Job<DiscoveryJobData>) => {
-      this.queueLogger.info('Processing job', { jobId: job.id });
-      const release = await this.acquireIntentLock(job.data);
-      if (!release) {
-        await this.deferOverlappingJob(job);
-        return;
-      }
-      try {
-        await this.processJob(job.name, job.data, job.attemptsMade + 1);
-      } catch (error) {
-        const attempt = job.attemptsMade + 1;
-        await this.recordProgress(job.data, 'failed', attempt);
-        throw error;
-      } finally {
-        await release();
-      }
-    };
-    this.worker = QueueFactory.createWorker<DiscoveryJobData>(QUEUE_NAME, processor, {
-      // Scans for different signals run side by side; same-intent runs are
-      // serialized by the lock above. Rationale for the number lives with it.
-      concurrency: DISCOVERY_WORKER_CONCURRENCY,
-    });
-  }
-
-  async close(): Promise<void> {
-    if (this.worker) {
-      await this.worker.close();
-      this.worker = null;
-    }
-    await this.queue.close();
-  }
 }
 
 export const discoveryQueue = new DiscoveryQueue();
+
+/**
+ * Run one discovery scan to completion. For callers (CLI scripts) that need
+ * the scan to finish before they exit, rather than firing it via `addJob`.
+ */
+export function runDiscovery(data: DiscoveryJobData): Promise<void> {
+  return discoveryQueue.runDiscover(data);
+}

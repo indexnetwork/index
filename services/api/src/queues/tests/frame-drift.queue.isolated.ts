@@ -1,100 +1,16 @@
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
-import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { Job, JobSchedulerJson } from 'bullmq';
-
-const mockFactoryQueue = {
-  getJobScheduler: mock(async () => undefined),
-  upsertJobScheduler: mock(async () => ({})),
-  removeJobScheduler: mock(async () => true),
-  close: mock(async () => undefined),
-};
-const mockFactoryWorker = { close: mock(async () => undefined) };
-const mockCreateFactoryWorker = mock(() => mockFactoryWorker);
-
-mock.module('../../lib/bullmq/bullmq', () => ({
-  QueueFactory: {
-    createQueue: () => mockFactoryQueue,
-    createWorker: mockCreateFactoryWorker,
-  },
-}));
+import { afterAll, describe, expect, it, mock } from 'bun:test';
 
 afterAll(() => mock.restore());
 
 import type { FrameDriftExecutionAttemptStartResult } from '../../adapters/frame-drift-execution-attempt.database.adapter';
 import type { FrameDriftMonitoringResult } from '../../services/frame-drift-monitoring.service';
 import { FRAME_DRIFT_MONITORING } from '../../lib/frame-drift.config';
-import { deriveMostRecentlyClosedUtcDay, FRAME_DRIFT_JOB_NAME, FRAME_DRIFT_SCHEDULER_ID, FrameDriftQueue, type FrameDriftJobData, type FrameDriftQueueDeps } from '../frame-drift.queue';
-
-const DEFAULT_NEXT_SCHEDULED_AT = Date.parse('2026-07-20T00:15:00.000Z');
-
-function makeScheduler(
-  overrides: Partial<JobSchedulerJson<FrameDriftJobData>> = {},
-): JobSchedulerJson<FrameDriftJobData> {
-  return {
-    key: FRAME_DRIFT_SCHEDULER_ID,
-    name: FRAME_DRIFT_JOB_NAME,
-    pattern: '15 0 * * *',
-    tz: 'UTC',
-    next: DEFAULT_NEXT_SCHEDULED_AT,
-    template: {
-      data: { source: 'daily-scheduler' },
-      opts: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-        removeOnComplete: { age: 24 * 3600, count: 1000 },
-        removeOnFail: { age: 7 * 24 * 3600, count: 1000 },
-      },
-    },
-    ...overrides,
-  };
-}
-
-function makeJob(overrides: Partial<Job<FrameDriftJobData>> = {}): Job<FrameDriftJobData> {
-  return {
-    id: 'job-123',
-    name: FRAME_DRIFT_JOB_NAME,
-    // BullMQ exposes the scheduler identity on the job (hoisted out of opts).
-    repeatJobKey: FRAME_DRIFT_SCHEDULER_ID,
-    data: { source: 'daily-scheduler' },
-    opts: {
-      prevMillis: Date.parse('2026-07-15T00:15:00Z'),
-      attempts: 3,
-    },
-    timestamp: Date.parse('2026-01-01T00:15:00Z'),
-    attemptsMade: 1,
-    ...overrides,
-  } as Job<FrameDriftJobData>;
-}
+import { deriveMostRecentlyClosedUtcDay, FrameDriftQueue, type FrameDriftQueueDeps } from '../frame-drift.queue';
 
 function createHarness() {
-  let scheduler: JobSchedulerJson<FrameDriftJobData> | undefined;
-  const getJobScheduler = mock(async () => scheduler);
-  const successfulUpsert = async (
-    ...args: Parameters<NonNullable<FrameDriftQueueDeps['queue']>['upsertJobScheduler']>
-  ): Promise<Job<FrameDriftJobData>> => {
-    const [, repeat, template] = args;
-    scheduler = makeScheduler({
-      name: String(template?.name ?? FRAME_DRIFT_JOB_NAME),
-      pattern: repeat.pattern,
-      tz: repeat.tz,
-      template: {
-        data: template?.data,
-        opts: template?.opts,
-      },
-    });
-    return makeJob({
-      opts: {
-        prevMillis: scheduler.next,
-        attempts: template?.opts?.attempts,
-      },
-    });
-  };
-  const upsertJobScheduler = mock(successfulUpsert);
-  const removeJobScheduler = mock(async () => true);
-  const closeQueue = mock(async () => undefined);
-  const closeWorker = mock(async () => undefined);
   const info = mock(() => undefined);
   const error = mock(() => undefined);
   const sleep = mock(async (_delayMs: number) => undefined);
@@ -108,11 +24,6 @@ function createHarness() {
     return 'updated' as const;
   });
   const clock = mock(() => new Date('2026-07-15T00:15:01.000Z'));
-  let processor: ((job: Job<FrameDriftJobData>) => Promise<void>) | undefined;
-  const createWorker = mock((handler: (job: Job<FrameDriftJobData>) => Promise<void>) => {
-    processor = handler;
-    return { close: closeWorker };
-  });
   const captureDailyBucket = mock(async (): Promise<FrameDriftMonitoringResult> => {
     lifecycleCalls.push('measurement');
     return {
@@ -138,13 +49,6 @@ function createHarness() {
     };
   });
   const deps: FrameDriftQueueDeps = {
-    queue: {
-      getJobScheduler,
-      upsertJobScheduler,
-      removeJobScheduler,
-      close: closeQueue,
-    } as unknown as NonNullable<FrameDriftQueueDeps['queue']>,
-    createWorker,
     service: { captureDailyBucket },
     attemptStore: { recordStarted, recordTerminal },
     logger: { info, error },
@@ -153,12 +57,6 @@ function createHarness() {
   };
   return {
     queue: new FrameDriftQueue(deps),
-    getJobScheduler,
-    upsertJobScheduler,
-    removeJobScheduler,
-    closeQueue,
-    closeWorker,
-    createWorker,
     captureDailyBucket,
     recordStarted,
     recordTerminal,
@@ -167,21 +65,8 @@ function createHarness() {
     info,
     error,
     sleep,
-    getProcessor: () => processor,
-    setScheduler: (value: JobSchedulerJson<FrameDriftJobData> | undefined) => {
-      scheduler = value;
-    },
-    restoreSuccessfulUpsert: () => {
-      upsertJobScheduler.mockImplementation(successfulUpsert);
-    },
   };
 }
-
-beforeEach(() => {
-});
-
-afterEach(() => {
-});
 
 describe('deriveMostRecentlyClosedUtcDay', () => {
   it('derives UTC boundaries across a month boundary', () => {
@@ -191,152 +76,36 @@ describe('deriveMostRecentlyClosedUtcDay', () => {
   });
 });
 
-describe('FrameDriftQueue', () => {
-  it('creates a missing stable UTC scheduler and logs its authoritative next timestamp', async () => {
+describe('FrameDriftQueue — start', () => {
+  it('schedules the daily cron and is idempotent on a second call', async () => {
+    // node-cron isn't mocked in this file — mocking it would leak into every
+    // other suite that imports node-cron in the same test run. This exercises
+    // the real scheduler, then stops whatever task it registered.
+    const cron = await import('node-cron');
+    const before = new Set(cron.getTasks().keys());
     const harness = createHarness();
-
-    await harness.queue.start();
-    await harness.queue.start();
-
-    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(1);
-    expect(harness.upsertJobScheduler).toHaveBeenCalledWith(
-      FRAME_DRIFT_SCHEDULER_ID,
-      { pattern: FRAME_DRIFT_MONITORING.schedule, tz: 'UTC' },
-      expect.objectContaining({
-        name: FRAME_DRIFT_JOB_NAME,
-        data: { source: 'daily-scheduler' },
-        opts: expect.objectContaining({ attempts: 3 }),
-      }),
-    );
-    expect(harness.createWorker).toHaveBeenCalledTimes(1);
-    expect(harness.info).toHaveBeenCalledWith(
-      'Frame-drift monitoring scheduled',
-      expect.objectContaining({
-        schedulerAction: 'created',
-        nextScheduledAt: '2026-07-20T00:15:00.000Z',
-      }),
-    );
-  });
-
-  it('reuses a materially matching scheduler without upsert', async () => {
-    const harness = createHarness();
-    harness.setScheduler(makeScheduler());
-
-    await harness.queue.start();
-
-    expect(harness.getJobScheduler).toHaveBeenCalledTimes(1);
-    expect(harness.upsertJobScheduler).not.toHaveBeenCalled();
-    expect(harness.createWorker).toHaveBeenCalledTimes(1);
-    expect(harness.info).toHaveBeenCalledWith(
-      'Frame-drift monitoring scheduled',
-      expect.objectContaining({
-        schedulerAction: 'reused',
-        nextScheduledAt: '2026-07-20T00:15:00.000Z',
-      }),
-    );
-  });
-
-  it('leaves a matching overdue scheduler untouched so its pending job survives', async () => {
-    const harness = createHarness();
-    harness.setScheduler(makeScheduler({
-      next: Date.parse('2026-07-19T00:15:00.000Z'),
-      iterationCount: 37,
-      offset: 125,
-    }));
-
-    await harness.queue.start();
-
-    expect(harness.upsertJobScheduler).not.toHaveBeenCalled();
-    expect(harness.createWorker).toHaveBeenCalledTimes(1);
-    expect(harness.info).toHaveBeenCalledWith(
-      'Frame-drift monitoring scheduled',
-      expect.objectContaining({
-        schedulerAction: 'reused',
-        nextScheduledAt: '2026-07-19T00:15:00.000Z',
-      }),
-    );
-  });
-
-  it('updates a materially changed scheduler and logs the updated action', async () => {
-    const harness = createHarness();
-    harness.setScheduler(makeScheduler({
-      template: {
-        data: { source: 'daily-scheduler' },
-        opts: {
-          attempts: 4,
-          backoff: { type: 'exponential', delay: 1000 },
-          removeOnComplete: { age: 24 * 3600, count: 1000 },
-          removeOnFail: { age: 7 * 24 * 3600, count: 1000 },
-        },
-      },
-    }));
-
-    await harness.queue.start();
-
-    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(1);
-    expect(harness.info).toHaveBeenCalledWith(
-      'Frame-drift monitoring scheduled',
-      expect.objectContaining({ schedulerAction: 'updated' }),
-    );
-  });
-
-  it('updates rather than reuses when unsupported scheduling controls are present', async () => {
-    const controls: Array<Partial<JobSchedulerJson<FrameDriftJobData>>> = [
-      { limit: 5 },
-      { startDate: Date.parse('2026-01-01T00:00:00.000Z') },
-      { endDate: Date.parse('2027-01-01T00:00:00.000Z') },
-      { every: 24 * 3600 * 1000 },
-    ];
-    for (const control of controls) {
-      const harness = createHarness();
-      harness.setScheduler(makeScheduler(control));
-
+    try {
       await harness.queue.start();
-
-      expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(1);
-      expect(harness.createWorker).toHaveBeenCalledTimes(1);
+      await harness.queue.start();
+      const after = cron.getTasks();
+      const newIds = [...after.keys()].filter((id) => !before.has(id));
+      expect(newIds).toHaveLength(1);
       expect(harness.info).toHaveBeenCalledWith(
         'Frame-drift monitoring scheduled',
-        expect.objectContaining({ schedulerAction: 'updated' }),
+        expect.objectContaining({ schedule: FRAME_DRIFT_MONITORING.schedule, timezone: 'UTC' }),
       );
+    } finally {
+      const after = cron.getTasks();
+      for (const [id, task] of after) if (!before.has(id)) task.stop();
     }
   });
+});
 
-  it('repairs a matching scheduler with an invalid next and starts only after a valid one', async () => {
+describe('FrameDriftQueue — runDailyCapture', () => {
+  it('derives the closed bucket from the clock and delegates to the service', async () => {
     const harness = createHarness();
-    harness.setScheduler(makeScheduler({ next: undefined }));
 
-    await harness.queue.start();
-
-    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(1);
-    expect(harness.createWorker).toHaveBeenCalledTimes(1);
-    expect(harness.info).toHaveBeenCalledWith(
-      'Frame-drift monitoring scheduled',
-      expect.objectContaining({
-        schedulerAction: 'updated',
-        nextScheduledAt: '2026-07-20T00:15:00.000Z',
-      }),
-    );
-  });
-
-  it('fails reconciliation and starts no worker when the post-upsert definition diverges', async () => {
-    const harness = createHarness();
-    harness.upsertJobScheduler.mockImplementation(async () => {
-      harness.setScheduler(makeScheduler({ pattern: '59 23 * * *' }));
-      return makeJob();
-    });
-
-    await expect(harness.queue.start()).rejects.toThrow(
-      'Frame-drift scheduler definition diverged after reconciliation',
-    );
-    expect(harness.createWorker).not.toHaveBeenCalled();
-  });
-
-  it('prefers prevMillis, derives the closed bucket, and delegates', async () => {
-    const harness = createHarness();
-    await harness.queue.start();
-
-    await harness.getProcessor()?.(makeJob());
+    await harness.queue.runDailyCapture();
 
     expect(harness.lifecycleCalls).toEqual(['started', 'measurement', 'terminal']);
     expect(harness.captureDailyBucket).toHaveBeenCalledWith(
@@ -347,29 +116,7 @@ describe('FrameDriftQueue', () => {
       terminalStatus: 'inserted',
       willRetry: false,
       failureCategory: null,
-    }));
-  });
-
-  it('threads the real BullMQ scheduler identity into the attempt ledger', async () => {
-    const harness = createHarness();
-    await harness.queue.start();
-
-    await harness.getProcessor()?.(makeJob({ repeatJobKey: 'frame-drift-monitoring-daily-v2' }));
-
-    expect(harness.recordStarted).toHaveBeenCalledWith(expect.objectContaining({
-      schedulerId: 'frame-drift-monitoring-daily-v2',
-      jobId: 'job-123',
-    }));
-  });
-
-  it('falls back to the stable scheduler id when a job carries no repeatJobKey', async () => {
-    const harness = createHarness();
-    await harness.queue.start();
-
-    await harness.getProcessor()?.(makeJob({ repeatJobKey: undefined }));
-
-    expect(harness.recordStarted).toHaveBeenCalledWith(expect.objectContaining({
-      schedulerId: FRAME_DRIFT_SCHEDULER_ID,
+      attempt: 1,
     }));
   });
 
@@ -396,9 +143,8 @@ describe('FrameDriftQueue', () => {
       pairsTruncated: false,
       durationMs: 0,
     }));
-    await harness.queue.start();
 
-    await harness.getProcessor()?.(makeJob());
+    await harness.queue.runDailyCapture();
 
     expect(harness.recordTerminal).toHaveBeenCalledWith(expect.objectContaining({
       terminalStatus: 'duplicate',
@@ -407,55 +153,24 @@ describe('FrameDriftQueue', () => {
     }));
   });
 
-  it('logs structured service failures and rethrows for BullMQ retry', async () => {
+  it('logs and rethrows on measurement failure, with willRetry false (no retry above background())', async () => {
     const harness = createHarness();
     const failure = new Error('database unavailable');
     harness.captureDailyBucket.mockImplementationOnce(async () => { throw failure; });
-    await harness.queue.start();
 
-    await expect(harness.getProcessor()?.(makeJob())).rejects.toThrow('database unavailable');
-    expect(harness.recordTerminal).toHaveBeenCalledWith(expect.objectContaining({
-      terminalStatus: 'failed',
-      willRetry: true,
-      failureCategory: 'measurement',
-    }));
-    expect(harness.error).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        event: 'frame_drift_monitoring_job_failed',
-        schedulerId: FRAME_DRIFT_SCHEDULER_ID,
-        jobId: 'job-123',
-        attempt: 2,
-        maxAttempts: 3,
-        willRetry: true,
-        bucketStart: '2026-07-14T00:00:00.000Z',
-        bucketEnd: '2026-07-15T00:00:00.000Z',
-        error: failure,
-      }),
-    );
-  });
+    await expect(harness.queue.runDailyCapture()).rejects.toThrow('database unavailable');
 
-  it('marks the final BullMQ attempt as non-retryable in logs', async () => {
-    const harness = createHarness();
-    const failure = new Error('database unavailable');
-    harness.captureDailyBucket.mockImplementationOnce(async () => { throw failure; });
-    await harness.queue.start();
-
-    await expect(harness.getProcessor()?.(makeJob({ attemptsMade: 2 }))).rejects.toThrow(
-      'database unavailable',
-    );
     expect(harness.recordTerminal).toHaveBeenCalledWith(expect.objectContaining({
       terminalStatus: 'failed',
       willRetry: false,
       failureCategory: 'measurement',
     }));
     expect(harness.error).toHaveBeenCalledWith(
-      'Frame-drift observation failed on final attempt',
+      'Frame-drift observation failed',
       expect.objectContaining({
         event: 'frame_drift_monitoring_job_failed',
-        attempt: 3,
-        maxAttempts: 3,
-        willRetry: false,
+        bucketStart: '2026-07-14T00:00:00.000Z',
+        bucketEnd: '2026-07-15T00:00:00.000Z',
         error: failure,
       }),
     );
@@ -468,9 +183,8 @@ describe('FrameDriftQueue', () => {
         recordStatus: 'replayed',
         terminalStatus,
       }));
-      await harness.queue.start();
 
-      await harness.getProcessor()?.(makeJob());
+      await harness.queue.runDailyCapture();
 
       expect(harness.captureDailyBucket).not.toHaveBeenCalled();
       expect(harness.recordTerminal).not.toHaveBeenCalled();
@@ -490,16 +204,15 @@ describe('FrameDriftQueue', () => {
       recordStatus: 'replayed',
       terminalStatus: 'failed',
     }));
-    await harness.queue.start();
 
-    await expect(harness.getProcessor()?.(makeJob())).rejects.toThrow(
+    await expect(harness.queue.runDailyCapture()).rejects.toThrow(
       'Frame-drift attempt was already recorded as failed',
     );
 
     expect(harness.captureDailyBucket).not.toHaveBeenCalled();
     expect(harness.recordTerminal).not.toHaveBeenCalled();
     expect(harness.error).toHaveBeenCalledWith(
-      'Frame-drift failed attempt redelivered; preserving BullMQ failure',
+      'Frame-drift failed attempt redelivered; preserving recorded failure',
       expect.objectContaining({
         event: 'frame_drift_monitoring_terminal_attempt_replayed',
         terminalStatus: 'failed',
@@ -511,18 +224,16 @@ describe('FrameDriftQueue', () => {
     const harness = createHarness();
     const trackingFailure = new Error('attempt store unavailable');
     harness.recordStarted.mockImplementationOnce(async () => { throw trackingFailure; });
-    await harness.queue.start();
 
-    await expect(harness.getProcessor()?.(makeJob())).rejects.toBe(trackingFailure);
+    await expect(harness.queue.runDailyCapture()).rejects.toBe(trackingFailure);
 
     expect(harness.captureDailyBucket).not.toHaveBeenCalled();
     expect(harness.recordTerminal).not.toHaveBeenCalled();
     expect(harness.error).toHaveBeenCalledWith(
-      'Frame-drift attempt-start tracking failed; BullMQ will retry',
+      'Frame-drift attempt-start tracking failed',
       expect.objectContaining({
         event: 'frame_drift_monitoring_attempt_tracking_failed',
         trackingPhase: 'started',
-        willRetry: true,
       }),
     );
   });
@@ -532,9 +243,8 @@ describe('FrameDriftQueue', () => {
     harness.recordTerminal.mockImplementationOnce(async () => {
       throw new Error('attempt store unavailable');
     });
-    await harness.queue.start();
 
-    await harness.getProcessor()?.(makeJob());
+    await harness.queue.runDailyCapture();
 
     // Measurement is never re-run while the ledger write retries.
     expect(harness.captureDailyBucket).toHaveBeenCalledTimes(1);
@@ -543,48 +253,21 @@ describe('FrameDriftQueue', () => {
     expect(harness.error).not.toHaveBeenCalled();
   });
 
-  it('fails the job after exhausting terminal ledger write retries with a later retry', async () => {
+  it('rethrows after exhausting terminal ledger write retries', async () => {
     const harness = createHarness();
     const trackingFailure = new Error('attempt store unavailable');
     harness.recordTerminal.mockImplementation(async () => { throw trackingFailure; });
-    await harness.queue.start();
 
-    await expect(harness.getProcessor()?.(makeJob())).rejects.toBe(trackingFailure);
+    await expect(harness.queue.runDailyCapture()).rejects.toBe(trackingFailure);
 
     expect(harness.captureDailyBucket).toHaveBeenCalledTimes(1);
     expect(harness.recordTerminal).toHaveBeenCalledTimes(3);
     expect(harness.error).toHaveBeenCalledWith(
-      'Frame-drift terminal tracking failed; BullMQ will retry',
+      'Frame-drift terminal tracking failed',
       expect.objectContaining({
         event: 'frame_drift_monitoring_attempt_tracking_failed',
         trackingPhase: 'terminal',
         observationStatus: 'inserted',
-        willRetry: true,
-      }),
-    );
-  });
-
-  it('leaves an incomplete row after exhausting terminal retries on the final attempt', async () => {
-    const harness = createHarness();
-    const trackingFailure = new Error('attempt store unavailable');
-    harness.recordTerminal.mockImplementation(async () => { throw trackingFailure; });
-    await harness.queue.start();
-
-    await expect(harness.getProcessor()?.(makeJob({ attemptsMade: 2 }))).rejects.toBe(
-      trackingFailure,
-    );
-
-    // Measurement committed once; the started row remains durable incomplete
-    // evidence because no terminal row was ever written.
-    expect(harness.captureDailyBucket).toHaveBeenCalledTimes(1);
-    expect(harness.recordTerminal).toHaveBeenCalledTimes(3);
-    expect(harness.error).toHaveBeenCalledWith(
-      'Frame-drift terminal tracking failed on final attempt',
-      expect.objectContaining({
-        event: 'frame_drift_monitoring_attempt_tracking_failed',
-        trackingPhase: 'terminal',
-        observationStatus: 'inserted',
-        willRetry: false,
       }),
     );
   });
@@ -596,9 +279,8 @@ describe('FrameDriftQueue', () => {
     harness.recordTerminal.mockImplementation(async () => {
       throw new Error('attempt store unavailable');
     });
-    await harness.queue.start();
 
-    await expect(harness.getProcessor()?.(makeJob())).rejects.toBe(serviceFailure);
+    await expect(harness.queue.runDailyCapture()).rejects.toBe(serviceFailure);
 
     // The failed-measurement ledger write also exhausts its bounded retries.
     expect(harness.recordTerminal).toHaveBeenCalledTimes(3);
@@ -610,66 +292,11 @@ describe('FrameDriftQueue', () => {
       }),
     );
     expect(harness.error).toHaveBeenCalledWith(
-      'Frame-drift observation failed; BullMQ will retry',
+      'Frame-drift observation failed',
       expect.objectContaining({
         error: serviceFailure,
         failureWasTracked: false,
       }),
     );
-  });
-
-  it('automatically retries scheduler lookup with bounded backoff', async () => {
-    const harness = createHarness();
-    harness.setScheduler(makeScheduler());
-    harness.getJobScheduler.mockImplementationOnce(async () => {
-      throw new Error('redis unavailable');
-    });
-
-    await harness.queue.start();
-
-    expect(harness.getJobScheduler).toHaveBeenCalledTimes(2);
-    expect(harness.sleep).toHaveBeenCalledWith(50);
-    expect(harness.upsertJobScheduler).not.toHaveBeenCalled();
-    expect(harness.createWorker).toHaveBeenCalledTimes(1);
-  });
-
-  it('automatically retries scheduler registration with bounded backoff', async () => {
-    const harness = createHarness();
-    harness.upsertJobScheduler.mockImplementationOnce(async () => {
-      throw new Error('redis unavailable');
-    });
-
-    await harness.queue.start();
-
-    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(2);
-    expect(harness.sleep).toHaveBeenCalledWith(50);
-    expect(harness.createWorker).toHaveBeenCalledTimes(1);
-  });
-
-  it('resets startup state after all automatic retries fail', async () => {
-    const harness = createHarness();
-    harness.upsertJobScheduler.mockImplementation(async () => {
-      throw new Error('redis unavailable');
-    });
-
-    await expect(harness.queue.start()).rejects.toThrow('redis unavailable');
-    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(3);
-    expect(harness.sleep).toHaveBeenCalledTimes(2);
-
-    harness.restoreSuccessfulUpsert();
-    await harness.queue.start();
-    expect(harness.upsertJobScheduler).toHaveBeenCalledTimes(4);
-    expect(harness.createWorker).toHaveBeenCalledTimes(1);
-  });
-
-  it('gracefully closes worker and queue and is idempotent', async () => {
-    const harness = createHarness();
-    await harness.queue.start();
-
-    await harness.queue.close();
-    await harness.queue.close();
-
-    expect(harness.closeWorker).toHaveBeenCalledTimes(1);
-    expect(harness.closeQueue).toHaveBeenCalledTimes(1);
   });
 });
