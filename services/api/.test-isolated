@@ -67,7 +67,6 @@ src/adapters/tests/negotiator-memory.retrieval.isolated.ts
 src/queues/tests/reflect.queue.isolated.ts
 src/queues/pool/tests/negotiation-evidence.shadow.isolated.ts
 src/queues/tests/frame-drift.queue.isolated.ts
-src/queues/tests/frame-drift.hermetic.isolated.ts
 src/queues/tests/checkpoint-retention.queue.isolated.ts
 src/controllers/tests/tool.controller.isolated.ts
 src/lib/tests/protocol-url.isolated.ts

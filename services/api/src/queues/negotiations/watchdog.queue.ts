@@ -1,31 +1,17 @@
-import type { Job, Queue, Worker } from 'bullmq';
+import cron from 'node-cron';
 import { KICKOFF_STALE_AFTER_MS, maybeEnqueueRoundReflect, type MatchesReadyFn, type NegotiationGraphLike, type NegotiationRoundLogDatabase, type NegotiationRoundReflectEnqueueFn } from '@indexnetwork/protocol';
 
 import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../../adapters/conversation.database.adapter';
 import type { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
 import { negotiationRoundLogDatabaseAdapter } from '../../adapters/negotiation-round-log.database.adapter';
-import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
 
-export const QUEUE_NAME = 'negotiation-watchdog';
-export const JOB_NAME = 'negotiation_watchdog_sweep';
-export const SCHEDULER_ID = 'negotiation-watchdog-every-5-minutes-v1';
 export const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
 export const SUBMITTED_STALE_AFTER_MS = 10 * 60 * 1000;
 export const WORKING_STALE_AFTER_MS = 12 * 60 * 60 * 1000;
 export const WATCHDOG_TASK_LIMIT = 25;
 export const MAX_WATCHDOG_ATTEMPTS = 3;
 
-export interface NegotiationWatchdogJobData {
-  source: 'scheduler';
-}
-
-interface WatchdogQueueHandle {
-  upsertJobScheduler: Queue<NegotiationWatchdogJobData>['upsertJobScheduler'];
-  close: Queue<NegotiationWatchdogJobData>['close'];
-}
-
-type WatchdogWorkerHandle = Pick<Worker<NegotiationWatchdogJobData>, 'close'>;
 type WatchdogDatabase = Pick<
   ConversationDatabaseAdapter,
   'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
@@ -58,10 +44,6 @@ export interface NegotiationWatchdogQueueDeps {
   roundLog?: NegotiationRoundLogDatabase;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
   negotiationGraph?: NegotiationGraphLike;
-  queue?: WatchdogQueueHandle;
-  createWorker?: (
-    processor: (job: Job<NegotiationWatchdogJobData>) => Promise<void>,
-  ) => WatchdogWorkerHandle;
   logger?: WatchdogLogger;
   clock?: () => Date;
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
@@ -92,13 +74,10 @@ function watchdogAttempts(metadata: Record<string, unknown>): number {
  * lost.
  */
 export class NegotiationWatchdogQueue {
-  static readonly QUEUE_NAME = QUEUE_NAME;
-
   private readonly deps: NegotiationWatchdogQueueDeps;
   private readonly logger: WatchdogLogger;
   private readonly clock: () => Date;
-  private queueInstance: WatchdogQueueHandle | null = null;
-  private worker: WatchdogWorkerHandle | null = null;
+  private cronTask: ReturnType<typeof cron.schedule> | null = null;
   private negotiationGraph: NegotiationGraphLike | undefined;
   private reflectEnqueue: NegotiationRoundReflectEnqueueFn | undefined;
   private readonly matchesReadyFn: MatchesReadyFn | undefined;
@@ -122,53 +101,22 @@ export class NegotiationWatchdogQueue {
     this.reflectEnqueue = enqueue;
   }
 
-  private get queue(): WatchdogQueueHandle {
-    this.queueInstance ??= this.deps.queue ?? QueueFactory.createQueue<NegotiationWatchdogJobData>(QUEUE_NAME);
-    return this.queueInstance;
-  }
-
-  /** Register the repeatable sweep and worker when the flag is enabled. */
+  /** Schedule the sweep to run every 5 minutes, when the flag is enabled. Idempotent. */
   async start(): Promise<void> {
     if (!isNegotiationWatchdogEnabled()) return;
+    if (this.cronTask) return;
 
-    await this.queue.upsertJobScheduler(
-      SCHEDULER_ID,
-      { every: WATCHDOG_INTERVAL_MS },
-      {
-        name: JOB_NAME,
-        data: { source: 'scheduler' },
-        opts: {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 1000 },
-          removeOnComplete: { age: 24 * 3600 },
-          removeOnFail: { age: 7 * 24 * 3600 },
-        },
-      },
-    );
-
-    if (!this.worker) {
-      const createWorker = this.deps.createWorker ?? ((processor) => (
-        QueueFactory.createWorker<NegotiationWatchdogJobData>(QUEUE_NAME, processor)
-      ));
-      this.worker = createWorker(async (job) => {
-        await this.processJob(job.name, job.data);
+    this.cronTask = cron.schedule('*/5 * * * *', () => {
+      this.sweep().catch((error) => {
+        this.logger.error('Negotiation watchdog sweep failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-    }
+    });
 
     this.logger.info('Negotiation watchdog scheduled', {
-      queueName: QUEUE_NAME,
-      schedulerId: SCHEDULER_ID,
       intervalMs: WATCHDOG_INTERVAL_MS,
     });
-  }
-
-  /** Run one watchdog job. Exported for queue-level tests. */
-  async processJob(name: string, _data: NegotiationWatchdogJobData): Promise<void> {
-    if (name !== JOB_NAME) {
-      this.logger.warn('Unknown negotiation watchdog job name', { name });
-      return;
-    }
-    await this.sweep();
   }
 
   /** Sweep stale tasks and reconcile each one independently. */
@@ -481,13 +429,6 @@ export class NegotiationWatchdogQueue {
     }
   }
 
-  /** Gracefully close the worker and any queue connection created by start(). */
-  async close(): Promise<void> {
-    await this.worker?.close();
-    this.worker = null;
-    await this.queueInstance?.close();
-    this.queueInstance = null;
-  }
 }
 
 export const negotiationWatchdogQueue = new NegotiationWatchdogQueue();

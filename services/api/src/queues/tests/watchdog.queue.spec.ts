@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { JOB_NAME, MAX_WATCHDOG_ATTEMPTS, NegotiationWatchdogQueue, SCHEDULER_ID, SUBMITTED_STALE_AFTER_MS, WATCHDOG_INTERVAL_MS, WORKING_STALE_AFTER_MS } from '../negotiations/watchdog.queue';
+import { MAX_WATCHDOG_ATTEMPTS, NegotiationWatchdogQueue, SUBMITTED_STALE_AFTER_MS, WORKING_STALE_AFTER_MS } from '../negotiations/watchdog.queue';
 
 const now = new Date('2026-07-21T15:00:00.000Z');
 
@@ -344,21 +344,24 @@ describe('NegotiationWatchdogQueue', () => {
     expect(deps.matchesReady).toHaveBeenCalledWith({ userId: 'user-2', intentId: 'intent-2' });
   });
 
-  it('flag on registers the five-minute scheduler and worker', async () => {
-    const upsertJobScheduler = mock(async () => undefined);
-    const createWorker = mock(() => ({ close: mock(async () => undefined) }));
-    const queue = new NegotiationWatchdogQueue({
-      queue: { upsertJobScheduler, close: mock(async () => undefined) } as never,
-      createWorker: createWorker as never,
-    });
-
-    await queue.start();
-
-    expect(upsertJobScheduler).toHaveBeenCalledWith(
-      SCHEDULER_ID,
-      { every: WATCHDOG_INTERVAL_MS },
-      expect.objectContaining({ name: JOB_NAME }),
-    );
-    expect(createWorker).toHaveBeenCalledTimes(1);
+  it('flag on schedules the sweep cron and is idempotent on a second call', async () => {
+    // node-cron isn't mocked in this (non-isolated) test file — mocking it
+    // here would leak into every other suite that imports node-cron in the
+    // same test run. This exercises the real scheduler, then stops whatever
+    // task it registered so the interval doesn't outlive the test.
+    const cron = await import('node-cron');
+    const before = new Set(cron.getTasks().keys());
+    const queue = new NegotiationWatchdogQueue();
+    try {
+      await queue.start();
+      await queue.start();
+      const after = cron.getTasks();
+      const newIds = [...after.keys()].filter((id) => !before.has(id));
+      // Idempotent: only one new task registered across both calls.
+      expect(newIds).toHaveLength(1);
+    } finally {
+      const after = cron.getTasks();
+      for (const [id, task] of after) if (!before.has(id)) task.stop();
+    }
   });
 });

@@ -571,9 +571,7 @@ logger.info('Server running', { port: PORT });
 const shutdown = async () => {
   logger.info('Shutting down workers...');
   await Promise.allSettled([
-    negotiationWatchdogQueue.close(),
     personalAgentQueue.close(),
-    frameDriftQueue.close(),
   ]);
   logger.info('Workers closed');
   await Sentry.close(2000);
