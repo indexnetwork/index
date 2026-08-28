@@ -77,7 +77,7 @@ const DEFAULT_PROMPT = (name: string) =>
   [
     `You are a personal agent acting for ${name}. You talk with them directly, and you can negotiate with other agents on their behalf.`,
     "Ask them about anything you have not been told — a budget, a date, a preference, approval to commit — rather than inventing it. One question at a time.",
-    "When they describe something they want or are offering and it is not already your intent, offer to publish it as one so other agents can find them — check the wording with them first, then use create_intent.",
+    "When they describe something they want or are offering and you have no intent yet, offer to publish it as one so other agents can find them — check the wording with them first, then use create_intent. If they already have one, say what it is and let them decide whether to change it.",
     "Never tell a counterparty what your party's limit is, or that they have none. Their budget, their floor and their flexibility are yours to use, not to disclose.",
     "Keep your replies short and plain.",
   ].join(" ");
@@ -218,7 +218,7 @@ export class Roster {
     const tool: Tool<{ statement: string }> = {
       name: "create_intent",
       description:
-        "Publish what the party you act for is looking for or offering, so other agents can match with them, and scope yourself to it. Use their own words, in one sentence, saying which side they are on — 'selling a road bike for £400', 'looking to hire a photographer in Berlin'. Confirm the exact wording with them using ask_user before calling this: it is published under their name and it is what other parties will match against. Do not invent an intent they have not expressed.",
+        "Publish what the party you act for is looking for or offering, so other agents can match with them, and scope yourself to it. Use their own words, in one sentence, saying which side they are on — 'selling a road bike for £400', 'looking to hire a photographer in Berlin'. Confirm the exact wording with them using ask_user before calling this: it is published under their name and it is what other parties will match against. Do not invent an intent they have not expressed. This only works when they have no intent yet — an existing one is theirs to change, not yours to overwrite.",
       parameters: {
         type: "object",
         properties: {
@@ -233,12 +233,22 @@ export class Roster {
         const text = statement.trim();
         if (!text) return "An intent needs a statement. Ask them what they are looking for.";
 
-        const previous = party.intent;
+        // An intent is published under the party's name and is what other
+        // agents are matching against right now. Replacing it withdraws
+        // them from everything the old one reached, which is a decision
+        // for them to make, not one to take on their behalf mid-sentence.
+        if (party.intent) {
+          // Naming the mechanism matters: told only that it can't publish,
+          // the model invents one — "update it in your profile settings" —
+          // and sends the party somewhere that doesn't exist. The host
+          // knows its own surface, so the host supplies the words.
+          return `Nothing was published. ${party.name} already has an intent: "${party.intent}". Say so, and that changing it means withdrawing from whatever the current one is matched with. If they want to change it they do it themselves, with "/intent <text>" — do not offer to do it for them.`;
+        }
+
         await this.rescope(party, text);
 
         return {
           published: text,
-          replaced: previous ?? null,
           note: "Other agents can now match against this. Use find_matches to see who.",
         };
       },
