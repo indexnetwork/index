@@ -17,26 +17,13 @@ export function intentResumeDiscoveryJobId(
 }
 
 /**
- * Hooks called on intent lifecycle events.
- * Set by main.ts to trigger maintenance and queued work.
+ * Hooks called on intent lifecycle events. Set by main.ts.
  */
 export interface IntentMaterialUpdateEvent {
   intentId: string;
   userId: string;
   oldFingerprint: string;
   newFingerprint: string;
-}
-
-/**
- * Creation-event side effects deliberately exclude discovery. IntentQueue owns
- * the only create-time discovery enqueue after network assignment and HyDE.
- */
-export function handleIntentCreatedMaintenance(
-  _intentId: string,
-  userId: string,
-  triggerMaintenance: (userId: string, reason: string) => void,
-): void {
-  triggerMaintenance(userId, 'intent-created');
 }
 
 export const IntentEvents = {

@@ -41,7 +41,7 @@ export interface NegotiationContext {
   outcomeReasoning?: string;
 }
 
-const STATUSES_WITH_NO_NEGOTIATION: ReadonlyArray<OpportunityStatus> = ['draft', 'latent', 'expired'];
+const STATUSES_WITH_NO_NEGOTIATION: ReadonlyArray<OpportunityStatus> = ['expired'];
 
 /**
  * Loads the negotiation context for an opportunity.

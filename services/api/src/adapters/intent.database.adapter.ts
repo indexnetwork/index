@@ -827,7 +827,6 @@ export class IntentDatabaseAdapter {
           CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
           WHERE ${schema.opportunities.status} = 'pending'
             AND actor->>'userId' = ${userId}
-            AND actor->>'role' IS DISTINCT FROM 'introducer'
             AND actor->>'actedAt' IS NULL
             AND (
               ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id

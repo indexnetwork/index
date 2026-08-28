@@ -94,7 +94,7 @@ describe('enricher expiry — pending is sacred', () => {
     expect(result.created.id).not.toBe(won.id);
   });
 
-  test.each(['rejected', 'stalled', 'latent', 'draft'] as const)(
+  test.each(['rejected', 'stalled', 'expired'] as const)(
     'a %s prior row still merges and expires — the guard narrowed nothing else',
     async (status) => {
       const prior = await seedOpportunity(status);

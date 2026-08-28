@@ -64,17 +64,6 @@ describe('OutcomeFeedbackRecorder.prepare — eligibility', () => {
     expect(d.getIntent).not.toHaveBeenCalled();
   });
 
-  it('excludes a caller who is not a non-introducer actor', async () => {
-    expect(await new OutcomeFeedbackRecorder(deps()).prepare(record({ recipientUserId: 'stranger' }))).toBeNull();
-    const introduced = opportunity({
-      actors: [
-        { networkId: 'net-1', userId: 'owner-1', role: 'introducer', intent: 'intent-1' },
-        { networkId: 'net-2', userId: 'counter-1', role: 'agent', intent: 'intent-counter' },
-      ] as unknown as Opportunity['actors'],
-    });
-    expect(await new OutcomeFeedbackRecorder(deps()).prepare(record({ opportunity: introduced }))).toBeNull();
-  });
-
   it('excludes missing, unresolvable, or counterparty-owned recipient intent scopes', async () => {
     const noIntent = opportunity({
       actors: [
@@ -98,10 +87,10 @@ describe('OutcomeFeedbackRecorder.prepare — eligibility', () => {
   });
 
   it('skips zero-counterpart and multiparty opportunities', async () => {
+    // No counterpart at all: the owner is the only actor.
     const zero = opportunity({
       actors: [
         { networkId: 'net-1', userId: 'owner-1', role: 'patient', intent: 'intent-1' },
-        { networkId: 'net-2', userId: 'intro-1', role: 'introducer', intent: 'intent-x' },
       ] as unknown as Opportunity['actors'],
     });
     const multiple = opportunity({

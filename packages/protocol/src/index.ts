@@ -150,8 +150,6 @@ export type {
   SynthesisResult,
 } from "./capabilities/intents.js";
 
-export { MaintenanceGraphFactory } from "./internal/maintenance/maintenance.graph.js";
-export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./internal/maintenance/maintenance.graph.js";
 export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
@@ -321,10 +319,23 @@ export type {
   OpportunityGraphThresholdOverrides,
 } from "./internal/opportunities/opportunity.graph.js";
 export type { MatchesReadyFn } from "./internal/opportunities/opportunity.graph.shared.js";
+export {
+  pairKeyOf,
+} from "./internal/opportunities/opportunity.candidates.js";
+export type { OpportunityEvidence } from "./protocol/schemas/network-assignment.schema.js";
+export {
+  matchRefId,
+  opportunityRef,
+} from "./internal/agents/personal-agent/agent.types.js";
 export type {
-  StampNewbornOpportunitiesFn,
-  StampNewbornOpportunitiesInput,
-} from "./internal/opportunities/opportunity.newborn-stamping.js";
+  PersonalAgentMatchRef,
+} from "./internal/agents/personal-agent/agent.types.js";
+export type {
+  CreateAndOpenResult,
+  CreateDiscoveryMatchCandidateData,
+  DiscoveryMatchCandidate,
+  DiscoveryMatchCandidateStatus,
+} from "./internal/opportunities/opportunity.candidates.js";
 export {
   opportunityOwnerActionForStatus,
 } from "./internal/opportunities/opportunity.owner-approval.js";
@@ -342,9 +353,6 @@ export type {
 export {
   bindOwnerApprovalProvenance,
 } from "./internal/opportunities/opportunity.owner-provenance.js";
-export {
-  persistOpportunities,
-} from "./internal/opportunities/opportunity.persist.js";
 export {
   gatherPresenterContext,
   OpportunityPresenter,
@@ -442,9 +450,3 @@ export type {
 export {
   RadarGraphFactory,
 } from "./internal/opportunities/radar/radar.graph.js";
-export {
-  computeRadarHealth,
-} from "./internal/opportunities/radar/radar.health.js";
-export type {
-  RadarHealthInput,
-} from "./internal/opportunities/radar/radar.health.js";

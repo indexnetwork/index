@@ -22,8 +22,6 @@ const FORBIDDEN_TOOLS = [
   "import_contacts",
   "list_contacts",
   "add_contact",
-  "discover_opportunities",
-  "get_discovery_run",
   "list_opportunities",
   "update_opportunity",
   "list_negotiations",

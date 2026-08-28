@@ -55,7 +55,7 @@ export interface PickupPendingResult {
 export interface PendingCandidate {
   opportunityId: string;
   counterpartUserId: string | null;
-  feedCategory: 'connection' | 'connector-flow';
+  feedCategory: 'connection';
   rendered: RenderedCard;
 }
 
@@ -112,9 +112,8 @@ export class OpportunityDeliveryService {
     const ttlCutoff = new Date(Date.now() - RESERVATION_TTL_SECONDS * 1000);
 
     // Fetch candidate opportunities where:
-    //  - status IN ('pending', 'draft')
+    //  - status is 'pending' (the only deliverable state)
     //  - user appears in actors JSONB array
-    //  - for 'draft' rows, user is NOT the initiator (detection->>'createdBy')
     //  - the agent has notify_on_opportunity = true (muted agents get no results)
     //  - no committed delivery row (delivered_at IS NOT NULL) exists for this (user, opp, channel, status)
     //  - no live reservation exists (reserved_at within TTL window, delivered_at IS NULL)
@@ -122,15 +121,8 @@ export class OpportunityDeliveryService {
     const result = await this.database.execute(sql`
       SELECT o.id, o.actors, o.status, o.interpretation, o.detection
       FROM opportunities o
-      WHERE o.status IN ('pending', 'draft')
+      WHERE o.status = 'pending'
         AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
-        AND (
-          o.status = 'pending'
-          OR (
-            (o.detection->>'createdBy') IS NOT NULL
-            AND (o.detection->>'createdBy') <> ${userId}
-          )
-        )
         AND EXISTS (
           SELECT 1 FROM agents a
           WHERE a.id = ${agentId}
@@ -153,21 +145,8 @@ export class OpportunityDeliveryService {
 
     const rows = result as unknown as Array<{ id: string; actors: unknown; status: string; interpretation: unknown; detection: unknown }>;
 
-    // Filter in JS via canUserSeeOpportunity (consistent with maintenance.graph.ts pattern).
-    // Defense-in-depth: if a 'draft' row reaches this filter with a missing detection.createdBy
-    // (shouldn't happen given the SQL guard above), log loudly and skip it rather than throwing,
-    // so one malformed row cannot block delivery of the other valid rows in the batch.
+    // Filter in JS via canUserSeeOpportunity, so this path and the graph agree.
     const visible = rows.filter((row: { id: string; actors: unknown; status: string; detection: unknown }) => {
-      if (row.status === 'draft') {
-        const detection = (row as { detection?: { createdBy?: string } }).detection;
-        if (!detection?.createdBy) {
-          logger.error('Skipping draft opportunity with missing detection.createdBy', {
-            opportunityId: row.id,
-            userId,
-          });
-          return false;
-        }
-      }
       const actors = row.actors as Array<{ userId: string; role: string }>;
       return canUserSeeOpportunity(actors, row.status, userId);
     });
@@ -390,7 +369,7 @@ export class OpportunityDeliveryService {
 
     // Step 1: Fetch via adapter — same as feed graph
     const rows = await chatDatabaseAdapter.getOpportunitiesForUser(userId, {
-      statuses: ['latent', 'pending', 'draft'],
+      statuses: ['pending'],
       limit: 150,
     });
 
@@ -403,12 +382,6 @@ export class OpportunityDeliveryService {
 
       // isActionableForViewer — actionability gate
       if (!isActionableForViewer(actors, row.status, userId)) return false;
-
-      // Draft createdBy exclusion — skip drafts where user is the creator
-      if (row.status === 'draft') {
-        const detection = row.detection as { createdBy?: string } | null;
-        if (detection?.createdBy === userId) return false;
-      }
 
       return true;
     });
@@ -428,11 +401,11 @@ export class OpportunityDeliveryService {
     const candidates = await Promise.all(
       sliced.map(async (row) => {
         const actors = row.actors as Array<{ userId: string; role: string }>;
-        const counterpart = actors.find((a) => a.userId !== userId && a.role !== 'introducer');
+        const counterpart = actors.find((a) => a.userId !== userId);
         const feedCategory = classifyOpportunity(
           { actors, status: row.status },
           userId,
-        ) as 'connection' | 'connector-flow';
+        ) as 'connection';
         return {
           opportunityId: row.id,
           counterpartUserId: counterpart?.userId ?? null,
@@ -495,7 +468,6 @@ export class OpportunityDeliveryService {
         AND o.accepted_by IS NOT NULL
         AND o.accepted_by <> ${userId}
         AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
-        AND NOT (o.actors::jsonb @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb)
         AND EXISTS (
           SELECT 1 FROM agents a
           WHERE a.id = ${agentId}

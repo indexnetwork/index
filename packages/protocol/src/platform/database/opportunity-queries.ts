@@ -3,7 +3,7 @@
  */
 
 import type { OutcomeOutbox } from './capabilities.js';
-import type { CreateHydeDocumentData, CreateOpportunityData, HydeDocument, HydeSourceType, IntentScopedOpportunityPersistenceResult, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
+import type { CreateDiscoveryMatchCandidateData, CreateHydeDocumentData, CreateOpportunityData, DiscoveryMatchCandidate, HydeDocument, HydeSourceType, IntentScopedOpportunityPersistenceResult, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
 import type { Database } from '../database.js';
 
 /** HyDE document and opportunity persistence operations. */
@@ -85,6 +85,25 @@ export interface DatabaseOpportunityQueries {
    * @returns The created opportunity
    */
   createOpportunity(data: CreateOpportunityData): Promise<Opportunity>;
+
+  /**
+   * Record the pairs discovery found. Upsert on `pairKey`: a pair both sides
+   * discovered stays one row, which is what makes persist-time dedup
+   * unnecessary.
+   */
+  upsertDiscoveryMatchCandidates(
+    items: CreateDiscoveryMatchCandidateData[],
+  ): Promise<DiscoveryMatchCandidate[]>;
+
+  /**
+   * This signal's not-yet-opened pairs, oldest first, each carrying the name
+   * of the OTHER party — the caller renders these to a principal, and a row
+   * that names nobody cannot be numbered in a prompt.
+   */
+  listPendingCandidatesForIntent(
+    userId: string,
+    intentId: string,
+  ): Promise<DiscoveryMatchCandidate[]>;
 
   /**
    * Atomically create only while every actor still has an active membership on
@@ -240,17 +259,6 @@ export interface DatabaseOpportunityQueries {
   ): Promise<Opportunity | null>;
 
   /**
-   * Update the `approved` field on an opportunity's introducer actor.
-   * Fetches the opportunity, patches the matching actor in JS, and writes
-   * the updated actors JSONB back. Returns the updated opportunity or null.
-   */
-  updateOpportunityActorApproval(
-    id: string,
-    introducerUserId: string,
-    approved: boolean,
-  ): Promise<Opportunity | null>;
-
-  /**
    * Create one opportunity and expire others in a single transaction.
    * Atomic: insert then update status to 'expired' for each id in expireIds.
    * Used when enriching replaces overlapping opportunities so subscribers see consistent state.
@@ -287,7 +295,7 @@ export interface DatabaseOpportunityQueries {
    * Find opportunities whose actors contain all the given user IDs.
    *
    * The `includeIntroducers` flag controls actor matching: when false (default), matching
-   * is restricted to non-introducer roles; when true, any role in `actors` counts.
+   * is restricted by role; when true, any role in `actors` counts.
    *
    * Index-agnostic. Ordered by updatedAt desc.
    *

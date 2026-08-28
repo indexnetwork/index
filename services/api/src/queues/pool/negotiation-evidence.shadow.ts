@@ -174,7 +174,6 @@ export function getValidatedCounterpartyUserId(
 ): string | null {
   const participantIds = new Set(
     opportunity.actors
-      .filter((actor) => actor.role !== 'introducer')
       .map((actor) => actor.userId),
   );
   if (participantIds.size !== 2 || !participantIds.has(recipientUserId)) return null;

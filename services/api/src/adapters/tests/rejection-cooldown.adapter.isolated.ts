@@ -116,25 +116,6 @@ describe('OpportunityDatabaseAdapter.getRecentlyRejectedOpportunityCounterpartie
     expect(result).not.toContain(CANDIDATE_C);
   });
 
-  it('does NOT include introducers in the returned set', async () => {
-    const CANDIDATE_INTRODUCER = 'user-candidate-as-introducer';
-    mockRows = [
-      makeRow([
-        { userId: DISCOVERER, role: 'patient' },
-        { userId: CANDIDATE_INTRODUCER, role: 'introducer' },
-        { userId: CANDIDATE_A, role: 'agent' },
-      ]),
-    ];
-    const adapter = new OpportunityDatabaseAdapter();
-    const result = await adapter.getRecentlyRejectedOpportunityCounterparties(
-      DISCOVERER,
-      [CANDIDATE_A, CANDIDATE_INTRODUCER],
-      WINDOW_MS,
-    );
-    expect(result).toContain(CANDIDATE_A);
-    expect(result).not.toContain(CANDIDATE_INTRODUCER);
-  });
-
   it('does NOT include the discoverer even if passed in candidateUserIds', async () => {
     mockRows = [
       makeRow([{ userId: DISCOVERER, role: 'patient' }, { userId: CANDIDATE_A, role: 'agent' }]),

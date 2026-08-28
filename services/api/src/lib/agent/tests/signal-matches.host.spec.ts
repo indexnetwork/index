@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { ACTIONABLE_VERDICT_STATUSES, PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readActionableCounterparties, readSignalMatches, rejectOpportunity } from '../negotiator-verdict.host';
+import { ACTIONABLE_VERDICT_STATUSES, PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readActionableCounterparties, readPersonalAgentMatches, readSignalMatches, rejectOpportunity } from '../negotiator-verdict.host';
 
 /**
  * The PersonalAgent's every turn reasons over this list, so a read that failed
@@ -34,30 +34,6 @@ describe('readSignalMatches', () => {
       .rejects.toThrow('connection reset');
   });
 
-  it('does not expose an introduction whose introducer has not approved it', async () => {
-    const matches = await readSignalMatches('alice', 'intent-1', introduction(undefined), PERSONAL_AGENT_MATCH_STATUSES);
-    expect(matches).toEqual([]);
-  });
-
-  it('clears the flag once every introducer has approved', async () => {
-    const [match] = await readSignalMatches('alice', 'intent-1', introduction(true), PERSONAL_AGENT_MATCH_STATUSES);
-    expect(match!.awaitingIntroducerApproval).toBe(false);
-  });
-
-  it('lists latent and draft matches, which a kickoff reaches out to', async () => {
-    const matches = await readSignalMatches('alice', 'intent-1', introduction(true), PERSONAL_AGENT_MATCH_STATUSES);
-    expect(matches.map((match) => match.status)).toEqual(['latent']);
-  });
-
-  it('keeps a persisted latent match eligible for PersonalAgent kickoff', async () => {
-    const matches = await readSignalMatches('alice', 'intent-1', {
-      listOpportunities: async () => [{
-        id: 'latent-match', status: 'latent', createdAt: new Date(), counterpartName: 'Match',
-        actors: [{ userId: 'alice', role: 'peer' }, { userId: 'bob', role: 'peer' }],
-      }],
-    }, PERSONAL_AGENT_MATCH_STATUSES);
-    expect(matches.map((match) => match.opportunityId)).toEqual(['latent-match']);
-  });
 });
 
 describe('readActionableCounterparties', () => {
@@ -107,24 +83,60 @@ describe('the two verdict lanes list what their own refs mean', () => {
     expect(outcome).toMatchObject({ status: 'executed', counterparty: 'Omar' });
   });
 
-  it('the ID lane lists the wide set, so a latent match the agent numbered resolves', async () => {
-    const { listed, deps } = twoMatches();
-
-    const outcome = await passVerdictOnOpportunity(
-      'alice',
-      { intentId: 'intent-1', opportunityId: 'latent-1' },
-      'accepted',
-      deps,
-    );
-
-    expect(listed[0]!.statuses).toEqual([...PERSONAL_AGENT_MATCH_STATUSES]);
-    // It resolved rather than answering `unknown_counterparty`.
-    expect(outcome.status).not.toBe('unknown_counterparty');
-  });
-
   it('the wide set is a strict superset of the narrow one, so the id lane can never see less', () => {
     for (const status of ACTIONABLE_VERDICT_STATUSES) {
       expect(PERSONAL_AGENT_MATCH_STATUSES).toContain(status);
     }
+  });
+});
+
+/**
+ * The PersonalAgent's list is the union of what discovery found and what is
+ * already open. `ActionableCounterparty` deliberately does NOT grow to hold a
+ * candidate: it is the verdict lane's type over real rows, and a verdict on
+ * something nobody has opened yet would be a decision about nothing.
+ */
+describe('readPersonalAgentMatches', () => {
+  const deps = {
+    listOpportunities: async () => [{
+      id: 'opp-1',
+      status: 'negotiating',
+      createdAt: new Date('2026-08-02T00:00:00.000Z'),
+      counterpartName: 'Bea',
+      actors: [{ userId: 'alice', role: 'peer' }, { userId: 'bob', role: 'peer' }],
+    }],
+    listPendingCandidates: async () => [{
+      id: 'cand-1',
+      createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      counterpartName: 'Ali',
+    }],
+  };
+
+  it('interleaves candidates and opportunities oldest-first', async () => {
+    const matches = await readPersonalAgentMatches('alice', 'intent-1', deps);
+    expect(matches.map((match) => match.ref)).toEqual([
+      { kind: 'candidate', id: 'cand-1' },
+      { kind: 'opportunity', id: 'opp-1' },
+    ]);
+  });
+
+  it('gives a candidate the not-contacted-yet state line', async () => {
+    const [first] = await readPersonalAgentMatches('alice', 'intent-1', deps);
+    expect(first!.label).toBe('Ali — found, not contacted yet');
+  });
+
+  it('propagates a candidate read failure instead of reporting an empty signal', async () => {
+    await expect(readPersonalAgentMatches('alice', 'intent-1', {
+      listOpportunities: async () => [],
+      listPendingCandidates: async () => { throw new Error('connection reset'); },
+    })).rejects.toThrow('connection reset');
+  });
+
+  it('names an unnamed counterparty rather than rendering a blank', async () => {
+    const [only] = await readPersonalAgentMatches('alice', 'intent-1', {
+      listOpportunities: async () => [],
+      listPendingCandidates: async () => [{ id: 'cand-2', createdAt: new Date(), counterpartName: undefined }],
+    });
+    expect(only!.label).toBe('An unnamed match — found, not contacted yet');
   });
 });

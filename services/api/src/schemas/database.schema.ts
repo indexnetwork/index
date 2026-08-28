@@ -9,7 +9,7 @@ export const sourceType = pgEnum('source_type', ['integration', 'discovery_form'
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
@@ -384,8 +384,7 @@ export const hydeDocuments = pgTable('hyde_documents', {
 }));
 
 export interface OpportunityDetection {
-  /** `introducer_discovery` is read-only history: no path stamps it any more, but existing rows carry it. */
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
+  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -397,15 +396,13 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
-  /** Which premise grounded this match (set when discoverySource is 'premise-similarity'). */
+  /** Which premise grounded this match, when the match was premise-grounded. */
   premise?: Id<'premises'>;
   role: string;
-  /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
-  approved?: boolean;
   /**
    * ISO-8601 timestamp set the first time this actor advanced the opportunity's
    * state (patient sending, agent accepting, peer "accepting" on draft = sending
-   * under the hood, peer accepting on pending, introducer sending). Once set,
+   * under the hood, peer accepting on pending). Once set,
    * this actor has committed and cannot be the one to subsequently `accept` the
    * same opportunity — enforced by the self-accept guard in `updateNode`.
    */
@@ -445,6 +442,37 @@ export const opportunities = pgTable('opportunities', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
 }, (table) => ({
   statusIdx: index('opportunities_status_idx').on(table.status),
+}));
+
+export const discoveryMatchCandidateStatusEnum = pgEnum('discovery_match_candidate_status', [
+  'pending', 'opened', 'superseded', 'expired',
+]);
+
+/**
+ * A pair discovery found, before anyone reached out. One row per pair — the
+ * unique `pair_key` is what stops both principals' discovery runs from
+ * producing two opportunities between the same two people.
+ */
+export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  pairKey: text('pair_key').notNull(),
+  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  intentA: text('intent_a').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  intentB: text('intent_b').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  userA: text('user_a').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userB: text('user_b').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  score: numeric('score').notNull(),
+  reasoning: text('reasoning').notNull(),
+  evidence: jsonb('evidence').$type<import('@indexnetwork/protocol').OpportunityEvidence[]>().notNull().default([]),
+  status: discoveryMatchCandidateStatusEnum('status').notNull().default('pending'),
+  /** Set when this candidate became a row, by `createAndOpen`. */
+  openedOpportunityId: text('opened_opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pairKeyIdx: uniqueIndex('discovery_match_candidates_pair_key_idx').on(table.pairKey),
+  intentAIdx: index('discovery_match_candidates_intent_a_idx').on(table.intentA),
+  intentBIdx: index('discovery_match_candidates_intent_b_idx').on(table.intentB),
 }));
 
 export interface QuestionDetection {

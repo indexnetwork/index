@@ -41,7 +41,7 @@ describe('stampOpportunityActorAction', () => {
       interpretation: { category: 'test', reasoning: '', confidence: 1 } as never,
       context: { networkId: NET_ID },
       confidence: '1',
-      status: 'draft',
+      status: 'negotiating',
     });
     OPP_ID = opp.id;
   });

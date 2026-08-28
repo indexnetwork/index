@@ -2,7 +2,7 @@
  * Opportunity Graph: Linear Multi-Step Workflow for Opportunity Discovery
  *
  * Architecture: Follows intent graph pattern with Annotation-based state.
- * Flow: Prep → Scope → Resolve → Discovery → Evaluation → Ranking → Persist → Negotiate → END
+ * Flow: Prep → Scope → Resolve → Discovery → Evaluation → Ranking → EmitCandidates → MatchesReady → END
  *
  * Key Constraints:
  * - Opportunities only between intents sharing the same index
@@ -10,8 +10,7 @@
  * - Non-indexed intents cannot participate in discovery
  *
  * The graph is the discovery pipeline and nothing else. Read, update, delete,
- * send, approve_introduction and the introduction path are
- * plain functions in `opportunity.graph.modes.ts` — they never needed a state
+ * are plain functions in `opportunity.graph.modes.ts` — they never needed a state
  * machine, and routing them through one hid nine single-node paths behind a
  * conditional edge. Every node below is a top-level function taking the state
  * and an explicit {@link OpportunityGraphDeps}.
@@ -29,16 +28,14 @@ import type { MatchesReadyFn } from "./opportunity.graph.shared.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { DISCOVERY_MIN_SIMILARITY, validateDiscoveryMinSimilarity } from './discovery.env.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
-import type { StampNewbornOpportunitiesFn } from "./opportunity.newborn-stamping.js";
 import { routingLog, withNodeTrace, type OpportunityGraphDeps, type OpportunityGraphThresholdOverrides, type OpportunityHydeGenerator, type OpportunityState } from "./opportunity.graph.shared.js";
 import { prepNode, prepTraceSummary, resolveNode, resolveTraceSummary, scopeNode, scopeTraceSummary } from "./opportunity.graph.prep.js";
 import { discoveryNode, discoveryTraceSummary } from "./opportunity.graph.discovery.js";
 import { evaluationNode, rankingNode, rankingTraceSummary } from "./opportunity.graph.evaluation.js";
-import { persistNode, persistTraceSummary } from "./opportunity.graph.persist-node.js";
+import { emitCandidatesNode, emitCandidatesTraceSummary } from "./opportunity.graph.emit-candidates.js";
 import { matchesReadyNode } from "./opportunity.graph.matches-ready.js";
 
 export type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
-export type { StampNewbornOpportunitiesFn, StampNewbornOpportunitiesInput } from "./opportunity.newborn-stamping.js";
 export {
   buildDiscovererContext,
   safeOpportunityGraphError,
@@ -46,18 +43,12 @@ export {
   type OpportunityGraphDeps,
   type OpportunityGraphThresholdOverrides,
 } from "./opportunity.graph.shared.js";
-import { approveIntroduction, createIntroduction, deleteOpportunity, readOpportunities, sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
+import { deleteOpportunity, readOpportunities, updateOpportunityStatus } from "./opportunity.graph.modes.js";
 
 export {
-  approveIntroduction,
-  createIntroduction,
   deleteOpportunity,
-  evaluateIntroduction,
   readOpportunities,
-  sendOpportunity,
   updateOpportunityStatus,
-  validateIntroduction,
-  type IntroductionRequest,
   type OpportunityMutationOutcome,
   type OpportunityMutationRequest,
 } from "./opportunity.graph.modes.js";
@@ -67,7 +58,7 @@ export {
  * Uses dependency injection for testability.
  *
  * `deps` is public so callers can invoke the non-discovery modes
- * (`readOpportunities`, `sendOpportunity`, …) against the same wiring.
+ * (`readOpportunities`, `updateOpportunityStatus`, …) against the same wiring.
  */
 export class OpportunityGraphFactory {
   /** Resolved dependency bag shared by the graph nodes and the standalone modes. */
@@ -87,8 +78,6 @@ export class OpportunityGraphFactory {
      * (short timeout). Without it, the chat path always uses a short timeout.
      */
     agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>,
-    /** Host-side P4b stamper. Omitted by manual/introducer/enrichment roots. */
-    stampNewbornOpportunities?: StampNewbornOpportunitiesFn,
     /** Eval/test-only overrides; production composition resolves from environment. */
     thresholdOverrides?: OpportunityGraphThresholdOverrides,
   ) {
@@ -100,7 +89,6 @@ export class OpportunityGraphFactory {
       queueNotification,
       matchesReady,
       agentDispatcher,
-      stampNewbornOpportunities,
       retrievalMinSimilarity: thresholdOverrides?.retrievalMinSimilarity === undefined
         ? DISCOVERY_MIN_SIMILARITY
         : validateDiscoveryMinSimilarity(thresholdOverrides.retrievalMinSimilarity),
@@ -122,21 +110,6 @@ export class OpportunityGraphFactory {
     return deleteOpportunity(this.deps, request);
   }
 
-  /** Promote a latent or draft opportunity to pending. Delegates to {@link sendOpportunity}. */
-  public sendOpportunity(request: Parameters<typeof sendOpportunity>[1]) {
-    return sendOpportunity(this.deps, request);
-  }
-
-  /** Approve an introducer-pattern opportunity. Delegates to {@link approveIntroduction}. */
-  public approveIntroduction(request: Parameters<typeof approveIntroduction>[1]) {
-    return approveIntroduction(this.deps, request);
-  }
-
-  /** Validate → evaluate → persist an introduction. Delegates to {@link createIntroduction}. */
-  public createIntroduction(request: Parameters<typeof createIntroduction>[1]) {
-    return createIntroduction(this.deps, request);
-  }
-
   public createGraph() {
     const deps = this.deps;
 
@@ -147,7 +120,7 @@ export class OpportunityGraphFactory {
       .addNode('discovery', withNodeTrace("opportunity-discovery", (s: OpportunityState) => discoveryNode(s, deps), discoveryTraceSummary))
       .addNode('evaluation', (s: OpportunityState) => evaluationNode(s, deps))
       .addNode('ranking', withNodeTrace("opportunity-ranking", (s: OpportunityState) => rankingNode(s), rankingTraceSummary))
-      .addNode('persist', withNodeTrace("opportunity-persist", (s: OpportunityState) => persistNode(s, deps), persistTraceSummary))
+      .addNode('emitCandidates', withNodeTrace("opportunity-emit-candidates", (s: OpportunityState) => emitCandidatesNode(s, deps), emitCandidatesTraceSummary))
       .addNode('matchesReady', (s: OpportunityState) => matchesReadyNode(s, deps))
 
       .addEdge(START, 'prep')
@@ -170,14 +143,17 @@ export class OpportunityGraphFactory {
         [END]: END,
       })
 
-      // Discovery → Ranking → Persist → matches_ready (post-persist). The
-      // stage is skipped only when no host callback is wired or persistence
-      // produced nothing (matchesReadyNode guards both cases too).
+      // Discovery → Ranking → EmitCandidates → matches_ready. The stage is
+      // skipped only when no host callback is wired or the run recorded no
+      // candidates (matchesReadyNode guards both cases too).
+      //
+      // Nothing here INSERTs an opportunity. That happens at kickoff, in
+      // createAndOpen, when a principal's agent decides to reach out.
       .addEdge('evaluation', 'ranking')
-      .addEdge('ranking', 'persist')
-      .addConditionalEdges('persist', (state: OpportunityState) => {
+      .addEdge('ranking', 'emitCandidates')
+      .addConditionalEdges('emitCandidates', (state: OpportunityState) => {
         if (!deps.matchesReady) return END;
-        if (!state.opportunities || state.opportunities.length === 0) return END;
+        if (!state.candidatesEmitted || state.candidatesEmitted.length === 0) return END;
         return 'matchesReady';
       }, {
         matchesReady: 'matchesReady',

@@ -16,7 +16,6 @@ export interface OpportunityNotificationProjection {
 export interface OpportunityNotificationIdentities {
   viewer: UserIdentity | null;
   counterpart: UserIdentity | null;
-  introducer?: UserIdentity | null;
 }
 
 export function boundedNotificationLabel(value: string | null | undefined): string | undefined {
@@ -38,7 +37,7 @@ export function counterpartForRecipient(
   recipientId: string,
 ): OpportunityRow['actors'][number] | undefined {
   const otherActors = opportunity.actors.filter(({ userId }) => userId !== recipientId);
-  return otherActors.find(({ role }) => role !== 'introducer') ?? otherActors[0];
+  return otherActors[0];
 }
 
 
@@ -52,7 +51,6 @@ export function buildOpportunityNotificationEvent(
     summary: safeFallbackSummary(opportunity.interpretation.reasoning, {
       counterpartName: counterpartyName,
       viewerName: displayName(identities.viewer, 'you'),
-      introducerName: displayName(identities.introducer, ''),
       emptyText: OPPORTUNITY_NOTIFICATION_EMPTY_SUMMARY,
     }),
     counterpartyName,

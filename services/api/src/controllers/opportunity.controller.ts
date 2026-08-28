@@ -7,14 +7,13 @@ import { AuthGuard, isSessionAuthenticated } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
-import { queueOpportunityNotification } from '../queues/notification.queue';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('opportunity');
 
 const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
 /** Full lifecycle enum for the radar view's explicit `statuses` filter (e.g. the intent radar). */
-const radarStatusSchema = z.enum(['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
+const radarStatusSchema = z.enum(['negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 const uuidQuerySchema = z.string().uuid();
 const scopeTypeQuerySchema = z.enum(['intent']);
 
@@ -249,8 +248,8 @@ export class OpportunityController {
     if (!isRecord(body)) return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
 
     const rawStatus = typeof body.status === 'string' ? body.status : undefined;
-    const status = rawStatus as 'latent' | 'draft' | 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
-    const allowed = ['latent', 'draft', 'pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
+    const status = rawStatus as 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const allowed = ['pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return Response.json({ error: 'Invalid status; use one of: ' + allowed.join(', ') }, { status: 400 });
     }
@@ -353,7 +352,7 @@ export class OpportunityController {
   }
 
   /**
-   * POST /opportunities/:id/start-chat — accept a `pending` or `draft`
+   * POST /opportunities/:id/start-chat — accept a `pending`
    * opportunity and resolve (find-or-create) the h2h conversation for the
    * actor pair. Used by the frontend's Start Chat button; returns the
    * conversationId to navigate to.
@@ -454,51 +453,4 @@ export class NetworkOpportunityController {
     return Response.json({ opportunities: result });
   }
 
-  /**
-   * POST /networks/:networkId/opportunities — create a manual opportunity (curator).
-   */
-  @Post('/:networkId/opportunities')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async createManual(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const networkId = params?.networkId;
-    if (!networkId) {
-      return Response.json({ error: 'Missing network id' }, { status: 400 });
-    }
-
-    await assertAgentNetworkScope(req, networkId);
-
-    let body: { parties?: Array<{ userId: string; intentId?: string }>; reasoning?: string; category?: string; confidence?: number };
-    try {
-      body = (await req.json()) as typeof body;
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-
-    const { parties, reasoning, category, confidence } = body ?? {};
-    if (!parties || !Array.isArray(parties) || parties.length < 2 || !reasoning || typeof reasoning !== 'string') {
-      return Response.json(
-        { error: 'Body must include parties (array of at least 2 { userId, intentId? }) and reasoning (string)' },
-        { status: 400 },
-      );
-    }
-
-    const result = await opportunityService.createManualOpportunity(networkId, user.id, {
-      parties,
-      reasoning,
-      category,
-      confidence,
-    });
-
-    if ('error' in result) {
-      return Response.json({ error: result.error }, { status: result.status });
-    }
-
-    // Queue notifications for non-introducer parties
-    const recipientIds = parties.map((p) => p.userId).filter((id) => id !== user.id);
-    for (const recipientId of recipientIds) {
-      await queueOpportunityNotification(result.id, recipientId, 'high');
-    }
-
-    return Response.json(result, { status: 201 });
-  }
 }

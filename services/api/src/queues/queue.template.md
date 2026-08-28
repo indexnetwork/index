@@ -227,7 +227,7 @@ Queues are **interface adapters**: they receive work (job payloads) and **orches
 - Use a single payload type or a union and narrow in the processor with `job.name`.
 
 ### 2. Job names
-- Use snake_case (e.g. `generate_hyde`, `discover_opportunities`, `process_opportunity_notification`).
+- Use snake_case (e.g. `generate_hyde`, `discover`, `process_opportunity_notification`).
 - Route in `processJob` (and in the worker’s processor) with a `switch` on `job.name`.
 - **Custom job IDs must not contain colons** — BullMQ uses colons internally for Redis key namespacing. Use dashes as separators (e.g. `intent-hyde-${intentId}`, not `intent-hyde:${intentId}`).
 

@@ -4,27 +4,6 @@ import type { OpportunityEvidence } from '../../../protocol/schemas/network-assi
 import { buildCandidateEvidence, mergeOpportunityEvidence, renderOpportunityEvidenceForPrompt, withMatchedStrategies } from '../opportunity.evidence.js';
 
 describe('opportunity.evidence', () => {
-  it('builds premise-similarity evidence', () => {
-    const evidence = buildCandidateEvidence({
-      networkId: 'net-1',
-      similarity: 0.82,
-      lens: 'premise_match',
-      discoverySource: 'premise-similarity',
-      sourcePremiseId: 'source-premise',
-      candidatePremiseId: 'candidate-premise',
-      candidatePayload: 'I build AI tools',
-    });
-
-    expect(evidence).toMatchObject({
-      kind: 'premise_similarity',
-      networkId: 'net-1',
-      score: 0.82,
-      sourcePremiseId: 'source-premise',
-      candidatePremiseId: 'candidate-premise',
-      assertionText: 'I build AI tools',
-    });
-  });
-
   it('uses profile evidence kind for profile-only candidates', () => {
     const evidence = buildCandidateEvidence({
       networkId: 'net-1',
@@ -67,21 +46,6 @@ describe('opportunity.evidence', () => {
 });
 
 describe('context-backed evidence', () => {
-  it('resolves context-similarity discovery source to context_similarity kind', () => {
-    const ev = buildCandidateEvidence({
-      networkId: 'net1',
-      similarity: 0.8,
-      lens: 'context_match',
-      discoverySource: 'context-similarity',
-      sourceContextId: 'ctx-src',
-      candidateContextId: 'ctx-cand',
-      candidatePayload: 'A researcher working on protocol design.',
-    });
-    expect(ev.kind).toBe('context_similarity');
-    expect(ev.candidateContextId).toBe('ctx-cand');
-    expect(ev.assertionText).toBeUndefined();
-  });
-
   it('resolves HyDE context candidates (candidateContextId, query source) to query_context kind', () => {
     const ev = buildCandidateEvidence({
       networkId: 'net1',
@@ -111,11 +75,11 @@ describe('context-backed evidence', () => {
   it('merge dedups context evidence by candidateContextId', () => {
     const a = buildCandidateEvidence({
       networkId: 'net1', similarity: 0.6, lens: 'l1',
-      discoverySource: 'context-similarity', candidateContextId: 'ctx-1',
+      candidateContextId: 'ctx-1',
     });
     const b = buildCandidateEvidence({
       networkId: 'net1', similarity: 0.9, lens: 'l1',
-      discoverySource: 'context-similarity', candidateContextId: 'ctx-1',
+      candidateContextId: 'ctx-1',
     });
     const merged = mergeOpportunityEvidence([a], [b]);
     expect(merged).toHaveLength(1);

@@ -14,25 +14,23 @@ The system does not create opportunities; it detects them. Opportunities exist l
 
 ---
 
-## Discovery Triggers
+## Discovery Trigger
 
-Opportunity creation is background-only. Queues evaluate persisted context and save eligible opportunities for later review; a chat turn can help create or refine a signal and can review persisted cards, but it does not run matching.
+There is exactly one. Creating, refining, or resuming an active assigned intent
+enqueues discovery, which uses that intent's HyDE documents and current network
+assignments to find eligible candidates.
 
-### Intent queue
+Discovery is background-only, and it does not create opportunities. It records a
+**candidate** for each pair it finds — one row per pair, keyed by
+`pairKey = (networkId, min(intentA, intentB), max(intentA, intentB))` — and emits
+`matches_ready` to both seats. The opportunity row is INSERTed later, by
+`createAndOpen`, when a principal's PersonalAgent decides to reach out.
 
-Creating, refining, or resuming an active assigned intent enqueues discovery. The queue uses the trigger intent's HyDE documents and current network assignments to find eligible candidates.
+A chat turn can help create or refine a signal and can review persisted cards, but
+it does not run matching.
 
-### Enrichment queue
-
-Enrichment and premise changes regenerate user contexts and can enqueue discovery from that persisted context. Context-to-intent and premise representations provide the candidate evidence.
-
-### Introducer queue
-
-An explicit introduction is validated and processed asynchronously within the participants' shared-network scope. The introducer remains an actor on the resulting opportunity; the evaluator receives the explicit introduction context.
-
-### Maintenance queue
-
-Feed-health maintenance can enqueue rediscovery for active intents when persisted opportunity coverage is stale or unhealthy.
+The enrichment, introducer and maintenance queues that used to trigger discovery
+have been removed, along with the manual-curation REST route.
 
 ---
 
@@ -51,10 +49,6 @@ The candidate NEEDS something from the other party. Example: the source is a men
 ### Peer (symmetric collaboration)
 
 Neither party is primarily helping or seeking -- both contribute and benefit equally. Both parties see the opportunity immediately, and either can initiate contact.
-
-### Introducer
-
-A third party who created the opportunity on behalf of two other users (e.g. "I think these two should meet"). Introducers are always actors on the opportunity but they are not participating in the connection itself — they sit outside the visibility matrix as perpetual observers of the introduction they triggered.
 
 ### Role derivation
 
@@ -104,14 +98,15 @@ When the source intent or introduction context mentions a specific location:
 
 ## Status Lifecycle
 
-Opportunities follow an eight-state lifecycle:
+Opportunities follow a six-state lifecycle. There is no pre-kickoff state: the row
+is created at the moment an agent opens its negotiation, so `negotiating` is where
+every opportunity begins. (`latent` and `draft` were the pre-kickoff states and
+have been removed.)
 
 | Status | Meaning |
 |---|---|
-| **latent** | Detected but not yet surfaced to any user. The system knows this coordination point exists. |
-| **draft** | Retained lifecycle state for persisted compatibility and introducer reactivation. Not newly produced as a live chat card. |
 | **negotiating** | Bilateral agent-to-agent negotiation is in flight. The opportunity is persisted but not yet visible to either party. |
-| **pending** | Negotiation accepted (or negotiation was skipped); opportunity is surfaced to the appropriate party based on role visibility rules. Awaiting user action. |
+| **pending** | Negotiation accepted; the pairing is surfaced to the parties and awaits user action. |
 | **stalled** | Negotiation reached its turn cap or timed out without resolution. Surfaced as an inconclusive match (not confidently accepted or rejected). |
 | **accepted** | The user has accepted the connection. Triggers contact creation and notification to the other party. |
 | **rejected** | The user has declined the connection (or negotiation finished with a rejection). |
@@ -121,28 +116,16 @@ Opportunities follow an eight-state lifecycle:
 
 ## Visibility Rules
 
-Who sees an opportunity and when is governed by the actor roles and the opportunity's current status. This is the role-visibility matrix:
+The actors on a pairing may read it, at any status and in any role.
 
-In-flight statuses (`latent`, `draft`, `negotiating`) are never visible to any actor. The matrix below governs the surfaced statuses (`pending`, `stalled`, `accepted`, `rejected`, `expired`).
+This used to be a four-way matrix keyed on role, the `latent` status, and whether
+an introducer had approved. None of those exist any more — a pairing is born
+`negotiating` when a principal's agent opens it — so every branch collapsed to the
+same answer.
 
-### With an introducer present
-
-| Role | Sees when |
-|---|---|
-| Introducer | Always (they created the introduction) |
-| Patient / Party | Status is pending or stalled |
-| Agent | Status is accepted, rejected, or expired |
-| Peer | Always |
-
-### Without an introducer
-
-| Role | Sees when |
-|---|---|
-| Patient / Party | Surfaced statuses only |
-| Agent | Surfaced statuses only |
-| Peer | Always |
-
-The key design principle: agents (helpers/providers) are shielded from noise. They only learn about opportunities after the seeking party has committed, ensuring that connections are high-intent by the time the agent sees them.
+What role still governs is **actionability**: whether the pairing has a pending
+action for that viewer, and therefore whether it reaches their radar. See
+[radar](radar.md).
 
 ---
 
@@ -150,9 +133,8 @@ The key design principle: agents (helpers/providers) are shielded from noise. Th
 
 A connection requires acceptance from two distinct actors. The system enforces this by stamping `actedAt` on the acting actor each time a user advances an opportunity's state, and refusing accept if the caller has already acted.
 
-- **Patient + agent:** the patient sends an eligible latent or retained draft opportunity (`actedAt` set on the patient); the agent then accepts (`actedAt` set on the agent). The patient cannot subsequently accept their own send — the API returns HTTP 409.
-- **Peer + peer:** the first peer sends an eligible latent or retained draft opportunity (`actedAt` set on them). The second peer then accepts on the resulting `pending` opportunity. Neither can self-accept.
-- **Introducer + others:** the introducer sends after approving the intro (`actedAt` set on the introducer). The downstream patient/agent acceptance follows the same rules as above.
+- **Patient + agent:** the patient accepts first (`actedAt` set on the patient); the agent then accepts (`actedAt` set on the agent). The patient cannot accept twice — the API returns HTTP 409.
+- **Peer + peer:** the first peer accepts (`actedAt` set on them), then the second. Neither can self-accept.
 
 The `actedAt` stamp is written atomically with the status change inside a row-locked transaction, so concurrent attempts serialize through Postgres' row lock. The guard runs at both layers:
 
@@ -200,7 +182,7 @@ Each opportunity record contains four JSONB fields that capture the full context
 
 Provenance information: what triggered the discovery, who or what caused it, and when.
 
-- `source`: How the opportunity was detected (`opportunity_graph`, `manual`, `member_added`, `enrichment`, `introducer_discovery`)
+- `source`: How the opportunity was detected (`opportunity_graph`, `chat`, `cron`, `member_added`)
 - `triggeredBy`: The intent ID that caused detection (if intent-driven)
 - `createdBy` / `createdByName`: The user who triggered it (for attribution)
 - `timestamp`: When detection occurred
@@ -212,8 +194,7 @@ The parties involved and their roles. Each actor has:
 - `indexId`: The index through which they were found
 - `intent`: The specific intent that drove the match (optional)
 - `role`: Their valency role (agent, patient, peer)
-- `approved`: Set only on `role === 'introducer'`. `false` until the introducer approves the intro; `true` after approval.
-- `actedAt`: ISO-8601 timestamp of this actor's first state-advancing mutation — set when the actor sends (`pending`) or accepts (`accepted`). Used to enforce the bilateral-acceptance guard described below. Absent until the actor has acted.
+- `actedAt`: ISO-8601 timestamp of this actor's first state-advancing mutation — set when the actor accepts or rejects. Used to enforce the bilateral-acceptance guard described below. Absent until the actor has acted.
 
 ### Interpretation
 

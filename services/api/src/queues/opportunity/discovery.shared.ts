@@ -3,11 +3,11 @@ import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher, StampNewbornOpportunitiesFn } from '@indexnetwork/protocol';
+import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
 
 
 /**
- * Worker concurrency shared by the from-intent and from-enrichment discovery
+ * Worker concurrency for the from-intent discovery
  * queues. The factory default (1) serialized every user's scan behind every
  * other user's, which is what made a second onboarding look stalled. 4 lets a
  * handful of signals scan side by side; it stays low because one scan already
@@ -27,8 +27,6 @@ export interface OpportunityDiscoveryDeps {
   /** Wakes a signal's PersonalAgent once the batch is persisted. */
   matchesReady?: MatchesReadyFn;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-  /** Only intent-triggered roots provide this P4b pre-insert callback. */
-  stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
 }
 
 type DiscoveryLogger = ReturnType<typeof log.job.from>;
@@ -40,7 +38,7 @@ export function createOpportunityGraphDb(database: object = new ChatDatabaseAdap
 
 /**
  * Assemble the configured opportunity graph (HyDE sub-graph + matches_ready wiring).
- * Identical across from-intent / from-introducer / from-enrichment, so it lives here once.
+ * Shared by every discovery entry point, so it lives here once.
  */
 export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: OpportunityDiscoveryDeps) {
   const embedder: Embedder = new EmbedderAdapter();
@@ -56,7 +54,6 @@ export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: Opport
     undefined,
     deps?.matchesReady,
     deps?.agentDispatcher,
-    deps?.stampNewbornOpportunities,
   ).createGraph();
 }
 
@@ -150,7 +147,7 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
   errorLabel?: string;
   /** Identifier fields merged into every log line (e.g. `{ intentId, userId }`). */
   logContext: Record<string, unknown>;
-  /** Whether to emit the verbose graph-trace line (from-enrichment opts out). Defaults to true. */
+  /** Whether to emit the verbose graph-trace line. Defaults to true. */
   logTrace?: boolean;
 }): Promise<OpportunityDiscoverySummary | null> {
   const { graphDb, deps, invokeOpts, logger, label, errorLabel = label, logContext, logTrace = true } = params;

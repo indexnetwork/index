@@ -134,7 +134,6 @@ export class FakeNegotiationHost {
         !opportunity
         || opportunity.status === 'pending'
         || ['accepted', 'rejected', 'expired'].includes(opportunity.status)
-        || opportunity.actors.some((actor) => actor.role === 'introducer' && actor.approved !== true)
       ) return null;
       const task: NegotiationTaskRow = {
         id: `task-${++this.taskCounter}`,

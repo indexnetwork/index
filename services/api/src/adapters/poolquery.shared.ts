@@ -3,7 +3,7 @@ import { inArray, sql } from 'drizzle-orm/sql';
 import { opportunities } from '../schemas/database.schema';
 
 /** Statuses in the exact mutable recipient+intent pool. */
-export const POOL_LIVE_STATUSES = ['draft', 'latent', 'pending', 'negotiating'] as const;
+export const POOL_LIVE_STATUSES = ['pending', 'negotiating'] as const;
 
 /**
  * Terminal statuses added ONLY to the Lens C evidence pool (IND-465):
@@ -14,27 +14,16 @@ export const POOL_TERMINAL_STATUSES = ['stalled', 'accepted', 'rejected', 'expir
 
 /**
  * Recipient visibility guard shared by the live-pool and evidence-pool
- * predicates. Extracting it keeps the two predicates drift-free; the SQL
- * emitted by {@link exactLivePoolWhere} is byte-identical to before.
+ * predicates. Extracting it keeps the two predicates drift-free.
  */
 function recipientPoolVisibilityGuard(recipientUserId: string) {
+  // The actors on a pairing may see it. This used to be a four-way rule keyed
+  // on role and pre-kickoff statuses; none of
+  // those exist any more, and every branch collapsed to the same answer.
   return sql`(
-    ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'introducer' }])}::jsonb
-    OR ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'peer' }])}::jsonb
-    OR (
-      ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'patient' }])}::jsonb
-      AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-    )
-    OR (
-      ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'agent' }])}::jsonb
-      AND (
-        ${opportunities.status} IN ('accepted', 'rejected', 'expired')
-        OR (${opportunities.status} NOT IN ('latent', 'draft') AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-      )
-    )
-    OR (
-      ${opportunities.actors} @> ${JSON.stringify([{ userId: recipientUserId, role: 'party' }])}::jsonb
-      AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+    EXISTS (
+      SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+      WHERE actor->>'userId' = ${recipientUserId}
     )
   )`;
 }

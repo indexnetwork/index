@@ -77,7 +77,6 @@ export function deriveNegotiationPresentation(input: {
   if (opportunityStatus === 'rejected') return PRESENTATIONS.no_match;
   if (opportunityStatus === 'stalled') return PRESENTATIONS.no_agreement;
   if (opportunityStatus === 'expired') return PRESENTATIONS.expired;
-  if (opportunityStatus === 'latent' || opportunityStatus === 'draft') return PRESENTATIONS.not_started;
   if (opportunityStatus === 'pending') return PRESENTATIONS.awaiting_review;
   if (pauseReason === 'needs_principal' && isViewerAgent) return PRESENTATIONS.needs_input;
   // ready_for_verdict is a recommendation to that side's own principal agent,

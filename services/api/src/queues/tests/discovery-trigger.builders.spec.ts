@@ -21,7 +21,7 @@ describe('production discovery trigger builders', () => {
       operationMode: 'create',
       networkId: 'idx1',
       triggerIntentId: 'i1',
-      options: { initialStatus: 'latent' },
+      options: {},
     });
     expect(Object.keys(trigger)).toEqual([
       'userId', 'searchQuery', 'operationMode', 'networkId', 'triggerIntentId', 'options',
@@ -44,7 +44,7 @@ describe('production discovery trigger builders', () => {
       operationMode: 'create',
       indexScope: ['idx-a', 'idx-b'],
       triggerIntentId: 'i1',
-      options: { initialStatus: 'latent' },
+      options: {},
     });
     expect(Object.keys(trigger)).toEqual([
       'userId', 'searchQuery', 'operationMode', 'indexScope', 'triggerIntentId', 'options',

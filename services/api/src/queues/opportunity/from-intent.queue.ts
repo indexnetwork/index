@@ -97,7 +97,7 @@ export class FromIntentQueue {
     data: FromIntentJobData,
     options?: Parameters<FromIntentQueue['addJob']>[1],
   ): Promise<Job<FromIntentJobData>> {
-    return this.queue.add('discover_opportunities', data, {
+    return this.queue.add('discover', data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: options?.removeOnComplete ?? { age: 24 * 60 * 60 },
@@ -130,7 +130,7 @@ export class FromIntentQueue {
 
   async processJob(name: string, data: FromIntentJobData, attempt = 1): Promise<void> {
     switch (name) {
-      case 'discover_opportunities':
+      case 'discover':
         await this.handleDiscover(data, attempt);
         break;
       default:

@@ -166,22 +166,13 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
         });
       }
 
-      // Batch-fetch profiles and users for all counterpart and introducer userIds to avoid N+1
+      // Batch-fetch profiles and users for every counterpart to avoid N+1
       const counterpartUserIds = new Set<string>();
-      const introducerUserIds = new Set<string>();
       for (const opp of opportunities) {
-        const counterpartActor = opp.actors.find(
-          (a) => a.userId !== context.userId && a.role !== "introducer",
-        );
+        const counterpartActor = opp.actors.find((a) => a.userId !== context.userId);
         if (counterpartActor?.userId) counterpartUserIds.add(counterpartActor.userId);
-        const introducerActor = opp.actors.find(
-          (a) => a.role === "introducer" && a.userId !== context.userId,
-        );
-        if (introducerActor?.userId) introducerUserIds.add(introducerActor.userId);
       }
-      const allUserIds = [
-        ...new Set([...counterpartUserIds, ...introducerUserIds]),
-      ];
+      const allUserIds = [...counterpartUserIds];
       const [profileResults, userResults] = await Promise.all([
         Promise.all(allUserIds.map((id) => database.getProfile(id))),
         Promise.all(allUserIds.map((id) => database.getUser(id))),
@@ -211,51 +202,15 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
               if (seenOpportunityIds.has(opp.id)) return null;
               seenOpportunityIds.add(opp.id);
               try {
-                const counterpartActor = opp.actors.find(
-                  (a) => a.userId !== context.userId && a.role !== "introducer",
-                );
+                const counterpartActor = opp.actors.find((a) => a.userId !== context.userId);
                 const counterpartUserId = counterpartActor?.userId;
                 if (!counterpartUserId) return null;
-
-                const viewerIsIntroducerHere = opp.actors.some(
-                  (a) => a.role === "introducer" && a.userId === context.userId,
-                );
-                const secondPartyActorForHeadline = viewerIsIntroducerHere
-                  ? opp.actors.find(
-                      (a) =>
-                        a.userId !== context.userId &&
-                        a.userId !== counterpartUserId &&
-                        a.role !== "introducer",
-                    )
-                  : undefined;
-
-                const introducerActor = opp.actors.find(
-                  (a) => a.role === "introducer" && a.userId !== context.userId,
-                );
-                const createdByName = opp.detection.createdByName;
 
                 const counterpartUser = userMap.get(counterpartUserId) ?? null;
                 const counterpartName =
                   profileMap.get(counterpartUserId)?.identity?.name ??
                   counterpartUser?.name ??
                   "Someone";
-                const introducerName =
-                  createdByName ??
-                  (introducerActor
-                    ? (profileMap.get(introducerActor.userId)?.identity?.name ?? null)
-                    : null);
-                const introducerUser = introducerActor
-                  ? userMap.get(introducerActor.userId) ?? null
-                  : null;
-
-                const secondPartyUser = secondPartyActorForHeadline
-                  ? userMap.get(secondPartyActorForHeadline.userId) ?? null
-                  : null;
-                const secondPartyNameForHeadline = secondPartyActorForHeadline
-                  ? (profileMap.get(secondPartyActorForHeadline.userId)?.identity?.name ??
-                    secondPartyUser?.name ??
-                    undefined)
-                  : undefined;
 
                 const viewerActor = opp.actors.find((a) => a.userId === context.userId);
                 const viewerRole = viewerActor?.role ?? "party";
@@ -289,22 +244,9 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                     deps.frontendUrl,
                   );
 
-                  // Build narrator chip from presenter output
-                  let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
-                  const introducerIsCounterpart = introducerActor && counterpartActor && introducerActor.userId === counterpartActor.userId;
-                  if (introducerActor && introducerActor.userId !== context.userId && !introducerIsCounterpart) {
-                    const narratorName = introducerName?.trim() || "Someone";
-                    narratorChip = {
-                      name: narratorName,
-                      text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
-                      avatar: introducerUser?.avatar ?? null,
-                      userId: introducerActor.userId,
-                    };
-                  } else if (introducerActor?.userId === context.userId) {
-                    narratorChip = { name: "You", text: presentation.narratorRemark, userId: context.userId };
-                  } else {
-                    narratorChip = { name: "Index", text: presentation.narratorRemark };
-                  }
+                  // Every card is system-discovered now: one narrator.
+                  const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
+                    { name: "Index", text: presentation.narratorRemark };
 
                   const card: Record<string, unknown> = {
                     opportunityId: opp.id,
@@ -317,9 +259,7 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                     // (EDG-51). Only present when a negotiation conversation exists.
                     ...(negotiationUrl ? { negotiationUrl } : {}),
                     cta: presentation.suggestedAction,
-                    headline: viewerIsIntroducerHere && secondPartyNameForHeadline
-                      ? `${counterpartName} → ${secondPartyNameForHeadline}`
-                      : presentation.headline,
+                    headline: presentation.headline,
                     primaryActionLabel: getPrimaryActionLabel(viewerRole),
                     secondaryActionLabel: SECONDARY_ACTION_LABEL,
                     mutualIntentsLabel: presentation.mutualIntentsLabel,
@@ -330,15 +270,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                       : undefined,
                     status: opp.status,
                     ...(redeliveryIds.has(opp.id) ? { redelivery: true } : {}),
-                    ...(viewerIsIntroducerHere && secondPartyNameForHeadline
-                      ? {
-                          secondParty: {
-                            name: secondPartyNameForHeadline,
-                            ...(secondPartyUser?.avatar != null ? { avatar: secondPartyUser.avatar } : {}),
-                            ...(secondPartyActorForHeadline?.userId ? { userId: secondPartyActorForHeadline.userId } : {}),
-                          },
-                        }
-                      : {}),
                   };
 
                   // Attach the agent-facing profile and opportunity links for
@@ -393,55 +324,16 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
               if (seenOpportunityIds.has(opp.id)) return null;
               seenOpportunityIds.add(opp.id);
               try {
-                const counterpartActor = opp.actors.find(
-                  (a) => a.userId !== context.userId && a.role !== "introducer",
-                );
+                const counterpartActor = opp.actors.find((a) => a.userId !== context.userId);
                 const counterpartUserId = counterpartActor?.userId;
                 if (!counterpartUserId) return null;
 
-                const viewerIsIntroducerHere = opp.actors.some(
-                  (a) => a.role === "introducer" && a.userId === context.userId,
-                );
-                const secondPartyActorForHeadline = viewerIsIntroducerHere
-                  ? opp.actors.find(
-                      (a) =>
-                        a.userId !== context.userId &&
-                        a.userId !== counterpartUserId &&
-                        a.role !== "introducer",
-                    )
-                  : undefined;
-
-                const introducerActor = opp.actors.find(
-                  (a) => a.role === "introducer" && a.userId !== context.userId,
-                );
-                const createdByName = opp.detection.createdByName;
-
                 const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
                 const counterpartUser = userMap.get(counterpartUserId) ?? null;
-                const introducerProfile =
-                  introducerActor && !createdByName
-                    ? profileMap.get(introducerActor.userId) ?? null
-                    : null;
-
                 const counterpartName =
                   counterpartProfile?.identity?.name ??
                   counterpartUser?.name ??
                   "Someone";
-                const introducerName =
-                  createdByName ??
-                  (introducerActor ? introducerProfile?.identity?.name ?? null : null);
-                const introducerUser = introducerActor
-                  ? userMap.get(introducerActor.userId) ?? null
-                  : null;
-
-                const secondPartyUser = secondPartyActorForHeadline
-                  ? userMap.get(secondPartyActorForHeadline.userId) ?? null
-                  : null;
-                const secondPartyNameForHeadline = secondPartyActorForHeadline
-                  ? (profileMap.get(secondPartyActorForHeadline.userId)?.identity?.name ??
-                    secondPartyUser?.name ??
-                    undefined)
-                  : undefined;
 
                 const viewerActor = opp.actors.find((a) => a.userId === context.userId);
                 const viewerRole = viewerActor?.role ?? "party";
@@ -463,21 +355,8 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                   ...(negotiationContext ? { negotiationContext } : {}),
                 });
 
-                let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
-                const introducerIsCounterpart = introducerActor && counterpartActor && introducerActor.userId === counterpartActor.userId;
-                if (introducerActor && introducerActor.userId !== context.userId && !introducerIsCounterpart) {
-                  const narratorName = introducerName?.trim() || "Someone";
-                  narratorChip = {
-                    name: narratorName,
-                    text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
-                    avatar: introducerUser?.avatar ?? null,
-                    userId: introducerActor.userId,
-                  };
-                } else if (introducerActor?.userId === context.userId) {
-                  narratorChip = { name: "You", text: presentation.narratorRemark, userId: context.userId };
-                } else {
-                  narratorChip = { name: "Index", text: presentation.narratorRemark };
-                }
+                const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
+                  { name: "Index", text: presentation.narratorRemark };
 
                 const cardData: Record<string, unknown> & { opportunityId: string } = {
                   opportunityId: opp.id,
@@ -486,9 +365,7 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                   avatar: counterpartUser?.avatar ?? null,
                   mainText: stripUuids(presentation.personalizedSummary),
                   cta: presentation.suggestedAction,
-                  headline: viewerIsIntroducerHere && secondPartyNameForHeadline
-                    ? `${counterpartName} → ${secondPartyNameForHeadline}`
-                    : presentation.headline,
+                  headline: presentation.headline,
                   primaryActionLabel: getPrimaryActionLabel(viewerRole),
                   secondaryActionLabel: SECONDARY_ACTION_LABEL,
                   mutualIntentsLabel: presentation.mutualIntentsLabel,
@@ -498,15 +375,6 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                     ? opp.interpretation.confidence
                     : undefined,
                   status: opp.status,
-                  ...(viewerIsIntroducerHere && secondPartyNameForHeadline
-                    ? {
-                        secondParty: {
-                          name: secondPartyNameForHeadline,
-                          ...(secondPartyUser?.avatar != null ? { avatar: secondPartyUser.avatar } : {}),
-                          ...(secondPartyActorForHeadline?.userId ? { userId: secondPartyActorForHeadline.userId } : {}),
-                        },
-                      }
-                    : {}),
                 };
 
                 // For MCP callers, attach the agent-facing profile link and the

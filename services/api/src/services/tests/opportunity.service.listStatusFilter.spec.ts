@@ -18,7 +18,7 @@ import { OpportunityService } from "../opportunity.service";
 // guard and would otherwise leak candidate-pool opportunities to all members.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const EXPECTED_USER_STATUSES = ["latent", "negotiating", "pending", "stalled", "accepted"];
+const EXPECTED_USER_STATUSES = ["negotiating", "pending", "stalled", "accepted"];
 const EXPECTED_NETWORK_STATUSES = ["negotiating", "pending", "stalled", "accepted"];
 
 type Captured = { opts?: Record<string, unknown> };

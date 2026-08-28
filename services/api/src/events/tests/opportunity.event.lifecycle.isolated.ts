@@ -15,21 +15,6 @@ afterEach(() => {
 });
 
 describe('OpportunityEvents lifecycle emission', () => {
-  it('emits actionable for latent and pending rows while pending remains pending-only', () => {
-    const pending = mock(() => {});
-    const actionable = mock(() => {});
-    OpportunityEvents.onPending = pending;
-    OpportunityEvents.onActionable = actionable;
-
-    emitOpportunityLifecycleBestEffort(row('latent'));
-    expect(actionable).toHaveBeenCalledTimes(1);
-    expect(pending).not.toHaveBeenCalled();
-
-    emitOpportunityLifecycleBestEffort(row('pending'));
-    expect(actionable).toHaveBeenCalledTimes(2);
-    expect(pending).toHaveBeenCalledTimes(1);
-  });
-
   it('ignores non-actionable lifecycle statuses', () => {
     const pending = mock(() => {});
     const actionable = mock(() => {});

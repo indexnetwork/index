@@ -20,7 +20,7 @@ mock.module("../../queues/notification.queue", () => ({
   queueOpportunityNotification: async () => ({ id: "mock-job" }),
 }));
 
-// Load controllers after mock is registered so createManual path never touches Redis in tests
+// Load controllers after the mock is registered so no route path touches Redis in tests
 let OpportunityControllerClass: typeof import("../opportunity.controller").OpportunityController;
 let NetworkOpportunityControllerClass: typeof import("../opportunity.controller").NetworkOpportunityController;
 beforeAll(async () => {
@@ -371,56 +371,6 @@ describe("OpportunityController Integration", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(data.opportunities)).toBe(true);
     expect(data.opportunities!.length).toBeGreaterThanOrEqual(1);
-  });
-
-  test("createManual should return 400 when networkId is missing", async () => {
-    const req = new Request("http://localhost/networks/opportunities", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        parties: [{ userId: testUserId }, { userId: candidateUserId }],
-        reasoning: "Test manual opportunity",
-      }),
-    });
-    const res = await indexOpportunityController.createManual(req, mockUser(), {});
-    const data = (await res.json()) as { error?: string };
-
-    expect(res.status).toBe(400);
-    expect(data.error).toBe("Missing network id");
-  });
-
-  test("createManual should return 400 when body missing parties or reasoning", async () => {
-    const req = new Request("http://localhost/networks/" + testIndexId + "/opportunities", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    const res = await indexOpportunityController.createManual(req, mockUser(), { networkId: testIndexId });
-    const data = (await res.json()) as { error?: string };
-
-    expect(res.status).toBe(400);
-    expect(data.error).toContain("parties");
-  });
-
-  paidTest("createManual should return 201 when valid or 409 when opportunity already exists", async () => {
-    const req = new Request("http://localhost/networks/" + testIndexId + "/opportunities", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        parties: [{ userId: testUserId }, { userId: candidateUserId }],
-        reasoning: "Manual match for controller test",
-      }),
-    });
-    const res = await indexOpportunityController.createManual(req, mockUser(), { networkId: testIndexId });
-    const data = (await res.json()) as { id?: string; interpretation?: { summary: string }; error?: string };
-
-    expect([201, 409]).toContain(res.status);
-    if (res.status === 201) {
-      expect(data.id).toBeDefined();
-      expect(data.interpretation).toBeDefined();
-    } else {
-      expect(data.error).toContain("already exists");
-    }
   });
 
   test('router dispatch returns 404 for POST /api/opportunities/discover', () => {

@@ -178,16 +178,6 @@ describe('OpportunityService.startChat', () => {
     expect(db.unhideConversation).toHaveBeenCalledWith(VIEWER_ID, CONV_ID);
   });
 
-  it('flips draft → accepted for the orchestrator path', async () => {
-    const opp = makeOpportunity({ status: 'draft' });
-    const { service, db } = makeServiceWithDb(opp);
-
-    const result = await service.startChat(OPP_ID, VIEWER_ID);
-
-    expect('error' in result).toBe(false);
-    expect(db.stampOpportunityActorAction).toHaveBeenCalledWith(OPP_ID, VIEWER_ID, 'accepted', VIEWER_ID);
-  });
-
   it('returns conversation idempotently when opportunity is already accepted', async () => {
     const opp = makeOpportunity({ status: 'accepted' });
     const { service, db } = makeServiceWithDb(opp);

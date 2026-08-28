@@ -32,6 +32,9 @@ import type { IntentRecord } from "../../../platform/database/entities.js";
 import { canonicalCounterpartyStatusProse, isSupportedPersonalAgentStatusProse, normalizeMessageQuestions, PersonalAgentModel } from "./agent.judgment.js";
 import type { Question } from "../../../protocol/question.js";
 import type { PersonalAgentActivity, PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
+import { matchRefId } from "./agent.types.js";
+import type { CreateAndOpenResult } from "../../../platform/database.js";
+import type { PersonalAgentOpportunityPort } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgentGraph");
 
@@ -260,9 +263,8 @@ async function assembleContext(
   // `accept_opportunity` is for.
   const eligibility = await Promise.all(matches.map(async (match) => ({
     match,
-    eligible: !match.awaitingIntroducerApproval
-      && !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
-      && !paused.some((entry) => entry.opportunityId === match.opportunityId && !entry.pausedByUs)
+    eligible: !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
+      && !paused.some((entry) => entry.opportunityId === matchRefId(match) && !entry.pausedByUs)
       && !(await spentItsTurnBudget(deps, match)),
   })));
   const kickoffTargets = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
@@ -271,10 +273,9 @@ async function assembleContext(
       intentId,
       matches: matches.length,
       kickoffTargets: kickoffTargets.length,
-      awaitingIntroducerApproval: eligibility.filter((entry) => entry.match.awaitingIntroducerApproval).length,
       pending: eligibility.filter((entry) => NOT_KICKOFF_ELIGIBLE_STATUSES.has(entry.match.status)).length,
       counterpartyPaused: eligibility.filter((entry) =>
-        paused.some((pausedEntry) => pausedEntry.opportunityId === entry.match.opportunityId && !pausedEntry.pausedByUs),
+        paused.some((pausedEntry) => pausedEntry.opportunityId === matchRefId(entry.match) && !pausedEntry.pausedByUs),
       ).length,
     });
   }
@@ -295,7 +296,7 @@ async function assembleContext(
     // display cap held back. The re-check compares against THIS, or a signal
     // with more matches than a round opens would read its own remainder as
     // new arrivals and wake itself for them, round after round.
-    knownMatchIds: allMatches.map((match) => match.opportunityId),
+    knownMatchIds: allMatches.map(matchRefId),
     paused,
     dossier,
     recentDm,
@@ -531,6 +532,25 @@ export const PERSONAL_AGENT_STRATEGY_FALLBACK =
  * Before the bump the opposite holds: those failures are safe to retry, so
  * they propagate.
  */
+/**
+ * One match → one opportunity id, resolved at the moment of open.
+ *
+ * This is the ONLY place a candidate becomes a row. Everything above it
+ * addresses matches by ref; everything below it needs a real id. Returns
+ * rather than throws — it is called below the round bump (D54).
+ */
+export async function resolveMatchToOpportunity(
+  opportunities: Pick<PersonalAgentOpportunityPort, "createAndOpen">,
+  userId: string,
+  intentId: string,
+  match: PersonalAgentMatch,
+): Promise<CreateAndOpenResult> {
+  if (match.ref.kind === "opportunity") {
+    return { status: "existing", opportunityId: match.ref.id };
+  }
+  return opportunities.createAndOpen(userId, { intentId, candidateId: match.ref.id });
+}
+
 async function runKickoff(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
@@ -550,7 +570,7 @@ async function runKickoff(
     .filter((act): act is Extract<PersonalAgentExecutedAct, { tool: "promote" | "reject" }> =>
       (act.tool === "promote" || act.tool === "reject") && act.outcome === "resolved")
     .map((act) => act.opportunityId));
-  const matches = context.kickoffTargets.filter((match) => !resolvedHere.has(match.opportunityId));
+  const matches = context.kickoffTargets.filter((match) => !resolvedHere.has(matchRefId(match)));
 
   // A batch a kickoff began and never finished has to be settled, and BEFORE
   // this turn bumps: once the intent's current batch moves, the old batch id
@@ -605,13 +625,24 @@ async function runKickoff(
   const threadByOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.thread]));
 
   const opens = await mapWithConcurrency(matches, kickoffConcurrency(), async (match) => {
+    // The row first, then the brief. A brief written for a pair we then fail
+    // to materialize is a model call spent on nothing.
+    const resolved = await resolveMatchToOpportunity(
+      deps.opportunities, context.userId, context.intentId, match,
+    );
+    if (!("opportunityId" in resolved)) {
+      logger.warn("Could not materialize a match at kickoff", {
+        intentId: context.intentId, ref: match.ref, reason: resolved.reason,
+      });
+      return { status: "rejected" as const, reason: resolved.reason };
+    }
     const brief = await judgment.brief(kickoffContext, {
       match,
       strategy,
-      thread: threadByOpportunity.get(match.opportunityId) ?? [],
+      thread: threadByOpportunity.get(matchRefId(match)) ?? [],
     });
     const result = await deps.negotiations.invoke({
-      opportunityId: match.opportunityId,
+      opportunityId: resolved.opportunityId,
       brief,
       intentId: context.intentId,
       batchId,
@@ -729,9 +760,18 @@ async function compensateFailedOpen(
   failure: unknown,
 ): Promise<void> {
   logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, batchId, error: failure });
+  // A candidate that never became a row has no task to compensate: the
+  // failure was the materialization itself, so there is nothing holding this
+  // batch open. Anything else would look up a task id that is a candidate id.
+  if (match.ref.kind === "candidate") {
+    logger.warn("Nothing to compensate: the match was never opened", {
+      intentId: context.intentId, batchId, candidateId: match.ref.id,
+    });
+    return;
+  }
   // Post-bump: a read that fails here must not fail the turn either.
-  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId).catch((err: unknown) => {
-    logger.error("Could not look up a failed open's task", { opportunityId: match.opportunityId, error: err });
+  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(matchRefId(match)).catch((err: unknown) => {
+    logger.error("Could not look up a failed open's task", { opportunityId: matchRefId(match), error: err });
     return null;
   });
   if (!task || task.state !== "working" || task.metadata.seats[context.intentId]?.batchId !== batchId) return;
@@ -846,11 +886,10 @@ async function wakeForNewMatches(
   try {
     const known = new Set(context.knownMatchIds);
     const arrivals = (await deps.opportunities.readMatches(context.userId, context.intentId))
-      .filter((match) => !known.has(match.opportunityId))
-      .filter((match) => !match.awaitingIntroducerApproval)
+      .filter((match) => !known.has(matchRefId(match)))
       .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
     const unopened = await Promise.all(arrivals.map(async (match) =>
-      (await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId)) ? null : match));
+      (await deps.negotiationDatabase.getNegotiationTaskForOpportunity(matchRefId(match))) ? null : match));
     if (!unopened.some((match) => match !== null)) return;
     logger.info("Waking again for matches that arrived during this turn", { intentId: context.intentId });
     await deps.wakeForMatches({ userId: context.userId, intentId: context.intentId });
@@ -885,7 +924,7 @@ async function recordKickoff(
  * swallowed read here re-opens exactly what the guarantee exists to stop.
  */
 async function spentItsTurnBudget(deps: PersonalAgentDeps, match: PersonalAgentMatch): Promise<boolean> {
-  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId);
+  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(matchRefId(match));
   return task?.state === "paused" && task.metadata.pause?.reason === "turn_cap";
 }
 
@@ -946,7 +985,7 @@ async function executeAct(
       // validator is not the effects boundary. The host may read the signal's
       // wider match set; never let an injected id reach a hidden match that
       // was outside this turn's bounded snapshot.
-      if (!context.matches.some((match) => match.opportunityId === act.opportunityId)) {
+      if (!context.matches.some((match) => matchRefId(match) === act.opportunityId)) {
         logger.warn("Decided acceptance on a match this turn cannot see", {
           intentId: context.intentId,
           opportunityId: act.opportunityId,

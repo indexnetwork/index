@@ -90,9 +90,8 @@ describe('readActionableCounterparties', () => {
         opportunityId: CAMILLE,
         name: 'Camille Dubois',
         status: 'stalled',
-        label: 'Camille Dubois — parked, waiting on you',
-        // Neither is an introduction, so neither is gated.
-        awaitingIntroducerApproval: false,
+        label: 'Camille Dubois — paused',
+        createdAt: new Date('2026-08-01T00:00:00Z'),
       },
       {
         position: 2,
@@ -100,7 +99,7 @@ describe('readActionableCounterparties', () => {
         name: 'Ilya Roth',
         status: 'pending',
         label: 'Ilya Roth — waiting on your decision',
-        awaitingIntroducerApproval: false,
+        createdAt: new Date('2026-08-05T00:00:00Z'),
       },
     ]);
   });
@@ -120,19 +119,6 @@ describe('readActionableCounterparties', () => {
 
     expect(actionable.map((c) => c.name)).toEqual(['Camille Dubois', 'Ilya Roth', 'Nora Vance']);
     expect(actionable[2].label).toBe('Nora Vance — your agents are still negotiating');
-  });
-
-  it('excludes a pairing the client only introduced — a verdict is the parties\' to pass', async () => {
-    const { deps } = harness({
-      listOpportunities: (async () => [
-        row({ actors: [{ userId: USER_ID, role: 'introducer' }, { userId: 'user-2', role: 'peer' }] }),
-        ILYA_ROW,
-      ]) as never,
-    });
-
-    const actionable = await readActionableCounterparties(USER_ID, INTENT_ID, deps);
-
-    expect(actionable.map((c) => c.opportunityId)).toEqual([ILYA]);
   });
 
   it('offers no verdicts rather than losing the turn when the read fails', async () => {
@@ -180,7 +166,7 @@ describe('rejectOpportunity', () => {
     expect(result).toEqual({
       status: 'unknown_counterparty',
       count: 2,
-      actionable: ['Camille Dubois — parked, waiting on you', 'Ilya Roth — waiting on your decision'],
+      actionable: ['Camille Dubois — paused', 'Ilya Roth — waiting on your decision'],
     });
     expect(written).toHaveLength(0);
   });

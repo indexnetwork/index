@@ -31,7 +31,8 @@ import { intentDossierAdapter } from '../../adapters/intent-dossier.adapter';
 import { agentService } from '../../services/agent.service';
 import { AgentDispatcherImpl } from '../../services/agent-dispatcher.service';
 import { chatSessionService } from '../../services/chat.service';
-import { PERSONAL_AGENT_MATCH_STATUSES, passVerdictOnOpportunity, readSignalMatches } from '../agent/negotiator-verdict.host';
+import { discoveryCandidateAdapter } from '../../adapters/discovery-candidate.database.adapter';
+import { passVerdictOnOpportunity, readPersonalAgentMatches } from '../agent/negotiator-verdict.host';
 import { publishPersonalAgentActivity, publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
 
 /**
@@ -90,19 +91,16 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
   dossier: intentDossierAdapter,
   ledger: intentAgentLedgerAdapter,
   opportunities: {
-    // `readSignalMatches`, NOT the degrading `readActionableCounterparties`:
-    // every one of the agent's turns is about this list, and a read that
+    // The union of pending candidates and open opportunities, through the
+    // reader that THROWS — not the degrading `readActionableCounterparties`.
+    // Every one of the agent's turns is about this list, and a read that
     // failed must fail the turn. Swallowed to `[]` it becomes a reflect that
     // saw no negotiations, decided nothing, succeeded — and burned that drain
     // generation's one retained job.
-    readMatches: async (userId, intentId) => (
-      await readSignalMatches(userId, intentId, undefined, PERSONAL_AGENT_MATCH_STATUSES)
-    ).map((match) => ({
-      opportunityId: match.opportunityId,
-      label: match.label,
-      status: match.status,
-      ...(match.awaitingIntroducerApproval ? { awaitingIntroducerApproval: true } : {}),
-    })),
+    readMatches: (userId, intentId) => readPersonalAgentMatches(userId, intentId),
+    // The one place a candidate becomes a row. Returns rather than throws:
+    // it is called below the kickoff round bump.
+    createAndOpen: (_userId, input) => discoveryCandidateAdapter.createAndOpen(input.candidateId),
     // The owner's own verdict, through the untouched owner path — the SAME
     // `updateOpportunityStatus` the Radar's accept calls.
     accept: async (userId, input) => {
@@ -147,7 +145,7 @@ const TOOL_PATH_WAKE_RETRY_MS = 100;
 /**
  * The same hand-off for the surfaces with NOTHING behind them to retry: the
  * chat and MCP tool graphs, where the caller is a user waiting on a
- * `discover_opportunities` answer.
+ * discovery answer.
  *
  * Throwing there would turn a discovery that genuinely persisted matches into
  * a failed tool call, losing the user's results over a transport blip. So it

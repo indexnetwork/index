@@ -343,8 +343,6 @@ type PersistedOpportunityStatus = PersistedOpportunity['status'];
 
 // `pending` belongs to the principal's decision lane.
 const NEGOTIATION_OPEN_STATUSES = new Set<PersistedOpportunityStatus>([
-  'latent',
-  'draft',
   'negotiating',
   'stalled',
 ]);
@@ -353,8 +351,6 @@ const NEGOTIATION_OPEN_STATUSES = new Set<PersistedOpportunityStatus>([
 // status + updatedAt CAS below still applies, so only a caller that observed
 // the stalled row claims the attempt; terminal statuses stay refused.
 const NEGOTIATION_START_STATUSES = new Set<PersistedOpportunityStatus>([
-  'latent',
-  'draft',
   'pending',
   'negotiating',
   'stalled',
@@ -2497,11 +2493,9 @@ export class ConversationDatabaseAdapter {
         .for('update');
       if (!opportunity || !NEGOTIATION_OPEN_STATUSES.has(opportunity.status)) return null;
 
-      const actors = opportunity.actors.filter((actor) => actor.role !== 'introducer');
-      const introducers = opportunity.actors.filter((actor) => actor.role === 'introducer');
+      const actors = opportunity.actors;
       if (
-        !introducers.every((actor) => actor.approved === true)
-        || !actors.some((actor) => actor.userId === input.sourceUserId && actor.networkId === input.networkId)
+        !actors.some((actor) => actor.userId === input.sourceUserId && actor.networkId === input.networkId)
         || !actors.some((actor) => actor.userId === input.candidateUserId)
         || !Object.values(input.seats).some((seat) => seat.userId === input.sourceUserId)
         || !Object.values(input.seats).some((seat) => seat.userId === input.candidateUserId)
@@ -4270,9 +4264,9 @@ export class ConversationDatabaseAdapter {
    */
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
-  ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
+  ): Promise<{ id: string; status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
     if (status === 'accepted' && !acceptedBy) throw new Error('acceptedBy is required when status is accepted');
     const row = await db.transaction(async (tx) => {
       const updates: Record<string, unknown> = { status, updatedAt: new Date() };

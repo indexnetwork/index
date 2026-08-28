@@ -23,7 +23,7 @@
 import type { NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
 import type { NegotiationGraphDatabase, NegotiationRoundLogDatabase, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
-import type { IntentRecord } from "../../../platform/database/entities.js";
+import type { CreateAndOpenResult, IntentRecord } from "../../../platform/database/entities.js";
 import type { NegotiationRoundReflectEnqueueFn } from "../../negotiations/negotiation.round-reflect.js";
 import type { Question } from "../../../protocol/question.js";
 
@@ -223,18 +223,33 @@ export interface PersonalAgentActivityPort {
   publish(messageId: string, activity: PersonalAgentActivity): Promise<void>;
 }
 
+/**
+ * What a match is addressed by for the whole turn.
+ *
+ * `opportunityId` used to be this identifier, but a match discovery has only
+ * found has no row yet. A second optional id would have made every dedup and
+ * re-check site ask "which one is this?"; one discriminated ref keeps them all
+ * reading a single value, and puts the only branch at the moment of open.
+ */
+export type PersonalAgentMatchRef =
+  | { kind: 'candidate'; id: string }
+  | { kind: 'opportunity'; id: string };
+
 /** One of this signal's matches, as the prompt numbers it. */
 export interface PersonalAgentMatch {
-  opportunityId: string;
+  ref: PersonalAgentMatchRef;
   /** One line the model may read and repeat: counterparty + state. */
   label: string;
   status: string;
-  /**
-   * An introduction whose introducer has not approved it yet. Nothing may be
-   * opened on it and the principal is not offered it — the introduction is
-   * not theirs to act on until it is vouched for.
-   */
-  awaitingIntroducerApproval?: boolean;
+}
+
+/** The id every dedup, re-check and ledger site keys on. */
+export function matchRefId(match: PersonalAgentMatch): string {
+  return match.ref.id;
+}
+
+export function opportunityRef(id: string): PersonalAgentMatchRef {
+  return { kind: 'opportunity', id };
 }
 
 /**
@@ -245,6 +260,16 @@ export interface PersonalAgentMatch {
  */
 export interface PersonalAgentOpportunityPort {
   readMatches(userId: string, intentId: string): Promise<PersonalAgentMatch[]>;
+  /**
+   * Materialize a candidate as an opportunity, immediately before opening its
+   * negotiation. RETURNS rather than throws: it is called below the kickoff
+   * round bump, where a throw would be retried into a second strategy message
+   * and a second round.
+   */
+  createAndOpen(
+    userId: string,
+    input: { intentId: string; candidateId: string },
+  ): Promise<CreateAndOpenResult>;
   accept(
     userId: string,
     input: { intentId: string; opportunityId: string; reason?: string },

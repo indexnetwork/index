@@ -187,59 +187,6 @@ describe("OpportunityService.getChatContext", () => {
     mockGatherPresenterContext.mockClear();
   });
 
-  describe("introducer filtering", () => {
-    it("should keep direct (non-introducer) opportunities", async () => {
-      const service = createService([directOpportunity]);
-      const result = await service.getChatContext(VIEWER_ID, PEER_ID);
-
-      expect(result.opportunities).toHaveLength(1);
-      expect(result.opportunities[0].opportunityId).toBe(OPP_ID_DIRECT);
-    });
-
-    it("should keep opportunities where a third party is the introducer", async () => {
-      const service = createService([introducedOpportunity]);
-      const result = await service.getChatContext(VIEWER_ID, PEER_ID);
-
-      expect(result.opportunities).toHaveLength(1);
-      expect(result.opportunities[0].opportunityId).toBe(OPP_ID_INTRODUCED);
-    });
-
-    it("should filter out opportunities where the viewer is the introducer", async () => {
-      const service = createService([directOpportunity, viewerIsIntroducerOpportunity]);
-      const result = await service.getChatContext(VIEWER_ID, PEER_ID);
-
-      expect(result.opportunities).toHaveLength(1);
-      expect(result.opportunities[0].opportunityId).toBe(OPP_ID_DIRECT);
-    });
-
-    it("should filter out opportunities where the peer is the introducer", async () => {
-      const service = createService([directOpportunity, peerIsIntroducerOpportunity]);
-      const result = await service.getChatContext(VIEWER_ID, PEER_ID);
-
-      expect(result.opportunities).toHaveLength(1);
-      expect(result.opportunities[0].opportunityId).toBe(OPP_ID_DIRECT);
-    });
-
-    it("should filter out both viewer-introducer and peer-introducer opportunities", async () => {
-      const service = createService([
-        directOpportunity,
-        viewerIsIntroducerOpportunity,
-        peerIsIntroducerOpportunity,
-      ]);
-      const result = await service.getChatContext(VIEWER_ID, PEER_ID);
-
-      expect(result.opportunities).toHaveLength(1);
-      expect(result.opportunities[0].opportunityId).toBe(OPP_ID_DIRECT);
-    });
-
-    it("should return empty when all opportunities involve chat participants as introducers", async () => {
-      const service = createService([viewerIsIntroducerOpportunity, peerIsIntroducerOpportunity]);
-      const result = await service.getChatContext(VIEWER_ID, PEER_ID);
-
-      expect(result.opportunities).toHaveLength(0);
-    });
-  });
-
   describe("presenter usage", () => {
     it("should call present() not presentCard()", async () => {
       const service = createService([directOpportunity]);
@@ -343,17 +290,6 @@ describe("OpportunityService.getChatContext", () => {
 
       expect(result.opportunities[0].personalizedSummary).not.toContain("abc12345-1234-1234-1234-123456789abc");
       expect(result.opportunities[0].personalizedSummary).toContain("relevant skills in TypeScript");
-    });
-
-    it("should strip introducer mentions from reasoning on presenter failure", async () => {
-      mockPresent.mockImplementationOnce(() => Promise.reject(new Error("LLM timeout")));
-
-      // gatherPresenterContext won't be called on fallback, so introducer comes from actors
-      const service = createService([introducedOpportunity]);
-      const result = await service.getChatContext(VIEWER_ID, PEER_ID);
-
-      expect(result.opportunities[0].personalizedSummary).not.toContain("Alice Introducer connected you");
-      expect(result.opportunities[0].introducerName).toBe("Alice Introducer");
     });
 
     it("should use 'Connection opportunity' when reasoning is empty on fallback", async () => {

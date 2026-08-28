@@ -5,6 +5,7 @@ import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, OPPORTUNITY_ID, SOUR
 import { PersonalAgentGraphFactory, PERSONAL_AGENT_NOTHING_TO_OPEN, PERSONAL_AGENT_POST_ACTION_FAILURE, PERSONAL_AGENT_STRATEGY_FALLBACK, PERSONAL_AGENT_TOOL_BUDGET_EXHAUSTED, type PersonalAgentGraphLike } from "../../internal/agents/personal-agent/agent.graph.js";
 import { canonicalCounterpartyStatusProse } from "../../internal/agents/personal-agent/agent.judgment.js";
 import type { PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentMatch, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentSeatBriefInput, PersonalAgentTurnContext } from "../../internal/agents/personal-agent/agent.types.js";
+import { matchRefId } from "../../internal/agents/personal-agent/agent.types.js";
 import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { Negotiations } from "../negotiations.js";
 import { requestContext, setRequestContextStore } from "../../internal/shared/observability/request-context.js";
@@ -34,6 +35,8 @@ class FakePrincipalHost {
   readonly dossierEntries: Array<{ id: string; text: string; source: string; createdAt: Date }> = [];
   readonly ledgerRows: Array<{ event: Record<string, unknown>; act: Record<string, unknown> }> = [];
   readonly publishedChunks: Array<{ messageId: string; seq: number; content: string }> = [];
+  /** Candidate ids a kickoff materialized this run. */
+  readonly createdAndOpened: string[] = [];
   readonly accepted: Array<{ opportunityId: string; reason?: string }> = [];
   readonly retireCalls: string[] = [];
   private messageCounter = 0;
@@ -79,16 +82,17 @@ class FakePrincipalHost {
     readMatches: async () => [...this.negotiations.opportunities.values()]
       .filter((opportunity) => !TERMINAL_STATUSES.has(opportunity.status))
       .map((opportunity): PersonalAgentMatch => {
-        const introducers = opportunity.actors.filter((actor) => actor.role === "introducer");
         return {
-          opportunityId: opportunity.id,
+          ref: { kind: "opportunity" as const, id: opportunity.id },
           label: `Match on ${opportunity.id}`,
           status: opportunity.status,
-          ...(introducers.length > 0 && !introducers.every((actor) => actor.approved === true)
-            ? { awaitingIntroducerApproval: true }
-            : {}),
         };
       }),
+    createAndOpen: async (_userId, input) => {
+      this.createdAndOpened.push(input.candidateId);
+      const opportunityId = `opp-from-${input.candidateId}`;
+      return { status: "created", opportunityId };
+    },
     accept: async (_userId, input) => {
       this.accepted.push({ opportunityId: input.opportunityId, ...(input.reason ? { reason: input.reason } : {}) });
       return { status: "executed", counterparty: "the match" };
@@ -185,11 +189,11 @@ class ScriptedJudgment implements PersonalAgentJudgment {
 
   async brief(context: PersonalAgentTurnContext, input: { match: PersonalAgentMatch; strategy: string }): Promise<string> {
     this.briefCalls.push({
-      opportunityId: input.match.opportunityId,
+      opportunityId: matchRefId(input.match),
       strategy: input.strategy,
       dossier: context.dossier.map((entry) => entry.text),
     });
-    return `Brief for ${input.match.opportunityId}: ${input.strategy}`;
+    return `Brief for ${matchRefId(input.match)}: ${input.strategy}`;
   }
 
   readonly seatBriefCalls: PersonalAgentSeatBriefInput[] = [];
@@ -1143,28 +1147,6 @@ describe("PersonalAgent — kickoff safety at the edges", () => {
 });
 
 describe("PersonalAgent — what a turn may open, and what it may claim", () => {
-  test("an introduction its introducer has not approved is never opened, even when another match wakes the turn", async () => {
-    // Discovery's gate only decides whom to WAKE. One plain match wakes this
-    // turn; the kickoff then re-reads the whole match list, and without a gate
-    // of its own it would open the unapproved introduction too — flipping it
-    // to `negotiating` and sending outreach on the introducer's behalf.
-    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
-    const { agent, negotiationHost, principal } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
-    negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.actors.push({
-      userId: "dave-introducer", intent: INTENT_ID, networkId: "network-1", role: "introducer",
-    });
-
-    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
-
-    expect(negotiationHost.tasks.size).toBe(1);
-    expect([...negotiationHost.tasks.values()][0]!.metadata.opportunityId).toBe(OPPORTUNITY_ID);
-    expect(negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.status).toBe("latent");
-    expect(negotiationHost.opportunityStatusUpdates.map((update) => update.id)).toEqual([OPPORTUNITY_ID]);
-    // No brief was spent on it either.
-    expect(judgment.briefCalls.map((call) => call.opportunityId)).toEqual([OPPORTUNITY_ID]);
-    expect(principal.dmMessages).toHaveLength(2); // strategy, then natural terminal response
-  });
-
   test("an open that failed AFTER outreach is not labelled 'nothing has been said'", async () => {
     const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID]);
@@ -1328,21 +1310,6 @@ describe("PersonalAgent — round-4 regressions", () => {
     expect(principal.ledgerRows.at(-1)?.act.tool).toBe("message_user");
   });
 
-  test("an unapproved introduction is filtered before a brief is spent on it", async () => {
-    const judgment = new ScriptedJudgment([() => [{ tool: "kickoff", reasoning: "Reaching out." }]]);
-    const { agent, negotiationHost, judgmentMatches } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);
-    negotiationHost.opportunities.get(SECOND_OPPORTUNITY_ID)!.actors.push({
-      userId: "dave-introducer", intent: INTENT_ID, networkId: "network-1", role: "introducer",
-    });
-
-    await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
-
-    // The host reader flags it, so the kickoff never reaches the open at all.
-    expect(judgmentMatches().some((match) => match.opportunityId === SECOND_OPPORTUNITY_ID
-      && match.awaitingIntroducerApproval === true)).toBe(true);
-    expect(judgment.briefCalls.map((call) => call.opportunityId)).toEqual([OPPORTUNITY_ID]);
-    expect(negotiationHost.tasks.size).toBe(1);
-  });
 });
 
 describe("PersonalAgent — round-5 regressions", () => {
@@ -1617,7 +1584,7 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
 
     await agent.invoke({ userId: SOURCE_USER_ID, intentId: INTENT_ID, event: "matches_ready" });
 
-    expect(judgment.strategyCalls[0]!.kickoffTargets.map((match) => match.opportunityId)).toEqual([SECOND_OPPORTUNITY_ID]);
+    expect(judgment.strategyCalls[0]!.kickoffTargets.map((match) => matchRefId(match))).toEqual([SECOND_OPPORTUNITY_ID]);
     expect(judgment.briefCalls[0]).toMatchObject({
       opportunityId: SECOND_OPPORTUNITY_ID,
       strategy: "I will put your constraints to each of them and find out who can actually move.",
@@ -1953,8 +1920,8 @@ describe("PersonalAgent — round-6: per-seat binding and the kickoff region", (
     const judgment = new ScriptedJudgment([(context) => {
       // The pending one is listed for the principal to accept, and is NOT a
       // kickoff target; the plain one is both.
-      expect(context.matches.map((match) => match.opportunityId).sort()).toEqual([OPPORTUNITY_ID, SECOND_OPPORTUNITY_ID]);
-      expect(context.kickoffTargets.map((match) => match.opportunityId)).toEqual([OPPORTUNITY_ID]);
+      expect(context.matches.map((match) => matchRefId(match)).sort()).toEqual([OPPORTUNITY_ID, SECOND_OPPORTUNITY_ID]);
+      expect(context.kickoffTargets.map((match) => matchRefId(match))).toEqual([OPPORTUNITY_ID]);
       return [{ tool: "kickoff", reasoning: "Reaching out." }];
     }]);
     const { agent, negotiationHost } = buildCycle(judgment, [CANDIDATE_USER_ID, "carol"]);

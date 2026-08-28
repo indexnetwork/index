@@ -3,6 +3,7 @@ import { readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveInten
 import { tasks } from '../schemas/conversation.schema';
 import { notArchivedNegotiationTaskWhere } from './negotiation-attempt.atomic';
 
+import { discoveryCandidateAdapter, type DiscoveryCandidateDatabaseAdapter } from './discovery-candidate.database.adapter';
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
@@ -2427,6 +2428,16 @@ export class ChatDatabaseAdapter {
     await this.softDeleteNetwork(networkId);
   }
 
+  // Discovery candidates (delegate to DiscoveryCandidateDatabaseAdapter)
+  async upsertDiscoveryMatchCandidates(
+    items: Parameters<DiscoveryCandidateDatabaseAdapter['upsertDiscoveryMatchCandidates']>[0],
+  ) {
+    return discoveryCandidateAdapter.upsertDiscoveryMatchCandidates(items);
+  }
+  async listPendingCandidatesForIntent(userId: string, intentId: string) {
+    return discoveryCandidateAdapter.listPendingCandidatesForIntent(userId, intentId);
+  }
+
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)
   async createOpportunity(data: CreateOpportunityInput): Promise<OpportunityRow> {
     return this.opportunityAdapter.createOpportunity(data);
@@ -2510,7 +2521,7 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatus']>[3],
   ): Promise<OpportunityRow | null> {
@@ -2530,7 +2541,7 @@ export class ChatDatabaseAdapter {
    */
   async updateOpportunityStatusIfNetworkEligible(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     actors: Array<{ userId: string; networkId: string }>,
     eligibility: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[3],
     expectedStatus?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[4],
@@ -2543,20 +2554,13 @@ export class ChatDatabaseAdapter {
       expectedStatus,
     );
   }
-  async updateOpportunityActorApproval(
-    id: string,
-    introducerUserId: string,
-    approved: boolean,
-  ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
-  }
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
   }
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: Parameters<OpportunityDatabaseAdapter['stampOpportunityActorAction']>[4],
   ): Promise<OpportunityRow | null> {
@@ -3267,7 +3271,7 @@ export class ChatDatabaseAdapter {
           subsystem: 'database',
           'db.system': 'postgresql',
           'db.operation': 'vector_search',
-          'search.strategy': 'context-to-intent',
+          'search.strategy': 'context-embedding',
           'search.index_scope_count': params.networkIds.length,
           'search.limit': params.limit,
         },

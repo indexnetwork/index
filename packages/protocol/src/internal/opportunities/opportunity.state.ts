@@ -4,6 +4,7 @@ import type { Lens } from '../../platform/discovery/embedder.js';
 import type { EvaluatorEntity } from './opportunity.match-explainer.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
+import type { DiscoveryMatchCandidate } from '../../platform/database.js';
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -46,11 +47,11 @@ export interface TargetNetwork {
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
-  /** Source premise that produced this candidate (set when discoverySource is 'premise-similarity'). */
+  /** Source premise that produced this candidate, when premise-grounded. */
   sourcePremiseId?: Id<'premises'>;
   /** Candidate premise that matched this candidate (set for premise-based matches). */
   candidatePremiseId?: Id<'premises'>;
-  /** Source context that produced this candidate (set when discoverySource is 'context-to-intent'). */
+  /** Source context that produced this candidate, when context-grounded. */
   sourceContextId?: string;
   /** Candidate context that matched this candidate (set for user_context-based matches). */
   candidateContextId?: string;
@@ -60,8 +61,8 @@ export interface CandidateMatch {
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
-  /** How this candidate was found: 'query' (HyDE from search text), 'premise-similarity', 'context-to-intent', or 'context-similarity'. */
-  discoverySource?: 'query' | 'premise-similarity' | 'context-to-intent' | 'context-similarity';
+  /** How this candidate was found. HyDE query retrieval is the only path. */
+  discoverySource?: 'query';
   /** Which discovery strategies found this candidate (set by mergeStrategyCandidates). */
   matchedStrategies?: string[];
   /** Typed evidence that explains why this candidate entered evaluation. */
@@ -119,8 +120,6 @@ export interface OpportunityPersistenceOutcome {
  * Options passed to the graph
  */
 export interface OpportunityGraphOptions {
-  /** Initial status for created opportunities (default: 'pending') */
-  initialStatus?: OpportunityStatus;
   /** Maximum opportunities to return (default: 20) */
   limit?: number;
   /** Pre-inferred lenses (if not provided, lens inference runs automatically in HyDE graph) */
@@ -184,31 +183,16 @@ export const OpportunityGraphState = Annotation.Root({
 
   /**
    * Operation mode controls graph flow:
-   * - 'create': Existing discover pipeline (Prep → Scope → Discovery → Evaluation → Ranking → Persist)
-   * - 'create_introduction': Introduction path (validation → evaluation → persist) for chat-driven intros
+   * - 'create': the discovery pipeline (Prep → Scope → Discovery → Evaluation → Ranking → EmitCandidates)
    * - 'read': List opportunities filtered by userId and optionally networkId (fast path)
    * - 'update': Change opportunity status (accept, reject, etc.)
    * - 'delete': Expire/archive an opportunity
-   * - 'send': Promote latent opportunity to pending + queue notification
-   * - 'approve_introduction': Mark the caller as having approved a latent introducer opportunity.
    *
-   * Defaults to 'create' for backward compatibility.
+   * Defaults to 'create'.
    */
-  operationMode: Annotation<'create' | 'create_introduction' | 'read' | 'update' | 'delete' | 'send' | 'approve_introduction'>({
+  operationMode: Annotation<'create' | 'read' | 'update' | 'delete'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'create' as const,
-  }),
-
-  /** Introduction mode: pre-gathered entities (profiles + intents per party). */
-  introductionEntities: Annotation<EvaluatorEntity[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
-  /** Introduction mode: optional hint from the introducer. */
-  introductionHint: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
   }),
 
   /** When set (e.g. chat scope), networkId must match this. */
@@ -216,14 +200,7 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
-
-  /** Set by intro_evaluation; used by persist to build manual detection and introducer actor. */
-  introductionContext: Annotation<{ createdByName?: string } | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /** Target opportunity ID for update/delete/send modes. */
+  /** Target opportunity ID for update/delete modes. */
   opportunityId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
@@ -285,7 +262,7 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** User context embeddings per network (from prep). Used for context-to-intent discovery. */
+  /** User context embeddings per network (from prep). Used for discovery. */
   sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; text: string; embedding: number[] }>>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
@@ -341,8 +318,8 @@ export const OpportunityGraphState = Annotation.Root({
 
   // ─── Output Fields (Overwrite per turn) ───
 
-  /** Final ranked and persisted opportunities */
-  opportunities: Annotation<Opportunity[]>({
+  /** Pairs discovery recorded this run. Discovery creates no opportunities. */
+  candidatesEmitted: Annotation<DiscoveryMatchCandidate[]>({
     reducer: (curr, next) => next,
     default: () => [],
   }),

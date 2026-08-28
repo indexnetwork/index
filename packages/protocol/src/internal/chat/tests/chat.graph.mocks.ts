@@ -72,7 +72,7 @@ const defaultOwnedIndex = (): OwnedIndex => ({
 });
 
 /** Actor shape for opportunity mocks (role determines visibility). */
-export type MockOpportunityActor = { networkId: string; userId: string; role: "introducer" | "patient" | "agent" | "peer" | "party"; intent?: string };
+export type MockOpportunityActor = { networkId: string; userId: string; role: "patient" | "agent" | "peer" | "party"; intent?: string };
 
 /** Build a minimal Opportunity for list_opportunities tests. */
 export function mockOpportunity(overrides: {

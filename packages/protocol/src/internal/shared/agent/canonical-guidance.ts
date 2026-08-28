@@ -169,7 +169,7 @@ Discovery is networked — it only finds matches within shared networks. This pr
 
 **Opportunity** is a discovered connection between two or more users based on complementary signals and shared network membership. Each opportunity has:
 - Parties (the people being connected)
-- Roles (introducer, party)
+- Roles (party)
 - Status (draft → pending → accepted/rejected/expired)
 - Match reasoning (why they're a good fit)
 - Confidence score (0-1 from evaluation)
