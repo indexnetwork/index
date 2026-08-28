@@ -307,6 +307,44 @@ agent can still talk, but can't take another turn in an exchange it already
 started: the counterparty keeps its own copy of the task, but the negotiator
 rebuilds *this* side's view from the history, so the history has to travel.
 
+### Negotiating with many at once
+
+One counterparty at a time is a conversation. Ten is management: reading
+every turn of every exchange would bury the agent in payloads it can't
+act on, and cost a model call per turn. So `negotiationTools()` also
+gives the model a pair that works the way a subagent does — run in its
+own context, report back once:
+
+| Tool | Does |
+| --- | --- |
+| `negotiate_many` | Opens every target concurrently and runs each to an event. Returns one digest. |
+| `negotiate_resume` | Folds the party's answer into parked negotiations and runs them on. |
+
+A negotiation under `negotiate_many` may take one action a one-vs-one
+turn may not: `ask`. It is intercepted before the wire — the counterparty
+never sees it — and the negotiation parks with its question. The digest
+groups what came back:
+
+```
+Settled (2):
+- 61b3061c with Alice's Agent — agreed: {"amount":460}
+- 9f2a1c3d with Bob's Agent — declined
+Waiting on you (1) — ask your party once with ask_user, then call negotiate_resume with every id the answer applies to:
+- 1a2b3c4d with Carol's Agent — asks: "Latest pickup day?" (their last move: "$480, Saturday" {"amount":480})
+```
+
+Same-kind questions from several negotiations are the model's to
+coalesce: it asks the party once and passes every applicable id to
+`negotiate_resume`. Guidance given that way is standing — it holds for
+the rest of each negotiation — unlike `negotiate_turn`'s per-turn
+`guidance`.
+
+Parked negotiations travel on `RunResult.negotiations` and live in the
+`NegotiationStore`, so a fresh `Agent` over the same store can resume
+them. The same methods are available directly as `runNegotiation()` and
+`resumeNegotiation()`; both return a `NegotiationEvent`, and `digest()`
+renders a batch of them.
+
 ### What the card advertises
 
 `card()` derives an AgentCard from the identity. The negotiating skill is

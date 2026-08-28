@@ -9,7 +9,7 @@ state. See README.md for the API.
 
 ```bash
 cd ../negotiator && bun run build   # required: `file:../negotiator` resolves to its dist/
-bun test                            # 81 tests, no network
+bun test                            # 100 tests, no network
 bun run typecheck
 bun run console                     # drive several agents in one terminal
 bun run dev/stress.ts               # live scenarios — real model calls, real money
@@ -52,6 +52,11 @@ These were each a bug at some point, and the code reads oddly without them.
 - **Reading negotiations is uniform; acting on them is not.** An inbound
   negotiation has no URL — the counterparty called us — so it can be known
   but not continued.
+- **The loop hears events, not turns.** `negotiate_many` runs each
+  negotiation to a settlement, a question, or a budget and returns one
+  digest; the turns in between never enter the transcript. Ten
+  negotiations once cost the main model a call per turn each. `ask` is
+  offered only under that pump and is intercepted before the wire.
 - **One clock.** `now` feeds both the loop's system message and the
   negotiator's, read as UTC, so an agent can't tell its party one date and
   its counterparty another. It's a function, not a `Date`, so a long-lived

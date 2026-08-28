@@ -2,7 +2,7 @@
 // identity, scopeable to an intent, with a loop that can stop to ask the
 // party it represents a question — and negotiate with other agents over
 // A2A, one turn at a time, via @indexnetwork/negotiator.
-export { Agent, DEFAULT_ACTIONS } from "./core/agent.ts";
+export { Agent, ASK_ACTION, DEFAULT_ACTIONS } from "./core/agent.ts";
 export type {
   AgentOptions,
   DefaultAction,
@@ -20,6 +20,7 @@ export {
 export type { NegotiationToolOptions, Tool, ToolContext } from "./core/tools.ts";
 
 export { MemoryNegotiationStore } from "./core/sessions.ts";
+export { digest } from "./core/digest.ts";
 export { ModelClient, DEFAULT_MODEL } from "./core/model.ts";
 export type {
   ModelClientOptions,
@@ -36,6 +37,7 @@ export type {
   Intent,
   Negotiation,
   NegotiationEnd,
+  NegotiationEvent,
   NegotiationSession,
   NegotiationStore,
   NegotiationTurn,

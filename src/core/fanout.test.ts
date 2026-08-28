@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   Negotiator,
   type DecideOptions,
@@ -11,6 +11,7 @@ import { digest } from "./digest.ts";
 import { negotiationTools, type Tool } from "./tools.ts";
 import type { ModelMessage, ToolCall } from "./model.ts";
 import type { NegotiationSession } from "./types.ts";
+import { MemoryNegotiationStore } from "./sessions.ts";
 
 /** A Negotiator whose decide() replays a script, recording both the
  * state and the options each call was handed. */
@@ -456,6 +457,106 @@ describe("negotiate_many / negotiate_resume", () => {
     } finally {
       a.stop();
       b.stop();
+    }
+  });
+});
+
+const originalFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+/** Intercepts only OpenRouter chat calls and replays scripted assistant
+ * messages; A2A traffic on local ports passes through. */
+function mockModel(replies: Partial<ModelMessage>[]) {
+  const requests: { messages: ModelMessage[] }[] = [];
+  let call = 0;
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : String((input as Request).url ?? input);
+    if (!url.startsWith("https://openrouter.ai")) {
+      return (originalFetch as (i: unknown, x?: RequestInit) => Promise<Response>)(input, init);
+    }
+    requests.push(JSON.parse(String(init?.body)));
+    const message = replies[call] ?? replies.at(-1);
+    call++;
+    return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
+  }) as unknown as typeof fetch;
+  return requests;
+}
+
+function call(name: string, args: unknown, id = `call_${name}`): ToolCall {
+  return { id, type: "function", function: { name, arguments: JSON.stringify(args) } };
+}
+
+describe("through the agent loop", () => {
+  test("three negotiations cost the main model one round, not three", async () => {
+    const servers = [1, 2, 3].map((n) =>
+      serve(
+        new Agent({
+          ...seller,
+          identity: { name: `Seller ${n}`, id: `did:example:s${n}` },
+          negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator,
+        }),
+      ),
+    );
+    try {
+      const targets = servers.map((s, i) => ({ url: s.url, objective: `bike ${i}` }));
+      const requests = mockModel([
+        { role: "assistant", content: "", tool_calls: [call("negotiate_many", { targets })] },
+        { role: "assistant", content: "All three agreed." },
+      ]);
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator,
+      });
+
+      const result = await agent.run("Buy a bike from whoever will sell.");
+
+      expect(result.end).toBe("done");
+      expect(requests).toHaveLength(2);
+      const toolResult = requests[1]?.messages.at(-1);
+      expect(toolResult?.role).toBe("tool");
+      expect(toolResult?.content).toStartWith("Settled (3):");
+      expect(result.negotiations).toHaveLength(3);
+    } finally {
+      for (const s of servers) s.stop();
+    }
+  });
+
+  test("a negotiation parked in one process resumes in another", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([
+          { action: "counter", message: "$480?" },
+          { action: "accept", message: "OK." },
+        ]).negotiator,
+      }),
+    );
+    try {
+      const sessions = new MemoryNegotiationStore();
+      const first = new Agent({
+        ...buyer,
+        sessions,
+        negotiator: scripted([
+          { action: "propose", message: "$400?" },
+          { action: "ask", message: "Ceiling?" },
+        ]).negotiator,
+      });
+      const parked = await first.runNegotiation(url, {}, { negotiations: new Map() });
+      expect(parked.kind).toBe("asking");
+
+      const second = new Agent({
+        ...buyer,
+        sessions,
+        negotiator: scripted([{ action: "counter", message: "$450." }]).negotiator,
+      });
+      const event = await second.resumeNegotiation(parked.id, "$460", { negotiations: new Map() });
+
+      expect(event.kind).toBe("settled");
+      expect(sessions.get(parked.id)?.pending).toBeUndefined();
+    } finally {
+      stop();
     }
   });
 });
