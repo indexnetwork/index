@@ -5,41 +5,8 @@ set -euo pipefail
 MAC_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$MAC_ROOT"
 
-if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "NativeAPIStreamDelegateFixture" ] && [ "$#" -eq 2 ]; then
-    OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/native-api-stream-delegate-fixture"
-    swiftc -parse-as-library -framework Foundation -framework Security -framework WebKit \
-        Security/Sources/IndexKeychainStore.swift \
-        Sources/OwnerCredentialStore.swift \
-        Sources/NativeAPIRequestBridge.swift \
-        Tests/NativeAPIStreamDelegateFixture.swift \
-        -o "$OUT"
-    "$OUT"
-    exit 0
-fi
-if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "NativeAPIBodyValidationFixture" ] && [ "$#" -eq 2 ]; then
-    OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/native-api-body-validation-fixture"
-    swiftc -parse-as-library -framework Foundation -framework Security -framework WebKit \
-        Security/Sources/IndexKeychainStore.swift \
-        Sources/OwnerCredentialStore.swift \
-        Sources/NativeAPIRequestBridge.swift \
-        Tests/NativeAPIBodyValidationFixture.swift \
-        -o "$OUT"
-    "$OUT"
-    exit 0
-fi
-if [ "${1:-}" = "--fixture" ] && [ "${2:-}" = "NativeAPIQuarantineFixture" ] && [ "$#" -eq 2 ]; then
-    OUT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/native-api-quarantine-fixture"
-    swiftc -parse-as-library -DINDEX_NATIVE_FIXTURE -framework Foundation -framework Security -framework WebKit \
-        Security/Sources/IndexKeychainStore.swift \
-        Sources/OwnerCredentialStore.swift \
-        Sources/NativeAPIRequestBridge.swift \
-        Tests/NativeAPIQuarantineFixture.swift \
-        -o "$OUT"
-    "$OUT"
-    exit 0
-fi
 if [ "$#" -ne 0 ]; then
-    echo "usage: $0 [--fixture NativeAPIStreamDelegateFixture|--fixture NativeAPIBodyValidationFixture|--fixture NativeAPIQuarantineFixture]" >&2
+    echo "usage: $0" >&2
     exit 64
 fi
 

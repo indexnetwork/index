@@ -61,7 +61,7 @@ Services sit between controllers and infrastructure, with adapters providing pro
 - Implementing protocol interfaces from `src/lib/protocol/interfaces/`
 - Being passed to graph factories by controllers
 - Wrapping infrastructure (database, embedder, scraper, cache, queue)
-- Providing testable interfaces for protocol layer
+- Implementing the protocol layer's interfaces
 - Defined in `src/adapters/` directory
 
 ### Services MUST Use Database Adapters
@@ -213,7 +213,6 @@ export class UserService {
 ```
 
 **Why Use Adapters:**
-- ✅ **Testability**: Easy to mock adapters in tests
 - ✅ **Separation of Concerns**: Database logic in adapters, business logic in services
 - ✅ **Consistency**: All data access follows the same pattern
 - ✅ **Type Safety**: Adapters provide typed interfaces
@@ -260,7 +259,7 @@ export class EnrichmentService {
 - ✅ Adapters → Use Drizzle directly (`db.select()`, `db.insert()`, etc.)
 - ❌ Services → Never import `db` from `../lib/drizzle/drizzle`
 - ❌ Services → Never import Drizzle operators directly
-- ✅ Constructor injection: `constructor(private db = adapter)` for testability
+- ✅ Constructor injection: `constructor(private db = adapter)` keeps the dependency explicit and swappable
 
 ### 2. Logging
 - Use standard logger: \`import { log } from '../lib/log';\`.

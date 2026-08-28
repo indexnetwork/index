@@ -9,8 +9,7 @@ This document provides comprehensive guidelines for writing controller files in 
 3. [Adapter Pattern Guidelines](#adapter-pattern-guidelines)
 4. [Decorator Usage](#decorator-usage)
 5. [Dependency Injection Patterns](#dependency-injection-patterns)
-6. [Testing Guidelines](#testing-guidelines)
-7. [Best Practices](#best-practices)
+6. [Best Practices](#best-practices)
 
 ---
 
@@ -61,10 +60,9 @@ graph TB
 
 1. **Controllers use services only**: Controllers MUST use services for all data and orchestration; they MUST NOT import adapters or `db`/schema.
 2. **Services use adapters**: Services are the only layer that import and use adapters (and thus access the database or external APIs via adapters).
-3. **Tests use services only**: Controller spec files MUST use services for setup, teardown, and assertions; they MUST NOT import adapters or `db`/schema.
-4. **Adapter pattern**: Adapters live in `src/adapters/`, implement protocol interfaces, and are used only inside services (and optionally passed through to graph factories by services).
-5. **No direct DB in controllers or tests**: Neither controllers nor their tests import `db`, schema, or Drizzle operators.
-6. **Decorator-based routing**: Routes and guards are defined via TypeScript decorators.
+3. **Adapter pattern**: Adapters live in `src/adapters/`, implement protocol interfaces, and are used only inside services (and optionally passed through to graph factories by services).
+4. **No direct DB in controllers**: Controllers do not import `db`, schema, or Drizzle operators.
+5. **Decorator-based routing**: Routes and guards are defined via TypeScript decorators.
 
 ### Layering Summary
 
@@ -72,7 +70,6 @@ graph TB
 |-------------|------------------------------------|-------------------------|
 | Controllers | Services, decorators, guards, log | Adapters, `db`, schema  |
 | Services    | Adapters, protocol factories       | (nothing forbidden)     |
-| Tests       | Services, controller under test   | Adapters, `db`, schema  |
 
 **Example (controller using only services):**
 ```typescript
@@ -159,23 +156,20 @@ export class SomeController {
 - Handle HTTP concerns (parsing, validation, response formatting)
 - Delegate all business logic to services
 
-**Controller spec files** must follow the same principle: use **services** for setup, teardown, and assertions (not adapters or `db`/schema). See [Testing Guidelines](#testing-guidelines).
-
 **Services** are the only layer that import and use adapters (and thus access the database or external systems).
 
-If some controllers or specs still import adapters directly, treat that as technical debt: the target state is controllers and tests using services only, with adapters confined to services.
+If some controllers still import adapters directly, treat that as technical debt: the target state is controllers using services only, with adapters confined to services.
 
 ---
 
 ## Adapter Pattern Guidelines (for Services)
 
-Adapters bridge the gap between external dependencies and protocol interfaces. They are defined in `src/adapters/` and are **imported and used only by services** (never by controllers or by controller tests).
+Adapters bridge the gap between external dependencies and protocol interfaces. They are defined in `src/adapters/` and are **imported and used only by services** (never by controllers).
 
 ### Who Uses Adapters
 
 - **Services** import adapters, instantiate them, and use them for all database and external API access. Services may also pass adapters to graph factories when orchestrating protocol-layer flows.
 - **Controllers** do not import or use adapters; they call services only.
-- **Controller tests** do not import or use adapters; they use services for setup, teardown, and assertions.
 
 ### When to Create New Adapters
 
@@ -218,9 +212,8 @@ export async function syncEnrichment(userId: string) {
 
 ### Adapter Best Practices
 
-1. **Only services import adapters**: Controllers and tests depend on services, not adapters.
+1. **Only services import adapters**: Controllers depend on services, not adapters.
 2. **Reuse existing adapters**: Check `src/adapters/` before creating new ones.
-3. **Services expose what tests need**: For controller tests to use services only, services must expose the operations needed for setup/teardown/assertions (e.g. create user, delete by email, get profile row).
 
 ---
 
@@ -319,8 +312,7 @@ export interface Embedder extends EmbeddingGenerator, VectorStore { }
 **Important**: Graphs should not depend on the full `Database` interface. Instead, they should use TypeScript's `Pick` utility to require only the specific methods they need. This ensures:
 
 1. **Minimal coupling** - Graphs only depend on what they actually use
-2. **Easier testing** - Mocks only need to implement required methods
-3. **Clear contracts** - Self-documenting which database operations a graph needs
+2. **Clear contracts** - Self-documenting which database operations a graph needs
 
 #### Graph Factory Example
 
@@ -405,141 +397,6 @@ Factories receive dependencies and create configured graph instances:
 const graph = this.factory.createGraph();
 const result = await graph.invoke({ userId: user.id });
 ```
-
----
-
-## Testing Guidelines
-
-Test files follow the pattern: `{feature}.controller.spec.ts`.
-
-### CRITICAL: Specs Use Services Only
-
-**Controller spec files MUST NOT:**
-- Import `db` from `../lib/drizzle/drizzle`
-- Import `schema` from `../schemas/database.schema`
-- Import **adapters** from `../adapters/`
-- Import Drizzle operators (`eq`, `and`, `desc`, etc.)
-- Call `closeDb()` in `afterAll` (multiple spec files run in the same process and share the connection)
-
-**Controller spec files MUST:**
-- Use **services** for all setup, teardown, and assertions (same as controllers: no direct adapter or db access)
-- Rely on service APIs that expose the operations tests need (e.g. create test user, delete by email, get profile for assertion)
-
-**Services** are the only layer that import adapters; they must expose whatever controller tests need for test data and assertions (e.g. `userService.findByEmail`, `userService.createTestUser`, `enrichmentService.getProfileRow`, cleanup helpers). This keeps controllers and their tests aligned: both use only services.
-
-### Test File Structure
-
-```typescript
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-
-import { config } from "dotenv";
-config({ path: '.env.test' });
-
-import { SomeController } from "./some.controller";
-import type { AuthenticatedUser } from "../guards/auth.guard";
-import { userService } from "../services/user.service";
-import { enrichmentService } from "../services/enrichment.service";
-
-describe("SomeController Integration", () => {
-  let controller: SomeController;
-  let testUserId: string;
-
-  beforeAll(async () => {
-    // Setup via services (see pattern below)
-  });
-
-  afterAll(async () => {
-    // Cleanup via services; do NOT call closeDb()
-  });
-
-  test("should do something", async () => {
-    // Test implementation
-  }, 60000);
-});
-```
-
-### Setup and Teardown Pattern (Services)
-
-Services must expose the operations tests need (e.g. for test users and profiles). Then specs use only those services:
-
-```typescript
-beforeAll(async () => {
-  const email = "test-controller@example.com";
-
-  const existingUser = await userService.findByEmail(email);
-  if (existingUser) {
-    await enrichmentService.deleteByUserId(existingUser.id);
-    await userService.deleteByEmail(email);
-  }
-
-  const user = await userService.createTestUser({
-    email,
-    name: "Test User",
-    intro: "Test intro",
-    location: "Test Location",
-    socials: { x: "https://x.com/test" },
-  });
-  testUserId = user.id;
-
-  controller = new SomeController();
-});
-
-afterAll(async () => {
-  if (testUserId) {
-    await enrichmentService.deleteByUserId(testUserId);
-    await userService.deleteById(testUserId);
-  }
-  // Do not close db: other integration specs may run in the same process.
-});
-```
-
-### Test Case Pattern (Assert via Services)
-
-```typescript
-test("sync should generate a profile for a new user", async () => {
-  const mockRequest = {} as Request;
-  const mockUser: AuthenticatedUser = {
-    id: testUserId,
-    email: "test@example.com",
-    name: "Test User"
-  };
-
-  const result = await controller.sync(mockRequest, mockUser);
-
-  const profile = await enrichmentService.getProfileRow(testUserId);
-  expect(profile).not.toBeNull();
-  expect(profile!.identity?.name).toBeDefined();
-  expect(profile!.embedding).not.toBeNull();
-  expect(profile!.hydeDescription).not.toBeNull();
-}, 120000);
-```
-
-### Services Used in Specs
-
-Tests call the same services the controller uses, plus any helpers services expose for test data (e.g. `createTestUser`, `findByEmail`, `deleteByEmail`, `getProfileRow`, `deleteByUserId`). Those helpers are implemented inside the service using adapters. Controllers and specs never import adapters.
-
-### Testing Idempotency
-
-```typescript
-test("sync should be idempotent (second run should just verify)", async () => {
-  const mockUser: AuthenticatedUser = { id: testUserId, email: "test@example.com", name: "Test User" };
-
-  await controller.sync({} as Request, mockUser);
-  await controller.sync({} as Request, mockUser);
-
-  const profile = await enrichmentService.getProfileRow(testUserId);
-  expect(profile).not.toBeNull();
-}, 60000);
-```
-
-### Test Timeouts
-
-| Scenario | Recommended Timeout |
-|----------|---------------------|
-| Simple DB operations | Default (5000ms) |
-| Single LLM call | 30000ms |
-| Graph with multiple LLM calls | 60000-120000ms |
-| External API integration | 60000ms |
 
 ---
 
@@ -661,8 +518,6 @@ return Response.json(result);
 3. **Ensure services** for this feature exist and import/use adapters internally
 4. **Create controller class** with `@Controller` decorator
 5. **Define methods** with route decorators and guards; call services for all logic
-6. **Create test file**: `src/controllers/{feature}.controller.spec.ts`
-7. **Write integration tests** using **services only** (no adapters, no `db`/schema); services must expose any helpers tests need for setup, teardown, and assertions
 
 ### Minimal Controller Template
 

@@ -28,8 +28,9 @@ smallest useful version.
 
 ## Repository map and boundaries
 
-This is a Bun monorepo. See `docs/design/architecture-overview.md` for the
-architecture and `docs/guides/development-reference.md` for commands.
+This is a Bun monorepo. The table below is the whole architecture map; commands,
+conventions, and workflow appear later in this file. There is no `docs/`
+directory. It was deleted on 2026-08-28 and is not being restored.
 
 | Path | Responsibility |
 |---|---|
@@ -52,8 +53,6 @@ The ESLint boundaries enforce these roles:
   infrastructure. This is the only place the protocol meets infrastructure.
 - `queues/*.queue.ts`: one BullMQ class per domain; call services or graphs and
   keep business logic out of queues.
-- Tests live next to the code or in its `tests/` directory. Exercise behavior
-  through services, never directly through adapters or `db`.
 
 ### Protocol package (`packages/protocol`)
 
@@ -67,6 +66,120 @@ The ESLint boundaries enforce these roles:
   changing its boundaries.
 - Breaking public changes are acceptable: bump the major, add a `CHANGELOG.md`
   entry, update in-repo consumers in the same PR, and do not keep old exports.
+
+## Tests
+
+The repository keeps five specs, all under `packages/protocol`, and nothing else:
+`src/capabilities/tests/{intents,negotiations.e2e,personal-agent.e2e}.spec.ts`
+and `src/internal/opportunities/tests/opportunity.graph.spec.ts` plus
+`src/internal/premises/tests/premise.decomposer.spec.ts`. The rest were deleted
+on 2026-08-28 because maintaining them cost more than they returned.
+
+- Do not add tests unless you are asked. A missing spec is not a gap to fill.
+- If a change genuinely warrants one, say so and ask before writing it. The only
+  shape worth adding is the live-graph E2E under `src/capabilities/tests/`: an
+  in-memory fake host implementing the ports, the capability's `createGraph()`
+  invoked against the real model, and assertions on what the host persisted.
+  Register it in `LIVE_MODEL_SPECS` in `packages/protocol/scripts/test.ts` so the
+  credential-free gate skips it.
+- Run them from `packages/protocol` with `bun run test`, or `bun test <file>` for
+  a single spec.
+
+## Commands
+
+```bash
+# Root
+bun install                                  # Install all workspaces
+bun run lint                                 # ESLint across the repository
+bun run worktree:new <type>/<description>    # Create or reuse a worktree, then set it up
+bun run worktree:setup <name>                # node_modules and .env symlinks
+bun run worktree:dev <name>                  # Run dev servers from a worktree
+bun run check:subtree-parity                 # Mirrored packages must pin dependencies exactly
+bun run check:lockfile-versions              # Report workspace version drift in bun.lock
+bun run sync:lockfile-versions               # Rewrite those fields in place
+
+# services/api
+bun run dev                                  # Bun.serve dev server on port 3001
+bun run typecheck                            # Type-check without emitting
+bun run db:generate                          # Generate migrations after schema edits
+bun run db:migrate                           # Apply pending migrations
+bun run db:studio                            # Drizzle Studio
+
+# apps/web
+bun run dev | build | start | lint
+
+# apps/mac
+./build.sh                                   # Assemble HTML and build the app
+
+# packages/protocol
+bun run build                                # Compile to dist/
+bun run architecture:check                   # Host isolation, capability, kernel bounds
+bun run test                                 # The five surviving specs
+```
+
+Publishing is handled by CI. Pushing `dev` to the indexnetwork remote publishes an
+`rc` prerelease; pushing `main` publishes the stable version when it is new.
+
+## Conventions
+
+- File naming is `{domain}.{purpose}.ts`, for example `chat.graph.ts` or
+  `intent.inferrer.ts`. Purposes in use: `.graph`, `.state`, `.agent`,
+  `.generator`, `.evaluator`, `.verifier`, `.inferrer`, `.reconciler`,
+  `.controller`, `.service`, `.queue`, `.adapter`, `.spec`. Exceptions are
+  `index.ts`, `schema.ts`, `main.ts`, and root-level `constants.ts`/`types.ts`.
+- Name adapters by concept, not technology: `database.adapter.ts` rather than
+  `drizzle.adapter.ts`. `scripts/check-adapter-names.sh` enforces this.
+- Order imports as external packages, then deep relative (`../../+`), then nearby
+  relative (`./`, `../`), separated by blank lines.
+- Write TSDoc on classes (summary) and public methods (`@param`, `@returns`,
+  `@throws`).
+- Agents use `createModel()` from `model.config.ts` and stay pure with no direct
+  database access. Services own persistence and events and must not import other
+  services. Controllers delegate to services or graphs, never import adapters,
+  and use guards for authentication.
+
+## Environment and database
+
+Runtime env files live at the repository root (`.env.development`, `.env.test`,
+both gitignored); the root `.env.example` is the canonical reference. Required
+variables are `DATABASE_URL`, `OPENROUTER_API_KEY`, `PORT`, and `NODE_ENV`.
+`services/api/src/startup.env.ts` validates them at boot, failing hard on invalid
+values.
+
+Two Neon projects exist: Protocol-dev-europe (`patient-pine-89907813`) for local
+development, and Protocol (`shiny-cloud-34341469`) with branches `production`
+(never touch), `dev` (the Railway dev environment, database `protocol_prod`), and
+`local-dev`. On `local-dev`, `protocol_prod` is a real-data copy while
+`protocol_sandbox` is the curated synthetic sandbox and the safe default for
+`.env.development`.
+
+The schema is `services/api/src/schemas/database.schema.ts` and the Drizzle client
+is `services/api/src/lib/drizzle/drizzle.ts`. To change the schema: edit the
+schema, run `bun run db:generate`, rename the generated file to
+`{NNNN}_{action}_{target}[_{detail}].sql` and update the matching `tag` in
+`drizzle/meta/_journal.json` without the `.sql` suffix, run `bun run db:migrate`,
+then confirm `bun run db:generate` reports no schema changes. Do not rename
+snapshot files. Always migrate through `bun run db:migrate`;
+`bun run maintenance:fix-migrations` repairs a corrupted local history.
+
+## Git workflow
+
+- Use Conventional Commits: `<type>[scope]: <description>` with type `feat`,
+  `fix`, `docs`, `style`, `refactor`, `perf`, `test`, or `chore`. Mark breaking
+  changes with `!` after the type or `BREAKING CHANGE:` in the footer.
+- Name branches `<type>/<short-description>` with no issue identifiers.
+- Open pull requests into `origin/dev` with the description written as a
+  changelog.
+- Before merging, bump the version of every package the branch touched
+  (`packages/protocol`, `packages/cli`, `services/api`, `apps/web`) following
+  SemVer, then run `bun run sync:lockfile-versions` and commit the root
+  `bun.lock`. Bun leaves workspace `version` fields stale on a version-only bump
+  and `--frozen-lockfile` still passes, so `bun run check:lockfile-versions` is
+  the only check that catches the drift.
+- Merge from the root checkout. Never check out or merge `dev` inside a feature
+  worktree, and never modify source from the canonical root. Wait for post-merge
+  checks and a terminal Railway deployment before calling a release healthy, then
+  remove the worktree and branch.
 
 ## Codex worktree workflow
 
