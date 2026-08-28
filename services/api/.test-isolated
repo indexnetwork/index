@@ -33,7 +33,6 @@ src/services/tests/user.service.setSocials.isolated.ts
 tests/network-invitation-resend.isolated.ts
 tests/network-scoped-import.isolated.ts
 tests/experiment-signup-lookup.isolated.ts
-tests/frame-drift-execution-attempt.database.adapter.isolated.ts
 tests/accepted-opportunity.isolated.ts
 src/controllers/tests/intent.controller.isolated.ts
 src/controllers/tests/intent-intake.controller.isolated.ts
@@ -56,7 +55,6 @@ src/controllers/tests/negotiator-memory.controller.isolated.ts
 tests/network-resend-invite.e2e.isolated.ts
 tests/limiter.e2e.isolated.ts
 src/services/tests/integration.service.telegram.isolated.ts
-tests/frame-drift.database.adapter.isolated.ts
 src/services/tests/negotiator-memory.service.isolated.ts
 src/services/tests/opportunity.service.enrichedReplacement.isolated.ts
 src/events/tests/opportunity.event.lifecycle.isolated.ts
@@ -67,8 +65,6 @@ src/adapters/tests/negotiator-client-dm.retrieval.isolated.ts
 src/adapters/tests/negotiator-memory.retrieval.isolated.ts
 src/queues/tests/reflect.queue.isolated.ts
 src/queues/pool/tests/negotiation-evidence.shadow.isolated.ts
-src/queues/tests/frame-drift.queue.isolated.ts
-src/queues/tests/frame-drift.hermetic.isolated.ts
 src/queues/tests/checkpoint-retention.queue.isolated.ts
 src/controllers/tests/tool.controller.isolated.ts
 src/lib/tests/protocol-url.isolated.ts

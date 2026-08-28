@@ -35,9 +35,6 @@ function printResult(result: { ok: boolean; error?: string }, opts: GlobalOpts) 
 async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
   try {
     const tables = [
-      'frame_centroid_snapshots',
-      'cross_network_yield_snapshots',
-      'frame_drift_observation_runs',
       'intent_networks',
       'artifacts',
       'messages',
