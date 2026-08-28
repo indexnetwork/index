@@ -156,7 +156,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
 };
 
-discoveryQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
   void negotiationWatchdogQueue.start().catch((error) => {
     log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
@@ -576,7 +575,6 @@ logger.info('Server running', { port: PORT });
 const shutdown = async () => {
   logger.info('Shutting down workers...');
   await Promise.allSettled([
-    discoveryQueue.close(),
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
     personalAgentQueue.close(),

@@ -7,7 +7,6 @@ import { buildProfileFromUser } from '../adapters/database.shared';
 import { HydeGraphFactory, HydeGenerator, LensInferrer, Intents, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
 import { discoveryQueue } from './opportunity/discovery.queue';
-import { intentResumeDiscoveryJobId } from '../events/intent.event';
 
 /** Payload for jobs that generate HyDE documents for an intent. */
 export interface IntentJobData {
@@ -78,10 +77,10 @@ export interface IntentQueueDeps {
  * the protocol intent graph can trigger this work without depending on this module.
  *
  * @remarks
- * `addGenerateHydeJob`/`addDeleteHydeJob`/`addReconcileJob`/`addOrphanReconciliationJob` are
- * fire-and-forget: each runs its handler via {@link background}, unbounded, with no retry and
- * no dedup. `addResumeDiscoveryJob` is the one exception — it still enqueues onto
- * {@link discoveryQueue}, a BullMQ queue until its own slice.
+ * `addGenerateHydeJob`/`addDeleteHydeJob`/`addReconcileJob`/`addOrphanReconciliationJob`/
+ * `addResumeDiscoveryJob` are all fire-and-forget: each triggers its handler via
+ * {@link background} (directly, or through {@link discoveryQueue}'s own background trigger),
+ * unbounded, with no retry and no dedup.
  */
 export class IntentQueue implements IntentGraphQueue {
   /**
@@ -104,16 +103,13 @@ export class IntentQueue implements IntentGraphQueue {
   }
 
   /**
-   * Enqueue discovery for an intent resumed from PAUSED back to ACTIVE
-   * (implements {@link IntentGraphQueue}). The lifecycle-version job id
-   * deduplicates retries of the same resume. Discovery is still a BullMQ
-   * queue until its own slice.
+   * Trigger discovery for an intent resumed from PAUSED back to ACTIVE
+   * (implements {@link IntentGraphQueue}). `addJob` awaits only the 'queued'
+   * progress write before triggering the scan in the background — a failure
+   * there (not the scan itself) is the only thing this can still reject with.
    */
   addResumeDiscoveryJob(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
-    return discoveryQueue.addJob(
-      { intentId: data.intentId, userId: data.userId, trigger: 'intent_resume' },
-      { priority: 10, jobId: intentResumeDiscoveryJobId(data.userId, data.intentId, data.lifecycleVersionMs) },
-    );
+    return discoveryQueue.addJob({ intentId: data.intentId, userId: data.userId, trigger: 'intent_resume' });
   }
 
   private readonly logger = log.job.from('IntentJob');

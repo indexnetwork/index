@@ -8,8 +8,9 @@
  * `queued` with `first_discovery_succeeded_at` still null, and look permanently
  * "warming" until something enqueues them again.
  *
- * Prints the affected intents and exits; pass --confirm-dev to enqueue them.
- * The staleness floor keeps jobs enqueued after the cutover out of the sweep.
+ * Prints the affected intents and exits; pass --confirm-dev to run discovery
+ * for each one directly. The staleness floor keeps jobs enqueued after the
+ * cutover out of the sweep.
  *
  *   railway run --environment dev --service protocol \
  *     bun services/api/src/cli/reenqueue-orphaned-discovery.ts --confirm-dev
@@ -18,7 +19,7 @@ import { and, eq, isNull, lt } from 'drizzle-orm';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, intentDiscoveryProgress } from '../schemas/database.schema';
-import { discoveryQueue } from '../queues/opportunity/discovery.queue';
+import { runDiscovery } from '../queues/opportunity/discovery.queue';
 
 function numberFlag(flag: string, fallback: number): number {
   const index = process.argv.indexOf(flag);
@@ -61,23 +62,19 @@ async function main(): Promise<void> {
   }
 
   for (const { intentId, userId } of stranded) {
-    await discoveryQueue.addJob({ intentId, userId });
-    console.log(`Enqueued discovery for ${intentId}`);
+    await runDiscovery({ intentId, userId });
+    console.log(`Discovery complete for ${intentId}`);
   }
-  console.log(`Re-enqueued ${stranded.length} stranded intent(s).`);
+  console.log(`Re-ran discovery for ${stranded.length} stranded intent(s).`);
 }
 
 main()
   .then(async () => {
-    await discoveryQueue.close();
     await closeDb();
-    // The queue factory's Redis connection outlives close() and keeps the event
-    // loop alive; a one-shot maintenance command exits rather than hanging.
     process.exit(0);
   })
   .catch(async (error: unknown) => {
     console.error(error instanceof Error ? error.message : String(error));
-    await discoveryQueue.close().catch(() => {});
     await closeDb().catch(() => {});
     process.exit(1);
   });

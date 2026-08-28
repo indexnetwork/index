@@ -12,7 +12,6 @@ import { serveStatic } from 'hono/bun';
 import { Hono } from 'hono';
 
 import { notificationQueue } from '../queues/notification.queue';
-import { discoveryQueue } from '../queues/opportunity/discovery.queue';
 import { personalAgentQueue } from '../queues/personal-agent.queue';
 import { log } from '../lib/log';
 
@@ -28,7 +27,6 @@ const serverAdapter = new HonoAdapter(serveStatic);
 createBullBoard({
   queues: [
     new BullMQAdapter(notificationQueue.queue),
-    new BullMQAdapter(discoveryQueue.queue),
     new BullMQAdapter(personalAgentQueue.queue),
   ],
   serverAdapter,
