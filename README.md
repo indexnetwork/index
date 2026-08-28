@@ -82,7 +82,7 @@ export OPENROUTER_API_KEY=sk-or-...
 | `title`   | `string` | No       | Sent as `X-Title`, per OpenRouter's app attribution.                         |
 | `maxTokens` | `number` | No     | Output token cap per call. Defaults to 2048; raise it if decisions carrying large structured terms hit truncation. |
 | `timeoutMs` | `number` | No     | How long one model call may take before it's abandoned. Defaults to 120000 (120s); `0` disables it. See [Deadlines and cancellation](#deadlines-and-cancellation). |
-| `now` | `() => Date` | No | Supplies the date told to the model each turn. Defaults to `() => new Date()`. Inject a fixed clock for deterministic prompts in tests. |
+| `now` | `() => Date` | No | Supplies the date told to the model each turn, rendered in UTC. Defaults to `() => new Date()`. Also the timezone control, and the way to keep one clock across a host that has its own — see [Dates in terms](#knowing-what-actually-happened). |
 
 ```ts
 const negotiator = new Negotiator({
@@ -414,6 +414,20 @@ one, a seller who is "away until next Tuesday" writes
 see the conflict, and a deal that should never have closed doesn't. If you
 write your own `terms` description, you don't need to restate the date rule
 — it's already in the prompt.
+
+Two things about that clock are worth knowing, because neither is visible
+from the outside:
+
+- **The date is rendered in UTC**, so it can be a day off from your party's
+  wall clock. `now` is the control, and it works because it returns an
+  *instant* rather than a date — shift the instant to put the model on your
+  party's day: `now: () => new Date(Date.now() - 8 * 60 * 60 * 1000)`.
+- **If your own code also tells a model the date** — a surrounding agent
+  loop with its own system message, say — give it the same `now`. Two
+  clocks that both default to `new Date()` agree almost always and disagree
+  across midnight, or as soon as a host pins one and not the other. An agent
+  telling its counterparty "today is the 31st" while negotiating as though
+  it were the 1st is a bug that hides for months.
 
 Then `verifyAgreement(task)` reports what the task settled on, computed from
 the Task itself — so both sides run it over the same record and reach the

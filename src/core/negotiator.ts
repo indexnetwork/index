@@ -24,6 +24,18 @@ export interface NegotiatorOptions {
    * `() => new Date()`, read per call so a long-running server doesn't
    * freeze on the date it booted. Inject a fixed clock to make prompts
    * deterministic in tests.
+   *
+   * The date is rendered in UTC, so it can differ by a day from a party's
+   * wall clock. This is also the only timezone control there is, and it
+   * works because it returns an *instant* rather than a date: shift the
+   * instant to put the model on your party's day.
+   *
+   *     now: () => new Date(Date.now() - 8 * 60 * 60 * 1000) // UTC-8
+   *
+   * If your own code also tells a model today's date — a surrounding agent
+   * loop with its own system message, say — pass it the same `now`. Two
+   * clocks defaulting to `new Date()` agree almost always and disagree
+   * across midnight, which is a bug that hides for months.
    */
   now?: () => Date;
 }

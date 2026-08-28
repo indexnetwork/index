@@ -372,6 +372,38 @@ describe("Negotiator clock", () => {
     expect(second.body.messages[0].content).toContain("2026-09-04");
   });
 
+  test("renders the date in UTC, whatever the host's timezone", async () => {
+    // Two instants that straddle midnight in opposite directions: late-UTC
+    // reads as tomorrow east of UTC, early-UTC reads as yesterday west of
+    // it. Both must still render 2026-08-28, so this fails on a local-time
+    // bug no matter which timezone the test machine is in.
+    for (const instant of ["2026-08-28T23:30:00Z", "2026-08-28T00:30:00Z"]) {
+      const fetchMock = mockFetchOnce("reply");
+      const negotiator = new Negotiator({
+        apiKey: "test-key",
+        now: () => new Date(instant),
+      });
+
+      await negotiator.respond(state);
+
+      expect(fetchMock.body.messages[0].content).toContain("2026-08-28 (Friday)");
+    }
+  });
+
+  test("shifting the instant moves the model onto another day", async () => {
+    // The only timezone control there is: `now` hands back an instant, so a
+    // host whose party lives elsewhere shifts it.
+    const fetchMock = mockFetchOnce("reply");
+    const negotiator = new Negotiator({
+      apiKey: "test-key",
+      now: () => new Date(Date.parse("2026-08-28T02:00:00Z") - 8 * 60 * 60 * 1000),
+    });
+
+    await negotiator.respond(state);
+
+    expect(fetchMock.body.messages[0].content).toContain("2026-08-27 (Thursday)");
+  });
+
   test("defaults to the real clock", async () => {
     const fetchMock = mockFetchOnce("reply");
     const negotiator = new Negotiator({ apiKey: "test-key" });
