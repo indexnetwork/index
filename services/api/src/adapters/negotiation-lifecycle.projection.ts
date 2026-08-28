@@ -45,8 +45,7 @@ export function readInitiatorUserId(metadata: Record<string, unknown>): string |
  * and the owner's gate-decision card still renders them.
  *
  * Named-field projection only — the raw metadata blob is never returned, so
- * unrelated or internal keys on the task cannot leak through this surface
- * (`docs/design/negotiation-dialogue-game.md:87`).
+ * unrelated or internal keys on the task cannot leak through this surface.
  */
 function readScreenDecisionRecord(metadata: Record<string, unknown>): ProjectedScreenDecision | null {
   const raw = metadata.screenDecision;

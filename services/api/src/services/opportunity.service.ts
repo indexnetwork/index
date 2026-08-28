@@ -549,7 +549,7 @@ export class OpportunityService {
       return null;
     }
 
-    // Check actor visibility; the code-traceable rules live in docs/design/opportunity-status-lifecycle.md (§3.E).
+    // Check actor visibility.
     const visibilityError = this.assertOpportunityVisible(opp, viewerId);
     if (visibilityError) {
       return visibilityError;

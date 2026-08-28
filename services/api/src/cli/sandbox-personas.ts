@@ -2097,8 +2097,7 @@ export const SANDBOX_E2E_CASES = {
 /**
  * A bounded market for live provider tests: the five designated Launch people
  * plus these sixteen already-authored personas from the full curated
- * population (still exported/named "twenty" — see docs/guides/development-
- * reference.md's "Immutable local playground" — the count drifted by one
+ * population (still exported/named "twenty" — the count drifted by one
  * pair in exchange for content relevance, see below).
  */
 // Every name here is plausibly launch-adjacent by content, not just by an
