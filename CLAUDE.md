@@ -9,7 +9,7 @@ state. See README.md for the API.
 
 ```bash
 cd ../negotiator && bun run build   # required: `file:../negotiator` resolves to its dist/
-bun test                            # 100 tests, no network
+bun test                            # 103 tests, no network
 bun run typecheck
 bun run console                     # drive several agents in one terminal
 bun run dev/stress.ts               # live scenarios — real model calls, real money
