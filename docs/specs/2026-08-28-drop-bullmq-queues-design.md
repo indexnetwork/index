@@ -152,10 +152,14 @@ These were raised during design and accepted deliberately.
    provider load and may hit OpenRouter or embedder rate limits. No gate
    replaces it.
 
-3. **The API becomes single-replica by construction.** In-process emitters and
-   timers do not cross processes. **Confirm the Railway `protocol` service is not
-   scaled beyond one replica before merging.** Horizontal scaling later means
-   restoring a shared transport for the three SSE paths.
+3. **The API is already single-replica, and already depends on it.** Three
+   pre-existing `node-cron` schedules (opportunity expiration, checkpoint
+   retention, HyDE refresh) already run unguarded on every process, so a
+   second replica already double-fires them today. This change adds the three
+   worker→controller SSE pub/sub channels to that same single-replica
+   dependency — it does not introduce the constraint. Horizontal scaling later
+   means restoring a shared transport for those three paths, alongside
+   whatever cron-guarding a second replica would already have needed.
 
 ## Out of scope
 

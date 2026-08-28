@@ -270,7 +270,6 @@ function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return 'mcp';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/tools')) return 'protocol';
-  if (pathname.startsWith('/dev/queues')) return 'queue-admin';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
 }
