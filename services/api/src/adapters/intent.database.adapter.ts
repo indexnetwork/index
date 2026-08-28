@@ -639,7 +639,7 @@ export class IntentDatabaseAdapter {
    */
   private async attachIntentExtras(
     rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming' | 'awaitingReply'> & {
-      /** Stamped by the from-intent queue on first successful discovery (IND-482). */
+      /** Stamped by the discovery queue on first successful discovery (IND-482). */
       firstDiscoverySucceededAt: Date | null;
     })[],
     userId: string,

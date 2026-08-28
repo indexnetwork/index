@@ -7,7 +7,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { buildProfileFromUser } from '../adapters/database.shared';
 import { HydeGraphFactory, HydeGenerator, LensInferrer, Intents, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
 import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
-import { fromIntentQueue } from './opportunity/from-intent.queue';
+import { discoveryQueue } from './opportunity/discovery.queue';
 import { intentResumeDiscoveryJobId } from '../events/intent.event';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
@@ -118,7 +118,7 @@ export class IntentQueue implements IntentGraphQueue {
    * deduplicates retries of the same resume.
    */
   addResumeDiscoveryJob(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
-    return fromIntentQueue.addJob(
+    return discoveryQueue.addJob(
       { intentId: data.intentId, userId: data.userId, trigger: 'intent_resume' },
       { priority: 10, jobId: intentResumeDiscoveryJobId(data.userId, data.intentId, data.lifecycleVersionMs) },
     );
@@ -268,7 +268,7 @@ export class IntentQueue implements IntentGraphQueue {
   ): Promise<void> {
     const addOpportunityJob = options?.skipOpportunity
       ? async () => {}
-      : (this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string; networkIds?: string[] }) => fromIntentQueue.addJob(d)));
+      : (this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string; networkIds?: string[] }) => discoveryQueue.addJob(d)));
     await this.handleGenerateHyde(data, { addOpportunityJob });
   }
 
@@ -388,7 +388,7 @@ export class IntentQueue implements IntentGraphQueue {
     const addJob =
       overrides?.addOpportunityJob ??
       this.deps?.addOpportunityJob ??
-      ((d: { intentId: string; userId: string; networkIds?: string[] }) => fromIntentQueue.addJob(d));
+      ((d: { intentId: string; userId: string; networkIds?: string[] }) => discoveryQueue.addJob(d));
     // Carry only the focused network scope into discovery. Assignment writes may
     const discoveryScope: { networkIds?: string[] } = await (async () => {
       try {

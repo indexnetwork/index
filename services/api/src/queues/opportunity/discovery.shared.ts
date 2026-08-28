@@ -7,7 +7,7 @@ import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, 
 
 
 /**
- * Worker concurrency for the from-intent discovery
+ * Worker concurrency for the discovery
  * queues. The factory default (1) serialized every user's scan behind every
  * other user's, which is what made a second onboarding look stalled. 4 lets a
  * handful of signals scan side by side; it stays low because one scan already
@@ -137,10 +137,10 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
   deps?: OpportunityDiscoveryDeps & { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
   invokeOpts: TOpts;
   logger: DiscoveryLogger;
-  /** Human label for the queue, e.g. `'FromIntent'`. */
+  /** Human label for the queue, e.g. `'Discovery'`. */
   label: string;
   /**
-   * Label for the thrown fallback error message, e.g. `'from-intent'`. Kept
+   * Label for the thrown fallback error message, e.g. `'discovery'`. Kept
    * distinct from `label` so the thrown message stays lowercase-dashed (matching
    * the pre-split queues). Defaults to `label`.
    */

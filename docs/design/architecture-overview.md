@@ -386,7 +386,7 @@ When a user says "I'm looking for a React co-founder":
 
 Pause is an admission gate, not cleanup. It preserves existing opportunities/Radar cards, pending questions, conversations, intent-network assignments, and HyDE documents. Lifecycle checks prevent a paused intent from admitting not-yet-started intent-driven discovery, appearing as a candidate match, or starting new pool mining, question generation, and answer-triggered Tier-1 runs. Work that passed its admission check before the pause may finish. A pending question can still be answered and its deterministic Tier-0 re-ranking can still affect the existing pool.
 
-Resume atomically restores `ACTIVE` and invokes `IntentEvents.onResumed`. The HTTP response awaits enqueue acknowledgement for a from-intent discovery job whose ID includes the stable lifecycle version, so retries deduplicate. If enqueue fails after a real `PAUSED` → `ACTIVE` transition, a narrow owner/scope/version compare-and-set compensates back to `PAUSED`; concurrent lifecycle writes are not overwritten, and an idempotent `ACTIVE` request is not mutated. The endpoint returns retryable `503 enqueue_failed` with the authoritative resulting status instead of claiming success. An acknowledged run proceeds through the ordinary discovery-completion pool mining and question flow.
+Resume atomically restores `ACTIVE` and invokes `IntentEvents.onResumed`. The HTTP response awaits enqueue acknowledgement for a discovery job whose ID includes the stable lifecycle version, so retries deduplicate. If enqueue fails after a real `PAUSED` → `ACTIVE` transition, a narrow owner/scope/version compare-and-set compensates back to `PAUSED`; concurrent lifecycle writes are not overwritten, and an idempotent `ACTIVE` request is not mutated. The endpoint returns retryable `503 enqueue_failed` with the authoritative resulting status instead of claiming success. An acknowledged run proceeds through the ordinary discovery-completion pool mining and question flow.
 
 ---
 
@@ -411,7 +411,7 @@ These are assigned concrete handlers in `main.ts`. `onCreated` enqueues discover
 
 ```typescript
 IntentEvents.onResumed = async (intentId, userId, lifecycleVersionMs) => {
-  await fromIntentQueue.addJob(
+  await discoveryQueue.addJob(
     { intentId, userId, trigger: 'intent_resume' },
     { priority: 10, jobId: intentResumeDiscoveryJobId(userId, intentId, lifecycleVersionMs) },
   );
@@ -448,7 +448,7 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | Queue | Purpose |
 |-------|---------|
 | `intent.queue` | Intent indexing and generation jobs |
-| `opportunity/from-intent` | BullMQ queue: intent-triggered opportunity discovery |
+| `opportunity/discovery` | BullMQ queue: intent-triggered opportunity discovery |
 | `opportunity/from-introducer` | BullMQ queue: introducer-triggered opportunity discovery |
 | `opportunity/expiration` | **node-cron task** (not a BullMQ queue — does not appear in Bull-Board): scans and expires stale opportunities on a schedule |
 | `negotiations/timeout` | BullMQ queue: AI fallback when personal agent lacks heartbeat |
@@ -645,7 +645,7 @@ IntentEvents.onCreated(intentId, userId)
   |
   |  Enqueues job
   v
-fromIntentQueue.addJob({intentId, userId})
+discoveryQueue.addJob({intentId, userId})
   |
   |  Worker picks up job
   v

@@ -1,7 +1,7 @@
 /**
- * FromIntentQueue worker concurrency and the same-intent overlap guard.
+ * DiscoveryQueue worker concurrency and the same-intent overlap guard.
  *
- * Unlike from-intent.queue.isolated.ts this keeps the real QueueFactory (the
+ * Unlike discovery.queue.isolated.ts this keeps the real QueueFactory (the
  * hermetic in-memory broker under the test baseline) so jobs travel
  * add → worker → processor → lock exactly as in production; only the DB,
  * embedder, and the discovery graph are stood in for.
@@ -30,12 +30,12 @@ afterAll(() => {
   mock.restore();
 });
 
-import type { FromIntentDatabase, FromIntentGraphInvokeOptions } from '../opportunity/from-intent.queue';
+import type { DiscoveryDatabase, DiscoveryGraphInvokeOptions } from '../opportunity/discovery.queue';
 
-const { FromIntentQueue } = await import('../opportunity/from-intent.queue');
+const { DiscoveryQueue } = await import('../opportunity/discovery.queue');
 const { DISCOVERY_WORKER_CONCURRENCY } = await import('../opportunity/discovery.shared');
 
-const database: FromIntentDatabase = {
+const database: DiscoveryDatabase = {
   getIntentForIndexing: async (id: string) => ({ id, payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
   getNetworkIdsForIntent: async () => ['idx1'],
   getAssignmentNetworkMembershipsForUser: async () => [{ networkId: 'idx1', isPersonal: false }],
@@ -52,7 +52,7 @@ function gatedGraph() {
   let peakActive = 0;
   const started: string[] = [];
   const releases: Array<() => void> = [];
-  const invoke = async (opts: FromIntentGraphInvokeOptions) => {
+  const invoke = async (opts: DiscoveryGraphInvokeOptions) => {
     active += 1;
     peakActive = Math.max(peakActive, active);
     started.push(opts.triggerIntentId ?? '?');
@@ -73,11 +73,11 @@ function gatedGraph() {
   };
 }
 
-describe('FromIntentQueue worker concurrency', () => {
+describe('DiscoveryQueue worker concurrency', () => {
   it('runs jobs for different intents side by side', async () => {
     expect(DISCOVERY_WORKER_CONCURRENCY).toBeGreaterThan(1);
     const graph = gatedGraph();
-    const queue = new FromIntentQueue({ database, invokeOpportunityGraph: graph.invoke });
+    const queue = new DiscoveryQueue({ database, invokeOpportunityGraph: graph.invoke });
     queue.startWorker();
 
     await queue.addJob({ intentId: 'intent-a', userId: 'u1' });
@@ -93,7 +93,7 @@ describe('FromIntentQueue worker concurrency', () => {
 
   it('defers a second job for an intent whose scan is still running, then runs it', async () => {
     const graph = gatedGraph();
-    const queue = new FromIntentQueue({
+    const queue = new DiscoveryQueue({
       database,
       invokeOpportunityGraph: graph.invoke,
       sameIntentDeferDelayMs: 10,

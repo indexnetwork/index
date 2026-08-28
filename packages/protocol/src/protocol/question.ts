@@ -95,11 +95,7 @@ export const QuestionModeSchema = z.enum([
 export const QuestionRecoverySnapshotSchema = z.object({
   version: z.literal(1),
   intentFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  completionSource: z.enum(["intent_creation", "from_intent", "discovery_run"]),
-  /** Privacy-safe aggregate only; raw negotiation evidence is never persisted. */
-  rejectedNegotiationCount: z.number().int().min(1).max(50).optional(),
-  /** Bounded internal correlation id for an asynchronous discovery run. */
-  runId: z.string().min(1).max(128).optional(),
+  completionSource: z.enum(["intent_creation"]),
 });
 
 /** Internal reason a pending question was voided. */

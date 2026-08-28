@@ -590,7 +590,7 @@ export const intents = pgTable('intents', {
   negotiationBatchId: text('negotiation_batch_id'),
   /**
    * When the intent's first background discovery run completed successfully
-   * (any path: web from-intent queue or async MCP discovery-run). Null until
+   * (any path: web discovery queue or async MCP discovery-run). Null until
    * then. Read-side "warming" derivation clears as soon as this is stamped,
    * instead of waiting out the 24-hour freshness window (IND-482).
    */
@@ -824,7 +824,7 @@ export const networkIntegrations = pgTable('network_integrations', {
 }));
 
 /**
- * Owner-visible, aggregate-only observability for the ordinary from-intent
+ * Owner-visible, aggregate-only observability for the ordinary discovery
  * worker. Unlike BullMQ retention this survives completed, failed and stale
  * jobs and deliberately has no error payload or candidate-level data.
  */

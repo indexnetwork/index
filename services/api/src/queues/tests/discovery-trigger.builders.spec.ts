@@ -68,7 +68,7 @@ describe('production discovery trigger builders', () => {
       .map((match) => match[1]);
 
     expect(staticSpecifiers).toEqual([]);
-    expect(source).not.toContain('from-intent.queue');
+    expect(source).not.toContain('discovery.queue');
     expect(source).not.toMatch(/bullmq|database|redis|neon|provider|callback/i);
     expect(buildIntentDiscoveryTrigger({
       userId: 'quality-user',

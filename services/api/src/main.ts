@@ -47,7 +47,7 @@ import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
-import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
+import { discoveryQueue } from './queues/opportunity/discovery.queue';
 import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
 import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
@@ -107,7 +107,7 @@ setRequestContextStore(hostRequestContext);
 // post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
 // discovery does. Without this, the graph's matches_ready node
 // short-circuits and a persisted batch never reaches its agent.
-fromIntentQueue.setRuntimeDeps({
+discoveryQueue.setRuntimeDeps({
   matchesReady,
   agentDispatcher: backgroundAgentDispatcher,
 });
@@ -158,7 +158,7 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
 };
 
 intentQueue.startWorker();
-fromIntentQueue.startWorker();
+discoveryQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
   void negotiationWatchdogQueue.start().catch((error) => {
     log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
@@ -580,7 +580,7 @@ const shutdown = async () => {
   logger.info('Shutting down workers...');
   await Promise.allSettled([
     intentQueue.close(),
-    fromIntentQueue.close(),
+    discoveryQueue.close(),
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),

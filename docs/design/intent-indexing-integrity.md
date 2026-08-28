@@ -5,7 +5,7 @@
 For a normal active intent create, the only successful path is:
 
 ```text
-assignment -> intent HyDE generation -> from-intent discovery enqueue -> discovery completion stamp
+assignment -> intent HyDE generation -> discovery enqueue -> discovery completion stamp
 ```
 
 Promptless, assignment-eligible memberships are deliberately assigned with

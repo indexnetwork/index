@@ -145,7 +145,7 @@ export async function scopeNode(state: OpportunityState, deps: OpportunityGraphD
       if (state.triggerIntentId) {
         // A trigger intent is an authoritative discovery boundary, not just
         // ranking context. Recompute the intersection at the graph edge so
-        // direct chat/MCP callers cannot bypass FromIntentQueue admission.
+        // direct chat/MCP callers cannot bypass DiscoveryQueue admission.
         const assignedNetworkIds = new Set(
           await deps.database.getNetworkIdsForIntent(state.triggerIntentId),
         );

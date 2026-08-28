@@ -19,7 +19,7 @@ Today the product has **six ways** an `opportunities` row can be created. Only o
 
 | # | Path | Trigger | Entry point |
 |---|------|---------|-------------|
-| 1 | **Intent discovery** | User confirms intent → HyDE → queue | `from-intent.queue.ts` → OpportunityGraph `create` → `persistNode` |
+| 1 | **Intent discovery** | User confirms intent → HyDE → queue | `discovery.queue.ts` → OpportunityGraph `create` → `persistNode` |
 | 2 | **Maintenance / rediscovery** | Intent created/archived, feed-health | `triggerMaintenance` → MaintenanceGraph → re-enqueue discovery |
 | 3 | **Manual curator** | Network owner POSTs a match | `POST /networks/:networkId/opportunities` |
 | 4 | **Introduction** | Chat/agent introduces two people | `createIntroduction` (`create_introduction` mode) |
@@ -34,7 +34,7 @@ Paths **#2–#6** add blast radius, dead code, and lifecycle complexity (`latent
 
 | Goal | Measure |
 |------|---------|
-| One creation path | Only intent confirm → HyDE → `from-intent` → candidates → PA kickoff INSERTs opportunities |
+| One creation path | Only intent confirm → HyDE → discovery → candidates → PA kickoff INSERTs opportunities |
 | Create at open | Opportunity born in `createAndOpen` with status `negotiating` |
 | Zero trace | Grep gate: zero hits for banned tokens in `packages/protocol/src`, `services/api/src`, `apps/web/src`, `docs/` |
 | No legacy | No dual-read, no preserved enum values, no recycle archive — delete and migrate data |
@@ -58,8 +58,8 @@ Paths **#2–#6** add blast radius, dead code, and lifecycle complexity (`latent
 ```mermaid
 flowchart LR
   confirm[Intent confirm] --> hyde[HyDE queue]
-  hyde --> fromIntent[from-intent queue]
-  fromIntent --> graph[OpportunityGraph]
+  hyde --> discovery[discovery queue]
+  discovery --> graph[OpportunityGraph]
   graph --> emit[emitCandidates]
   emit --> ready[matches_ready, one per intent]
   ready --> pa[PersonalAgent turn]
@@ -224,7 +224,7 @@ Core first, purge second: once opportunities are born at kickoff, most of the pu
 - New table `discovery_match_candidates` (`pairKey` unique, evaluator fields, `status`: `pending` | `opened` | `superseded` | `expired`)
 - `emitCandidatesNode` replaces `persistNode`; the graph's earlier stages are untouched
 - `matchesReadyNode` derives its intent set from candidates, not from opportunity actors
-- `from-intent` queue tests: zero `createOpportunity` calls
+- discovery queue tests: zero `createOpportunity` calls
 
 ### Phase 3 — createAndOpen at PA kickoff
 
@@ -270,7 +270,7 @@ rg -n '<banned-pattern>' packages/protocol/src services/api/src apps/web/src doc
 | Check | Pass condition |
 |-------|----------------|
 | Grep gate | Zero hits for all banned tokens |
-| Discovery trigger | Only intent confirm → `from-intent` |
+| Discovery trigger | Only intent confirm → discovery |
 | Queue handler | 0 opportunity INSERTs; N candidate rows |
 | PA kickoff | Candidate-only `matches_ready` → one opp + one task |
 | Concurrency | Parallel kickoff on one pair → one row (`existing`/`raced`) |

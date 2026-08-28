@@ -2042,6 +2042,14 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
     kinds.
   - Hosts must implement `upsertDiscoveryMatchCandidates` and
     `listPendingCandidatesForIntent`.
+- **Breaking (38.0.0): `QuestionRecoverySnapshot` drops its discovery-completion
+  fields.** `completionSource` narrows to `z.enum(["intent_creation"])` — the
+  `from_intent`/`discovery_run` values belonged to the post-discovery
+  recovery-question generator, retired in `6a3b65b0e` with no writer left.
+  `rejectedNegotiationCount` and `runId` are removed for the same reason.
+  Existing persisted `questions.detection` rows written before the retirement
+  may still carry the old values; nothing in the host parses them against this
+  schema at read time.
 
 ### Added
 

@@ -38,7 +38,7 @@ describe('matches_ready wiring', () => {
   });
 
   it('fails the wake where a retry exists, and never at a waiting user\'s expense', () => {
-    // The from-intent/enrichment queues retry, so `matchesReady` throws: a
+    // The discovery/enrichment queues retry, so `matchesReady` throws: a
     // batch that persisted with nobody woken is not a successful discovery.
     // The chat/MCP tool graphs have NOTHING behind them — the caller is a user
     // waiting on discovery — so they take the best-effort wake,

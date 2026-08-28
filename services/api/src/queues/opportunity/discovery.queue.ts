@@ -1,4 +1,4 @@
-// services/api/src/queues/opportunity/from-intent.queue.ts
+// services/api/src/queues/opportunity/discovery.queue.ts
 import { Job } from 'bullmq';
 import type { DeduplicationOptions } from 'bullmq';
 import { log } from '../../lib/log';
@@ -7,12 +7,12 @@ import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import type { MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
 
 import { createOpportunityGraphDb, runOpportunityDiscovery, DISCOVERY_WORKER_CONCURRENCY, type OpportunityGraphDb } from './discovery.shared';
-import { buildIntentDiscoveryTrigger, type FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
-export type { FromIntentGraphInvokeOptions } from './discovery-trigger.builders';
+import { buildIntentDiscoveryTrigger, type DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
+export type { DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
 import { createIntentDiscoveryLock, type IntentDiscoveryLock } from './discovery.intent-lock';
 import { maybeRunNegotiationEvidenceShadow } from '../pool/negotiation-evidence.shadow';
 
-export const QUEUE_NAME = 'opportunity-from-intent';
+export const QUEUE_NAME = 'opportunity-discovery';
 
 /**
  * Same-intent overlap guard (see discovery.intent-lock.ts). The lock outlives
@@ -23,7 +23,7 @@ export const SAME_INTENT_LOCK_TTL_MS = 10 * 60 * 1000;
 /** How long a job that found its intent already running waits before re-checking. */
 export const SAME_INTENT_DEFER_DELAY_MS = 30 * 1000;
 
-export interface FromIntentJobData {
+export interface DiscoveryJobData {
   intentId: string;
   userId: string;
   networkIds?: string[];
@@ -31,14 +31,14 @@ export interface FromIntentJobData {
   trigger?: 'intent_resume';
 }
 
-export type FromIntentDatabase = Pick<
+export type DiscoveryDatabase = Pick<
   ChatDatabaseAdapter,
   'getIntentForIndexing' | 'getNetworkIdsForIntent' | 'getAssignmentNetworkMembershipsForUser' | 'markIntentFirstDiscoverySucceeded' | 'recordIntentDiscoveryProgress'
 >;
 
-export interface FromIntentDeps {
-  database?: FromIntentDatabase;
-  invokeOpportunityGraph?: (opts: FromIntentGraphInvokeOptions) => Promise<void>;
+export interface DiscoveryDeps {
+  database?: DiscoveryDatabase;
+  invokeOpportunityGraph?: (opts: DiscoveryGraphInvokeOptions) => Promise<void>;
   matchesReady?: MatchesReadyFn;
   agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   /** Same-intent overlap guard; defaults to Redis (in-process map under the hermetic test baseline). */
@@ -47,21 +47,21 @@ export interface FromIntentDeps {
   sameIntentDeferDelayMs?: number;
 }
 
-export class FromIntentQueue {
+export class DiscoveryQueue {
   static readonly QUEUE_NAME = QUEUE_NAME;
 
-  readonly queue = QueueFactory.createQueue<FromIntentJobData>(QUEUE_NAME);
+  readonly queue = QueueFactory.createQueue<DiscoveryJobData>(QUEUE_NAME);
 
-  private readonly logger = log.job.from('FromIntentJob');
-  private readonly queueLogger = log.queue.from('FromIntentQueue');
-  private readonly database: FromIntentDatabase | ChatDatabaseAdapter;
+  private readonly logger = log.job.from('DiscoveryJob');
+  private readonly queueLogger = log.queue.from('DiscoveryQueue');
+  private readonly database: DiscoveryDatabase | ChatDatabaseAdapter;
   private readonly graphDb: OpportunityGraphDb;
   private readonly intentLock: IntentDiscoveryLock;
   private readonly sameIntentDeferDelayMs: number;
-  private deps: FromIntentDeps | undefined;
-  private worker: ReturnType<typeof QueueFactory.createWorker<FromIntentJobData>> | null = null;
+  private deps: DiscoveryDeps | undefined;
+  private worker: ReturnType<typeof QueueFactory.createWorker<DiscoveryJobData>> | null = null;
 
-  constructor(deps?: FromIntentDeps) {
+  constructor(deps?: DiscoveryDeps) {
     this.deps = deps;
     this.database = deps?.database ?? new ChatDatabaseAdapter();
     this.graphDb = createOpportunityGraphDb(this.database);
@@ -69,12 +69,12 @@ export class FromIntentQueue {
     this.sameIntentDeferDelayMs = deps?.sameIntentDeferDelayMs ?? SAME_INTENT_DEFER_DELAY_MS;
   }
 
-  setRuntimeDeps(runtimeDeps: Pick<FromIntentDeps, 'matchesReady' | 'agentDispatcher'>): void {
+  setRuntimeDeps(runtimeDeps: Pick<DiscoveryDeps, 'matchesReady' | 'agentDispatcher'>): void {
     this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
   async addJob(
-    data: FromIntentJobData,
+    data: DiscoveryJobData,
     options?: {
       jobId?: string;
       priority?: number;
@@ -83,7 +83,7 @@ export class FromIntentQueue {
       removeOnFail?: boolean;
       deduplication?: DeduplicationOptions;
     },
-  ): Promise<Job<FromIntentJobData>> {
+  ): Promise<Job<DiscoveryJobData>> {
     const assignedCommunityCount = (await this.getValidDiscoveryNetworkIds(
       data.intentId,
       data.userId,
@@ -94,9 +94,9 @@ export class FromIntentQueue {
   }
 
   private enqueueDiscover(
-    data: FromIntentJobData,
-    options?: Parameters<FromIntentQueue['addJob']>[1],
-  ): Promise<Job<FromIntentJobData>> {
+    data: DiscoveryJobData,
+    options?: Parameters<DiscoveryQueue['addJob']>[1],
+  ): Promise<Job<DiscoveryJobData>> {
     return this.queue.add('discover', data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
@@ -112,14 +112,14 @@ export class FromIntentQueue {
   }
 
   private async recordProgress(
-    data: FromIntentJobData,
+    data: DiscoveryJobData,
     status: 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked',
     attempt: number,
     assignedCommunityCount?: number,
     /** Run tallies, known only at a successful boundary; omitted leaves the stored counts alone. */
     counts?: { processedCommunityCount: number; possibleOverlapCount: number; conversationsStartedCount: number },
   ): Promise<void> {
-    const record = (this.database as Partial<FromIntentDatabase>).recordIntentDiscoveryProgress;
+    const record = (this.database as Partial<DiscoveryDatabase>).recordIntentDiscoveryProgress;
     // Isolated queue tests and a rolling deploy may run a worker before its
     // adapter has been updated. Production adapters always provide this.
     if (!record) return;
@@ -128,7 +128,7 @@ export class FromIntentQueue {
     });
   }
 
-  async processJob(name: string, data: FromIntentJobData, attempt = 1): Promise<void> {
+  async processJob(name: string, data: DiscoveryJobData, attempt = 1): Promise<void> {
     switch (name) {
       case 'discover':
         await this.handleDiscover(data, attempt);
@@ -138,7 +138,7 @@ export class FromIntentQueue {
     }
   }
 
-  private async handleDiscover(data: FromIntentJobData, attempt: number): Promise<void> {
+  private async handleDiscover(data: DiscoveryJobData, attempt: number): Promise<void> {
     const { intentId, userId, networkIds } = data;
     // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()` and
     // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
@@ -202,8 +202,8 @@ export class FromIntentQueue {
       deps: this.deps,
       invokeOpts,
       logger: this.logger,
-      label: 'FromIntent',
-      errorLabel: 'from-intent',
+      label: 'Discovery',
+      errorLabel: 'discovery',
       logContext: { intentId, userId },
     });
 
@@ -253,7 +253,7 @@ export class FromIntentQueue {
     // the mining pass and its question enqueue are retired
     // (conversational-questions plan, "Retirements").
     void maybeRunNegotiationEvidenceShadow({
-      source: 'from_intent',
+      source: 'discovery_run',
       userId,
       intentId,
     }).catch(() => {});
@@ -282,7 +282,7 @@ export class FromIntentQueue {
    * budget (persistence tolerates overlap), so a Redis hiccup must not fail a
    * scan.
    */
-  private async acquireIntentLock(data: FromIntentJobData): Promise<(() => Promise<void>) | null> {
+  private async acquireIntentLock(data: DiscoveryJobData): Promise<(() => Promise<void>) | null> {
     const token = crypto.randomUUID();
     try {
       if (!(await this.intentLock.tryAcquire(data.intentId, token, SAME_INTENT_LOCK_TTL_MS))) return null;
@@ -312,7 +312,7 @@ export class FromIntentQueue {
    * occupied by this job — and no progress write: the running job's lifecycle
    * writes for this intent are the authoritative ones.
    */
-  private async deferOverlappingJob(job: Job<FromIntentJobData>): Promise<void> {
+  private async deferOverlappingJob(job: Job<DiscoveryJobData>): Promise<void> {
     this.queueLogger.info('Discovery already running for intent; deferring job', {
       event: 'intent_discovery_overlap_deferred',
       jobId: job.id,
@@ -328,7 +328,7 @@ export class FromIntentQueue {
 
   startWorker(): void {
     if (this.worker) return;
-    const processor = async (job: Job<FromIntentJobData>) => {
+    const processor = async (job: Job<DiscoveryJobData>) => {
       this.queueLogger.info('Processing job', { jobId: job.id });
       const release = await this.acquireIntentLock(job.data);
       if (!release) {
@@ -345,7 +345,7 @@ export class FromIntentQueue {
         await release();
       }
     };
-    this.worker = QueueFactory.createWorker<FromIntentJobData>(QUEUE_NAME, processor, {
+    this.worker = QueueFactory.createWorker<DiscoveryJobData>(QUEUE_NAME, processor, {
       // Scans for different signals run side by side; same-intent runs are
       // serialized by the lock above. Rationale for the number lives with it.
       concurrency: DISCOVERY_WORKER_CONCURRENCY,
@@ -361,4 +361,4 @@ export class FromIntentQueue {
   }
 }
 
-export const fromIntentQueue = new FromIntentQueue();
+export const discoveryQueue = new DiscoveryQueue();
