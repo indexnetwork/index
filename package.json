@@ -8,6 +8,9 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "negotiator": "./dist/cli/index.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -22,7 +25,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && bun build ./src/index.ts ./src/a2a/index.ts --outdir dist --target node --format esm --splitting && tsc --project tsconfig.build.json",
+    "build": "rm -rf dist && bun build ./src/index.ts ./src/a2a/index.ts --outdir dist --target node --format esm --splitting && bun build ./src/cli/index.ts --outdir dist/cli --target bun --format esm && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepublishOnly": "bun run typecheck && bun run test && bun run build"

@@ -20,6 +20,10 @@ agent, without needing to reimplement the protocol itself.
 
 ## How to use this package
 
+Want to see what it does before writing any code? Skip to the
+[CLI](#cli-trying-it-out) — `negotiator sim` runs both sides of a
+negotiation in your terminal.
+
 There are two layers, and most projects only need to reach for one:
 
 - **Just need to draft a message or pick an action?** Use `Negotiator` directly
@@ -88,6 +92,71 @@ const negotiator = new Negotiator({
 
 Constructing a `Negotiator` throws immediately if no API key is available
 from either source.
+
+## CLI: trying it out
+
+The package ships a `negotiator` command for exercising the library from a
+terminal — useful for feeling out how an objective shapes an agent's
+behavior before wiring anything up. It needs `OPENROUTER_API_KEY` in the
+environment (a `.env` file in the working directory works too), and Bun to
+run (the `serve` command uses `Bun.serve`).
+
+Inside this repo, run it with `bun run src/cli/index.ts <command>`; once
+the package is installed, just `negotiator <command>`.
+
+| Command | What it does |
+| --- | --- |
+| `sim` | Runs both sides locally — two agents negotiate with each other, no network involved. |
+| `play` | You type your side, an agent plays the other. |
+| `serve` | Runs one agent as an A2A server answering incoming negotiations. |
+| `connect <url>` | Negotiates against another agent's A2A endpoint over HTTP. |
+
+Watch two agents haggle:
+
+```bash
+negotiator sim \
+  --a Buyer  --a-objective "Buy a used bike for as little as possible, under \$400" \
+  --b Seller --b-objective "Sell the bike for as much as possible, above \$450"
+```
+
+```
+Buyer (propose) Hi! I'm very interested in the bike. Would you be willing to let it go for $300 cash?
+Seller (counter) Thanks for reaching out! ... I would be willing to do $500. Let me know if that works!
+Buyer (counter) $500 is a bit out of my budget. How about we meet in the middle around $375?
+...
+ended after 7 turns — Buyer chose "reject"
+```
+
+Negotiate against one yourself:
+
+```bash
+negotiator play --agent Seller --objective "Sell the bike above \$450"
+```
+
+Or run the real A2A path across two processes, with bearer auth on the wire
+(see [Authenticating `message/send` calls](#authenticating-messagesend-calls)):
+
+```bash
+# terminal 1
+negotiator serve --name Seller --objective "Sell above \$450, accept over \$420" \
+                 --port 3000 --token s3cret
+
+# terminal 2
+negotiator connect http://localhost:3000 --name Buyer \
+                   --objective "Buy the bike; hard max \$440" \
+                   --token s3cret --expect Seller
+```
+
+`connect` fetches the counterparty's AgentCard first and warns if it
+declares a security requirement you haven't supplied a `--token` for;
+`--expect <name>` refuses to negotiate unless the card identifies as that
+agent.
+
+Shared options across commands: `--model <id>` to pick an OpenRouter model,
+`--actions <list>` for a custom action vocabulary (default
+`propose,counter,accept,reject`), `--terminal <list>` for which of those end
+the negotiation (default `accept,reject,decline,withdraw`), and `--turns <n>`
+as a safety cap. Run `negotiator help` for the full list.
 
 ## Usage
 
@@ -425,8 +494,9 @@ src/
   a2a/             # the A2A protocol layer, built on core/
     index.ts       # public entry point for @indexnetwork/negotiator/a2a
     wire/          # shared protocol types and NegotiationDecision <-> A2A message encoding
-    server/        # createA2AHandler() + Task storage
+    server/        # createA2AHandler() + Task storage + the authenticate hook helper
     client/        # A2ANegotiationClient + the raw message/send transport call
+  cli/             # the `negotiator` command (see "CLI" above), built to dist/cli
 dev/
   simulate.ts      # local two-sided harness (see "Local simulation" above), not published
 ```
