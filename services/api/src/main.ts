@@ -41,7 +41,6 @@ import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
@@ -170,7 +169,6 @@ void frameDriftQueue.start().catch((error) => {
 });
 hydeQueue.startCrons();
 negotiationReflectQueue.startCrons();
-personalAgentQueue.startWorker();
 premiseQueue.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -327,14 +325,6 @@ const server = Bun.serve({
         },
         { headers: corsHeaders }
       );
-    }
-
-    // Bull Board UI at /dev/queues (before API loop so it is always served in dev)
-    if (!IS_PRODUCTION && (url.pathname === '/dev/queues' || url.pathname.startsWith('/dev/queues/'))) {
-      const res = await adminQueuesApp.fetch(req);
-      const newHeaders = new Headers(res.headers);
-      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
-      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
     // Better Auth handles its own /api/auth/* routes (sign-in, sign-up, session, etc.)
@@ -567,13 +557,9 @@ bindLimiterServer(server);
 logger.info('Server running', { port: PORT });
 
 
-// Graceful shutdown: close BullMQ workers so stale workers don't linger after restart
+// Graceful shutdown
 const shutdown = async () => {
-  logger.info('Shutting down workers...');
-  await Promise.allSettled([
-    personalAgentQueue.close(),
-  ]);
-  logger.info('Workers closed');
+  logger.info('Shutting down...');
   await Sentry.close(2000);
   process.exit(0);
 };

@@ -97,7 +97,6 @@ const envSchema = z.object({
   UNAVATAR_BASE: optionalUrl,
 
   // 8. Discovery / protocol runtime
-  PERSONAL_AGENT_WORKER_CONCURRENCY: optionalPositiveInt,
   PERSONAL_AGENT_KICKOFF_CONCURRENCY: optionalPositiveInt,
 
   // Test harness (repo-root .env.test only)
