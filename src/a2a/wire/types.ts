@@ -14,6 +14,24 @@ export type A2ATaskState =
   | "canceled"
   | "rejected";
 
+/** The states A2A treats as final. A task in one of these has finished:
+ * it accepts no further `message/send` calls, and whatever it settled on
+ * is the record. Anything else (`submitted`, `working`, `input-required`)
+ * is still in flight. */
+const TERMINAL_TASK_STATES = new Set<A2ATaskState>([
+  "completed",
+  "failed",
+  "canceled",
+  "rejected",
+]);
+
+/** Whether a task has finished and can no longer be continued. Exported so
+ * a caller can check before sending rather than discovering it from the
+ * error — and so nobody has to re-derive which states are final. */
+export function isTerminalTaskState(state: A2ATaskState): boolean {
+  return TERMINAL_TASK_STATES.has(state);
+}
+
 export interface A2APart {
   kind: "text" | "data";
   text?: string;

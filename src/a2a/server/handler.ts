@@ -5,6 +5,7 @@ import { verifyAgreement } from "../wire/agreement.ts";
 import { decisionToMessage, historyFromMessages } from "../wire/history.ts";
 import type { JsonRpcRequest, JsonRpcResponse } from "../wire/jsonrpc.ts";
 import { defaultStrategy, type DecisionStrategy, type EvaluateHook } from "../wire/strategy.ts";
+import { isTerminalTaskState } from "../wire/types.ts";
 import type { A2AArtifact, A2AIdentity, A2AMessage, A2ATask, AgentCard } from "../wire/types.ts";
 import { TaskStore } from "./task-store.ts";
 
@@ -118,6 +119,23 @@ export function createA2AHandler<A extends string>(
           { status: 404 },
         );
       }
+      // A finished task is the record of what was settled. Answering a
+      // message on one would append a turn, re-stamp the state from the new
+      // decision, and erase the agreement the task had already certified —
+      // leaving both parties looking at an open negotiation and, quite
+      // correctly given what they can see, haggling over settled terms.
+      // The server owns the task, so refusing here is the only place this
+      // can be stopped: a well-behaved counterparty can't protect us.
+      if (isTerminalTaskState(existing.status.state)) {
+        return Response.json(
+          jsonRpcError(
+            rpcRequest.id,
+            -32002,
+            `Task "${incoming.taskId}" is ${existing.status.state} and cannot accept further messages. Start a new task to negotiate again.`,
+          ),
+          { status: 409 },
+        );
+      }
       task = existing;
     } else {
       const id = crypto.randomUUID();
@@ -133,10 +151,14 @@ export function createA2AHandler<A extends string>(
     task.history.push(incoming);
 
     const history = historyFromMessages(task.history, "server");
+    // The incoming request's signal is the right deadline for our own
+    // model call: if the caller has already hung up, finishing the turn
+    // buys nothing and the reply has nowhere to go.
     const decision = await strategy(
       options.negotiator,
       { party: options.party, history },
       options.allowedActions,
+      { signal: request.signal },
     );
 
     const reply = decisionToMessage(decision, "agent", {

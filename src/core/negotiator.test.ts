@@ -219,3 +219,166 @@ describe("Negotiator.decide", () => {
     ).rejects.toThrow(/malformed decision/);
   });
 });
+
+/** A fetch that hangs until its signal aborts — the shape of a counterparty
+ * that accepts a connection and then never answers. If no signal reaches
+ * it, it hangs forever, which is exactly the bug these tests guard. */
+function mockFetchThatHangs() {
+  let sawSignal: AbortSignal | null | undefined;
+  globalThis.fetch = ((_url: string, init?: RequestInit) => {
+    sawSignal = init?.signal;
+    return new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      // Real fetch rejects straight away on an already-aborted signal; it
+      // does not wait for an "abort" event that has already been and gone.
+      if (signal?.aborted) return reject(signal.reason);
+      signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  }) as unknown as typeof fetch;
+  return {
+    get signal() {
+      return sawSignal;
+    },
+  };
+}
+
+describe("Negotiator deadlines", () => {
+  test("bounds a model call that never answers", async () => {
+    mockFetchThatHangs();
+    const negotiator = new Negotiator({ apiKey: "test-key", timeoutMs: 20 });
+
+    await expect(negotiator.respond(state)).rejects.toThrow(
+      /OpenRouter request timed out after 20ms/,
+    );
+  });
+
+  test("a per-call timeoutMs overrides the client's default", async () => {
+    mockFetchThatHangs();
+    const negotiator = new Negotiator({ apiKey: "test-key", timeoutMs: 60_000 });
+
+    await expect(negotiator.respond(state, { timeoutMs: 20 })).rejects.toThrow(
+      /timed out after 20ms/,
+    );
+  });
+
+  test("a caller's abort stops a call already in flight", async () => {
+    mockFetchThatHangs();
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+    const controller = new AbortController();
+
+    const pending = negotiator.decide(state, {
+      allowedActions: ["accept", "reject"],
+      signal: controller.signal,
+    });
+    controller.abort(new Error("host interrupted"));
+
+    await expect(pending).rejects.toThrow("host interrupted");
+  });
+
+  test("a caller's abort is reported as theirs, never as our timeout", async () => {
+    mockFetchThatHangs();
+    const negotiator = new Negotiator({ apiKey: "test-key", timeoutMs: 60_000 });
+    const controller = new AbortController();
+    controller.abort(new Error("host interrupted"));
+
+    const failure = await negotiator.respond(state, { signal: controller.signal }).catch(
+      (error: unknown) => error,
+    );
+
+    // Rethrown as-is: a host must be able to tell its own cancellation
+    // apart from a fault of ours, and match on the reason it supplied.
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe("host interrupted");
+    expect((failure as Error).message).not.toMatch(/timed out/);
+  });
+
+  test("timeoutMs: 0 disables the deadline but leaves the signal working", async () => {
+    const fetchMock = mockFetchThatHangs();
+    const negotiator = new Negotiator({ apiKey: "test-key", timeoutMs: 0 });
+    const controller = new AbortController();
+
+    const pending = negotiator.respond(state, { signal: controller.signal });
+    controller.abort(new Error("only the caller can stop this"));
+
+    await expect(pending).rejects.toThrow("only the caller can stop this");
+    expect(fetchMock.signal).toBe(controller.signal);
+  });
+
+  test("attaches a deadline signal to fetch even when the caller passes none", async () => {
+    const fetchMock = mockFetchOnce("reply");
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    await negotiator.respond(state);
+
+    expect(fetchMock.init?.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+
+describe("Negotiator clock", () => {
+  // A relative date in `terms` decays: "next Tuesday" is unresolvable a
+  // week later, and unresolvable to the *other* party immediately, since
+  // their "next Tuesday" is anchored to when they read it. Asking the model
+  // for absolute dates only works if it knows what today is — otherwise it
+  // invents one, and a confident wrong date is worse than a vague one.
+  const fixed = () => new Date("2026-08-28T12:00:00Z");
+
+  test("tells the model today's date, with the weekday", async () => {
+    const fetchMock = mockFetchOnce("reply");
+    const negotiator = new Negotiator({ apiKey: "test-key", now: fixed });
+
+    await negotiator.respond(state);
+
+    expect(fetchMock.body.messages[0].content).toContain("2026-08-28 (Friday)");
+  });
+
+  test("tells the model the date on decide() too", async () => {
+    const fetchMock = mockFetchOnce('{"action":"accept","message":"ok"}');
+    const negotiator = new Negotiator({ apiKey: "test-key", now: fixed });
+
+    await negotiator.decide(state, { allowedActions: ["accept", "reject"] });
+
+    expect(fetchMock.body.messages[0].content).toContain("2026-08-28 (Friday)");
+  });
+
+  test("asks for absolute dates when terms are requested", async () => {
+    const fetchMock = mockFetchOnce('{"action":"accept","message":"ok"}');
+    const negotiator = new Negotiator({ apiKey: "test-key", now: fixed });
+
+    await negotiator.decide(state, {
+      allowedActions: ["accept"],
+      terms: "amount (number, USD), collection (date)",
+    });
+
+    const prompt = fetchMock.body.messages[0].content;
+    expect(prompt).toContain("YYYY-MM-DD");
+    expect(prompt).toContain("next Tuesday"); // named as the thing not to do
+  });
+
+  test("reads the clock per call, so a long-running server doesn't freeze", async () => {
+    const dates = ["2026-08-28T12:00:00Z", "2026-09-04T12:00:00Z"];
+    let call = 0;
+    const negotiator = new Negotiator({
+      apiKey: "test-key",
+      now: () => new Date(dates[call++]!),
+    });
+
+    const first = mockFetchOnce("reply");
+    await negotiator.respond(state);
+    expect(first.body.messages[0].content).toContain("2026-08-28");
+
+    const second = mockFetchOnce("reply");
+    await negotiator.respond(state);
+    expect(second.body.messages[0].content).toContain("2026-09-04");
+  });
+
+  test("defaults to the real clock", async () => {
+    const fetchMock = mockFetchOnce("reply");
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    await negotiator.respond(state);
+
+    const today = new Date().toISOString().slice(0, 10);
+    expect(fetchMock.body.messages[0].content).toContain(today);
+  });
+});

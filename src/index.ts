@@ -4,6 +4,7 @@
 export { Negotiator } from "./core/negotiator.ts";
 export { OpenRouterClient } from "./core/openrouter-client.ts";
 export type { ActionSpec, DecideOptions, NegotiatorOptions } from "./core/negotiator.ts";
+export type { DeadlineOptions } from "./core/deadline.ts";
 export type { OpenRouterClientOptions, OpenRouterMessage } from "./core/openrouter-client.ts";
 export type {
   MessageRole,

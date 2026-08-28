@@ -3,7 +3,7 @@ export type { A2AHandlerOptions } from "./server/handler.ts";
 export { TaskStore } from "./server/task-store.ts";
 export { bearerTokenAuth } from "./server/auth.ts";
 export { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
-export type { A2ACredentials } from "./client/transport.ts";
+export type { A2ACredentials, DeadlineOptions } from "./client/transport.ts";
 export { bearerCredentials } from "./client/auth.ts";
 export { A2ANegotiationClient } from "./client/negotiation-client.ts";
 export type {
@@ -15,6 +15,7 @@ export { defaultStrategy, strategyWithTerms } from "./wire/strategy.ts";
 export type { DecisionStrategy, EvaluateHook } from "./wire/strategy.ts";
 export { verifyAgreement } from "./wire/agreement.ts";
 export type { AgreementBasis, AgreementResult, AgreementStatus } from "./wire/agreement.ts";
+export { isTerminalTaskState } from "./wire/types.ts";
 export type {
   A2AArtifact,
   A2AIdentity,

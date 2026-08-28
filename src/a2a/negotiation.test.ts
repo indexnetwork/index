@@ -6,8 +6,11 @@ import { A2ANegotiationClient } from "./client/negotiation-client.ts";
 import { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
 import { bearerTokenAuth } from "./server/auth.ts";
 import { createA2AHandler, OUTCOME_ARTIFACT_ID } from "./server/handler.ts";
+import { TaskStore } from "./server/task-store.ts";
 import { verifyAgreement } from "./wire/agreement.ts";
+import { defaultStrategy } from "./wire/strategy.ts";
 import { decisionToMessage } from "./wire/history.ts";
+import { isTerminalTaskState } from "./wire/types.ts";
 import type { AgentCard } from "./wire/types.ts";
 
 /** A Negotiator whose decide() is scripted instead of hitting OpenRouter. */
@@ -446,6 +449,289 @@ describe("A2A client/server over real HTTP", () => {
       expect(task.status.state).toBe("completed");
     } finally {
       httpServer.stop();
+    }
+  });
+});
+
+describe("A2A deadlines", () => {
+  /** A server that accepts the connection and then never answers — the
+   * failure that used to park an initiator forever. */
+  function silentServer() {
+    return Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => {}) });
+  }
+
+  const message = decisionToMessage({ action: "propose", message: "hi" }, "user", {});
+
+  test("sendA2AMessage() gives up on a counterparty that never replies", async () => {
+    const httpServer = silentServer();
+    try {
+      await expect(
+        sendA2AMessage(httpServer.url.toString(), message, undefined, { timeoutMs: 50 }),
+      ).rejects.toThrow(/A2A message\/send to .* timed out after 50ms/);
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("sendA2AMessage() honours a caller's signal and reports it as theirs", async () => {
+    const httpServer = silentServer();
+    const controller = new AbortController();
+    try {
+      const pending = sendA2AMessage(httpServer.url.toString(), message, undefined, {
+        signal: controller.signal,
+      });
+      controller.abort(new Error("host gave up"));
+      await expect(pending).rejects.toThrow("host gave up");
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("fetchAgentCard() gives up on an endpoint that never answers", async () => {
+    const httpServer = silentServer();
+    try {
+      await expect(
+        fetchAgentCard(httpServer.url.toString(), undefined, { timeoutMs: 50 }),
+      ).rejects.toThrow(/Agent card fetch from .* timed out after 50ms/);
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("a turn's signal reaches the request in flight, not just the loop around it", async () => {
+    const httpServer = silentServer();
+    const controller = new AbortController();
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "propose", message: "I'll offer $400." }])
+          .negotiator,
+        party: { name: "Buyer", objective: "Buy low" },
+        allowedActions: ["propose", "accept"],
+      });
+
+      const pending = client.initiate(httpServer.url.toString(), {
+        signal: controller.signal,
+      });
+      controller.abort(new Error("^C"));
+      await expect(pending).rejects.toThrow("^C");
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("the client's timeoutMs bounds a send when no signal is given", async () => {
+    const httpServer = silentServer();
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "propose", message: "hi" }]).negotiator,
+        party: { name: "Buyer", objective: "Buy low" },
+        allowedActions: ["propose", "accept"],
+        timeoutMs: 50,
+      });
+
+      await expect(client.initiate(httpServer.url.toString())).rejects.toThrow(
+        /timed out after 50ms/,
+      );
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("the turn's signal reaches the strategy, so this side's model call is bounded too", async () => {
+    const httpServer = silentServer();
+    const controller = new AbortController();
+    let strategySignal: AbortSignal | undefined;
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "propose", message: "hi" }]).negotiator,
+        party: { name: "Buyer", objective: "Buy low" },
+        allowedActions: ["propose", "accept"],
+        strategy: async (_negotiator, _state, _allowedActions, options) => {
+          strategySignal = options?.signal;
+          return { action: "propose", message: "hi" };
+        },
+      });
+
+      const pending = client.initiate(httpServer.url.toString(), {
+        signal: controller.signal,
+      });
+      controller.abort(new Error("^C"));
+      await expect(pending).rejects.toThrow("^C");
+      expect(strategySignal).toBe(controller.signal);
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("an exported strategy is still callable with three arguments", async () => {
+    // `defaultStrategy`/`strategyWithTerms` are public API, so a caller
+    // composing on top of one must still be able to invoke it the way it
+    // was invocable before `options` existed. This is really a
+    // compile-time assertion — `bun run typecheck` covers this file — and
+    // it fails to build if `options` ever stops being optional.
+    const { negotiator } = scriptedNegotiator([{ action: "accept", message: "ok" }]);
+    const state: NegotiationState = {
+      party: { name: "Seller", objective: "Sell high" },
+      history: [],
+    };
+
+    const decision = await defaultStrategy(negotiator, state, ["accept", "reject"]);
+
+    expect(decision).toEqual({ action: "accept", message: "ok" });
+  });
+
+  test("the handler hands the request's signal to its strategy", async () => {
+    let strategySignal: AbortSignal | undefined;
+    const handler = createA2AHandler({
+      negotiator: scriptedNegotiator([{ action: "accept", message: "ok" }]).negotiator,
+      party: { name: "Seller", objective: "Sell high" },
+      allowedActions: ["accept", "reject"],
+      agentCard: agentCard("Seller"),
+      strategy: async (_negotiator, _state, _allowedActions, options) => {
+        strategySignal = options?.signal;
+        return { action: "accept", message: "ok" };
+      },
+    });
+
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "propose", message: "hi" }]).negotiator,
+        party: { name: "Buyer", objective: "Buy low" },
+        allowedActions: ["propose", "accept"],
+      });
+      await client.initiate(httpServer.url.toString());
+
+      // A caller that hangs up mid-turn should stop the server's own model
+      // call: the reply it would produce has nowhere left to go.
+      expect(strategySignal).toBeInstanceOf(AbortSignal);
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+});
+
+
+describe("a settled task stays settled", () => {
+  const offer = { amount: 460, currency: "USD" };
+
+  /** A handler that has already closed a deal, plus the task it closed and
+   * the store holding the server's own copy of it — the client's copy came
+   * over the wire and can't tell us whether the server's record moved. */
+  async function settledTask() {
+    const taskStore = new TaskStore();
+    const handler = createA2AHandler({
+      taskStore,
+      negotiator: scriptedNegotiator([
+        { action: "accept", message: "Deal at $460.", terms: offer, offerId: "srv-1" },
+        // Would reopen the haggling if it were ever allowed to run.
+        { action: "counter", message: "Actually, $500?", terms: { amount: 500 } },
+      ]).negotiator,
+      party: { name: "Seller", objective: "Sell high" },
+      allowedActions: ["propose", "counter", "accept", "reject"],
+      agentCard: agentCard("Seller"),
+    });
+    const httpServer = Bun.serve({ port: 0, fetch: handler });
+    const client = new A2ANegotiationClient({
+      negotiator: scriptedNegotiator([
+        { action: "propose", message: "I'll offer $460.", terms: offer, offerId: "cli-1" },
+      ]).negotiator,
+      party: { name: "Buyer", objective: "Buy low" },
+      allowedActions: ["propose", "counter", "accept", "reject"],
+    });
+    const { task, outcome } = await client.initiate(httpServer.url.toString());
+    expect(outcome).toBe("completed");
+    expect(verifyAgreement(task).status).toBe("agreed");
+    return { httpServer, task, taskStore };
+  }
+
+  test("the handler refuses a message/send on a finished task", async () => {
+    const { httpServer, task } = await settledTask();
+    try {
+      // Straight down the wire, bypassing the client's own guard — this is
+      // a counterparty we don't control, which is the case that matters.
+      const message = decisionToMessage({ action: "counter", message: "reopen?" }, "user", {
+        taskId: task.id,
+        contextId: task.contextId,
+      });
+
+      await expect(
+        sendA2AMessage(httpServer.url.toString(), message),
+      ).rejects.toThrow(/is completed and cannot accept further messages/);
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("the refused message leaves the server's own record intact", async () => {
+    const { httpServer, task, taskStore } = await settledTask();
+    try {
+      const message = decisionToMessage({ action: "counter", message: "reopen?" }, "user", {
+        taskId: task.id,
+        contextId: task.contextId,
+      });
+      await sendA2AMessage(httpServer.url.toString(), message).catch(() => {});
+
+      // The server's copy, not the client's — the client's came over the
+      // wire and would look untouched however the server behaved.
+      const stored = taskStore.get(task.id);
+      expect(stored).toBeDefined();
+      expect(stored!.status.state).toBe("completed");
+      expect(stored!.history).toHaveLength(2); // the refused message was never appended
+      expect(verifyAgreement(stored!)).toMatchObject({ status: "agreed", terms: offer });
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("the outcome artifact never contradicts the task's own state", async () => {
+    const { httpServer, task, taskStore } = await settledTask();
+    try {
+      const message = decisionToMessage({ action: "counter", message: "reopen?" }, "user", {
+        taskId: task.id,
+        contextId: task.contextId,
+      });
+      await sendA2AMessage(httpServer.url.toString(), message).catch(() => {});
+
+      const stored = taskStore.get(task.id)!;
+      const outcome = stored.artifacts.find((a) => a.artifactId === OUTCOME_ARTIFACT_ID);
+      const data = outcome?.parts[0]?.data as { state: string; status: string };
+      expect(data.state).toBe(stored.status.state);
+      expect(data.status).toBe("agreed");
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("continue() refuses a finished task without spending a model call", async () => {
+    const { httpServer, task } = await settledTask();
+    let decided = false;
+    try {
+      const client = new A2ANegotiationClient({
+        negotiator: scriptedNegotiator([{ action: "counter", message: "reopen?" }]).negotiator,
+        party: { name: "Buyer", objective: "Buy low" },
+        allowedActions: ["propose", "counter", "accept", "reject"],
+        strategy: async () => {
+          decided = true;
+          return { action: "counter", message: "reopen?" };
+        },
+      });
+
+      await expect(
+        client.continue(httpServer.url.toString(), task),
+      ).rejects.toThrow(/already completed/);
+      expect(decided).toBe(false);
+    } finally {
+      httpServer.stop(true);
+    }
+  });
+
+  test("isTerminalTaskState() names every final state and no in-flight one", () => {
+    for (const state of ["completed", "failed", "canceled", "rejected"] as const) {
+      expect(isTerminalTaskState(state)).toBe(true);
+    }
+    for (const state of ["submitted", "working", "input-required"] as const) {
+      expect(isTerminalTaskState(state)).toBe(false);
     }
   });
 });

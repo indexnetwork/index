@@ -81,6 +81,8 @@ export OPENROUTER_API_KEY=sk-or-...
 | `referer` | `string` | No       | Sent as `HTTP-Referer`, per [OpenRouter's app attribution](https://openrouter.ai/docs). |
 | `title`   | `string` | No       | Sent as `X-Title`, per OpenRouter's app attribution.                         |
 | `maxTokens` | `number` | No     | Output token cap per call. Defaults to 2048; raise it if decisions carrying large structured terms hit truncation. |
+| `timeoutMs` | `number` | No     | How long one model call may take before it's abandoned. Defaults to 120000 (120s); `0` disables it. See [Deadlines and cancellation](#deadlines-and-cancellation). |
+| `now` | `() => Date` | No | Supplies the date told to the model each turn. Defaults to `() => new Date()`. Inject a fixed clock for deterministic prompts in tests. |
 
 ```ts
 const negotiator = new Negotiator({
@@ -295,12 +297,16 @@ default only makes sense for that default vocabulary — a custom one, e.g.
 Two optional hooks, available on both `createA2AHandler()` and
 `A2ANegotiationClient`:
 
-- **`strategy(negotiator, state, allowedActions)`** — replaces the default
-  `negotiator.decide(state, { allowedActions })` call. Use this to customize
-  behavior per negotiation domain or personal agent type — gather extra
-  context first, consult a different model, whatever your case needs. The
-  A2A wire format doesn't change either way; this only affects what happens
-  before a decision is produced.
+- **`strategy(negotiator, state, allowedActions, options?)`** — replaces the
+  default `negotiator.decide(state, { allowedActions })` call. Use this to
+  customize behavior per negotiation domain or personal agent type — gather
+  extra context first, consult a different model, whatever your case needs.
+  The A2A wire format doesn't change either way; this only affects what
+  happens before a decision is produced. `options` carries the turn's
+  deadline — forward it, or your strategy is the one step in the chain that
+  can't be interrupted (see
+  [Deadlines and cancellation](#deadlines-and-cancellation)). It's optional,
+  so three-argument strategies still fit.
 - **`evaluate(task, decision)`** — runs after a turn is decided. Return an
   Artifact (`{ artifactId, name?, parts }`) to attach structured findings —
   a score, extracted terms, anything useful — to the Task, separate from the
@@ -313,9 +319,9 @@ Two optional hooks, available on both `createA2AHandler()` and
 ```ts
 const handler = createA2AHandler({
   // ...negotiator, party, allowedActions, agentCard,
-  strategy: async (negotiator, state, allowedActions) => {
+  strategy: async (negotiator, state, allowedActions, options) => {
     // e.g. domain-specific context injection, multiple negotiators, etc.
-    return negotiator.decide(state, { allowedActions });
+    return negotiator.decide(state, { allowedActions, ...options });
   },
   evaluate: (task, decision) => ({
     artifactId: crypto.randomUUID(),
@@ -393,6 +399,22 @@ const client = new A2ANegotiationClient({
 });
 ```
 
+**Dates in terms are made absolute.** The negotiator is told today's date
+and weekday on every turn, and asked to write dates in `terms` as
+`YYYY-MM-DD` rather than "next Tuesday" or "end of the month". This matters
+more than it looks: a relative date is unresolvable to the *other* party the
+moment it's sent, because their "next Tuesday" is anchored to when they read
+it, and it's unresolvable to anyone a week later — while `terms` exists
+precisely to be read back after the fact.
+
+Without a clock the model can't comply even when asked, so it invents a
+date, and a confident wrong date is worse than a visibly vague one. With
+one, a seller who is "away until next Tuesday" writes
+`{"collection": "2026-09-01"}`, a buyer who must collect by 31 August can
+see the conflict, and a deal that should never have closed doesn't. If you
+write your own `terms` description, you don't need to restate the date rule
+— it's already in the prompt.
+
 Then `verifyAgreement(task)` reports what the task settled on, computed from
 the Task itself — so both sides run it over the same record and reach the
 same verdict:
@@ -459,6 +481,37 @@ replaces the entry rather than appending a contradictory second one.
 > which passes in dev and surprises in production. Match on
 > `artifactId === OUTCOME_ARTIFACT_ID` to find it, and prefer `toContain`
 > over exact-list assertions for your own `evaluate()` artifacts.
+
+#### A settled task stays settled
+
+Once a task reaches a terminal state (`completed`, `rejected`, `canceled`,
+`failed`), `createA2AHandler()` refuses further `message/send` calls on it
+with a JSON-RPC error and HTTP 409, naming the state:
+
+```
+Task "…" is completed and cannot accept further messages. Start a new task
+to negotiate again.
+```
+
+This is a correctness guarantee, not a policy choice. Answering a message on
+a finished task would append a turn and re-stamp the state from the new
+decision — so the agreement the task had already certified disappears from
+the record, `verifyAgreement()` reverts to `open`, and the outcome artifact
+is left contradicting the task's own state. Both agents then see an open
+negotiation and, quite correctly given what they can see, resume haggling
+over terms that were already settled. That looks like a prompting problem
+and isn't one: the model reads the state accurately, the state is wrong.
+
+The check lives on the server because that's where the task is owned. A
+careful client can't provide this guarantee — the risk is a *counterparty*
+sending on your finished task, and only the side holding the record can
+refuse. `A2ANegotiationClient.continue()` also throws on a terminal task,
+but that's a convenience so you don't spend a model call on an
+undeliverable turn, not the protection itself.
+
+To negotiate the same subject again, call `initiate()` for a new task.
+`isTerminalTaskState(state)` is exported if you want to check before
+sending.
 
 ### Using the AgentCard as a trust check
 
@@ -546,6 +599,84 @@ const handler = createA2AHandler({
 mTLS terminated by a reverse proxy that forwards a verified client identity
 header, an OAuth2 access token, a signed request — plugs in the same way.
 
+### Deadlines and cancellation
+
+Every call in this library that goes to the network talks to something that
+can accept a connection and then never answer: a model endpoint, or a
+counterparty agent. Two mechanisms bound that, and they stack.
+
+**A built-in deadline**, so nothing hangs forever by default:
+
+| Call | Default | Override |
+| ---- | ------- | -------- |
+| `Negotiator.respond()` / `.decide()` | 120s | `new Negotiator({ timeoutMs })`, or per call |
+| `sendA2AMessage()` / `A2ANegotiationClient` turns | 180s | `new A2ANegotiationClient({ timeoutMs })`, or per turn |
+| `fetchAgentCard()` | 30s | per call |
+
+The model default is deliberately generous — a real reasoning turn can run
+close to a minute, and a deadline that fires on a slow-but-working model is
+worse than none. The `message/send` default is longer still, because the
+counterparty runs a full model turn of its own inside it. These bound the
+failure that never resolves; they don't police slowness. Pass `0` to
+disable one.
+
+**Your own `signal`**, so a host can impose its own policy or forward an
+interrupt. Every one of these calls takes `{ signal, timeoutMs }` as a
+trailing options argument:
+
+```ts
+const controller = new AbortController();
+process.once("SIGINT", () => controller.abort(new Error("interrupted")));
+
+const card = await fetchAgentCard(url, credentials, { signal: controller.signal });
+
+let { task, outcome } = await client.initiate(url, { signal: controller.signal });
+while (outcome === "input-required") {
+  ({ task, outcome } = await client.continue(url, task, { signal: controller.signal }));
+}
+```
+
+A turn's `signal` covers the whole turn — this side's model call *and* the
+wait on the counterparty — so an interrupt reaches the request in flight,
+not just the loop around it.
+
+The two are told apart on failure. The built-in deadline throws an error
+naming how long it waited (`A2A message/send to ... timed out after
+180000ms`); **your abort is rethrown as-is**, with the `reason` you supplied
+preserved, so a cancellation is never reported as a fault of the library's:
+
+```ts
+try {
+  await client.initiate(url, { signal: controller.signal });
+} catch (error) {
+  if (controller.signal.aborted) return; // ours — the user interrupted
+  throw error;                           // theirs — a timeout or a real failure
+}
+```
+
+The server side needs nothing: `createA2AHandler()` passes the incoming
+request's signal to its strategy, so a caller that hangs up mid-turn stops
+the handler's own model call rather than leaving it to finish a reply with
+nowhere to go.
+
+**Custom strategies** receive the turn's deadline as a fourth argument.
+Forward it, or your strategy is the one thing in the chain that can't be
+interrupted:
+
+```ts
+const strategy: DecisionStrategy<"accept" | "reject"> = async (
+  negotiator,
+  state,
+  allowedActions,
+  options, // { signal?, timeoutMs? } — optional, so 3-arg strategies still fit
+) => negotiator.decide(state, { allowedActions, ...options });
+```
+
+Retries are deliberately *not* built in: what's worth retrying, how often,
+and with what backoff is host policy, and a library that guessed would
+double up with a caller that already retries. The `signal` is what a host
+needs to build its own.
+
 ### Examples
 
 `examples/` has runnable, self-contained scripts covering the A2A surface —
@@ -617,7 +748,8 @@ git-ignored and rebuilt via `prepublishOnly`, not committed.
 ```
 src/
   index.ts        # public entry point — re-exports core/ only
-  core/            # the decision engine: Negotiator.respond()/decide()
+  core/            # the decision engine: Negotiator.respond()/decide(),
+                   #   plus the shared deadline/cancellation helper
   a2a/             # the A2A protocol layer, built on core/
     index.ts       # public entry point for @indexnetwork/negotiator/a2a
     wire/          # shared protocol types and NegotiationDecision <-> A2A message encoding
