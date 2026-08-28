@@ -1,4 +1,5 @@
 import type { Agent } from "./agent.ts";
+import { digest } from "./digest.ts";
 import type { ToolDefinition } from "./model.ts";
 import type { NegotiationSession } from "./types.ts";
 
@@ -137,7 +138,68 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
     run: ({ id, guidance }, context) => context.agent.continueNegotiation(id, { guidance }, context),
   };
 
-  return [open as Tool<never>, turn as Tool<never>];
+  const many: Tool<{ targets: { url: string; objective: string }[] }> = {
+    name: "negotiate_many",
+    description:
+      "Open negotiations with several agents at once and run each one on its own until it settles, needs something only the party you represent can tell you, or runs out of turns. Returns one digest with a line per negotiation. Prefer this over negotiate_open whenever there is more than one counterparty: you only hear about what needs you. For lines under 'Waiting on you', ask your party once with ask_user, then call negotiate_resume with every id the answer applies to." +
+      SETTLEMENT_NOTE,
+    parameters: {
+      type: "object",
+      properties: {
+        targets: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              url: { type: "string", description: "The counterparty agent's A2A base URL." },
+              objective: {
+                type: "string",
+                description: "What to achieve with this counterparty specifically.",
+              },
+            },
+            required: ["url", "objective"],
+          },
+        },
+      },
+      required: ["targets"],
+    },
+    run: async ({ targets }, context) =>
+      digest(
+        await Promise.all(
+          targets.map((target) =>
+            context.agent.runNegotiation(
+              target.url,
+              { objective: target.objective, discover: options.discover },
+              context,
+            ),
+          ),
+        ),
+      ),
+  };
+
+  const resume: Tool<{ ids: string[]; guidance: string }> = {
+    name: "negotiate_resume",
+    description:
+      "Give parked negotiations the answer they were waiting for and run them on. Pass every id the answer applies to; the guidance holds for the rest of each negotiation. Returns the same digest as negotiate_many. A negotiation that has already ended is not resumed — open a new one if the terms need to change." +
+      SETTLEMENT_NOTE,
+    parameters: {
+      type: "object",
+      properties: {
+        ids: { type: "array", items: { type: "string" }, description: "Negotiation ids from the digest." },
+        guidance: {
+          type: "string",
+          description: "What your party said, as it applies to these negotiations, e.g. 'Bob's ceiling is $460 and he can collect Sunday'.",
+        },
+      },
+      required: ["ids", "guidance"],
+    },
+    run: async ({ ids, guidance }, context) =>
+      digest(
+        await Promise.all(ids.map((id) => context.agent.resumeNegotiation(id, guidance, context))),
+      ),
+  };
+
+  return [open as Tool<never>, turn as Tool<never>, many as Tool<never>, resume as Tool<never>];
 }
 
 /** The tools an agent has when you don't give it any: ask the party it

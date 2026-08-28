@@ -8,6 +8,8 @@ import {
 
 import { Agent } from "./agent.ts";
 import { digest } from "./digest.ts";
+import { negotiationTools, type Tool } from "./tools.ts";
+import type { ModelMessage, ToolCall } from "./model.ts";
 import type { NegotiationSession } from "./types.ts";
 
 /** A Negotiator whose decide() replays a script, recording both the
@@ -321,5 +323,93 @@ describe("digest()", () => {
 
   test("an empty batch says so", () => {
     expect(digest([])).toBe("No negotiations.");
+  });
+});
+
+function tool(name: string) {
+  const found = negotiationTools().find((t) => t.name === name) as Tool<never> | undefined;
+  if (!found?.run) throw new Error(`no tool ${name}`);
+  return found;
+}
+
+describe("negotiate_many / negotiate_resume", () => {
+  test("runs every target concurrently and returns one digest", async () => {
+    const a = serve(new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator }));
+    const b = serve(new Agent({ ...seller, identity: { name: "Seller B", id: "did:example:b" }, negotiator: scripted([{ action: "reject", message: "No." }]).negotiator }));
+    try {
+      const client = scripted([{ action: "propose", message: "$400." }]);
+      const agent = new Agent({ ...buyer, negotiator: client.negotiator });
+      const context = { agent: agent as unknown as Agent, negotiations: new Map<string, NegotiationSession>() };
+
+      const text = (await tool("negotiate_many").run!(
+        { targets: [{ url: a.url, objective: "a" }, { url: b.url, objective: "b" }] } as never,
+        context,
+      )) as string;
+
+      expect(text).toStartWith("Settled (2):");
+      expect(text).toContain("with Seller —");
+      expect(text).toContain("with Seller B —");
+      expect(context.negotiations.size).toBe(2);
+    } finally {
+      a.stop();
+      b.stop();
+    }
+  });
+
+  test("one unreachable target does not sink the others", async () => {
+    const a = serve(new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator }));
+    try {
+      const agent = new Agent({ ...buyer, negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator });
+      const context = { agent: agent as unknown as Agent, negotiations: new Map<string, NegotiationSession>() };
+
+      const text = (await tool("negotiate_many").run!(
+        { targets: [{ url: a.url, objective: "a" }, { url: "http://127.0.0.1:1", objective: "b" }] } as never,
+        context,
+      )) as string;
+
+      expect(text).toContain("Settled (1):");
+      expect(text).toContain("Failed (1):");
+    } finally {
+      a.stop();
+    }
+  });
+
+  test("resume fans one answer out to several ids", async () => {
+    const mk = () => scripted([{ action: "counter", message: "$480?" }, { action: "accept", message: "OK." }]);
+    const a = serve(new Agent({ ...seller, negotiator: mk().negotiator }));
+    const b = serve(new Agent({ ...seller, identity: { name: "Seller B", id: "did:example:b" }, negotiator: mk().negotiator }));
+    try {
+      // Two negotiations interleave on one scripted client, so the script
+      // is symmetric: propose, ask, then counter for whichever comes next.
+      const client = scripted([
+        { action: "propose", message: "$400?" },
+        { action: "propose", message: "$400?" },
+        { action: "ask", message: "Ceiling?" },
+        { action: "ask", message: "Ceiling?" },
+        { action: "counter", message: "$450." },
+      ]);
+      const agent = new Agent({ ...buyer, negotiator: client.negotiator });
+      const context = { agent: agent as unknown as Agent, negotiations: new Map<string, NegotiationSession>() };
+
+      const first = (await tool("negotiate_many").run!(
+        { targets: [{ url: a.url, objective: "a" }, { url: b.url, objective: "b" }] } as never,
+        context,
+      )) as string;
+      expect(first).toContain("Waiting on you (2)");
+      const ids = [...context.negotiations.keys()];
+
+      const second = (await tool("negotiate_resume").run!(
+        { ids, guidance: "Bob's ceiling is $460" } as never,
+        context,
+      )) as string;
+
+      expect(second).toStartWith("Settled (2):");
+      const after = client.calls.slice(4);
+      expect(after.every((c) => c.state.party.objective.includes("ceiling is $460"))).toBe(true);
+      expect(after).toHaveLength(2);
+    } finally {
+      a.stop();
+      b.stop();
+    }
   });
 });
