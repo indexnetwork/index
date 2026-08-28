@@ -227,7 +227,7 @@ describe('IntentQueue', () => {
       expect(addOpportunityJob).not.toHaveBeenCalled();
     });
 
-    it('generate_hyde: assigns first, generates HyDE, then enqueues discovery exactly once', async () => {
+    it('generate_hyde: runs assignment concurrently with HyDE, then enqueues discovery exactly once', async () => {
       const sequence: string[] = [];
       const invokeHyde = mock(async () => { sequence.push('hyde'); });
       const addOpportunityJob = mock(async () => { sequence.push('discovery'); return {}; });
@@ -254,7 +254,34 @@ describe('IntentQueue', () => {
       );
       expect(addOpportunityJob).toHaveBeenCalledTimes(1);
       expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1' });
-      expect(sequence).toEqual(['assignment', 'hyde', 'discovery']);
+      // Assignment and HyDE now run concurrently, so their relative order isn't
+      // guaranteed — only that discovery waits for both.
+      expect(sequence).toContain('assignment');
+      expect(sequence).toContain('hyde');
+      expect(sequence.indexOf('discovery')).toBe(sequence.length - 1);
+    });
+
+    it('generate_hyde: fails the job when assignment rejects, even though HyDE succeeds', async () => {
+      const invokeHyde = mock(async () => {});
+      const addOpportunityJob = mock(async () => ({}));
+      let getIntentForIndexingCalls = 0;
+      const db = {
+        // First call is handleGenerateHyde's own admission check (must succeed);
+        // second call is inside assignIntentToNetworks (the un-try'd call that can reject).
+        getIntentForIndexing: async () => {
+          getIntentForIndexingCalls += 1;
+          if (getIntentForIndexingCalls > 1) throw new Error('db unavailable');
+          return { id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null };
+        },
+        getUserIndexIds: async () => ['idx1'],
+        assignIntentToNetwork: async () => {},
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
+
+      await expect(queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' })).rejects.toThrow('db unavailable');
+      expect(invokeHyde).toHaveBeenCalledTimes(1);
+      expect(addOpportunityJob).not.toHaveBeenCalled();
     });
 
     it('generate_hyde: builds profileContext from the users row (name/bio/location) + active intents', async () => {
@@ -595,7 +622,7 @@ describe('IntentQueue', () => {
       expect(assignIntentToNetwork.mock.calls[0][3]).toMatchObject({ source: 'intent-reconcile-queue', assigned: true });
     });
 
-    it('reconcile_orphaned_intent: re-admits missing artifacts in normal assignment → HyDE → discovery order', async () => {
+    it('reconcile_orphaned_intent: re-admits missing artifacts, assignment and HyDE concurrent, discovery last', async () => {
       const sequence: string[] = [];
       const queue = new IntentQueue({
         database: asIntentDb({
@@ -609,7 +636,9 @@ describe('IntentQueue', () => {
         addOpportunityJob: async () => { sequence.push('discovery'); },
       });
       await queue.processJob('reconcile_orphaned_intent', { intentId: 'i1', userId: 'u1' });
-      expect(sequence).toEqual(['assignment', 'hyde', 'discovery']);
+      expect(sequence).toContain('assignment');
+      expect(sequence).toContain('hyde');
+      expect(sequence.indexOf('discovery')).toBe(sequence.length - 1);
     });
 
     it('reconcile_orphaned_intent: skips paused intents before assignment or regeneration', async () => {

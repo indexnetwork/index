@@ -320,8 +320,28 @@ export class IntentQueue implements IntentGraphQueue {
     }
     this.hydeLogger.info('Starting HyDE generation', { intentId, userId });
     this.hydeLogger.debug('Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
-    const { assignedNetworkIds } = await this.assignIntentToNetworks(intentId, userId, scope);
-    this.hydeLogger.info('Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
+    // Assignment only needs its intent_networks write to land before discovery is
+    // enqueued below, so run it concurrently with the HyDE graph instead of blocking on it.
+    // The `.catch` below settles this promise FULFILLED (it doesn't rethrow), which is what
+    // actually closes the unhandled-rejection window across the profile-context await further
+    // down — a rethrowing `.catch` would just move the unhandled rejection to its own derived
+    // promise. The stashed error is rethrown after the `Promise.all` instead, preserving today's
+    // behaviour of failing (and BullMQ-retrying) the job on a real assignment error, e.g. from
+    // the un-try'd `getIntentForIndexing` call inside `assignIntentToNetworks`.
+    let assignmentError: unknown;
+    const assignmentPromise = this.assignIntentToNetworks(intentId, userId, scope)
+      .then(({ assignedNetworkIds }) => {
+        this.hydeLogger.info('Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
+      })
+      .catch((error) => {
+        this.hydeLogger.error('Intent network assignment failed; BullMQ will retry admission', {
+          event: 'intent_assignment_failed',
+          intentId,
+          userId,
+          error,
+        });
+        assignmentError = error;
+      });
 
     // Fetch discoverer profile (users row) + active intents for HyDE context (best-effort).
     let profileContext: string | undefined;
@@ -354,26 +374,34 @@ export class IntentQueue implements IntentGraphQueue {
 
     try {
       if (this.deps?.invokeHyde) {
-        await this.deps.invokeHyde({
-          sourceText: intent.payload,
-          sourceType: 'intent',
-          sourceId: intentId,
-          forceRegenerate: true,
-          profileContext,
-        });
+        await Promise.all([
+          this.deps.invokeHyde({
+            sourceText: intent.payload,
+            sourceType: 'intent',
+            sourceId: intentId,
+            forceRegenerate: true,
+            profileContext,
+          }),
+          assignmentPromise,
+        ]);
+        if (assignmentError) throw assignmentError;
       } else {
         const embedder = new EmbedderAdapter();
         const cache = new RedisCacheAdapter();
         const inferrer = new LensInferrer();
         const generator = new HydeGenerator();
         const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, inferrer, generator).createGraph();
-        await hydeGraph.invoke({
-          sourceText: intent.payload,
-          sourceType: 'intent',
-          sourceId: intentId,
-          forceRegenerate: true,
-          profileContext,
-        });
+        await Promise.all([
+          hydeGraph.invoke({
+            sourceText: intent.payload,
+            sourceType: 'intent',
+            sourceId: intentId,
+            forceRegenerate: true,
+            profileContext,
+          }),
+          assignmentPromise,
+        ]);
+        if (assignmentError) throw assignmentError;
       }
     } catch (error) {
       this.hydeLogger.error('HyDE generation failed; BullMQ will retry admission', {
