@@ -143,14 +143,14 @@ describe("runNegotiation()", () => {
         ...seller,
         negotiator: scripted([
           { action: "counter", message: "I need $450.", terms: { amount: 450 } },
-          { action: "accept", message: "Deal at $420.", terms: { amount: 420 }, offerId: "" },
+          { action: "accept", message: "Deal at $420.", acceptsOfferId: "offer-420" },
         ]).negotiator,
       }),
     );
     try {
       const client = scripted([
         { action: "propose", message: "I'll offer $400.", terms: { amount: 400 } },
-        { action: "counter", message: "I can do $420.", terms: { amount: 420 } },
+        { action: "counter", message: "I can do $420.", offerId: "offer-420", terms: { amount: 420 } },
       ]);
       const agent = new Agent({ ...buyer, negotiator: client.negotiator });
       const negotiations = new Map<string, NegotiationSession>();
