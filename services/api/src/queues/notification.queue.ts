@@ -1,7 +1,6 @@
-import { Job } from 'bullmq';
 import { safeFallbackSummary } from '@indexnetwork/protocol';
 import { log } from '../lib/log';
-import { QueueFactory } from '../lib/bullmq/bullmq';
+import { background } from '../lib/background';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { userService } from '../services/user.service';
 import { executeSendEmail } from '../lib/email/transport.helper';
@@ -10,9 +9,6 @@ import { emitOpportunityNotification, emitTelegramNotification } from '../lib/no
 import { publishNotificationStreamEvent, type NotificationStreamPublisher } from '../lib/notification-stream-events';
 import { getRedisClient } from '../adapters/cache.adapter';
 import { userDatabaseAdapter } from '../adapters/database.adapter';
-
-/** BullMQ queue name for opportunity notification jobs. */
-export const QUEUE_NAME = 'notification-queue';
 
 /** Delivery priority: immediate (WebSocket) or high (email soon). */
 export type NotificationPriority = 'immediate' | 'high';
@@ -23,8 +19,6 @@ export interface NotificationJobData {
   recipientId: string;
   priority: NotificationPriority;
 }
-
-export type NotificationQueueJobData = NotificationJobData;
 
 /** Minimal database interface for notification queue (used when deps provided in tests). */
 export type NotificationQueueDatabase = Pick<ChatDatabaseAdapter, 'getOpportunity'> & {
@@ -47,25 +41,14 @@ const EMAIL_OPPORTUNITY_DEDUPE_PREFIX = 'email:opportunity:dedupe:';
 const EMAIL_DEDUPE_TTL_SEC = 7 * 24 * 3600;
 
 /**
- * Notification queue: BullMQ queue plus worker and job handlers for opportunity notifications.
- *
- * Handles `process_opportunity_notification`: loads opportunity, then by priority—immediate
- * (WebSocket emit) or high (send email). Uses email queue and Redis for dedupe.
- *
- * @remarks
- * Workers are started only by the protocol server via {@link NotificationQueue.startWorker}.
- * CLI scripts may add jobs without starting a worker.
+ * Notification delivery: fire-and-forget background trigger for opportunity
+ * notifications, with retries — the one place in the refactor that keeps
+ * them, since a failed delivery here has no reconciler behind it.
  */
 export class NotificationQueue {
-  static readonly QUEUE_NAME = QUEUE_NAME;
-
-  readonly queue = QueueFactory.createQueue<NotificationQueueJobData>(QUEUE_NAME);
-
   private readonly logger = log.job.from('NotificationJob');
-  private readonly queueLogger = log.queue.from('NotificationQueue');
   private readonly database: NotificationQueueDatabase;
   private readonly publishStreamEvent: NotificationStreamPublisher;
-  private worker: ReturnType<typeof QueueFactory.createWorker<NotificationQueueJobData>> | null = null;
 
   /**
    * @param deps - Optional overrides for database (for tests).
@@ -84,67 +67,25 @@ export class NotificationQueue {
   }
 
   /**
-   * Enqueue an opportunity notification for a recipient at the given priority.
+   * Trigger an opportunity notification for a recipient at the given
+   * priority, fire-and-forget with up to 3 retries on failure.
    * @param opportunityId - Opportunity to notify about
    * @param recipientId - User to notify
    * @param priority - immediate (WebSocket) or high (email)
-   * @returns The BullMQ job
    */
   async queueOpportunityNotification(
     opportunityId: string,
     recipientId: string,
     priority: NotificationPriority
-  ): Promise<Job<NotificationQueueJobData>> {
-    const priorityNum = priority === 'immediate' ? 0 : 5;
-    return this.queue.add(
-      'process_opportunity_notification',
-      { opportunityId, recipientId, priority },
-      {
-        priority: priorityNum,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-        removeOnComplete: { age: 24 * 60 * 60 },
-        removeOnFail: { age: 7 * 24 * 60 * 60 },
-      }
+  ): Promise<void> {
+    background(
+      'notification',
+      () => this.processOpportunityNotification({ opportunityId, recipientId, priority }),
+      { retries: 3 },
     );
   }
 
-  /**
-   * Run the job handler for a given job name and payload. Used by the worker and by tests with injected deps.
-   * @param name - Job name (`process_opportunity_notification`)
-   * @param data - Job payload
-   */
-  async processJob(name: string, data: NotificationQueueJobData): Promise<void> {
-    switch (name) {
-      case 'process_opportunity_notification':
-        await this.processOpportunityNotification(data as NotificationJobData);
-        break;
-      default:
-        this.queueLogger.warn('Unknown job name', { name });
-    }
-  }
-
-  /**
-   * Start the BullMQ worker for this queue. Idempotent; call from the protocol server only.
-   */
-  startWorker(): void {
-    if (this.worker) return;
-    const processor = async (job: Job<NotificationQueueJobData>) => {
-      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
-      await this.processJob(job.name, job.data);
-    };
-    this.worker = QueueFactory.createWorker<NotificationQueueJobData>(QUEUE_NAME, processor);
-  }
-
-  async close(): Promise<void> {
-    if (this.worker) {
-      await this.worker.close();
-      this.worker = null;
-    }
-    await this.queue.close();
-  }
-
-  private async processOpportunityNotification(data: NotificationJobData): Promise<void> {
+  async processOpportunityNotification(data: NotificationJobData): Promise<void> {
     const { opportunityId, recipientId, priority } = data;
     const db = this.database;
 
@@ -268,20 +209,19 @@ export class NotificationQueue {
   }
 }
 
-/** Singleton notification queue instance. Use for enqueueing notifications and starting the worker. */
+/** Singleton notification queue instance. Use for triggering notifications. */
 export const notificationQueue = new NotificationQueue();
 
 /**
- * Enqueue an opportunity notification (convenience for existing call sites).
+ * Trigger an opportunity notification (convenience for existing call sites).
  * @param opportunityId - Opportunity to notify about
  * @param recipientId - User to notify
  * @param priority - immediate (WebSocket) or high (email)
- * @returns The BullMQ job
  */
 export async function queueOpportunityNotification(
   opportunityId: string,
   recipientId: string,
   priority: NotificationPriority
-): Promise<Job<NotificationQueueJobData>> {
+): Promise<void> {
   return notificationQueue.queueOpportunityNotification(opportunityId, recipientId, priority);
 }

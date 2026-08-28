@@ -53,7 +53,6 @@ import { opportunityExpirationCron } from './queues/opportunity/expiration.queue
 import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
 import { frameDriftQueue } from './queues/frame-drift.queue';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
-import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
@@ -169,7 +168,6 @@ void frameDriftQueue.start().catch((error) => {
     error,
   });
 });
-notificationQueue.startWorker();
 hydeQueue.startCrons();
 negotiationReflectQueue.startCrons();
 personalAgentQueue.startWorker();
@@ -575,7 +573,6 @@ const shutdown = async () => {
   logger.info('Shutting down workers...');
   await Promise.allSettled([
     negotiationWatchdogQueue.close(),
-    notificationQueue.close(),
     personalAgentQueue.close(),
     premiseQueue.close(),
     frameDriftQueue.close(),

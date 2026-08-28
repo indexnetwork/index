@@ -1,5 +1,5 @@
 /**
- * Unit tests for NotificationQueue. Mocks QueueFactory, userService, Redis, email queue, and events.
+ * Unit tests for NotificationQueue. Mocks userService, Redis, email transport, and events.
  */
 import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
@@ -7,16 +7,8 @@ config({ path: '.env.test', override: true });
 import { describe, expect, it, mock, beforeEach, afterAll } from 'bun:test';
 import { EventEmitter } from 'events';
 
-const mockAdd = mock(async () => ({ id: 'job-1', name: 'process_opportunity_notification', data: {} }));
-const mockCreateWorker = mock(() => ({}));
-
-mock.module('../../lib/bullmq/bullmq', () => ({
-  QueueFactory: {
-    createQueue: () => ({ add: mockAdd }),
-    createWorker: mockCreateWorker,
-    createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
-  },
-}));
+// background() is NOT mocked here on purpose: the retry test below needs the
+// real retry/backoff loop, since that is the one thing under test.
 
 // Configurable mocks for notification dependencies (set in tests)
 let mockGetUserForNewsletter: (id: string) => Promise<{
@@ -60,7 +52,7 @@ afterAll(() => {
   mock.restore();
 });
 
-import { NotificationQueue, QUEUE_NAME, type NotificationJobData, type NotificationPriority, type NotificationQueueDatabase, queueOpportunityNotification } from '../notification.queue';
+import { NotificationQueue, type NotificationPriority, type NotificationQueueDatabase, queueOpportunityNotification } from '../notification.queue';
 import type { NotificationStreamEvent } from '../../lib/notification-stream-events';
 import { onTelegramNotification } from '../../lib/notification-events';
 
@@ -96,46 +88,47 @@ describe('NotificationQueue', () => {
     mockExecuteSendEmail.mockClear();
   });
 
-  describe('constructor and static', () => {
-    it('exposes QUEUE_NAME on class', () => {
-      expect(NotificationQueue.QUEUE_NAME).toBe(QUEUE_NAME);
-      expect(QUEUE_NAME).toBe('notification-queue');
-    });
-  });
-
   describe('queueOpportunityNotification', () => {
-    it('maps priority to numeric (immediate=0, high=5)', async () => {
-      const queue = new NotificationQueue();
-      await queue.queueOpportunityNotification('opp-1', 'rec-1', 'immediate');
-      expect(mockAdd).toHaveBeenCalledWith(
-        'process_opportunity_notification',
-        { opportunityId: 'opp-1', recipientId: 'rec-1', priority: 'immediate' },
-        expect.objectContaining({ priority: 0 })
-      );
-      await queue.queueOpportunityNotification('opp-1', 'rec-1', 'high');
-      expect(mockAdd).toHaveBeenCalledWith(
-        'process_opportunity_notification',
-        expect.any(Object),
-        expect.objectContaining({ priority: 5 })
-      );
+    it('triggers delivery in the background — the caller is not blocked on it', async () => {
+      let releaseOpportunity: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => { releaseOpportunity = resolve; });
+      const getOpportunity = mock(async () => { await gate; return makeOpportunity(); });
+      const db = asNotifDb({ getOpportunity });
+      const queue = new NotificationQueue({ database: db });
+
+      // If queueOpportunityNotification awaited the delivery, this would hang
+      // on the still-open gate; it must resolve immediately regardless.
+      const result = await queue.queueOpportunityNotification('opp-1', 'rec-1', 'immediate');
+      expect(result).toBeUndefined();
+
+      releaseOpportunity?.();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(mockEmitOpportunityNotification).toHaveBeenCalledWith({ opportunityId: 'opp-1', recipientId: 'rec-1' });
     });
+
+    it('a failing delivery actually retries three times before giving up', async () => {
+      let calls = 0;
+      mockGetUserForNewsletter = async () => {
+        calls += 1;
+        throw new Error('provider blip');
+      };
+      const getOpportunity = mock(async () => makeOpportunity());
+      const db = asNotifDb({ getOpportunity });
+      const queue = new NotificationQueue({ database: db });
+
+      await queue.queueOpportunityNotification('opp-1', 'rec-1', 'high');
+      // Real exponential backoff between the 4 attempts: 1s + 2s + 4s.
+      await new Promise((resolve) => setTimeout(resolve, 7500));
+      expect(calls).toBe(4); // initial attempt + 3 retries
+    }, 10_000);
   });
 
-  describe('processJob', () => {
-    it('unknown job name logs warning', async () => {
-      const queue = new NotificationQueue();
-      await queue.processJob('unknown', {
-        opportunityId: 'o1',
-        recipientId: 'r1',
-        priority: 'high',
-      });
-    });
-
-    it('process_opportunity_notification: opportunity not found skips', async () => {
+  describe('processOpportunityNotification', () => {
+    it('opportunity not found skips', async () => {
       const getOpportunity = mock(async () => null);
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'missing',
         recipientId: 'r1',
         priority: 'high',
@@ -147,7 +140,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'immediate',
@@ -163,7 +156,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'high',
@@ -181,7 +174,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'high',
@@ -199,7 +192,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'high',
@@ -218,7 +211,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'high',
@@ -238,7 +231,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'high',
@@ -262,7 +255,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'high',
@@ -277,7 +270,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'unknown' as NotificationPriority,
@@ -290,7 +283,7 @@ describe('NotificationQueue', () => {
       const getOpportunity = mock(async () => makeOpportunity(undefined));
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
+      await queue.processOpportunityNotification({
         opportunityId: 'o1',
         recipientId: 'r1',
         priority: 'high',
@@ -299,42 +292,7 @@ describe('NotificationQueue', () => {
     });
   });
 
-  describe('startWorker', () => {
-    it('is idempotent', () => {
-      const queue = new NotificationQueue();
-      queue.startWorker();
-      queue.startWorker();
-      expect(mockCreateWorker).toHaveBeenCalledTimes(1);
-    });
-
-    it('processor invokes processJob when worker runs a job', async () => {
-      let capturedProcessor: ((job: { id: string; name: string; data: NotificationJobData }) => Promise<void>) | null = null;
-      (mockCreateWorker as import('bun:test').Mock<(name: string, processor: (job: unknown) => Promise<void>) => unknown>).mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-        capturedProcessor = processor as (job: { id: string; name: string; data: NotificationJobData }) => Promise<void>;
-        return {};
-      });
-      const getOpportunity = mock(async () => makeOpportunity());
-      const db = asNotifDb({ getOpportunity });
-      const queue = new NotificationQueue({ database: db });
-      queue.startWorker();
-      expect(capturedProcessor).not.toBeNull();
-      await capturedProcessor!({
-        id: 'job-1',
-        name: 'process_opportunity_notification',
-        data: { opportunityId: 'o1', recipientId: 'r1', priority: 'immediate' },
-      });
-      expect(mockEmitOpportunityNotification).toHaveBeenCalled();
-    });
-  });
-
   describe('queueOpportunityNotification (standalone function)', () => {
-    it('class method returns Promise from queue.add', async () => {
-      const queue = new NotificationQueue();
-      const result = await queue.queueOpportunityNotification('opp-1', 'rec-1', 'high');
-      expect(result).toBeDefined();
-      expect((result as { id?: string }).id).toBe('job-1');
-    });
-
     it('exported queueOpportunityNotification is a function (singleton path covered by class test)', () => {
       expect(typeof queueOpportunityNotification).toBe('function');
     });
@@ -354,7 +312,7 @@ describe('processOpportunityNotification — Telegram delivery', () => {
       telegramPrefs: { opportunityAccepted: true },
     });
     const queue = new NotificationQueue({ database: db as NotificationQueueDatabase });
-    await queue.processJob('process_opportunity_notification', {
+    await queue.processOpportunityNotification({
       opportunityId,
       recipientId,
       priority: 'high',
@@ -374,7 +332,7 @@ describe('processOpportunityNotification — Telegram delivery', () => {
       telegramPrefs: { opportunityAccepted: false },
     });
     const queue = new NotificationQueue({ database: db as NotificationQueueDatabase });
-    await queue.processJob('process_opportunity_notification', {
+    await queue.processOpportunityNotification({
       opportunityId: 'opp-2',
       recipientId: 'user-2',
       priority: 'high',
@@ -393,7 +351,7 @@ describe('processOpportunityNotification — Telegram delivery', () => {
       telegramPrefs: null,
     });
     const queue = new NotificationQueue({ database: db as NotificationQueueDatabase });
-    await queue.processJob('process_opportunity_notification', {
+    await queue.processOpportunityNotification({
       opportunityId: 'opp-3',
       recipientId: 'user-3',
       priority: 'high',
