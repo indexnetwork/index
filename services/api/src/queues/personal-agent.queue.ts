@@ -245,10 +245,6 @@ export class PersonalAgentQueue {
       if (abortSignal.aborted) fail();
       else abortSignal.addEventListener('abort', fail, { once: true });
     });
-    // `abortSignal` still fires after `turn` wins the race (the timer is not
-    // cancelled), so give `deadline` a handler of its own — otherwise that
-    // later rejection has no listener left and surfaces as unhandled.
-    deadline.catch(() => {});
     return Promise.race([turn, deadline]);
   }
 

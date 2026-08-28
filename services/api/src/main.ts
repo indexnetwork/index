@@ -131,7 +131,7 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
   // regen / opportunity discovery); scoped to this network.
   intentQueue.addNetworkReconcileForUser(userId, networkId).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue intent network reconcile', { userId, networkId, error: err });
+    log.job.from('NetworkMembership').error('Failed to trigger intent network reconcile', { userId, networkId, error: err });
   });
 };
 
@@ -156,7 +156,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
     .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
 };
 
-intentQueue.startWorker();
 discoveryQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
   void negotiationWatchdogQueue.start().catch((error) => {
@@ -577,7 +576,6 @@ logger.info('Server running', { port: PORT });
 const shutdown = async () => {
   logger.info('Shutting down workers...');
   await Promise.allSettled([
-    intentQueue.close(),
     discoveryQueue.close(),
     negotiationWatchdogQueue.close(),
     notificationQueue.close(),
