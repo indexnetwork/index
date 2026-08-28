@@ -9,6 +9,9 @@ config({ path: '.env.test', override: true });
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import type { Runnable } from '@langchain/core/runnables';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { ChatOpenAI } from '@langchain/openai';
+import { z } from 'zod';
 import { OpportunityGraphFactory, type OpportunityGraphThresholdOverrides, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../../platform/database.js';
@@ -19,15 +22,123 @@ import { REJECTION_COOLDOWN_MS } from '../opportunity.graph.shared.js';
 import { MatchExplainer } from '../opportunity.match-explainer.js';
 import type { MatchExplainerLike, MatchExplainerResult, MatchExplainerInput, EvaluatorEntity } from '../opportunity.match-explainer.js';
 import type { UserIdentity } from '../../../protocol/schemas/identity.schema.js';
-import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
 import { computeHydeSourceTextHash } from '../../shared/hyde-documents.js';
 import { requestContext, type TraceEmitter } from '../../shared/observability/request-context.js';
 import { setLoggerFactory, type LoggerWithSource } from '../../shared/observability/log.js';
-import { createOpportunityGraphDatabaseFixture } from './opportunity.graph.fixtures.js';
 import { approveOpportunityIntroduction } from '../opportunity.lifecycle.js';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
+
+const JUDGE_SYSTEM_PROMPT = `You are a test oracle for an AI system. Given the output of a system under test and evaluation criteria, determine whether the output passes or fails.
+
+Return JSON with two fields:
+- pass: true if the output satisfies the criteria, false otherwise
+- reasoning: concise explanation of your judgment (1-3 sentences)`;
+
+const judgeOutputSchema = z.object({
+  pass: z.boolean(),
+  reasoning: z.string(),
+});
+
+/**
+ * Assert that `output` satisfies the given `criteria` according to an LLM judge.
+ * Throws an error (with reasoning embedded) if the assertion fails.
+ * Uses google/gemini-3.7-flash.
+ *
+ * @param output - The value produced by the system under test.
+ * @param criteria - Natural language description of what the output must satisfy.
+ * @throws {Error} If the LLM judge determines the output does not meet the criteria.
+ */
+async function assertLLM(output: unknown, criteria: string): Promise<void> {
+  const modelId = "google/gemini-3.7-flash";
+
+  const model = new ChatOpenAI({
+    model: modelId,
+    apiKey: process.env.OPENROUTER_API_KEY!,
+    configuration: {
+      baseURL: "https://openrouter.ai/api/v1",
+    },
+    temperature: 0,
+    maxTokens: 512,
+  });
+
+  const structured = model.withStructuredOutput(judgeOutputSchema, { name: "llm_judge" });
+
+  const userMessage = `Output:\n${JSON.stringify(output, null, 2)}\n\nCriteria:\n${criteria}`;
+
+  const result = await structured.invoke([
+    new SystemMessage(JUDGE_SYSTEM_PROMPT),
+    new HumanMessage(userMessage),
+  ]);
+
+  if (!result.pass) {
+    throw new Error(`LLM assertion failed: ${result.reasoning}`);
+  }
+}
+
+/**
+ * Provider-free defaults for graph tests that exercise only one workflow path.
+ * Individual tests override the methods whose result is part of their contract.
+ */
+function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabase {
+  const emptyOpportunity = (id: string): Opportunity => ({
+    id,
+    detection: { source: 'manual', timestamp: new Date().toISOString() },
+    actors: [],
+    interpretation: { reasoning: '', category: 'connection', confidence: 0 },
+    context: {},
+    confidence: '0',
+    status: 'latent',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    expiresAt: null,
+  });
+
+  return {
+    upsertDiscoveryMatchCandidates: async (items: unknown[]) => items.map((item, i) => ({
+      ...(item as object), id: `cand-${i}`, status: 'pending', createdAt: new Date(),
+    })),
+    getProfile: async () => null,
+    createOpportunity: async (data) => ({ ...emptyOpportunity('fixture-opportunity'), ...data }),
+    createOpportunityIfNetworkEligible: async () => null,
+    createOpportunityAndExpireIdsIfNetworkEligible: async () => null,
+    persistIntentScopedOpportunityIfNetworkEligible: async () => null,
+    updateOpportunityStatusIfNetworkEligible: async () => null,
+    opportunityExistsBetweenActors: async () => false,
+    findOpportunitiesByActors: async () => [],
+    getUserIndexIds: async () => [],
+    getNetworkMemberships: async () => [],
+    getActiveNetworkMembershipPairs: async (pairs) => pairs,
+    getActiveIntents: async () => [],
+    getNetworkIdsForIntent: async () => [],
+    getNetwork: async () => null,
+    getNetworkMemberCount: async () => 0,
+    getIntentIndexScores: async () => [],
+    getNetworkMemberContext: async () => null,
+    getNetworkAssignmentContext: async () => null,
+    getOpportunity: async () => null,
+    getOpportunitiesForUser: async () => [],
+    updateOpportunityStatus: async () => null,
+    stampOpportunityActorAction: async () => null,
+    updateOpportunityActorApproval: async () => null,
+    isNetworkMember: async () => false,
+    isIndexOwner: async () => false,
+    getUser: async () => null,
+    getOrCreateDM: async () => ({ id: 'fixture-conversation' }),
+    getIntent: async () => null,
+    getPremise: async () => null,
+    getPremisesForUser: async () => [],
+    getPremisesForUserInNetworks: async () => [],
+    searchPremisesBySimilarity: async () => [],
+    searchPremisesBySimilarityBatch: async () => [],
+    getUserContext: async () => null,
+    getUserContexts: async () => [],
+    searchIntentsByContextEmbedding: async () => [],
+    getHydeDocumentsForSource: async () => [],
+    getNegotiationTaskForOpportunity: async () => null,
+  };
+}
 
 const dummyEmbedding = new Array(2000).fill(0.1);
 
