@@ -1,19 +1,16 @@
 /**
- * Pool discriminator mining — shared types (IND-416 / IND-417).
+ * Pool discriminator mining — shared types (IND-416).
  *
  * A "pool discriminator" is a preference dimension that splits a discovery-run
  * candidate pool into meaningfully different groups (e.g. "hands-on builders
- * vs advisors"). Discriminators are mined by one structured LLM pass, then
- * scored deterministically (VoI = entropy × coverage^1.5 × novelty) so the
- * highest value question can eventually be asked to the intent owner.
+ * vs advisors"), mined by one structured LLM pass.
  *
  * Vocabulary note: the LLM wire format (prompt + response schema in the miner)
  * speaks of "axes" with mutually exclusive "sides" — the clearest way to
  * explain the concept to the model. Everything the rest of the codebase
  * touches (types, exports, logs) uses "discriminator".
  *
- * P1 (shadow) uses these types for log-only output; later phases reuse them
- * for question synthesis and answer application.
+ * Consumed by the Lens B outcome analogue (../outcome/*).
  */
 
 /** One candidate in the pool as supplied to the miner LLM. */
@@ -71,29 +68,4 @@ export interface MinedDiscriminator {
    * (0 when the LLM proposed no sides at all). The hallucination health metric.
    */
   evidenceRate: number;
-}
-
-/** A mined discriminator with its deterministic VoI score components. */
-export interface ScoredDiscriminator extends MinedDiscriminator {
-  /** Current discriminator embedding retained for durable semantic dedup. */
-  embedding?: number[];
-  /** Model that generated {@link embedding}. */
-  embeddingModel?: string;
-  /** Normalized score-weighted entropy over sides, in [0,1]. */
-  entropy: number;
-  /** Assigned score mass / total pool score mass, in [0,1]. */
-  coverage: number;
-  /** 1 − max cosine similarity vs reference texts (premises/intent), in [0,1]. */
-  novelty: number;
-  /** entropy × coverage^1.5 × novelty. */
-  voi: number;
-}
-
-/** Result of one shadow mining+scoring pass (the log payload shape). */
-export interface DiscriminatorShadowResult {
-  poolSize: number;
-  /** Scored discriminators, sorted by VoI descending. */
-  discriminators: ScoredDiscriminator[];
-  /** Historical-axis comparison could not be completed due to invalid embeddings. */
-  priorReferenceComparisonUnavailable?: boolean;
 }

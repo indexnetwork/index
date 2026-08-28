@@ -9,7 +9,6 @@ export interface UserSocial {
 
 export interface NotificationPreferences {
   connectionUpdates: boolean;
-  weeklyNewsletter: boolean;
 }
 
 export interface OnboardingProfileSeed {

@@ -79,7 +79,6 @@ export interface TelegramPrefs {
 
 export interface NotificationPreferences {
   connectionUpdates: boolean;
-  weeklyNewsletter: boolean;
   telegram?: TelegramPrefs;
 }
 
@@ -255,7 +254,6 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
   preferences: json('preferences').$type<NotificationPreferences>().default({
     connectionUpdates: true,
-    weeklyNewsletter: true,
   }),
   unsubscribeToken: text('unsubscribe_token').$defaultFn(() => crypto.randomUUID()).notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -418,12 +416,6 @@ export interface OpportunitySignal {
   type: string;
   weight: number;
   detail?: string;
-  /** Question provenance for reversible pool-discriminator signals (IND-419). */
-  questionId?: string;
-  /** Recipient provenance for pool-discriminator signals. */
-  recipientUserId?: string;
-  /** Intent-pool provenance for pool-discriminator signals. */
-  intentId?: string;
 }
 
 export interface OpportunityInterpretation {
@@ -456,7 +448,7 @@ export const opportunities = pgTable('opportunities', {
 }));
 
 export interface QuestionDetection {
-  mode: 'intent' | 'chat' | 'pool_discovery';
+  mode: 'intent' | 'chat';
   /** Internal generation purpose; stripped from public API responses. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
   sourceType: string;
@@ -471,29 +463,10 @@ export interface QuestionDetection {
   messageId?: string;
   /** Durable conversation-session binding for verified in-chat rendering. */
   sessionId?: string;
-  /**
-   * pool_discovery only: mined pool snapshot (assignments + chain alternates).
-   * INTERNAL — stripped from every client-facing read (web + MCP).
-   */
-  pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
   /** Post-discovery intent recovery snapshot. Never exposed publicly. */
   recovery?: import('@indexnetwork/protocol').QuestionRecoverySnapshot;
-  /** Durable proactive-delivery request marker. Never exposed publicly. */
-  pushRequestedAt?: string;
-  /** Last bounded recovery sweep that selected this request. Never exposed publicly. */
-  pushRecoveryAttemptedAt?: string;
-  /** Durable request outcome. Never exposed publicly. */
-  pushRequestStatus?: import('@indexnetwork/protocol').QuestionPoolPushRequestStatus;
-  /** Permanent suppression reason for an unclaimed request. Never exposed publicly. */
-  pushRequestReason?: import('@indexnetwork/protocol').QuestionPoolPushRequestReason;
-  /** Timestamp at which an unclaimed request was suppressed. Never exposed publicly. */
-  pushRequestSuppressedAt?: string;
-  /** Internal proactive push claim/delivery state. Never exposed publicly. */
-  push?: import('@indexnetwork/protocol').QuestionPoolPush;
-  /** Internal reason a pool question was voided after drift. */
+  /** Internal reason a question was voided after drift or retirement. */
   voidedReason?: import('@indexnetwork/protocol').QuestionVoidedReason;
-  /** Authoritative successful-delivery ledger timestamp. Never exposed publicly. */
-  pushedAt?: string;
 }
 
 export interface QuestionActor {
@@ -544,23 +517,6 @@ export const questions = pgTable('questions', {
       sql`(${table.detection}->'recovery'->>'intentFingerprint')`,
     )
     .where(sql`${table.detection}->>'purpose' = 'recovery' AND ${table.detection}->>'mode' = 'intent' AND ${table.detection}->>'sourceType' = 'intent'`),
-  // One claim per recipient + intent + pool refresh cycle. The advisory lock
-  // enforces budgets; this expression index is the final cross-worker guard.
-  poolPushRecipientIntentCycleUnique: uniqueIndex('questions_pool_push_recipient_intent_cycle_uniq')
-    .on(
-      sql`(${table.detection}->'push'->>'recipientId')`,
-      sql`(${table.detection}->'push'->>'intentId')`,
-      sql`(${table.detection}->'push'->>'cycleKey')`,
-    )
-    .where(sql`${table.detection}->>'mode' = 'pool_discovery' AND ${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
-  // Supports the strict UTC daily budget ledger, including claims whose
-  // question lifecycle later resolves.
-  poolPushRecipientClaimedAtIndex: index('questions_pool_push_recipient_claimed_at_idx')
-    .on(
-      sql`(${table.actors}->0->>'userId')`,
-      sql`(${table.detection}->'push'->>'claimedAt')`,
-    )
-    .where(sql`${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
 }));
 
 export type QuestionRow = typeof questions.$inferSelect;

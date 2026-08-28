@@ -49,7 +49,6 @@ async function readCounts(): Promise<Counts> {
     UNION ALL SELECT 'intents_with_round_state', count(*)::text FROM intents
       WHERE negotiation_round > 0 OR negotiation_round_size IS NOT NULL OR negotiation_kickoff_started_at IS NOT NULL
     UNION ALL SELECT 'intent_discovery_progress', count(*)::text FROM intent_discovery_progress
-    UNION ALL SELECT 'questions_pool_discovery', count(*)::text FROM questions WHERE detection->>'mode' = 'pool_discovery'
     UNION ALL SELECT 'questions_intent', count(*)::text FROM questions WHERE detection->>'mode' = 'intent'
     UNION ALL SELECT 'questions_nego_opp', count(*)::text FROM questions
       WHERE detection->>'mode' IN ('negotiation', 'negotiation_inflight')
@@ -108,7 +107,7 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
     await tx.execute(sql`
       DELETE FROM questions
       WHERE detection->>'mode' IN (
-            'negotiation', 'negotiation_inflight', 'pool_discovery', 'intent'
+            'negotiation', 'negotiation_inflight', 'intent'
           )
          OR detection->'negotiation' IS NOT NULL
          OR detection->>'sourceType' = 'opportunity'

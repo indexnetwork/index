@@ -53,7 +53,6 @@ export default function ProfilePage() {
 
   const [notificationPreferences, setNotificationPreferences] = useState({
     connectionUpdates: true,
-    weeklyNewsletter: true,
   });
 
   const tabParam = searchParams.get("tab");
@@ -91,7 +90,7 @@ export default function ProfilePage() {
     setTimezone(u.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
     setSocials((u.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value })));
     setNotificationPreferences(
-      u.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true }
+      u.notificationPreferences || { connectionUpdates: true }
     );
     setAvatarFile(null);
     setAvatarPreview(null);
@@ -560,11 +559,6 @@ export default function ProfilePage() {
                         key: "connectionUpdates" as const,
                         label: "Connection updates",
                         description: "Email when someone connects with you",
-                      },
-                      {
-                        key: "weeklyNewsletter" as const,
-                        label: "Weekly newsletter",
-                        description: "Weekly summary of new connections",
                       },
                     ].map(({ key, label, description }) => (
                       <label

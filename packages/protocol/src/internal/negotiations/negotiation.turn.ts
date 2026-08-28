@@ -129,10 +129,6 @@ export function isPauseTurn(turn: NegotiationTurn): turn is NegotiationPauseTurn
   return (turn as { verb?: string }).verb === "pause";
 }
 
-export function isContinueTurn(turn: NegotiationTurn): turn is NegotiationContinueTurn {
-  return !isPauseTurn(turn);
-}
-
 /**
  * Pairs each persisted message with its parsed turn, dropping unparseable
  * ones — never as two separately-filtered arrays zipped by index, since a

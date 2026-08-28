@@ -1051,6 +1051,13 @@
       "when": 1786886087830,
       "tag": "0152_drop_links_and_files",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1786886087831,
+      "tag": "0153_dismiss_retired_pool_discovery_questions",
+      "breakpoints": true
     }
   ]
 }

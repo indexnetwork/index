@@ -27,8 +27,6 @@ let mockGetUserForNewsletter: (id: string) => Promise<{
   unsubscribeToken?: string;
 } | null> = async () => null;
 let mockRedisSet: (key: string, value: string, ...args: unknown[]) => Promise<string | null> = async () => 'OK';
-let mockRedisRpush = mock(async () => 1);
-const mockRedisExpire = mock(async () => 'OK');
 const mockEmitOpportunityNotification = mock(() => {});
 const mockAddEmailJob = mock(async () => {});
 
@@ -40,8 +38,6 @@ mock.module('../../services/user.service', () => ({
 mock.module('../../adapters/cache.adapter', () => ({
   getRedisClient: () => ({
     set: mockRedisSet,
-    rpush: mockRedisRpush,
-    expire: mockRedisExpire,
   }),
 }));
 mock.module('../email.queue', () => ({
@@ -98,8 +94,6 @@ describe('NotificationQueue', () => {
   beforeEach(() => {
     mockGetUserForNewsletter = async () => null;
     mockRedisSet = async () => 'OK';
-    mockRedisRpush.mockClear();
-    mockRedisExpire.mockClear();
     mockEmitOpportunityNotification.mockClear();
     mockAddEmailJob.mockClear();
   });
@@ -112,7 +106,7 @@ describe('NotificationQueue', () => {
   });
 
   describe('queueOpportunityNotification', () => {
-    it('maps priority to numeric (immediate=0, high=5, low=10)', async () => {
+    it('maps priority to numeric (immediate=0, high=5)', async () => {
       const queue = new NotificationQueue();
       await queue.queueOpportunityNotification('opp-1', 'rec-1', 'immediate');
       expect(mockAdd).toHaveBeenCalledWith(
@@ -126,12 +120,6 @@ describe('NotificationQueue', () => {
         expect.any(Object),
         expect.objectContaining({ priority: 5 })
       );
-      await queue.queueOpportunityNotification('opp-1', 'rec-1', 'low');
-      expect(mockAdd).toHaveBeenCalledWith(
-        'process_opportunity_notification',
-        expect.any(Object),
-        expect.objectContaining({ priority: 10 })
-      );
     });
   });
 
@@ -141,7 +129,7 @@ describe('NotificationQueue', () => {
       await queue.processJob('unknown', {
         opportunityId: 'o1',
         recipientId: 'r1',
-        priority: 'low',
+        priority: 'high',
       });
     });
 
@@ -152,7 +140,7 @@ describe('NotificationQueue', () => {
       await queue.processJob('process_opportunity_notification', {
         opportunityId: 'missing',
         recipientId: 'r1',
-        priority: 'low',
+        priority: 'high',
       });
       expect(getOpportunity).toHaveBeenCalledWith('missing');
     });
@@ -287,54 +275,7 @@ describe('NotificationQueue', () => {
       expect(args?.headers).toBeUndefined();
     });
 
-    it('priority low: adds to digest', async () => {
-      const getOpportunity = mock(async () => makeOpportunity());
-      const db = asNotifDb({ getOpportunity });
-      const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
-        opportunityId: 'o1',
-        recipientId: 'r1',
-        priority: 'low',
-      });
-      expect(mockRedisRpush).toHaveBeenCalled();
-      expect(mockRedisExpire).toHaveBeenCalled();
-    });
-
-    it('priority low: strips unsupported affiliation claims from digest payloads', async () => {
-      const getOpportunity = mock(async () => makeOpportunity(
-        'Yusuf, an attendee of the Edge Esmeralda network, is a strong match.',
-      ));
-      const db = asNotifDb({ getOpportunity });
-      const queue = new NotificationQueue({ database: db });
-
-      await queue.processJob('process_opportunity_notification', {
-        opportunityId: 'o1',
-        recipientId: 'r1',
-        priority: 'low',
-      });
-
-      expect(mockRedisRpush).toHaveBeenCalledTimes(1);
-      expect(JSON.stringify(mockRedisRpush.mock.calls[0])).not.toContain('attendee');
-    });
-
-    it('priority low: digest dedupe already set skips rpush', async () => {
-      let setCalls = 0;
-      mockRedisSet = async () => {
-        setCalls++;
-        return setCalls === 1 ? null : 'OK'; // first call (digest dedupe) returns null
-      };
-      const getOpportunity = mock(async () => makeOpportunity());
-      const db = asNotifDb({ getOpportunity });
-      const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
-        opportunityId: 'o1',
-        recipientId: 'r1',
-        priority: 'low',
-      });
-      expect(mockRedisRpush).not.toHaveBeenCalled();
-    });
-
-    it('priority default/unknown: treats as low and adds to digest', async () => {
+    it('priority unknown: logs warning and skips delivery', async () => {
       const getOpportunity = mock(async () => makeOpportunity());
       const db = asNotifDb({ getOpportunity });
       const queue = new NotificationQueue({ database: db });
@@ -343,7 +284,8 @@ describe('NotificationQueue', () => {
         recipientId: 'r1',
         priority: 'unknown' as NotificationPriority,
       });
-      expect(mockRedisRpush).toHaveBeenCalled();
+      expect(mockEmitOpportunityNotification).not.toHaveBeenCalled();
+      expect(mockAddEmailJob).not.toHaveBeenCalled();
     });
 
     it('uses summary fallback when interpretation.reasoning missing', async () => {
@@ -353,25 +295,9 @@ describe('NotificationQueue', () => {
       await queue.processJob('process_opportunity_notification', {
         opportunityId: 'o1',
         recipientId: 'r1',
-        priority: 'low',
+        priority: 'high',
       });
       expect(getOpportunity).toHaveBeenCalledWith('o1');
-    });
-
-    it('addToDigest catch: logs error when redis throws', async () => {
-      mockRedisSet = async () => 'OK';
-      mockRedisRpush = mock(async () => {
-        throw new Error('Redis down');
-      });
-      const getOpportunity = mock(async () => makeOpportunity());
-      const db = asNotifDb({ getOpportunity });
-      const queue = new NotificationQueue({ database: db });
-      await queue.processJob('process_opportunity_notification', {
-        opportunityId: 'o1',
-        recipientId: 'r1',
-        priority: 'low',
-      });
-      // Should not throw
     });
   });
 

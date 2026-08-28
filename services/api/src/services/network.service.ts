@@ -6,7 +6,6 @@ import { ChatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.a
 import { generateMasterKey } from '../lib/experiment/master-key';
 import { executeSendEmail } from '../lib/email/transport.helper';
 import { networkMasterKeyRotatedTemplate } from '../lib/email/templates/network-master-key-rotated.template';
-import { validateKey } from '../lib/keys';
 import * as schema from '../schemas/database.schema';
 import { ContextInjectionSchema, validateNetworkMetadata } from '../schemas/network.validation';
 
@@ -291,15 +290,6 @@ export class NetworkService {
   }
 
   /**
-   * Get current user's intents in an index. Members only.
-   */
-  async getMyIntentsInNetwork(networkId: string, userId: string) {
-    logger.verbose('Getting my intents in index', { networkId, userId });
-    const intents = await this.adapter.getNetworkIntentsForMember(networkId, userId);
-    return intents.filter((i) => i.userId === userId);
-  }
-
-  /**
    * Compose the /networks overview payload for the current member: their intents
    * in the network, their ACTIVE premises assigned to it, and their per-network
    * user_context. Members only: membership is asserted up front so the three
@@ -333,46 +323,6 @@ export class NetworkService {
   async resolveIndexId(idOrKey: string): Promise<string | null> {
     logger.verbose('Resolving network ID or key', { idOrKey });
     return this.adapter.resolveIndexId(idOrKey);
-  }
-
-  /**
-   * Update a network's key. Owner-only.
-   * @param networkId - The network ID
-   * @param userId - The requesting user ID (must be owner)
-   * @param key - The new key value
-   * @returns Updated network or error object
-   */
-  async updateKey(networkId: string, userId: string, key: string): Promise<{ index: unknown } | { error: string; status: number }> {
-    const validation = validateKey(key);
-    if (!validation.valid) {
-      return { error: validation.error!, status: 400 };
-    }
-
-    const existing = await this.adapter.networkKeyExists(key);
-    if (existing) {
-      return { error: 'Key is already taken', status: 409 };
-    }
-
-    // Verify ownership
-    try {
-      const detail = await this.adapter.getNetworkDetail(networkId, userId);
-      if (!detail) {
-        return { error: 'Index not found', status: 404 };
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('Access denied')) {
-        return { error: 'Access denied: only the owner can update the key', status: 403 };
-      }
-      throw err;
-    }
-
-    const updated = await this.adapter.updateIndexKey(networkId, key);
-    if (!updated) {
-      return { error: 'Index not found', status: 404 };
-    }
-
-    return { index: updated };
   }
 
   /**

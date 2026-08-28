@@ -224,31 +224,6 @@ export class UserService {
     }
 
     /**
-     * Update the authenticated user's key.
-     * @param userId - The user ID
-     * @param key - The new key value
-     * @returns Updated user or error object
-     */
-    async updateKey(userId: string, key: string): Promise<{ user: User } | { error: string; status: number }> {
-        const validation = validateKey(key);
-        if (!validation.valid) {
-            return { error: validation.error!, status: 400 };
-        }
-
-        const existing = await this.db.keyExists(key);
-        if (existing) {
-            return { error: 'Key is already taken', status: 409 };
-        }
-
-        const updated = await this.db.updateKey(userId, key);
-        if (!updated) {
-            return { error: 'User not found', status: 404 };
-        }
-
-        return { user: updated };
-    }
-
-    /**
      * Ensure notification settings exist for a user
      */
     async ensureNotificationSettings(userId: string) {
@@ -258,7 +233,7 @@ export class UserService {
     /**
      * Update notification preferences for a user (upsert)
      */
-    async updateNotificationPreferences(userId: string, preferences: { connectionUpdates?: boolean; weeklyNewsletter?: boolean }) {
+    async updateNotificationPreferences(userId: string, preferences: { connectionUpdates?: boolean }) {
         return this.db.updateNotificationPreferences(userId, preferences as import('../schemas/database.schema').NotificationPreferences);
     }
 

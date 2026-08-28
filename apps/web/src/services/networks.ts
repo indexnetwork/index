@@ -306,11 +306,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
-  // Remove member intent from network (deprecated - kept for backwards compatibility)
-  removeMemberIntent: async (networkId: string, intentId: string): Promise<void> => {
-    await api.delete(`/networks/${networkId}/member-intents/${intentId}`);
-  },
-
   // CSV Import — parse a large CSV file server-side
   parseCsvImport: async (networkId: string, file: File): Promise<{
     valid: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>;
@@ -365,16 +360,6 @@ export const indexesService = {
     }
     return response.network;
   },
-
-  // Legacy methods that require authentication
-  getNetworks: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  getNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  createNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  updateNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  deleteNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  addMember: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  removeMember: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
-  resendInvite: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
 };
 
 // Hook for using networks service with proper error handling

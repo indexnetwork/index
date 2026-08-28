@@ -9,7 +9,6 @@ import db from '../../lib/drizzle/drizzle';
 import { intentNetworks, intents, networkMembers, networks, opportunities, premiseNetworks, premises, userContexts, users } from '../../schemas/database.schema';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../database.adapter';
 import { EmbedderAdapter } from '../embedder.adapter';
-import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
 
 const TEST_PREFIX = `network_isolation_${Date.now()}_`;
 
@@ -449,39 +448,6 @@ describe('network discovery adapter isolation', () => {
     expect(live.map((row) => row.id)).not.toContain(actorOnly.id);
     expect(live.map((row) => row.id)).not.toContain(terminal.id);
     expect(live.map((row) => row.id)).not.toContain(hidden.id);
-
-    const writeFor = (opportunityId: string) => ({
-      opportunityId,
-      adjustment: {
-        questionId: 'question-exact-scope',
-        recipientUserId: ids.viewer,
-        intentId: ids.selectedIntent,
-        label: 'Builders vs advisors',
-        side: 'Builders',
-        factor: 1,
-        appliedAt: new Date().toISOString(),
-      },
-      signal: {
-        type: 'pool_discriminator',
-        weight: 1,
-        detail: 'Builders vs advisors: Builders',
-        questionId: 'question-exact-scope',
-        recipientUserId: ids.viewer,
-        intentId: ids.selectedIntent,
-      },
-    });
-    const applied = await opportunity.applyOpportunityPoolAdjustments(
-      ids.viewer,
-      ids.selectedIntent,
-      computeIntentFingerprint('Paused selected intent', null),
-      [writeFor(exact.id), writeFor(actorOnly.id), writeFor(terminal.id), writeFor(hidden.id)],
-    );
-
-    expect(applied).toEqual([exact.id]);
-    expect((await opportunity.getOpportunity(exact.id))?.metadata?.poolAdjustments).toHaveLength(1);
-    expect((await opportunity.getOpportunity(actorOnly.id))?.metadata?.poolAdjustments).toBeUndefined();
-    expect((await opportunity.getOpportunity(terminal.id))?.metadata?.poolAdjustments).toBeUndefined();
-    expect((await opportunity.getOpportunity(hidden.id))?.metadata?.poolAdjustments).toBeUndefined();
   }, 20_000);
 
   it('keeps paused owned-intent Radar history while blocking inactive participants and foreign scopes', async () => {

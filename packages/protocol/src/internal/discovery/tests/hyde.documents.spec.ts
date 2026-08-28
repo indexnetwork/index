@@ -55,7 +55,7 @@ describe('persisted HyDE generation selection', () => {
       document('new-b', 'frame-v1:new-b', frameContext(sourceText, newestGeneration)),
     ];
 
-    expect(selectHydeDocumentsForGeneration(documents, 'frame-v1', sourceText).map((doc) => doc.id))
+    expect(selectHydeDocumentsForGeneration(documents, sourceText).map((doc) => doc.id))
       .toEqual(['new-a', 'new-b']);
   });
 });

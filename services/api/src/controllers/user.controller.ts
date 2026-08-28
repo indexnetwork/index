@@ -4,7 +4,6 @@ import { Controller, Delete, Get, Patch, Put, UseGuards } from '../lib/router/ro
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
-import { deprecatedRoute } from '../lib/router/deprecated-route';
 import { userService } from '../services/user.service';
 import { TaskService } from '../services/task.service';
 import { negotiatorMemoryInspectionService } from '../services/negotiator-memory-inspection.service';
@@ -444,35 +443,6 @@ export class UserController {
       logger.error('Failed to delete negotiator memory', { userId: params.userId, memoryId: params.memoryId, error: err instanceof Error ? err.message : String(err) });
       return Response.json({ error: 'Failed to delete negotiator memory' }, { status: 500 });
     }
-  }
-
-  /**
-   * PUT /users/me/key — update the authenticated user's key.
-   * @param req - Request with JSON body `{ key: string }`
-   * @param user - Authenticated user from AuthGuard
-   * @returns Updated user or validation error
-   */
-  @Put('/me/key')
-  @deprecatedRoute('user.update-key')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async updateKey(req: Request, user: AuthenticatedUser) {
-    let body: { key?: string };
-    try {
-      body = (await req.json()) as { key?: string };
-    } catch {
-      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-
-    if (!body.key || typeof body.key !== 'string') {
-      return Response.json({ error: 'key is required' }, { status: 400 });
-    }
-
-    const result = await userService.updateKey(user.id, body.key);
-    if ('error' in result) {
-      return Response.json({ error: result.error }, { status: result.status });
-    }
-
-    return Response.json({ user: result.user });
   }
 
   @Get('/:userId')

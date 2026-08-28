@@ -26,8 +26,6 @@ import type { DebugMetaAgent } from "../../../protocol/core.js";
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
-import { adjustedConfidence, latestPoolDemotionDetail, readActivePoolAdjustments } from '../discriminator/discriminator.adjustments.js';
-import type { PoolAdjustmentProvenance } from '../discriminator/discriminator.adjustments.js';
 
 const logger = protocolLogger('RadarGraph');
 const checkPresenterCacheLog = protocolLogger('RadarGraph:checkPresenterCache');
@@ -160,43 +158,6 @@ const getRawConfidence = (opp: typeof RadarGraphState.State['opportunities'][num
   return 0;
 };
 
-/**
- * Sort confidence, pool-adjusted (IND-419): answered discriminators multiply
- * confidence by their stored factors (floor 0.3) so the user's answers re-rank
- * the radar. Adjustments are written on every pool_discovery answer.
- */
-const getPoolRankingProvenance = (
-  state: typeof RadarGraphState.State,
-): PoolAdjustmentProvenance | null => {
-  if (
-    !state.userId ||
-    state.scopeType !== 'intent' ||
-    !state.scopeId
-  ) return null;
-  return { recipientUserId: state.userId, intentId: state.scopeId };
-};
-
-const hasPoolAdjustment = (
-  opp: typeof RadarGraphState.State['opportunities'][number],
-  provenance: PoolAdjustmentProvenance,
-): boolean => readActivePoolAdjustments(
-  (opp as { metadata?: Record<string, unknown> | null }).metadata,
-  provenance,
-).length > 0;
-
-const getConfidence = (
-  opp: typeof RadarGraphState.State['opportunities'][number],
-  provenance: PoolAdjustmentProvenance | null,
-): number => {
-  const raw = getRawConfidence(opp);
-  if (!provenance) return raw;
-  return adjustedConfidence(
-    raw,
-    (opp as { metadata?: Record<string, unknown> | null }).metadata,
-    provenance,
-  );
-};
-
 /** Unique non-introducer, non-viewer userIds for an opportunity (actors can repeat). */
 const getUniqueCounterpartUserIds = (
   opp: typeof RadarGraphState.State['opportunities'][number],
@@ -291,7 +252,6 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
       // its soft targets, even after visibility filtering and dedup.
       const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
       const statuses = state.statuses ?? DEFAULT_RADAR_STATUSES;
-      const poolRankingProvenance = getPoolRankingProvenance(state);
       const options: { limit?: number; networkId?: string; scopeType?: 'intent'; scopeId?: string; statuses?: OpportunityStatus[] } = {
         limit: fetchLimit,
         statuses,
@@ -339,22 +299,7 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
           for (const id of counterpartIds) seenIds.add(id);
           return true;
         });
-        // Preserve byte-identical newest-first behavior while the flag is
-        // off. When on, re-order the already-deduped lifecycle set by
-        // adjusted confidence so each client-side radar bucket reflects
-        // pool answers immediately.
-        if (
-          !poolRankingProvenance ||
-          !dedupedByCounterpart.some((opportunity) => hasPoolAdjustment(opportunity, poolRankingProvenance))
-        ) {
-          return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
-        }
-        const adjustedOrder = [...dedupedByCounterpart].sort((a, b) => {
-          const confidenceDelta = getConfidence(b, poolRankingProvenance) - getConfidence(a, poolRankingProvenance);
-          if (confidenceDelta !== 0) return confidenceDelta;
-          return safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt);
-        });
-        return { opportunities: adjustedOrder.slice(0, state.limit) };
+        return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
       }
       const sorted = [...visibleForRadar].sort((a, b) => {
         // Connections before connector-flow so dedup claims counterpart IDs
@@ -363,8 +308,8 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
         const aIsIntroducer = a.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
         const bIsIntroducer = b.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
         if (aIsIntroducer !== bIsIntroducer) return aIsIntroducer ? 1 : -1;
-        const confA = getConfidence(a, poolRankingProvenance);
-        const confB = getConfidence(b, poolRankingProvenance);
+        const confA = getRawConfidence(a);
+        const confB = getRawConfidence(b);
         if (confB !== confA) return confB - confA;
         const aTime = safeParseDate(a.updatedAt);
         const bTime = safeParseDate(b.updatedAt);
@@ -390,7 +335,6 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
 export async function checkPresenterCacheNode(state: RadarState, deps: RadarGraphDeps) {
   return timed("RadarGraph.checkPresenterCache", async () => {
     const { opportunities, userId, scopeId } = state;
-    const poolRankingProvenance = getPoolRankingProvenance(state);
     if (opportunities.length === 0) {
       return { cachedCards: new Map(), uncachedOpportunities: [] };
     }
@@ -425,16 +369,9 @@ export async function checkPresenterCacheNode(state: RadarState, deps: RadarGrap
           const originalIndex = opportunities.indexOf(cacheable[i]);
           // Stamp the live status: pre-status cache entries lack the field,
           // and the key already guarantees it matches the current status.
-          const deprioritizedReason = poolRankingProvenance
-            ? latestPoolDemotionDetail(
-                (cacheable[i] as { metadata?: Record<string, unknown> | null }).metadata,
-                poolRankingProvenance,
-              )
-            : undefined;
           cachedCards.set(cacheable[i].id, {
             ...cached,
             status: cacheable[i].status,
-            deprioritizedReason,
             _cardIndex: originalIndex,
           });
         } else {
@@ -720,21 +657,9 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
 export async function cachePresenterResultsNode(state: RadarState, deps: RadarGraphDeps) {
   return timed("RadarGraph.cachePresenterResults", async () => {
     const { cards, cachedCards, userId, opportunities, scopeId } = state;
-    const poolRankingProvenance = getPoolRankingProvenance(state);
-    const liveById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
-    const cardsWithAdjustments = cards.map((card) => {
-      const opportunity = liveById.get(card.opportunityId);
-      const deprioritizedReason = poolRankingProvenance
-        ? latestPoolDemotionDetail(
-            (opportunity as { metadata?: Record<string, unknown> | null } | undefined)?.metadata,
-            poolRankingProvenance,
-          )
-        : undefined;
-      return { ...card, deprioritizedReason };
-    });
 
     // Only cache cards that weren't already from cache
-    const newCards = cardsWithAdjustments.filter((card) => !cachedCards.has(card.opportunityId));
+    const newCards = cards.filter((card) => !cachedCards.has(card.opportunityId));
     const statusById = new Map(opportunities.map((opp) => [opp.id, opp.status]));
 
     try {
@@ -756,9 +681,9 @@ export async function cachePresenterResultsNode(state: RadarState, deps: RadarGr
     }
 
     // Merge cached cards into full card list
-    const allCards: RadarCardItem[] = [...cardsWithAdjustments];
+    const allCards: RadarCardItem[] = [...cards];
     for (const [oppId, cachedCard] of cachedCards) {
-      if (!cardsWithAdjustments.some((card) => card.opportunityId === oppId)) {
+      if (!cards.some((card) => card.opportunityId === oppId)) {
         allCards.push(cachedCard);
       }
     }
