@@ -37,6 +37,7 @@ import type {
   IdentifiedAgentCard,
   Intent,
   Negotiation,
+  NegotiationEvent,
   NegotiationSession,
   NegotiationStore,
   NegotiationTurn,
@@ -126,6 +127,23 @@ function amountsIn(text: string): number[] {
     .map((match) => Number((match[1] ?? match[2] ?? "").replace(/,/g, "")))
     .filter((amount) => Number.isFinite(amount));
   return [...new Set(amounts)];
+}
+
+/** How many turns this side has sent. Client-side moves go over the wire
+ * with role "user", so the Task history carries the count. */
+function sentTurns(session: NegotiationSession): number {
+  return session.task?.history.filter((message) => message.role === "user").length ?? 0;
+}
+
+/** The counterparty's most recent move, decoded, or null before they have
+ * said anything. */
+function lastPeerDecision<A extends string>(session: NegotiationSession): NegotiationDecision<A> | null {
+  const reply = session.task?.history.findLast((message) => message.role === "agent");
+  return reply ? (messageToDecision(reply) as NegotiationDecision<A> | null) : null;
+}
+
+function describe(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 export interface AgentOptions<A extends string = DefaultAction> {
@@ -682,6 +700,80 @@ export class Agent<A extends string = DefaultAction> {
     const turn = await this.takeTurn(resolved, options.guidance, context?.signal);
     context?.negotiations.set(resolved.id, resolved);
     return turn;
+  }
+
+  // --- outbound, run to an event ------------------------------------
+
+  /**
+   * Opens a negotiation and pumps it until something the agent loop needs
+   * to hear: it settled, it needs the party, it ran out of turns, or it
+   * failed. The turns in between never reach the loop. This is what
+   * `negotiate_many` runs, one per counterparty, concurrently.
+   *
+   * The session is keyed under a provisional `local:` id until the
+   * counterparty's Task exists, so a negotiation that stops before its
+   * first turn can still be found and resumed.
+   */
+  async runNegotiation(
+    url: string,
+    options: OpenNegotiationOptions = {},
+    context?: Pick<ToolContext, "negotiations" | "signal">,
+  ): Promise<NegotiationEvent<A>> {
+    const session: NegotiationSession = {
+      id: `local:${crypto.randomUUID()}`,
+      direction: "outbound",
+      url,
+      objective: this.objectiveFor(options.objective),
+      peer: null,
+      task: undefined as unknown as A2ATask,
+    };
+    context?.negotiations.set(session.id, session);
+
+    if (options.discover !== false) {
+      try {
+        session.peer = await this.inspect(url, { signal: context?.signal });
+      } catch (cause) {
+        context?.negotiations.delete(session.id);
+        return { kind: "failed", id: session.id, error: describe(cause), turns: 0 };
+      }
+    }
+
+    return this.pump(session, context);
+  }
+
+  /** Takes turns until an event. Turns are counted from the Task, so a
+   * session resumed in another process picks up the right count. */
+  private async pump(
+    session: NegotiationSession,
+    context?: Pick<ToolContext, "negotiations" | "signal">,
+  ): Promise<NegotiationEvent<A>> {
+    const peer = session.peer?.name;
+
+    for (;;) {
+      const turns = sentTurns(session);
+      if (turns >= this.maxTurns) {
+        return { kind: "budget", id: session.id, peer, last: lastPeerDecision(session), turns };
+      }
+
+      let turn: NegotiationTurn<A>;
+      try {
+        turn = await this.takeTurn(session, undefined, context?.signal);
+      } catch (cause) {
+        return { kind: "failed", id: session.id, peer, error: describe(cause), turns };
+      }
+      context?.negotiations.set(session.id, session);
+
+      if (turn.done || turn.settlement) {
+        return {
+          kind: "settled",
+          id: session.id,
+          peer,
+          state: turn.state,
+          ...(turn.settlement ? { settlement: turn.settlement } : {}),
+          turns: sentTurns(session),
+        };
+      }
+    }
   }
 
   /** Decides and sends one turn, updating the session in place. */

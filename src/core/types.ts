@@ -243,6 +243,35 @@ export interface NegotiationTurn<A extends string = string> {
   artifact?: A2AArtifact;
 }
 
+/**
+ * What a negotiation run under the fan-out pump reports when it stops.
+ * One event per negotiation per tool call; the turns in between never
+ * reach the agent loop. `failed` is an event rather than a throw so one
+ * refused connection does not sink the other negotiations in the batch.
+ */
+export type NegotiationEvent<A extends string = string> =
+  | {
+      kind: "settled";
+      id: string;
+      peer?: string;
+      state: A2ATaskState;
+      settlement?: Settlement<A>;
+      turns: number;
+    }
+  | {
+      kind: "asking";
+      id: string;
+      peer?: string;
+      question: string;
+      /** The counterparty's most recent move, so the party can be told
+       * what is on the table when asked. */
+      last: NegotiationDecision<A> | null;
+      turns: number;
+    }
+  | { kind: "budget"; id: string; peer?: string; last: NegotiationDecision<A> | null; turns: number }
+  | { kind: "failed"; id: string; peer?: string; error: string; turns: number }
+  | { kind: "skipped"; id: string; peer?: string; reason: string };
+
 export interface Negotiation<A extends string = string> {
   peer: IdentifiedAgentCard | null;
   /** The A2A Task as the counterparty last returned it. */
