@@ -541,9 +541,29 @@ each column shows its own spinner. ^C interrupts the focused party's run,
 | `/card`, `/instructions`, `/steps`, `/negotiations` | look inside the agent in focus |
 | `/clear`, `/wire`, `/exit` | |
 
-Discovery is host-injected here as it would be anywhere: each party gets a
-`find_matches` tool backed by `cli/directory.ts`, the file-backed stand-in
-for the intent/match layer described below. `--seed` loads made-up intents
+Discovery is host-injected here as it would be anywhere: each party gets
+`find_matches` and `create_intent`, both backed by `cli/directory.ts`, the
+file-backed stand-in for the intent/match layer described below.
+
+`create_intent` is what makes a party findable from a conversation. Say
+*"I want to sell my old Trek Domane, hoping for about $500"* and the agent
+proposes the wording, asks before publishing, and only then puts it on the
+directory:
+
+```
+› I want to sell my old Trek Domane road bike, 54cm, hoping for about $500
+? Would you like me to publish your intent as: "Selling a 54cm Trek Domane
+  road bike for around $500"?
+› Yes, publish that
+⚒ create_intent {"statement":"Selling a 54cm Trek Domane road bike for around $500"}
+```
+
+The asking is deliberate and costs nothing extra — it's the same
+suspend/resume the agent already uses for every other question. An intent
+is published under the party's name and is what everyone else matches
+against, so the agent confirms the words rather than inventing them.
+Neither tool is part of `Agent`: a host has its own notion of what an
+intent is and where it lives. `--seed` loads made-up intents
 with nobody behind them, so a two-party test still reads like a directory;
 matches carry `live` or `offline` so an agent doesn't negotiate with a
 port that isn't there.

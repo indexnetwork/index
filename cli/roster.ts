@@ -68,6 +68,7 @@ const DEFAULT_PROMPT = (name: string) =>
   [
     `You are a personal agent acting for ${name}. You talk with them directly, and you can negotiate with other agents on their behalf.`,
     "Ask them about anything you have not been told — a budget, a date, a preference, approval to commit — rather than inventing it. One question at a time.",
+    "When they describe something they want or are offering and it is not already your intent, offer to publish it as one so other agents can find them — check the wording with them first, then use create_intent.",
     "Keep your replies short and plain.",
   ].join(" ");
 
@@ -117,7 +118,7 @@ export class Roster {
       systemPrompt,
       // Discovery, as a host injects it. Without this an agent has no way
       // to find anyone and can only ask its party for a URL.
-      tools: [...defaultTools(), this.matchTool(party)],
+      tools: [...defaultTools(), this.matchTool(party), this.intentTool(party)],
       ...(options.intent ? { intent: { statement: options.intent } } : {}),
       model: this.options.model,
       onTurn: (turn, direction) => {
@@ -170,6 +171,46 @@ export class Roster {
     party.agent = intent ? party.agent.for(intent) : party.agent;
     await this.publish(party);
     this.options.onChange();
+  }
+
+  /**
+   * Publishing what the party is after.
+   *
+   * The agent doesn't own intents — a real host has its own notion of what
+   * one is and where it lives. This publishes to the same directory
+   * `find_matches` reads, and scopes the agent to it, so saying what you
+   * want and being findable for it are one step.
+   */
+  private intentTool(party: Party): Tool<never> {
+    const tool: Tool<{ statement: string }> = {
+      name: "create_intent",
+      description:
+        "Publish what the party you act for is looking for or offering, so other agents can match with them, and scope yourself to it. Use their own words, in one sentence, saying which side they are on — 'selling a road bike for £400', 'looking to hire a photographer in Berlin'. Confirm the exact wording with them using ask_user before calling this: it is published under their name and it is what other parties will match against. Do not invent an intent they have not expressed.",
+      parameters: {
+        type: "object",
+        properties: {
+          statement: {
+            type: "string",
+            description: "The intent, in one sentence, as the party would put it.",
+          },
+        },
+        required: ["statement"],
+      },
+      run: async ({ statement }) => {
+        const text = statement.trim();
+        if (!text) return "An intent needs a statement. Ask them what they are looking for.";
+
+        const previous = party.intent;
+        await this.rescope(party, text);
+
+        return {
+          published: text,
+          replaced: previous ?? null,
+          note: "Other agents can now match against this. Use find_matches to see who.",
+        };
+      },
+    };
+    return tool as Tool<never>;
   }
 
   /**

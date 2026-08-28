@@ -61,7 +61,9 @@ These were each a bug at some point, and the code reads oddly without them.
 - **Index Network operations are host-injected as tools.** This package
   must not learn Index transport, auth, or vocabulary. `cli/directory.ts`
   is a local stand-in for the match layer, not the real thing, and
-  `cli/roster.ts` injects it as each party's `find_matches` tool.
+  `cli/roster.ts` injects it as each party's `find_matches` and
+  `create_intent` tools — which is where a future intent package would
+  plug in, not into `Agent`.
 - **`files` is `dist`.** `cli/`, `dev/` and `examples/` are never
   published; `@indexnetwork/negotiator` is externalized, not bundled.
 
