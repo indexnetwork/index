@@ -1,8 +1,9 @@
 import type { Job, Queue, Worker } from 'bullmq';
-import { KICKOFF_STALE_AFTER_MS, maybeEnqueueRoundReflect, type MatchesReadyFn, type NegotiationGraphLike, type NegotiationRoundReflectEnqueueFn } from '@indexnetwork/protocol';
+import { KICKOFF_STALE_AFTER_MS, maybeEnqueueRoundReflect, type MatchesReadyFn, type NegotiationGraphLike, type NegotiationRoundLogDatabase, type NegotiationRoundReflectEnqueueFn } from '@indexnetwork/protocol';
 
 import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../../adapters/conversation.database.adapter';
 import type { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
+import { negotiationRoundLogDatabaseAdapter } from '../../adapters/negotiation-round-log.database.adapter';
 import { QueueFactory } from '../../lib/bullmq/bullmq';
 import { log } from '../../lib/log';
 
@@ -29,7 +30,6 @@ type WatchdogDatabase = Pick<
   ConversationDatabaseAdapter,
   'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
   | 'clearNegotiationReflectPending'
-  | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
   | 'getIntentsWithInterruptedKickoff'
 >;
 type WatchdogOpportunities = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
@@ -52,9 +52,10 @@ export interface NegotiationWatchdogQueueDeps {
     ConversationDatabaseAdapter,
     'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
     | 'clearNegotiationReflectPending'
-    | 'getIntentNegotiationRound' | 'getNegotiationTasksForIntentRound'
     | 'getIntentsWithInterruptedKickoff'
   >;
+  /** The append-only round-log a batch's settlement is folded from (#1494). */
+  roundLog?: NegotiationRoundLogDatabase;
   opportunities?: Pick<ChatDatabaseAdapter, 'getOpportunity'>;
   negotiationGraph?: NegotiationGraphLike;
   queue?: WatchdogQueueHandle;
@@ -181,10 +182,11 @@ export class NegotiationWatchdogQueue {
       ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
     const opportunities: WatchdogOpportunities = this.deps.opportunities
       ?? (await import('../../adapters/database.adapter')).chatDatabaseAdapter;
+    const roundLog: NegotiationRoundLogDatabase = this.deps.roundLog ?? negotiationRoundLogDatabaseAdapter;
     const staleTasks = await database.getStaleNegotiationTasks(input);
 
     for (const candidate of staleTasks) {
-      await this.reconcileCandidate(candidate, database, opportunities).catch((error) => {
+      await this.reconcileCandidate(candidate, database, roundLog, opportunities).catch((error) => {
         this.logger.error('Negotiation watchdog candidate failed; continuing sweep', {
           taskId: candidate.id,
           error: error instanceof Error ? error.message : String(error),
@@ -196,13 +198,13 @@ export class NegotiationWatchdogQueue {
   }
 
   /**
-   * A kickoff that bumped the round and stamped `kickoffStartedAt` but never
-   * finished (crash, restart) leaves zero negotiation tasks behind — nothing
-   * for the stale-task sweep above to find, and no reflect wake scheduled
-   * either, since that requires `negotiationRoundSize` to be stamped. Without
-   * this, such a signal sits idle forever. `runKickoff`'s own
-   * `interruptedRound` check already knows how to settle it; re-waking with
-   * `matches_ready` is what gives that check a turn to run in.
+   * A kickoff that bumped the batch but never finished (crash, restart)
+   * leaves zero negotiation tasks behind — nothing for the stale-task sweep
+   * above to find, and no reflect wake scheduled either, since that requires
+   * the batch's `opening_complete` round-log marker. Without this, such a
+   * signal sits idle forever. `runKickoff`'s own `interruptedBatch` check
+   * already knows how to settle it; re-waking with `matches_ready` is what
+   * gives that check a turn to run in.
    */
   private async repairInterruptedKickoffs(database: WatchdogDatabase): Promise<void> {
     const matchesReady: MatchesReadyFn = this.matchesReadyFn
@@ -258,6 +260,7 @@ export class NegotiationWatchdogQueue {
   private async reconcileCandidate(
     candidate: StaleNegotiationTask,
     database: WatchdogDatabase,
+    roundLog: NegotiationRoundLogDatabase,
     opportunities: WatchdogOpportunities,
   ): Promise<void> {
     const task = await database.getTask(candidate.id);
@@ -288,11 +291,11 @@ export class NegotiationWatchdogQueue {
       let succeeded = true;
       for (const [intentId, rawBinding] of Object.entries(seats)) {
         const binding = asRecord(rawBinding);
-        if (typeof binding.userId !== 'string' || typeof binding.round !== 'number') continue;
-        const checked = await maybeEnqueueRoundReflect(database, this.reflectEnqueue, {
+        if (typeof binding.userId !== 'string' || typeof binding.batchId !== 'string') continue;
+        const checked = await maybeEnqueueRoundReflect(roundLog, this.reflectEnqueue, {
           userId: binding.userId,
           intentId,
-          round: binding.round,
+          batchId: binding.batchId,
         });
         succeeded &&= checked;
       }
@@ -312,11 +315,11 @@ export class NegotiationWatchdogQueue {
         const seats = asRecord(metadata.seats);
         for (const [intentId, rawBinding] of Object.entries(seats)) {
           const binding = asRecord(rawBinding);
-          if (typeof binding.userId !== 'string' || typeof binding.round !== 'number') continue;
-          await maybeEnqueueRoundReflect(database, this.reflectEnqueue, {
+          if (typeof binding.userId !== 'string' || typeof binding.batchId !== 'string') continue;
+          await maybeEnqueueRoundReflect(roundLog, this.reflectEnqueue, {
             userId: binding.userId,
             intentId,
-            round: binding.round,
+            batchId: binding.batchId,
           });
         }
         await database.recordNegotiationWatchdogRecoveryCheck({

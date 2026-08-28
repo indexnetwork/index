@@ -22,7 +22,7 @@
  */
 import type { NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import type { NegotiationGraphLike } from "../../negotiations/negotiation.graph.js";
-import type { NegotiationGraphDatabase, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
+import type { NegotiationGraphDatabase, NegotiationRoundLogDatabase, NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 import type { IntentRecord } from "../../../platform/database/entities.js";
 import type { NegotiationRoundReflectEnqueueFn } from "../../negotiations/negotiation.round-reflect.js";
 import type { Question } from "../../../protocol/question.js";
@@ -50,8 +50,8 @@ export type PersonalAgentInput =
   | { userId: string; intentId: string; event: "matches_ready" }
   /** One of this signal's negotiations needs its principal before it can continue. */
   | { userId: string; intentId: string; event: "needs_principal"; negotiationId: string }
-  /** Every negotiation of `(intentId, round)` has paused. */
-  | { userId: string; intentId: string; event: "all_paused"; round: number }
+  /** Every negotiation of `(intentId, batchId)` has paused. */
+  | { userId: string; intentId: string; event: "all_paused"; batchId: string }
   /** The other agent resolved a shared negotiation; fixed copy informs this principal. */
   | { userId: string; intentId: string; event: "counterparty_resolved"; negotiationId: string; verdict: "pending" | "reject" }
   /** One negotiator turn for the given seat and its own signal. */
@@ -100,8 +100,9 @@ export type PersonalAgentExecutedAct =
   }
   | {
     tool: "kickoff";
-    round: number;
-    /** How many negotiation tasks the round settled with; preserves the round-size semantics. */
+    /** Null only when nothing was ever kicked off for this signal — a turn with zero matches to open. */
+    batchId: string | null;
+    /** How many negotiation tasks the batch settled with; preserves the old round-size semantics. */
     opened: number;
     /** How many matches this kickoff tried to open or resume. */
     attempted: number;
@@ -260,8 +261,10 @@ export interface PersonalAgentIdentityPort {
 export interface PersonalAgentDeps {
   /** Every negotiation effect — kickoff, resume, verdict — goes through here. */
   negotiations: NegotiationGraphLike;
-  /** Reads negotiation state IS-A reasons over: round tasks, threads, briefs. */
+  /** Reads negotiation state IS-A reasons over: batch tasks, threads, briefs. */
   negotiationDatabase: NegotiationGraphDatabase;
+  /** The append-only round-log a batch's settlement is folded from (#1494). */
+  roundLog: NegotiationRoundLogDatabase;
   conversation: PersonalAgentConversationPort;
   dossier: PersonalAgentDossierPort;
   ledger: PersonalAgentLedgerPort;
@@ -271,7 +274,8 @@ export interface PersonalAgentDeps {
   activity?: PersonalAgentActivityPort;
   /**
    * The all-paused → reflect trigger. Kickoff runs one final check after
-   * stamping the round size, to cover pauses that landed before the stamp.
+   * appending the batch's opening_complete marker, to cover pauses that
+   * landed before it.
    */
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
   /**
@@ -373,7 +377,7 @@ export interface PersonalAgentTurnContext {
   /** Present only for `user_message`. */
   message?: { text: string; sessionId: string; messageId: string };
   /** Present only for `all_paused`. */
-  round?: number;
+  batchId?: string;
   agentName?: string;
   signalText: string | null;
   /** Everything undecided on this signal — what the principal may act on. */

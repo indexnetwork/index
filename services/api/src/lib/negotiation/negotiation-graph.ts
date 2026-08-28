@@ -24,6 +24,7 @@ import { NegotiationGraphFactory, PersonalAgentGraphFactory } from '@indexnetwor
 import type { MatchesReadyFn, PersonalAgentGraphLike } from '@indexnetwork/protocol';
 
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
+import { negotiationRoundLogDatabaseAdapter } from '../../adapters/negotiation-round-log.database.adapter';
 import { log } from '../log';
 import { intentAgentLedgerAdapter } from '../../adapters/intent-agent-ledger.adapter';
 import { intentDossierAdapter } from '../../adapters/intent-dossier.adapter';
@@ -43,6 +44,7 @@ export const agentDispatcher = new AgentDispatcherImpl(agentService);
 
 export const negotiationGraph = new NegotiationGraphFactory({
   database: conversationDatabaseAdapter,
+  roundLog: negotiationRoundLogDatabaseAdapter,
   // All-paused → reflect: the trigger waits for an in-flight kickoff to finish,
   // then deduplicates the durable task-generation vector for every bound seat.
   reflectEnqueue: async (job) => {
@@ -78,6 +80,7 @@ export const negotiationGraph = new NegotiationGraphFactory({
 export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraphFactory({
   negotiations: negotiationGraph,
   negotiationDatabase: conversationDatabaseAdapter,
+  roundLog: negotiationRoundLogDatabaseAdapter,
   conversation: {
     findSession: (userId, intentId) => chatSessionService.findNegotiatorIntentSession(userId, intentId),
     resolveSession: (userId, intentId) => chatSessionService.resolveNegotiatorIntentSession(userId, intentId),

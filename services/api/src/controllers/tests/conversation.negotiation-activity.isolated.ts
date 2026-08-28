@@ -41,7 +41,7 @@ describe('ConversationController intent cycle', () => {
   });
 
   it('returns the exact owned cycle response', async () => {
-    const cycle = { round: { number: 1, size: 1, kickoffStartedAt: null, active: 1, paused: 0 }, negotiations: [] };
+    const cycle = { batch: { id: 'batch-1', active: 1, paused: 0 }, negotiations: [] };
     const read = mock(async () => cycle);
     const controller = new ConversationController(
       { getIntentCycleForIntent: read } as unknown as ConversationService,
@@ -57,7 +57,7 @@ describe('ConversationController intent cycle', () => {
   });
 
   it('returns only the owner-scoped act timeline', async () => {
-    const entries = [{ id: 'act-1', event: { kind: 'matches_ready' }, act: { tool: 'kickoff', round: 1 }, createdAt: new Date() }];
+    const entries = [{ id: 'act-1', event: { kind: 'matches_ready' }, act: { tool: 'kickoff', batchId: 'batch-1' }, createdAt: new Date() }];
     const read = mock(async () => entries);
     const controller = new ConversationController(
       { getIntentCycleTimelineForIntent: read } as unknown as ConversationService,

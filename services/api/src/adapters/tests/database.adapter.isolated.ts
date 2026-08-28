@@ -1586,11 +1586,10 @@ describe('OpportunityDatabaseAdapter', () => {
           type: 'negotiation',
           opportunityId: otherTrigger.id,
           seats: {
-            [fixture.intent1Id]: { userId: fixture.userAId, round: 1 },
-            [candidateIntentId]: { userId: fixture.userBId, round: 2 },
+            [fixture.intent1Id]: { userId: fixture.userAId, batchId: "batch-1" },
+            [candidateIntentId]: { userId: fixture.userBId, batchId: "batch-2" },
           },
           pause: { reason: 'ready_for_verdict', pausedBy: fixture.userAId },
-          drainGeneration: 0,
         },
       });
       const [attemptConversation] = await db.insert(conversations).values({}).returning();
@@ -1631,10 +1630,9 @@ describe('OpportunityDatabaseAdapter', () => {
             type: 'negotiation',
             opportunityId: result.created.id,
             seats: {
-              [triggerIntentId]: { userId: fixture.userAId, round: 3 },
-              [candidateIntentId]: { userId: fixture.userBId, round: 2 },
+              [triggerIntentId]: { userId: fixture.userAId, batchId: "batch-3" },
+              [candidateIntentId]: { userId: fixture.userBId, batchId: "batch-2" },
             },
-            drainGeneration: 0,
           },
         });
         expect(attempt).not.toBeNull();
@@ -1643,10 +1641,9 @@ describe('OpportunityDatabaseAdapter', () => {
         expect(attempt?.metadata).toMatchObject({
           opportunityId: result.created.id,
           seats: {
-            [triggerIntentId]: { userId: fixture.userAId, round: 3 },
-            [candidateIntentId]: { userId: fixture.userBId, round: 2 },
+            [triggerIntentId]: { userId: fixture.userAId, batchId: "batch-3" },
+            [candidateIntentId]: { userId: fixture.userBId, batchId: "batch-2" },
           },
-          drainGeneration: 0,
         });
 
         const duplicateAttempt = await conversationAdapter.createNegotiationTaskForAttempt({

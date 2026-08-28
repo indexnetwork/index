@@ -5,7 +5,7 @@
  * dossiers, orphan orchestrator conversations, and any conversation that
  * has an agent participant (H2A / A2A chat shells).
  * Also wipes every BullMQ queue in Redis (all `bull:*` keys) and resets each
- * intent's negotiation-cycle state (round, round size, kickoff stamp).
+ * intent's negotiation-cycle state (batch id) plus its round-log events.
  * Keeps intents, users, HyDE, and profile data.
  *
  * Usage:
@@ -46,8 +46,9 @@ async function readCounts(): Promise<Counts> {
     UNION ALL SELECT 'opportunity_deliveries', count(*)::text FROM opportunity_deliveries
     UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
     UNION ALL SELECT 'agents_with_neg_pickup', count(*)::text FROM agents WHERE last_negotiation_pickup_at IS NOT NULL
-    UNION ALL SELECT 'intents_with_round_state', count(*)::text FROM intents
-      WHERE negotiation_round > 0 OR negotiation_round_size IS NOT NULL OR negotiation_kickoff_started_at IS NOT NULL
+    UNION ALL SELECT 'intents_with_batch_state', count(*)::text FROM intents
+      WHERE negotiation_batch_id IS NOT NULL
+    UNION ALL SELECT 'negotiation_round_log_events', count(*)::text FROM negotiation_round_log_events
     UNION ALL SELECT 'intent_discovery_progress', count(*)::text FROM intent_discovery_progress
     UNION ALL SELECT 'questions_intent', count(*)::text FROM questions WHERE detection->>'mode' = 'intent'
     UNION ALL SELECT 'questions_nego_opp', count(*)::text FROM questions
@@ -118,13 +119,12 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
       WHERE last_negotiation_pickup_at IS NOT NULL
     `);
     // Intents survive the wipe, so their negotiation-cycle state must not:
-    // a kept round/kickoff stamp with no matches or tasks behind it renders
-    // as a permanently "opening" round in the UI.
+    // a kept batch id with no matches or tasks behind it renders as a
+    // permanently "opening" batch in the UI.
     await tx.execute(sql`
-      UPDATE intents
-      SET negotiation_round = 0, negotiation_round_size = NULL, negotiation_kickoff_started_at = NULL
-      WHERE negotiation_round > 0 OR negotiation_round_size IS NOT NULL OR negotiation_kickoff_started_at IS NOT NULL
+      UPDATE intents SET negotiation_batch_id = NULL WHERE negotiation_batch_id IS NOT NULL
     `);
+    await tx.execute(sql`DELETE FROM negotiation_round_log_events`);
   });
   return readCounts();
 }
