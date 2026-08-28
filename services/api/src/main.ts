@@ -171,7 +171,6 @@ void frameDriftQueue.start().catch((error) => {
 });
 notificationQueue.startWorker();
 hydeQueue.startCrons();
-negotiationReflectQueue.startWorker();
 negotiationReflectQueue.startCrons();
 personalAgentQueue.startWorker();
 premiseQueue.startWorker();

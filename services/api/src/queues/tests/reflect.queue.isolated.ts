@@ -12,7 +12,7 @@
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://unused:unused@localhost:5432/unused';
 process.env.OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? 'test-key';
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 
 import type { NegotiationReflectionInput, ChatReflectionInput, DistilledMemory } from '@indexnetwork/protocol';
 
@@ -56,6 +56,7 @@ function mkQueue(opts?: {
   canonicalDmId?: string | null;
   chatMessages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
   negotiationMessages?: Array<{ id: string; senderId: string; parts: unknown[]; createdAt: Date }>;
+  chatReflectDelayMs?: number;
 }) {
   const reflectCalls: NegotiationReflectionInput[] = [];
   const chatCalls: ChatReflectionInput[] = [];
@@ -96,27 +97,18 @@ function mkQueue(opts?: {
       }) as never,
       runConfidenceDecay: mock(async () => ({ decayed: 0, deleted: 0 })),
     },
+    chatReflectDelayMs: opts?.chatReflectDelayMs,
   });
 
   return { queue, reflectCalls, chatCalls, writes };
 }
 
 describe('NegotiationReflectQueue', () => {
-  const queues: NegotiationReflectQueue[] = [];
-
-  beforeEach(() => {
-  });
-
-  afterEach(async () => {
-    await Promise.all(queues.splice(0).map((q) => q.close().catch(() => undefined)));
-  });
-
   describe('reflect', () => {
     it('runs one perspective-projected pass per side with correct seat attribution', async () => {
       const { queue, reflectCalls, writes } = mkQueue();
-      queues.push(queue);
 
-      await queue.processJob('reflect', reflectJob);
+      await queue.reflect(reflectJob);
 
       expect(reflectCalls.length).toBe(2);
 
@@ -157,9 +149,8 @@ describe('NegotiationReflectQueue', () => {
           return distilled;
         },
       });
-      queues.push(queue);
 
-      await queue.processJob('reflect', reflectJob);
+      await queue.reflect(reflectJob);
 
       expect(writes.length).toBe(1);
       expect(writes[0]).toMatchObject({ userId: 'u-bob' });
@@ -177,9 +168,8 @@ describe('NegotiationReflectQueue', () => {
           },
         ],
       });
-      queues.push(queue);
 
-      await queue.processJob('reflect', reflectJob);
+      await queue.reflect(reflectJob);
 
       const alicePass = reflectCalls.find((c) => c.clientUser.id === 'u-alice')!;
       expect(alicePass.transcript[1]).toMatchObject({ action: 'pause:needs_principal', speaker: 'counterparty' });
@@ -191,9 +181,8 @@ describe('NegotiationReflectQueue', () => {
 
     it('non-intent-scoped session → skipped (guard)', async () => {
       const { queue, chatCalls, writes } = mkQueue({ session: { persona: 'personal', scopeType: null, scopeId: null } });
-      queues.push(queue);
 
-      await queue.processJob('chat_reflect', chatJob);
+      await queue.chatReflect(chatJob);
       expect(chatCalls.length).toBe(0);
       expect(writes.length).toBe(0);
     });
@@ -202,18 +191,16 @@ describe('NegotiationReflectQueue', () => {
       // A pre-collapse pinned chat that lost the DM fold-in carries the
       // intent scope but no registry claim; it never distils.
       const { queue, chatCalls, writes } = mkQueue({ canonicalDmId: 'sess-other' });
-      queues.push(queue);
 
-      await queue.processJob('chat_reflect', chatJob);
+      await queue.chatReflect(chatJob);
       expect(chatCalls.length).toBe(0);
       expect(writes.length).toBe(0);
     });
 
     it('missing/unowned session → skipped (guard)', async () => {
       const { queue, chatCalls } = mkQueue({ session: null });
-      queues.push(queue);
 
-      await queue.processJob('chat_reflect', chatJob);
+      await queue.chatReflect(chatJob);
       expect(chatCalls.length).toBe(0);
     });
 
@@ -221,9 +208,8 @@ describe('NegotiationReflectQueue', () => {
       const { queue, chatCalls } = mkQueue({
         chatMessages: [{ role: 'assistant', content: 'hello, I am your negotiator' }],
       });
-      queues.push(queue);
 
-      await queue.processJob('chat_reflect', chatJob);
+      await queue.chatReflect(chatJob);
       expect(chatCalls.length).toBe(0);
     });
 
@@ -234,9 +220,8 @@ describe('NegotiationReflectQueue', () => {
           { kind: 'counterparty_dossier', content: 'should be dropped', confidence: 0.5, aboutCounterparty: true, turnIndexes: [] },
         ],
       });
-      queues.push(queue);
 
-      await queue.processJob('chat_reflect', chatJob);
+      await queue.chatReflect(chatJob);
 
       expect(chatCalls.length).toBe(1);
       expect(chatCalls[0].messages).toEqual([
@@ -252,6 +237,47 @@ describe('NegotiationReflectQueue', () => {
         userId: 'u-alice',
         sourceRef: { type: 'chat', id: 'sess-1' },
       });
+    });
+  });
+
+  describe('scheduleChatReflect debounce', () => {
+    it('two rapid same-session calls produce one reflect, not two', async () => {
+      const { queue, chatCalls } = mkQueue({ chatReflectDelayMs: 20 });
+
+      await queue.scheduleChatReflect({ sessionId: 'sess-1', userId: 'u-alice' });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Arrives before the first timer fires: it must reschedule, not add a second.
+      await queue.scheduleChatReflect({ sessionId: 'sess-1', userId: 'u-alice' });
+
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(chatCalls.length).toBe(1);
+    });
+
+    it('different sessions debounce independently', async () => {
+      const chatCalls: ChatReflectionInput[] = [];
+      const sessionByUser: Record<string, string> = { 'u-alice': 'sess-1', 'u-bob': 'sess-2' };
+      const queue = new NegotiationReflectQueue({
+        chat: {
+          getSession: async (_sessionId, userId) => ({ persona: 'personal', scopeType: 'intent', scopeId: `intent-${userId}` }),
+          findNegotiatorIntentSessionId: async (userId) => sessionByUser[userId] ?? null,
+          getSessionMessages: async () => [{ role: 'user', content: 'hi' }],
+        },
+        reflector: {
+          reflectNegotiation: mock(async () => distilled),
+          reflectChat: mock(async (input: ChatReflectionInput) => { chatCalls.push(input); return distilled; }),
+        },
+        writer: {
+          writeDistilledMemories: mock(async (input: Record<string, unknown>) => ({ written: (input.entries as unknown[]).length, skipped: 0 })) as never,
+          runConfidenceDecay: mock(async () => ({ decayed: 0, deleted: 0 })),
+        },
+        chatReflectDelayMs: 10,
+      });
+
+      await queue.scheduleChatReflect({ sessionId: 'sess-1', userId: 'u-alice' });
+      await queue.scheduleChatReflect({ sessionId: 'sess-2', userId: 'u-bob' });
+
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(chatCalls.length).toBe(2);
     });
   });
 });
