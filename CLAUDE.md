@@ -39,6 +39,10 @@ These were each a bug at some point, and the code reads oddly without them.
 - **Reading negotiations is uniform; acting on them is not.** An inbound
   negotiation has no URL — the counterparty called us — so it can be known
   but not continued.
+- **One clock.** `now` feeds both the loop's system message and the
+  negotiator's, read as UTC, so an agent can't tell its party one date and
+  its counterparty another. It's a function, not a `Date`, so a long-lived
+  server doesn't freeze on the day it booted.
 - **Retries live in `ModelClient` only.** The negotiator deliberately has
   none; two layers would multiply, and neither backoff would see the other.
 - **Index Network operations are host-injected as tools.** This package

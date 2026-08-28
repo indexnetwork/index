@@ -86,12 +86,20 @@ const DEFAULT_TERMINAL: ReadonlySet<string> = new Set(["accept", "reject", "decl
  * where the domain is known.
  */
 const DEFAULT_TERMS =
-  "the material terms of this deal as flat key/value pairs, using the plainest field name for each (amount, currency, date, quantity, location) — only what has actually been discussed, and the same field names the other side used. Write dates as YYYY-MM-DD rather than relative ones, and always name the currency alongside an amount";
+  "the material terms of this deal as flat key/value pairs, using the plainest field name for each (amount, currency, date, quantity, location) — only what has actually been discussed, using the same field names the other side used, and always naming the currency alongside an amount";
 
-/** "Friday, 28 August 2026" — a weekday included, since half of what gets
- * negotiated is stated as one. */
+/**
+ * "Friday, 28 August 2026" — the weekday included, since half of what gets
+ * negotiated is stated as one ("weekday evenings", "next Tuesday").
+ *
+ * UTC, because the negotiator states the date in UTC too and an agent whose
+ * loop and whose negotiation turns disagree about what day it is would be
+ * worse than either being slightly off. A host that wants its party's local
+ * day passes a `now` shifted into that timezone.
+ */
 function formatDate(now: Date): string {
   return now.toLocaleDateString("en-GB", {
+    timeZone: "UTC",
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -168,8 +176,12 @@ export interface AgentOptions<A extends string = DefaultAction> {
   onRetry?: (attempt: number, reason: string) => void;
   /**
    * The current time, for resolving what a counterparty means by "next
-   * Tuesday". Defaults to the host's clock; pass one to fix it for tests,
-   * or to run an agent in its party's timezone rather than the server's.
+   * Tuesday". Defaults to the host's clock, and is shared with the
+   * negotiator so the loop and the negotiation turns can't disagree about
+   * what day it is.
+   *
+   * Read as UTC. A host whose party lives elsewhere passes an instant
+   * shifted into that timezone; a test passes a fixed one.
    */
   now?: () => Date;
 
@@ -332,8 +344,12 @@ export class Agent<A extends string = DefaultAction> {
       attempts: options.attempts,
       onRetry: options.onRetry,
     });
+    // The same clock the loop reasons with. Two clocks in one agent can
+    // disagree across midnight, and then the agent's own turns contradict
+    // what it told its party.
     this.negotiator =
-      options.negotiator ?? new Negotiator({ apiKey: options.apiKey, model: options.model });
+      options.negotiator ??
+      new Negotiator({ apiKey: options.apiKey, model: options.model, now: options.now });
 
     this.allowedActions =
       options.allowedActions ?? ([...DEFAULT_ACTIONS] as unknown as ActionSpec<A>[]);

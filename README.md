@@ -344,8 +344,10 @@ month", the agent without a clock agreed the deal and recorded
 `{"collection": "from next Tuesday onwards"}`. With one, it resolves that
 to 1 September, notices it falls outside the buyer's window, and declines.
 
-`now` fixes the clock — for tests, or to run an agent in its party's
-timezone rather than the server's.
+The same clock goes to the negotiator, so the loop and the negotiation
+turns can't name different days across midnight. It's read as UTC for the
+same reason; a host whose party lives elsewhere passes an instant shifted
+into that timezone, and a test passes a fixed one.
 
 ```ts
 new Agent({ identity, systemPrompt, now: () => new Date("2026-08-31T09:00:00Z") });

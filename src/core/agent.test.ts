@@ -1388,3 +1388,47 @@ describe("a counterparty cannot reopen our settled negotiation", () => {
     }
   });
 });
+
+describe("one clock", () => {
+  // Two clocks in one agent disagree across midnight, and then the agent's
+  // negotiation turns contradict what it told its own party.
+  test("the negotiator is built with the agent's clock", async () => {
+    const seen: string[] = [];
+    const agent = new Agent({
+      ...buyer,
+      apiKey: "test-key",
+      now: () => new Date("2026-08-31T23:30:00Z"),
+    });
+
+    // The negotiator states the date in its own system prompt; both halves
+    // read the same instant, so both name the same day.
+    seen.push(agent.instructions());
+    expect(seen[0]).toContain("Monday, 31 August 2026");
+  });
+
+  // A host in UTC+13 at 23:30 UTC is already on the next day locally.
+  // Formatting in UTC keeps the loop and the negotiator naming one day.
+  test("reads the clock as UTC rather than the server's timezone", () => {
+    const agent = new Agent({
+      ...buyer,
+      negotiator: scripted([]).negotiator,
+      now: () => new Date("2026-08-31T23:30:00Z"),
+    });
+
+    expect(agent.instructions()).toContain("Monday, 31 August 2026");
+    expect(agent.instructions()).not.toContain("1 September");
+  });
+
+  test("reads the clock per call, so a long-lived agent doesn't freeze", () => {
+    let now = new Date("2026-08-31T09:00:00Z");
+    const agent = new Agent({
+      ...buyer,
+      negotiator: scripted([]).negotiator,
+      now: () => now,
+    });
+
+    expect(agent.instructions()).toContain("31 August 2026");
+    now = new Date("2026-09-04T09:00:00Z");
+    expect(agent.instructions()).toContain("4 September 2026");
+  });
+});
