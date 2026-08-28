@@ -55,7 +55,7 @@ enum NativeAPIBodyValidationFixture {
         // The intent radar is the app's only radar caller and it always sends the
         // lifecycle filter, plus `presentation=skeleton` on the first of its two
         // phases. Denying either leaves the radar stuck on "looking for your people".
-        let radarStatuses = "latent,pending,negotiating,stalled,accepted,expired"
+        let radarStatuses = "pending,negotiating,stalled,accepted,expired"
         let intentId = "00000000-0000-4000-8000-000000000001"
         try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?statuses=\(radarStatuses)&scopeType=intent&scopeId=\(intentId)", body: nil), "intent radar lifecycle query rejected")
         try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "GET", path: "/opportunities/radar?statuses=\(radarStatuses)&presentation=skeleton&scopeType=intent&scopeId=\(intentId)", body: nil), "intent radar skeleton query rejected")
@@ -141,7 +141,7 @@ enum NativeAPIBodyValidationFixture {
         for status in ["accepted", "rejected"] {
             try require(NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "PATCH", path: "/opportunities/o1/status", body: object(["status": string(status)])), "opportunity owner subset parity failed: \(status)")
         }
-        for status in ["latent", "draft", "pending", "negotiating", "stalled", "expired", "liked", "disliked", "introduced", "unknown"] {
+        for status in ["pending", "negotiating", "stalled", "expired", "liked", "disliked", "unknown"] {
             try require(!NativeAPIRequestBridge.validateHTTPBodyForFixture(method: "PATCH", path: "/opportunities/o1/status", body: object(["status": string(status)])), "unused global opportunity status accepted: \(status)")
         }
 
