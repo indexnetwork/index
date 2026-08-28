@@ -121,21 +121,6 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(db.upsertContactMembership).toHaveBeenCalledWith(USER_B, USER_A, { restore: false });
   });
 
-  it("creates DM and adds contacts both ways with non-introducer counterpart in 3-actor opportunity", async () => {
-    const db = createMockDb(threeActorOpportunity);
-    const service = new OpportunityService(db);
-
-    const result = await service.updateOpportunityStatus("opp-002", "accepted", USER_A);
-
-    expect(result).not.toHaveProperty("error");
-    expect((result as { counterpartUserId?: string }).counterpartUserId).toBe(USER_B);
-
-    expect(db.getOrCreateDM).toHaveBeenCalledWith(USER_A, USER_B);
-    expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
-    expect(db.upsertContactMembership).toHaveBeenCalledWith(USER_A, USER_B, { restore: true });
-    expect(db.upsertContactMembership).toHaveBeenCalledWith(USER_B, USER_A, { restore: false });
-  });
-
   it("does NOT call upsertContactMembership when rejecting", async () => {
     const db = createMockDb(twoActorOpportunity);
     const service = new OpportunityService(db);

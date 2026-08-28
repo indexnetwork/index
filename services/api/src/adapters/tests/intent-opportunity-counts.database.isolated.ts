@@ -21,7 +21,6 @@ const [
   viewerActedId,
   counterpartyActedId,
   counterpartyIntentId,
-  viewerIntroducerId,
   nonActorId,
   foreignIntentIdOpportunity,
   pendingTransitionId,
@@ -86,12 +85,11 @@ beforeAll(async () => {
     opportunity(counterpartyActedId, [ownerA, { ...counterparty, actedAt: timestamp }], { source: 'opportunity_graph', timestamp }),
     // A counterparty's intent cannot be attributed to the viewer's signal.
     opportunity(counterpartyIntentId, [{ ...counterparty, intent: intentAId }, { userId: ownerId, networkId: crypto.randomUUID(), role: 'peer' }], { source: 'opportunity_graph', timestamp }),
-    opportunity(viewerIntroducerId, [{ ...ownerA, role: 'introducer' }, counterparty], { source: 'opportunity_graph', triggeredBy: intentAId, timestamp }),
     opportunity(nonActorId, [counterparty], { source: 'opportunity_graph', triggeredBy: intentAId, timestamp }),
     // The caller only lists owner-scoped signal IDs, so foreign provenance fails closed.
     opportunity(foreignIntentIdOpportunity, [{ userId: ownerId, networkId: crypto.randomUUID(), role: 'peer', intent: foreignIntentId }, counterparty], { source: 'opportunity_graph', triggeredBy: foreignIntentId, timestamp }),
     opportunity(pendingTransitionId, [ownerA, counterparty], { source: 'opportunity_graph', timestamp }),
-    ...(['latent', 'draft', 'negotiating', 'stalled'] as const).map((status, index) =>
+    ...(['negotiating', 'stalled'] as const).map((status, index) =>
       opportunity([latentId, draftId, negotiatingId, stalledId][index], [ownerA, counterparty], { source: 'opportunity_graph', triggeredBy: intentAId, timestamp }, status),
     ),
     opportunity(terminalId, [ownerA, counterparty], { source: 'opportunity_graph', triggeredBy: intentAId, timestamp }, 'accepted'),

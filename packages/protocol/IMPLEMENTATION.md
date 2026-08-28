@@ -155,7 +155,6 @@ import {
   NegotiationGraphFactory,
   HydeGraphFactory,
   RadarGraphFactory,
-  MaintenanceGraphFactory,
 } from "@indexnetwork/protocol";
 ```
 
@@ -169,12 +168,11 @@ The intent and community graphs are the exceptions: they are reached through the
 | Factory | Workflow |
 |---|---|
 | `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
-| `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, persist |
+| `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, emit candidates. Creates no opportunities — the host database must implement `upsertDiscoveryMatchCandidates` and `listPendingCandidatesForIntent`, and the PersonalAgent's opportunity port must implement `createAndOpen`, which is what turns a candidate into a row at kickoff. |
 | `PremiseGraphFactory` | Decompose and index a user's premises |
 | `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
-| `MaintenanceGraphFactory` | Periodic maintenance (feed health, opportunity expiration) |
 
 ### Persisted chat personas
 

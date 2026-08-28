@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { CANDIDATE_USER_ID, FakeNegotiationHost, INTENT_ID, NETWORK_ID, OPPORTUNITY_ID, SOURCE_USER_ID } from "./fixtures/negotiation-host.fixture.js";
 import type { NegotiationTurnAuthor, NegotiationTurnAuthorInput } from "../../internal/negotiations/negotiation.turn-author.js";
 import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema } from "../../internal/negotiations/negotiation.turn.js";
-import type { NegotiationAuthoredTurn, NegotiationTurn } from "../../internal/negotiations/negotiation.turn.js";
+import type { NegotiationAuthoredTurn } from "../../internal/negotiations/negotiation.turn.js";
 import { maybeEnqueueRoundReflect } from "../../internal/negotiations/negotiation.round-reflect.js";
 import { Negotiations } from "../negotiations.js";
 
@@ -65,10 +65,11 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     const host = new FakeNegotiationHost();
     const graph = new Negotiations({
       database: host.database,
+      roundLog: host.roundLog,
       author: { authorTurn: async () => { throw new Error("provider unavailable"); } },
     }).createGraph();
 
-    const result = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const result = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
 
     expect(result).toMatchObject({ status: "paused", pause: { reason: "open_failed" } });
     expect(host.taskFor(result.negotiationId).metadata.pause).toMatchObject({
@@ -88,8 +89,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       candidateUserId: CANDIDATE_USER_ID,
       initiatorUserId: SOURCE_USER_ID,
       networkId: NETWORK_ID,
-      seats: { [passiveIntentId]: { userId: CANDIDATE_USER_ID, round: 0 } },
-      drainGeneration: 0,
+      seats: { [passiveIntentId]: { userId: CANDIDATE_USER_ID, batchId: "batch-0" } },
     });
     const paused = await host.createNegotiationTask({
       conversationId: "conversation-paused",
@@ -101,14 +101,21 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       briefs: {},
       metadata: metadata("opportunity-submitted"),
     });
+    // Both tasks belong to the same batch of the passive seat's log, and its
+    // opening_complete marker lands only once — as kickoff would append it
+    // after both parallel opens settled.
+    await host.roundLog.appendNegotiationRoundLogEvent(passiveIntentId, { kind: "opened", taskId: paused.id, batchId: "batch-0" });
+    await host.roundLog.appendNegotiationRoundLogEvent(passiveIntentId, { kind: "opened", taskId: submitted.id, batchId: "batch-0" });
+    await host.roundLog.appendNegotiationRoundLogEvent(passiveIntentId, { kind: "opening_complete", batchId: "batch-0" });
     await host.database.updateNegotiationTaskState(paused.id, "paused", {
       reason: "needs_principal",
       pausedBy: CANDIDATE_USER_ID,
     });
     host.tasks.set(submitted.id, { ...submitted, state: "submitted" });
 
-    const check = { userId: CANDIDATE_USER_ID, intentId: passiveIntentId, round: 0 };
-    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, check);
+    const check = { userId: CANDIDATE_USER_ID, intentId: passiveIntentId, batchId: "batch-0" };
+    await host.roundLog.appendNegotiationRoundLogEvent(passiveIntentId, { kind: "stopped", taskId: paused.id, batchId: "batch-0", via: "paused", reason: "needs_principal" });
+    await maybeEnqueueRoundReflect(host.roundLog, async (job) => { host.enqueueReflect(job); }, check);
     expect(host.reflectJobs).toEqual([]);
 
     host.tasks.set(submitted.id, {
@@ -119,11 +126,12 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
         pause: { reason: "needs_principal", pausedBy: CANDIDATE_USER_ID },
       },
     });
-    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, check);
+    await host.roundLog.appendNegotiationRoundLogEvent(passiveIntentId, { kind: "stopped", taskId: submitted.id, batchId: "batch-0", via: "paused", reason: "needs_principal" });
+    await maybeEnqueueRoundReflect(host.roundLog, async (job) => { host.enqueueReflect(job); }, check);
 
     expect(host.reflectJobs).toEqual([{
       ...check,
-      generation: "task-1.0_task-2.0",
+      dedupeKey: `${paused.id}.3_${submitted.id}.4`,
     }]);
   });
 
@@ -145,8 +153,8 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
         return null;
       },
     };
-    const graph = new Negotiations({ database, author }).createGraph();
-    const input = { opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 };
+    const graph = new Negotiations({ database, roundLog: host.roundLog, author }).createGraph();
+    const input = { opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" };
 
     await Promise.all([graph.invoke(input), graph.invoke(input)]);
 
@@ -166,15 +174,14 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     ]);
     const graph = new Negotiations({
       database: host.database,
+      roundLog: host.roundLog,
       author,
       reflectEnqueue: async (job) => { host.enqueueReflect(job); },
     }).createGraph();
-    host.kickoffStartedAt = new Date();
-
     // open: self-play authors the opening turn (alice), loops straight into
     // the reply seat (bob), which immediately pauses per the script —
     // exactly one call, two persisted turns (outreach + redacted pause marker).
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "Alice wants a technical co-founder.", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "Alice wants a technical co-founder.", batchId: "batch-1" });
     expect(opened.status).toBe("paused");
     expect(opened.turns).toHaveLength(2);
     expect(opened.turns[0]).toMatchObject({ verb: "outreach" });
@@ -188,20 +195,24 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       payload: { question: "What equity split are you open to?" },
     });
     expect(host.taskFor(negotiationId).state).toBe("paused");
-    // The initiating round waits for its size stamp, while Bob's passive seat
-    // is already durably bound and wakes immediately.
+    // Alice's own batch waits on a kickoff to mark opening_complete (nobody
+    // called it here, this test drives the graph directly), while Bob's
+    // never-kicked-off seat got a batch lazily on first touch, marked
+    // opening_complete immediately — so it settles and wakes as soon as this
+    // one task stops.
+    const bobBatchId = host.taskFor(negotiationId).metadata.seats["intent-bob-1"]!.batchId!;
     expect(host.reflectJobs).toEqual([{
       userId: CANDIDATE_USER_ID,
       intentId: "intent-bob-1",
-      round: 0,
-      generation: "task-1.0",
+      batchId: bobBatchId,
+      dedupeKey: `${negotiationId}.2`,
     }]);
-    // Kickoff's own post-settle stamp, replayed here by hand.
-    await host.database.stampIntentNegotiationRoundSize(INTENT_ID, 1, 1);
-    await maybeEnqueueRoundReflect(host.database, async (job) => { host.enqueueReflect(job); }, {
+    // Kickoff's own post-settle marker, replayed here by hand.
+    await host.roundLog.appendNegotiationRoundLogEvent(INTENT_ID, { kind: "opening_complete", batchId: "batch-1" });
+    await maybeEnqueueRoundReflect(host.roundLog, async (job) => { host.enqueueReflect(job); }, {
       userId: SOURCE_USER_ID,
       intentId: INTENT_ID,
-      round: 1,
+      batchId: "batch-1",
     });
 
     // resume with brief: IS-A answered the equity question (read from the task directly,
@@ -216,11 +227,14 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       pausedBy: SOURCE_USER_ID,
       payload: { recommendation: "pending" },
     });
-    // The reopened pause is a new durable generation for both bound seats.
+    // The reopened pause is a new durable settle for both bound seats. Alice's
+    // batch never had an 'opened' event recorded (this test drives the graph
+    // directly, bypassing kickoff's own append) — its fold sees zero opened
+    // tasks and settles as the empty-batch case, both before and after resume.
     expect(host.reflectJobs).toEqual(expect.arrayContaining([
-      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1, generation: "task-1.0" },
-      { userId: SOURCE_USER_ID, intentId: INTENT_ID, round: 1, generation: "task-1.1" },
-      { userId: CANDIDATE_USER_ID, intentId: "intent-bob-1", round: 0, generation: "task-1.1" },
+      { userId: CANDIDATE_USER_ID, intentId: "intent-bob-1", batchId: bobBatchId, dedupeKey: `${negotiationId}.2` },
+      { userId: SOURCE_USER_ID, intentId: INTENT_ID, batchId: "batch-1", dedupeKey: "empty" },
+      { userId: CANDIDATE_USER_ID, intentId: "intent-bob-1", batchId: bobBatchId, dedupeKey: `${negotiationId}.4` },
     ]));
 
     // verdict: IS-A promotes to pending — the only terminal write
@@ -251,11 +265,12 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
     const notifications: Array<{ userId: string; intentId: string; negotiationId: string; verdict: "pending" | "reject" }> = [];
     const graph = new Negotiations({
       database: host.database,
+      roundLog: host.roundLog,
       author,
       resolutionEnqueue: async (input) => { notifications.push(input); },
     }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     expect(opened.status).toBe("paused");
     expect(opened.pause).toEqual({ reason: "ready_for_verdict" });
     expect(host.taskFor(opened.negotiationId).metadata.pause).toMatchObject({
@@ -281,8 +296,8 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       { verb: "outreach", message: "Opening.", reasoning: "r" },
       { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
 
     const result = await graph.invoke({
       negotiationId: opened.negotiationId,
@@ -302,8 +317,8 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       { verb: "outreach", message: "Opening.", reasoning: "r" },
       { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     expect(host.taskFor(opened.negotiationId).metadata.pause?.pausedBy).toBe(CANDIDATE_USER_ID);
     host.opportunity.status = "accepted";
 
@@ -327,8 +342,8 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       { verb: "outreach", message: "Opening.", reasoning: "r" },
       { verb: "pause", reason: "ready_for_verdict", payload: { recommendation: "reject", reasoning: "Not a fit." } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     host.beforeCompleteNegotiation = () => {
       host.opportunity.status = "accepted";
     };
@@ -349,7 +364,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
   test("an expired opportunity closes its active task without inventing an owner verdict", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, []);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
     const task = await host.createNegotiationTask({
       conversationId: "conversation-expired",
       briefs: {},
@@ -360,8 +375,7 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
         candidateUserId: CANDIDATE_USER_ID,
         initiatorUserId: SOURCE_USER_ID,
         networkId: NETWORK_ID,
-        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
-        drainGeneration: 0,
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, batchId: "batch-1" } },
       },
     });
     host.opportunity.status = "expired";
@@ -382,9 +396,9 @@ describe("NegotiationGraph — open, turns, pause, resume, verdict", () => {
       { verb: "outreach", message: "Opening.", reasoning: "r" },
       { verb: "pause", reason: "needs_principal", payload: { question: "?" } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     expect(opened.status).toBe("paused");
     const callsBeforeTimeout = author.calls.length;
 
@@ -406,9 +420,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     // seat immediately falls back to pause(needs_principal) — self-play stops
     // after exactly one real turn, handing control to explicit test invokes.
     const author = new ScriptedTurnAuthor(host, []);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     expect(opened.status).toBe("paused");
     expect(opened.turns).toHaveLength(2); // fallback outreach + bob's fallback pause
     expect(opened.pause).toEqual({ reason: "needs_principal" });
@@ -447,9 +461,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
   test("an externally submitted turn is re-validated at the graph's own boundary, not trusted verbatim", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, []);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     expect(opened.status).toBe("paused"); // fallback outreach, then bob's fallback pause
     const negotiationId = opened.negotiationId;
     const messagesBefore = host.messages.get(negotiationId)!.length;
@@ -473,9 +487,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
       { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
       { verb: "pause", reason: "needs_principal", payload: { question: "?" } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     expect(opened.status).toBe("paused"); // outreach, then bob's scripted needs_principal
     const negotiationId = opened.negotiationId;
 
@@ -516,51 +530,11 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
       { userId: CANDIDATE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "agent" },
     ];
     const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     expect(opened).toMatchObject({ status: "error", error: "Counterparty actor intent is not owned by that seat" });
     expect(host.tasks.size).toBe(0);
-  });
-
-  test("an introducer actor is never picked as a negotiation seat", async () => {
-    const host = new FakeNegotiationHost();
-    host.opportunity.actors = [
-      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
-      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
-      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer", approved: true },
-    ];
-    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
-
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
-    expect(opened.status).toBe("paused"); // outreach, then bob's fallback pause
-    const task = host.taskFor(opened.negotiationId);
-    expect(task.metadata.sourceUserId).toBe(SOURCE_USER_ID);
-    expect(task.metadata.candidateUserId).toBe(CANDIDATE_USER_ID);
-  });
-
-  test("an introduction its introducer has not approved is refused at the OPEN", async () => {
-    // The gate cannot live only where discovery decides whom to WAKE: a
-    // kickoff woken by one plain match re-reads the whole match list, and
-    // without a check here the unapproved introduction is opened too — flipped
-    // to `negotiating` with A2A outreach sent on the introducer's behalf.
-    const host = new FakeNegotiationHost();
-    host.opportunity.actors = [
-      { userId: SOURCE_USER_ID, intent: INTENT_ID, networkId: NETWORK_ID, role: "peer" },
-      { userId: CANDIDATE_USER_ID, intent: "intent-bob-1", networkId: NETWORK_ID, role: "peer" },
-      { userId: "carol-introducer", intent: INTENT_ID, networkId: NETWORK_ID, role: "introducer" },
-    ];
-    const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Hi Bob.", reasoning: "r" }]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
-
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
-
-    expect(opened.status).toBe("error");
-    expect(opened.error).toContain("introducer approval");
-    expect([...host.tasks.values()]).toHaveLength(0);
-    expect(host.opportunityStatusUpdates).toEqual([]);
-    expect(author.calls).toHaveLength(0);
   });
 
   test("re-kicking an existing task whose history is entirely pre-rewrite legacy messages does not error forever", async () => {
@@ -571,9 +545,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     // own outreach-only-first guard rejects it, forever.
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "First real turn.", reasoning: "r" }]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     const negotiationId = opened.negotiationId;
 
     // Replace the real history with a legacy-shaped message — simulating a
@@ -582,7 +556,7 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
       { id: "legacy-1", senderId: `agent:${SOURCE_USER_ID}`, parts: [{ kind: "data", data: { action: "accept" } }], createdAt: new Date() },
     ]);
 
-    const rekicked = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 2 });
+    const rekicked = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-2" });
     expect(rekicked.status).not.toBe("error");
     expect(rekicked.negotiationId).toBe(negotiationId);
   });
@@ -590,19 +564,19 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
   test("resuming an opportunity that already has a negotiation is idempotent, not a second open", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const first = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const first = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     // A second `{ opportunityId, brief }` invoke (e.g. discovery re-running) finds the existing task and
     // updates its brief instead of creating a second negotiation for the same opportunity.
-    const second = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "updated brief", round: 2 });
+    const second = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "updated brief", batchId: "batch-2" });
 
     expect(second.negotiationId).toBe(first.negotiationId);
     expect(host.taskFor(first.negotiationId).briefs[SOURCE_USER_ID]).toBe("updated brief");
     expect([...host.tasks.values()]).toHaveLength(1);
     // The second kickoff's round must land on the task, not the round it opened with —
     // checkAllPaused's round-scoped count and the eventual pause both key off this.
-    expect(host.taskFor(first.negotiationId).metadata.seats[INTENT_ID]!.round).toBe(2);
+    expect(host.taskFor(first.negotiationId).metadata.seats[INTENT_ID]!.batchId).toBe("batch-2");
   });
 
   test("a turn rejected for the wrong seat does not resume a paused negotiation", async () => {
@@ -611,9 +585,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
       { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
       { verb: "pause", reason: "needs_principal", payload: { question: "What equity split?" } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     const negotiationId = opened.negotiationId;
     expect(opened.status).toBe("paused");
     expect(opened.pause).toEqual({ reason: "needs_principal" });
@@ -641,9 +615,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
       { verb: "outreach", message: "Hi Bob.", reasoning: "r" },
       { verb: "pause", reason: "needs_principal", payload: { question: "What equity split?" } },
     ]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     const negotiationId = opened.negotiationId;
     expect(host.taskFor(negotiationId).metadata.pause).toMatchObject({ reason: "needs_principal", pausedBy: CANDIDATE_USER_ID });
 
@@ -680,8 +654,8 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     test("pause markers mixed into history do not trip the cap early", async () => {
       const host = new FakeNegotiationHost();
       const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
-      const graph = new Negotiations({ database: host.database, author }).createGraph();
-      const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+      const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
+      const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
       const negotiationId = opened.negotiationId;
 
       // 2 substantive turns + 4 pause markers = 6 raw messages (the old,
@@ -708,8 +682,8 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
     test("an externally submitted turn that hits the cap is rejected, not silently swapped for a pause", async () => {
       const host = new FakeNegotiationHost();
       const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
-      const graph = new Negotiations({ database: host.database, author }).createGraph();
-      const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+      const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
+      const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
       const negotiationId = opened.negotiationId;
 
       // 5 substantive turns already on record, alternating, ending on alice —
@@ -745,12 +719,12 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
           candidateUserId: CANDIDATE_USER_ID,
           initiatorUserId: SOURCE_USER_ID,
           networkId: NETWORK_ID,
-          seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+          seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, batchId: "batch-1" } },
         },
       });
       const negotiationId = task.id;
       const author = new ScriptedTurnAuthor(host, [{ verb: "counter", message: "one more thing", reasoning: "r" }]);
-      const graph = new Negotiations({ database: host.database, author }).createGraph();
+      const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
       // 5 turns ending on bob (candidate) — alice is next, authored internally
       // (script[0]) since there is no more per-seat external/internal split.
@@ -774,9 +748,9 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
   test("a concurrent duplicate submission is fenced, not silently double-applied", async () => {
     const host = new FakeNegotiationHost();
     const author = new ScriptedTurnAuthor(host, [{ verb: "outreach", message: "Opening.", reasoning: "r" }]);
-    const graph = new Negotiations({ database: host.database, author }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author }).createGraph();
 
-    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", round: 1 });
+    const opened = await graph.invoke({ opportunityId: OPPORTUNITY_ID, intentId: INTENT_ID, brief: "brief", batchId: "batch-1" });
     const negotiationId = opened.negotiationId;
     expect(opened.status).toBe("paused"); // outreach, then bob's fallback pause
 
@@ -818,10 +792,10 @@ describe("NegotiationGraph — external turn submission (respond_to_negotiation 
         candidateUserId: CANDIDATE_USER_ID,
         initiatorUserId: SOURCE_USER_ID,
         networkId: NETWORK_ID,
-        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, round: 1 } },
+        seats: { [INTENT_ID]: { userId: SOURCE_USER_ID, batchId: "batch-1" } },
       },
     });
-    const graph = new Negotiations({ database: host.database, author: new ScriptedTurnAuthor(host, []) }).createGraph();
+    const graph = new Negotiations({ database: host.database, roundLog: host.roundLog, author: new ScriptedTurnAuthor(host, []) }).createGraph();
 
     const timedOut = await graph.invoke({ negotiationId: task.id, pause: "counterparty_silent" });
     expect(timedOut.status).toBe("paused");

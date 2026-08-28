@@ -11,10 +11,11 @@ const OPPORTUNITY_ID = "opp-123";
 function turnMessage(
   verb: "outreach" | "counter" | "question",
   message: string,
+  senderId = "agent:u-source",
 ): { id: string; senderId: string; role: "user" | "agent"; parts: unknown[]; createdAt: Date } {
   return {
     id: `msg-${Math.random().toString(36).slice(2, 8)}`,
-    senderId: "agent-1",
+    senderId,
     role: "agent",
     parts: [{ kind: "data", data: { verb, message, reasoning: `why: ${message}` } }],
     createdAt: new Date(),
@@ -53,7 +54,7 @@ function buildDb(overrides: Partial<NegotiationContextDatabase> = {}): Negotiati
 }
 
 describe("loadNegotiationContext", () => {
-  it("returns null for draft status without querying the database", async () => {
+  it("returns null for an expired opportunity without querying the database", async () => {
     let taskLookups = 0;
     const db = buildDb({
       getNegotiationTaskForOpportunity: async () => {
@@ -62,7 +63,7 @@ describe("loadNegotiationContext", () => {
       },
     });
 
-    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "draft", "u-source");
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "expired", "u-source");
 
     expect(result).toBeNull();
     expect(taskLookups).toBe(0);
@@ -117,6 +118,46 @@ describe("loadNegotiationContext", () => {
     const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "stalled", "u-source");
 
     expect(result!.pause?.reason).toBe("counterparty_silent");
+  });
+
+  it("keeps pause payload only for the pausing seat", async () => {
+    const pause = {
+      reason: "needs_principal" as const,
+      payload: { question: "What is your budget?" },
+      pausedBy: "u-source",
+    };
+    const db = buildDb({
+      getNegotiationTaskForOpportunity: async () =>
+        baseTask({
+          state: "paused",
+          metadata: { ...baseTask().metadata, pause },
+        }),
+      getNegotiationMessages: async () => [turnMessage("outreach", "Opening pitch")],
+    });
+
+    const ownerView = await loadNegotiationContext(db, OPPORTUNITY_ID, "stalled", "u-source");
+    const otherView = await loadNegotiationContext(db, OPPORTUNITY_ID, "stalled", "u-candidate");
+
+    expect(ownerView!.pause).toEqual({ reason: "needs_principal", payload: { question: "What is your budget?" } });
+    expect(otherView!.pause).toEqual({ reason: "needs_principal" });
+    expect(otherView!.pause).not.toHaveProperty("payload");
+  });
+
+  it("redacts counterparty continue-turn reasoning for the viewer", async () => {
+    const db = buildDb({
+      getNegotiationTaskForOpportunity: async () => baseTask(),
+      getNegotiationMessages: async () => [
+        turnMessage("outreach", "Opening pitch", "agent:u-source"),
+        turnMessage("counter", "Different angle", "agent:u-candidate"),
+      ],
+    });
+
+    const result = await loadNegotiationContext(db, OPPORTUNITY_ID, "negotiating", "u-source");
+
+    expect(result!.turns).toHaveLength(2);
+    expect(result!.turns[0]).toMatchObject({ verb: "outreach", message: "Opening pitch", reasoning: "why: Opening pitch" });
+    expect(result!.turns[1]).toMatchObject({ verb: "counter", message: "Different angle" });
+    expect(result!.turns[1]).not.toHaveProperty("reasoning");
   });
 
   it("drops turns that fail to parse against the new turn schema", async () => {

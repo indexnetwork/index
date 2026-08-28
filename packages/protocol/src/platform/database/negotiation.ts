@@ -15,12 +15,16 @@ import type { Database } from '../database.js';
 /** Negotiation task lifecycle. `paused` carries a reason in `metadata.pause`. */
 export type NegotiationTaskState = 'submitted' | 'working' | 'paused' | 'completed';
 
-/** One seat's binding to a signal, and that signal's kickoff round. */
+/** One seat's binding to a signal, and that signal's kickoff batch. */
 export interface NegotiationSeatBinding {
   /** The seat that owns the signal this entry is keyed by. */
   userId: string;
-  /** The round of that signal's kickoff which last targeted this negotiation. */
-  round: number;
+  /**
+   * The batch id of that signal's kickoff which last targeted this
+   * negotiation. Null means the signal has never itself run a kickoff — the
+   * same meaning the old `round: 0` default carried for a passive seat.
+   */
+  batchId: string | null;
 }
 
 export interface NegotiationTaskMetadata {
@@ -48,13 +52,6 @@ export interface NegotiationTaskMetadata {
    * a later kickoff updates only its own seat's round.
    */
   seats: Record<string, NegotiationSeatBinding>;
-  /**
-   * Monotonic generation of this task's paused lifecycle. The opening run is
-   * generation 0; the first persisted turn after each pause increments it.
-   * An all-paused drain is deduplicated by the durable vector of these values,
-   * so reopening a task creates a new drain without duplicating one pause.
-   */
-  drainGeneration: number;
   /** True between atomic verdict completion and a successful round-reflect check. */
   watchdogReflectPending?: boolean;
   /** Fairness cursor for bounded watchdog sweeps; ISO-8601 when last checked. */
@@ -126,10 +123,7 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** Every negotiation task where the given user is source or candidate. */
   getNegotiationTasksForUser(userId: string): Promise<NegotiationTaskRow[]>;
 
-  /**
-   * Transitions state and, for `paused`, records the reason/payload. Moving a
-   * paused task back to `working` also increments its durable drain generation.
-   */
+  /** Transitions state and, for `paused`, records the reason/payload. */
   updateNegotiationTaskState(
     taskId: string,
     state: 'working' | 'paused' | 'completed',
@@ -195,8 +189,8 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   /** Reads back artifacts persisted for a task (e.g. the resolve outcome). */
   getArtifactsForTask(taskId: string): Promise<Array<{ id: string; name: string | null; parts: unknown[]; metadata: Record<string, unknown> | null }>>;
 
-  /** Every negotiation task bound to one intent's given round, whatever its state. The round-settling read. */
-  getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRow[]>;
+  /** Every negotiation task bound to one intent's given batch, whatever its state. The batch-settling read. */
+  getNegotiationTasksForIntentBatch(intentId: string, batchId: string): Promise<NegotiationTaskRow[]>;
 
   /**
    * Every PAUSED, unresolved negotiation of one signal, whatever round it
@@ -210,32 +204,57 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   getPausedNegotiationTasksForIntent(intentId: string): Promise<NegotiationTaskRow[]>;
 
   /**
-   * Opens a new round: bumps `intents.negotiation_round`, clears
-   * `negotiation_round_size` and stamps `negotiation_kickoff_started_at`, all
-   * in one write. Only kickoff bumps a round, so the bump IS the beginning of
-   * a kickoff and there is no gap in which a crash could leave the round
-   * begun-but-unmarked. Returns the new round.
+   * Opens a new batch: generates a fresh UUID and writes it to
+   * `intents.negotiation_batch_id`. Only kickoff bumps a batch, so this write
+   * IS the beginning of a kickoff and there is no gap in which a crash could
+   * leave a batch begun-but-unmarked. Returns the new batch id.
    */
-  bumpIntentNegotiationRound(intentId: string): Promise<number>;
+  bumpIntentNegotiationBatch(intentId: string): Promise<{ batchId: string }>;
 
   /**
-   * The intent's round lifecycle: which round it is on, when a kickoff for
-   * that round BEGAN (null if none ever did — including every intent that
-   * predates round stamping), and the settled size (null until the kickoff
-   * finished). `kickoffStartedAt` set with `roundSize` null is the one
-   * signature of a kickoff that died mid-round.
+   * The intent's current kickoff batch id, or null if no kickoff has ever run
+   * for this signal (including every intent that predates batch stamping).
    */
-  getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null; kickoffStartedAt: Date | null }>;
+  getIntentNegotiationBatch(intentId: string): Promise<{ batchId: string | null }>;
 
-  /**
-   * Stamps how many negotiations this round actually opened. Written once, by
-   * kickoff, after every open has settled — the gate the all-paused check
-   * waits on. A no-op if the intent has already moved to a later round.
-   */
-  stampIntentNegotiationRoundSize(intentId: string, round: number, size: number): Promise<void>;
-
-  /** Count of this intent's round-`round` negotiations not yet `paused` or `completed`. Drives the all-paused → reflect trigger. */
-  countActiveNegotiationsForRound(intentId: string, round: number): Promise<number>;
+  /** Count of this intent's batch-`batchId` negotiations not yet `paused` or `completed`. Drives the all-paused → reflect trigger. */
+  countActiveNegotiationsForBatch(intentId: string, batchId: string): Promise<number>;
 };
+
+/**
+ * Structural mirror of `NegotiationRoundLogEvent`
+ * (internal/negotiations/negotiation.round-log.ts). `platform` may only
+ * depend on `protocol`/`platform` code (enforced by
+ * `architecture:kernel`), so this port defines its own shape instead of
+ * importing across that boundary; TypeScript's structural typing means the
+ * internal type satisfies this one at every call site.
+ */
+export type NegotiationRoundLogEventKind = 'opened' | 'stopped' | 'resumed' | 'opening_complete';
+
+export interface NegotiationRoundLogEventRecord {
+  kind: NegotiationRoundLogEventKind;
+  /** Absent only for 'opening_complete', which has no task. */
+  taskId?: string;
+  batchId: string;
+  /** Only set on 'stopped' events. */
+  via?: 'paused' | 'completed';
+  /** Only set on 'stopped' events whose `via` is 'paused'. */
+  reason?: string;
+  /** When this event was appended — the staleness clock for an in-flight batch. */
+  createdAt: Date;
+}
+
+/**
+ * Durable store for `NegotiationRoundLogEvent`s (#1494). The single write
+ * path for a batch's open/stop/resume/opening_complete history, folded by
+ * `foldNegotiationRoundLog` to decide when a batch has settled.
+ */
+export interface NegotiationRoundLogDatabase {
+  /** Appends one event to the intent's round log. Append-only — never mutates or removes a prior event. */
+  appendNegotiationRoundLogEvent(intentId: string, event: Omit<NegotiationRoundLogEventRecord, 'createdAt'>): Promise<void>;
+
+  /** This intent's events for one batch, in the order they were appended — the order the fold requires. */
+  readNegotiationRoundLogEvents(intentId: string, batchId: string): Promise<NegotiationRoundLogEventRecord[]>;
+}
 
 export type { Opportunity };

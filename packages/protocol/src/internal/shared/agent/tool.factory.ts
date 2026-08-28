@@ -156,7 +156,6 @@ export async function createChatTools(
     undefined, // queueNotification
     deps.matchesReady,
     deps.agentDispatcher,
-    deps.stampNewbornOpportunities,
   ).createGraph();
   const networks = new Networks({ database, indexer: intents });
   const networkGraph = networks.createGraph();

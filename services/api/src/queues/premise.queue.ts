@@ -46,12 +46,8 @@ export type PremiseJobPayload = PremiseCascadeData | PremiseDecomposeProfileData
  */
 const IN_FLIGHT_STATUSES = ['pending', 'negotiating'] as const;
 
-/** Statuses that represent early-stage (not yet sent) opportunities; they expire. */
-const EARLY_STATUSES = ['draft', 'latent'] as const;
-
 export type InFlightStatus = (typeof IN_FLIGHT_STATUSES)[number];
-export type EarlyStatus = (typeof EARLY_STATUSES)[number];
-export type NonTerminalStatus = InFlightStatus | EarlyStatus;
+export type NonTerminalStatus = InFlightStatus;
 
 // ---------------------------------------------------------------------------
 // Grounded-intent re-verification tuning
@@ -382,10 +378,7 @@ export class PremiseQueue {
     premiseId: string
   ): Promise<Array<{ id: string; status: NonTerminalStatus }>> {
     const adapter = new OpportunityDatabaseAdapter();
-    const cascadeStatuses: NonTerminalStatus[] = [
-      ...EARLY_STATUSES,
-      ...IN_FLIGHT_STATUSES,
-    ];
+    const cascadeStatuses: NonTerminalStatus[] = [...IN_FLIGHT_STATUSES];
     const rows = await adapter.getOpportunitiesCitingPremise(userId, premiseId, {
       statuses: cascadeStatuses,
     });

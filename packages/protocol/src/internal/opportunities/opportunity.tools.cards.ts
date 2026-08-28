@@ -45,11 +45,11 @@ export function stripLeadingNarratorName(remark: string, narratorName: string): 
   }
   return t;
 }
-import type { EvaluatorEntity } from "./opportunity.evaluator.js";
+import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity } from "../../platform/database.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import { sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
+import { updateOpportunityStatus } from "./opportunity.graph.modes.js";
 
 export const logger = protocolLogger("ChatTools:Opportunity");
 
@@ -179,7 +179,7 @@ export function ownerApprovalDenial(
 /**
  * Maximum number of opportunity cards to show per chat response.
  * Sized for `selectByComposition` to fill both feed buckets — up to 3
- * connection + 3 connector-flow per the digest/ambient prompt rules.
+ * connection cards per the digest/ambient prompt rules.
  */
 export const CHAT_DISPLAY_LIMIT = 6;
 
@@ -202,12 +202,7 @@ export function buildMinimalOpportunityCard(
   counterpartUserId: string,
   counterpartName: string,
   counterpartAvatar: string | null,
-  introducerName?: string | null,
-  introducerAvatar?: string | null,
   viewerName?: string,
-  secondPartyName?: string,
-  secondPartyAvatar?: string | null,
-  secondPartyUserId?: string,
 ): {
   opportunityId: string;
   userId: string;
@@ -223,22 +218,14 @@ export function buildMinimalOpportunityCard(
   viewerRole: string;
   score: number | undefined;
   status: string;
-  secondParty?: { name: string; avatar?: string | null; userId?: string };
 } {
   const viewerActor = opp.actors.find((a) => a.userId === viewerId);
   const viewerRole = viewerActor?.role ?? "party";
-  const introducerActor = opp.actors.find(
-    (a) => a.role === "introducer" && a.userId !== viewerId,
-  );
-  const viewerIsIntroducer = opp.actors.some(
-    (a) => a.role === "introducer" && a.userId === viewerId,
-  );
   const reasoning = opp.interpretation?.reasoning ?? "";
   // Shared sanitization standard — see opportunity.safe-presentation.ts.
   const mainText = safeFallbackSummary(reasoning, {
     counterpartName,
     viewerName,
-    introducerName: introducerName ?? undefined,
     maxChars: MINIMAL_MAIN_TEXT_MAX_CHARS,
     emptyText: "A suggested connection.",
   });
@@ -246,9 +233,7 @@ export function buildMinimalOpportunityCard(
     typeof opp.interpretation?.confidence === "number"
       ? opp.interpretation.confidence
       : undefined;
-  const narratorName = viewerIsIntroducer
-    ? "You"
-    : introducerName?.trim() || (introducerActor ? "Someone" : "Index");
+  const narratorName = "Index";
   const primaryActionLabel = getPrimaryActionLabel(viewerRole);
   return {
     opportunityId: opp.id,
@@ -257,33 +242,17 @@ export function buildMinimalOpportunityCard(
     avatar: counterpartAvatar,
     mainText,
     cta: "Start a conversation to connect.",
-    headline: viewerIsIntroducer && secondPartyName
-      ? `${counterpartName} → ${secondPartyName}`
-      : `Connection with ${counterpartName}`,
+    headline: `Connection with ${counterpartName}`,
     primaryActionLabel,
     secondaryActionLabel: SECONDARY_ACTION_LABEL,
     mutualIntentsLabel: "Suggested connection",
     narratorChip: {
       name: narratorName,
       text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
-      ...(viewerIsIntroducer
-        ? { userId: viewerId, avatar: null }
-        : introducerActor
-          ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
-          : {}),
     },
     viewerRole,
     score,
-    status: opp.status ?? "latent",
-    ...(viewerIsIntroducer && secondPartyName
-      ? {
-          secondParty: {
-            name: secondPartyName,
-            ...(secondPartyAvatar != null ? { avatar: secondPartyAvatar } : {}),
-            ...(secondPartyUserId ? { userId: secondPartyUserId } : {}),
-          },
-        }
-      : {}),
+    status: opp.status ?? "negotiating",
   };
 }
 

@@ -20,6 +20,20 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 37.0.0 - 2026-08-27
+
+### Breaking
+
+- **`read_premises(userId)` is scoped to shared networks.** Cross-user premise
+  reads are denied unless the caller and target share at least one network
+  membership, and return only the premises assigned to a shared network — a
+  premise its author never put into a network you are both in stays private.
+  `includeRetracted` is own-only.
+- **`get_negotiation` redacts counterparty continue-turn `reasoning`.** The
+  shared thread still exposes `message`; each seat keeps its own `reasoning`.
+  Pause payloads remain private to the pausing seat (now also on the presenter
+  loader path).
+
 ## 36.0.0 - 2026-08-24
 
 ### Breaking
@@ -2000,6 +2014,41 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
 - Added the independently reviewed 25-participant historical shared-pool contract, single-configuration dual-trigger pilot planner, descriptive stage-funnel metrics, and strict execution-completeness artifact schema for IND-638A.
 
 ## [Unreleased]
+
+### Removed
+
+- **Breaking (38.0.0): single-path opportunities.** Discovery no longer creates
+  opportunities. It records one `discovery_match_candidates` row per pair, keyed by
+  `pairKeyOf(networkId, intentA, intentB)`, and the `opportunities` row is INSERTed at
+  kickoff by `createAndOpen` when a principal's PersonalAgent decides to reach out.
+  - `PersonalAgentMatch.opportunityId` is replaced by
+    `ref: { kind: 'candidate' | 'opportunity'; id: string }`. Read it with
+    `matchRefId(match)`; build one with `opportunityRef(id)`.
+  - `PersonalAgentOpportunityPort` requires `createAndOpen`.
+  - `OpportunityStatus` loses `latent` and `draft`. An opportunity is born
+    `negotiating`; there is no pre-kickoff state.
+  - The `introducer` actor role is removed, with its `approved` field,
+    `updateOpportunityActorApproval`, and every visibility rule that keyed on it.
+    `canUserSeeOpportunity` now answers one question — is the viewer an actor.
+  - Removed exports: `MaintenanceGraphFactory`, `MaintenanceGraphDatabase`,
+    `MaintenanceGraphCache`, `MaintenanceGraphQueue`, `createIntroduction`,
+    `approveIntroduction`, `sendOpportunity`, `evaluateIntroduction`,
+    `validateIntroduction`, `IntroductionRequest`, `persistOpportunities`,
+    `StampNewbornOpportunitiesFn`, `StampNewbornOpportunitiesInput`,
+    `OpportunityPersistenceOutcome`, and the `radar.health` scoring module.
+  - `operationMode` narrows to `create | read | update | delete`.
+  - Discovery sources narrow to `query`; `premise-similarity`,
+    `context-similarity` and `context-to-intent` are gone, as are their evidence
+    kinds.
+  - Hosts must implement `upsertDiscoveryMatchCandidates` and
+    `listPendingCandidatesForIntent`.
+
+### Added
+
+- `pairKeyOf`, `DiscoveryMatchCandidate`, `CreateDiscoveryMatchCandidateData`,
+  `DiscoveryMatchCandidateStatus`, `CreateAndOpenResult`, `PersonalAgentMatchRef`,
+  `matchRefId`, `opportunityRef`, `OpportunityEvidence`.
+
 
 ### Changed
 - Behaviour-neutral internal refactor (16.1.1): split the six largest modules and hoist every graph node to a top-level function. The opportunity graph is now the discovery pipeline only — its eight non-pipeline modes (read, update, delete, send, negotiate_existing, approve_introduction, and the two introduction stages) are plain functions on `OpportunityGraphFactory` instead of `operationMode` conditional-edge routing. `database.interface.ts` becomes a barrel over entity, query-group, and capability-view modules; every `Pick<Database, ...>` resolves as before. The opportunity presentation cluster is one module. `opportunity.graph.ts` 4167 → 250 lines, `database.interface.ts` 2925 → 17, `negotiation.graph.ts` 1619 → 111, `opportunity.tools.ts` 1200 → 354, `enrichment.tools.ts` 1198 → 178, `intent.graph.ts` 1091 → 174. No public export, feature flag, or environment variable changed.

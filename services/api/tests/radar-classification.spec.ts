@@ -15,18 +15,6 @@ describe('classifyOpportunity', () => {
     expect(classifyOpportunity(opp, viewerId)).toBe('expired');
   });
 
-  it('classifies as connector-flow when viewer is the introducer', () => {
-    const opp = {
-      actors: [
-        { userId: viewerId, role: 'introducer' },
-        { userId: 'user-2', role: 'patient' },
-        { userId: 'user-3', role: 'agent' },
-      ],
-      status: 'pending',
-    };
-    expect(classifyOpportunity(opp, viewerId)).toBe('connector-flow');
-  });
-
   it('classifies as connection when someone else is the introducer', () => {
     const opp = {
       actors: [
@@ -47,23 +35,11 @@ describe('classifyOpportunity', () => {
     expect(classifyOpportunity(opp, viewerId)).toBe('connection');
   });
 
-  it('classifies expired opportunity with viewer as introducer as expired (not connector-flow)', () => {
-    const opp = {
-      actors: [
-        { userId: viewerId, role: 'introducer' },
-        { userId: 'user-2', role: 'patient' },
-        { userId: 'user-3', role: 'agent' },
-      ],
-      status: 'expired',
-    };
-    expect(classifyOpportunity(opp, viewerId)).toBe('expired');
-  });
 });
 
 describe('RADAR_SOFT_TARGETS', () => {
   it('has expected default values', () => {
-    expect(RADAR_SOFT_TARGETS.connection).toBe(3);
-    expect(RADAR_SOFT_TARGETS.connectorFlow).toBe(2);
+    expect(RADAR_SOFT_TARGETS.connection).toBe(5);
     expect(RADAR_SOFT_TARGETS.expired).toBe(2);
   });
 });

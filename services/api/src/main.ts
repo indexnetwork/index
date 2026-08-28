@@ -61,7 +61,7 @@ import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
 import { personalAgentQueue } from './queues/personal-agent.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { handleIntentCreatedMaintenance, IntentEvents } from './events/intent.event';
+import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
@@ -181,23 +181,6 @@ negotiationReflectQueue.startCrons();
 personalAgentQueue.startWorker();
 premiseQueue.startWorker();
 premiseQueue.startCrons();
-
-IntentEvents.onCreated = (intentId: string, userId: string) => {
-  // IntentQueue owns the authoritative discovery trigger: it assigns networks,
-  // generates HyDE, then awaits one from-intent enqueue. Starting here races the
-  // assignment transaction and produces a misleading successful fail-closed run.
-  log.job.from('IntentEvents').verbose('Intent created, triggering maintenance', { intentId, userId });
-  handleIntentCreatedMaintenance(
-    intentId,
-    userId,
-    (ownerUserId, reason) => opportunityService.triggerMaintenance(ownerUserId, reason),
-  );
-};
-
-IntentEvents.onArchived = (intentId: string, userId: string) => {
-  log.job.from('IntentEvents').verbose('Intent archived, triggering maintenance', { intentId, userId });
-  opportunityService.triggerMaintenance(userId, 'intent-archived');
-};
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';

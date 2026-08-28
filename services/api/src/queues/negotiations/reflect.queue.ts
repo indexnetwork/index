@@ -213,13 +213,17 @@ export class NegotiationReflectQueue {
 
     for (const { user, other } of sides) {
       try {
-        const transcript: ReflectionTranscriptEntry[] = turns.map((t, index) => ({
-          index,
-          speaker: t.senderId === `agent:${user.id}` ? 'client' as const : 'counterparty' as const,
-          action: t.turn.verb === 'pause' ? `pause:${t.turn.reason ?? 'unknown'}` : (t.turn.verb ?? 'unknown'),
-          ...(t.turn.message && { message: t.turn.message }),
-          ...(t.turn.reasoning && { reasoning: t.turn.reasoning }),
-        }));
+        const transcript: ReflectionTranscriptEntry[] = turns.map((t, index) => {
+          const speaker = t.senderId === `agent:${user.id}` ? 'client' as const : 'counterparty' as const;
+          return {
+            index,
+            speaker,
+            action: t.turn.verb === 'pause' ? `pause:${t.turn.reason ?? 'unknown'}` : (t.turn.verb ?? 'unknown'),
+            ...(t.turn.message && { message: t.turn.message }),
+            // Counterparty continue-turn reasoning stays seat-private.
+            ...(speaker === 'client' && t.turn.reasoning && { reasoning: t.turn.reasoning }),
+          };
+        });
 
         const entries = await this.getReflector().reflectNegotiation({
           clientUser: user,

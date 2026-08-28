@@ -32,7 +32,6 @@ function opportunityTriggerForOwner(opportunity: OpportunityRow, ownerUserId: st
 
 function participantUserIds(data: CreateOpportunityInput): string[] {
   return [...new Set(data.actors
-    .filter((actor) => actor.role !== 'introducer')
     .map((actor) => actor.userId))].sort();
 }
 
@@ -118,7 +117,7 @@ export async function revalidateOutcomeOutbox(
   }
 
   const recipientActors = opportunity.actors.filter(
-    (actor) => actor.userId === event.recipientUserId && actor.role !== 'introducer',
+    (actor) => actor.userId === event.recipientUserId,
   );
   const recipientIntentIds = new Set(
     recipientActors
@@ -132,7 +131,6 @@ export async function revalidateOutcomeOutbox(
 
   const participantIds = new Set(
     opportunity.actors
-      .filter((actor) => actor.role !== 'introducer')
       .map((actor) => actor.userId),
   );
   if (participantIds.size !== 2 || !participantIds.has(event.recipientUserId)) {
@@ -204,7 +202,7 @@ export async function runAtomicOutcomeTransition<T extends OutcomeTransitionResu
 export function notificationSnapshotOpportunityWhere(userId: string) {
   return and(
     sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
-    inArray(opportunities.status, ['latent', 'pending']),
+    inArray(opportunities.status, ['pending']),
   )!;
 }
 
@@ -399,7 +397,7 @@ export class OpportunityDatabaseAdapter {
     const actorNetworkIds = [...new Set(data.actors.map((actor) => actor.networkId))];
     const allowedNetworkIds = new Set(eligibility.allowedNetworkIds);
     const actorUserIds = participantUserIds(data);
-    const participantActors = data.actors.filter((actor) => actor.role !== 'introducer');
+    const participantActors = data.actors;
     if (
       data.detection.triggeredBy !== eligibility.triggerIntentId
       || actorNetworkIds.length === 0
@@ -408,7 +406,6 @@ export class OpportunityDatabaseAdapter {
       || participantActors.some((actor) => !actor.intent)
       || !data.actors.some((actor) =>
         actor.userId === eligibility.ownerUserId
-        && actor.role !== 'introducer'
         && actor.intent === eligibility.triggerIntentId)
     ) return null;
     const participantScopeKeys = participantActors.map((actor) => `intent:${actor.intent!}`);
@@ -437,11 +434,9 @@ export class OpportunityDatabaseAdapter {
       pair,
     ] as const)).values()];
     const actorContainment = data.actors
-      .filter((actor) => actor.role !== 'introducer')
       .map((actor) => sql`EXISTS (
         SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
         WHERE elem->>'userId' = ${actor.userId}
-          AND elem->>'role' IS DISTINCT FROM 'introducer'
           AND elem->>'intent' = ${actor.intent!}
       )`);
     const sameTrigger = or(
@@ -510,7 +505,6 @@ export class OpportunityDatabaseAdapter {
         .where(and(
           ...actorContainment,
           sameTrigger,
-          ne(opportunities.status, 'draft'),
         ))
         .orderBy(desc(opportunities.createdAt))
         .limit(1);
@@ -763,24 +757,12 @@ export class OpportunityDatabaseAdapter {
       intentScopeValid = true;
     }
 
-    // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
+    // The actors on a pairing may see it. This used to branch on role,
+    // `latent`/`draft`; neither exists any more.
     const visibilityGuard = sql`(
-      ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb
-      OR ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'peer' }])}::jsonb
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'patient' }])}::jsonb
-        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-      )
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'agent' }])}::jsonb
-        AND (
-          ${opportunities.status} IN ('accepted', 'rejected', 'expired')
-          OR (${opportunities.status} NOT IN ('latent', 'draft') AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
-        )
-      )
-      OR (
-        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'party' }])}::jsonb
-        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+      EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+        WHERE actor->>'userId' = ${userId}
       )
     )`;
     const conditions = [visibilityGuard];
@@ -789,10 +771,8 @@ export class OpportunityDatabaseAdapter {
     const hasExplicitStatuses = (options?.statuses?.length ?? 0) > 0 || !!options?.status;
     if (!hasExplicitStatuses) {
       if (options?.conversationId == null) {
-        conditions.push(sql`${opportunities.status} != 'draft'`);
       } else {
         conditions.push(
-          sql`(${opportunities.status} != 'draft' OR (${opportunities.context}->>'conversationId') = ${options.conversationId})`
         );
       }
     }
@@ -914,7 +894,7 @@ export class OpportunityDatabaseAdapter {
    *    `candidatePremiseId` (recorded by `buildCandidateEvidence` at discovery
    *    time), or
    *  - any actor row carries it as the grounding `premise` (set when
-   *    discoverySource is 'premise-similarity').
+   *    the match was premise-grounded).
    *
    * Used by the premise retract/expire cascade so that only opportunities
    * actually motivated by the lapsed premise are invalidated — opportunities
@@ -949,16 +929,26 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForNetwork(
     networkId: string,
-    options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
+    options?: { status?: string; statuses?: string[]; actorUserId?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
     // Actor-anchored scope: an opportunity belongs to the network when at
     // least one actor was matched there. Replaces an earlier `context.networkId`
     // tag check — that field is a denormalization, not the source of truth, and
-    // can drift from `actors[].networkId` in mixed-network introducer flows.
+    // can drift from `actors[].networkId` in mixed-network flows.
     const conditions = [sql`EXISTS (
       SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
       WHERE actor->>'networkId' = ${networkId}
     )`];
+    // Per-actor visibility, as a separate predicate: the network scope asks
+    // whether *some* actor was matched here, this asks whether *this user* is
+    // one of them. Filtering here rather than after the read keeps limit/offset
+    // counting visible rows only.
+    if (options?.actorUserId) {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+        WHERE actor->>'userId' = ${options.actorUserId}
+      )`);
+    }
     if (options?.status && !options?.statuses?.length) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.statuses?.length) {
       conditions.push(inArray(opportunities.status, options.statuses as Array<typeof opportunities.$inferSelect.status>));
@@ -976,7 +966,7 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
@@ -1020,31 +1010,6 @@ export class OpportunityDatabaseAdapter {
     return updated;
   }
 
-  async updateOpportunityActorApproval(
-    id: string,
-    introducerUserId: string,
-    approved: boolean,
-  ): Promise<OpportunityRow | null> {
-    return db.transaction(async (tx) => {
-      const [locked] = await tx
-        .select({ actors: opportunities.actors })
-        .from(opportunities)
-        .where(eq(opportunities.id, id))
-        .for('update');
-      if (!locked) return null;
-      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
-        actor.role === 'introducer' && actor.userId === introducerUserId
-          ? { ...actor, approved }
-          : actor,
-      );
-      const [row] = await tx
-        .update(opportunities)
-        .set({ actors: updatedActors, updatedAt: new Date() })
-        .where(eq(opportunities.id, id))
-        .returning();
-      return row ? toOpportunityRow(row) : null;
-    });
-  }
 
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await db.update(opportunities).set({ metadata, updatedAt: new Date() }).where(eq(opportunities.id, id));
@@ -1053,7 +1018,7 @@ export class OpportunityDatabaseAdapter {
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
@@ -1267,7 +1232,7 @@ export class OpportunityDatabaseAdapter {
       sql`${opportunities.context}->>'networkId' = ${networkId}`,
       ne(opportunities.status, expired),
     ];
-    // Require that all given actorIds appear in actors (opportunity may have extra actors, e.g. introducer)
+    // Require that all given actorIds appear in actors
     for (const actorId of actorIds) {
       conditions.push(
         sql`${opportunities.actors} @> ${JSON.stringify([{ userId: actorId }])}::jsonb`
@@ -1285,8 +1250,8 @@ export class OpportunityDatabaseAdapter {
     actorIds: string[],
     options?: {
       includeIntroducers?: boolean;
-      statuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
-      excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+      statuses?: ('negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+      excludeStatuses?: ('negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
     }
   ): Promise<OpportunityRow[]> {
     if (actorIds.length === 0) return [];
@@ -1300,7 +1265,6 @@ export class OpportunityDatabaseAdapter {
           (uid) => sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
             WHERE elem->>'userId' = ${uid}
-              AND elem->>'role' IS DISTINCT FROM 'introducer'
           )`
         );
 
@@ -1337,7 +1301,7 @@ export class OpportunityDatabaseAdapter {
   ): Promise<string[]> {
     if (candidateUserIds.length === 0) return [];
     const cutoff = new Date(Date.now() - windowMs);
-    // Find non-draft opps that include discovererId as a non-introducer actor,
+    // Find non-draft opps that include discovererId as an actor,
     // have been updated within the window, and are in rejected or stalled status.
     const rows = await db
       .select({ actors: opportunities.actors })
@@ -1346,11 +1310,10 @@ export class OpportunityDatabaseAdapter {
         and(
           inArray(opportunities.status, ['rejected', 'stalled']),
           gte(opportunities.updatedAt, cutoff),
-          // Discoverer must be a non-introducer actor
+          // Discoverer must be an actor
           sql`EXISTS (
             SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
             WHERE elem->>'userId' = ${discovererId}
-              AND elem->>'role' IS DISTINCT FROM 'introducer'
           )`,
         ),
       );
@@ -1361,7 +1324,7 @@ export class OpportunityDatabaseAdapter {
     const matched = new Set<string>();
     for (const row of rows) {
       for (const actor of (row.actors as Array<{ userId: string; role: string }>) ?? []) {
-        if (actor.role !== 'introducer' && actor.userId !== discovererId && candidateSet.has(actor.userId)) {
+        if (actor.userId !== discovererId && candidateSet.has(actor.userId)) {
           matched.add(actor.userId);
         }
       }
@@ -1591,7 +1554,7 @@ export class OpportunityDatabaseAdapter {
           subsystem: 'database',
           'db.system': 'postgresql',
           'db.operation': 'vector_search',
-          'search.strategy': 'premise-similarity',
+          'search.strategy': 'premise-embedding',
           'search.index_scope_count': params.networkIds.length,
           'search.limit': params.limit,
         },
@@ -1665,7 +1628,7 @@ export class OpportunityDatabaseAdapter {
           subsystem: 'database',
           'db.system': 'postgresql',
           'db.operation': 'vector_search',
-          'search.strategy': 'premise-similarity-batch',
+          'search.strategy': 'premise-embedding-batch',
           'search.source_premise_count': params.sources.length,
           'search.index_scope_count': params.networkIds.length,
           'search.limit_per_source': params.limitPerSource,

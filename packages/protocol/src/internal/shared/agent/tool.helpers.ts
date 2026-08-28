@@ -683,8 +683,4 @@ export interface OpportunityOperations {
     deps: Pick<OpportunityGraphDeps, 'database'>,
     request: { userId: Id<'users'>; opportunityId: string | undefined; newStatus: string | undefined },
   ) => Promise<OpportunityMutationOutcome>;
-  sendOpportunity: (
-    deps: Pick<OpportunityGraphDeps, 'database' | 'queueNotification'>,
-    request: { userId: Id<'users'>; opportunityId: string | undefined },
-  ) => Promise<OpportunityMutationOutcome>;
 }

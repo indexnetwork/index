@@ -130,7 +130,7 @@ export function createUtilityTools(
 - **Network Members**: Junction between Users and Indexes. Tracks permissions (owner, member), join date, auto-assign setting, and optional member prompt.
 - **Intents**: Signals of interest/need — what a user is looking for (e.g. "Looking for a React developer in Berlin"). Each has a description (payload), summary, confidence score (0-1), inferenceType (explicit/implicit), source tracking, and vector embedding.
 - **IntentNetworks**: Many-to-many junction between Intents and Indexes. An intent can be in multiple indexes. Has a relevancyScore (0-1) indicating how well the intent fits the index's purpose.
-- **Opportunities**: Discovered connections between users based on complementary intents within shared networks. Have actors with roles (introducer, party), status lifecycle, match reasoning, confidence score, and presentation data.
+- **Opportunities**: Discovered connections between users based on complementary intents within shared networks. Have actors with roles (party), status lifecycle, match reasoning, confidence score, and presentation data.
 
 ### Key Relationships
 - Users → Profiles (1:1)
@@ -163,10 +163,8 @@ Opportunities represent discovered connections between users — potential match
 
 1. **Background matching**: The opportunity graph evaluates approved signals whose intents semantically complement each other within shared networks. It uses HyDE embeddings for retrieval and an LLM evaluator for scoring.
 2. **Roles**: Each opportunity assigns roles to actors:
-   - **introducer**: The person who triggered the introduction (may be the system or another user)
    - **party**: The people being connected (typically 2)
 3. **Status Flow**: draft → pending → accepted/rejected/expired
-   - **draft**: Created but not sent. Only the creator/introducer sees it.
    - **pending**: Sent to the other party. They're notified and can respond.
    - **accepted**: Both parties agreed to connect.
    - **rejected**: One party declined.

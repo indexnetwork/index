@@ -170,12 +170,6 @@ export interface OpportunityCardPayload {
   score?: number;
   /** Opportunity status. */
   status?: string;
-  /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
-  secondParty?: {
-    name: string;
-    avatar?: string | null;
-    userId?: string;
-  };
 }
 
 /**

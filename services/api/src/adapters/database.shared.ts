@@ -117,7 +117,7 @@ export interface IntentListRow {
   /**
    * Count of distinct `pending` opportunities awaiting this owner that are
    * attributed to this signal by `detection.triggeredBy` or the owner's
-   * non-introducer actor intent. Rows the owner already acted on are excluded.
+   * actor intent. Rows the owner already acted on are excluded.
    */
   waitingOpportunityCount: number;
   /** True while a fresh intent has not completed its first discovery run. */
@@ -161,7 +161,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, sessions, userSocials } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, discoveryMatchCandidates, userNotificationSettings, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -440,7 +440,7 @@ export interface OpportunityRow {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -454,7 +454,7 @@ export interface CreateOpportunityInput {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status?: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status?: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
   metadata?: Record<string, unknown> | null;
 }
@@ -607,7 +607,7 @@ export interface NegotiationLifecycleSummary {
   state: 'submitted' | 'working' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed' | 'paused';
   statusTimestamp: Date | null;
   opportunityId: string | null;
-  opportunityStatus: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
+  opportunityStatus: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
   /** Whether the authenticated owner, rather than their counterpart, started the chat. */
   acceptedByViewer: boolean;
   turnCount: number;

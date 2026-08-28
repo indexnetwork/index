@@ -6,9 +6,7 @@ import { OpportunityGraphFactory } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { OpportunityGraphDatabase, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
-import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
 
-const mockEvaluator: OpportunityEvaluatorLike = { invokeEntityBundle: async () => [] };
 const dummyEmbedder = {
   generate: async () => [],
   search: async () => [],
@@ -76,7 +74,7 @@ describe('opportunity graph — update node self-accept guard', () => {
       },
     });
 
-    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, undefined, async () => undefined);
     const result = await operations.updateOpportunityStatus({
       userId: USER_ID,
       opportunityId: OPP_ID,
@@ -112,7 +110,7 @@ describe('opportunity graph — update node self-accept guard', () => {
       },
     });
 
-    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, undefined, async () => undefined);
     const result = await operations.updateOpportunityStatus({
       userId: COUNTERPART_ID,
       opportunityId: OPP_ID,
@@ -145,7 +143,7 @@ describe('opportunity graph — update node self-accept guard', () => {
       updateOpportunityStatus: async () => oppPending,
     });
 
-    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined);
+    const operations = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, undefined, async () => undefined);
     const result = await operations.updateOpportunityStatus({
       userId: USER_ID,
       opportunityId: OPP_ID,

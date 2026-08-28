@@ -372,7 +372,7 @@ describe("ONBOARDING_ALLOWED", () => {
   });
 
   test("does not contain non-onboarding tools", () => {
-    for (const tool of ["list_contacts", "update_intent", "delete_network", "discover_opportunities"]) {
+    for (const tool of ["list_contacts", "update_intent", "delete_network", "a_retired_tool"]) {
       expect(ONBOARDING_ALLOWED.has(tool)).toBe(false);
     }
   });

@@ -29,8 +29,7 @@ type NegotiationTaskMetadataMirror = {
   initiatorUserId: string;
   networkId: string;
   /** One binding per seat, keyed by intent id — the protocol's `seats`. */
-  seats: Record<string, { userId: string; round: number }>;
-  drainGeneration: number;
+  seats: Record<string, { userId: string; batchId: string | null }>;
   pause?: { reason: NegotiationPauseReason; payload?: unknown; pausedBy?: string; failure?: string; failureDetail?: string } | null;
 };
 
@@ -344,8 +343,6 @@ type PersistedOpportunityStatus = PersistedOpportunity['status'];
 
 // `pending` belongs to the principal's decision lane.
 const NEGOTIATION_OPEN_STATUSES = new Set<PersistedOpportunityStatus>([
-  'latent',
-  'draft',
   'negotiating',
   'stalled',
 ]);
@@ -354,8 +351,6 @@ const NEGOTIATION_OPEN_STATUSES = new Set<PersistedOpportunityStatus>([
 // status + updatedAt CAS below still applies, so only a caller that observed
 // the stalled row claims the attempt; terminal statuses stay refused.
 const NEGOTIATION_START_STATUSES = new Set<PersistedOpportunityStatus>([
-  'latent',
-  'draft',
   'pending',
   'negotiating',
   'stalled',
@@ -2001,14 +1996,14 @@ export class ConversationDatabaseAdapter {
    * payload never leave the graph boundary through this read.
    */
   async getIntentCycleForIntent(userId: string, intentId: string): Promise<{
-    round: { number: number; size: number | null; kickoffStartedAt: Date | null; active: number; paused: number };
+    batch: { id: string | null; active: number; paused: number };
     negotiations: Array<{
       taskId: string;
       conversationId: string;
       opportunityId: string;
       opportunityStatus: string;
       counterpartLabel: string;
-      round: number;
+      batchId: string | null;
       state: string;
       pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
       latestActivity: { actor: 'yours' | 'theirs'; verb: string | null; text: string | null; createdAt: Date } | null;
@@ -2017,9 +2012,7 @@ export class ConversationDatabaseAdapter {
     const [ownedIntent] = await db
       .select({
         id: schema.intents.id,
-        round: schema.intents.negotiationRound,
-        roundSize: schema.intents.negotiationRoundSize,
-        kickoffStartedAt: schema.intents.negotiationKickoffStartedAt,
+        batchId: schema.intents.negotiationBatchId,
       })
       .from(schema.intents)
       .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
@@ -2091,7 +2084,7 @@ export class ConversationDatabaseAdapter {
         opportunityId: opportunity.id,
         opportunityStatus: opportunity.status,
         counterpartLabel: counterpartById.get(counterpartId ?? '')?.name?.trim() || 'Unknown counterpart',
-        round: task.seat.round,
+        batchId: task.seat.batchId,
         state: task.state,
         pause: pauseReason
           ? { reason: pauseReason, by: pauseBy }
@@ -2101,14 +2094,12 @@ export class ConversationDatabaseAdapter {
       }];
     }).sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime() || left.taskId.localeCompare(right.taskId));
 
-    const currentRound = negotiations.filter((negotiation) => negotiation.round === ownedIntent.round);
+    const currentBatch = negotiations.filter((negotiation) => negotiation.batchId === ownedIntent.batchId);
     return {
-      round: {
-        number: ownedIntent.round,
-        size: ownedIntent.roundSize,
-        kickoffStartedAt: ownedIntent.kickoffStartedAt,
-        active: currentRound.filter((negotiation) => negotiation.state === 'submitted' || negotiation.state === 'working').length,
-        paused: currentRound.filter((negotiation) => negotiation.state === 'paused').length,
+      batch: {
+        id: ownedIntent.batchId,
+        active: currentBatch.filter((negotiation) => negotiation.state === 'submitted' || negotiation.state === 'working').length,
+        paused: currentBatch.filter((negotiation) => negotiation.state === 'paused').length,
       },
       negotiations,
     };
@@ -2123,7 +2114,7 @@ export class ConversationDatabaseAdapter {
     opportunityId: string;
     opportunityStatus: string;
     counterpartLabel: string;
-    round: number;
+    batchId: string | null;
     state: string;
     pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
     latestActivity: { actor: 'yours' | 'theirs'; verb: string | null; createdAt: Date | null };
@@ -2203,7 +2194,7 @@ export class ConversationDatabaseAdapter {
         opportunityId: opportunity.id,
         opportunityStatus: opportunity.status,
         counterpartLabel: counterpartById.get(counterpartId ?? '')?.name?.trim() || 'Unknown counterpart',
-        round: seat.seat.round,
+        batchId: seat.seat.batchId,
         state: seat.state,
         pause: pauseReason
           ? { reason: pauseReason, by: pauseBy }
@@ -2260,7 +2251,7 @@ export class ConversationDatabaseAdapter {
       id: string;
       conversationId: string;
       opportunityId: string;
-      round: number;
+      batchId: string | null;
       state: string;
       brief: string | null;
       updatedAt: Date;
@@ -2336,7 +2327,7 @@ export class ConversationDatabaseAdapter {
         id: task.id,
         conversationId: task.conversationId,
         opportunityId: metadata.opportunityId,
-        round: seat.round,
+        batchId: seat.batchId,
         state: task.state,
         updatedAt: task.updatedAt,
         brief: typeof (task.briefs as Record<string, unknown> | null)?.[userId] === 'string'
@@ -2488,7 +2479,7 @@ export class ConversationDatabaseAdapter {
     sourceUserId: string;
     candidateUserId: string;
     brief: string;
-    seats: Record<string, { userId: string; round: number }>;
+    seats: Record<string, { userId: string; batchId: string | null }>;
     networkId: string;
     knownTaskId?: string;
   }): Promise<{ task: NegotiationTaskRowMirror; disposition: 'created' | 'existing' | 'raced' } | null> {
@@ -2502,11 +2493,9 @@ export class ConversationDatabaseAdapter {
         .for('update');
       if (!opportunity || !NEGOTIATION_OPEN_STATUSES.has(opportunity.status)) return null;
 
-      const actors = opportunity.actors.filter((actor) => actor.role !== 'introducer');
-      const introducers = opportunity.actors.filter((actor) => actor.role === 'introducer');
+      const actors = opportunity.actors;
       if (
-        !introducers.every((actor) => actor.approved === true)
-        || !actors.some((actor) => actor.userId === input.sourceUserId && actor.networkId === input.networkId)
+        !actors.some((actor) => actor.userId === input.sourceUserId && actor.networkId === input.networkId)
         || !actors.some((actor) => actor.userId === input.candidateUserId)
         || !Object.values(input.seats).some((seat) => seat.userId === input.sourceUserId)
         || !Object.values(input.seats).some((seat) => seat.userId === input.candidateUserId)
@@ -2551,7 +2540,6 @@ export class ConversationDatabaseAdapter {
           initiatorUserId: input.sourceUserId,
           networkId: input.networkId,
           seats: input.seats,
-          drainGeneration: 0,
         },
       }).returning();
       if (!task) throw new Error('Failed to create negotiation task');
@@ -2659,17 +2647,7 @@ export class ConversationDatabaseAdapter {
       .set({
         state,
         ...(state === 'working' ? {
-          metadata: sql`jsonb_set(
-            jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{pause}', 'null'::jsonb, true),
-            '{drainGeneration}',
-            to_jsonb(
-              CASE WHEN ${schema.tasks.state} = 'paused'
-                THEN coalesce((${schema.tasks.metadata}->>'drainGeneration')::int, 0) + 1
-                ELSE coalesce((${schema.tasks.metadata}->>'drainGeneration')::int, 0)
-              END
-            ),
-            true
-          )`,
+          metadata: sql`jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{pause}', 'null'::jsonb, true)`,
         } : pause !== undefined ? {
           metadata: sql`jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{pause}', ${JSON.stringify(pause ?? null)}::jsonb, true)`,
         } : {}),
@@ -2847,7 +2825,7 @@ export class ConversationDatabaseAdapter {
    * kickoff clobber the other's binding — the very thing per-seat exists to
    * make impossible.
    */
-  async bindNegotiationSeat(taskId: string, intentId: string, binding: { userId: string; round: number }): Promise<void> {
+  async bindNegotiationSeat(taskId: string, intentId: string, binding: { userId: string; batchId: string | null }): Promise<void> {
     await db.update(schema.tasks).set({
       metadata: sql`jsonb_set(
         jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{seats}', coalesce(${schema.tasks.metadata}->'seats', '{}'::jsonb), true),
@@ -2981,83 +2959,70 @@ export class ConversationDatabaseAdapter {
    * the beginning of a kickoff and there is no window in which a crash could
    * leave a round begun-but-unmarked.
    */
-  async bumpIntentNegotiationRound(intentId: string): Promise<number> {
-    const [row] = await db
+  async bumpIntentNegotiationBatch(intentId: string): Promise<{ batchId: string }> {
+    const batchId = crypto.randomUUID();
+    await db
       .update(schema.intents)
-      .set({
-        negotiationRound: sql`${schema.intents.negotiationRound} + 1`,
-        negotiationRoundSize: null,
-        negotiationKickoffStartedAt: new Date(),
-      })
-      .where(eq(schema.intents.id, intentId))
-      .returning({ negotiationRound: schema.intents.negotiationRound });
-    return row?.negotiationRound ?? 0;
+      .set({ negotiationBatchId: batchId })
+      .where(eq(schema.intents.id, intentId));
+    return { batchId };
   }
 
   /**
-   * The intent's round lifecycle. `kickoffStartedAt` set with a null
-   * `roundSize` is the ONE signature of a kickoff that died mid-round; a null
-   * marker means no kickoff has ever run here, which is where every intent
-   * predating 0146/0147 sits.
+   * The intent's current kickoff batch id, or null if no kickoff has ever run
+   * for this signal (including every intent that predates this column).
    */
-  async getIntentNegotiationRound(intentId: string): Promise<{ round: number; roundSize: number | null; kickoffStartedAt: Date | null }> {
+  async getIntentNegotiationBatch(intentId: string): Promise<{ batchId: string | null }> {
     const [row] = await db
-      .select({
-        round: schema.intents.negotiationRound,
-        roundSize: schema.intents.negotiationRoundSize,
-        kickoffStartedAt: schema.intents.negotiationKickoffStartedAt,
-      })
+      .select({ batchId: schema.intents.negotiationBatchId })
       .from(schema.intents)
       .where(eq(schema.intents.id, intentId));
-    return { round: row?.round ?? 0, roundSize: row?.roundSize ?? null, kickoffStartedAt: row?.kickoffStartedAt ?? null };
+    return { batchId: row?.batchId ?? null };
   }
 
   /**
-   * Signals whose current round began but never finished settling — a
-   * kickoff that was interrupted (crash, restart) before it could stamp
-   * `negotiationRoundSize` or hand off to reflect. `runKickoff`'s own
-   * `interruptedRound` repair already knows how to settle these; it just
+   * Signals whose current batch began but never finished settling — a
+   * kickoff that was interrupted (crash, restart) before it could append its
+   * `opening_complete` round-log marker. A batch with no events at all yet
+   * (crashed before its first `opened` event landed) is excluded: there is no
+   * event timestamp to judge staleness by, and that window is narrow (opens
+   * follow the bump within the same turn). `runKickoff`'s own
+   * `interruptedBatch` repair already knows how to settle these; it just
    * needs a fresh wake to run it, which is what this list is for.
    */
   async getIntentsWithInterruptedKickoff(staleBeforeMs: number): Promise<Array<{ id: string; userId: string }>> {
     const cutoff = new Date(Date.now() - staleBeforeMs);
-    const rows = await db
-      .select({ id: schema.intents.id, userId: schema.intents.userId })
-      .from(schema.intents)
-      .where(and(
-        eq(schema.intents.status, 'ACTIVE'),
-        isNull(schema.intents.negotiationRoundSize),
-        lt(schema.intents.negotiationKickoffStartedAt, cutoff),
-      ));
-    return rows;
+    const result = await db.execute(sql`
+      SELECT i.id, i.user_id AS "userId"
+      FROM intents i
+      WHERE i.status = 'ACTIVE'
+        AND i.negotiation_batch_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM negotiation_round_log_events e
+          WHERE e.intent_id = i.id AND e.batch_id = i.negotiation_batch_id AND e.kind = 'opening_complete'
+        )
+        AND EXISTS (
+          SELECT 1 FROM negotiation_round_log_events e2
+          WHERE e2.intent_id = i.id AND e2.batch_id = i.negotiation_batch_id
+          HAVING max(e2.created_at) < ${cutoff}
+        )
+    `);
+    return result as unknown as Array<{ id: string; userId: string }>;
   }
 
   /**
-   * Settles a round: records how many negotiations it holds. Guarded on the
-   * round itself, so a kickoff that lost a race to a newer round cannot stamp
-   * the newer one's size with its own count. The value is a record; what the
-   * all-paused check reads is that it is no longer null.
+   * Every negotiation task of one intent's batch, whatever its state — what
+   * reflect reads. The `batchId` key is also the rewrite-era predicate: a
+   * pre-rewrite task has no `batchId` in its metadata and can never match.
    */
-  async stampIntentNegotiationRoundSize(intentId: string, round: number, size: number): Promise<void> {
-    await db
-      .update(schema.intents)
-      .set({ negotiationRoundSize: size })
-      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.negotiationRound, round)));
-  }
-
-  /**
-   * Every negotiation task of one intent's round, whatever its state — what
-   * reflect reads. The `round` key is also the rewrite-era predicate: a
-   * pre-rewrite task has no `round` in its metadata and can never match.
-   */
-  async getNegotiationTasksForIntentRound(intentId: string, round: number): Promise<NegotiationTaskRowMirror[]> {
+  async getNegotiationTasksForIntentBatch(intentId: string, batchId: string): Promise<NegotiationTaskRowMirror[]> {
     const rows = await db
       .select()
       .from(schema.tasks)
       .where(
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-          sql`(${schema.tasks.metadata}->'seats'->${intentId}->>'round')::int = ${round}`,
+          sql`${schema.tasks.metadata}->'seats'->${intentId}->>'batchId' = ${batchId}`,
           notArchivedNegotiationTaskWhere(),
         ),
       )
@@ -3065,17 +3030,17 @@ export class ConversationDatabaseAdapter {
     return rows.map((row) => toNegotiationTaskRow(row));
   }
 
-  /** Count of this intent's round-`round` negotiations not yet `paused` or `completed`. */
-  async countActiveNegotiationsForRound(intentId: string, round: number): Promise<number> {
+  /** Count of this intent's batch-`batchId` negotiations not yet `paused` or `completed`. */
+  async countActiveNegotiationsForBatch(intentId: string, batchId: string): Promise<number> {
     const [row] = await db
       .select({ value: count() })
       .from(schema.tasks)
       .where(
         and(
           sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-          sql`(${schema.tasks.metadata}->'seats'->${intentId}->>'round')::int = ${round}`,
+          sql`${schema.tasks.metadata}->'seats'->${intentId}->>'batchId' = ${batchId}`,
           notInArray(schema.tasks.state, ['paused', 'completed']),
-          // The same predicate `getNegotiationTasksForIntentRound` applies:
+          // The same predicate `getNegotiationTasksForIntentBatch` applies:
           // an archived task stuck in an active state would hold this count above
           // zero forever, stalling the signal's cycle, while being invisible
           // in the paused set the agent actually reasons over.
@@ -4299,9 +4264,9 @@ export class ConversationDatabaseAdapter {
    */
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
-  ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
+  ): Promise<{ id: string; status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
     if (status === 'accepted' && !acceptedBy) throw new Error('acceptedBy is required when status is accepted');
     const row = await db.transaction(async (tx) => {
       const updates: Record<string, unknown> = { status, updatedAt: new Date() };

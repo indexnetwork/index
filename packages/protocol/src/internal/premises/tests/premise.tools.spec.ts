@@ -31,6 +31,8 @@ function makeDeps(overrides?: {
   premiseGraph?: { invoke: (...args: unknown[]) => Promise<unknown> } | undefined;
   getPremise?: (id: string) => Promise<unknown>;
   getPremisesForUser?: (userId: string, status?: string) => Promise<unknown[]>;
+  getAssignmentNetworkMembershipsForUser?: (userId: string) => Promise<Array<{ networkId: string }>>;
+  getPremiseNetworks?: (premiseId: string) => Promise<Array<{ networkId: string }>>;
   updatePremise?: (id: string, data: unknown) => Promise<unknown>;
 }) {
   // Use `in` to distinguish "not provided" from "explicitly undefined"
@@ -43,6 +45,8 @@ function makeDeps(overrides?: {
     database: {
       getPremise: overrides?.getPremise ?? (async () => null),
       getPremisesForUser: overrides?.getPremisesForUser ?? (async () => []),
+      getAssignmentNetworkMembershipsForUser: overrides?.getAssignmentNetworkMembershipsForUser ?? (async () => []),
+      getPremiseNetworks: overrides?.getPremiseNetworks ?? (async () => []),
       updatePremise: overrides?.updatePremise ?? (async () => {}),
     } as unknown as PremiseGraphDatabase,
     graphs: {
@@ -267,6 +271,86 @@ describe('createPremiseTools - read_premises', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('Invalid userId format');
+  });
+
+  const otherUserId = '00000000-0000-4000-8000-000000000002';
+
+  it('returns a co-member\'s premises that are assigned to the shared network', async () => {
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremisesForUser: async (uid: string) => (uid === otherUserId ? [activePremise] : []),
+      getAssignmentNetworkMembershipsForUser: async (uid: string) =>
+        uid === userId || uid === otherUserId ? [{ networkId: 'net-1' }] : [],
+      getPremiseNetworks: async () => [{ networkId: 'net-1' }],
+    }));
+
+    const result = await call('read_premises', { userId: otherUserId }) as {
+      success: boolean;
+      data: { count: number; premises: Array<{ text: string }> };
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.data.count).toBe(1);
+    expect(result.data.premises[0].text).toBe('I am a software engineer');
+  });
+
+  it('hides a co-member\'s premises that were never assigned to the shared network', async () => {
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremisesForUser: async (uid: string) => (uid === otherUserId ? [activePremise] : []),
+      getAssignmentNetworkMembershipsForUser: async (uid: string) =>
+        uid === userId ? [{ networkId: 'net-1' }] : [{ networkId: 'net-1' }, { networkId: 'net-2' }],
+      // Assigned only to the network the caller is not in.
+      getPremiseNetworks: async () => [{ networkId: 'net-2' }],
+    }));
+
+    const result = await call('read_premises', { userId: otherUserId }) as {
+      success: boolean;
+      data: { count: number };
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.data.count).toBe(0);
+  });
+
+  it('denies cross-user read when there is no shared network', async () => {
+    let fetched = false;
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremisesForUser: async () => {
+        fetched = true;
+        return [activePremise];
+      },
+      getAssignmentNetworkMembershipsForUser: async (uid: string) =>
+        uid === userId ? [{ networkId: 'net-1' }] : [{ networkId: 'net-2' }],
+    }));
+
+    const result = await call('read_premises', { userId: otherUserId }) as { success: boolean; error: string };
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('no shared network');
+    expect(fetched).toBe(false);
+  });
+
+  it('rejects includeRetracted for cross-user reads', async () => {
+    let fetched = false;
+    const { defineTool, call } = makeDefineTool();
+    createPremiseTools(defineTool, makeDeps({
+      getPremisesForUser: async () => {
+        fetched = true;
+        return [activePremise];
+      },
+      getAssignmentNetworkMembershipsForUser: async () => [{ networkId: 'net-1' }],
+    }));
+
+    const result = await call('read_premises', {
+      userId: otherUserId,
+      includeRetracted: true,
+    }) as { success: boolean; error: string };
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('includeRetracted is only allowed for your own premises');
+    expect(fetched).toBe(false);
   });
 });
 

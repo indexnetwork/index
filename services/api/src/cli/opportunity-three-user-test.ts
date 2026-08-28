@@ -86,7 +86,7 @@ async function main() {
   console.log('HyDE generated for intent');
 
   // Run opportunity discovery (synchronous)
-  await fromIntentQueue.processJob('discover_opportunities', {
+  await fromIntentQueue.processJob('discover', {
     intentId: created.id,
     userId: userA.id,
   });

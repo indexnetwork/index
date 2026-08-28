@@ -162,7 +162,7 @@ describe('MCP capability policy principal inventory', () => {
     ]);
     expect(policy.visibleToolNames(subject, [
       'create_intent',
-      'discover_opportunities',
+      'a_retired_tool',
       'respond_to_negotiation',
     ])).toEqual([
       'create_intent',
@@ -192,7 +192,7 @@ describe('MCP capability policy principal inventory', () => {
       'read_own_agent',
       'read_docs',
       'confirm_opportunity_delivery',
-      'discover_opportunities',
+      'a_retired_tool',
     ])).toEqual([
       'read_own_agent',
       'read_docs',
@@ -217,7 +217,7 @@ describe('MCP capability policy principal inventory', () => {
 
     expect(subject.profile).toBe('registered_global_agent');
     expect(subject.agentType).toBe('personal');
-    expect(policy.authorize(subject, 'discover_opportunities')).toEqual({
+    expect(policy.authorize(subject, 'a_retired_tool')).toEqual({
       allowed: false,
       reason: 'tool_unclassified',
     });
@@ -229,7 +229,8 @@ describe('MCP capability policy principal inventory', () => {
       identity: identity({ isSessionAuth: true }),
     });
 
-    for (const toolName of ['discover_opportunities', 'get_discovery_run', 'cancel_discovery_run', 'complete_onboarding']) {
+    // Names no rule classifies: retired tools and one that never existed.
+    for (const toolName of ['a_retired_tool', 'another_retired_tool', 'complete_onboarding']) {
       expect(CANONICAL_MCP_TOOL_ACCESS_RULES.get(toolName)).toBeUndefined();
       expect(policy.authorize(subject, toolName)).toEqual({
         allowed: false,

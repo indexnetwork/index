@@ -17,6 +17,8 @@ describe("opportunity tool registry", () => {
 
     createOpportunityTools(defineTool as never, {} as ToolDeps);
 
+    // The retired direct-discovery tools. Named here on purpose: this guard is
+    // what stops them coming back.
     expect(names).not.toContain("discover_opportunities");
     expect(names).not.toContain("get_discovery_run");
     expect(names).not.toContain("cancel_discovery_run");
@@ -38,32 +40,11 @@ describe("buildMinimalOpportunityCard - IND-113", () => {
     actors: [
       { userId: "viewer-456", role: "party" },
       { userId: "counterpart-789", role: "party" },
-      { userId: "introducer-abc", role: "introducer" },
     ],
     detection: {
-      source: "manual",
-      createdByName: "Seref Yarar",
+      source: "opportunity_graph",
     },
   } as unknown as Opportunity;
-
-  it("should not include introducer name in mainText when introducerName is passed", () => {
-    const card = buildMinimalOpportunityCard(
-      mockOpportunity,
-      "viewer-456",
-      "counterpart-789",
-      "Lucy Chen",
-      null,
-      "Seref Yarar",
-      null,
-      undefined,
-      undefined,
-    );
-    expect(card.mainText).not.toContain("Seref Yarar");
-    expect(card.mainText).not.toContain("Seref");
-    expect(card.mainText).toContain("Lucy Chen");
-    expect(typeof card.mainText).toBe("string");
-    expect(card.mainText.length).toBeGreaterThan(0);
-  });
 
   it("should include counterpart name in mainText", () => {
     const card = buildMinimalOpportunityCard(
@@ -167,54 +148,6 @@ describe('buildMinimalOpportunityCard - primary action label (IND-161)', () => {
     expect(card.primaryActionLabel).toBe('Start Chat');
   });
 
-  it('uses "Good match" when viewer is the introducer', () => {
-    const introOpp = {
-      ...baseOpp,
-      actors: [
-        { userId: 'introducer-1', role: 'introducer' },
-        { userId: 'ghost-user', role: 'party' },
-        { userId: 'other-party', role: 'party' },
-      ],
-    } as unknown as Opportunity;
-    const card = buildMinimalOpportunityCard(
-      introOpp, 'introducer-1', 'counterpart-user', 'Real User', null,
-    );
-    expect(card.primaryActionLabel).toBe('Good match');
-  });
-});
-
-describe('buildMinimalOpportunityCard - introducer discovery (IND-140)', () => {
-  const mockIntroducerOpp = {
-    id: 'opp-intro-disc',
-    status: 'draft',
-    interpretation: {
-      reasoning: 'Target User and Bob share interest in AI infrastructure.',
-      confidence: 0.85,
-    },
-    actors: [
-      { userId: 'target-user', role: 'patient' },
-      { userId: 'user-bob', role: 'agent' },
-      { userId: 'introducer-user', role: 'introducer' },
-    ],
-    detection: { source: 'manual', createdByName: 'Introducer Name' },
-  } as unknown as Opportunity;
-
-  it('should return viewerRole "introducer" when viewer is the introducer', () => {
-    const card = buildMinimalOpportunityCard(
-      mockIntroducerOpp,
-      'introducer-user',
-      'target-user',
-      'Target User',
-      null,
-      undefined,
-      null,
-      'Introducer Name',
-      'Bob',
-    );
-    expect(card.viewerRole).toBe('introducer');
-    expect(card.primaryActionLabel).toBe('Good match');
-    expect(card.headline).toBe('Target User → Bob');
-  });
 });
 
 import { buildOpportunityPresentation, attachProfileLink, attachOpportunityAppLink, buildProfileUrl, buildOpportunityAppUrl } from "../opportunity.tools.js";
@@ -495,10 +428,9 @@ describe("deduplicateByPerson", () => {
   it("passes through opportunities with no derivable counterpart", () => {
     const oppNoCounterpart = {
       id: "opp-edge",
-      status: "latent",
+      status: "negotiating",
       actors: [
-        { userId: VIEWER, role: "introducer" },
-        { userId: "intro-target", role: "introducer" },
+        { userId: VIEWER, role: "party" },
       ],
       interpretation: { confidence: 0.7 },
     };

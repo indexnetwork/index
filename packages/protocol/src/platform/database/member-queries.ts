@@ -127,7 +127,7 @@ export interface DatabaseMemberQueries {
   // ─── Profile context for intent discovery ───
 
   /**
-   * Profile text for a user (sourced from the users row). Used by context-to-intent discovery.
+   * Profile text for a user (sourced from the users row). Used by discovery.
    */
   getUserContext(userId: string, networkId: string | null): Promise<{
     id: string;

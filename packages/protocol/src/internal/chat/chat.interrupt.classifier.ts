@@ -20,7 +20,7 @@ export interface ClassifyInterruptInput {
   message: string;
   /**
    * Current agent activity summary derived from the last few SSE trace event names
-   * (e.g. "tool_start: discover_opportunities, graph_start: opportunity").
+   * (e.g. "tool_start: list_opportunities, graph_start: opportunity").
    */
   agentState: string;
 }

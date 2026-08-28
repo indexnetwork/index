@@ -17,7 +17,6 @@ const opp = (id: string, acceptedAt: string | null): ChatContextOpportunity => (
   headline: `Headline ${id}`,
   personalizedSummary: `Summary ${id}`,
   narratorRemark: '',
-  introducerName: null,
   peerName: 'Peer',
   peerAvatar: null,
   acceptedAt,

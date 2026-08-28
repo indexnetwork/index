@@ -18,12 +18,12 @@ import { OpportunityService } from "../opportunity.service";
 // guard and would otherwise leak candidate-pool opportunities to all members.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const EXPECTED_USER_STATUSES = ["latent", "negotiating", "pending", "stalled", "accepted"];
+const EXPECTED_USER_STATUSES = ["negotiating", "pending", "stalled", "accepted"];
 const EXPECTED_NETWORK_STATUSES = ["negotiating", "pending", "stalled", "accepted"];
 
 type Captured = { opts?: Record<string, unknown> };
 
-function createService() {
+function createService(overrides?: { isIndexOwner?: boolean }) {
   const userCall: Captured = {};
   const networkCall: Captured = {};
   const db = {
@@ -36,7 +36,7 @@ function createService() {
       return Promise.resolve([] as Opportunity[]);
     }),
     getUser: mock(() => Promise.resolve(null)),
-    isIndexOwner: mock(() => Promise.resolve(true)),
+    isIndexOwner: mock(() => Promise.resolve(overrides?.isIndexOwner ?? true)),
     isNetworkMember: mock(() => Promise.resolve(true)),
   } as unknown as OpportunityControllerDatabase;
   const service = new OpportunityService(db);
@@ -164,6 +164,27 @@ describe("OpportunityService list status filtering (IND-254)", () => {
       if (!Array.isArray(rows)) throw new Error('Expected opportunity rows');
       expect(rows[0]?.interpretation.reasoning).toBe('Connection opportunity');
       expect(JSON.stringify(rows[0])).not.toContain('attendee');
+    });
+
+    // The actor filter belongs in the query: applied to the result instead, a
+    // page of `limit` network rows could come back empty while later pages hold
+    // visible ones, and the caller cannot tell that from the end of the list.
+    it('scopes non-owner members to their own actor rows in the query', async () => {
+      const { service, networkCall } = createService({ isIndexOwner: false });
+
+      await service.getOpportunitiesForNetwork('net-1', 'user-1', { limit: 20, offset: 40 });
+
+      expect(networkCall.opts?.actorUserId).toBe('user-1');
+      expect(networkCall.opts?.limit).toBe(20);
+      expect(networkCall.opts?.offset).toBe(40);
+    });
+
+    it('leaves the full curator list unscoped for network owners', async () => {
+      const { service, networkCall } = createService({ isIndexOwner: true });
+
+      await service.getOpportunitiesForNetwork('net-1', 'user-1');
+
+      expect(networkCall.opts?.actorUserId).toBeUndefined();
     });
   });
 

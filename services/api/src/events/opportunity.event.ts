@@ -33,7 +33,7 @@ export const OpportunityEvents: {
 
 /** Fire actionable lifecycle hooks without exposing handler failures to database writes. */
 export function emitOpportunityLifecycleBestEffort(opportunity: PendingOpportunityEvent): void {
-  if (opportunity.status !== 'latent' && opportunity.status !== 'pending') return;
+  if (opportunity.status !== 'pending') return;
   try {
     Promise.resolve(OpportunityEvents.onActionable({ opportunity })).catch(() => {});
   } catch {

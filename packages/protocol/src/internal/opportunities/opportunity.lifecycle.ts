@@ -18,7 +18,6 @@ export type OpportunityLifecyclePort = Pick<
   | 'getOpportunity'
   | 'getOrCreateDM'
   | 'stampOpportunityActorAction'
-  | 'updateOpportunityActorApproval'
   | 'updateOpportunityStatus'
 >;
 
@@ -67,68 +66,12 @@ export function assessOpportunityStatusTransition(
     return {
       kind: 'stamp_accepted',
       counterpartUserId: opportunity.actors.find(
-        (actor) => actor.userId !== actorUserId && actor.role !== 'introducer',
+        (actor) => actor.userId !== actorUserId,
       )?.userId,
     };
   }
 
   return { kind: 'set_terminal_status', status: newStatus };
-}
-
-/**
- * Applies send admission and recipient-routing rules without performing writes.
- * Introducers, peers, and direct patient/party flows each reveal the next tier
- * to a distinct audience.
- */
-export function assessOpportunitySend(
-  opportunity: Opportunity,
-  actorUserId: string,
-): SendOpportunityPlan | OpportunityMutationResult {
-  if (opportunity.status !== 'latent' && opportunity.status !== 'draft') {
-    return {
-      success: false,
-      error: `Opportunity is already ${opportunity.status}; only latent or draft opportunities can be sent.`,
-    };
-  }
-
-  const sender = opportunity.actors.find((actor) => actor.userId === actorUserId);
-  if (!sender) {
-    return { success: false, error: 'You are not part of this opportunity.' };
-  }
-
-  const hasIntroducer = opportunity.actors.some((actor) => actor.role === 'introducer');
-  const canSend =
-    sender.role === 'introducer'
-    || sender.role === 'peer'
-    || (sender.role === 'patient' && !hasIntroducer)
-    || (sender.role === 'party' && !hasIntroducer);
-  if (!canSend) {
-    return { success: false, error: 'You cannot send this opportunity.' };
-  }
-
-  const recipients = sender.role === 'introducer'
-    ? opportunity.actors.filter((actor) => actor.role === 'patient' || actor.role === 'party')
-    : sender.role === 'peer'
-      ? opportunity.actors.filter((actor) => actor.role === 'peer' && actor.userId !== actorUserId)
-      : opportunity.actors.filter((actor) => actor.role === 'agent');
-  return { sender, recipients };
-}
-
-/** Checks whether a caller may approve this opportunity's introducer gate. */
-export function assessIntroductionApproval(
-  opportunity: Opportunity,
-  actorUserId: string,
-): OpportunityMutationResult | { kind: 'approve' } {
-  const introducerActor = opportunity.actors.find(
-    (actor) => actor.role === 'introducer' && actor.userId === actorUserId,
-  );
-  if (!introducerActor) {
-    return { success: false, error: 'You are not the introducer for this opportunity' };
-  }
-  if (introducerActor.approved === true) {
-    return { success: false, error: 'Introduction already approved' };
-  }
-  return { kind: 'approve' };
 }
 
 function isMutationResult(
@@ -206,83 +149,4 @@ export async function deleteOpportunityLifecycle(
     opportunityId: input.opportunityId,
     message: 'Opportunity archived (expired).',
   };
-}
-
-/** Persists a send transition, then notifies only the actors exposed by its routing policy. */
-export async function sendOpportunityLifecycle(
-  database: OpportunityLifecyclePort,
-  input: { opportunityId?: string; actorUserId: string },
-  queueNotification?: QueueOpportunityNotificationFn,
-): Promise<OpportunityMutationResult> {
-  if (!input.opportunityId) {
-    return { success: false, error: 'opportunityId is required.' };
-  }
-
-  const opportunity = await database.getOpportunity(input.opportunityId);
-  if (!opportunity) {
-    return { success: false, error: 'Opportunity not found.' };
-  }
-
-  const plan = assessOpportunitySend(opportunity, input.actorUserId);
-  if (isMutationResult(plan)) return plan;
-
-  await database.stampOpportunityActorAction(input.opportunityId, input.actorUserId, 'pending');
-  if (queueNotification) {
-    for (const recipient of plan.recipients) {
-      await queueNotification(opportunity.id, recipient.userId, 'high');
-    }
-  }
-
-  return {
-    success: true,
-    opportunityId: opportunity.id,
-    notified: plan.recipients.map((actor) => actor.userId),
-    message: 'Opportunity sent. The other person has been notified.',
-  };
-}
-
-/** Approves an introducer gate and wakes the source signal's PersonalAgent. */
-export async function approveOpportunityIntroduction(
-  database: OpportunityLifecyclePort,
-  input: { opportunityId?: string; actorUserId: string },
-  matchesReady?: MatchesReadyFn,
-): Promise<OpportunityMutationResult> {
-  if (!input.opportunityId) {
-    return { success: false, error: 'opportunityId required for approve_introduction' };
-  }
-
-  let opportunity: Opportunity | null;
-  try {
-    opportunity = await database.getOpportunity(input.opportunityId);
-  } catch (error) {
-    return {
-      success: false,
-      error: `Failed to load opportunity: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-  if (!opportunity) {
-    return { success: false, error: 'Opportunity not found' };
-  }
-
-  const admission = assessIntroductionApproval(opportunity, input.actorUserId);
-  if (isMutationResult(admission)) return admission;
-
-  const updated = await database.updateOpportunityActorApproval(input.opportunityId, input.actorUserId, true);
-  if (!updated) {
-    return { success: false, error: 'Failed to update approval' };
-  }
-
-  // The approval makes this already-persisted match eligible; it will not
-  // pass through discovery again. The discovery source is the patient actor,
-  // so wake only that actor's bound signal after every introducer gate opens.
-  if (matchesReady && updated.actors
-    .filter((actor) => actor.role === 'introducer')
-    .every((actor) => actor.approved === true)) {
-    const sourceActor = updated.actors.find((actor) => actor.role === 'patient');
-    const intentId = sourceActor && resolveOpportunityActorIntent(sourceActor);
-    if (sourceActor && intentId) {
-      await matchesReady({ userId: sourceActor.userId, intentId });
-    }
-  }
-  return { success: true, opportunityId: input.opportunityId };
 }

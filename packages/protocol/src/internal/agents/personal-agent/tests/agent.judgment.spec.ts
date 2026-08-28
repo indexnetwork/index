@@ -48,7 +48,7 @@ function context(overrides: Partial<PersonalAgentTurnContext> = {}): PersonalAge
     userId: "alice", intentId: "intent-1", event: "user_message",
     message: { text: "hello", sessionId: "dm-1", messageId: "m-1" },
     signalText: "Looking for a technical co-founder.",
-    matches: [{ opportunityId: "opportunity-1", label: "A match", status: "negotiating" }],
+    matches: [{ ref: { kind: "opportunity", id: "opportunity-1" }, label: "A match", status: "negotiating" }],
     kickoffTargets: [], knownMatchIds: [],
     paused: [{ negotiationId: "task-1", opportunityId: "opportunity-1", reason: "ready_for_verdict", pausedByUs: true, thread: [] }],
     dossier: [], recentDm: [], recentActs: [], ...overrides,
@@ -206,7 +206,7 @@ describe("PersonalAgentModel", () => {
   test("renders a refused acceptance by bounded match position, never raw opportunity id", async () => {
     const model = new CapturingPersonalAgentModel();
     const opportunityId = "5d8e06ce-6d99-4212-a8ec-3a5451950127";
-    const turn = context({ matches: [{ opportunityId, label: "First match", status: "pending" }] });
+    const turn = context({ matches: [{ ref: { kind: "opportunity", id: opportunityId }, label: "First match", status: "pending" }] });
     const observation: PersonalAgentNonDurableObservation = {
       kind: "irreversible_tool_refused",
       tool: "accept_opportunity",

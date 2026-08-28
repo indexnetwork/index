@@ -6,7 +6,7 @@ import { success, error } from '../shared/agent/tool.helpers.js';
 import { focusedIntentId, focusedNetworkId } from '../shared/agent/tool.scope.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
-import { NegotiationTurnSchema, NEGOTIATION_CONTINUE_VERBS } from './negotiation.turn.js';
+import { NegotiationTurnSchema, NEGOTIATION_CONTINUE_VERBS, turnForViewer } from './negotiation.turn.js';
 import type { NegotiationTaskMetadata, NegotiationTaskRow } from '../../platform/database/negotiation.js';
 
 export { buildLifecycleNarration, parkLifecycleLabel } from './negotiation.lifecycle-narration.js';
@@ -30,7 +30,11 @@ function pauseFor(task: NegotiationTaskRow, viewerId: string): (NegotiationTaskM
 export function createNegotiationTools(defineTool: DefineTool, deps: NegotiationToolDeps) {
   const { negotiationDatabase, negotiationGraph } = deps;
 
-  function turnsOf(task: NegotiationTaskRow, messages: Array<{ senderId: string; parts: unknown[]; createdAt: Date }>) {
+  function turnsOf(
+    task: NegotiationTaskRow,
+    messages: Array<{ senderId: string; parts: unknown[]; createdAt: Date }>,
+    viewerId: string,
+  ) {
     return messages.map((m, i) => {
       const part = (m.parts as Array<{ kind?: string; data?: unknown }>).find((p) => p.kind === 'data');
       const parsed = part ? NegotiationTurnSchema.safeParse(part.data) : undefined;
@@ -39,7 +43,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
         turnNumber: i + 1,
         speaker,
         senderId: m.senderId,
-        turn: parsed?.success ? parsed.data : null,
+        turn: parsed?.success ? turnForViewer(parsed.data, m.senderId, viewerId) : null,
         createdAt: m.createdAt,
       };
     });
@@ -148,7 +152,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: Negotiation
           // A seat sees ITS OWN brief and never the counterparty's: a brief is
           // what that side's agent was told about its own principal.
           brief: task.briefs[context.userId] ?? null,
-          turns: turnsOf(task, messages),
+          turns: turnsOf(task, messages, context.userId),
           ...(scopedPause ? { pause: scopedPause } : {}),
           lifecycle: buildLifecycleNarration(
             task.state,

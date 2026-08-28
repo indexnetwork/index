@@ -220,17 +220,6 @@ describe('fetchAcceptedCandidates', () => {
     expect(result).toEqual([]);
   });
 
-  test('excludes opportunities where the polling user is the introducer', async () => {
-    const userC = await seedUser('User C');
-    await seedAcceptedOpportunity(
-      [{ userId: userA, role: 'peer' }, { userId: userC, role: 'peer' }, { userId: userB, role: 'introducer' }],
-      userA,
-    );
-
-    const result = await service.fetchAcceptedCandidates(agentB, FRONTEND_URL);
-    expect(result).toEqual([]);
-  });
-
   test('deduplicates via committed delivery record with deliveredAtStatus=accepted', async () => {
     await seedConversation(userA, userB);
     const oppId = await seedAcceptedOpportunity(

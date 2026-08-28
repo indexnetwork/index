@@ -358,7 +358,7 @@ export class EmbedderAdapter {
   // retired in WS10 (IND-367). It was the last runtime read of `user_profiles` and was
   // already unreachable: the live HyDE path (`searchWithHydeEmbeddings`) remaps the
   // 'profiles' corpus hint to 'premises', and no caller passed 'profiles' to `search()`.
-  // Discovery now runs on context-to-intent + premise similarity. See IND-365 for the
+  // Discovery now runs on HyDE query retrieval. See IND-365 for the
   // table drop.
 
   private async searchIntents(

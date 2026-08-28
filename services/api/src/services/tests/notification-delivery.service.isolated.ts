@@ -95,32 +95,14 @@ describe('NotificationDeliveryService persisted projection', () => {
     expect(snapshot.find(({ id }) => id === actionableOpportunity.id)?.body).not.toContain('internal scoring');
   });
 
-  test('snapshot preserves realtime parity for actionable roles omitted by the legacy UI query', async () => {
+  test('snapshot preserves realtime parity', async () => {
     const legacyOmitted = [
       opportunity({
-        id: 'latent-no-introducer-agent',
-        status: 'latent',
-        actors: [
-          { userId: 'viewer', networkId: 'network-1', role: 'agent' },
-          { userId: 'patient-peer', networkId: 'network-1', role: 'patient' },
-        ],
-      }),
-      opportunity({
-        id: 'latent-approved-introducer-patient',
-        status: 'latent',
-        actors: [
-          { userId: 'viewer', networkId: 'network-1', role: 'patient' },
-          { userId: 'agent-peer', networkId: 'network-1', role: 'agent' },
-          { userId: 'introducer', networkId: 'network-1', role: 'introducer', approved: true },
-        ],
-      }),
-      opportunity({
-        id: 'pending-introducer-agent',
+        id: 'pending-agent',
         status: 'pending',
         actors: [
           { userId: 'viewer', networkId: 'network-1', role: 'agent' },
           { userId: 'patient-peer', networkId: 'network-1', role: 'patient' },
-          { userId: 'introducer', networkId: 'network-1', role: 'introducer', approved: true },
         ],
       }),
     ];
@@ -150,11 +132,7 @@ describe('NotificationDeliveryService persisted projection', () => {
       .map(({ event }) => event);
     const snapshot = await service.snapshot('viewer');
 
-    expect(snapshot.map(({ id }) => id)).toEqual([
-      'latent-no-introducer-agent',
-      'latent-approved-introducer-patient',
-      'pending-introducer-agent',
-    ]);
+    expect(snapshot.map(({ id }) => id)).toEqual(['pending-agent']);
     expect(sortEvents(snapshot)).toEqual(sortEvents(realtimeForViewer));
   });
 

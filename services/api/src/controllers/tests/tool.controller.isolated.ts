@@ -239,7 +239,8 @@ describe("ToolController Integration", () => {
 
     // ── Opportunity (CLI: discover modes) ────────────────────────
 
-    test("POST /tools/discover_opportunities reports the retained not-found contract", async () => {
+    test("POST /tools/discover_opportunities reports the retired-tool not-found contract", async () => {
+      // Named on purpose: this guard is what stops the retired tool coming back.
       const { status, data } = await invokeTool("discover_opportunities", {});
       expect(status).toBe(404);
       expect(String(data.error)).toContain("not found");

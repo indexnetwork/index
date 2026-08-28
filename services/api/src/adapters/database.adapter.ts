@@ -9,6 +9,7 @@ export { IntentDatabaseAdapter } from './intent.database.adapter';
 export { ChatDatabaseAdapter } from './chat.database.adapter';
 export { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 export { OpportunityDatabaseAdapter } from './opportunity.database.adapter';
+import { discoveryCandidateAdapter, type DiscoveryCandidateDatabaseAdapter } from './discovery-candidate.database.adapter';
 export { HydeDatabaseAdapter } from './hyde.database.adapter';
 export { UserDatabaseAdapter } from './user.database.adapter';
 export { ConversationDatabaseAdapter } from './conversation.database.adapter';
@@ -389,6 +390,14 @@ export function createSystemDatabase(
      * finalization) which creates opportunities across user boundaries.
      */
     createOpportunityAndExpireIds: (data: Parameters<ChatDatabaseAdapter['createOpportunityAndExpireIds']>[0], expireIds: string[]) => db.createOpportunityAndExpireIds(data, expireIds),
+    /**
+     * Discovery candidates. Intentionally unscoped: a candidate is a pair, and
+     * both of its sides are read by their own principal's agent.
+     */
+    upsertDiscoveryMatchCandidates: (items: Parameters<DiscoveryCandidateDatabaseAdapter['upsertDiscoveryMatchCandidates']>[0]) =>
+      discoveryCandidateAdapter.upsertDiscoveryMatchCandidates(items),
+    listPendingCandidatesForIntent: (userId: string, intentId: string) =>
+      discoveryCandidateAdapter.listPendingCandidatesForIntent(userId, intentId),
     /**
      * Retrieves an opportunity by ID without scope check.
      * @remarks Intentionally unscoped -- used by the negotiation graph and opportunity

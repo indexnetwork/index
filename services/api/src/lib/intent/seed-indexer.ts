@@ -45,7 +45,7 @@ export async function indexExistingIntentForSeed(
 /**
  * Creates the production embed/persist/HyDE composition without importing
  * IntentQueue or application services. Fixture network assignments already
- * exist, so this deliberately performs no admission/rediscovery work.
+ * exist, so this deliberately performs no admission or discovery work.
  */
 export function createSeedIntentIndexer(): (input: SeedIntentIndexInput) => Promise<void> {
   const database = new ChatDatabaseAdapter();

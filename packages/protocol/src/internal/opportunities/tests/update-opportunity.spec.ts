@@ -56,7 +56,6 @@ describe("update_opportunity — state machine", () => {
       },
       opportunityOperations: {
         updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
-        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -75,7 +74,6 @@ describe("update_opportunity — state machine", () => {
       },
       opportunityOperations: {
         updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
-        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -93,7 +91,6 @@ describe("update_opportunity — state machine", () => {
       },
       opportunityOperations: {
         updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
-        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -112,7 +109,6 @@ describe("update_opportunity — state machine", () => {
       },
       opportunityOperations: {
         updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
-        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -133,7 +129,6 @@ describe("update_opportunity — actor guard", () => {
       },
       opportunityOperations: {
         updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
-        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -153,7 +148,6 @@ describe("update_opportunity — actor guard", () => {
       },
       opportunityOperations: {
         updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
-        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -197,7 +191,6 @@ describe("update_opportunity — network scope guard", () => {
       },
       opportunityOperations: {
         updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
-        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 
@@ -217,7 +210,6 @@ describe("update_opportunity — network scope guard", () => {
       },
       opportunityOperations: {
         updateOpportunityStatus: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
-        sendOpportunity: async () => ({ mutationResult: { success: true, opportunityId: OPP_ID, message: "ok" } }),
       },
     } as unknown as ToolDeps;
 

@@ -1,9 +1,9 @@
 /**
  * The owner verdict must END the pairing's negotiation (D23).
  *
- * The reflect trigger waits for every task in a bound seat's round to stop
+ * The reflect trigger waits for every task in a bound seat's batch to stop
  * working. Before this fix an ordinary user reject flipped only the opportunity,
- * so its task stayed `working` forever and neither seat's drain was enqueued.
+ * so its task stayed `working` forever and neither seat's settle was enqueued.
  *
  * The test drives the REAL `NegotiationGraph` over a fake database — the same
  * owner-close lane production runs — rather than asserting that a mock was called, so
@@ -16,7 +16,7 @@ config({ path: '.env.test', override: true });
 import { describe, it, expect, mock } from 'bun:test';
 
 import { NegotiationGraphFactory } from '@indexnetwork/protocol';
-import type { NegotiationGraphDatabase, NegotiationTaskRow, NegotiationRoundReflectJobData, Opportunity, OpportunityControllerDatabase, OpportunityStatus } from '@indexnetwork/protocol';
+import type { NegotiationGraphDatabase, NegotiationRoundLogDatabase, NegotiationTaskRow, NegotiationRoundReflectJobData, Opportunity, OpportunityControllerDatabase, OpportunityStatus } from '@indexnetwork/protocol';
 
 import { OpportunityService, type OwnerVerdictNegotiationCloser } from '../opportunity.service';
 
@@ -26,7 +26,8 @@ const OPP_ID = 'opp-negotiated-001';
 const INTENT_ID = 'intent-001';
 const COUNTERPART_INTENT_ID = 'intent-002';
 const NEGOTIATION_ID = 'task-negotiation-001';
-const ROUND = 3;
+const BATCH_ID = 'batch-003';
+const COUNTERPART_BATCH_ID = 'batch-passive';
 
 /** One negotiating pairing, shared by both fakes so status writes are observable. */
 function negotiatedOpportunity(): Opportunity {
@@ -61,10 +62,9 @@ function negotiationTask(): NegotiationTaskRow {
       initiatorUserId: USER_A,
       networkId: 'idx-1',
       seats: {
-        [INTENT_ID]: { userId: USER_A, round: ROUND },
-        [COUNTERPART_INTENT_ID]: { userId: USER_B, round: 0 },
+        [INTENT_ID]: { userId: USER_A, batchId: BATCH_ID },
+        [COUNTERPART_INTENT_ID]: { userId: USER_B, batchId: COUNTERPART_BATCH_ID },
       },
-      drainGeneration: 0,
     },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -73,14 +73,37 @@ function negotiationTask(): NegotiationTaskRow {
 
 /**
  * The world both the opportunity service and the negotiation graph write into:
- * one opportunity row and one negotiation task, plus the reflect enqueue the
- * all-paused check calls.
+ * one opportunity row, one negotiation task, an in-memory round-log (both
+ * seats' batches pre-seeded as already opened+opening_complete, matching
+ * what a real kickoff would have left behind before this close), plus the
+ * reflect enqueue the all-paused check calls.
  */
 function createWorld() {
   const opportunity = negotiatedOpportunity();
   const task = negotiationTask();
   const reflectJobs: NegotiationRoundReflectJobData[] = [];
   const artifacts: Array<{ verdict: string; reasoning?: string; resolvedByUserId?: string }> = [];
+
+  type RoundLogEvent = { kind: string; taskId?: string; batchId: string; via?: string; reason?: string; createdAt: Date };
+  const roundLogEvents = new Map<string, RoundLogEvent[]>();
+  const seed = (intentId: string, batchId: string) => {
+    roundLogEvents.set(`${intentId}::${batchId}`, [
+      { kind: 'opened', taskId: task.id, batchId, createdAt: new Date() },
+      { kind: 'opening_complete', batchId, createdAt: new Date() },
+    ]);
+  };
+  seed(INTENT_ID, BATCH_ID);
+  seed(COUNTERPART_INTENT_ID, COUNTERPART_BATCH_ID);
+  const roundLog: NegotiationRoundLogDatabase = {
+    appendNegotiationRoundLogEvent: async (intentId, event) => {
+      const key = `${intentId}::${event.batchId}`;
+      const list = roundLogEvents.get(key) ?? [];
+      list.push({ ...event, createdAt: new Date() });
+      roundLogEvents.set(key, list);
+    },
+    readNegotiationRoundLogEvents: async (intentId, batchId) =>
+      [...(roundLogEvents.get(`${intentId}::${batchId}`) ?? [])] as never,
+  };
 
   const negotiationDb = {
     getOpportunity: async () => opportunity,
@@ -105,19 +128,18 @@ function createWorld() {
       task.state = state;
       return task;
     },
-    countActiveNegotiationsForRound: async (intentId: string, round: number) =>
-      task.metadata.seats[intentId]?.round === round && task.state === 'working' ? 1 : 0,
-    getIntentNegotiationRound: async (intentId: string) => ({
-      round: task.metadata.seats[intentId]?.round ?? 0,
-      roundSize: 1,
-      kickoffStartedAt: null,
+    countActiveNegotiationsForBatch: async (intentId: string, batchId: string) =>
+      task.metadata.seats[intentId]?.batchId === batchId && task.state === 'working' ? 1 : 0,
+    getIntentNegotiationBatch: async (intentId: string) => ({
+      batchId: task.metadata.seats[intentId]?.batchId ?? null,
     }),
-    getNegotiationTasksForIntentRound: async (intentId: string, round: number) =>
-      task.metadata.seats[intentId]?.round === round ? [task] : [],
+    getNegotiationTasksForIntentBatch: async (intentId: string, batchId: string) =>
+      task.metadata.seats[intentId]?.batchId === batchId ? [task] : [],
   } as unknown as NegotiationGraphDatabase;
 
   const graph = new NegotiationGraphFactory({
     database: negotiationDb,
+    roundLog,
     reflectEnqueue: async (job) => {
       reflectJobs.push(job);
     },
@@ -158,11 +180,11 @@ function createWorld() {
 }
 
 describe('OpportunityService owner verdict closes the negotiation', () => {
-  it('a user reject drops the round to zero active negotiations and enqueues reflect', async () => {
+  it('a user reject drops the batch to zero active negotiations and enqueues reflect', async () => {
     const world = createWorld();
 
-    // Before: the round still has one negotiation holding it open.
-    expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(1);
+    // Before: the batch still has one negotiation holding it open.
+    expect(await world.negotiationDb.countActiveNegotiationsForBatch(INTENT_ID, BATCH_ID)).toBe(1);
 
     const result = await world.service.updateOpportunityStatus(OPP_ID, 'rejected', USER_A);
     expect('error' in result).toBe(false);
@@ -170,10 +192,10 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
     expect(world.opportunity.status).toBe('rejected');
     expect(world.task.state).toBe('completed');
     expect(world.task.metadata.watchdogReflectPending).toBe(false);
-    expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);
+    expect(await world.negotiationDb.countActiveNegotiationsForBatch(INTENT_ID, BATCH_ID)).toBe(0);
     expect(world.reflectJobs).toEqual([
-      { userId: USER_A, intentId: INTENT_ID, round: ROUND, generation: `${NEGOTIATION_ID}.0` },
-      { userId: USER_B, intentId: COUNTERPART_INTENT_ID, round: 0, generation: `${NEGOTIATION_ID}.0` },
+      { userId: USER_A, intentId: INTENT_ID, batchId: BATCH_ID, dedupeKey: `${NEGOTIATION_ID}.2` },
+      { userId: USER_B, intentId: COUNTERPART_INTENT_ID, batchId: COUNTERPART_BATCH_ID, dedupeKey: `${NEGOTIATION_ID}.2` },
     ]);
     expect(world.artifacts).toEqual([
       {
@@ -193,10 +215,10 @@ describe('OpportunityService owner verdict closes the negotiation', () => {
     // Owner-close never writes over the terminal status the owner just set.
     expect(world.opportunity.status).toBe('accepted');
     expect(world.task.state).toBe('completed');
-    expect(await world.negotiationDb.countActiveNegotiationsForRound(INTENT_ID, ROUND)).toBe(0);
+    expect(await world.negotiationDb.countActiveNegotiationsForBatch(INTENT_ID, BATCH_ID)).toBe(0);
     expect(world.reflectJobs).toEqual([
-      { userId: USER_A, intentId: INTENT_ID, round: ROUND, generation: `${NEGOTIATION_ID}.0` },
-      { userId: USER_B, intentId: COUNTERPART_INTENT_ID, round: 0, generation: `${NEGOTIATION_ID}.0` },
+      { userId: USER_A, intentId: INTENT_ID, batchId: BATCH_ID, dedupeKey: `${NEGOTIATION_ID}.2` },
+      { userId: USER_B, intentId: COUNTERPART_INTENT_ID, batchId: COUNTERPART_BATCH_ID, dedupeKey: `${NEGOTIATION_ID}.2` },
     ]);
   });
 

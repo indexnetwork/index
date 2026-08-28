@@ -15,7 +15,7 @@
  */
 import { END, StateGraph, Annotation } from "@langchain/langgraph";
 
-import type { NegotiationGraphDatabase, NegotiationTaskRow, NegotiationTaskMetadata } from "../../platform/database/negotiation.js";
+import type { NegotiationGraphDatabase, NegotiationRoundLogDatabase, NegotiationTaskRow, NegotiationTaskMetadata } from "../../platform/database/negotiation.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { NEGOTIATION_MAX_TURNS_AMBIENT } from "../../protocol/core.js";
 import { NegotiationTurnSchema, NegotiationOpeningTurnSchema, isPauseTurn, turnsFromMessages, turnsWithSenders, type NegotiationTurn, type NegotiationVerdict, type NegotiationPauseReason, type NegotiationSystemPauseReason } from "./negotiation.turn.js";
@@ -28,12 +28,12 @@ const logger = protocolLogger("NegotiationGraph");
 
 export type NegotiationGraphInput =
   /**
-   * `round` is the caller's own batch counter — one bump per kickoff batch,
-   * not per opportunity. `brief` is the INITIATING seat's own brief — the
-   * seat that owns `intentId` — and never the counterparty's, which that
+   * `batchId` is the caller's own kickoff batch id — one bump per kickoff
+   * batch, not per opportunity. `brief` is the INITIATING seat's own brief —
+   * the seat that owns `intentId` — and never the counterparty's, which that
    * seat's own agent authors at its first turn.
    */
-  | { opportunityId: string; brief: string; intentId: string; round: number }
+  | { opportunityId: string; brief: string; intentId: string; batchId: string }
   /**
    * Resume with a fresh brief for ONE seat, named explicitly. `byUserId` is
    * not optional and is not inferred: the same "assume it is `sourceUserId`"
@@ -65,6 +65,8 @@ export interface NegotiationGraphResult {
 
 export interface NegotiationGraphDeps {
   database: NegotiationGraphDatabase;
+  /** The append-only round-log a batch's settlement is folded from (#1494). */
+  roundLog: NegotiationRoundLogDatabase;
   reflectEnqueue?: NegotiationRoundReflectEnqueueFn;
   /** Delivers an owned needs-principal pause immediately; batch reflection remains separate. */
   needsPrincipalEnqueue?: (input: { userId: string; intentId: string; negotiationId: string; generation: number }) => Promise<void>;
@@ -194,32 +196,32 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       // AGAINST (the recipient's), not its own, so both actors can carry the
       // same value there. `input.intentId` uniquely identifies its OWNER
       // (intents are user-owned) — resolve the source seat from that owner
-      // and exclude any introducer actor, the same selection the old
-      // negotiateNode used.
-      // An introduction nobody vouched for is not a negotiation anyone may
-      // open. Discovery's own gate decides whether to WAKE an agent; this one
-      // decides whether a negotiation may EXIST, and it is the write, so it
-      // binds every caller — a kickoff that re-read the match list and swept
-      // this opportunity up with the others included.
-      const introducers = opportunity.actors.filter((a) => a.role === "introducer");
-      if (introducers.length > 0 && !introducers.every((a) => a.approved === true)) {
-        return { phase: "error", error: "Opportunity is awaiting introducer approval" };
-      }
-
+      // the same selection the old negotiateNode used.
       const intent = await deps.database.getIntent(input.intentId);
       if (!intent) return { phase: "error", error: "Intent not found" };
-      const sourceActor = opportunity.actors.find((a) => a.userId === intent.userId && a.role !== "introducer");
-      const candidateActor = opportunity.actors.find((a) => a.userId !== intent.userId && a.role !== "introducer");
+      const sourceActor = opportunity.actors.find((a) => a.userId === intent.userId);
+      const candidateActor = opportunity.actors.find((a) => a.userId !== intent.userId);
       if (!sourceActor || !candidateActor) return { phase: "error", error: "Opportunity does not have two actors" };
       if (!candidateActor.intent) return { phase: "error", error: "Counterparty actor has no owning intent" };
       const candidateIntent = await deps.database.getIntent(candidateActor.intent);
       if (!candidateIntent || candidateIntent.userId !== candidateActor.userId) {
         return { phase: "error", error: "Counterparty actor intent is not owned by that seat" };
       }
-      const candidateRound = await deps.database.getIntentNegotiationRound(candidateIntent.id);
+      const candidateBatch = await deps.database.getIntentNegotiationBatch(candidateIntent.id);
+      // A candidate seat that has never itself run a kickoff gets a batch
+      // lazily, the first time any negotiation touches it — the same
+      // "passive round" every never-kicked signal started on before this
+      // rewrite. Marked opening_complete immediately: nothing will ever
+      // stamp a size for a batch no kickoff opened, so this batch is never
+      // gated on one — it settles as soon as whatever tasks land in it stop.
+      let candidateBatchId = candidateBatch.batchId;
+      if (candidateBatchId === null) {
+        candidateBatchId = (await deps.database.bumpIntentNegotiationBatch(candidateIntent.id)).batchId;
+        await deps.roundLog.appendNegotiationRoundLogEvent(candidateIntent.id, { kind: "opening_complete", batchId: candidateBatchId });
+      }
       const seats = {
-        [input.intentId]: { userId: sourceActor.userId, round: input.round },
-        [candidateIntent.id]: { userId: candidateActor.userId, round: candidateRound.round },
+        [input.intentId]: { userId: sourceActor.userId, batchId: input.batchId },
+        [candidateIntent.id]: { userId: candidateActor.userId, batchId: candidateBatchId },
       };
 
       const opened = await deps.database.openNegotiationTask({
@@ -233,12 +235,22 @@ async function initNode(state: NegotiationState, deps: NegotiationGraphDeps): Pr
       });
       if (!opened) return { phase: "error", error: "Opportunity is not eligible to open" };
 
+      if (opened.disposition === 'created') {
+        // The candidate's own passive log must know this task belongs to its
+        // current batch, or that batch's fold would see zero opened tasks and
+        // settle trivially the instant opening_complete lands — ignoring a
+        // real, still-active negotiation.
+        await deps.roundLog.appendNegotiationRoundLogEvent(candidateIntent.id, {
+          kind: "opened", taskId: opened.task.id, batchId: candidateBatchId,
+        });
+      }
+
       if (opened.disposition !== 'created') {
         // Bind only the kicking seat. A task seen before the transaction is a
         // genuine re-kick and continues through turn; one first observed by
         // the transaction raced another opener and must not author opening.
         await deps.database.setNegotiationBrief(opened.task.id, sourceActor.userId, input.brief);
-        await deps.database.bindNegotiationSeat(opened.task.id, input.intentId, { userId: sourceActor.userId, round: input.round });
+        await deps.database.bindNegotiationSeat(opened.task.id, input.intentId, { userId: sourceActor.userId, batchId: input.batchId });
         const messages = await deps.database.getNegotiationMessages(opened.task.id);
         const task = {
           ...opened.task,
@@ -448,6 +460,7 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
       // that doesn't gate on state (the API's lifecycle-summary projection)
       // would keep showing "needs your input" for a question already resolved.
       currentTask = await deps.database.updateNegotiationTaskState(currentTask.id, "working", null);
+      await appendRoundLogEventForEverySeat(deps, meta, currentTask.id, { kind: "resumed" });
     }
 
     if (isPauseTurn(effectiveTurn)) {
@@ -466,7 +479,10 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
               userId: speakerId,
               intentId,
               negotiationId: updated.id,
-              generation: updated.metadata.drainGeneration,
+              // The persisted turn's own message-count position: unique and
+              // monotonic per task, same property the deleted drainGeneration
+              // counter gave this dedupe key.
+              generation: messages.length,
             });
           } catch (error) {
             // The pause is already durable. A missed wake must not undo it or
@@ -479,8 +495,13 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
           }
         }
       }
-      // EVERY bound seat: a pause can complete either side's round, and each
+      // EVERY bound seat: a pause can complete either side's batch, and each
       // side's IS-A reflects on its own.
+      await appendRoundLogEventForEverySeat(deps, meta, updated.id, {
+        kind: "stopped",
+        via: "paused",
+        reason: effectiveTurn.reason,
+      });
       await triggerReflectForEverySeat(deps, meta);
       return { task: updated, turns: allTurns, phase: "done", result: toResult(updated, allTurns) };
     }
@@ -493,19 +514,50 @@ async function applyNode(state: NegotiationState, deps: NegotiationGraphDeps): P
 }
 
 /**
+ * Append one round-log event (stopped or resumed) for every seat bound to
+ * this negotiation that has a batch to log against. Two cases skip: a seat
+ * whose intent has never kicked off (`batchId` is `null`) — its own reflect
+ * starts once its first kickoff bumps one — and a seat bound before this
+ * mechanism existed, whose stored `{userId, round}` shape has no `batchId`
+ * field at all (`undefined`, not `null`); `!binding.batchId` catches both,
+ * where `=== null` alone would let a pre-cutover task try to log an
+ * `undefined` batch id and fail the NOT NULL write.
+ */
+async function appendRoundLogEventForEverySeat(
+  deps: NegotiationGraphDeps,
+  meta: NegotiationTaskMetadata,
+  taskId: string,
+  event: { kind: "resumed" } | { kind: "stopped"; via: "paused" | "completed"; reason?: NegotiationPauseReason },
+): Promise<void> {
+  await Promise.all(Object.entries(meta.seats).map(async ([intentId, binding]) => {
+    if (!binding.batchId) return;
+    if (event.kind === "resumed") {
+      await deps.roundLog.appendNegotiationRoundLogEvent(intentId, { kind: "resumed", taskId, batchId: binding.batchId });
+      return;
+    }
+    await deps.roundLog.appendNegotiationRoundLogEvent(intentId, {
+      kind: "stopped", taskId, batchId: binding.batchId, via: event.via, ...(event.reason ? { reason: event.reason } : {}),
+    });
+  }));
+}
+
+/**
  * Run the all-paused check for every seat bound to this negotiation.
  *
- * Both sides batch their own rounds, so one pause can be the last one of
+ * Both sides batch their own kickoffs, so one pause can be the last one of
  * either side's — checking only the opener's would leave the counterparty's
- * round waiting on a negotiation that had already stopped.
+ * batch waiting on a negotiation that had already stopped. A seat with no
+ * batch — never kicked off (`batchId` is `null`), or bound before this
+ * mechanism existed (`batchId` is `undefined`) — has nothing to fold.
  */
 async function triggerReflectForEverySeat(deps: NegotiationGraphDeps, meta: NegotiationTaskMetadata): Promise<boolean> {
   let succeeded = true;
   for (const [intentId, binding] of Object.entries(meta.seats)) {
-    const checked = await maybeEnqueueRoundReflect(deps.database, deps.reflectEnqueue, {
+    if (!binding.batchId) continue;
+    const checked = await maybeEnqueueRoundReflect(deps.roundLog, deps.reflectEnqueue, {
       userId: binding.userId,
       intentId,
-      round: binding.round,
+      batchId: binding.batchId,
     });
     succeeded &&= checked;
   }
@@ -564,9 +616,10 @@ async function resolveNode(state: NegotiationState, deps: NegotiationGraphDeps):
     });
     if (!updated) return { phase: "error", error: "Negotiation changed before its verdict committed" };
     await notifyCounterparties(deps, task.metadata, task.id, input.byUserId, input.verdict);
-    // A round whose last active negotiation ends by direct verdict (not a
+    // A batch whose last active negotiation ends by direct verdict (not a
     // pause) must still trigger the all-paused check — apply isn't the only
-    // way a round finishes.
+    // way a batch finishes.
+    await appendRoundLogEventForEverySeat(deps, task.metadata, task.id, { kind: "stopped", via: "completed" });
     if (await triggerReflectForEverySeat(deps, task.metadata)) {
       await clearReflectPendingBestEffort(deps, task.id);
     }
@@ -588,6 +641,7 @@ async function closeNode(state: NegotiationState, deps: NegotiationGraphDeps): P
         kind: "opportunity_expired",
       });
       if (!updated) return { phase: "error", error: "Expiry closure requires a live task and expired opportunity" };
+      await appendRoundLogEventForEverySeat(deps, task.metadata, task.id, { kind: "stopped", via: "completed" });
       if (await triggerReflectForEverySeat(deps, task.metadata)) {
         await clearReflectPendingBestEffort(deps, task.id);
       }
@@ -606,6 +660,7 @@ async function closeNode(state: NegotiationState, deps: NegotiationGraphDeps): P
       resolvedByUserId: input.byUserId,
     });
     if (!updated) return { phase: "error", error: "Owner-verdict closure requires a live task and terminal opportunity" };
+    await appendRoundLogEventForEverySeat(deps, task.metadata, task.id, { kind: "stopped", via: "completed" });
     if (await triggerReflectForEverySeat(deps, task.metadata)) {
       await clearReflectPendingBestEffort(deps, task.id);
     }
@@ -637,6 +692,7 @@ async function expireNode(state: NegotiationState, deps: NegotiationGraphDeps): 
       reason: input.expire.reason,
     });
     if (!expired) return { task, phase: "done", result: toResult(task, []) };
+    await appendRoundLogEventForEverySeat(deps, expired.metadata, task.id, { kind: "stopped", via: "completed" });
     await triggerReflectForEverySeat(deps, expired.metadata);
     return { task: expired, phase: "done", result: { negotiationId: task.id, status: "resolved", turns: [] } };
   } catch (err) {

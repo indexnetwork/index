@@ -38,10 +38,8 @@ describe('selectByComposition', () => {
     ];
     const result = selectByComposition(opps, viewerId);
     const connections = result.filter((o) => o.status !== 'expired' && !o.actors.some((a) => a.role === 'introducer'));
-    const connectorFlows = result.filter((o) => o.status !== 'expired' && o.actors.some((a) => a.role === 'introducer'));
     const expired = result.filter((o) => o.status === 'expired');
-    expect(connections.length).toBe(3);
-    expect(connectorFlows.length).toBe(2);
+    expect(connections.length).toBe(5);
     expect(expired.length).toBe(2);
   });
 
@@ -51,7 +49,6 @@ describe('selectByComposition', () => {
       makeOpp('cf-0', true),
     ];
     const result = selectByComposition(opps, viewerId);
-    // 1 connector-flow (under target of 2), extra slot goes to connections
     const connections = result.filter((o) => !o.actors.some((a) => a.role === 'introducer'));
     expect(connections.length).toBeGreaterThan(3);
   });

@@ -150,8 +150,6 @@ export type {
   SynthesisResult,
 } from "./capabilities/intents.js";
 
-export { MaintenanceGraphFactory } from "./internal/maintenance/maintenance.graph.js";
-export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./internal/maintenance/maintenance.graph.js";
 export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
@@ -233,6 +231,14 @@ export type {
   NegotiationRoundReflectCheck,
   NegotiationRoundReflectEnqueueFn,
 } from "./internal/negotiations/negotiation.round-reflect.js";
+export { foldNegotiationRoundLog } from "./internal/negotiations/negotiation.round-log.js";
+export type {
+  NegotiationRoundLogEvent,
+  NegotiationRoundLogOpenedEvent,
+  NegotiationRoundLogStoppedEvent,
+  NegotiationRoundLogResumedEvent,
+  NegotiationRoundLogFoldResult,
+} from "./internal/negotiations/negotiation.round-log.js";
 // ─── PersonalAgent (AgentGraph) ─────────────────────────────────────────────
 /**
  * One persona, three scopes, routed on the shape of the invoke input. The
@@ -290,6 +296,9 @@ export type {
   NegotiationSeatBinding,
   NegotiationTaskState,
   NegotiationMessageRow,
+  NegotiationRoundLogDatabase,
+  NegotiationRoundLogEventKind,
+  NegotiationRoundLogEventRecord,
 } from "./platform/database/negotiation.js";
 
 // ─── Opportunity compatibility exports ─────────────────────────────────────
@@ -304,22 +313,29 @@ export {
   getOrCreateDeliveryCardBatch,
 } from "./internal/opportunities/delivery-card.cache.js";
 export {
-  OpportunityEvaluator,
-} from "./internal/opportunities/opportunity.evaluator.js";
-export type {
-  EvaluatorInput,
-} from "./internal/opportunities/opportunity.evaluator.js";
-export {
   OpportunityGraphFactory,
 } from "./internal/opportunities/opportunity.graph.js";
 export type {
   OpportunityGraphThresholdOverrides,
 } from "./internal/opportunities/opportunity.graph.js";
 export type { MatchesReadyFn } from "./internal/opportunities/opportunity.graph.shared.js";
+export {
+  pairKeyOf,
+} from "./internal/opportunities/opportunity.candidates.js";
+export type { OpportunityEvidence } from "./protocol/schemas/network-assignment.schema.js";
+export {
+  matchRefId,
+  opportunityRef,
+} from "./internal/agents/personal-agent/agent.types.js";
 export type {
-  StampNewbornOpportunitiesFn,
-  StampNewbornOpportunitiesInput,
-} from "./internal/opportunities/opportunity.newborn-stamping.js";
+  PersonalAgentMatchRef,
+} from "./internal/agents/personal-agent/agent.types.js";
+export type {
+  CreateAndOpenResult,
+  CreateDiscoveryMatchCandidateData,
+  DiscoveryMatchCandidate,
+  DiscoveryMatchCandidateStatus,
+} from "./internal/opportunities/opportunity.candidates.js";
 export {
   opportunityOwnerActionForStatus,
 } from "./internal/opportunities/opportunity.owner-approval.js";
@@ -338,9 +354,6 @@ export {
   bindOwnerApprovalProvenance,
 } from "./internal/opportunities/opportunity.owner-provenance.js";
 export {
-  persistOpportunities,
-} from "./internal/opportunities/opportunity.persist.js";
-export {
   gatherPresenterContext,
   OpportunityPresenter,
 } from "./internal/opportunities/opportunity.presentation.js";
@@ -354,12 +367,8 @@ export {
   createOpportunityVerdictTools,
 } from "./internal/opportunities/opportunity.verdict.tools.js";
 export {
-  DISCOVERY_EVALUATOR_MIN_SCORE,
   DISCOVERY_MIN_SIMILARITY,
-  validateDiscoveryEvaluatorMinScore,
   validateDiscoveryMinSimilarity,
-} from "./internal/opportunities/discovery.env.js";
-export type {
 } from "./internal/opportunities/discovery.env.js";
 export {
   PoolDiscriminatorMiner,
@@ -441,9 +450,3 @@ export type {
 export {
   RadarGraphFactory,
 } from "./internal/opportunities/radar/radar.graph.js";
-export {
-  computeRadarHealth,
-} from "./internal/opportunities/radar/radar.health.js";
-export type {
-  RadarHealthInput,
-} from "./internal/opportunities/radar/radar.health.js";

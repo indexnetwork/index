@@ -9,15 +9,15 @@ config({ path: '.env.test', override: true });
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, test, it, expect, mock, spyOn } from 'bun:test';
 import type { Runnable } from '@langchain/core/runnables';
-import { OpportunityGraphFactory, type OpportunityEvaluatorLike, type OpportunityGraphThresholdOverrides, buildDiscovererContext } from '../opportunity.graph.js';
+import { OpportunityGraphFactory, type OpportunityGraphThresholdOverrides, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
 import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
 import type { SourceProfileData } from '../opportunity.state.js';
-import { DISCOVERY_EVALUATOR_MIN_SCORE, DISCOVERY_MIN_SIMILARITY } from '../discovery.env.js';
+import { DISCOVERY_MIN_SIMILARITY } from '../discovery.env.js';
 import { REJECTION_COOLDOWN_MS } from '../opportunity.graph.shared.js';
-import { OpportunityEvaluator, type EvaluatorInput, type EvaluatorEntity } from '../opportunity.evaluator.js';
-import type { EvaluatedOpportunityWithActors } from '../opportunity.evaluator.js';
+import { MatchExplainer } from '../opportunity.match-explainer.js';
+import type { MatchExplainerLike, MatchExplainerResult, MatchExplainerInput, EvaluatorEntity } from '../opportunity.match-explainer.js';
 import type { UserIdentity } from '../../../protocol/schemas/identity.schema.js';
 import { assertLLM } from '../../shared/agent/tests/llm-assert.js';
 import { computeHydeSourceTextHash } from '../../shared/hyde-documents.js';
@@ -31,26 +31,17 @@ type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGra
 
 const dummyEmbedding = new Array(2000).fill(0.1);
 
-const defaultMockEvaluatorResult: EvaluatedOpportunityWithActors[] = [
-  {
-    reasoning: 'The source user is building a DeFi protocol and the candidate has relevant community and marketing expertise in the crypto space.',
-    score: 88,
-    actors: [
-      { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-      { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const, intentId: null },
-    ],
-  },
-];
+const defaultMockExplainerResult: MatchExplainerResult = {
+  reasoning: 'The source user is building a DeFi protocol and the candidate has relevant community and marketing expertise in the crypto space.',
+};
 
-type EvaluatorOptions = Parameters<NonNullable<OpportunityEvaluatorLike['invokeEntityBundle']>>[1];
-
-function createMockEvaluator(
-  result: EvaluatedOpportunityWithActors[] = defaultMockEvaluatorResult,
-  calls?: EvaluatorOptions[],
-): OpportunityEvaluatorLike {
+function createMockExplainer(
+  result: MatchExplainerResult = defaultMockExplainerResult,
+  calls?: unknown[],
+): MatchExplainerLike {
   return {
-    invokeEntityBundle: async (_input, options) => {
-      calls?.push(options);
+    explain: async (input) => {
+      calls?.push(input);
       return result;
     },
   };
@@ -80,9 +71,9 @@ function createMockGraph(deps?: {
   getNetworkMemberCount?: (id: string) => Promise<number>;
   getNetworkIdsForIntent?: (intentId: string) => Promise<string[]>;
   getProfile?: Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
-  evaluatorResult?: EvaluatedOpportunityWithActors[];
-  evaluator?: OpportunityEvaluatorLike;
-  /** null opts into environment resolution; omitted preserves the legacy test threshold of 70. */
+  explainerResult?: MatchExplainerResult;
+  explainer?: MatchExplainerLike;
+  /** null and omitted are equivalent — both resolve to environment defaults. */
   thresholdOverrides?: OpportunityGraphThresholdOverrides | null;
 }) {
   const mockDb: OpportunityGraphDatabase = {
@@ -160,31 +151,27 @@ function createMockGraph(deps?: {
       }),
   };
 
-  const evaluatorCalls: EvaluatorOptions[] = [];
-  const evaluator = deps?.evaluator ?? createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult, evaluatorCalls);
+  const explainerCalls: unknown[] = [];
+  const explainer = deps?.explainer ?? createMockExplainer(deps?.explainerResult ?? defaultMockExplainerResult, explainerCalls);
   const queueNotification = async () => undefined;
-  const thresholdOverrides = deps?.thresholdOverrides === null
-    ? undefined
-    : deps?.thresholdOverrides ?? { evaluatorMinScore: 70 };
+  const thresholdOverrides = deps?.thresholdOverrides ?? undefined;
   const factory = new OpportunityGraphFactory(
     mockDb,
     mockEmbedder,
     mockHydeGenerator,
-    evaluator,
+    explainer,
     queueNotification,
-    undefined,
     undefined,
     undefined,
     thresholdOverrides,
   );
   const compiledGraph = factory.createGraph();
-  return { compiledGraph, factory, mockDb, mockEmbedder, mockHydeGenerator, evaluator, evaluatorCalls };
+  return { compiledGraph, factory, mockDb, mockEmbedder, mockHydeGenerator, explainer, explainerCalls };
 }
 
 function createMockGraphWithFnOverrides(deps?: {
   getProfileFn?: (userId: string) => Promise<Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>>;
   getActiveIntentsFn?: (userId: string) => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
-  evaluatorResult?: EvaluatedOpportunityWithActors[];
   getUserIndexIds?: () => Promise<Id<'networks'>[]>;
   getNetworkMemberships?: () => Promise<Array<{ networkId: string; networkTitle: string; indexPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; isPersonal: boolean; joinedAt: Date }>>;
   getActiveNetworkMembershipPairsFn?: OpportunityGraphDatabase['getActiveNetworkMembershipPairs'];
@@ -265,18 +252,17 @@ function createMockGraphWithFnOverrides(deps?: {
       }),
   };
 
-  const evaluator = createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult);
+  const explainer = createMockExplainer(defaultMockExplainerResult);
   const queueNotification = async () => undefined;
   const factory = new OpportunityGraphFactory(
     mockDb,
     mockEmbedder,
     mockHyde,
-    evaluator,
+    explainer,
     queueNotification,
     undefined,
     undefined,
-    undefined,
-    deps?.thresholdOverrides ?? { evaluatorMinScore: 70 },
+    deps?.thresholdOverrides,
   );
   const compiledGraph = factory.createGraph();
   return { compiledGraph, mockDb };
@@ -299,7 +285,7 @@ describe('Opportunity Graph', () => {
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('join');
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
       expect(hydeSpy).not.toHaveBeenCalled();
       expect(searchSpy).not.toHaveBeenCalled();
     });
@@ -318,7 +304,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.error).toBeUndefined();
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
     });
   });
 
@@ -389,7 +375,7 @@ describe('Opportunity Graph', () => {
 
       expect(searchSpy).not.toHaveBeenCalled();
       expect(result.error).toContain('not available');
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
     });
 
     test('when trigger intent has no active assigned network, graph discovery fails closed', async () => {
@@ -407,7 +393,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(searchSpy).not.toHaveBeenCalled();
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
     });
 
     test('when indexScope is explicitly empty, discovery fails closed', async () => {
@@ -424,7 +410,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(searchSpy).not.toHaveBeenCalled();
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
     });
 
     test('when indexScope provided, the vector search is intersected and networks outside it are excluded', async () => {
@@ -452,14 +438,12 @@ describe('Opportunity Graph', () => {
   });
 
   describe('configurable discovery thresholds', () => {
-    test('constructor overrides govern retrieval, evaluation filtering, and trace data', async () => {
+    test('constructor overrides govern retrieval and trace data', async () => {
       const thresholds = {
         retrievalMinSimilarity: 0.42,
-        evaluatorMinScore: 63,
       };
-      const { compiledGraph, mockEmbedder, evaluatorCalls } = createMockGraph({
+      const { compiledGraph, mockEmbedder } = createMockGraph({
         thresholdOverrides: thresholds,
-        evaluatorResult: [{ ...defaultMockEvaluatorResult[0], score: 62 }],
       });
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
 
@@ -470,23 +454,20 @@ describe('Opportunity Graph', () => {
       });
 
       expect(searchSpy.mock.calls[0]?.[1]?.minScore).toBe(0.42);
-      expect(evaluatorCalls[0]?.minScore).toBe(63);
-      // Below the evaluator threshold, but it fills the discovery floor with
-      // its own real score when there are no stronger candidates.
-      expect(result.opportunities).toHaveLength(1);
-      expect(parseFloat(result.opportunities[0].confidence)).toBeCloseTo(0.62, 5);
+      // Every candidate that clears retrieval is persisted directly now —
+      // no evaluator score floor.
+      expect(result.candidatesEmitted).toHaveLength(1);
       expect(result.trace).toContainEqual(expect.objectContaining({
         node: 'threshold_filter',
         detail: expect.stringContaining('above 0.42'),
         data: expect.objectContaining({
-          minScore: 0.42,
+          minSimilarity: 0.42,
           retrievalMinSimilarity: 0.42,
-          evaluatorMinScore: 63,
         }),
       }));
     });
 
-    test('the built-in thresholds apply unless constructor overrides are provided', async () => {
+    test('the built-in retrieval threshold applies unless constructor overrides are provided', async () => {
       const fromDefaults = createMockGraph({ thresholdOverrides: null });
       const defaultsSearch = spyOn(fromDefaults.mockEmbedder, 'searchWithHydeEmbeddings');
       await fromDefaults.compiledGraph.invoke({
@@ -495,10 +476,9 @@ describe('Opportunity Graph', () => {
         options: {},
       });
       expect(defaultsSearch.mock.calls[0]?.[1]?.minScore).toBe(DISCOVERY_MIN_SIMILARITY);
-      expect(fromDefaults.evaluatorCalls[0]?.minScore).toBe(DISCOVERY_EVALUATOR_MIN_SCORE);
 
       const fromConstructor = createMockGraph({
-        thresholdOverrides: { retrievalMinSimilarity: 0.52, evaluatorMinScore: 72 },
+        thresholdOverrides: { retrievalMinSimilarity: 0.52 },
       });
       const constructorSearch = spyOn(fromConstructor.mockEmbedder, 'searchWithHydeEmbeddings');
       await fromConstructor.compiledGraph.invoke({
@@ -507,23 +487,6 @@ describe('Opportunity Graph', () => {
         options: {},
       });
       expect(constructorSearch.mock.calls[0]?.[1]?.minScore).toBe(0.52);
-      expect(fromConstructor.evaluatorCalls[0]?.minScore).toBe(72);
-    });
-
-    test('direct-target evaluation keeps the built-in floor despite an evaluator override', async () => {
-      const { compiledGraph, evaluatorCalls } = createMockGraph({
-        thresholdOverrides: { evaluatorMinScore: 80 },
-        evaluatorResult: [{ ...defaultMockEvaluatorResult[0], score: 70 }],
-      });
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        targetUserId: 'b0000000-0000-4000-8000-000000000002' as Id<'users'>,
-        searchQuery: 'Connect with this person',
-        options: {},
-      });
-
-      expect(evaluatorCalls[0]?.minScore).toBe(DISCOVERY_EVALUATOR_MIN_SCORE);
     });
   });
 
@@ -616,16 +579,6 @@ describe('Opportunity Graph', () => {
         getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'networks'>[]),
         getNetwork: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
         getNetworkMemberCount: () => Promise.resolve(5),
-        evaluatorResult: [
-          {
-            reasoning: 'Bob is a great match.',
-            score: 88,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-              { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const, intentId: null },
-            ],
-          },
-        ],
       });
 
       // Same user appears in two indexes from search results
@@ -646,7 +599,7 @@ describe('Opportunity Graph', () => {
           t.node === 'candidate' && t.data?.userId === 'b0000000-0000-4000-8000-000000000002'
       );
       expect(candidateTraceEntries.length).toBe(1);
-      expect(result.opportunities.length).toBe(1);
+      expect(result.candidatesEmitted.length).toBe(1);
     });
 
     test('dedup prefers candidate from index with higher relevancy score on equal similarity', async () => {
@@ -684,16 +637,16 @@ describe('Opportunity Graph', () => {
 
   describe('Evaluation node: rejection cooldown', () => {
     test('applies the rejection cooldown and ranks penalized candidates behind unpenalized candidates', async () => {
-      const evaluatorInputs: EvaluatorInput[] = [];
-      const evaluator: OpportunityEvaluatorLike = {
-        invokeEntityBundle: async (input) => {
-          evaluatorInputs.push(input);
-          return [];
+      const explainerInputs: Array<{ entities: EvaluatorEntity[] }> = [];
+      const explainer: MatchExplainerLike = {
+        explain: async (input) => {
+          explainerInputs.push(input);
+          return { reasoning: 'ok' };
         },
       };
 
       try {
-        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({ evaluator });
+        const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({ explainer });
         const cooldownCalls: Array<{ userId: string; candidateIds: string[]; cooldownMs: number }> = [];
         mockDb.getRecentlyRejectedOpportunityCounterparties = async (userId, candidateIds, cooldownMs) => {
           cooldownCalls.push({ userId, candidateIds: [...candidateIds], cooldownMs });
@@ -718,296 +671,37 @@ describe('Opportunity Graph', () => {
           ],
           cooldownMs: REJECTION_COOLDOWN_MS,
         }]);
-        // One evaluator call per candidate, fired in rank order: the penalized
+        // One explainer call per candidate, fired in rank order: the penalized
         // candidate ranks behind the unpenalized one.
-        expect(evaluatorInputs).toHaveLength(2);
-        expect(evaluatorInputs.map((input) => input.entities[1].userId)).toEqual([
+        expect(explainerInputs).toHaveLength(2);
+        expect(explainerInputs.map((input) => input.entities[1].userId)).toEqual([
           'c0000000-0000-4000-8000-000000000003',
           'b0000000-0000-4000-8000-000000000002',
         ]);
-        expect(evaluatorInputs.map((input) => input.entities[1].ragScore)).toEqual([80, 45]);
+        expect(explainerInputs.map((input) => input.entities[1].ragScore)).toEqual([80, 45]);
       } finally {
         // nothing to restore — the cooldown is a constant now
       }
     });
   });
 
-  describe('Evaluation node: whole-pool evaluation and the match floor', () => {
-    /** Distinct HyDE candidates, ranked by descending score. */
-    const rankedCandidates = (count: number) =>
-      Array.from({ length: count }, (_, i) => ({
-        type: 'intent' as const,
-        id: `intent-q-${i}`,
-        userId: `${String(i).padStart(8, '0')}-0000-4000-8000-000000000000`,
-        score: 0.99 - i * 0.005,
-        matchedVia: 'Painters' as const,
-        networkId: 'idx-1',
-      }));
-
-    const SOURCE_USER_ID = 'a0000000-0000-4000-8000-000000000001';
-
-    const passingVerdict = (candidateUserId: string, score = 80) => ({
-      reasoning: 'The candidate funds the stage and sector the source user is raising for.',
-      score,
-      actors: [
-        { userId: SOURCE_USER_ID, role: 'patient' as const, intentId: null },
-        { userId: candidateUserId, role: 'agent' as const, intentId: null },
-      ],
-    });
-
-    /** A rejected verdict that can fill the discovery floor. */
-    const rejectedVerdict = (candidateUserId: string, score: number) => ({
-      reasoning: 'Complementary-role mismatch.',
-      score,
-      actors: [
-        { userId: SOURCE_USER_ID, role: 'peer' as const, intentId: null },
-        { userId: candidateUserId, role: 'peer' as const, intentId: null },
-      ],
-      rejection: { candidateId: candidateUserId, reason: 'not_accepted' as const },
-    });
-
-    /** A guard-dropped verdict — never a floor candidate. */
-    const guardDroppedVerdict = (
-      candidateUserId: string,
-      score: number,
-      reason: 'incomplete_actors' | 'unsupported_claim',
-    ) => ({
-      reasoning: 'Guard dropped this verdict.',
-      score,
-      actors: [],
-      rejection: { candidateId: candidateUserId, reason },
-    });
-
-    /** Records the candidate ids handed to each evaluator call. */
-    const recordingEvaluator = (
-      seenCalls: string[][],
-      verdictFor: (candidateId: string) => EvaluatedOpportunityWithActors[],
-    ): OpportunityEvaluatorLike => ({
-      invokeEntityBundle: async (input) => {
-        const candidateIds = input.entities.slice(1).map((e) => e.userId);
-        seenCalls.push(candidateIds);
-        return candidateIds.flatMap(verdictFor);
-      },
-    });
-
-    test('evaluates every candidate in one round — a passer deep in the tail is still found', async () => {
-      // 30 candidates, one passer at rank 27 — no batch boundary to strand it behind.
-      const candidates = rankedCandidates(30);
-      const passerId = candidates[27].userId;
-      const seenCalls: string[][] = [];
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: recordingEvaluator(seenCalls, (id) =>
-          id === passerId ? [passingVerdict(id)] : [rejectedVerdict(id, 20)],
-        ),
-        thresholdOverrides: { evaluatorMinScore: 50 },
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
-
-      const result = (await compiledGraph.invoke({
-        userId: SOURCE_USER_ID as Id<'users'>,
-        searchQuery: 'painters',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      // One round, every candidate evaluated — no batching.
-      expect(seenCalls).toHaveLength(30);
-      expect(seenCalls.flat()).toContain(passerId);
-      const passerActor = result.opportunities.flatMap((o) => o.actors).find((a) => a.userId === passerId);
-      expect(passerActor).toBeDefined();
-    });
-
-    test('surfaces every passing candidate uncapped — more than the old 20-item ranking default', async () => {
-      const candidates = rankedCandidates(25);
-      const seenCalls: string[][] = [];
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: recordingEvaluator(seenCalls, (id) => [passingVerdict(id, 90)]),
-        thresholdOverrides: { evaluatorMinScore: 50 },
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
-
-      const result = (await compiledGraph.invoke({
-        userId: SOURCE_USER_ID as Id<'users'>,
-        searchQuery: 'painters',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.opportunities).toHaveLength(25);
-    });
-
-    test('fills below the match floor with the best-scored rejects, tiebroken by similarity', async () => {
-      // 15 candidates ranked by similarity; only the top 3 pass.
-      const candidates = rankedCandidates(15);
-      const passerIds = new Set(candidates.slice(0, 3).map((c) => c.userId));
-      // Rejects get varied scores so the top 7 by score are deterministic.
-      const rejectScoreByIndex = new Map(candidates.slice(3).map((c, i) => [c.userId, 49 - i]));
-      const seenCalls: string[][] = [];
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: recordingEvaluator(seenCalls, (id) =>
-          passerIds.has(id) ? [passingVerdict(id, 90)] : [rejectedVerdict(id, rejectScoreByIndex.get(id)!)],
-        ),
-        thresholdOverrides: { evaluatorMinScore: 50 },
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
-
-      const result = (await compiledGraph.invoke({
-        userId: SOURCE_USER_ID as Id<'users'>,
-        searchQuery: 'painters',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.opportunities).toHaveLength(10);
-      const counterpartIds = result.opportunities.map(
-        (o) => o.actors.find((a) => a.userId !== SOURCE_USER_ID)!.userId,
-      );
-      const expectedFillIds = candidates.slice(3, 10).map((candidate) => candidate.userId);
-      for (const id of expectedFillIds) expect(counterpartIds).toContain(id);
-      const fillOpp = result.opportunities.find((opportunity) =>
-        opportunity.actors.find((actor) => actor.userId === expectedFillIds[0]),
-      );
-      expect(parseFloat(fillOpp?.confidence ?? 'NaN')).toBeCloseTo(rejectScoreByIndex.get(expectedFillIds[0])! / 100, 5);
-    });
-
-    test('never pads past the pool — a small rejected pool stays small', async () => {
-      const candidates = rankedCandidates(4);
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: recordingEvaluator([], (id) => [rejectedVerdict(id, 10)]),
-        thresholdOverrides: { evaluatorMinScore: 50 },
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
-
-      const result = (await compiledGraph.invoke({
-        userId: SOURCE_USER_ID as Id<'users'>,
-        searchQuery: 'painters',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.opportunities).toHaveLength(4);
-    });
-
-    test('guard-dropped verdicts never fill, even when the floor is unmet', async () => {
-      const candidates = rankedCandidates(5);
-      const [passer, ...rest] = candidates;
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluator: recordingEvaluator([], (id) => {
-          if (id === passer.userId) return [passingVerdict(id, 90)];
-          return [guardDroppedVerdict(id, 95, 'unsupported_claim')];
-        }),
-        thresholdOverrides: { evaluatorMinScore: 50 },
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(candidates);
-
-      const result = (await compiledGraph.invoke({
-        userId: SOURCE_USER_ID as Id<'users'>,
-        searchQuery: 'painters',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      // Only the single passer — guard drops (even with a higher score) never fill.
-      expect(result.opportunities).toHaveLength(1);
-      const counterpartId = result.opportunities[0].actors.find((a) => a.userId !== SOURCE_USER_ID)?.userId;
-      expect(counterpartId).toBe(passer.userId);
-      void rest;
-    });
-  });
-
-  /**
-   * An evaluator that returns nothing for a candidate is ambiguous on its own:
-   * the model may have judged the pairing unviable, or a deterministic guard may
-   * have dropped an accepted verdict. The trace has to distinguish them.
-   */
-  describe('Evaluation node: verdict diagnostics', () => {
-    const CANDIDATE_ID = 'b0000000-0000-4000-8000-000000000002';
-
-    const diagnosticEvaluator = (
-      entries: EvaluatedOpportunityWithActors[],
-    ): OpportunityEvaluatorLike => ({
-      invokeEntityBundle: async () => entries,
-    });
-
-    const runWith = async (evaluator: OpportunityEvaluatorLike) => {
-      const { compiledGraph } = createMockGraph({ evaluator, thresholdOverrides: { evaluatorMinScore: 50 } });
-      return (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-    };
-
-    test('reports the model\'s own rejection with its score and reasoning, and fills the floor with it', async () => {
-      const result = await runWith(diagnosticEvaluator([{
-        reasoning: 'Same-side match: both are seeking investment rather than offering it.',
-        score: 12,
-        actors: [],
-        rejection: { candidateId: CANDIDATE_ID, reason: 'not_accepted' },
-      }]));
-
-      expect(result.evaluatedOpportunities).toHaveLength(1);
-      expect(result.evaluatedOpportunities[0].score).toBe(12);
-      expect(result.trace).toContainEqual(expect.objectContaining({
-        node: 'candidate',
-        data: expect.objectContaining({
-          userId: CANDIDATE_ID,
-          score: 12,
-          passed: false,
-          filled: true,
-          rejectionReason: 'not_accepted',
-          reasoning: 'Same-side match: both are seeking investment rather than offering it.',
-        }),
-      }));
-    });
-
-    test('surfaces a guard drop instead of letting it look like silence', async () => {
-      const result = await runWith(diagnosticEvaluator([{
-        reasoning: 'Both will be at the same event.',
-        score: 88,
-        actors: [],
-        rejection: { candidateId: CANDIDATE_ID, reason: 'unsupported_claim' },
-      }]));
-
-      expect(result.evaluatedOpportunities).toEqual([]);
-      expect(result.trace).toContainEqual(expect.objectContaining({
-        node: 'evaluation_dropped',
-        data: expect.objectContaining({
-          droppedCount: 1,
-          drops: [{ candidateUserId: CANDIDATE_ID, reason: 'unsupported_claim', score: 88 }],
-        }),
-      }));
-      // A high-scoring guard drop must never reach persistence.
-      expect(result.opportunities).toEqual([]);
-    });
-
-    test('says "no verdict" only when the evaluator really returned nothing', async () => {
-      const result = await runWith(diagnosticEvaluator([]));
-
-      expect(result.trace).toContainEqual(expect.objectContaining({
-        node: 'candidate',
-        detail: expect.stringContaining('✗ no verdict'),
-        data: expect.objectContaining({
-          userId: CANDIDATE_ID,
-          score: undefined,
-          reasoning: 'Evaluator returned no verdict for this candidate',
-        }),
-      }));
-    });
-  });
-
   describe('Evaluation and Persist', () => {
-    test('forwards an aborted request signal to the evaluator model without retrying', async () => {
+    test('forwards an aborted request signal to the explainer model without retrying', async () => {
       const controller = new AbortController();
       const abortReason = new Error('caller cancelled discovery');
       controller.abort(abortReason);
-      let evaluatorCalls = 0;
+      let explainerModelCalls = 0;
       let receivedSignal: AbortSignal | undefined;
-      const entityBundleModel = {
+      const explainerModel = {
         invoke: async (_messages: unknown, config?: { signal?: AbortSignal }) => {
-          evaluatorCalls += 1;
+          explainerModelCalls += 1;
           receivedSignal = config?.signal;
-          throw config?.signal?.reason ?? new Error('missing evaluator cancellation signal');
+          throw config?.signal?.reason ?? new Error('missing explainer cancellation signal');
         },
       } as unknown as Runnable;
-      const evaluator = new OpportunityEvaluator({ entityBundleModel });
-      const evaluatorSpy = spyOn(evaluator, 'invokeEntityBundle');
-      const { compiledGraph } = createMockGraph({ evaluator });
+      const explainer = new MatchExplainer({ model: explainerModel });
+      const explainerSpy = spyOn(explainer, 'explain');
+      const { compiledGraph } = createMockGraph({ explainer });
 
       await requestContext.run({ abortSignal: controller.signal }, async () => {
         await compiledGraph.invoke({
@@ -1017,27 +711,20 @@ describe('Opportunity Graph', () => {
         } as OpportunityGraphInvokeInput);
       });
 
-      expect(evaluatorSpy).toHaveBeenCalledWith(
+      expect(explainerSpy).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ signal: controller.signal }),
       );
       expect(receivedSignal?.aborted).toBe(true);
       expect(receivedSignal?.reason).toBe(abortReason);
-      expect(evaluatorCalls).toBe(1);
+      expect(explainerModelCalls).toBe(1);
     });
 
-    test('rejects unsafe custom-evaluator reasoning again at the persistence boundary', async () => {
+    test('rejects unsafe custom-explainer reasoning before a candidate is recorded', async () => {
       const { compiledGraph, mockDb } = createMockGraph({
-        evaluatorResult: [{
-          reasoning: 'Alice and Bob will both be at Edge Esmeralda.',
-          score: 90,
-          actors: [
-            { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient', intentId: null },
-            { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent', intentId: null },
-          ],
-        }],
+        explainerResult: { reasoning: 'Alice and Bob will both be at Edge Esmeralda.' },
       });
-      const createSpy = spyOn(mockDb, 'createOpportunity');
+      const createSpy = spyOn(mockDb, 'upsertDiscoveryMatchCandidates');
 
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
@@ -1046,15 +733,15 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(createSpy).not.toHaveBeenCalled();
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
     });
 
     test('removes inactive candidate pairs before evaluation and pagination', async () => {
       const getActiveNetworkMembershipPairs = mock(async (
         pairs: Array<{ userId: string; networkId: string }>,
       ) => pairs.filter((pair) => pair.userId === 'a0000000-0000-4000-8000-000000000001'));
-      const { compiledGraph, evaluator } = createMockGraph({ getActiveNetworkMembershipPairs });
-      const evaluatorSpy = spyOn(evaluator, 'invokeEntityBundle');
+      const { compiledGraph, explainer } = createMockGraph({ getActiveNetworkMembershipPairs });
+      const explainerSpy = spyOn(explainer, 'explain');
 
       const result = await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
@@ -1063,37 +750,12 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(getActiveNetworkMembershipPairs).toHaveBeenCalled();
-      expect(evaluatorSpy).not.toHaveBeenCalled();
+      expect(explainerSpy).not.toHaveBeenCalled();
       expect(result.candidates).toEqual([]);
       expect(result.evaluatedOpportunities).toEqual([]);
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
     });
 
-    test('skips persistence when a participant membership is removed after evaluation', async () => {
-      let activePairCheck = 0;
-      const getActiveNetworkMembershipPairs = mock(async (
-        pairs: Array<{ userId: string; networkId: string }>,
-      ) => {
-        activePairCheck += 1;
-        return activePairCheck === 1
-          ? pairs
-          : pairs.filter((pair) => pair.userId === 'a0000000-0000-4000-8000-000000000001');
-      });
-      const { compiledGraph, mockDb, evaluator } = createMockGraph({ getActiveNetworkMembershipPairs });
-      const evaluatorSpy = spyOn(evaluator, 'invokeEntityBundle');
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-
-      const result = await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput);
-
-      expect(evaluatorSpy).toHaveBeenCalledTimes(1);
-      expect(getActiveNetworkMembershipPairs).toHaveBeenCalledTimes(2);
-      expect(createSpy).not.toHaveBeenCalled();
-      expect(result.opportunities).toEqual([]);
-    });
 
     test('fails closed when the trigger intent is unassigned after initial scope resolution', async () => {
       let assignmentRead = 0;
@@ -1114,42 +776,12 @@ describe('Opportunity Graph', () => {
 
       expect(assignmentRead).toBeGreaterThanOrEqual(2);
       expect(createIfEligible).not.toHaveBeenCalled();
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
     });
 
-    test('fails closed when the adapter lacks an eligibility-locked create method', async () => {
-      const { compiledGraph, mockDb } = createMockGraph();
-      mockDb.createOpportunityIfNetworkEligible = undefined;
-      const unguardedCreate = spyOn(mockDb, 'createOpportunity');
 
-      const result = await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput);
 
-      expect(unguardedCreate).not.toHaveBeenCalled();
-      expect(result.opportunities).toEqual([]);
-    });
-
-    test('uses the adapter eligibility lock at the final create boundary', async () => {
-      const { compiledGraph, mockDb } = createMockGraph();
-      const createIfEligible = mock(async () => null);
-      mockDb.createOpportunityIfNetworkEligible = createIfEligible;
-      const unguardedCreate = spyOn(mockDb, 'createOpportunity');
-
-      const result = await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput);
-
-      expect(createIfEligible).toHaveBeenCalledTimes(1);
-      expect(unguardedCreate).not.toHaveBeenCalled();
-      expect(result.opportunities).toEqual([]);
-    });
-
-    test('when discovery returns intent candidates and evaluator returns one, opportunity is created', async () => {
+    test('when discovery returns an intent candidate, a candidate is emitted', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
@@ -1168,15 +800,16 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].detection.source).toBe('opportunity_graph');
-      expect(result.opportunities[0].actors.length).toBe(2);
-      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.userId === 'b0000000-0000-4000-8000-000000000002')).toBe(true);
+      expect(result.candidatesEmitted.length).toBe(1);
+      // Both seats on one row: either principal's agent can open it.
+      expect(result.candidatesEmitted[0].userA).toBe('a0000000-0000-4000-8000-000000000001');
+      expect(result.candidatesEmitted[0].userB).toBe('b0000000-0000-4000-8000-000000000002');
+      expect(result.candidatesEmitted[0].intentB).toBe('intent-bob');
     });
 
-    test('persists typed opportunity evidence in metadata', async () => {
+    test('carries typed opportunity evidence onto the candidate', async () => {
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
+      const upsertSpy = spyOn(mockDb, 'upsertDiscoveryMatchCandidates');
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'intent' as const,
@@ -1194,8 +827,8 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput);
 
-      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
-        metadata: expect.objectContaining({
+      expect(upsertSpy).toHaveBeenCalledWith(expect.arrayContaining([
+        expect.objectContaining({
           evidence: expect.arrayContaining([
             expect.objectContaining({
               kind: 'query_intent',
@@ -1206,19 +839,16 @@ describe('Opportunity Graph', () => {
             }),
           ]),
         }),
-      }));
+      ]));
     });
 
   });
 
   describe('Ranking node', () => {
     test('sorts by score and applies limit', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          { reasoning: 'Technical help match.', score: 85, actors: [{ userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient', intentId: null }, { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent', intentId: null }] },
-          { reasoning: 'Complementary interests in developer tools.', score: 92, actors: [{ userId: 'a0000000-0000-4000-8000-000000000001', role: 'peer', intentId: null }, { userId: 'c0000000-0000-4000-8000-000000000003', role: 'peer', intentId: null }] },
-        ],
-      });
+      // Score is derived from discovery similarity now — the higher-similarity
+      // candidate (c, 0.9) should outrank the lower one (bob, 0.8).
+      const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.8, matchedVia: 'mirror' as const, networkId: 'idx-1' },
         { type: 'intent' as const, id: 'intent-alice', userId: 'c0000000-0000-4000-8000-000000000003', score: 0.9, matchedVia: 'reciprocal' as const, networkId: 'idx-1' },
@@ -1230,521 +860,12 @@ describe('Opportunity Graph', () => {
         options: { limit: 1 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.userId === 'c0000000-0000-4000-8000-000000000003')).toBe(true);
+      expect(result.candidatesEmitted.length).toBe(1);
+      expect(result.candidatesEmitted[0].userB).toBe('c0000000-0000-4000-8000-000000000003');
     });
   });
 
-  describe('Persist node: initialStatus', () => {
-    test('when options.initialStatus is "latent", opportunities are created with status latent', async () => {
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-bob',
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          score: 0.9,
-          matchedVia: 'mirror' as const,
-          networkId: 'idx-1',
-        },
-      ]);
 
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: { initialStatus: 'latent' },
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].status).toBe('latent');
-      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'latent' }));
-    });
-
-    test('when options.initialStatus is omitted, createOpportunity is called with status pending', async () => {
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-bob',
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          score: 0.9,
-          matchedVia: 'mirror' as const,
-          networkId: 'idx-1',
-        },
-      ]);
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput);
-
-      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
-    });
-
-    test('does not persist a literal null evaluator actor intent', async () => {
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-        evaluatorResult: [{
-          reasoning: 'A strong provider-free regression match.',
-          score: 90,
-          actors: [
-            {
-              userId: 'a0000000-0000-4000-8000-000000000001',
-              role: 'patient',
-              intentId: 'null',
-            },
-            {
-              userId: 'b0000000-0000-4000-8000-000000000002',
-              role: 'agent',
-              intentId: '  intent-1  ',
-            },
-          ],
-        }],
-      });
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([{
-        type: 'intent',
-        id: 'intent-bob',
-        userId: 'b0000000-0000-4000-8000-000000000002',
-        score: 0.9,
-        matchedVia: 'mirror',
-        networkId: 'idx-1',
-      }]);
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput);
-
-      const persisted = createSpy.mock.calls[0]?.[0];
-      const sourceActor = persisted?.actors.find((actor) =>
-        actor.userId === 'a0000000-0000-4000-8000-000000000001');
-      const candidateActor = persisted?.actors.find((actor) =>
-        actor.userId === 'b0000000-0000-4000-8000-000000000002');
-      expect(Object.prototype.hasOwnProperty.call(sourceActor ?? {}, 'intent')).toBe(false);
-      expect(candidateActor?.intent).toBe('intent-1');
-    });
-
-    test('when evaluator assigns discoverer as agent (no introducer), persist swaps discoverer to patient', async () => {
-      // Evaluator thinks the discoverer (a0000000-0000-4000-8000-000000000001) is the agent (provider) and
-      // the candidate (b0000000-0000-4000-8000-000000000002) is the patient (seeker). The lifecycle guard in the
-      // persist node should swap them so the discoverer always sees first at latent.
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          {
-            reasoning: 'Source can offer mentoring to candidate.',
-            score: 85,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'agent' as const, intentId: null },
-              { userId: 'b0000000-0000-4000-8000-000000000002', role: 'patient' as const, intentId: null },
-            ],
-          },
-        ],
-      });
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-bob',
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          score: 0.9,
-          matchedVia: 'mirror' as const,
-          networkId: 'idx-1',
-        },
-      ]);
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: { initialStatus: 'latent' },
-      } as OpportunityGraphInvokeInput);
-
-      expect(createSpy).toHaveBeenCalled();
-      const createdData = createSpy.mock.calls[0][0];
-      const discovererActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'a0000000-0000-4000-8000-000000000001');
-      const counterpartActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'b0000000-0000-4000-8000-000000000002');
-      // Discoverer should have been swapped from agent → patient
-      expect(discovererActor?.role).toBe('patient');
-      // Counterpart should have been swapped from patient → agent
-      expect(counterpartActor?.role).toBe('agent');
-    });
-
-    test('when evaluator assigns discoverer as patient, no swap occurs', async () => {
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          {
-            reasoning: 'Source needs mentoring from candidate.',
-            score: 85,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-              { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const, intentId: null },
-            ],
-          },
-        ],
-      });
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-bob',
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          score: 0.9,
-          matchedVia: 'mirror' as const,
-          networkId: 'idx-1',
-        },
-      ]);
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: { initialStatus: 'latent' },
-      } as OpportunityGraphInvokeInput);
-
-      expect(createSpy).toHaveBeenCalled();
-      const createdData = createSpy.mock.calls[0][0];
-      const discovererActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'a0000000-0000-4000-8000-000000000001');
-      const counterpartActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'b0000000-0000-4000-8000-000000000002');
-      // No swap — discoverer stays patient, counterpart stays agent
-      expect(discovererActor?.role).toBe('patient');
-      expect(counterpartActor?.role).toBe('agent');
-    });
-
-    test('when evaluator assigns both as peers, no swap occurs', async () => {
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          {
-            reasoning: 'Symmetric collaboration match.',
-            score: 90,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'peer' as const, intentId: null },
-              { userId: 'b0000000-0000-4000-8000-000000000002', role: 'peer' as const, intentId: null },
-            ],
-          },
-        ],
-      });
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-bob',
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          score: 0.9,
-          matchedVia: 'collaborator' as const,
-          networkId: 'idx-1',
-        },
-      ]);
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: { initialStatus: 'latent' },
-      } as OpportunityGraphInvokeInput);
-
-      expect(createSpy).toHaveBeenCalled();
-      const createdData = createSpy.mock.calls[0][0];
-      const discovererActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'a0000000-0000-4000-8000-000000000001');
-      const counterpartActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'b0000000-0000-4000-8000-000000000002');
-      // Both stay peer — no swap needed
-      expect(discovererActor?.role).toBe('peer');
-      expect(counterpartActor?.role).toBe('peer');
-    });
-  });
-
-  describe('Persist node: dedup via findOpportunitiesByActors', () => {
-    test('when pending opportunity exists between actors, skips creation and adds to existingBetweenActors', async () => {
-      const existingOpp: Opportunity = {
-        id: 'opp-existing-pending',
-        status: 'pending',
-        actors: [
-          { networkId: 'idx-1', userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const },
-          { networkId: 'idx-1', userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const },
-        ],
-        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
-        interpretation: { category: 'collaboration', reasoning: 'Previous match', confidence: 0.8 },
-        context: {},
-        confidence: '0.8',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockDb, 'findOpportunitiesByActors').mockResolvedValue([existingOpp]);
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(createSpy).not.toHaveBeenCalled();
-      expect(result.opportunities.length).toBe(0);
-      expect(result.existingBetweenActors.length).toBe(1);
-      expect(result.existingBetweenActors[0].candidateUserId).toBe('b0000000-0000-4000-8000-000000000002');
-      expect(result.existingBetweenActors[0].existingStatus).toBe('pending');
-    });
-
-    test('when an expired opportunity exists, reactivates it through the eligibility lock', async () => {
-      const expiredOpp: Opportunity = {
-        id: 'opp-expired',
-        status: 'expired',
-        actors: [
-          { networkId: 'idx-1', userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const },
-          { networkId: 'idx-1', userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const },
-        ],
-        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
-        interpretation: { category: 'collaboration', reasoning: 'Old match', confidence: 0.7 },
-        context: { networkId: 'idx-1' },
-        confidence: '0.7',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-      const reactivatedOpp: Opportunity = { ...expiredOpp, status: 'pending', updatedAt: new Date() };
-
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      const unguardedUpdateSpy = spyOn(mockDb, 'updateOpportunityStatus');
-      const eligibleUpdate = mock(async () => reactivatedOpp);
-      mockDb.updateOpportunityStatusIfNetworkEligible = eligibleUpdate;
-      spyOn(mockDb, 'findOpportunitiesByActors').mockResolvedValue([expiredOpp]);
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(createSpy).not.toHaveBeenCalled();
-      expect(unguardedUpdateSpy).not.toHaveBeenCalled();
-      expect(eligibleUpdate).toHaveBeenCalledWith(
-        'opp-expired',
-        'pending',
-        expiredOpp.actors,
-        {
-          ownerUserId: 'a0000000-0000-4000-8000-000000000001',
-          allowedNetworkIds: ['idx-1'],
-        },
-        'expired',
-      );
-      expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].id).toBe('opp-expired');
-      expect(result.opportunities[0].status).toBe('pending');
-      expect(result.existingBetweenActors.length).toBe(0);
-    });
-
-    test('does not reactivate an opportunity from outside the explicit discovery scope', async () => {
-      const expiredOutsideScope: Opportunity = {
-        id: 'opp-expired-network-b',
-        status: 'expired',
-        actors: [
-          { networkId: 'idx-b', userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' },
-          { networkId: 'idx-b', userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' },
-        ],
-        detection: { source: 'opportunity_graph', timestamp: new Date().toISOString() },
-        interpretation: { category: 'collaboration', reasoning: 'Old network B match', confidence: 0.7 },
-        context: { networkId: 'idx-b' },
-        confidence: '0.7',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
-        getUserIndexIds: async () => ['idx-a', 'idx-b'] as Id<'networks'>[],
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent',
-          id: 'intent-bob',
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          score: 0.9,
-          matchedVia: 'mirror',
-          networkId: 'idx-a',
-        },
-      ]);
-      spyOn(mockDb, 'findOpportunitiesByActors').mockResolvedValue([expiredOutsideScope]);
-      const eligibleUpdate = mock(async () => ({ ...expiredOutsideScope, status: 'pending' as const }));
-      mockDb.updateOpportunityStatusIfNetworkEligible = eligibleUpdate;
-
-      const result = await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        indexScope: ['idx-a'] as Id<'networks'>[],
-        options: {},
-      } as OpportunityGraphInvokeInput);
-
-      expect(eligibleUpdate).not.toHaveBeenCalled();
-      expect(result.opportunities).toEqual([]);
-    });
-
-    test('when existing opportunity has 3 actors (viewer + candidate + third-party), dedup still detects overlap', async () => {
-      const threeActorOpp: Opportunity = {
-        id: 'opp-three-actors',
-        status: 'pending',
-        actors: [
-          { networkId: 'idx-1', userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const },
-          { networkId: 'idx-1', userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const },
-          { networkId: 'idx-1', userId: 'a1000000-0000-4000-8000-000000000007', role: 'peer' as const },
-        ],
-        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
-        interpretation: { category: 'collaboration', reasoning: 'Three-way match', confidence: 0.85 },
-        context: {},
-        confidence: '0.85',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockDb, 'findOpportunitiesByActors').mockResolvedValue([threeActorOpp]);
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(createSpy).not.toHaveBeenCalled();
-      expect(result.opportunities.length).toBe(0);
-      expect(result.existingBetweenActors.length).toBe(1);
-      expect(result.existingBetweenActors[0].candidateUserId).toBe('b0000000-0000-4000-8000-000000000002');
-      expect(result.existingBetweenActors[0].existingStatus).toBe('pending');
-    });
-
-    test('when no overlapping opportunity exists, creates new opportunity normally', async () => {
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockDb, 'findOpportunitiesByActors').mockResolvedValue([]);
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(createSpy).toHaveBeenCalled();
-      expect(result.opportunities.length).toBe(1);
-      expect(result.existingBetweenActors.length).toBe(0);
-    });
-
-    test('when latent opportunity exists between actors, dedup prevents duplicate creation (IND-166)', async () => {
-      const latentOpp: Opportunity = {
-        id: 'opp-latent',
-        status: 'latent',
-        actors: [
-          { networkId: 'idx-1', userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const },
-          { networkId: 'idx-1', userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const },
-        ],
-        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
-        interpretation: { category: 'collaboration', reasoning: 'Background match', confidence: 0.75 },
-        context: {},
-        confidence: '0.75',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockDb, 'findOpportunitiesByActors').mockResolvedValue([latentOpp]);
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: { initialStatus: 'latent' },
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      // Should NOT create a new opportunity — latent dedup kicks in
-      expect(createSpy).not.toHaveBeenCalled();
-      expect(result.opportunities.length).toBe(0);
-      expect(result.existingBetweenActors.length).toBe(1);
-      expect(result.existingBetweenActors[0].existingStatus).toBe('latent');
-    });
-
-    test('when latent opportunity exists and initialStatus is pending, upgrades to pending (IND-166)', async () => {
-      const latentOpp: Opportunity = {
-        id: 'opp-latent-upgrade',
-        status: 'latent',
-        actors: [
-          { networkId: 'idx-1', userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const },
-          { networkId: 'idx-1', userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const },
-        ],
-        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
-        interpretation: { category: 'collaboration', reasoning: 'Background match', confidence: 0.75 },
-        context: {},
-        confidence: '0.75',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-      const upgradedOpp: Opportunity = { ...latentOpp, status: 'pending', updatedAt: new Date() };
-
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      spyOn(mockDb, 'findOpportunitiesByActors').mockResolvedValue([latentOpp]);
-      const updateSpy = spyOn(mockDb, 'updateOpportunityStatus').mockResolvedValue(upgradedOpp);
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},  // initialStatus defaults to 'pending'
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      // Should upgrade, not create
-      expect(createSpy).not.toHaveBeenCalled();
-      expect(updateSpy).toHaveBeenCalledWith('opp-latent-upgrade', 'pending');
-      expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].status).toBe('pending');
-    });
-
-    test('when existing draft opportunity exists between actors, allows creation (does not dedup)', async () => {
-      // Draft opportunities are excluded via excludeStatuses in the DB query,
-      // so findOpportunitiesByActors returns [] when only drafts exist.
-      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-      const findByActorsSpy = spyOn(mockDb, 'findOpportunitiesByActors').mockResolvedValue([]);
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        { type: 'intent' as const, id: 'intent-bob', userId: 'b0000000-0000-4000-8000-000000000002', score: 0.9, matchedVia: 'mirror' as const, networkId: 'idx-1' },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(findByActorsSpy).toHaveBeenCalledWith(
-        expect.arrayContaining(['a0000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000002']),
-        { excludeStatuses: ['draft'] },
-      );
-      expect(createSpy).toHaveBeenCalled();
-      expect(result.opportunities.length).toBe(1);
-      expect(result.existingBetweenActors.length).toBe(0);
-    });
-  });
 
   describe('Conditional routing: early exit', () => {
     test('when no network memberships, full invoke does not call HyDE or search or createOpportunity', async () => {
@@ -1801,21 +922,21 @@ describe('Opportunity Graph', () => {
       const result = (await compiledGraph.invoke({
         userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
         searchQuery: 'co-founder',
-        options: { initialStatus: 'latent', limit: 5 },
+        options: { limit: 5 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.opportunities).toBeDefined();
-      expect(Array.isArray(result.opportunities)).toBe(true);
-      if (result.opportunities.length > 0) {
-        const opp = result.opportunities[0];
-        expect(opp.detection.source).toBe('opportunity_graph');
-        expect(opp.detection.createdBy).toBe('agent-opportunity-finder');
-        expect(opp.interpretation.reasoning).toBeDefined();
-        // context.networkId is set only when user explicitly scoped search; actor tokens carry discovery networkId
-        expect(opp.actors.length).toBeGreaterThanOrEqual(1);
-        expect(opp.actors[0].networkId).toBeDefined();
-        expect(opp.actors[0].userId).toBeDefined();
-        expect(opp.status).toBe('latent');
+      expect(result.candidatesEmitted).toBeDefined();
+      expect(Array.isArray(result.candidatesEmitted)).toBe(true);
+      if (result.candidatesEmitted.length > 0) {
+        const candidate = result.candidatesEmitted[0];
+        // A candidate is a pair, not a row: two seats, one network, one key.
+        expect(candidate.pairKey).toBeDefined();
+        expect(candidate.networkId).toBeDefined();
+        expect(candidate.reasoning).toBeDefined();
+        expect(candidate.userA).toBeDefined();
+        expect(candidate.userB).toBeDefined();
+        expect(candidate.intentA).toBeDefined();
+        expect(candidate.intentB).toBeDefined();
       }
     });
 
@@ -1829,170 +950,16 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.opportunities).toEqual([]);
+      expect(result.candidatesEmitted).toEqual([]);
       expect(result.candidates).toEqual([]);
     });
 
-    test('when evaluator returns empty (below minScore), opportunities remain empty', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluatorResult: [],
-        thresholdOverrides: { evaluatorMinScore: 80 },
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-bob',
-          userId: 'b0000000-0000-4000-8000-000000000002',
-          score: 0.6,
-          matchedVia: 'mirror' as const,
-          networkId: 'idx-1',
-        },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        options: {},
-      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
-
-      expect(result.candidates.length).toBeGreaterThanOrEqual(1);
-      expect(result.opportunities).toEqual([]);
-    });
   });
 
-  describe('create_introduction path', () => {
-    const introEntities = [
-      { userId: 'c0000000-0000-4000-8000-000000000003', profile: { name: 'Alice' }, networkId: 'idx-1' },
-      { userId: 'b0000000-0000-4000-8000-000000000002', profile: { name: 'Bob' }, networkId: 'idx-1' },
-    ];
-
-    test('with valid entities and hint returns one opportunity with manual detection and introducer actor', async () => {
-      const { factory, mockDb, evaluatorCalls } = createMockGraph({
-        thresholdOverrides: { evaluatorMinScore: 80 },
-        evaluatorResult: [
-          {
-            reasoning: 'Alice and Bob should collaborate.',
-            score: 85,
-            actors: [
-              { userId: 'c0000000-0000-4000-8000-000000000003', role: 'peer' as const, intentId: null },
-              { userId: 'b0000000-0000-4000-8000-000000000002', role: 'peer' as const, intentId: null },
-            ],
-          },
-        ],
-      });
-      const createSpy = spyOn(mockDb, 'createOpportunity');
-
-      const result = (await factory.createIntroduction({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        networkId: 'idx-1' as Id<'networks'>,
-        introductionEntities: introEntities,
-        introductionHint: 'both AI devs',
-      })) as OpportunityGraphInvokeResult;
-
-      expect(result.error).toBeUndefined();
-      expect(evaluatorCalls[0]?.minScore).toBe(0);
-      expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].detection.source).toBe('manual');
-      expect(result.opportunities[0].detection.createdBy).toBe('a0000000-0000-4000-8000-000000000001');
-      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.role === 'introducer' && a.userId === 'a0000000-0000-4000-8000-000000000001')).toBe(true);
-      expect(createSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          detection: expect.objectContaining({ source: 'manual', createdBy: 'a0000000-0000-4000-8000-000000000001' }),
-          status: 'latent',
-        })
-      );
-    });
-
-    test('when requiredNetworkId does not match networkId returns error', async () => {
-      const { factory } = createMockGraph();
-
-      const result = (await factory.createIntroduction({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        networkId: 'idx-1' as Id<'networks'>,
-        introductionEntities: introEntities,
-        requiredNetworkId: 'idx-other' as Id<'networks'>,
-      })) as OpportunityGraphInvokeResult;
-
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain('scoped');
-      expect(result.opportunities?.length ?? 0).toBe(0);
-    });
-
-    test('when opportunityExistsBetweenActors returns true returns error', async () => {
-      const { factory, mockDb } = createMockGraph();
-      spyOn(mockDb, 'opportunityExistsBetweenActors').mockResolvedValue(true);
-
-      const result = (await factory.createIntroduction({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        networkId: 'idx-1' as Id<'networks'>,
-        introductionEntities: introEntities,
-      })) as OpportunityGraphInvokeResult;
-
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain('already exists');
-      expect(result.opportunities?.length ?? 0).toBe(0);
-    });
-
-    test('when introducer is not network member returns error', async () => {
-      const { factory, mockDb } = createMockGraph();
-      spyOn(mockDb, 'isNetworkMember').mockImplementation(async (networkId: string, userId: string) => {
-        if (userId === 'a0000000-0000-4000-8000-000000000001') return false;
-        return true;
-      });
-
-      const result = (await factory.createIntroduction({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        networkId: 'idx-1' as Id<'networks'>,
-        introductionEntities: introEntities,
-      })) as OpportunityGraphInvokeResult;
-
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain('not members');
-      expect(result.opportunities?.length ?? 0).toBe(0);
-    });
-
-    test('when evaluator returns no results uses fallback and returns one opportunity', async () => {
-      const { factory } = createMockGraph({ evaluatorResult: [] });
-
-      const result = (await factory.createIntroduction({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        networkId: 'idx-1' as Id<'networks'>,
-        introductionEntities: introEntities,
-        introductionHint: 'both AI devs',
-      })) as OpportunityGraphInvokeResult;
-
-      expect(result.opportunities.length).toBe(1);
-      expect(result.error).toBeUndefined();
-    });
-
-    test('rejects an unsafe user-authored introduction hint at persistence', async () => {
-      const { factory } = createMockGraph({ evaluatorResult: [] });
-
-      const result = await factory.createIntroduction({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        networkId: 'idx-1' as Id<'networks'>,
-        introductionEntities: introEntities,
-        introductionHint: 'Alice and Bob will both be at Edge Esmeralda.',
-      });
-
-      expect(result.opportunities).toEqual([]);
-    });
-  });
 
   describe('targetUserId filtering', () => {
     test('when targetUserId is set, only candidates matching that user are returned', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          {
-            reasoning: 'Shared interest in design and technology.',
-            score: 82,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-              { userId: 'c0000000-0000-4000-8000-000000000003', role: 'agent' as const, intentId: null },
-            ],
-          },
-        ],
-      });
+      const { compiledGraph, mockEmbedder } = createMockGraph();
       // Return two candidates: b0000000-0000-4000-8000-000000000002 and c0000000-0000-4000-8000-000000000003
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
@@ -2021,33 +988,13 @@ describe('Opportunity Graph', () => {
       });
 
       // Only c0000000-0000-4000-8000-000000000003 should be evaluated and persisted
-      expect(result.opportunities.length).toBe(1);
-      const actors = result.opportunities[0].actors;
-      const candidateActor = actors.find((a: { userId: string }) => a.userId !== 'a0000000-0000-4000-8000-000000000001');
-      expect(candidateActor?.userId).toBe('c0000000-0000-4000-8000-000000000003');
+      expect(result.candidatesEmitted.length).toBe(1);
+      expect(result.candidatesEmitted[0].userA).toBe('a0000000-0000-4000-8000-000000000001');
+      expect(result.candidatesEmitted[0].userB).toBe('c0000000-0000-4000-8000-000000000003');
     });
 
     test('when targetUserId is not set, all candidates proceed to evaluation', async () => {
-      const { compiledGraph, mockEmbedder } = createMockGraph({
-        evaluatorResult: [
-          {
-            reasoning: 'Both building DeFi.',
-            score: 88,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-              { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const, intentId: null },
-            ],
-          },
-          {
-            reasoning: 'Shared design interest.',
-            score: 82,
-            actors: [
-              { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-              { userId: 'c0000000-0000-4000-8000-000000000003', role: 'agent' as const, intentId: null },
-            ],
-          },
-        ],
-      });
+      const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'intent' as const,
@@ -2074,46 +1021,10 @@ describe('Opportunity Graph', () => {
       });
 
       // Both candidates should proceed (no filtering) — at least 1 opportunity
-      expect(result.opportunities.length).toBeGreaterThanOrEqual(1);
+      expect(result.candidatesEmitted.length).toBeGreaterThanOrEqual(1);
     });
   });
 
-  describe('send path', () => {
-    test('when opportunity is draft and user is party actor, promotes to pending and returns success', async () => {
-      const opportunityId = 'opp-draft-send-test';
-      const draftOpportunity = {
-        id: opportunityId,
-        status: 'draft' as const,
-        actors: [
-          { networkId: 'idx-1', userId: 'a0000000-0000-4000-8000-000000000001', role: 'party' as const },
-          { networkId: 'idx-1', userId: 'a2000000-0000-4000-8000-000000000008', role: 'party' as const },
-        ],
-        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
-        interpretation: { category: 'collaboration', reasoning: 'Match', confidence: 0.8 },
-        context: { networkId: 'idx-1', conversationId: 'chat-1' },
-        confidence: '0.8',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-      const { factory, mockDb } = createMockGraph();
-      spyOn(mockDb, 'getOpportunity').mockResolvedValue(draftOpportunity as Opportunity);
-      const stampActionSpy = spyOn(mockDb, 'stampOpportunityActorAction').mockResolvedValue(null);
-
-      const result = await factory.sendOpportunity({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        opportunityId,
-      });
-
-      expect(result.mutationResult?.success).toBe(true);
-      expect(result.mutationResult?.opportunityId).toBe(opportunityId);
-      expect(stampActionSpy).toHaveBeenCalledWith(
-        opportunityId,
-        'a0000000-0000-4000-8000-000000000001',
-        'pending',
-      );
-    });
-  });
 
   describe('Discovery node: discoverer context', () => {
     test('passes profileContext with profile and intents to HyDE generator', async () => {
@@ -2174,14 +1085,6 @@ describe('Opportunity Graph', () => {
             createdAt: new Date(),
           }];
         },
-        evaluatorResult: [{
-          reasoning: 'Strong alignment between AI tools and ML co-founder search.',
-          score: 85,
-          actors: [
-            { userId: discovererId, role: 'patient' as const, intentId: null },
-            { userId: targetId, role: 'agent' as const, intentId: 'intent-target-1' },
-          ],
-        }],
       });
 
       // Spy on getNetworkMemberships to verify the direct path queries the target's memberships
@@ -2214,14 +1117,6 @@ describe('Opportunity Graph', () => {
           }
           return [{ id: 'intent-1' as Id<'intents'>, payload: 'Test', summary: null, createdAt: new Date() }];
         },
-        evaluatorResult: [{
-          reasoning: 'Match found.',
-          score: 80,
-          actors: [
-            { userId: discovererId, role: 'patient' as const, intentId: null },
-            { userId: targetId, role: 'agent' as const, intentId: 'intent-target-1' },
-          ],
-        }],
       });
 
       const result = (await compiledGraph.invoke({
@@ -2243,14 +1138,6 @@ describe('Opportunity Graph', () => {
           if (userId === targetId) return []; // No intents for target
           return [{ id: 'intent-1' as Id<'intents'>, payload: 'Test', summary: null, createdAt: new Date() }];
         },
-        evaluatorResult: [{
-          reasoning: 'Profile match found.',
-          score: 70,
-          actors: [
-            { userId: discovererId, role: 'peer' as const, intentId: null },
-            { userId: targetId, role: 'peer' as const, intentId: null },
-          ],
-        }],
       });
 
       const result = (await compiledGraph.invoke({
@@ -2316,8 +1203,10 @@ describe('Opportunity Graph', () => {
       } as unknown as Embedder;
 
       const mockHyde = { invoke: () => Promise.resolve({ hydeEmbeddings: { mirror: dummyEmbedding } }) };
-      const evaluator = createMockEvaluator([]);
-      const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHyde, evaluator, async () => undefined);
+      const factory = new OpportunityGraphFactory(
+        mockDb, mockEmbedder, mockHyde, createMockExplainer(), async () => undefined,
+        undefined, undefined, undefined,
+      );
       const compiledGraph = factory.createGraph();
 
       const result = (await compiledGraph.invoke({
@@ -2332,9 +1221,7 @@ describe('Opportunity Graph', () => {
     });
 
     test('self-target (targetUserId === discoveryUserId) returns empty candidates', async () => {
-      const { compiledGraph } = createMockGraphWithFnOverrides({
-        evaluatorResult: [],
-      });
+      const { compiledGraph } = createMockGraphWithFnOverrides();
 
       const result = (await compiledGraph.invoke({
         userId: discovererId,
@@ -2349,366 +1236,9 @@ describe('Opportunity Graph', () => {
 
   // ─── matches_ready introducer gating tests ───────────────────────────────────
 
-  describe('matches_ready: introducer gating', () => {
-    test('does not wake a signal while an introducer actor remains unapproved', async () => {
-      const wakes: Array<{ userId: string; intentId: string }> = [];
-
-      // Build a full mockDb that mirrors createMockGraph but with a custom
-      // createOpportunity that appends an unapproved introducer actor.
-      const mockDb: OpportunityGraphDatabase = {
-        ...createOpportunityGraphDatabaseFixture(),
-        getProfile: () => Promise.resolve(null),
-        getActiveNetworkMembershipPairs: async (pairs) => pairs,
-        createOpportunity: (data) =>
-          Promise.resolve({
-            id: 'opp-gated',
-            detection: data.detection,
-            actors: [
-              ...data.actors,
-              {
-                networkId: 'idx-1' as Id<'networks'>,
-                userId: 'introducer-user' as Id<'users'>,
-                role: 'introducer' as const,
-                approved: false,
-              },
-            ],
-            interpretation: data.interpretation,
-            context: data.context,
-            confidence: data.confidence,
-            status: data.status ?? 'pending',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            expiresAt: null,
-          }),
-        opportunityExistsBetweenActors: () => Promise.resolve(false),
-        findOpportunitiesByActors: () => Promise.resolve([]),
-        getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
-        getNetworkMemberships: () =>
-          Promise.resolve([
-            {
-              networkId: 'idx-1',
-              networkTitle: 'Test Index',
-              indexPrompt: null,
-              permissions: ['member'],
-              memberPrompt: null,
-              autoAssign: true,
-              isPersonal: false,
-              joinedAt: new Date(),
-            },
-          ]),
-        getActiveIntents: () =>
-          Promise.resolve([
-            {
-              id: 'intent-1' as Id<'intents'>,
-              payload: 'Looking for a technical co-founder',
-              summary: 'Co-founder',
-              createdAt: new Date(),
-            },
-          ]),
-        getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
-        getNetworkMemberCount: () => Promise.resolve(2),
-        getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-        getUser: (userId: string) =>
-          Promise.resolve({ id: userId, name: 'Test User', email: 'test@example.com', socials: [] }),
-        isNetworkMember: () => Promise.resolve(true),
-        isIndexOwner: () => Promise.resolve(false),
-        getOpportunity: () => Promise.resolve(null),
-        getOpportunitiesForUser: () => Promise.resolve([]),
-        updateOpportunityStatus: () => Promise.resolve(null),
-        updateOpportunityActorApproval: () => Promise.resolve(null),
-        getIntent: () => Promise.resolve(null),
-        getIntentIndexScores: async () => [],
-        getNetworkMemberContext: async () => null,
-        getNegotiationTaskForOpportunity: async () => null,
-        stampOpportunityActorAction: async () => null,
-        getPremisesForUser: async () => [],
-        searchPremisesBySimilarity: async () => [],
-      };
-
-      const mockEmbedder: Embedder = {
-        generate: () => Promise.resolve(dummyEmbedding),
-        search: () => Promise.resolve([]),
-        searchWithHydeEmbeddings: () =>
-          Promise.resolve([
-            {
-              type: 'intent' as const,
-              id: 'intent-bob' as Id<'intents'>,
-              userId: 'b0000000-0000-4000-8000-000000000002',
-              score: 0.9,
-              matchedVia: 'mirror' as const,
-              networkId: 'idx-1',
-            },
-          ]),
-      } as unknown as Embedder;
-
-      const mockHydeGenerator = {
-        invoke: () =>
-          Promise.resolve({
-            hydeEmbeddings: { mirror: dummyEmbedding, reciprocal: dummyEmbedding },
-          }),
-      };
-
-      const evaluator = createMockEvaluator(defaultMockEvaluatorResult);
-      const factory = new OpportunityGraphFactory(
-        mockDb,
-        mockEmbedder,
-        mockHydeGenerator,
-        evaluator,
-        async () => undefined,
-        async (signal) => { wakes.push(signal); },
-      );
-      const compiledGraph = factory.createGraph();
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        operationMode: 'create' as const,
-        options: { initialStatus: 'latent' as const },
-      });
-
-      expect(wakes).toEqual([]);
-    });
-
-    test('an eligible persisted opportunity wakes the discoverer\'s bound signal', async () => {
-      const wakes: Array<{ userId: string; intentId: string }> = [];
-
-      const mockDb: OpportunityGraphDatabase = {
-        ...createOpportunityGraphDatabaseFixture(),
-        getProfile: () => Promise.resolve(null),
-        getActiveNetworkMembershipPairs: async (pairs) => pairs,
-        createOpportunity: (data) =>
-          Promise.resolve({
-            id: 'opp-approved',
-            detection: data.detection,
-            actors: [
-              ...data.actors.map((actor) => actor.userId === 'b0000000-0000-4000-8000-000000000002'
-                ? { ...actor, intentId: ' NULL ' }
-                : actor),
-              {
-                networkId: 'idx-1' as Id<'networks'>,
-                userId: 'introducer-user' as Id<'users'>,
-                role: 'introducer' as const,
-                approved: true,
-              },
-            ],
-            interpretation: data.interpretation,
-            context: data.context,
-            confidence: data.confidence,
-            status: data.status ?? 'pending',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            expiresAt: null,
-          }),
-        async createOpportunityIfNetworkEligible(data) {
-          return this.createOpportunity(data);
-        },
-        opportunityExistsBetweenActors: () => Promise.resolve(false),
-        findOpportunitiesByActors: () => Promise.resolve([]),
-        getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
-        getNetworkMemberships: () =>
-          Promise.resolve([
-            {
-              networkId: 'idx-1',
-              networkTitle: 'Test Index',
-              indexPrompt: null,
-              permissions: ['member'],
-              memberPrompt: null,
-              autoAssign: true,
-              isPersonal: false,
-              joinedAt: new Date(),
-            },
-          ]),
-        getActiveIntents: () =>
-          Promise.resolve([
-            {
-              id: 'intent-1' as Id<'intents'>,
-              payload: 'Looking for a technical co-founder',
-              summary: 'Co-founder',
-              createdAt: new Date(),
-            },
-          ]),
-        getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
-        getNetworkMemberCount: () => Promise.resolve(2),
-        getNetworkIdsForIntent: () => Promise.resolve(['idx-1']),
-        getUser: (userId: string) =>
-          Promise.resolve({ id: userId, name: 'Test User', email: 'test@example.com', socials: [] }),
-        isNetworkMember: () => Promise.resolve(true),
-        isIndexOwner: () => Promise.resolve(false),
-        getOpportunity: () => Promise.resolve(null),
-        getOpportunitiesForUser: () => Promise.resolve([]),
-        updateOpportunityStatus: () => Promise.resolve(null),
-        updateOpportunityActorApproval: () => Promise.resolve(null),
-        getIntent: () => Promise.resolve(null),
-        getIntentIndexScores: async () => [],
-        getNetworkMemberContext: async () => null,
-        getNegotiationTaskForOpportunity: async () => null,
-        stampOpportunityActorAction: async () => null,
-        getPremisesForUser: async () => [],
-        searchPremisesBySimilarity: async () => [],
-      };
-
-      const mockEmbedder: Embedder = {
-        generate: () => Promise.resolve(dummyEmbedding),
-        search: () => Promise.resolve([]),
-        searchWithHydeEmbeddings: () =>
-          Promise.resolve([
-            {
-              type: 'intent' as const,
-              id: 'intent-bob' as Id<'intents'>,
-              userId: 'b0000000-0000-4000-8000-000000000002',
-              score: 0.9,
-              matchedVia: 'mirror' as const,
-              networkId: 'idx-1',
-            },
-          ]),
-      } as unknown as Embedder;
-
-      const mockHydeGenerator = {
-        invoke: () =>
-          Promise.resolve({
-            hydeEmbeddings: { mirror: dummyEmbedding, reciprocal: dummyEmbedding },
-          }),
-      };
-
-      const evaluator = createMockEvaluator([{
-        reasoning: 'Candidate intent should be loaded exactly.',
-        score: 90,
-        actors: [
-          {
-            userId: 'a0000000-0000-4000-8000-000000000001',
-            role: 'patient',
-            intentId: 'intent-1',
-          },
-          {
-            userId: 'b0000000-0000-4000-8000-000000000002',
-            role: 'agent',
-            intentId: 'intent-bob',
-          },
-        ],
-      }]);
-      const factory = new OpportunityGraphFactory(
-        mockDb,
-        mockEmbedder,
-        mockHydeGenerator,
-        evaluator,
-        async () => undefined,
-        async (signal) => { wakes.push(signal); },
-      );
-      const compiledGraph = factory.createGraph();
-
-      await compiledGraph.invoke({
-        userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
-        searchQuery: 'co-founder',
-        operationMode: 'create' as const,
-        options: { initialStatus: 'latent' as const },
-      });
-
-      expect(wakes).toEqual([{ userId: 'a0000000-0000-4000-8000-000000000001', intentId: 'intent-1' }]);
-    });
-  });
 
   // ─── approve_introduction mode tests ─────────────────────────────────────────
 
-  describe('approve_introduction mode', () => {
-    test('sets approved=true and wakes the source signal once the gate opens', async () => {
-      const approvalCalls: Array<[string, string, boolean]> = [];
-      const wakes: Array<{ userId: string; intentId: string }> = [];
-
-      const existingOpp = {
-        id: 'opp-456',
-        status: 'latent' as const,
-        actors: [
-          { networkId: 'idx-1' as Id<'networks'>, userId: 'target-user' as Id<'users'>, role: 'patient' as const, intentId: 'target-intent' },
-          { networkId: 'idx-1' as Id<'networks'>, userId: 'candidate-user' as Id<'users'>, role: 'agent' as const, intent: 'candidate-intent' },
-          { networkId: 'idx-1' as Id<'networks'>, userId: 'introducer-user' as Id<'users'>, role: 'introducer' as const, approved: false },
-        ],
-        detection: { source: 'manual' as const, createdBy: 'introducer-user', timestamp: new Date().toISOString() },
-        interpretation: { category: 'collaboration', reasoning: 'test', confidence: 0.8, signals: [] },
-        context: { networkId: 'idx-1' as Id<'networks'> },
-        confidence: '0.8',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        expiresAt: null,
-      };
-
-      // Build the mock db directly for the standalone lifecycle mode.
-      const mockDb: OpportunityGraphDatabase = {
-        ...createOpportunityGraphDatabaseFixture(),
-        getProfile: () => Promise.resolve(null),
-        createOpportunity: (data) => Promise.resolve({ id: 'opp-new', ...data, status: data.status ?? 'latent', createdAt: new Date(), updatedAt: new Date(), expiresAt: null }),
-        opportunityExistsBetweenActors: () => Promise.resolve(false),
-        findOpportunitiesByActors: () => Promise.resolve([]),
-        getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'networks'>[]),
-        getNetworkMemberships: async () => [],
-        getActiveIntents: () => Promise.resolve([]),
-        getNetworkIdsForIntent: () => Promise.resolve([]),
-        getNetwork: () => Promise.resolve(null),
-        getNetworkMemberCount: () => Promise.resolve(0),
-        getIntentIndexScores: async () => [],
-        getNetworkMemberContext: async () => null,
-        getNegotiationTaskForOpportunity: async () => null,
-        getUser: (_id: string) => Promise.resolve({ id: _id, name: 'Test', email: 'test@test.com', socials: [] }),
-        isNetworkMember: () => Promise.resolve(false),
-        isIndexOwner: () => Promise.resolve(false),
-        getOpportunity: () => Promise.resolve(existingOpp as any),
-        getOpportunitiesForUser: () => Promise.resolve([]),
-        updateOpportunityStatus: () => Promise.resolve(null),
-        updateOpportunityActorApproval: (_id: string, userId: string, approved: boolean) => {
-          approvalCalls.push([_id, userId, approved]);
-          return Promise.resolve({ ...existingOpp, actors: existingOpp.actors.map((a: any) => a.userId === userId && a.role === 'introducer' ? { ...a, approved } : a) } as any);
-        },
-        getIntent: () => Promise.resolve(null),
-        stampOpportunityActorAction: async () => null,
-        getPremisesForUser: async () => [],
-        searchPremisesBySimilarity: async () => [],
-      };
-
-      const mockEmbedder = { generate: async () => new Array(2000).fill(0.1) };
-      const mockHyde = { invoke: async () => ({ hydeEmbeddings: {} }) };
-
-      const factory = new OpportunityGraphFactory(
-        mockDb,
-        mockEmbedder as any,
-        mockHyde as any,
-        undefined, // evaluator
-        undefined, // queueNotification
-        async (signal) => { wakes.push(signal); },
-        undefined, // agentDispatcher
-      );
-
-      await factory.approveIntroduction({
-        userId: 'introducer-user' as Id<'users'>,
-        opportunityId: 'opp-456',
-      });
-
-      expect(approvalCalls).toHaveLength(1);
-      expect(approvalCalls[0]).toEqual(['opp-456', 'introducer-user', true]);
-      expect(wakes).toEqual([{ userId: 'target-user', intentId: 'target-intent' }]);
-    });
-
-    test('does not wake a signal when the approval write fails', async () => {
-      const wakes: Array<{ userId: string; intentId: string }> = [];
-      const opportunity = {
-        id: 'opp-456',
-        actors: [
-          { userId: 'target-user', role: 'patient', intent: 'target-intent' },
-          { userId: 'introducer-user', role: 'introducer', approved: false },
-        ],
-      } as unknown as Opportunity;
-
-      const result = await approveOpportunityIntroduction(
-        {
-          getOpportunity: async () => opportunity,
-          updateOpportunityActorApproval: async () => null,
-        } as never,
-        { opportunityId: 'opp-456', actorUserId: 'introducer-user' },
-        async (signal) => { wakes.push(signal); },
-      );
-
-      expect(result).toEqual({ success: false, error: 'Failed to update approval' });
-      expect(wakes).toEqual([]);
-    });
-  });
 });
 
 // ─── buildDiscovererContext tests ───────────────────────────────────────────
@@ -2739,7 +1269,7 @@ describe('buildDiscovererContext', () => {
   });
 });
 
-// ─── Direct-connection evaluator tests ──────────────────────────────────────
+// ─── Direct-connection explainer tests ──────────────────────────────────────
 
 const DISCOVERER_ID = 'user-yanki';
 const TARGET_ID = 'user-sam';
@@ -2784,54 +1314,42 @@ const verificationCriteria =
   'The discoverer (Yankı) was directly @-mentioned with target user (Samuel). ' +
   'Both share strong technical overlap: Laravel, Vue.js, game development interests, and web engineering. ' +
   'Samuel is explicitly seeking a co-founder with ML/data engineering background, and Yankı has CTO experience with AI/ML interests. ' +
-  'PASS criteria: the opportunities list must contain at least one result with score >= 50. ' +
-  'These two users have genuine alignment that should produce a meaningful opportunity. ' +
-  'FAIL if the list is empty or all scores are below 50 — that means the system failed to recognize an obvious match between directly connected users.';
+  'PASS criteria: reasoning must be non-empty, droppedUnsupportedClaim must be falsy, and the reasoning must plausibly explain ' +
+  'why these two specific profiles could be relevant to each other (e.g. shared Laravel/Vue/game-dev background, or Samuel ' +
+  'seeking a co-founder and Yankı having relevant CTO/AI experience). ' +
+  'FAIL if reasoning is empty, if droppedUnsupportedClaim is true, or if the reasoning does not engage with the actual profiles at all.';
 
-async function runDirectConnectionEval(): Promise<{ opportunities: Array<{ reasoning: string; score: number; candidateUserId: string }>; durationMs: number }> {
-  const evaluator = new OpportunityEvaluator();
-  const input: EvaluatorInput = {
+async function runDirectConnectionExplain(): Promise<{ reasoning: string; droppedUnsupportedClaim?: boolean; durationMs: number }> {
+  const explainer = new MatchExplainer();
+  const input: MatchExplainerInput = {
     discovererId: DISCOVERER_ID,
     entities: [sourceEntity, targetEntity],
     discoveryQuery: 'What can I do with Samuel Rivera?',
   };
-  // Retry up to 3 times — LLM non-determinism can yield empty results on some runs
+  // Retry up to 3 times — LLM non-determinism can yield an empty/dropped result on some runs
   const MAX_ATTEMPTS = 3;
   let totalDurationMs = 0;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const start = Date.now();
-    const raw = await evaluator.invokeEntityBundle(input, { minScore: 0, returnAll: true });
+    const result = await explainer.explain(input);
     const durationMs = Date.now() - start;
     totalDurationMs += durationMs;
-    const opportunities = raw
-      // `rejection === undefined` is the persistable signal now — a
-      // not_accepted rejection carries real actors for diagnostics, so actor
-      // presence alone no longer distinguishes an accepted verdict.
-      .filter(op => op.rejection === undefined)
-      .map(op => {
-        const candidate = op.actors.find(a => a.userId !== DISCOVERER_ID);
-        if (!candidate?.userId) return null;
-        return { reasoning: op.reasoning, score: op.score, candidateUserId: candidate.userId };
-      })
-      .filter((op): op is { reasoning: string; score: number; candidateUserId: string } => op !== null);
-    if (opportunities.length > 0 || attempt === MAX_ATTEMPTS) {
-      return { opportunities, durationMs: totalDurationMs };
+    if ((result.reasoning && !result.droppedUnsupportedClaim) || attempt === MAX_ATTEMPTS) {
+      return { ...result, durationMs: totalDurationMs };
     }
-    console.log(`  [Attempt ${attempt}/${MAX_ATTEMPTS}] Empty result, retrying...`);
+    console.log(`  [Attempt ${attempt}/${MAX_ATTEMPTS}] Empty/dropped result, retrying...`);
   }
-  return { opportunities: [], durationMs: totalDurationMs };
+  return { reasoning: '', durationMs: totalDurationMs };
 }
 
-describe('OpportunityEvaluator: direct-connection candidates', () => {
-  it('produces an opportunity when evaluating explicitly-mentioned users with genuine alignment', async () => {
-    const { opportunities, durationMs } = await runDirectConnectionEval();
+describe('MatchExplainer: direct-connection candidates', () => {
+  it('produces a grounded explanation for explicitly-mentioned users with genuine alignment', async () => {
+    const { reasoning, droppedUnsupportedClaim, durationMs } = await runDirectConnectionExplain();
 
-    console.log(`\n[Direct Connection] duration=${durationMs}ms, results=${opportunities.length}`);
-    for (const o of [...opportunities].sort((a, b) => b.score - a.score)) {
-      console.log(`  score=${o.score}  ${o.candidateUserId}  "${o.reasoning.slice(0, 100)}..."`);
-    }
+    console.log(`\n[Direct Connection] duration=${durationMs}ms, dropped=${!!droppedUnsupportedClaim}`);
+    console.log(`  "${reasoning.slice(0, 200)}..."`);
 
-    await assertLLM({ opportunities, durationMs }, verificationCriteria);
+    await assertLLM({ reasoning, droppedUnsupportedClaim }, verificationCriteria);
   }, 120000);
 });
 
@@ -2839,26 +1357,7 @@ describe('OpportunityEvaluator: direct-connection candidates', () => {
 
 const dummyTraceEmbedding = new Array(2000).fill(0.1);
 
-const traceDefaultMockEvaluatorResult: EvaluatedOpportunityWithActors[] = [
-  {
-    reasoning: 'Test reasoning for trace event test.',
-    score: 88,
-    actors: [
-      { userId: 'a0000000-0000-4000-8000-000000000001', role: 'patient' as const, intentId: null },
-      { userId: 'b0000000-0000-4000-8000-000000000002', role: 'agent' as const, intentId: null },
-    ],
-  },
-];
-
-function createTraceMockEvaluatorFn(
-  result: EvaluatedOpportunityWithActors[] = traceDefaultMockEvaluatorResult
-): OpportunityEvaluatorLike {
-  return {
-    invokeEntityBundle: async () => result,
-  };
-}
-
-function createTraceMockGraph(evaluatorOverride?: OpportunityEvaluatorLike) {
+function createTraceMockGraph(explainerOverride?: MatchExplainerLike) {
   const mockDb: OpportunityGraphDatabase = {
     ...createOpportunityGraphDatabaseFixture(),
     getProfile: () => Promise.resolve(null),
@@ -2937,9 +1436,12 @@ function createTraceMockGraph(evaluatorOverride?: OpportunityEvaluatorLike) {
       }),
   };
 
-  const evaluator = evaluatorOverride ?? createTraceMockEvaluatorFn();
+  const explainer = explainerOverride ?? createMockExplainer();
   const queueNotification = async () => undefined;
-  const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHydeGenerator, evaluator, queueNotification);
+  const factory = new OpportunityGraphFactory(
+    mockDb, mockEmbedder, mockHydeGenerator, explainer, queueNotification,
+    undefined, undefined, undefined,
+  );
   const compiledGraph = factory.createGraph();
   return { compiledGraph };
 }
@@ -2951,7 +1453,7 @@ const EXPECTED_NODE_TRACE_NAMES = [
   'opportunity-resolve',
   'opportunity-discovery',
   'opportunity-ranking',
-  'opportunity-persist',
+  'opportunity-emit-candidates',
 ];
 
 describe('Opportunity Graph — Trace Events', () => {
@@ -2986,9 +1488,9 @@ describe('Opportunity Graph — Trace Events', () => {
       }
     }
 
-    // Also verify the evaluation node still emits its own events (existing behavior)
-    const evalStarts = traceEvents.filter(e => e.type === 'agent_start' && e.name === 'opportunity-evaluator');
-    const evalEnds = traceEvents.filter(e => e.type === 'agent_end' && e.name === 'opportunity-evaluator');
+    // Also verify the match explainer still emits its own events (existing behavior)
+    const evalStarts = traceEvents.filter(e => e.type === 'agent_start' && e.name === 'opportunity-match-explainer');
+    const evalEnds = traceEvents.filter(e => e.type === 'agent_end' && e.name === 'opportunity-match-explainer');
     expect(evalStarts.length).toBeGreaterThanOrEqual(1);
     expect(evalEnds.length).toBeGreaterThanOrEqual(1);
   }, 60_000);
@@ -3011,8 +1513,8 @@ describe('Opportunity Graph — Trace Events', () => {
       error: () => undefined,
     };
     const traceEvents: Array<{ type: string; name?: string; summary?: string }> = [];
-    const evaluator: OpportunityEvaluatorLike = {
-      invokeEntityBundle: async () => {
+    const explainer: MatchExplainerLike = {
+      explain: async () => {
         const error = new Error(secret);
         error.name = 'Authorization: Bearer hostile-error-name-token';
         throw error;
@@ -3021,7 +1523,7 @@ describe('Opportunity Graph — Trace Events', () => {
 
     setLoggerFactory(() => captureLogger);
     try {
-      const { compiledGraph } = createTraceMockGraph(evaluator);
+      const { compiledGraph } = createTraceMockGraph(explainer);
       await requestContext.run({ traceEmitter: (event) => traceEvents.push(event) }, async () => {
         await compiledGraph.invoke({
           userId: 'a0000000-0000-4000-8000-000000000001' as Id<'users'>,
