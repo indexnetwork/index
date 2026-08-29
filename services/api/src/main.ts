@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/bun';
 
 import { ChatController } from './controllers/chat.controller';
 import { DebugController } from './controllers/debug.controller';
+import { FloorLabController } from './controllers/floor-lab.controller';
 import { ToolController } from './controllers/tool.controller';
 import { ToolService } from './services/tool.service';
 import { S3StorageAdapter } from './adapters/storage.adapter';
@@ -260,6 +261,7 @@ const integrationService = new IntegrationService(integrationAdapter);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
 controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
+controllerInstances.set(FloorLabController, new FloorLabController());
 const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
 

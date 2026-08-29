@@ -155,17 +155,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready) return;
 
-    if (authenticated && userLoading) return;
-    if (authenticated && !user && !userFetchAttempted) return;
-
     const isHomePage = pathname === '/';
     const publicPrefixes = [
       '/simulation', '/l', '/index/', '/blog', '/pages', '/about',
       '/login', '/s/', '/oauth/', '/found-in-translation', '/overview', '/protocol', '/cli-auth', '/u/', '/c/', '/o/', '/waitlist', '/download',
-      '/9db20a5fbe',
+      '/9db20a5fbe', '/dev/floor',
     ];
     const isPublicPage = publicPrefixes.some(p => pathname.startsWith(p));
     const isProtectedPage = pathname.startsWith('/i/');
+
+    if (authenticated && userLoading && !isPublicPage) return;
+    if (authenticated && !user && !userFetchAttempted && !isPublicPage) return;
 
     const shouldRedirectToHome = !authenticated && (isProtectedPage || (!isHomePage && !isPublicPage));
 
