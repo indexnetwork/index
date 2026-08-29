@@ -29,7 +29,15 @@ import {
 } from "../src/index.ts";
 import { Directory } from "../cli/directory.ts";
 import { logStep } from "./shared.ts";
-import { PARTIES, type ChatRequest, type ChatResponse } from "./06-shared.ts";
+import {
+  PARTIES,
+  type ChatRequest,
+  type ChatResponse,
+  type IntentRecord,
+  type IntentsResponse,
+  type ScopeRequest,
+  type ScopeResponse,
+} from "./06-shared.ts";
 
 // --- storage: one sqlite file backs every agent, scoped by agent id -----
 
@@ -44,7 +52,16 @@ db.exec(`
     PRIMARY KEY (agent_id, id)
   );
   CREATE TABLE IF NOT EXISTS messages (agent_id TEXT PRIMARY KEY, data TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS intents (agent_id TEXT PRIMARY KEY, statement TEXT NOT NULL);
+  -- Every intent a party has ever published, kept around after the agent
+  -- moves its scope elsewhere — a history to list and re-scope to, not
+  -- just the one currently in force.
+  CREATE TABLE IF NOT EXISTS intents (
+    id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, statement TEXT NOT NULL, created_at INTEGER NOT NULL
+  );
+  -- At most one row per agent: which of its own intents (if any) it is
+  -- currently scoped to. Separate from "intents" because clearing scope
+  -- must not erase the intent itself.
+  CREATE TABLE IF NOT EXISTS scope (agent_id TEXT PRIMARY KEY, intent_id TEXT NOT NULL);
 `);
 
 // The match layer this server injects as `find_matches`/`create_intent` —
@@ -52,15 +69,51 @@ db.exec(`
 // findable from there too and vice versa.
 const directory = new Directory(new URL("./.agents.json", import.meta.url).pathname);
 
-function loadIntent(agentId: string): string | undefined {
-  const row = db
-    .query<{ statement: string }, [string]>("SELECT statement FROM intents WHERE agent_id = ?")
-    .get(agentId);
-  return row?.statement;
+interface IntentRow {
+  id: string;
+  agent_id: string;
+  statement: string;
+  created_at: number;
 }
 
-function saveIntent(agentId: string, statement: string): void {
-  db.run("INSERT OR REPLACE INTO intents (agent_id, statement) VALUES (?, ?)", [agentId, statement]);
+function toRecord(row: IntentRow): IntentRecord {
+  return { id: row.id, statement: row.statement, createdAt: row.created_at };
+}
+
+function listIntents(agentId: string): IntentRecord[] {
+  const rows = db
+    .query<IntentRow, [string]>("SELECT * FROM intents WHERE agent_id = ? ORDER BY created_at ASC")
+    .all(agentId);
+  return rows.map(toRecord);
+}
+
+function recordIntent(agentId: string, statement: string): IntentRecord {
+  const record: IntentRecord = { id: crypto.randomUUID(), statement, createdAt: Date.now() };
+  db.run("INSERT INTO intents (id, agent_id, statement, created_at) VALUES (?, ?, ?, ?)", [
+    record.id,
+    agentId,
+    record.statement,
+    record.createdAt,
+  ]);
+  return record;
+}
+
+function currentScope(agentId: string): IntentRecord | undefined {
+  const row = db
+    .query<
+      IntentRow,
+      [string]
+    >("SELECT intents.* FROM scope JOIN intents ON intents.id = scope.intent_id WHERE scope.agent_id = ?")
+    .get(agentId);
+  return row ? toRecord(row) : undefined;
+}
+
+function setScope(agentId: string, intentId: string): void {
+  db.run("INSERT OR REPLACE INTO scope (agent_id, intent_id) VALUES (?, ?)", [agentId, intentId]);
+}
+
+function clearScope(agentId: string): void {
+  db.run("DELETE FROM scope WHERE agent_id = ?", [agentId]);
 }
 
 /** `NegotiationStore` over sqlite, scoped to one agent. Same contract as
@@ -163,7 +216,7 @@ function findMatchesTool(party: (typeof PARTIES)[number]): Tool<never> {
       properties: { looking_for: { type: "string", description: "What to match on, if not your intent." } },
     },
     run: async ({ looking_for }) => {
-      const statement = (looking_for || loadIntent(party.id) || "").trim();
+      const statement = (looking_for || currentScope(party.id)?.statement || "").trim();
       if (!statement) return "No intent to match on — ask your party what they are looking for.";
 
       const matches = await directory.matchesFor({ id: party.id, intent: statement });
@@ -189,7 +242,10 @@ function findMatchesTool(party: (typeof PARTIES)[number]): Tool<never> {
  * is no intent yet — see `buildAgent` below — so there is no existing
  * intent to guard against here; an existing one is the party's to change,
  * not this tool's to overwrite. */
-function createIntentTool(party: (typeof PARTIES)[number], rescope: (statement: string) => void): Tool<never> {
+function createIntentTool(
+  party: (typeof PARTIES)[number],
+  rescope: (statement: string | undefined) => void,
+): Tool<never> {
   const tool: Tool<{ statement: string }> = {
     name: "create_intent",
     description:
@@ -205,7 +261,8 @@ function createIntentTool(party: (typeof PARTIES)[number], rescope: (statement: 
       const text = statement.trim();
       if (!text) return "An intent needs a statement. Ask them what they are looking for.";
 
-      saveIntent(party.id, text);
+      const record = recordIntent(party.id, text);
+      setScope(party.id, record.id);
       await directory.register({
         id: party.id,
         name: party.name,
@@ -247,19 +304,19 @@ for (const party of PARTIES) {
     });
   }
 
-  function rescope(statement: string): void {
+  function rescope(statement: string | undefined): void {
     agent = buildAgent(statement);
   }
 
-  const savedIntent = loadIntent(party.id);
-  let agent = buildAgent(savedIntent);
+  const savedScope = currentScope(party.id);
+  let agent = buildAgent(savedScope?.statement);
 
-  if (savedIntent) {
+  if (savedScope) {
     await directory.register({
       id: party.id,
       name: party.name,
       url: `http://localhost:${party.port}`,
-      intent: savedIntent,
+      intent: savedScope.statement,
     });
   }
 
@@ -287,6 +344,49 @@ for (const party of PARTIES) {
             pending: result.pending,
             steps: result.steps,
           };
+          return Response.json(response);
+        },
+      },
+      // Direct scope control for a host UI — bypasses the model entirely,
+      // the same way `cli/console.ts`'s `/intent` command sets `party.intent`
+      // directly rather than asking the agent to call `create_intent`.
+      "/intents": {
+        GET: (): Response => {
+          const response: IntentsResponse = { intents: listIntents(party.id), scope: currentScope(party.id) };
+          return Response.json(response);
+        },
+      },
+      "/scope": {
+        POST: async (request: Request): Promise<Response> => {
+          const { intentId } = (await request.json()) as ScopeRequest;
+          const record = listIntents(party.id).find((intent) => intent.id === intentId);
+          if (!record) {
+            return Response.json({ error: `${party.name} has no intent with that id.` }, { status: 404 });
+          }
+
+          setScope(party.id, record.id);
+          await directory.register({
+            id: party.id,
+            name: party.name,
+            url: `http://localhost:${party.port}`,
+            intent: record.statement,
+          });
+          rescope(record.statement);
+
+          const response: ScopeResponse = { scope: record };
+          return Response.json(response);
+        },
+        DELETE: async (): Promise<Response> => {
+          clearScope(party.id);
+          await directory.register({
+            id: party.id,
+            name: party.name,
+            url: `http://localhost:${party.port}`,
+            intent: "",
+          });
+          rescope(undefined);
+
+          const response: ScopeResponse = { scope: null };
           return Response.json(response);
         },
       },

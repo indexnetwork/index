@@ -43,3 +43,28 @@ export interface ChatResponse {
    * caller, not just the final line. */
   steps: Step[];
 }
+
+/** One intent a party has published, past or present — `create_intent`
+ * records one of these; it is never rewritten, only scoped to or away
+ * from. */
+export interface IntentRecord {
+  id: string;
+  statement: string;
+  createdAt: number;
+}
+
+export interface IntentsResponse {
+  /** Every intent this party has ever published, oldest first. */
+  intents: IntentRecord[];
+  /** Which of them (if any) the agent is currently scoped to. */
+  scope?: IntentRecord;
+}
+
+export interface ScopeRequest {
+  intentId: string;
+}
+
+export interface ScopeResponse {
+  /** `null` when the request cleared the scope rather than setting it. */
+  scope: IntentRecord | null;
+}
