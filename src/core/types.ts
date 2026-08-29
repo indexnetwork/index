@@ -129,6 +129,11 @@ export interface NegotiationSession {
    * nothing was fetched. */
   peer: IdentifiedAgentCard | null;
   task: A2ATask;
+  /** Which intent this negotiation serves, when the agent was scoped to
+   * one. Two negotiations with the same counterparty are only rivals if
+   * they are about the same thing: an agent that has bought a bike from
+   * someone can still negotiate a desk with them. */
+  intent?: string;
   /** Set while the negotiation is parked on a question for the party this
    * agent acts for. Cleared by `resumeNegotiation()`. */
   pending?: { question: string };

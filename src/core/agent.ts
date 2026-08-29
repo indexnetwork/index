@@ -161,13 +161,25 @@ function amountsIn(text: string): number[] {
  * what to do with the one that already exists. Shared so the thrown
  * error and the skipped event say the same thing.
  */
-function secondNegotiationRefusal(live: NegotiationSession): string {
-  const who = live.peer?.name ?? live.url ?? "them";
-  const next = live.pending
-    ? `It is waiting on your party: ${JSON.stringify(live.pending.question)} — answer it with negotiate_resume`
+function secondNegotiationRefusal(rival: NegotiationSession): string {
+  const who = rival.peer?.name ?? rival.url ?? "them";
+  const settled = rival.task && isTerminalTaskState(rival.task.status.state);
+
+  if (settled) {
+    const agreement = verifyAgreement(rival.task);
+    const terms = agreement.terms ? ` on ${JSON.stringify(agreement.terms)}` : "";
+    return (
+      `You have already closed with ${who}${terms} ("${rival.id}"). ` +
+      "Opening another negotiation would not change those terms, it would add a second deal alongside them — " +
+      "report what you agreed instead, and tell your party if you think it should have gone differently."
+    );
+  }
+
+  const next = rival.pending
+    ? `It is waiting on your party: ${JSON.stringify(rival.pending.question)} — answer it with negotiate_resume`
     : "Continue it with negotiate_turn";
   return (
-    `You are already negotiating with ${who} ("${live.id}"). ${next}, ` +
+    `You are already negotiating with ${who} ("${rival.id}"). ${next}, ` +
     "rather than opening a second one: both would settle independently, and your party would be committed twice."
   );
 }
@@ -690,19 +702,22 @@ export class Agent<A extends string = DefaultAction> {
   // --- outbound, one turn at a time ----------------------------------
 
   /**
-   * A negotiation with this counterparty that hasn't finished.
+   * A negotiation with this counterparty, for this intent, that a second
+   * one would collide with.
    *
-   * Opening a second one is almost never what was meant: the two Tasks
-   * are independent, so both can settle, and the party ends up committed
-   * twice over to a thing they wanted once. It happens when an agent
-   * can't see how to move a negotiation it already has — a live run
-   * re-opened four counterparties rather than answer the one question it
-   * had been asked, and bought the same bike twice.
+   * Two collide when the first hasn't finished, or when it ended in
+   * something the party is now holding — a deal. Both cases end the same
+   * way: two independent Tasks, each able to settle, and a party
+   * committed twice over to a thing they wanted once. A live run did
+   * exactly this. Handed a digest with one negotiation waiting on its
+   * party, it re-opened all four counterparties instead of answering,
+   * and agreed the same purchase twice.
    *
-   * A *settled* negotiation is no obstacle: reopening terms is exactly
-   * what a new negotiation is for. Only the unfinished ones block.
+   * A negotiation that ended in *no deal* blocks nothing: `declined` and
+   * `conflict` leave the party holding nothing, and going back with a
+   * new offer is exactly what a new negotiation is for.
    */
-  private liveNegotiationWith(
+  private rivalNegotiationWith(
     url: string,
     context?: Pick<ToolContext, "negotiations">,
   ): NegotiationSession | undefined {
@@ -711,13 +726,19 @@ export class Agent<A extends string = DefaultAction> {
     // since. Without a context this is a direct API call, and the store
     // is all there is.
     const sessions = context ? [...context.negotiations.values()] : this.sessions.list();
+    const intent = this.intent?.statement;
 
-    return sessions.find(
-      (session) =>
-        session.direction === "outbound" &&
-        session.url === url &&
-        !(session.task && isTerminalTaskState(session.task.status.state)),
-    );
+    return sessions.find((session) => {
+      if (session.direction !== "outbound" || session.url !== url) return false;
+      if (session.intent !== intent) return false;
+      if (!session.task || !isTerminalTaskState(session.task.status.state)) return true;
+
+      // Ended. Only a no-deal ending frees the counterparty up again;
+      // `unconfirmed` is an ending nobody can read, which is a reason to
+      // verify it, not to negotiate over the top of it.
+      const status = verifyAgreement(session.task).status;
+      return status !== "declined" && status !== "conflict";
+    });
   }
 
   /**
@@ -731,8 +752,8 @@ export class Agent<A extends string = DefaultAction> {
     options: OpenNegotiationOptions = {},
     context?: Pick<ToolContext, "negotiations" | "signal">,
   ): Promise<NegotiationTurn<A>> {
-    const live = this.liveNegotiationWith(url, context);
-    if (live) throw new Error(secondNegotiationRefusal(live));
+    const rival = this.rivalNegotiationWith(url, context);
+    if (rival) throw new Error(secondNegotiationRefusal(rival));
 
     const signal = context?.signal;
     const peer = options.discover === false ? null : await this.inspect(url, { signal });
@@ -743,6 +764,7 @@ export class Agent<A extends string = DefaultAction> {
       direction: "outbound",
       url,
       objective,
+      ...(this.intent ? { intent: this.intent.statement } : {}),
       peer,
       task: undefined as unknown as A2ATask,
     };
@@ -826,14 +848,14 @@ export class Agent<A extends string = DefaultAction> {
   ): Promise<NegotiationEvent<A>> {
     // Checked and registered before the first await, so two targets
     // naming the same counterparty in one batch can't both get past it.
-    const live = this.liveNegotiationWith(url, context);
-    if (live) {
+    const rival = this.rivalNegotiationWith(url, context);
+    if (rival) {
       return {
         kind: "skipped",
-        id: live.id,
-        ...(live.peer?.name ? { peer: live.peer.name } : {}),
+        id: rival.id,
+        ...(rival.peer?.name ? { peer: rival.peer.name } : {}),
         url,
-        reason: secondNegotiationRefusal(live),
+        reason: secondNegotiationRefusal(rival),
       };
     }
 
@@ -842,6 +864,7 @@ export class Agent<A extends string = DefaultAction> {
       direction: "outbound",
       url,
       objective: this.objectiveFor(options.objective),
+      ...(this.intent ? { intent: this.intent.statement } : {}),
       peer: null,
       task: undefined as unknown as A2ATask,
     };

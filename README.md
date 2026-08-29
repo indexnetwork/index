@@ -346,21 +346,26 @@ the rest of each negotiation — unlike `negotiate_turn`'s per-turn
 
 #### One live negotiation per counterparty
 
-Opening a second negotiation with a counterparty you already have an
-unfinished one with is refused — `negotiate_open` throws, and
-`negotiate_many` skips that target and says why. The two Tasks would be
-independent, so both could settle, and the party would be committed
-twice to a thing they wanted once.
+Opening a second negotiation with a counterparty is refused while a
+first one could still bind the party — `negotiate_open` throws, and
+`negotiate_many` skips that target and says why:
+
+| The existing negotiation | A second one |
+| --- | --- |
+| still going, or waiting on your party | refused — continue it, or answer it |
+| closed as a deal (`agreed`, or `unconfirmed`) | refused — the deal stands; a second one adds to it rather than replacing it |
+| closed with no deal (`declined`, `conflict`) | allowed — going back with a new offer is the point |
+| for a different intent | allowed — buying a bike from someone is no reason not to negotiate a desk with them |
 
 It is a real failure, not a theoretical one: an agent that couldn't see
 how to move a negotiation waiting on its party re-opened all four of its
 counterparties instead, and agreed the same purchase twice. Every
-Task-level invariant held throughout — nothing had told it not to. The
-record now names what is waiting and what to do about it, and this
-refuses the shortcut.
+Task-level invariant held throughout — the two Tasks were independent and
+each was valid — and nothing had told it not to.
 
-A *settled* negotiation blocks nothing: reopening terms is exactly what a
-new negotiation is for.
+Note what this does *not* do: it never reopens or edits a closed
+negotiation. A settled negotiation still stays settled. It only refuses
+to start a rival to one.
 
 Parked negotiations travel on `RunResult.negotiations` and live in the
 `NegotiationStore`, so a fresh `Agent` over the same store can resume

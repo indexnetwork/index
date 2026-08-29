@@ -691,11 +691,11 @@ describe("one negotiation per counterparty", () => {
     }
   });
 
-  test("a settled negotiation does not block a fresh one — that is how terms change", async () => {
+  test("a refusal does not block a fresh one — going back with a new offer is the point", async () => {
     const { url, stop } = serve(
       new Agent({
         ...seller,
-        negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator,
+        negotiator: scripted([{ action: "reject", message: "No thanks." }]).negotiator,
       }),
     );
 
@@ -710,6 +710,75 @@ describe("one negotiation per counterparty", () => {
 
       const second = await agent.openNegotiation(url, {}, { negotiations });
       expect(second.id).not.toBe(first.id);
+      expect(negotiations.size).toBe(2);
+    } finally {
+      stop();
+    }
+  });
+
+  // The failure that started this: the agent had *agreed* with a seller,
+  // then opened a second negotiation with them and agreed again. Both
+  // Tasks were terminal and individually valid; the party had bought the
+  // same thing twice.
+  test("a deal already closed blocks another negotiation with that counterparty", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([
+          { action: "accept", message: "Done at $400.", acceptsOfferId: "offer-400" },
+        ]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          { action: "propose", message: "$400?", offerId: "offer-400", terms: { amount: 400 } },
+        ]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+      const first = await agent.openNegotiation(url, {}, { negotiations });
+      expect(first.settlement?.outcome).toBe("agreed");
+
+      await expect(agent.openNegotiation(url, {}, { negotiations })).rejects.toThrow(
+        /already closed with/,
+      );
+      expect(negotiations.size).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
+  test("a deal for one intent leaves the same counterparty open for another", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([
+          { action: "accept", message: "Done at $400.", acceptsOfferId: "offer-400" },
+        ]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          { action: "propose", message: "$400?", offerId: "offer-400", terms: { amount: 400 } },
+        ]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+
+      const bike = agent.for({ statement: "Buy a used road bike" });
+      const closed = await bike.openNegotiation(url, {}, { negotiations });
+      expect(closed.settlement?.outcome).toBe("agreed");
+
+      // Same counterparty, different thing entirely. Buying a bike from
+      // someone is no reason not to negotiate a desk with them.
+      const desk = agent.for({ statement: "Buy a standing desk" });
+      const second = await desk.openNegotiation(url, {}, { negotiations });
+
+      expect(second.id).not.toBe(closed.id);
       expect(negotiations.size).toBe(2);
     } finally {
       stop();
@@ -745,6 +814,72 @@ describe("one negotiation per counterparty", () => {
       expect(again.id).toBe(first.id);
       expect(again.reason).toContain("negotiate_resume");
       expect(negotiations.size).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
+  // The risk in refusing a second negotiation is refusing too much. What
+  // follows fixes the boundaries: a negotiation that never started is no
+  // obstacle, and `negotiate()` — where every call is deliberately its
+  // own exchange — is not affected at all.
+  test("a failed open leaves nothing behind, so trying again is allowed", async () => {
+    const agent = new Agent({
+      ...buyer,
+      negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator,
+    });
+    const negotiations = new Map<string, NegotiationSession>();
+
+    const first = await agent.runNegotiation("http://127.0.0.1:1", { discover: false }, { negotiations });
+    const again = await agent.runNegotiation("http://127.0.0.1:1", { discover: false }, { negotiations });
+
+    expect(first.kind).toBe("failed");
+    // Not "skipped": there is nothing to continue, so a retry is the only
+    // thing left and refusing it would strand the counterparty for good.
+    expect(again.kind).toBe("failed");
+  });
+
+  test("negotiate() is unaffected — each call is its own exchange", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator,
+      });
+
+      const one = await agent.negotiate(url, { maxTurns: 2 });
+      const two = await agent.negotiate(url, { maxTurns: 2 });
+
+      expect(one.task.id).not.toBe(two.task.id);
+    } finally {
+      stop();
+    }
+  });
+
+  test("an unfinished negotiation blocks even with no context map, from the store", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "counter", message: "Not yet." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator,
+      });
+      await agent.openNegotiation(url, {}, { negotiations: new Map() });
+
+      // A host that keeps no per-run map still gets the guard: the store
+      // is the record either way.
+      await expect(agent.openNegotiation(url)).rejects.toThrow(/already negotiating with/);
     } finally {
       stop();
     }
