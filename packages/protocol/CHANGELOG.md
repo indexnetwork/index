@@ -20,6 +20,15 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 40.0.0 - 2026-08-29
+
+### Changed
+
+- **BREAKING: `VectorStoreOption.filter` is `Record<string, unknown>`.** It was
+  `Record<string, any>`. Callers passing a filter are unaffected; host
+  implementations of the `VectorStore`/`Embedder` port that read values off
+  `options.filter` must now narrow them instead of relying on `any`.
+
 ## 39.0.0 - 2026-08-29
 
 ### Changed
