@@ -489,6 +489,7 @@ export class Agent<A extends string = DefaultAction> {
       // Tuesday" can only be repeated, never resolved. Terms then record a
       // date that stops meaning the same thing a week later.
       `Today is ${formatDate((this.options.now ?? (() => new Date()))())}. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.`,
+      "Only call a tool from the list you were actually given this turn — what's offered can change as your situation does, so a capability you used before, or one that would make sense here, may not be available right now. If what you need isn't in that list, say so or ask, rather than calling a name you expect to exist.",
     ];
     if (this.intent) {
       parts.push(

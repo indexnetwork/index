@@ -43,6 +43,8 @@ function call(name: string, args: unknown, id = `call_${name}`): ToolCall {
 const TODAY = new Date("2026-08-28T09:00:00Z");
 const TODAY_LINE =
   'Today is Friday, 28 August 2026. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.';
+const TOOL_DISCIPLINE_LINE =
+  "Only call a tool from the list you were actually given this turn — what's offered can change as your situation does, so a capability you used before, or one that would make sense here, may not be available right now. If what you need isn't in that list, say so or ask, rather than calling a name you expect to exist.";
 
 function agent(
   tools: Tool<never>[],
@@ -90,7 +92,7 @@ describe("run()", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}`,
+        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "Sell the bike" },
     ]);
@@ -259,7 +261,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}`,
+        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
@@ -279,7 +281,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}`,
+        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
@@ -306,7 +308,7 @@ describe("continuing a conversation", () => {
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",
-        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}`,
+        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}\n\n${TOOL_DISCIPLINE_LINE}`,
       },
       { role: "user", content: "one" },
       { role: "assistant", content: "first" },
