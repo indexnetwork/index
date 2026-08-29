@@ -16,7 +16,7 @@
  * path (`negotiator-verdict.host`), the reply transport, and the agent's own
  * name. Nothing here holds business logic.
  *
- * This shared module, rather than `main.ts`, lets queues, controllers, and
+ * This shared module, rather than `main.ts`, lets crons, controllers, and
  * services consume the same compiled graphs without a circular import back
  * into process startup.
  */
@@ -49,16 +49,16 @@ export const negotiationGraph = new NegotiationGraphFactory({
   // All-paused → reflect: the trigger waits for an in-flight kickoff to finish,
   // then deduplicates the durable task-generation vector for every bound seat.
   reflectEnqueue: async (job) => {
-    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-    await personalAgentQueue.addAllPausedEvent(job);
+    const { personalAgentService } = await import('../../services/personal-agent.service');
+    await personalAgentService.addAllPausedEvent(job);
   },
   needsPrincipalEnqueue: async (input) => {
-    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-    await personalAgentQueue.addNeedsPrincipalEvent({ ...input, event: 'needs_principal' });
+    const { personalAgentService } = await import('../../services/personal-agent.service');
+    await personalAgentService.addNeedsPrincipalEvent({ ...input, event: 'needs_principal' });
   },
   resolutionEnqueue: async (input) => {
-    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-    await personalAgentQueue.addCounterpartyResolvedEvent({ ...input, event: 'counterparty_resolved' });
+    const { personalAgentService } = await import('../../services/personal-agent.service');
+    await personalAgentService.addCounterpartyResolvedEvent({ ...input, event: 'counterparty_resolved' });
   },
   // The seat's own agent plays its turn. `personalAgentGraph` is referenced
   // lazily, inside the call, so the two constructions below can be ordered.
@@ -114,14 +114,14 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
   replyStream: { publish: publishPersonalAgentReplyChunk },
   activity: { publish: publishPersonalAgentActivity },
   reflectEnqueue: async (job) => {
-    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-    await personalAgentQueue.addAllPausedEvent(job);
+    const { personalAgentService } = await import('../../services/personal-agent.service');
+    await personalAgentService.addAllPausedEvent(job);
   },
   // A discovery batch that landed while a kickoff turn was running was read
   // past; the agent wakes itself again rather than losing it.
   wakeForMatches: async (input) => {
-    const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-    await personalAgentQueue.addMatchesReadyEvent(input);
+    const { personalAgentService } = await import('../../services/personal-agent.service');
+    await personalAgentService.addMatchesReadyEvent(input);
   },
 }).createGraph();
 
@@ -129,13 +129,13 @@ export const personalAgentGraph: PersonalAgentGraphLike = new PersonalAgentGraph
  * Discovery's post-persist hand-off: one event per signal that got matches.
  * Discovery never opens a negotiation — the signal's agent decides.
  *
- * THROWS on failure, which is the point: the discovery queues retry, and a
+ * THROWS on failure, which is the point: the discovery caller retries, and a
  * batch that persisted with nobody woken for it is not a successful
  * discovery. Only wire this where a retry actually exists.
  */
 export const matchesReady: MatchesReadyFn = async ({ userId, intentId }) => {
-  const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
-  await personalAgentQueue.addMatchesReadyEvent({ userId, intentId });
+  const { personalAgentService } = await import('../../services/personal-agent.service');
+  await personalAgentService.addMatchesReadyEvent({ userId, intentId });
 };
 
 /** How many times a tool-path wake is retried before the loss is recorded. */
@@ -154,10 +154,10 @@ const TOOL_PATH_WAKE_RETRY_MS = 100;
  * not at the user's expense.
  */
 export const matchesReadyBestEffort: MatchesReadyFn = async ({ userId, intentId }) => {
-  const { personalAgentQueue } = await import('../../queues/personal-agent.queue');
+  const { personalAgentService } = await import('../../services/personal-agent.service');
   for (let attempt = 0; attempt < TOOL_PATH_WAKE_ATTEMPTS; attempt++) {
     try {
-      await personalAgentQueue.addMatchesReadyEvent({ userId, intentId });
+      await personalAgentService.addMatchesReadyEvent({ userId, intentId });
       return;
     } catch (err) {
       if (attempt === TOOL_PATH_WAKE_ATTEMPTS - 1) {

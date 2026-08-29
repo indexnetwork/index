@@ -66,7 +66,7 @@ The package defines interfaces — your application provides the concrete implem
 | `Scraper` | Web content extraction |
 | `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
 | `IntegrationAdapter` | OAuth and external tool actions |
-| `IntentGraphQueue` | Background intent processing queue |
+| `IntentFollowUp` | Post-persist intent follow-up (HyDE, resume discovery) |
 | `ChatSessionReader` | Load conversation history |
 | `ProfileEnricher` | Enrich profiles from external sources |
 | `NegotiationGraphDatabase` | Negotiation state persistence |
@@ -190,7 +190,7 @@ import { Intents } from "@indexnetwork/protocol";
 const intents = new Intents({
   database,           // IntentGraphDatabase — required only by createGraph()
   embedder,           // EmbeddingGenerator
-  queue,              // IntentGraphQueue
+  followUp,           // IntentFollowUp
 });
 ```
 

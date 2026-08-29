@@ -8,7 +8,7 @@
  * bun run maintenance:reconcile-orphaned-intent-indexing -- --confirm-dev --intent <uuid> --intent <uuid>
  */
 import { closeDb } from '../lib/drizzle/drizzle';
-import { reconcileOrphanedIntent } from '../queues/intent.queue';
+import { reconcileOrphanedIntent } from '../lib/intent/indexing';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 
 function valuesFor(flag: string): string[] {

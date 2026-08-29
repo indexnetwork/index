@@ -45,25 +45,26 @@ import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/s
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
-// Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
-import { intentQueue } from './queues/intent.queue';
-import { discoveryQueue } from './queues/opportunity/discovery.queue';
-import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
-import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
-import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
-import { frameDriftQueue } from './queues/frame-drift.queue';
+// Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
+import { intentIndexing } from './lib/intent/indexing';
+import { intentDiscovery } from './lib/opportunity/discovery';
+import { negotiationWatchdogCron, isNegotiationWatchdogEnabled } from './crons/negotiation-watchdog.cron';
+import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
+import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
+import { frameDriftCron } from './crons/frame-drift.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
-import { hydeQueue } from './queues/hyde.queue';
-import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
+import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
+import { negotiationReflect } from './lib/negotiation/reflect';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
-import { personalAgentQueue } from './queues/personal-agent.queue';
+import { personalAgentService } from './services/personal-agent.service';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
-import { premiseQueue } from './queues/premise.queue';
+import { premiseCascade } from './lib/premise/cascade';
+import { background } from './lib/background';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
@@ -105,13 +106,13 @@ setRequestContextStore(hostRequestContext);
 // post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
 // discovery does. Without this, the graph's matches_ready node
 // short-circuits and a persisted batch never reaches its agent.
-discoveryQueue.setRuntimeDeps({
+intentDiscovery.setRuntimeDeps({
   matchesReady,
   agentDispatcher: backgroundAgentDispatcher,
 });
-negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph);
-negotiationWatchdogQueue.setReflectEnqueue(async (job) => {
-  await personalAgentQueue.addAllPausedEvent(job);
+negotiationWatchdogCron.setNegotiationGraph(negotiationGraph);
+negotiationWatchdogCron.setReflectEnqueue(async (job) => {
+  await personalAgentService.addAllPausedEvent(job);
 });
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
@@ -129,7 +130,7 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   // Intents created before joining never get an assignment pass for this network
   // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
   // regen / opportunity discovery); scoped to this network.
-  intentQueue.addNetworkReconcileForUser(userId, networkId).catch((err) => {
+  intentIndexing.addNetworkReconcileForUser(userId, networkId).catch((err) => {
     log.job.from('NetworkMembership').error('Failed to trigger intent network reconcile', { userId, networkId, error: err });
   });
 };
@@ -145,32 +146,30 @@ PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
 
 PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
   log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade', { premiseId, userId });
-  premiseQueue.addCascadeJob({ premiseId, userId, event: 'retracted' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
+  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'retracted' }));
 };
 
 PremiseEvents.onExpired = (premiseId: string, userId: string) => {
   log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade', { premiseId, userId });
-  premiseQueue.addCascadeJob({ premiseId, userId, event: 'expired' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
+  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'expired' }));
 };
 
 if (isNegotiationWatchdogEnabled()) {
-  void negotiationWatchdogQueue.start().catch((error) => {
-    log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
+  void negotiationWatchdogCron.start().catch((error) => {
+    log.job.from('NegotiationWatchdogCron').error('Negotiation watchdog startup failed', { error });
   });
 }
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
-void frameDriftQueue.start().catch((error) => {
-  log.queue.from('FrameDriftQueue').error('Frame-drift queue startup failed', {
+void frameDriftCron.start().catch((error) => {
+  log.job.from('FrameDriftCron').error('Frame-drift cron startup failed', {
     event: 'frame_drift_monitoring_startup_failed',
     error,
   });
 });
-hydeQueue.startCrons();
-negotiationReflectQueue.startCrons();
-premiseQueue.startCrons();
+hydeMaintenanceCron.startCrons();
+negotiationReflect.startCrons();
+premiseCascade.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
@@ -276,7 +275,7 @@ function classifyRequestSubsystem(pathname: string): string {
   return 'server';
 }
 
-// Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
+// Cron jobs (newsletter, opportunity finder, HyDE) are registered above.
 const server = Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors

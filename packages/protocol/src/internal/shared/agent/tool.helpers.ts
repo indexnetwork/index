@@ -12,7 +12,7 @@ import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembersh
 import type { Scraper } from "../../../platform/discovery/scraper.js";
 import type { Cache, HydeCache } from "../../../platform/discovery/cache.js";
 import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
-import type { IntentGraphQueue } from "../../../platform/runtime/queue.js";
+import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
 import type { ChatSessionReader } from "../../../platform/chat/ports.js";
 import type { ChatSummaryReader } from "../../../platform/chat/ports.js";
 import type { ChatMessageWriter } from "../../../platform/chat/ports.js";
@@ -146,7 +146,7 @@ interface ToolContextBindings {
   /** Dedicated cache for HyDE graph (may be same instance as cache). */
   hydeCache: HydeCache;
   /** Queue for enqueuing follow-up intent processing (HyDE generation/deletion). */
-  intentQueue: IntentGraphQueue;
+  intentFollowUp: IntentFollowUp;
   /** Chat session reader for loading conversation history. */
   chatSession: ChatSessionReader;
   /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */

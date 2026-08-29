@@ -1,6 +1,6 @@
 # API Service
 
-Backend API and agent engine for Index Network: Bun runtime, Bun.serve routing, Drizzle ORM, PostgreSQL with pgvector, BullMQ, and LangChain/LangGraph.
+Backend API and agent engine for Index Network: Bun runtime, Bun.serve routing, Drizzle ORM, PostgreSQL with pgvector, Redis, and LangChain/LangGraph.
 
 ## Quick start
 
@@ -39,7 +39,7 @@ tests are opt-in via `RUN_PAID_INTEGRATION_TESTS=1`,
 
 The live PersonalAgent/negotiation sandbox suite is also off by default. It
 resets only `protocol_sandbox`, starts its own API process, and uses the real
-OpenRouter provider and BullMQ workers:
+OpenRouter provider and in-process background handlers:
 
 ```bash
 RUN_SANDBOX_E2E=1 RUN_PAID_INTEGRATION_TESTS=1 bun run test:sandbox:e2e

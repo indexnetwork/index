@@ -4,14 +4,14 @@
 `@indexnetwork/protocol`. It does not contain adapters, configuration, HTTP
 handlers, vendor clients, or dependency wiring.
 
-An adapter belongs in the host: for example, a Drizzle database adapter, a
-BullMQ queue adapter, a Redis cache adapter, or an `AsyncLocalStorage`
+An adapter belongs in the host: for example, a Drizzle database adapter,
+a Redis cache adapter, or an `AsyncLocalStorage`
 request-context store. This package consumes the matching TypeScript port.
 
 ## Naming
 
 - Group ports by host concern: `discovery/cache.ts`, `chat/ports.ts`,
-  `runtime/queue.ts`, and `negotiation/summary.ts`. `database/` remains a
+  `runtime/follow-up.ts`, and `negotiation/summary.ts`. `database/` remains a
   separate group because it owns a larger set of persistence contracts.
 - Use `ports.ts` only when one file contains several closely related, actual
   port contracts. It is not a re-export barrel. For example, `chat/ports.ts`

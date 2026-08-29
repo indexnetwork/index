@@ -1,7 +1,7 @@
-// services/api/src/queues/opportunity/expiration.queue.ts
+// services/api/src/crons/opportunity-expiration.cron.ts
 import cron from 'node-cron';
-import { log } from '../../lib/log';
-import { OpportunityDatabaseAdapter } from '../../adapters/opportunity.database.adapter';
+import { log } from '../lib/log';
+import { OpportunityDatabaseAdapter } from '../adapters/opportunity.database.adapter';
 
 /** The persistence surface the cron needs: a single stale-opportunity sweep. */
 export interface OpportunityExpirationDeps {
@@ -9,7 +9,7 @@ export interface OpportunityExpirationDeps {
 }
 
 export class OpportunityExpirationCron {
-  private readonly logger = log.queue.from('OpportunityExpiration');
+  private readonly logger = log.job.from('OpportunityExpiration');
   private task: ReturnType<typeof cron.schedule> | null = null;
   private readonly deps: OpportunityExpirationDeps;
 

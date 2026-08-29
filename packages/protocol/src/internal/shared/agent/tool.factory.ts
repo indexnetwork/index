@@ -39,7 +39,7 @@ const logger = protocolLogger("ChatTools");
  * Resolves user/network identity from DB at init time.
  * Tools are created fresh for each user session to ensure proper isolation.
  *
- * All external dependencies (cache, integration, queue, etc.) are provided
+ * All external dependencies (cache, integration, follow-up, etc.) are provided
  * via the `deps` parameter — the protocol lib never imports concrete adapters.
  */
 export async function createChatTools(
@@ -129,7 +129,7 @@ export async function createChatTools(
   const intents = new Intents({
     database,
     embedder,
-    queue: deps.intentQueue,
+    followUp: deps.intentFollowUp,
   });
   const intentGraph = intents.createGraph();
   const premiseGraph = new PremiseGraphFactory(database, embedder).createGraph();

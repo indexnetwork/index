@@ -10,7 +10,7 @@ import type { HydeGraphDatabase } from '@indexnetwork/protocol';
 const STALE_HYDE_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Minimal database interface for HyDE maintenance (used when deps provided in tests). */
-export type HydeQueueDatabase = Pick<
+export type HydeMaintenanceDatabase = Pick<
   ChatDatabaseAdapter,
   | 'deleteExpiredHydeDocuments'
   | 'getStaleHydeDocuments'
@@ -22,8 +22,8 @@ export type HydeQueueDatabase = Pick<
  * Optional dependencies for testing. Use abstractions (`Pick<Adapter, ...>` or protocol interfaces)
  * to stub the database.
  */
-export interface HydeQueueDeps {
-  database?: HydeQueueDatabase;
+export interface HydeMaintenanceDeps {
+  database?: HydeMaintenanceDatabase;
   invokeHyde?: (input: {
     sourceText: string;
     sourceType: 'intent';
@@ -35,23 +35,23 @@ export interface HydeQueueDeps {
 /**
  * HyDE maintenance: cron-scheduled cleanup and refresh (no BullMQ queue).
  *
- * Provides expired-document cleanup and stale-document refresh. Call {@link HydeQueue.startCrons}
+ * Provides expired-document cleanup and stale-document refresh. Call {@link HydeMaintenanceCron.startCrons}
  * from the protocol server to schedule daily cleanup (03:00) and weekly refresh (Sunday 04:00).
  *
  * @remarks
  * Handlers orchestrate by calling adapters and the HyDE graph—no business logic here.
  */
-export class HydeQueue {
+export class HydeMaintenanceCron {
   private readonly logger = log.job.from('HydeJob');
   private readonly cleanupLogger = log.job.from('HydeJob:Cleanup');
   private readonly refreshLogger = log.job.from('HydeJob:Refresh');
-  private readonly database: HydeQueueDatabase | ChatDatabaseAdapter;
-  private readonly invokeHydeOverride?: HydeQueueDeps['invokeHyde'];
+  private readonly database: HydeMaintenanceDatabase | ChatDatabaseAdapter;
+  private readonly invokeHydeOverride?: HydeMaintenanceDeps['invokeHyde'];
 
   /**
    * @param deps - Optional overrides for database (for tests).
    */
-  constructor(deps?: HydeQueueDeps) {
+  constructor(deps?: HydeMaintenanceDeps) {
     this.database = deps?.database ?? new ChatDatabaseAdapter();
     this.invokeHydeOverride = deps?.invokeHyde;
     // When deps is omitted, default adapter implements the same interface.
@@ -170,4 +170,4 @@ export class HydeQueue {
 }
 
 /** Singleton HyDE maintenance instance. Use for cleanup/refresh and starting crons. */
-export const hydeQueue = new HydeQueue();
+export const hydeMaintenanceCron = new HydeMaintenanceCron();

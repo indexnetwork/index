@@ -9,6 +9,46 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Changed
+- **Delete `src/queues/`.** Nothing in it had been a queue since BullMQ was
+  removed; the folder, filenames and class names were the only thing left
+  saying otherwise. Each module moved to the layer it actually belongs to:
+  - `intent.queue.ts` → `lib/intent/indexing.ts` (`IntentIndexing`, the host
+    implementation of the protocol's `IntentFollowUp`).
+  - `opportunity/discovery.queue.ts` and its three helpers → `lib/opportunity/`
+    (`IntentDiscovery`; `addJob` is now `start`).
+  - `premise.queue.ts` → `lib/premise/cascade.ts` (`PremiseCascade`).
+  - `negotiations/reflect.queue.ts` → `lib/negotiation/reflect.ts`
+    (`NegotiationReflect`).
+  - `personal-agent.queue.ts` → `services/personal-agent.service.ts`
+    (`PersonalAgentService`).
+  - `outcome/outcome.mining.shared.ts` → `lib/opportunity/outcome.mining.ts`;
+    `pool/negotiation-evidence.shadow.ts` → `lib/negotiation/`.
+  - The five pure `node-cron` sweeps → a new `src/crons/*.cron.ts`:
+    `hyde-maintenance`, `frame-drift`, `negotiation-watchdog`,
+    `checkpoint-retention`, `opportunity-expiration`.
+  `eslint-plugin-boundaries` gains a `crons` element and loses `queues`.
+
+### Removed
+- **`notification.queue.ts` and `queueOpportunityNotification`.** No production
+  caller: `OpportunityEvents.onActionable` delivers through
+  `NotificationDeliveryService.publishOpportunityActionable`. Its removal left
+  `background()`'s `retries` option without a call site, so that option and its
+  backoff loop are gone too — `background()` now runs `fn` exactly once.
+- **The `bull:*` Redis purge in `db:clear-negotiations`.** `clearQueues()` had
+  scanned and deleted BullMQ keys that have not existed since the queue system
+  was removed.
+- **The `log.queue` namespace.** Its callers moved to the existing `log.job`.
+  Thin `addCascadeJob`/`addDecomposeProfileJob`/`addReconcileJob`/
+  `addOrphanReconciliationJob` wrappers are gone; callers invoke
+  `background('<name>', () => handler(data))` directly.
+
+### Renamed log fields
+- `FRAME_DRIFT_QUEUE_NAME` → `FRAME_DRIFT_SCHEDULE_NAME` (value unchanged).
+- Frame-drift log metadata `queueName` → `scheduleName`. The
+  `frame_drift_*` event names are unchanged, and the
+  `frame_drift_execution_attempts.queue_name` **column** is unchanged.
+
 ### Removed
 - Delete the test suite and its harness: all specs under `src/**/tests/` and
   `tests/`, plus `src/preload.test.ts`, `src/lib/testing/`, `bunfig.toml`,

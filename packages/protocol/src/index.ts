@@ -61,7 +61,7 @@ export type {
   ConfirmProposalResult,
 } from "./platform/database.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/discovery/embedder.js";
-export type { IntentGraphQueue } from "./platform/runtime/queue.js";
+export type { IntentFollowUp } from "./platform/runtime/follow-up.js";
 export type { Scraper } from "./platform/discovery/scraper.js";
 export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
 export type { AgentDispatcher } from "./internal/shared/interfaces/agent-dispatcher.interface.js";

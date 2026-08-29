@@ -1,4 +1,4 @@
-import { log } from '../../lib/log';
+import { log } from '../log';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
@@ -6,10 +6,10 @@ import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer 
 import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
 
 
-/** Graph DB shape the opportunity/HyDE graphs require — every `from-*` queue casts its ChatDatabaseAdapter to this. */
+/** Graph DB shape the opportunity/HyDE graphs require; discovery casts its ChatDatabaseAdapter to this. */
 export type OpportunityGraphDb = OpportunityGraphDatabase & HydeGraphDatabase;
 
-/** Runtime deps shared by every opportunity-discovery queue worker. */
+/** Runtime deps shared by every opportunity-discovery run. */
 export interface OpportunityDiscoveryDeps {
   /** Wakes a signal's PersonalAgent once the batch is persisted. */
   matchesReady?: MatchesReadyFn;
@@ -18,7 +18,7 @@ export interface OpportunityDiscoveryDeps {
 
 type DiscoveryLogger = ReturnType<typeof log.job.from>;
 
-/** Build the graph DB façade every `from-*` queue uses (ChatDatabaseAdapter cast to the graph interfaces). */
+/** Build the graph DB façade discovery uses (ChatDatabaseAdapter cast to the graph interfaces). */
 export function createOpportunityGraphDb(database: object = new ChatDatabaseAdapter()): OpportunityGraphDb {
   return database as unknown as OpportunityGraphDb;
 }
@@ -49,10 +49,10 @@ type OpportunityInvokeOptions = Parameters<ReturnType<typeof buildOpportunityGra
 /**
  * Run an opportunity-discovery graph and log/throw on the result.
  *
- * Encapsulates the block that was copy-pasted across the three `from-*` queues:
+ * Encapsulates the block that was copy-pasted across the three former `from-*` entry points:
  * the `invokeOpportunityGraph` test short-circuit, graph assembly + invocation,
  * `result.error` handling, and the candidates/opportunities (and optional trace)
- * completion logging. Per-queue variation is passed in via `errorLabel`/`logContext`/`logTrace`.
+ * completion logging. Per-caller variation is passed in via `errorLabel`/`logContext`/`logTrace`.
  */
 export type OpportunityDiscoveryCompletionReason =
   | 'created_or_reactivated'
@@ -124,12 +124,12 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
   deps?: OpportunityDiscoveryDeps & { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
   invokeOpts: TOpts;
   logger: DiscoveryLogger;
-  /** Human label for the queue, e.g. `'Discovery'`. */
+  /** Human label for the run, e.g. `'Discovery'`. */
   label: string;
   /**
    * Label for the thrown fallback error message, e.g. `'discovery'`. Kept
    * distinct from `label` so the thrown message stays lowercase-dashed (matching
-   * the pre-split queues). Defaults to `label`.
+   * the pre-split entry points). Defaults to `label`.
    */
   errorLabel?: string;
   /** Identifier fields merged into every log line (e.g. `{ intentId, userId }`). */

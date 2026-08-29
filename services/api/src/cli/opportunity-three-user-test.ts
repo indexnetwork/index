@@ -28,7 +28,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, OpportunityGraphDatabase, Embedder, HydeCache } from '@indexnetwork/protocol';
-import { runDiscovery } from '../queues/opportunity/discovery.queue';
+import { runDiscovery } from '../lib/opportunity/discovery';
 
 import { TESTER_PERSONAS } from './test-data';
 
@@ -71,7 +71,7 @@ async function main() {
   await database.assignIntentToNetwork(created.id, INDEX_ID);
   console.log('Created intent for', userA.name, ':', created.id, '->', intentPayload);
 
-  // Run HyDE for the intent (no queue; direct invoke)
+  // Run HyDE for the intent (direct invoke)
   const embedder: Embedder = new EmbedderAdapter();
   const cache: HydeCache = new RedisCacheAdapter();
   const inferrer = new LensInferrer();

@@ -17,7 +17,7 @@ export interface IntentDiscoveryLock {
   release(intentId: string, token: string): Promise<void>;
 }
 
-/** Module-wide (not per-instance): every DiscoveryQueue instance in a process sees the same locks. */
+/** Module-wide (not per-instance): every IntentDiscovery instance in a process sees the same locks. */
 const locks = new Map<string, { token: string; expiresAt: number }>();
 
 export class InMemoryIntentDiscoveryLock implements IntentDiscoveryLock {
