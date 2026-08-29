@@ -216,7 +216,7 @@ async function main(): Promise<void> {
       const opportunities = new OpportunityDatabaseAdapter();
       const created = await opportunities.createOpportunity({
         detection: {
-          source: 'manual',
+          source: 'opportunity_graph',
           createdBy: counterpart.id,
           timestamp: new Date().toISOString(),
         },
