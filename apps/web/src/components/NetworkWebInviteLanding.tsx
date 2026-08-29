@@ -24,9 +24,11 @@ export default function NetworkWebInviteLanding() {
   const { isAuthenticated, isReady } = useAuthContext();
   const networkService = useNetworkService();
 
-  const [previewStep, setPreviewStep] = useState<PreviewStep>("loading");
+  const [previewStep, setPreviewStep] = useState<PreviewStep>(code ? "loading" : "error");
   const [network, setNetwork] = useState<Network | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(
+    code ? null : "Invalid or expired invitation link",
+  );
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [loginRequested, setLoginRequested] = useState(false);
@@ -37,11 +39,8 @@ export default function NetworkWebInviteLanding() {
   }, []);
 
   useEffect(() => {
-    if (!code) {
-      setPreviewStep("error");
-      setPreviewError("Invalid or expired invitation link");
-      return;
-    }
+    // A missing code is already reflected in the initial state above.
+    if (!code) return;
 
     let cancelled = false;
     (async () => {

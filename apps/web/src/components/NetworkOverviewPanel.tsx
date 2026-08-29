@@ -31,15 +31,17 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
   const api = useAuthenticatedAPI();
   const indexesService = useNetworks();
 
-  const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
+  // The parent can also ask for the dialog via `onLeaveRequest`; both sources
+  // are combined during render rather than mirrored into state by an effect.
+  const [leaveConfirmationOpen, setLeaveConfirmationOpen] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
 
-  useEffect(() => {
-    if (onLeaveRequest) {
-      setShowLeaveConfirmation(true);
-      onLeaveRequestHandled?.();
-    }
-  }, [onLeaveRequest, onLeaveRequestHandled]);
+  const showLeaveConfirmation = leaveConfirmationOpen || !!onLeaveRequest;
+
+  const setLeaveConfirmation = (open: boolean) => {
+    setLeaveConfirmationOpen(open);
+    if (!open) onLeaveRequestHandled?.();
+  };
 
   const [intents, setIntents] = useState<{
     id: string;
@@ -86,7 +88,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
       await api.post(`/networks/${index.id}/leave`, {});
       removeIndex(index.id);
       success(`Left ${index.title}`);
-      setShowLeaveConfirmation(false);
+      setLeaveConfirmation(false);
       onLeft?.();
     } catch (err) {
       logger.error('Error leaving network', { error: err });
@@ -139,7 +141,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
         </div>
       </div>
 
-      <AlertDialog.Root open={showLeaveConfirmation} onOpenChange={setShowLeaveConfirmation}>
+      <AlertDialog.Root open={showLeaveConfirmation} onOpenChange={setLeaveConfirmation}>
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
           <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">

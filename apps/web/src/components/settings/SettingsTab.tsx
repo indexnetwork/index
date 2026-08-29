@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { validateFiles } from '@/lib/file-validation';
-import NetworkAvatar, { resolveNetworkImageSrc } from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/IndexAvatar';
+import { resolveNetworkImageSrc } from '@/lib/network-image';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('SettingsTab');

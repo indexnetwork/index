@@ -15,20 +15,19 @@ export default function Header({ showHeaderButtons = true, forcePublicView: _for
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
-  const [isAlpha, setIsAlpha] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const alphaParam = searchParams.get('alpha');
 
+  // Derived during render: an `?alpha=` param wins, otherwise the stored flag.
+  const isAlpha = alphaParam !== null
+    ? alphaParam === 'true'
+    : localStorage.getItem('alpha') === 'true';
+
+  // The effect only syncs the external store, never component state.
   useEffect(() => {
-    if (alphaParam !== null) {
-      localStorage.setItem('alpha', alphaParam);
-      setIsAlpha(alphaParam === 'true');
-    } else {
-      const storedAlpha = localStorage.getItem('alpha');
-      setIsAlpha(storedAlpha === 'true');
-    }
-  }, [alphaParam, pathname]);
+    if (alphaParam !== null) localStorage.setItem('alpha', alphaParam);
+  }, [alphaParam]);
 
   const loginInitiatedRef = useRef(false);
 

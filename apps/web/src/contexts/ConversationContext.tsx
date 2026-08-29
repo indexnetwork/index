@@ -351,7 +351,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       }
       return null;
     }
-  }, [user, apiClient]);
+  }, [user]);
 
   const markConversationRead = useCallback(async (conversationId: string) => {
     // Clear locally before the request returns so nav/sidebar badges respond

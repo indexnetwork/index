@@ -10,14 +10,14 @@ import { NetworksProvider } from "@/contexts/IndexesContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
+const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
+const publicRoutes = ['/c'];
+// /l is chrome-free web invite join; /index stays app-only public join.
+const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe', '/dev/floor'];
+
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
   const { isAuthenticated } = useAuthContext();
-
-  const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
-  const publicRoutes = ['/c'];
-  // /l is chrome-free web invite join; /index stays app-only public join.
-  const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe', '/dev/floor'];
 
   const isBareRoute = useMemo(() => {
     // Root is bare (landing) only for guests; authenticated users get the app shell.

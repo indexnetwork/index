@@ -60,7 +60,7 @@ export default function FloorLabPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [run?.runId, refreshSeat]);
+  }, [run, refreshSeat]);
 
   const start = async () => {
     setStarting(true);
