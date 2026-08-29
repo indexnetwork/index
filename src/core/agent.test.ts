@@ -136,6 +136,104 @@ describe("handler()", () => {
     }
   });
 
+  test("an inbound turn can ask instead of committing, and answerInbound folds the reply in", async () => {
+    const server = scripted([
+      { action: "ask", message: "What's your ceiling?" },
+      { action: "accept", message: "Deal at your ceiling." },
+    ]);
+    const sellerAgent = new Agent({ ...seller, negotiator: server.negotiator });
+    const { url, stop } = serve(sellerAgent);
+
+    try {
+      const buyerAgent = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          { action: "propose", message: "$300?" },
+          { action: "counter", message: "Still $300." },
+        ]).negotiator,
+      });
+
+      const first = await buyerAgent.openNegotiation(url);
+      // Asked, not committed: the reply is a legitimate `input-required`
+      // wire message, not silently invented terms — and nothing was
+      // agreed, so the exchange is still open.
+      expect(first.received?.action as string).toBe("ask");
+      expect(first.received?.message).toBe("What's your ceiling?");
+      expect(first.state).toBe("input-required");
+      expect(first.done).toBe(false);
+
+      // The party this seller acts for answers, out of band — this
+      // doesn't take a turn, nothing is sent yet.
+      const recorded = sellerAgent.answerInbound(first.id, "Ceiling is $500.");
+      expect(recorded.pending).toBeUndefined();
+      expect(recorded.guidance).toEqual(["Ceiling is $500."]);
+
+      // The buyer's next message continues the same task; the seller's
+      // reply to it is decided with the answer folded into its objective.
+      const second = await buyerAgent.continueNegotiation(first.id);
+      expect(second.received?.action).toBe("accept");
+      expect(second.done).toBe(true);
+      expect(server.calls[1]?.party.objective).toContain("Ceiling is $500.");
+    } finally {
+      stop();
+    }
+  });
+
+  test("answerInbound refuses a negotiation you opened, and one not waiting on you", async () => {
+    const server = scripted([{ action: "counter", message: "No." }]);
+    const { url, stop } = serve(new Agent({ ...seller, negotiator: server.negotiator }));
+
+    try {
+      const buyerAgent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$300?" }]).negotiator,
+      });
+      const turn = await buyerAgent.openNegotiation(url);
+
+      // Opened by this agent, not answered — the wrong tool entirely.
+      expect(() => buyerAgent.answerInbound(turn.id, "guidance")).toThrow(
+        /opened it yourself|answer it with negotiate_resume/,
+      );
+
+      // A negotiation this agent never heard of.
+      expect(() => buyerAgent.answerInbound("no-such-id", "guidance")).toThrow(/No negotiation/);
+    } finally {
+      stop();
+    }
+  });
+
+  test("a plain inbound reply still clears any stale pending question from an earlier turn", async () => {
+    const server = scripted([
+      { action: "ask", message: "What's your ceiling?" },
+      { action: "counter", message: "Let's say $350." },
+    ]);
+    const sellerAgent = new Agent({ ...seller, negotiator: server.negotiator });
+    const { url, stop } = serve(sellerAgent);
+
+    try {
+      const buyerAgent = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          { action: "propose", message: "$300?" },
+          { action: "counter", message: "$300 is my number." },
+        ]).negotiator,
+      });
+
+      const first = await buyerAgent.openNegotiation(url);
+      expect(sellerAgent.answerInbound(first.id, "Ceiling is $500.").pending).toBeUndefined();
+
+      const second = await buyerAgent.continueNegotiation(first.id);
+      expect(second.received?.action).toBe("counter");
+      expect(second.done).toBe(false);
+
+      // The second turn answered instead of asking — nothing to record,
+      // and no leftover question from the first turn either.
+      expect(() => sellerAgent.answerInbound(first.id, "anything")).toThrow(/not waiting on your party/);
+    } finally {
+      stop();
+    }
+  });
+
   test("passes authenticate through, rejecting unauthorized callers", async () => {
     const agent = new Agent({
       ...seller,

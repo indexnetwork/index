@@ -157,24 +157,47 @@ describe("escalation", () => {
     }
   });
 
-  test("negotiate_open and negotiate_turn never offer ask", async () => {
+  test("negotiate_open and negotiate_turn offer ask too, and park instead of committing", async () => {
     const { url, stop } = serve(
       new Agent({ ...seller, negotiator: scripted([{ action: "counter", message: "No." }]).negotiator }),
     );
     try {
-      const client = scripted([{ action: "propose", message: "$400?" }]);
+      const client = scripted([{ action: "propose", message: "$400?" }, { action: "ask", message: "Ceiling?" }]);
       const agent = new Agent({ ...buyer, negotiator: client.negotiator });
       const negotiations = new Map<string, NegotiationSession>();
       const first = await agent.openNegotiation(url, {}, { negotiations });
-      await agent.continueNegotiation(first.id, {}, { negotiations });
+      const second = await agent.continueNegotiation(first.id, {}, { negotiations });
 
       const offered = client.calls.map((c) =>
         c.options.allowedActions.map((a) => (typeof a === "string" ? a : a.action)),
       );
       expect(offered).toEqual([
-        ["propose", "counter", "accept", "reject"],
-        ["propose", "counter", "accept", "reject"],
+        ["propose", "counter", "accept", "reject", "ask"],
+        ["propose", "counter", "accept", "reject", "ask"],
       ]);
+
+      // The second turn asked instead of sending — parked, not on the wire.
+      expect(second.asking).toEqual({ question: "Ceiling?" });
+      expect(second.done).toBe(false);
+      expect(negotiations.get(first.id)?.pending).toEqual({ question: "Ceiling?" });
+    } finally {
+      stop();
+    }
+  });
+
+  test("negotiate() itself still never offers ask — no loop to answer one", async () => {
+    const { url, stop } = serve(
+      new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Deal." }]).negotiator }),
+    );
+    try {
+      const client = scripted([{ action: "propose", message: "$400?" }]);
+      const agent = new Agent({ ...buyer, negotiator: client.negotiator });
+      await agent.negotiate(url);
+
+      const offered = client.calls[0]?.options.allowedActions.map((a) =>
+        typeof a === "string" ? a : a.action,
+      );
+      expect(offered).toEqual(["propose", "counter", "accept", "reject"]);
     } finally {
       stop();
     }
@@ -913,6 +936,132 @@ describe("one negotiation per counterparty", () => {
       expect(context.negotiations.size).toBe(1);
     } finally {
       stop();
+    }
+  });
+});
+
+// A live run once had one party's agent dial a counterparty while that
+// same counterparty's agent was mid-dial back for the same real deal —
+// each side settled its own Task without the other ever seeing it. These
+// guard the same-agent case `rivalNegotiationWith` alone can't catch: an
+// inbound negotiation carries no return address, so it can only be
+// correlated by intent, not by counterparty.
+describe("cross-direction rivals (the same deal, from the other side)", () => {
+  test("an unfinished inbound negotiation blocks opening an outbound one under the same intent", async () => {
+    const middle = new Agent({
+      ...buyer,
+      negotiator: scripted([{ action: "counter", message: "Not yet." }]).negotiator,
+    }).for({ statement: "Buy a used road bike" });
+    const { url: middleUrl, stop: stopMiddle } = serve(middle);
+
+    try {
+      const caller = new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "propose", message: "$400?" }]).negotiator,
+      });
+      const opened = await caller.openNegotiation(middleUrl);
+      expect(opened.done).toBe(false);
+
+      await expect(
+        middle.openNegotiation("http://127.0.0.1:1", { discover: false }),
+      ).rejects.toThrow(/already negotiating this with you/);
+    } finally {
+      stopMiddle();
+    }
+  });
+
+  test("an unfinished outbound negotiation blocks accepting a new inbound one under the same intent", async () => {
+    const { url: sellerUrl, stop: stopSeller } = serve(
+      new Agent({ ...seller, negotiator: scripted([{ action: "counter", message: "Not yet." }]).negotiator }),
+    );
+    const middle = new Agent({
+      ...buyer,
+      negotiator: scripted([{ action: "counter", message: "Sure, what's your offer?" }]).negotiator,
+    }).for({ statement: "Buy a used road bike" });
+    const { url: middleUrl, stop: stopMiddle } = serve(middle);
+
+    try {
+      const opened = await middle.openNegotiation(sellerUrl);
+      expect(opened.done).toBe(false);
+
+      const caller = new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "propose", message: "$390?" }]).negotiator,
+      });
+      // Refused over the wire (409), before `middle`'s handler ever
+      // creates a Task for it — the message is worded for whoever called
+      // in, not for `middle`'s own model, so it doesn't echo
+      // `secondNegotiationRefusal`'s tool names.
+      await expect(caller.openNegotiation(middleUrl)).rejects.toThrow(/already has an unfinished negotiation/);
+    } finally {
+      stopSeller();
+      stopMiddle();
+    }
+  });
+
+  test("a different intent is not a rival, in either direction", async () => {
+    const { url: sellerUrl, stop: stopSeller } = serve(
+      new Agent({ ...seller, negotiator: scripted([{ action: "counter", message: "Not yet." }]).negotiator }),
+    );
+    const middle = new Agent({
+      ...buyer,
+      negotiator: scripted([{ action: "counter", message: "Sure." }]).negotiator,
+    }).for({ statement: "Buy a used road bike" });
+    const { url: middleUrl, stop: stopMiddle } = serve(middle);
+
+    // Same identity and session store, rescoped to something unrelated and
+    // served on its own port — `for()` is a lens, not a new agent, but a
+    // host that rescopes what's listening swaps which intent a caller
+    // actually reaches, the way `examples/06-server.ts` rebuilds and
+    // re-serves an agent whenever its intent changes.
+    const desk = middle.for({ statement: "Buy a standing desk" });
+    const { url: deskUrl, stop: stopDesk } = serve(desk);
+
+    try {
+      const opened = await middle.openNegotiation(sellerUrl);
+      expect(opened.done).toBe(false);
+
+      // The inbound caller reaches `desk`'s scope, not the bike one — the
+      // bike negotiation open on `middle` is not a rival to it.
+      const caller = new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "propose", message: "$50?" }]).negotiator,
+      });
+      const inbound = await caller.openNegotiation(deskUrl);
+      expect(inbound.done).toBe(false);
+    } finally {
+      stopSeller();
+      stopMiddle();
+      stopDesk();
+    }
+  });
+
+  test("an inbound negotiation that ended with no deal frees the intent up again", async () => {
+    const middle = new Agent({
+      ...buyer,
+      negotiator: scripted([{ action: "reject", message: "Not interested." }]).negotiator,
+    }).for({ statement: "Buy a used road bike" });
+    const { url: middleUrl, stop: stopMiddle } = serve(middle);
+
+    try {
+      const caller = new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "propose", message: "$400?" }]).negotiator,
+      });
+      const opened = await caller.openNegotiation(middleUrl);
+      expect(opened.done).toBe(true);
+
+      // Declined, not agreed — the counterparty's rejection frees `middle`
+      // to dial someone else about the same intent. The dial itself still
+      // fails (nothing is listening on :1); the point is *why* it fails —
+      // not refused as a rival.
+      const outbound = await middle
+        .openNegotiation("http://127.0.0.1:1", { discover: false })
+        .catch((e) => e as Error);
+      expect(outbound).toBeInstanceOf(Error);
+      expect((outbound as Error).message).not.toMatch(/already negotiating this with you/);
+    } finally {
+      stopMiddle();
     }
   });
 });

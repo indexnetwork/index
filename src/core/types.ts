@@ -293,6 +293,16 @@ export interface NegotiationTurn<A extends string = string> {
   settlement?: Settlement<A>;
   /** An Artifact from this agent's `evaluate` hook, if it produced one. */
   artifact?: A2AArtifact;
+  /**
+   * Set when this turn stopped short of the wire because taking it would
+   * commit to something only the party this agent acts for can decide.
+   * `sent` is the decision that would have gone out, not something the
+   * counterparty ever saw; `received`/`state`/`done` describe the
+   * negotiation as it stood before this turn — nothing changed. The
+   * session is parked the same way a `negotiate_many` "asking" event parks
+   * one: answer with `ask_user`, then resume with `negotiate_resume`.
+   */
+  asking?: { question: string };
 }
 
 /**

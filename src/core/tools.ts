@@ -96,6 +96,12 @@ export interface NegotiationToolOptions {
 const SETTLEMENT_NOTE =
   " The result carries a `settlement` once either side closes. Read it before telling anyone what happened: `agreed` means both sides closed on the same deal; `conflict` or `unconfirmed` means nothing is agreed yet — whatever your own action was — so say that plainly, or take another turn to settle it.";
 
+/** What a result carrying `asking` instead of a settled turn means — read
+ * before treating the tool's return value as something that actually went
+ * out. Shared between `negotiate_open` and `negotiate_turn`. */
+const ASKING_NOTE =
+  " If the result carries `asking` instead, nothing was sent this turn — the negotiation would have committed to something you have not been told, so it is parked the same way a 'Waiting on you' line from negotiate_many is. Ask your party once with ask_user, then call negotiate_resume with this id and their answer — do not call negotiate_open or negotiate_turn again for it, that would either refuse (a rival) or send without the answer.";
+
 /** The digest tools (`negotiate_many`/`negotiate_resume`) return prose, not
  * an object with `settlement` — this is `SETTLEMENT_NOTE`'s equivalent for
  * reading a `Settled` line in that text. */
@@ -120,7 +126,8 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
     name: "negotiate_open",
     description:
       "Open a negotiation with another agent at its A2A endpoint and take the first turn. Returns what you said, what they said back, and an id for continuing. Use negotiate_turn to carry on. Only for a counterparty you have no unfinished negotiation with: if you already have one, continue it with negotiate_turn, or answer it with negotiate_resume when it is waiting on your party." +
-      SETTLEMENT_NOTE,
+      SETTLEMENT_NOTE +
+      ASKING_NOTE,
     parameters: {
       type: "object",
       properties: {
@@ -141,7 +148,8 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
     name: "negotiate_turn",
     description:
       "Take one more turn in a negotiation you already opened and that is still open. Use `guidance` to fold in anything you have learned since the last turn — an answer from the party you represent, a limit, a change of position. Once an exchange has ended, it is finished: do not take another turn in it to revisit the price or the terms, because that erases what was settled. Open a new negotiation instead." +
-      SETTLEMENT_NOTE,
+      SETTLEMENT_NOTE +
+      ASKING_NOTE,
     parameters: {
       type: "object",
       properties: {
@@ -229,7 +237,41 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
       ),
   };
 
-  return [open as Tool<never>, turn as Tool<never>, many as Tool<never>, resume as Tool<never>];
+  const answerInbound: Tool<{ ids: string[]; guidance: string }> = {
+    name: "answer_inbound",
+    description:
+      "Give your party's guidance to a negotiation someone else opened with you and that is waiting on you — see 'They are waiting on your party too' in your instructions. This does not take a turn: the counterparty holds the initiative, so nothing is sent. The guidance is just ready the next time they continue it. Pass every id the answer applies to.",
+    parameters: {
+      type: "object",
+      properties: {
+        ids: { type: "array", items: { type: "string" }, description: "Negotiation ids from your instructions." },
+        guidance: {
+          type: "string",
+          description: "What your party said, as it applies to these negotiations, e.g. 'the ceiling is $460, and Sunday works'.",
+        },
+      },
+      required: ["ids", "guidance"],
+    },
+    run: ({ ids, guidance }, context) =>
+      [...new Set(ids)]
+        .map((id) => {
+          try {
+            context.agent.answerInbound(id, guidance);
+            return `${id}: recorded.`;
+          } catch (cause) {
+            return `${id}: ${cause instanceof Error ? cause.message : String(cause)}`;
+          }
+        })
+        .join("\n"),
+  };
+
+  return [
+    open as Tool<never>,
+    turn as Tool<never>,
+    many as Tool<never>,
+    resume as Tool<never>,
+    answerInbound as Tool<never>,
+  ];
 }
 
 /** The tools an agent has when you don't give it any: ask the party it
