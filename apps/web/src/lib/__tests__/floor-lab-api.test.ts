@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 
 import { mapFloorStatus, principalQuestion } from '@/lib/floor-lab-api';
 import type { IntentCycleNegotiationDetail } from '@/services/conversation';

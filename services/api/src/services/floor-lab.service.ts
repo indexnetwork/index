@@ -8,7 +8,7 @@ import { CREDENTIAL_PROVIDER_ID, hashCredentialPassword } from '../lib/betteraut
 import db from '../lib/drizzle/drizzle';
 import { mintLabSessionJwt } from '../lib/floor-lab/session';
 import { log } from '../lib/log';
-import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
+import { discoveryQueue } from '../queues/opportunity/discovery.queue';
 import * as schema from '../schemas/database.schema';
 import { validateNetworkMetadata } from '../schemas/network.validation';
 
@@ -141,7 +141,7 @@ export class FloorLabService {
       sourceId: crypto.randomUUID(),
     });
     await this.intentAdapter.assignIntentToNetwork(created.id, networkId);
-    await fromIntentQueue.addJob({
+    await discoveryQueue.addJob({
       intentId: created.id,
       userId,
       networkIds: [networkId],
