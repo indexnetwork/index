@@ -102,7 +102,6 @@ export class NegotiationSummarizer {
  */
 export function buildFallbackDigest(n: DiscoveryNegotiation): DiscoveryNegotiationDigest {
   const outcomeRole = n.outcome.hasOpportunity ? "opportunity" : "no-opportunity";
-  const lastTurn = n.turns[n.turns.length - 1];
   const keyTakeRaw =
     n.outcome.reasoning && n.outcome.reasoning.trim().length > 0
       ? n.outcome.reasoning

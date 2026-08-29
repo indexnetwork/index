@@ -6,23 +6,12 @@
  * shape tool error payloads.
  */
 
-import { z } from "zod";
-
-import { requestContext } from "../shared/observability/request-context.js";
 
 
-import type { DefineTool } from "../shared/agent/tool.helpers.js";
-import type { OpportunityToolDeps } from "./opportunity.tools.port.js";
-import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
-import { focusedIntentId, focusedNetworkId, focusedNetworkLabel } from "../shared/agent/tool.scope.js";
+
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { OpportunityPresenter, gatherPresenterContext, getSafePresentationOrSkip, narratorRemarkFromReasoning, safeFallbackSummary, stripUuids, type PresenterDatabase } from "./opportunity.presentation.js";
-import { buildOpportunityPresentation } from "./opportunity.presentation.js";
-import { loadNegotiationContext } from "./negotiation-context.loader.js";
-import { admitOpportunityUpdate } from "./opportunity.update-admission.js";
-import { opportunityOwnerActionForStatus, type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from "./opportunity.owner-approval.js";
-import { ownerApprovalProvenanceFor } from "./opportunity.owner-provenance.js";
-import { selectOpportunityFeed } from "./opportunity.feed-selection.js";
+import { narratorRemarkFromReasoning, safeFallbackSummary } from "./opportunity.presentation.js";
+import { type OpportunityOwnerAction, type OpportunityOwnerApprovalVerdict } from "./opportunity.owner-approval.js";
 
 
 export function stripLeadingNarratorName(remark: string, narratorName: string): string {
@@ -45,11 +34,8 @@ export function stripLeadingNarratorName(remark: string, narratorName: string): 
   }
   return t;
 }
-import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity } from "../../platform/database.js";
-import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
-import { updateOpportunityStatus } from "./opportunity.graph.modes.js";
 
 export const logger = protocolLogger("ChatTools:Opportunity");
 

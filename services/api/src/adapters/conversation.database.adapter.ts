@@ -63,47 +63,12 @@ function toNegotiationTaskRow(row: {
   };
 }
 import { projectOwnerScreenDecision } from './negotiation-lifecycle.projection';
-import { buildHermesResponseMetadataSql } from './conversation-hermes-metadata.sql';
-import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, gte, inArray, intents, isNull, lt, ne, notInArray, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
+import { buildProfileFromUser, schema, Artifact, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, Task, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, ne, notInArray, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent, publishIntentInvalidationEvent } from '../lib/conversation-events';
 import { log } from '../lib/log';
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
-import { expectedNegotiationSpeaker, negotiationScopeKey } from '../lib/negotiation/expected-speaker';
 import { acquireNegotiationAttemptLock, notArchivedNegotiationTaskWhere, qualifyingNegotiationAttemptTaskWhere, rewriteEraNegotiationTaskWhere, type NegotiationAttemptTransaction } from './negotiation-attempt.atomic';
-
-/**
- * In-transaction read of ONE negotiation's turn history, for the locked floor
- * checks below.
- *
- * Mirrors `getNegotiationMessages`, but must run inside the caller's `tx` so
- * the check and the write it guards observe the same snapshot. A task with no
- * opportunity has no identity apart from its conversation, so the conversation
- * is its scope.
- */
-async function selectNegotiationTurnHistoryInTransaction(
-  tx: { select: typeof db.select },
-  scope: { conversationId: string; metadata: Record<string, unknown> | null },
-): Promise<Array<{ id: string; senderId: string; parts: unknown }>> {
-  const opportunityId = negotiationScopeKey(scope.metadata);
-  const columns = {
-    id: schema.messages.id,
-    senderId: schema.messages.senderId,
-    parts: schema.messages.parts,
-  };
-  if (!opportunityId) {
-    return tx.select(columns).from(schema.messages)
-      .where(eq(schema.messages.conversationId, scope.conversationId))
-      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
-  }
-  return tx.select(columns).from(schema.messages)
-    .innerJoin(schema.tasks, eq(schema.messages.taskId, schema.tasks.id))
-    .where(and(
-      sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
-      sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
-    ))
-    .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
-}
 
 /** Extracts only the public portion of the latest persisted A2A turn. */
 function intentCycleLatestActivity(
@@ -439,27 +404,6 @@ export async function createNegotiationTaskForAttemptInTransaction(
     })
     .returning();
   return task ?? null;
-}
-
-function isExactPoolPushParts(parts: unknown, expectedText: string): boolean {
-  if (!Array.isArray(parts) || parts.length !== 1) return false;
-  const part = parts[0];
-  if (typeof part !== 'object' || part === null || Array.isArray(part)) return false;
-  const record = part as Record<string, unknown>;
-  return Object.keys(record).sort().join(',') === 'text,type'
-    && record.type === 'text'
-    && record.text === expectedText;
-}
-
-function isExactPoolPushMetadata(
-  metadata: unknown,
-  expected: Record<string, string>,
-): boolean {
-  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return false;
-  const record = metadata as Record<string, unknown>;
-  const keys = Object.keys(expected).sort();
-  return Object.keys(record).sort().join(',') === keys.join(',')
-    && keys.every((key) => record[key] === expected[key]);
 }
 
 export class ConversationDatabaseAdapter {

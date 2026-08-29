@@ -1,7 +1,6 @@
 import { isActionableForViewer, safeFallbackSummary } from '@indexnetwork/protocol';
 
 import type { OpportunityRow, UserIdentity } from '../adapters/database.shared';
-import type { NotificationStreamEvent } from '../lib/notification-stream-events';
 
 const OPPORTUNITY_NOTIFICATION_HEADLINE = 'A promising connection';
 const OPPORTUNITY_NOTIFICATION_EMPTY_SUMMARY = 'A new match that might be relevant to you.';

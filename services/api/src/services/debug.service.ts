@@ -2,11 +2,6 @@ import { eq, and, sql, ne, isNull, isNotNull, or, count, inArray } from 'drizzle
 
 import db from '../lib/drizzle/drizzle';
 import { intents, intentNetworks, networks, networkMembers, users } from '../schemas/database.schema';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase } from '@indexnetwork/protocol';
 
 /** Preflight diagnostics gathered before running discovery. */
 export interface DiscoveryPreflight {

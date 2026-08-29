@@ -577,7 +577,6 @@ export class OpportunityService {
     });
 
     const otherPartyInfo = otherPartyIds[0] ? userMap.get(otherPartyIds[0])! : { id: '', name: 'Unknown', avatar: null as string | null };
-    const counterpartUser = userRecords[0];
     const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, 'card');
 
     const otherParties = otherActors.map((a) => {

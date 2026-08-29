@@ -42,7 +42,7 @@ export default function IntegrationsTab({
   networkId,
   success,
   error,
-  info,
+  info: _info,
 }: IntegrationsTabProps) {
   const api = useAuthenticatedAPI();
 

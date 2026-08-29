@@ -7,14 +7,14 @@
 import { config } from "dotenv";
 config({ path: '.env.test', override: true });
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, test, it, expect, mock, spyOn } from 'bun:test';
+import { describe, test, it, expect, mock, spyOn } from 'bun:test';
 import type { Runnable } from '@langchain/core/runnables';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { z } from 'zod';
 import { OpportunityGraphFactory, type OpportunityGraphThresholdOverrides, buildDiscovererContext } from '../opportunity.graph.js';
 import type { Id } from '../../../platform/database.js';
-import type { CreateOpportunityData, HydeDocument, OpportunityGraphDatabase, OpportunityActor, Opportunity } from '../../../platform/database.js';
+import type { CreateOpportunityData, OpportunityGraphDatabase, Opportunity } from '../../../platform/database.js';
 import type { Embedder } from '../../../platform/discovery/embedder.js';
 import type { SourceProfileData } from '../opportunity.state.js';
 import { DISCOVERY_MIN_SIMILARITY } from '../discovery.env.js';
@@ -22,10 +22,8 @@ import { REJECTION_COOLDOWN_MS } from '../opportunity.graph.shared.js';
 import { MatchExplainer } from '../opportunity.match-explainer.js';
 import type { MatchExplainerLike, MatchExplainerResult, MatchExplainerInput, EvaluatorEntity } from '../opportunity.match-explainer.js';
 import type { UserIdentity } from '../../../protocol/schemas/identity.schema.js';
-import { computeHydeSourceTextHash } from '../../shared/hyde-documents.js';
 import { requestContext, type TraceEmitter } from '../../shared/observability/request-context.js';
 import { setLoggerFactory, type LoggerWithSource } from '../../shared/observability/log.js';
-import { approveOpportunityIntroduction } from '../opportunity.lifecycle.js';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;

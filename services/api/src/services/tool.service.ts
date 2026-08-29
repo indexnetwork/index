@@ -17,7 +17,6 @@ import { intentIndexing } from '../lib/intent/indexing';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
-import db from '../lib/drizzle/drizzle';
 
 import { log } from '../lib/log';
 

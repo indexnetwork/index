@@ -1,5 +1,4 @@
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { and, eq, sql } from 'drizzle-orm/sql';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';

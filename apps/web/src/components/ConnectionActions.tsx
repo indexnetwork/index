@@ -33,7 +33,7 @@ export interface ConnectionActionsProps {
 export default function ConnectionActions({
   userId,
   userName,
-  userAvatar,
+  userAvatar: _userAvatar,
   connectionStatus = 'none',
   onAction,
   disabled = false,

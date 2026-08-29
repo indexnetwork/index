@@ -2,7 +2,6 @@ import cron from 'node-cron';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 
 import { log } from '../log';
-import { background } from '../background';
 import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 

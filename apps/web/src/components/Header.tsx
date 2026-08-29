@@ -10,7 +10,7 @@ interface HeaderProps {
   keepButtonSpace?: boolean;
 }
 
-export default function Header({ showHeaderButtons = true, forcePublicView = false, keepButtonSpace = false }: HeaderProps) {
+export default function Header({ showHeaderButtons = true, forcePublicView: _forcePublicView = false, keepButtonSpace = false }: HeaderProps) {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();

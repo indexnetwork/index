@@ -11,13 +11,11 @@
  */
 
 import type { Id, OpportunityActor } from '../../platform/database.js';
-import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
-import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import { timed } from '../shared/observability/performance.js';
 import { safeFallbackSummary } from "./opportunity.presentation.js";
 import type { OpportunityMutationResult } from "./opportunity.lifecycle.js";
 import { deleteOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
-import { deleteLog, introEvaluationLog, introValidationLog, readLog, sendLog, updateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
+import { deleteLog, readLog, updateLog, type OpportunityGraphDeps } from "./opportunity.graph.shared.js";
 
 /** Identifies the caller and the opportunity every mutation mode acts on. */
 export interface OpportunityMutationRequest {

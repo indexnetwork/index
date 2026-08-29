@@ -11,7 +11,7 @@ import { createModel, type ModelConfig } from "../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../shared/agent/model-signal.js";
 import { sanitizeForDebugMeta } from "../shared/observability/debug-meta.sanitizer.js";
 import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
-import type { Question, QuestionStrategy } from "../../protocol/question.js";
+import type { Question } from "../../protocol/question.js";
 import { Timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
 import { deduplicateQuestions } from "./chat.question-dedup.js";
@@ -190,7 +190,7 @@ export interface AgentIterationResult {
 export class ChatAgent {
   private model: ChatOpenAI;
   private tools: ChatTools;
-  private toolsByName: Map<string, any>;
+  private toolsByName: Map<string, ChatTools[number]>;
 
   /**
    * Private constructor — use `ChatAgent.create()` instead.
@@ -470,7 +470,7 @@ export class ChatAgent {
   private detectHallucinatedBlock(
     text: string,
     toolsUsed: Array<{ name: string; success: boolean; resultSummary?: string }>,
-    userMessage?: string,
+    _userMessage?: string,
   ): { type: string; tool: string; description: string } | null {
     const hasSuccessfulCreateIntent = toolsUsed.some(
       (t) => t.name === "create_intent" && t.success,
@@ -566,7 +566,7 @@ export class ChatAgent {
   private async normalizeToolResult(
     toolName: string,
     resultStr: string,
-    toolArgs: Record<string, unknown>,
+    _toolArgs: Record<string, unknown>,
   ): Promise<{
     resultStr: string;
     summary: string;

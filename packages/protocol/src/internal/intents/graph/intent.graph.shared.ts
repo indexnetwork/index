@@ -6,11 +6,10 @@
  * This module owns the bag, the logger, and the pure helpers.
  */
 
-import { StateGraph, START, END } from "@langchain/langgraph";
-import { IntentGraphState, VerifiedIntent, ExecutionResult, type IntentGraphAction, type IntentValidationFailure } from "./intent.graph.state.js";
+import { IntentGraphState, VerifiedIntent, type IntentGraphAction, type IntentValidationFailure } from "./intent.graph.state.js";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
-import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription } from "../intent.proposal.js";
+import { DEFAULT_SPECIFICITY_WARNING } from "../intent.proposal.js";
 import { IntentReconciler } from "../intent.reconciler.js";
 import type { NormalizedIntentAction } from "../intent.reconciler.js";
 import { IntentGraphDatabase } from "../../../platform/database.js";
@@ -18,9 +17,6 @@ import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
 import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { timed } from "../../shared/observability/performance.js";
-import { requestContext } from "../../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../../../protocol/core.js";
 
 /** The graph's channel state, as every node sees it. */
 export type IntentState = typeof IntentGraphState.State;

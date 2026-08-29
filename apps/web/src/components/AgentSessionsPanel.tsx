@@ -4,10 +4,8 @@ import { Plus } from 'lucide-react';
 
 import { apiClient } from '@/lib/api';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useAIChat } from '@/contexts/AIChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
-import { useNotifications } from '@/contexts/NotificationContext';
 import { log } from '@/lib/logger';
 
 const logger = log.ui.from('AgentSessionsPanel');
@@ -29,10 +27,9 @@ interface ChatSession {
 export default function AgentSessionsPanel() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, features } = useAuthContext();
+  const { user } = useAuthContext();
   const { sessionsVersion } = useAIChatSessions();
   const { indexes } = useNetworksState();
-  const { error } = useNotifications();
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);

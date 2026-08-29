@@ -2,14 +2,10 @@
  * Intent graph, stage 4 and the read fast path.
  */
 
-import { VerifiedIntent, ExecutionResult, ConfirmOutcome, TransitionOutcome, ConfirmIntentAction, TransitionIntentAction, type IntentValidationFailure } from "./intent.graph.state.js";
-import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription } from "../intent.proposal.js";
-import type { NormalizedIntentAction } from "../intent.reconciler.js";
-import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
+import { VerifiedIntent, ExecutionResult, ConfirmOutcome, TransitionOutcome, ConfirmIntentAction, TransitionIntentAction } from "./intent.graph.state.js";
+import { normalizeIntentDescription } from "../intent.proposal.js";
 import { timed } from "../../shared/observability/performance.js";
-import { requestContext } from "../../shared/observability/request-context.js";
-import type { DebugMetaAgent } from "../../../protocol/core.js";
-import { buildExplicitUpdateActions, enforceIntentActionBoundary, generateIntentEmbedding, getSpecificityWarning, isExplicitUpdateRequest, isVague, logger, MAX_PERMISSIBLE_ENTROPY, MIN_CLEAR_INTENT_SCORE, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { enforceIntentActionBoundary, generateIntentEmbedding, isExplicitUpdateRequest, isVague, logger, toSpeechActType, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 
 /** Zero-vector embedding fallback, matching {@link generateIntentEmbedding}'s dimensionality. */
 const ZERO_EMBEDDING_DIMS = 2000;

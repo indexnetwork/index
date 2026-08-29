@@ -1,6 +1,4 @@
 import type { Opportunity, OpportunityActor, OpportunityGraphDatabase } from '../../platform/database.js';
-import { resolveOpportunityActorIntent } from './opportunity.actor.js';
-import type { MatchesReadyFn } from './opportunity.graph.shared.js';
 
 /** The mutation result shape returned by opportunity lifecycle graph nodes. */
 export interface OpportunityMutationResult {

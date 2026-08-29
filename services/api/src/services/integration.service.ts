@@ -21,8 +21,6 @@ interface TelegramDb {
   clearTelegramPrefs(userId: string): Promise<void>;
 }
 
-type Toolkit = 'gmail' | 'slack';
-
 /**
  * Coordinates supported external integrations.
  */

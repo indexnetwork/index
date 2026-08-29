@@ -1,7 +1,6 @@
 import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
-import { validateKey } from '../lib/keys';
 import { premiseCascade } from '../lib/premise/cascade';
 import { background } from '../lib/background';
 

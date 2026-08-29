@@ -4,7 +4,6 @@
 
 import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
 import type { PremiseAnalysis, PremiseAssertion, PremiseProvenance, PremiseRecord, PremiseValidity } from './entities.js';
-import type { Database } from '../database.js';
 
 /** Premise and user-context operations. */
 export interface DatabaseMemberQueries {

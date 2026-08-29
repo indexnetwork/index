@@ -76,7 +76,7 @@ export interface VectorSearchResult<T> {
 export type VectorStoreOption<T> = {
   limit?: number;
   // Generic filter object passed to the store implementation
-  filter?: Record<string, any>;
+  filter?: Record<string, unknown>;
   // For stateless store: explicitly provide the candidates to search against
   candidates?: (T & { embedding?: number[] | null })[];
   // Minimum similarity score to include in results

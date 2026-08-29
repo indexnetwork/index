@@ -5,6 +5,7 @@ import type { ToolScopeType } from "../shared/agent/tool.scope.js";
 import type { ChatStreamEvent, DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
 import { createAgentEndEvent, createAgentStartEvent, createDebugMetaEvent, createDecisionQuestionsEvent, createErrorEvent, createGraphEndEvent, createPhaseStartEvent, createPhaseEndEvent, createGraphStartEvent, createIterationStartEvent, createLlmStartEvent, createLlmEndEvent, createResponseCompleteEvent, createResponseResetEvent, createHallucinationDetectedEvent, createStatusEvent, createTokenEvent, createToolActivityEvent, createChatSummarizerStartEvent, createChatSummarizerEndEvent } from "./chat-streaming.types.js";
 import type { AgentStreamEvent } from "./chat.agent.js";
+import type { ChatGraphFactory } from "./chat.graph.js";
 
 const logger = protocolLogger("ChatStreamer");
 
@@ -28,7 +29,7 @@ export class ChatStreamer {
     ) => Promise<BaseMessage[]>,
     private createStreamingGraph: (
       checkpointer?: BaseCheckpointSaver,
-    ) => any,
+    ) => ReturnType<ChatGraphFactory["createStreamingGraph"]>,
   ) {}
 
   /**
