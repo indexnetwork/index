@@ -206,5 +206,5 @@ async function chat(message: string): Promise<void> {
     return;
   }
 
-  if (result.output) lines.push(result.output);
+  if (result.output) for (const line of result.output.split("\n")) lines.push(line);
 }
