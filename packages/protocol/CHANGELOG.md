@@ -20,6 +20,19 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 38.0.1 - 2026-08-28
+
+### Removed
+- Delete `docs/` and every spec except five (`capabilities/tests/intents`,
+  `capabilities/tests/negotiations.e2e`, `capabilities/tests/personal-agent.e2e`,
+  `internal/opportunities/tests/opportunity.graph`,
+  `internal/premises/tests/premise.decomposer`), along with
+  `scripts/tests/` and `scripts/architecture/tests/`. The `test:architecture`
+  script is gone and `architecture:check` no longer calls it; the three
+  `architecture:*` scripts are unchanged and still gate the package.
+  `LIVE_MODEL_SPECS` drops two entries that no longer existed. No source or
+  public-surface change: `src/index.ts` exports exactly what it did in 38.0.0.
+
 ## 37.0.0 - 2026-08-27
 
 ### Breaking
@@ -2042,6 +2055,14 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
     kinds.
   - Hosts must implement `upsertDiscoveryMatchCandidates` and
     `listPendingCandidatesForIntent`.
+- **Breaking (38.0.0): `QuestionRecoverySnapshot` drops its discovery-completion
+  fields.** `completionSource` narrows to `z.enum(["intent_creation"])` — the
+  `from_intent`/`discovery_run` values belonged to the post-discovery
+  recovery-question generator, retired in `6a3b65b0e` with no writer left.
+  `rejectedNegotiationCount` and `runId` are removed for the same reason.
+  Existing persisted `questions.detection` rows written before the retirement
+  may still carry the old values; nothing in the host parses them against this
+  schema at read time.
 
 ### Added
 

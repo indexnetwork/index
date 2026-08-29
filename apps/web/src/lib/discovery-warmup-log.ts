@@ -5,7 +5,7 @@
  * on every render, so a reload reproduces the identical log and no client-side
  * delta tracking (or new table) is involved.
  *
- *  - The log reads the `intent_discovery_progress` row the from-intent worker
+ *  - The log reads the `intent_discovery_progress` row the discovery worker
  *    writes at its run boundaries (queued / started / retried / succeeded).
  *
  * There is deliberately no per-community narration ("scanning Climate

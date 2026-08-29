@@ -152,13 +152,11 @@ async function main(): Promise<void> {
       }
     }
 
-    let wipedFixtureUserIds: string[] = [];
     await db.transaction(async (tx) => {
       const fixtureUsers = await tx.select({ id: schema.users.id })
         .from(schema.users)
         .where(sql.join(FIXTURE_EMAIL_PATTERNS.map((pattern) => sql`${schema.users.email} LIKE ${pattern}`), sql` OR `));
       const fixtureUserIds = fixtureUsers.map((user) => user.id);
-      wipedFixtureUserIds = fixtureUserIds;
       if (fixtureUserIds.length > 0) {
         const fixtureActorPredicate = sql`EXISTS (
           SELECT 1
@@ -373,28 +371,6 @@ async function main(): Promise<void> {
       }
 
     });
-
-    // Remove stale discovery jobs for fixture owners. A reset stays paused;
-    // normal intent resume is the only thing that starts discovery.
-    const currentFixtureUserIds = personaFixtures.map((fixture) => fixture.userId);
-    if (wipedFixtureUserIds.length > 0 || minimal) {
-      try {
-        const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
-        const wiped = new Set([...wipedFixtureUserIds, ...currentFixtureUserIds]);
-        let removed = 0;
-        for (const job of await fromIntentQueue.queue.getJobs(['completed', 'failed', 'delayed', 'waiting'])) {
-          const jobUserId = (job?.data as { userId?: string } | undefined)?.userId;
-          if (jobUserId && wiped.has(jobUserId)) {
-            await job.remove();
-            removed += 1;
-          }
-        }
-        await fromIntentQueue.queue.close();
-        if (removed > 0) console.log(`Removed ${removed} stale discovery job(s) for wiped fixture users.`);
-      } catch (error) {
-        console.warn(`Discovery queue sweep skipped: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
 
     const premiseCount = personaFixtures.reduce((sum, item) => sum + item.premiseTexts.length, 0);
     const intentCount = personaFixtures.reduce((sum, item) => sum + item.persona.intents.length, 0);

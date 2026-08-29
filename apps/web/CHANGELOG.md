@@ -8,6 +8,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- Delete `tests/`, including the Playwright e2e suite. No source change.
+
+### Removed
 - **Breaking (web 0.58.0):** remove the Agent reporter surface. `/agent` now
   always renders the ordinary agent chat; `AgentReporterSurface`, the
   `agentSurface` feature flag, `startReporterSession`, the reporter branch of the

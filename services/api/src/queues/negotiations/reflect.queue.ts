@@ -1,37 +1,36 @@
 /**
- * Negotiation reflection queue (P5.2 / IND-406) — the memory write path.
+ * Negotiation reflection (P5.2 / IND-406) — the memory write path.
  *
- * Two job kinds:
- * - `reflect`: enqueued by the negotiation graph's finalize node (via the
- *   injected `ReflectEnqueueFn` — the protocol package has no BullMQ access).
+ * Two shapes:
+ * - `reflect`: triggered by the negotiation graph's finalize node (via the
+ *   injected `ReflectEnqueueFn` — the protocol package has no host access).
  *   Replays the finished negotiation's turn history from BOTH sides and
  *   distills ≤ 3 private memory entries per side via `NegotiationReflector`.
  * - `chat_reflect`: debounce-scheduled after each negotiator-DM turn; fires
  *   once the session has been idle for the debounce window ("session end"),
- *   distilling the client's stated preferences/corrections.
+ *   distilling the client's stated preferences/corrections. The debounce is
+ *   the entire point of the job — a `Map<sessionId, Timeout>` collapses a
+ *   burst of chat turns into one reflection, same as the BullMQ delayed-job
+ *   replace it used to be.
  *
  * Write-only: nothing reads `negotiator_memories` yet (P5.3). Every write
  * funnels through `NegotiatorMemoryWriteService` (flag gate, caps, dossier
- * upsert). Job failures never affect negotiation outcomes — the negotiation
- * finalized before the job runs, and the graph enqueues fire-and-forget.
+ * upsert). Failures never affect negotiation outcomes — the negotiation
+ * finalized before this runs, and the graph triggers fire-and-forget.
  *
  * A daily cron runs the confidence-decay pass (anti-poisoning schedule).
  */
 
-import { Job } from 'bullmq';
 import cron from 'node-cron';
 
 import { NegotiationReflector } from '@indexnetwork/protocol';
 import type { NegotiationReflectJobData, ReflectEnqueueFn, ReflectionTranscriptEntry, DistilledMemory } from '@indexnetwork/protocol';
 
 import { log } from '../../lib/log';
-import { QueueFactory } from '../../lib/bullmq/bullmq';
+import { background } from '../../lib/background';
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
 import { chatSessionService } from '../../services/chat.service';
 import { negotiatorMemoryWriteService, isNegotiatorMemoryWriteEnabled, type NegotiatorMemoryWriteService } from '../../services/negotiator-memory.service';
-
-/** BullMQ queue name for reflection jobs. */
-export const QUEUE_NAME = 'negotiation-reflect';
 
 /** Idle window after the last negotiator-DM turn before chat_reflect fires. */
 const CHAT_REFLECT_DELAY_MS = 15 * 60 * 1000;
@@ -43,9 +42,7 @@ export interface ChatReflectJobData {
   userId: string;
 }
 
-type ReflectQueueJobData = ReflectJobData | ChatReflectJobData;
-
-/** Optional deps for testing — abstractions only, no real DB/LLM/Redis. */
+/** Optional deps for testing — abstractions only, no real DB/LLM. */
 export interface ReflectQueueDeps {
   conversations?: {
     getMessagesForConversation: (conversationId: string) => Promise<Array<{
@@ -68,28 +65,23 @@ export interface ReflectQueueDeps {
   };
   reflector?: Pick<NegotiationReflector, 'reflectNegotiation' | 'reflectChat'>;
   writer?: Pick<NegotiatorMemoryWriteService, 'writeDistilledMemories' | 'runConfidenceDecay'>;
+  /** Test hook: shortens the chat-reflect debounce window. */
+  chatReflectDelayMs?: number;
 }
 
-/**
- * Reflection queue: BullMQ queue + worker + cron in one class. Workers are
- * started only by the protocol server via {@link startWorker}; the decay cron
- * via {@link startCrons}.
- */
+/** Reflection: background triggers, a chat-reflect debounce, and the decay cron. */
 export class NegotiationReflectQueue {
-  static readonly QUEUE_NAME = QUEUE_NAME;
-
-  readonly queue = QueueFactory.createQueue<ReflectQueueJobData>(QUEUE_NAME);
-
   private readonly logger = log.job.from('NegotiationReflectJob');
-  private readonly queueLogger = log.queue.from('NegotiationReflectQueue');
   private readonly deps: ReflectQueueDeps | undefined;
   private reflector: Pick<NegotiationReflector, 'reflectNegotiation' | 'reflectChat'> | null;
-  private worker: ReturnType<typeof QueueFactory.createWorker<ReflectQueueJobData>> | null = null;
   private cronStarted = false;
+  private readonly chatReflectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly chatReflectDelayMs: number;
 
   constructor(deps?: ReflectQueueDeps) {
     this.deps = deps;
-    this.reflector = deps?.reflector ?? null; // lazy — created on first job (defers OPENROUTER key need)
+    this.reflector = deps?.reflector ?? null; // lazy — created on first use (defers OPENROUTER key need)
+    this.chatReflectDelayMs = deps?.chatReflectDelayMs ?? CHAT_REFLECT_DELAY_MS;
   }
 
   private getReflector(): Pick<NegotiationReflector, 'reflectNegotiation' | 'reflectChat'> {
@@ -101,47 +93,27 @@ export class NegotiationReflectQueue {
     return this.deps?.writer ?? negotiatorMemoryWriteService;
   }
 
-  /** Enqueue a post-negotiation reflection job. */
+  /** Trigger a post-negotiation reflection, fire-and-forget. */
   async addReflectJob(data: ReflectJobData): Promise<void> {
-    await this.queue.add('reflect', data, { jobId: `reflect-${data.negotiationId}` });
+    background('reflect', () => this.reflect(data));
   }
 
   /**
    * Debounce-schedule a chat reflection for a negotiator DM: each call
-   * replaces any pending delayed job for the session, so the job only fires
-   * after the session has been idle for the full delay window — the closest
-   * observable "session end" for an open-ended DM surface. No-op when the
-   * write flag is off (avoids Redis churn for a job that would skip anyway).
+   * clears and reschedules the session's pending timer, so reflection only
+   * fires after the session has been idle for the full delay window — the
+   * closest observable "session end" for an open-ended DM surface. No-op
+   * when the write flag is off.
    */
   async scheduleChatReflect(data: ChatReflectJobData): Promise<void> {
     if (!isNegotiatorMemoryWriteEnabled()) return;
-    const jobId = `chat-reflect-${data.sessionId}`;
-    await this.queue.remove(jobId).catch(() => { /* not present or already active — fine */ });
-    await this.queue.add('chat_reflect', data, { jobId, delay: CHAT_REFLECT_DELAY_MS });
-  }
-
-  /** Run a job handler (worker path and tests with injected deps). */
-  async processJob(name: string, data: ReflectQueueJobData): Promise<void> {
-    switch (name) {
-      case 'reflect':
-        await this.handleReflect(data as ReflectJobData);
-        break;
-      case 'chat_reflect':
-        await this.handleChatReflect(data as ChatReflectJobData);
-        break;
-      default:
-        this.queueLogger.warn('Unknown job name', { name });
-    }
-  }
-
-  /** Start the BullMQ worker. Idempotent; protocol server only. */
-  startWorker(): void {
-    if (this.worker) return;
-    const processor = async (job: Job<ReflectQueueJobData>) => {
-      this.queueLogger.info('Processing job', { jobId: job.id, jobName: job.name });
-      await this.processJob(job.name, job.data);
-    };
-    this.worker = QueueFactory.createWorker<ReflectQueueJobData>(QUEUE_NAME, processor);
+    const existing = this.chatReflectTimers.get(data.sessionId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.chatReflectTimers.delete(data.sessionId);
+      background('reflect', () => this.chatReflect(data));
+    }, this.chatReflectDelayMs);
+    this.chatReflectTimers.set(data.sessionId, timer);
   }
 
   /**
@@ -161,18 +133,9 @@ export class NegotiationReflectQueue {
     });
   }
 
-  /** Gracefully close the worker and queue connections. */
-  async close(): Promise<void> {
-    if (this.worker) {
-      await this.worker.close();
-      this.worker = null;
-    }
-    await this.queue.close();
-  }
-
   // ─── reflect ──────────────────────────────────────────────────────────────
 
-  private async handleReflect(data: ReflectJobData): Promise<void> {
+  async reflect(data: ReflectJobData): Promise<void> {
     if (!isNegotiatorMemoryWriteEnabled()) {
       this.logger.info('Memory writes disabled; skipping reflection', { negotiationId: data.negotiationId });
       return;
@@ -187,9 +150,7 @@ export class NegotiationReflectQueue {
     // Extract turn data parts. #1494: the persisted shape is
     // {verb, message, reasoning} for a continuing turn, or {verb:'pause',
     // reason} for a pause (redacted — payload is never in the shared
-    // thread). This is dormant until step 2 rewires reflectEnqueue at this
-    // queue, but the shape must be current now, not the pre-rewrite
-    // {action, assessment} one.
+    // thread).
     const turns = messages
       .map((m: { senderId: string; parts: unknown[] }) => {
         const dataPart = (m.parts as Array<{ kind?: string; data?: { verb?: string; message?: string; reasoning?: string; reason?: string } }>)
@@ -259,7 +220,7 @@ export class NegotiationReflectQueue {
 
   // ─── chat_reflect ─────────────────────────────────────────────────────────
 
-  private async handleChatReflect(data: ChatReflectJobData): Promise<void> {
+  async chatReflect(data: ChatReflectJobData): Promise<void> {
     if (!isNegotiatorMemoryWriteEnabled()) {
       this.logger.info('Memory writes disabled; skipping chat reflection', { sessionId: data.sessionId });
       return;
@@ -320,11 +281,11 @@ export class NegotiationReflectQueue {
   }
 }
 
-/** Singleton reflect queue instance. */
+/** Singleton reflect instance. */
 export const negotiationReflectQueue = new NegotiationReflectQueue();
 
 /**
- * The reflect enqueue callback.
+ * The reflect trigger callback.
  *
  * Use at every negotiation-graph composition site (main.ts background graph,
  * negotiation/tool services, MCP composition root) so no path silently drops

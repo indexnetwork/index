@@ -37,7 +37,7 @@ export default function IntentNegotiationInspector({ detail }: { detail: IntentC
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <p className="font-ibm-plex-mono text-[10px] uppercase tracking-[0.12em] text-gray-500">Task state</p>
-        <p className="mt-2 text-sm text-gray-900">round {detail.task.round} · {detail.task.state}</p>
+        <p className="mt-2 text-sm text-gray-900">batch {detail.task.batchId ? detail.task.batchId.slice(0, 8) : 'none'} · {detail.task.state}</p>
         <p className="mt-1 font-ibm-plex-mono text-[10px] text-gray-500">task {detail.task.id} · opportunity {detail.task.opportunityId}</p>
         {detail.task.pause && (
           <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">

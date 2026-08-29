@@ -38,7 +38,7 @@ import { log } from '../../lib/log';
  * its log dimensions stay comparable across the retirement.
  */
 export interface EvidenceShadowTrigger {
-  source: 'from_intent' | 'intent_visit';
+  source: 'discovery_run' | 'intent_visit';
   userId: string;
   intentId?: string;
   runId?: string;

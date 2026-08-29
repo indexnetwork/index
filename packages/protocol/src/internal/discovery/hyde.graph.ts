@@ -519,8 +519,8 @@ export async function cacheResultsNode(state: HydeState, deps: HydeGraphDeps) {
     const { sourceType, sourceId, sourceText, hydeDocuments } = state;
     const frameFingerprint = requireFrameFingerprint(state.frameFingerprint);
     const sourceTextHash = state.sourceTextHash ?? computeHydeSourceTextHash(sourceText);
-    for (const [label, doc] of Object.entries(hydeDocuments)) {
-      if (!isFrameCacheDocument(doc, label, frameFingerprint, sourceTextHash)) continue;
+    await Promise.all(Object.entries(hydeDocuments).map(async ([label, doc]) => {
+      if (!isFrameCacheDocument(doc, label, frameFingerprint, sourceTextHash)) return;
 
       const key = cacheKey(
         sourceType,
@@ -550,7 +550,7 @@ export async function cacheResultsNode(state: HydeState, deps: HydeGraphDeps) {
           },
         });
       }
-    }
+    }));
     return {};
   });
 }

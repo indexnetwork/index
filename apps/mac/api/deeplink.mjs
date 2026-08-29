@@ -5,7 +5,7 @@
  * link handed over as an NSUserActivity, or an `index://` scheme open) and
  * forwards the raw absolute string to the web layer, which asks this function
  * what it means. Keeping every URL→route decision here is what makes app
- * routing as verifiable as an HTTP endpoint: see api/deeplink.spec.mjs.
+ * routing as verifiable as an HTTP endpoint.
  *
  * Dependency-free ESM like the rest of api/; assemble.py strips `export` when
  * it inlines this file into the single-file bundle as window.IndexApi.

@@ -9,7 +9,7 @@ export type IntentDiscoveryTrigger = {
   | { networkId?: never; indexScope: string[] }
 );
 
-export type FromIntentGraphInvokeOptions = IntentDiscoveryTrigger;
+export type DiscoveryGraphInvokeOptions = IntentDiscoveryTrigger;
 
 export function buildIntentDiscoveryTrigger(input: {
   userId: string;

@@ -344,7 +344,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     const personaUsers = await ensureUsersAndMemberships(personaAccounts, { ownerIndex: 0 });
     if (!silent) console.log(`  Persona users: ${personaUsers.length} ready`);
 
-    if (!silent) console.log('Enqueueing profile HyDE jobs for network members...');
+    if (!silent) console.log('Triggering profile decomposition for network members...');
     let successfulEnqueues = 0;
     for (const user of personaUsers) {
       try {
@@ -354,7 +354,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         if (!silent) console.warn(`  Failed to create premises for seed user for ${user.id}:`, err);
       }
     }
-    if (!silent) console.log(`  Enqueued ${successfulEnqueues} profile HyDE job(s). Run workers (e.g. bun run dev) to process them.`);
+    if (!silent) console.log(`  Triggered profile decomposition for ${successfulEnqueues} user(s), running in the background.`);
 
     // Create intents with embedding + HyDE inline (no intent graph, no opportunity discovery)
     if (!silent) console.log('Creating intents (embed + HyDE, no opportunity matching)...');

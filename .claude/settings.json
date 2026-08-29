@@ -1,1 +1,5 @@
-/Users/yanek/Projects/index/.claude/settings.json
+{
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
+  }
+}
