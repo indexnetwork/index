@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { ActiveIntent, CreatedIntent, CreateIntentData, IntentGraphDatabase, UpdateIntentData } from "../../platform/database.js";
 import type { EmbeddingGenerator } from "../../platform/discovery/embedder.js";
-import type { IntentGraphQueue } from "../../platform/runtime/queue.js";
+import type { IntentFollowUp } from "../../platform/runtime/follow-up.js";
 import { Intents } from "../intents.js";
 
 // This spec is intentionally a live evaluation. Package scripts execute from
@@ -25,8 +25,8 @@ const VAGUE_SIGNAL = "I want a job.";
 class FakeIntentHost {
   readonly intents: Array<CreatedIntent & { archivedAt: Date | null; embedding?: number[] }> = [];
   readonly hydeJobs: Array<
-    | { kind: "generate"; data: Parameters<IntentGraphQueue["addGenerateHydeJob"]>[0] }
-    | { kind: "delete"; data: Parameters<IntentGraphQueue["addDeleteHydeJob"]>[0] }
+    | { kind: "generate"; data: Parameters<IntentFollowUp["generateHyde"]>[0] }
+    | { kind: "delete"; data: Parameters<IntentFollowUp["deleteHyde"]>[0] }
   > = [];
   readonly embedded: string[] = [];
   private idCounter = 0;
@@ -84,13 +84,13 @@ class FakeIntentHost {
     },
   };
 
-  readonly queue: IntentGraphQueue = {
-    addGenerateHydeJob: async (data) => { this.hydeJobs.push({ kind: "generate", data }); },
-    addDeleteHydeJob: async (data) => { this.hydeJobs.push({ kind: "delete", data }); },
+  readonly followUp: IntentFollowUp = {
+    generateHyde: async (data) => { this.hydeJobs.push({ kind: "generate", data }); },
+    deleteHyde: async (data) => { this.hydeJobs.push({ kind: "delete", data }); },
   };
 
   graph() {
-    return new Intents({ database: this.database, embedder: this.embedder, queue: this.queue }).createGraph();
+    return new Intents({ database: this.database, embedder: this.embedder, followUp: this.followUp }).createGraph();
   }
 }
 

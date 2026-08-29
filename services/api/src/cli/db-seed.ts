@@ -13,7 +13,8 @@ import { SYSTEM_AGENT_IDS } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
-import { premiseQueue } from '../queues/premise.queue';
+import { premiseCascade } from '../lib/premise/cascade';
+import { background } from '../lib/background';
 import type { Id } from '../types/common.types';
 
 
@@ -348,7 +349,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     let successfulEnqueues = 0;
     for (const user of personaUsers) {
       try {
-        await premiseQueue.addDecomposeProfileJob(user.id);
+        background('premise', () => premiseCascade.decomposeProfile({ userId: user.id }));
         successfulEnqueues++;
       } catch (err) {
         if (!silent) console.warn(`  Failed to create premises for seed user for ${user.id}:`, err);

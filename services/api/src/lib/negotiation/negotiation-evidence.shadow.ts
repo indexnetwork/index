@@ -29,8 +29,8 @@ import type { RawEvidenceOutcome, RawEvidenceSegment, RawEvidenceTurn } from '@i
 
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
 import { POOL_TERMINAL_STATUSES } from '../../adapters/poolquery.shared';
-import { computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
-import { log } from '../../lib/log';
+import { computeIntentFingerprint } from '../intent/intent.fingerprint';
+import { log } from '../log';
 
 /**
  * One discovery-completion event. Formerly `PoolMiningTrigger` from the

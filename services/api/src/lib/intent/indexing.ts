@@ -1,12 +1,12 @@
-import { log } from '../lib/log';
-import { background } from '../lib/background';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { buildProfileFromUser } from '../adapters/database.shared';
+import { log } from '../log';
+import { background } from '../background';
+import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
+import { EmbedderAdapter } from '../../adapters/embedder.adapter';
+import { RedisCacheAdapter } from '../../adapters/cache.adapter';
+import { buildProfileFromUser } from '../../adapters/database.shared';
 import { HydeGraphFactory, HydeGenerator, LensInferrer, Intents, buildNetworkAssignmentDecision, deriveDiscoveryNetworkIds, resolveAssignmentNetworkScope } from '@indexnetwork/protocol';
-import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentGraphQueue, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
-import { discoveryQueue } from './opportunity/discovery.queue';
+import type { AssignmentNetworkMembership, HydeGraphDatabase, IntentFollowUp, IntentIndexerOutput, ToolScopeType } from '@indexnetwork/protocol';
+import { intentDiscovery } from '../opportunity/discovery';
 
 /** Payload for jobs that generate HyDE documents for an intent. */
 export interface IntentJobData {
@@ -40,8 +40,8 @@ function deriveIntentDiscoveryNetworkIds(memberships: AssignmentNetworkMembershi
   return scope.scopeType && scope.scopeId ? { networkIds } : {};
 }
 
-/** Minimal database interface for intent queue (used when deps provided in tests). */
-export type IntentQueueDatabase = Pick<
+/** Minimal database interface for intent follow-up (used when deps provided in tests). */
+export type IntentIndexingDatabase = Pick<
   ChatDatabaseAdapter,
   'getIntentForIndexing' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'assignIntentToNetworkIfMember' | 'deleteHydeDocumentsForSource' | 'getHydeDocumentsForSource' | 'getNetworkIdsForIntent' | 'getNetworkAssignmentContext' | 'getProfile' | 'getActiveIntents'
 >;
@@ -50,8 +50,8 @@ export type IntentQueueDatabase = Pick<
  * Optional dependencies for testing. Use abstractions (`Pick<Adapter, ...>` or protocol interfaces)
  * to stub database, HyDE invocation, or opportunity job enqueue.
  */
-export interface IntentQueueDeps {
-  database?: IntentQueueDatabase;
+export interface IntentIndexingDeps {
+  database?: IntentIndexingDatabase;
   /** Resolve the user's global user_context paragraph for HyDE enrichment (generate-if-empty). */
   invokeHyde?: (opts: {
     sourceText: string;
@@ -60,7 +60,7 @@ export interface IntentQueueDeps {
     forceRegenerate: boolean;
     profileContext?: string;
   }) => Promise<void>;
-  addOpportunityJob?: (data: { intentId: string; userId: string; networkIds?: string[] }) => Promise<unknown>;
+  startDiscovery?: (data: { intentId: string; userId: string; networkIds?: string[] }) => Promise<unknown>;
   evaluateIntentAssignment?: (opts: {
     intent: string;
     indexPrompt: string | null;
@@ -70,60 +70,61 @@ export interface IntentQueueDeps {
 }
 
 /**
- * Intent HyDE queue: BullMQ queue plus worker and job handlers.
+ * The host side of {@link IntentFollowUp}: the work the intent graph starts
+ * once an intent is written.
  *
- * Handles `generate_hyde` (assign intent to user indexes, run HyDE graph, enqueue opportunity discovery)
- * and `delete_hyde` (remove HyDE documents for an intent). Implements {@link IntentGraphQueue} so
- * the protocol intent graph can trigger this work without depending on this module.
+ * Generation assigns the intent to the user's networks, runs the HyDE graph,
+ * and starts opportunity discovery; deletion removes the intent's HyDE
+ * documents.
  *
  * @remarks
- * `addGenerateHydeJob`/`addDeleteHydeJob`/`addReconcileJob`/`addOrphanReconciliationJob`/
- * `addResumeDiscoveryJob` are all fire-and-forget: each triggers its handler via
- * {@link background} (directly, or through {@link discoveryQueue}'s own background trigger),
- * unbounded, with no retry and no dedup.
+ * `generateHyde`/`deleteHyde`/`resumeDiscovery` are all fire-and-forget: each
+ * triggers its handler via {@link background} (directly, or through
+ * {@link intentDiscovery}'s own background trigger), unbounded, with no retry
+ * and no dedup.
  */
-export class IntentQueue implements IntentGraphQueue {
+export class IntentIndexing implements IntentFollowUp {
   /**
-   * Run HyDE generation for an intent (implements {@link IntentGraphQueue}). Fire-and-forget.
+   * Run HyDE generation for an intent (implements {@link IntentFollowUp}). Fire-and-forget.
    * @param data - intentId, userId, and optional scope envelope. When scopeType/scopeId
    *   is set, indexing is restricted to the focused network plus the user's personal networks.
    */
-  addGenerateHydeJob(data: IntentJobData): Promise<unknown> {
-    background('intent', () => this.generateHyde(data));
+  generateHyde(data: IntentJobData): Promise<unknown> {
+    background('intent', () => this.runHydeGeneration(data));
     return Promise.resolve();
   }
 
   /**
-   * Delete HyDE documents for an intent (implements {@link IntentGraphQueue}). Fire-and-forget.
+   * Delete HyDE documents for an intent (implements {@link IntentFollowUp}). Fire-and-forget.
    * @param data - intentId
    */
-  addDeleteHydeJob(data: { intentId: string }): Promise<unknown> {
-    background('intent', () => this.deleteHyde(data));
+  deleteHyde(data: { intentId: string }): Promise<unknown> {
+    background('intent', () => this.runHydeDeletion(data));
     return Promise.resolve();
   }
 
   /**
-   * Trigger discovery for an intent resumed from PAUSED back to ACTIVE
-   * (implements {@link IntentGraphQueue}). `addJob` awaits only the 'queued'
+   * Start discovery for an intent resumed from PAUSED back to ACTIVE
+   * (implements {@link IntentFollowUp}). `start` awaits only the 'queued'
    * progress write before triggering the scan in the background — a failure
    * there (not the scan itself) is the only thing this can still reject with.
    */
-  addResumeDiscoveryJob(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
-    return discoveryQueue.addJob({ intentId: data.intentId, userId: data.userId, trigger: 'intent_resume' });
+  resumeDiscovery(data: { intentId: string; userId: string; lifecycleVersionMs: number }): Promise<unknown> {
+    return intentDiscovery.start({ intentId: data.intentId, userId: data.userId, trigger: 'intent_resume' });
   }
 
   private readonly logger = log.job.from('IntentJob');
   private readonly hydeLogger = log.job.from('IntentJob:Hyde');
   private readonly assignLogger = log.job.from('IntentJob:Assign');
   private readonly reconcileLogger = log.job.from('IntentJob:Reconcile');
-  private readonly database: IntentQueueDatabase | ChatDatabaseAdapter;
+  private readonly database: IntentIndexingDatabase | ChatDatabaseAdapter;
   private readonly graphDb: HydeGraphDatabase;
-  private readonly deps: IntentQueueDeps | undefined;
+  private readonly deps: IntentIndexingDeps | undefined;
 
   /**
    * @param deps - Optional overrides for database and HyDE/opportunity calls (for tests).
    */
-  constructor(deps?: IntentQueueDeps) {
+  constructor(deps?: IntentIndexingDeps) {
     this.deps = deps;
     this.database = deps?.database ?? new ChatDatabaseAdapter();
     this.graphDb = (this.database as ChatDatabaseAdapter) as unknown as HydeGraphDatabase;
@@ -137,30 +138,6 @@ export class IntentQueue implements IntentGraphQueue {
     }
     const networkIds = await db.getAssignmentNetworkIdsForUser(userId);
     return networkIds.map((networkId) => ({ networkId }));
-  }
-
-  /**
-   * Run an assignment-only reconciliation for an intent, fire-and-forget. Unlike
-   * {@link addGenerateHydeJob} this never regenerates HyDE docs or runs
-   * opportunity discovery — it only (re)evaluates and writes intent_networks
-   * rows. Used by network-join backfill and the orphan-reconcile sweep.
-   *
-   * @param data - intentId, userId, and optional scope envelope to restrict the
-   *   evaluated network set (defaults to all assignment-eligible memberships).
-   */
-  addReconcileJob(data: IntentJobData): Promise<unknown> {
-    background('intent', () => this.reconcileIntentNetworks(data));
-    return Promise.resolve();
-  }
-
-  /**
-   * Re-admit an active intent only when an indexing prerequisite is absent,
-   * fire-and-forget. The handler rechecks lifecycle, ownership, membership,
-   * scope, assignments, and HyDE state at execution time.
-   */
-  addOrphanReconciliationJob(data: IntentJobData): Promise<unknown> {
-    background('intent', () => this.reconcileOrphanedIntent(data));
-    return Promise.resolve();
   }
 
   /**
@@ -183,7 +160,7 @@ export class IntentQueue implements IntentGraphQueue {
     const db = this.deps?.database ?? this.database;
     const intents = await db.getActiveIntents(userId);
     for (const i of intents) {
-      this.addReconcileJob({ intentId: i.id, userId, scopeType: 'network', scopeId: networkId });
+      background('intent', () => this.reconcileIntentNetworks({ intentId: i.id, userId, scopeType: 'network', scopeId: networkId }));
     }
     this.reconcileLogger.info('Triggered network reconcile for member', { userId, networkId, intentCount: intents.length });
     return intents.length;
@@ -191,23 +168,23 @@ export class IntentQueue implements IntentGraphQueue {
 
   /**
    * Run HyDE generation for an intent synchronously (e.g. during db-seed).
-   * When skipOpportunity is true, does not enqueue opportunity discovery — use for seed to avoid matching test users.
+   * When skipOpportunity is true, does not start opportunity discovery — use for seed to avoid matching test users.
    * @param data - intentId and userId
-   * @param options - skipOpportunity: if true, do not add opportunity discovery job
+   * @param options - skipOpportunity: if true, do not start opportunity discovery
    */
   async runGenerateHydeSync(
     data: IntentJobData,
     options?: { skipOpportunity?: boolean }
   ): Promise<void> {
-    const addOpportunityJob = options?.skipOpportunity
+    const startDiscovery = options?.skipOpportunity
       ? async () => {}
-      : (this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string; networkIds?: string[] }) => discoveryQueue.addJob(d)));
-    await this.generateHyde(data, { addOpportunityJob });
+      : (this.deps?.startDiscovery ?? ((d: { intentId: string; userId: string; networkIds?: string[] }) => intentDiscovery.start(d)));
+    await this.runHydeGeneration(data, { startDiscovery });
   }
 
-  async generateHyde(
+  async runHydeGeneration(
     data: IntentJobData,
-    overrides?: { addOpportunityJob?: (d: { intentId: string; userId: string; networkIds?: string[] }) => Promise<unknown> }
+    overrides?: { startDiscovery?: (d: { intentId: string; userId: string; networkIds?: string[] }) => Promise<unknown> }
   ): Promise<void> {
     const { intentId, userId } = data;
     const scope = resolveIntentJobScope(data);
@@ -239,7 +216,7 @@ export class IntentQueue implements IntentGraphQueue {
     // actually closes the unhandled-rejection window across the profile-context await further
     // down — a rethrowing `.catch` would just move the unhandled rejection to its own derived
     // promise. The stashed error is rethrown after the `Promise.all` instead, preserving today's
-    // behaviour of failing (and BullMQ-retrying) the job on a real assignment error, e.g. from
+    // behaviour of failing the job on a real assignment error, e.g. from
     // the un-try'd `getIntentForIndexing` call inside `assignIntentToNetworks`.
     let assignmentError: unknown;
     const assignmentPromise = this.assignIntentToNetworks(intentId, userId, scope)
@@ -247,7 +224,7 @@ export class IntentQueue implements IntentGraphQueue {
         this.hydeLogger.info('Index assignment complete', { intentId, assignedIndexCount: assignedNetworkIds.length });
       })
       .catch((error) => {
-        this.hydeLogger.error('Intent network assignment failed; BullMQ will retry admission', {
+        this.hydeLogger.error('Intent network assignment failed', {
           event: 'intent_assignment_failed',
           intentId,
           userId,
@@ -317,7 +294,7 @@ export class IntentQueue implements IntentGraphQueue {
         if (assignmentError) throw assignmentError;
       }
     } catch (error) {
-      this.hydeLogger.error('HyDE generation failed; BullMQ will retry admission', {
+      this.hydeLogger.error('HyDE generation failed', {
         event: 'intent_hyde_generation_failed',
         intentId,
         userId,
@@ -325,11 +302,11 @@ export class IntentQueue implements IntentGraphQueue {
       });
       throw error;
     }
-    this.hydeLogger.info('HyDE generation complete, enqueuing opportunity discovery', { intentId, userId });
-    const addJob =
-      overrides?.addOpportunityJob ??
-      this.deps?.addOpportunityJob ??
-      ((d: { intentId: string; userId: string; networkIds?: string[] }) => discoveryQueue.addJob(d));
+    this.hydeLogger.info('HyDE generation complete, starting opportunity discovery', { intentId, userId });
+    const startDiscovery =
+      overrides?.startDiscovery ??
+      this.deps?.startDiscovery ??
+      ((d: { intentId: string; userId: string; networkIds?: string[] }) => intentDiscovery.start(d));
     // Carry only the focused network scope into discovery. Assignment writes may
     const discoveryScope: { networkIds?: string[] } = await (async () => {
       try {
@@ -341,13 +318,13 @@ export class IntentQueue implements IntentGraphQueue {
       }
     })();
     try {
-      await addJob({
+      await startDiscovery({
         intentId,
         userId,
         ...discoveryScope,
       });
     } catch (error) {
-      this.hydeLogger.error('Discovery enqueue failed; BullMQ will retry admission', {
+      this.hydeLogger.error('Discovery start failed', {
         event: 'intent_discovery_enqueue_failed',
         intentId,
         userId,
@@ -577,10 +554,10 @@ export class IntentQueue implements IntentGraphQueue {
       assignedNetworkCount: validAssignedNetworkIds.length,
       hydeDocumentCount: hydeDocuments.length,
     });
-    await this.generateHyde({ intentId, userId, ...scope });
+    await this.runHydeGeneration({ intentId, userId, ...scope });
   }
 
-  async deleteHyde(data: IntentDeleteData): Promise<void> {
+  async runHydeDeletion(data: IntentDeleteData): Promise<void> {
     const { intentId } = data;
     const db = this.deps?.database ?? this.database;
     await db.deleteHydeDocumentsForSource('intent', intentId);
@@ -588,10 +565,10 @@ export class IntentQueue implements IntentGraphQueue {
   }
 }
 
-/** Singleton intent HyDE handler instance. Use for triggering handlers and background work. */
-export const intentQueue = new IntentQueue();
+/** Singleton intent follow-up. Use for triggering handlers and background work. */
+export const intentIndexing = new IntentIndexing();
 
 /** Re-admit an active intent whose assignment or HyDE artifact is missing. */
 export function reconcileOrphanedIntent(data: IntentJobData): Promise<void> {
-  return intentQueue.reconcileOrphanedIntent(data);
+  return intentIndexing.reconcileOrphanedIntent(data);
 }

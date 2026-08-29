@@ -12,7 +12,7 @@ import { SemanticVerifier } from "../intent.verifier.js";
 import { IntentReconciler } from "../intent.reconciler.js";
 import type { IntentGraphDatabase } from "../../../platform/database.js";
 import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
-import type { IntentGraphQueue } from "../../../platform/runtime/queue.js";
+import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
 import { IntentGraphState } from "./intent.graph.state.js";
 import { logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
 import { inferenceNode, prepNode } from "./intent.graph.infer.js";
@@ -29,7 +29,7 @@ export class IntentGraphFactory {
   constructor(
     database: IntentGraphDatabase,
     embedder?: EmbeddingGenerator,
-    intentQueue?: IntentGraphQueue,
+    intentFollowUp?: IntentFollowUp,
     agents?: {
       inferrer?: Pick<ExplicitIntentInferrer, 'invoke'>;
       verifier?: Pick<SemanticVerifier, 'invoke'>;
@@ -39,7 +39,7 @@ export class IntentGraphFactory {
     this.deps = {
       database,
       embedder,
-      intentQueue,
+      intentFollowUp,
       inferrer: agents?.inferrer ?? new ExplicitIntentInferrer(),
       verifier: agents?.verifier ?? new SemanticVerifier(),
       reconciler: agents?.reconciler ?? new IntentReconciler(),

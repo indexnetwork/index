@@ -173,7 +173,7 @@ Per-package detail lives in the package itself:
 
 - **Bun** 1.2+ (runtime, package manager, test runner)
 - **PostgreSQL** 14+ with **pgvector** 0.5+ extension
-- **Redis** 6+ (for BullMQ job queues and caching)
+- **Redis** 6+ (cache, locks, and SSE)
 - **Git** 2.30+
 
 ### Setup

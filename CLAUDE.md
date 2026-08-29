@@ -39,7 +39,7 @@ workflow live further down this file. There is no `docs/` directory — it was d
 | Path | What it is |
 |---|---|
 | `packages/protocol` | `@indexnetwork/protocol` — the domain: LangGraph graphs, agents, tools, MCP server, and the **interfaces** a host must implement. Published to npm; also used by external integrators. |
-| `services/api` | The host. Bun HTTP server + workers that wire real infrastructure (Drizzle/Postgres, Redis, BullMQ, OpenRouter) into the protocol. |
+| `services/api` | The host. Bun HTTP server + workers that wire real infrastructure (Drizzle/Postgres, Redis, OpenRouter) into the protocol. |
 | `apps/web` | Vite + React Router SPA. `src/app` routes, `components`, `contexts`, `hooks`, `lib`; `src/services/*.ts` are typed API clients, not business logic. |
 | `apps/mac` | Swift WKWebView shell (`Sources/`) around a self-contained React bundle (`src/`). |
 | `packages/cli`, `claude-plugin`, `hermes-plugin` | Clients over the HTTP/MCP API. `protocol`, `cli`, `claude-plugin`, `hermes-plugin` are subtree-mirrored to public repos on every push to `dev`/`main`; their `package.json` deps must be pinned exactly (`bun run check:subtree-parity`). |
@@ -47,15 +47,20 @@ workflow live further down this file. There is no `docs/` directory — it was d
 ### API layering (`services/api/src`, enforced by `eslint-plugin-boundaries` in `eslint.config.mjs`)
 
 - `controllers/*.controller.ts` — HTTP only: decorators (`@Controller`, `@Get`, `@UseGuards`),
-  input validation, response shape. Import services, guards, schemas, types, queues. Never
+  input validation, response shape. Import services, guards, schemas, types. Never
   adapters, `db` or Drizzle. Template: `controllers/controller.template.md`.
-- `services/*.service.ts` — business logic, transactions, event emission, queue enqueues.
-  Import adapters and `@indexnetwork/protocol`. Template: `services/service.template.md`.
-- `adapters/*.adapter.ts` — the concrete implementations of the protocol's interfaces
-  (`import type { … } from '@indexnetwork/protocol'`) over Drizzle, Redis, OpenAI, etc.
-  This is the only place the protocol meets infrastructure.
-- `queues/*.queue.ts` — one class per domain (queue + worker + handlers); orchestrate
-  by calling services/graphs, no business logic.
+- `services/*.service.ts` — business logic, transactions, event emission, background
+  triggers. Import adapters and `@indexnetwork/protocol`. A service must not import
+  another service. Template: `services/service.template.md`.
+- `adapters/*.adapter.ts` — persistence and infrastructure shims over Drizzle, Redis,
+  OpenAI, etc. They must **not** import `@indexnetwork/protocol` (enforced by
+  `no-restricted-imports`): declare aligned types locally and let the composition root
+  (`mcp.controller.ts`) duck-type them against the protocol's ports.
+- `crons/*.cron.ts` — one `node-cron` sweep per file; schedule and orchestrate only.
+- Host implementations of protocol ports that must compose graphs live in `lib/`
+  (e.g. `lib/intent/indexing.ts` implements `IntentFollowUp`). `lib/` is outside the
+  boundaries graph, so it is also where code that would otherwise need a
+  service-to-service import belongs.
 - `guards/`, `events/`, `schemas/` (Drizzle schema + zod), `lib/` (cross-cutting helpers),
   `cli/` (maintenance scripts). Guards are documented in `guards/README.md`.
 
@@ -136,7 +141,7 @@ prerelease, pushing `main` publishes the stable version when it is new.
 - **File naming**: `{domain}.{purpose}.ts` — `chat.graph.ts`, `intent.inferrer.ts`,
   `opportunity.evaluator.ts`. Purposes in use: `.graph`, `.state`, `.agent`, `.generator`,
   `.evaluator`, `.verifier`, `.inferrer`, `.reconciler`, `.controller`, `.service`,
-  `.queue`, `.adapter`, `.spec`. Exceptions: `index.ts`, `schema.ts`, `main.ts`, and
+  `.cron`, `.adapter`, `.spec`. Exceptions: `index.ts`, `schema.ts`, `main.ts`, and
   root-level `constants.ts`/`types.ts`.
 - **Adapters are named by concept, not technology**: `database.adapter.ts` not
   `drizzle.adapter.ts`; `cache.adapter.ts` not `redis.adapter.ts`. Enforced by

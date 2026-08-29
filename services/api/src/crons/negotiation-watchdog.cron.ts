@@ -1,10 +1,10 @@
 import cron from 'node-cron';
 import { KICKOFF_STALE_AFTER_MS, maybeEnqueueRoundReflect, type MatchesReadyFn, type NegotiationGraphLike, type NegotiationRoundLogDatabase, type NegotiationRoundReflectEnqueueFn } from '@indexnetwork/protocol';
 
-import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../../adapters/conversation.database.adapter';
-import type { ChatDatabaseAdapter } from '../../adapters/chat.database.adapter';
-import { negotiationRoundLogDatabaseAdapter } from '../../adapters/negotiation-round-log.database.adapter';
-import { log } from '../../lib/log';
+import type { ConversationDatabaseAdapter, StaleNegotiationTask, StaleNegotiationTasksInput } from '../adapters/conversation.database.adapter';
+import type { ChatDatabaseAdapter } from '../adapters/chat.database.adapter';
+import { negotiationRoundLogDatabaseAdapter } from '../adapters/negotiation-round-log.database.adapter';
+import { log } from '../lib/log';
 
 export const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
 export const SUBMITTED_STALE_AFTER_MS = 10 * 60 * 1000;
@@ -33,7 +33,7 @@ type WatchdogLogger = {
   error(message: string, metadata?: Record<string, unknown>): void;
 };
 
-export interface NegotiationWatchdogQueueDeps {
+export interface NegotiationWatchdogDeps {
   database?: Pick<
     ConversationDatabaseAdapter,
     'getStaleNegotiationTasks' | 'getTask' | 'recordNegotiationWatchdogAttempt' | 'recordNegotiationWatchdogRecoveryCheck'
@@ -73,8 +73,8 @@ function watchdogAttempts(metadata: Record<string, unknown>): number {
  * Reconciles negotiation tasks whose kickoff or active worker may have been
  * lost.
  */
-export class NegotiationWatchdogQueue {
-  private readonly deps: NegotiationWatchdogQueueDeps;
+export class NegotiationWatchdogCron {
+  private readonly deps: NegotiationWatchdogDeps;
   private readonly logger: WatchdogLogger;
   private readonly clock: () => Date;
   private cronTask: ReturnType<typeof cron.schedule> | null = null;
@@ -82,9 +82,9 @@ export class NegotiationWatchdogQueue {
   private reflectEnqueue: NegotiationRoundReflectEnqueueFn | undefined;
   private readonly matchesReadyFn: MatchesReadyFn | undefined;
 
-  constructor(deps: NegotiationWatchdogQueueDeps = {}) {
+  constructor(deps: NegotiationWatchdogDeps = {}) {
     this.deps = deps;
-    this.logger = deps.logger ?? log.queue.from('NegotiationWatchdogQueue');
+    this.logger = deps.logger ?? log.job.from('NegotiationWatchdogCron');
     this.clock = deps.clock ?? (() => new Date());
     this.negotiationGraph = deps.negotiationGraph;
     this.reflectEnqueue = deps.reflectEnqueue;
@@ -127,9 +127,9 @@ export class NegotiationWatchdogQueue {
       limit: WATCHDOG_TASK_LIMIT,
     };
     const database: WatchdogDatabase = this.deps.database
-      ?? (await import('../../adapters/database.adapter')).conversationDatabaseAdapter;
+      ?? (await import('../adapters/database.adapter')).conversationDatabaseAdapter;
     const opportunities: WatchdogOpportunities = this.deps.opportunities
-      ?? (await import('../../adapters/database.adapter')).chatDatabaseAdapter;
+      ?? (await import('../adapters/database.adapter')).chatDatabaseAdapter;
     const roundLog: NegotiationRoundLogDatabase = this.deps.roundLog ?? negotiationRoundLogDatabaseAdapter;
     const staleTasks = await database.getStaleNegotiationTasks(input);
 
@@ -156,7 +156,7 @@ export class NegotiationWatchdogQueue {
    */
   private async repairInterruptedKickoffs(database: WatchdogDatabase): Promise<void> {
     const matchesReady: MatchesReadyFn = this.matchesReadyFn
-      ?? (await import('../../lib/negotiation/negotiation-graph')).matchesReady;
+      ?? (await import('../lib/negotiation/negotiation-graph')).matchesReady;
     const interrupted = await database.getIntentsWithInterruptedKickoff(KICKOFF_STALE_AFTER_MS);
     for (const { id: intentId, userId } of interrupted) {
       await matchesReady({ userId, intentId }).catch((error) => {
@@ -431,4 +431,4 @@ export class NegotiationWatchdogQueue {
 
 }
 
-export const negotiationWatchdogQueue = new NegotiationWatchdogQueue();
+export const negotiationWatchdogCron = new NegotiationWatchdogCron();

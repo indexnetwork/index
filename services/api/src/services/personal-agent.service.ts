@@ -3,11 +3,11 @@
  *
  * Everything that wakes a signal's agent lands here, fire-and-forget via
  * {@link background}. Turns for one signal run strictly one at a time (see
- * {@link PersonalAgentQueue.serializeIntent}), while unrelated signals run
+ * {@link PersonalAgentService.serializeIntent}), while unrelated signals run
  * side by side.
  *
  * Four events, one graph input each:
- * - `user_message` — the chat controller calls {@link PersonalAgentQueue.runUserMessageTurn}
+ * - `user_message` — the chat controller calls {@link PersonalAgentService.runUserMessageTurn}
  *   directly, on the signal's serialized lane.
  * - `matches_ready` — no coalescing anymore (BullMQ's duplicate-jobId slots
  *   are gone): a burst of discovery batches now produces one kickoff turn per
@@ -59,8 +59,8 @@ export function personalAgentNeedsPrincipalJobId(negotiationId: string, intentId
   return `personal-agent-needs-principal.${negotiationId}.${intentId}.${generation}`;
 }
 
-export class PersonalAgentQueue {
-  private readonly logger = log.queue.from('PersonalAgentQueue');
+export class PersonalAgentService {
+  private readonly logger = log.job.from('PersonalAgentService');
   private readonly invoke: (input: PersonalAgentInput) => Promise<PersonalAgentResult>;
   private readonly publishTurnCompleted: (input: { userId: string; intentId: string }) => Promise<void>;
   /** Tail promise for each signal's actor lane. Resolved even after a failed turn. */
@@ -243,4 +243,4 @@ export class PersonalAgentQueue {
 }
 
 /** Singleton inbox. Use for triggering events. */
-export const personalAgentQueue = new PersonalAgentQueue();
+export const personalAgentService = new PersonalAgentService();

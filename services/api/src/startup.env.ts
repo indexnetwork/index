@@ -179,7 +179,7 @@ function collectEnvWarnings(): string[] {
 
   warnMissing('API_URL', 'set the deployed API origin so MCP configs, connect links, and webhooks do not fall back to defaults.');
   warnMissing('WEB_APP_URL', 'set the deployed web app origin for auth, notifications, and integration callbacks.');
-  warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise queues/cache/limiter may target localhost or in-memory fallbacks.');
+  warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise cache/locks/SSE may target localhost or in-memory fallbacks.');
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');
   warnMissing('S3_REGION', 'set the S3 region, often "auto" for Railway buckets.');
   warnMissing('RESEND_API_KEY', 'emails will be skipped, including invite and notification email flows.');

@@ -20,6 +20,20 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 39.0.0 - 2026-08-29
+
+### Changed
+
+- **BREAKING: the intent follow-up port is no longer named after a queue.**
+  `IntentGraphQueue` is `IntentFollowUp` and `IntentGraphQueueScope` is
+  `IntentFollowUpScope`, both now in `platform/runtime/follow-up.ts`. The
+  methods lose their job wording: `addGenerateHydeJob` → `generateHyde`,
+  `addDeleteHydeJob` → `deleteHyde`, `addResumeDiscoveryJob` →
+  `resumeDiscovery`. `IntentsDeps.queue` is `IntentsDeps.followUp` and the
+  agent tool context's `intentQueue` is `intentFollowUp`. Behaviour is
+  unchanged; the host has run this work in-process since the queue system was
+  removed. Update call sites by renaming — there is no compatibility shim.
+
 ## 38.0.1 - 2026-08-28
 
 ### Removed

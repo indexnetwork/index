@@ -5,7 +5,8 @@ import { FRAME_DRIFT_MONITORING } from '../lib/frame-drift.config';
 import { log } from '../lib/log';
 import { frameDriftMonitoringService, type FrameDriftMonitoringService } from '../services/frame-drift-monitoring.service';
 
-export const FRAME_DRIFT_QUEUE_NAME = 'frame-drift-monitoring';
+/** Stable ledger label; unchanged so existing `frame_drift_execution_attempts` rows still match. */
+export const FRAME_DRIFT_SCHEDULE_NAME = 'frame-drift-monitoring';
 export const FRAME_DRIFT_JOB_NAME = 'capture-daily-frame-drift';
 /** Stable label persisted onto each ledger row; not a scheduler identity anymore. */
 export const FRAME_DRIFT_SCHEDULER_ID = 'frame-drift-monitoring-daily-v1';
@@ -23,7 +24,7 @@ type FrameDriftLogger = {
   error(message: string, metadata?: Record<string, unknown>): void;
 };
 
-export interface FrameDriftQueueDeps {
+export interface FrameDriftCronDeps {
   service?: Pick<FrameDriftMonitoringService, 'captureDailyBucket'>;
   attemptStore?: FrameDriftExecutionAttemptStore;
   logger?: FrameDriftLogger;
@@ -60,7 +61,7 @@ export function deriveMostRecentlyClosedUtcDay(scheduledAtMs: number): {
  * (dedup + bounded-retry terminal write) stays: it is what keeps one UTC
  * day's observation from running twice, independent of BullMQ.
  */
-export class FrameDriftQueue {
+export class FrameDriftCron {
   private readonly logger: FrameDriftLogger;
   private readonly service: Pick<FrameDriftMonitoringService, 'captureDailyBucket'>;
   private readonly attemptStore: FrameDriftExecutionAttemptStore;
@@ -68,10 +69,10 @@ export class FrameDriftQueue {
   private readonly clock: () => Date;
   private cronTask: ReturnType<typeof cron.schedule> | null = null;
 
-  constructor(deps: FrameDriftQueueDeps = {}) {
+  constructor(deps: FrameDriftCronDeps = {}) {
     this.service = deps.service ?? frameDriftMonitoringService;
     this.attemptStore = deps.attemptStore ?? frameDriftExecutionAttemptDatabaseAdapter;
-    this.logger = deps.logger ?? log.queue.from('FrameDriftQueue');
+    this.logger = deps.logger ?? log.job.from('FrameDriftCron');
     this.sleep = deps.sleep ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
     this.clock = deps.clock ?? (() => new Date());
   }
@@ -124,7 +125,7 @@ export class FrameDriftQueue {
     const { bucketStart, bucketEnd } = deriveMostRecentlyClosedUtcDay(scheduledAt.getTime());
     const jobId = `frame-drift-${bucketStart.toISOString()}`;
     const jobMetadata = {
-      queueName: FRAME_DRIFT_QUEUE_NAME,
+      scheduleName: FRAME_DRIFT_SCHEDULE_NAME,
       jobName: FRAME_DRIFT_JOB_NAME,
       schedulerId: FRAME_DRIFT_SCHEDULER_ID,
       jobId,
@@ -136,7 +137,7 @@ export class FrameDriftQueue {
     let existingTerminalStatus: 'inserted' | 'duplicate' | 'skipped' | 'failed' | null;
     try {
       const started = await this.attemptStore.recordStarted({
-        queueName: FRAME_DRIFT_QUEUE_NAME,
+        queueName: FRAME_DRIFT_SCHEDULE_NAME,
         schedulerId: FRAME_DRIFT_SCHEDULER_ID,
         jobId,
         jobName: FRAME_DRIFT_JOB_NAME,
@@ -224,4 +225,4 @@ export class FrameDriftQueue {
   }
 }
 
-export const frameDriftQueue = new FrameDriftQueue();
+export const frameDriftCron = new FrameDriftCron();

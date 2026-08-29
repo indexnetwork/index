@@ -1,6 +1,6 @@
 /**
  * Hooks called on premise lifecycle events.
- * Set by main.ts to trigger re-analysis, discovery updates, and expiry cleanup via queues.
+ * Set by main.ts to trigger re-analysis, discovery updates, and expiry cleanup in the background.
  */
 export const PremiseEvents = {
   onCreated: (_premiseId: string, _userId: string): void => {},

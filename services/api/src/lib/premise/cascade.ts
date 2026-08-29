@@ -1,10 +1,10 @@
 import cron from 'node-cron';
 import type { PremiseGraphDatabase } from '@indexnetwork/protocol';
 
-import { log } from '../lib/log';
-import { background } from '../lib/background';
-import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { log } from '../log';
+import { background } from '../background';
+import { ChatDatabaseAdapter, OpportunityDatabaseAdapter } from '../../adapters/database.adapter';
+import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 
 // ---------------------------------------------------------------------------
 // Payload types
@@ -27,7 +27,7 @@ export interface PremiseDecomposeProfileData {
 }
 
 // ---------------------------------------------------------------------------
-// Opportunity status helpers (kept local to avoid importing schema at queue layer)
+// Opportunity status helpers (kept local to avoid importing schema here)
 // ---------------------------------------------------------------------------
 
 /**
@@ -80,7 +80,7 @@ export interface IntentReverificationVerdict {
  * All fields are typed as narrow abstractions so tests can inject mocks
  * without pulling in concrete adapters.
  */
-export interface PremiseQueueDeps {
+export interface PremiseCascadeDeps {
   /**
    * Retrieve cascade-eligible (non-terminal, non-accepted) opportunities
    * where `userId` is an actor AND whose provenance cites `premiseId`
@@ -167,11 +167,11 @@ function buildProfileInputFromUser(user: { name?: string | null; intro?: string 
 }
 
 // ---------------------------------------------------------------------------
-// Queue class
+// Cascade class
 // ---------------------------------------------------------------------------
 
 /**
- * Premise cascade and profile regeneration queue.
+ * Premise cascade and profile regeneration.
  *
  * `premise_cascade` — when a premise is retracted or expired, expires only the
  * opportunities whose provenance cites that premise (evidence
@@ -185,39 +185,16 @@ function buildProfileInputFromUser(user: { name?: string | null; intro?: string 
  * don't go stale.
  *
  */
-export class PremiseQueue {
+export class PremiseCascade {
   private readonly logger = log.job.from('PremiseJob');
   private readonly expiryLogger = log.job.from('PremiseJob:ExpiryCheck');
   private readonly cascadeLogger = log.job.from('PremiseJob:Cascade');
   private readonly decomposeLogger = log.job.from('PremiseJob:DecomposeProfile');
-  private readonly queueLogger = log.queue.from('PremiseQueue');
-  private readonly deps: PremiseQueueDeps | undefined;
+  private readonly deps: PremiseCascadeDeps | undefined;
   private cronTask: ReturnType<typeof cron.schedule> | null = null;
 
-  constructor(deps?: PremiseQueueDeps) {
+  constructor(deps?: PremiseCascadeDeps) {
     this.deps = deps;
-  }
-
-  // -------------------------------------------------------------------------
-  // Fire-and-forget triggers
-  // -------------------------------------------------------------------------
-
-  /**
-   * Trigger a premise cascade in the background.
-   * @param data - Cascade payload
-   */
-  addCascadeJob(data: PremiseCascadeData): Promise<void> {
-    background('premise', () => this.premiseCascade(data));
-    return Promise.resolve();
-  }
-
-  /**
-   * Trigger profile decomposition in the background.
-   * @param userId - The user whose profile should be decomposed
-   */
-  addDecomposeProfileJob(userId: string): Promise<void> {
-    background('premise', () => this.decomposeProfile({ userId }));
-    return Promise.resolve();
   }
 
   /**
@@ -229,7 +206,7 @@ export class PremiseQueue {
       this.checkExpiredPremises()
         .catch((err) => this.expiryLogger.error('Cron failed', { error: err }));
     });
-    this.queueLogger.info('📅 Expiry check scheduled (every hour)');
+    this.logger.info('📅 Expiry check scheduled (every hour)');
   }
 
   /**
@@ -313,7 +290,7 @@ export class PremiseQueue {
     await adapter.updatePremise(premiseId, { status: 'EXPIRED' });
   }
 
-  async premiseCascade(data: PremiseCascadeData): Promise<void> {
+  async runCascade(data: PremiseCascadeData): Promise<void> {
     const { premiseId, userId, event } = data;
     this.cascadeLogger.info('Starting cascade', { premiseId, userId, event });
 
@@ -376,7 +353,7 @@ export class PremiseQueue {
   /**
    * Default production implementation: build the profile text blob from the
    * users row and decompose it into premises via the premise graph. Imported
-   * lazily so loading this queue module (and its tests) doesn't pull the LLM
+   * lazily so loading this module (and its tests) doesn't pull the LLM
    * stack.
    */
   private async defaultDecomposeProfile(userId: string): Promise<void> {
@@ -502,7 +479,7 @@ export class PremiseQueue {
 
   /**
    * Default production implementation: run the protocol package's
-   * intents verifier. Imported lazily so loading this queue module (and its
+   * intents verifier. Imported lazily so loading this module (and its
    * tests) doesn't pull the LLM stack.
    */
   private async defaultVerifyIntent(
@@ -534,5 +511,5 @@ export class PremiseQueue {
   }
 }
 
-/** Singleton premise queue instance. Use for adding jobs and starting the worker. */
-export const premiseQueue = new PremiseQueue();
+/** Singleton premise cascade. Use for triggering handlers and starting the cron. */
+export const premiseCascade = new PremiseCascade();

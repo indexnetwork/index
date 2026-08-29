@@ -27,7 +27,7 @@ import type { NegotiatorMemoryKind, NegotiatorMemorySourceRef } from '../schemas
 
 const logger = log.service.from('NegotiatorMemoryWrite');
 
-// Re-exported for existing consumers (reflect queue); canonical definition
+// Re-exported for existing consumers (negotiation reflect); canonical definition
 // moved to lib/negotiator-feature.ts so the chat composition root can read it
 // without a service→service import (P5.4).
 export { isNegotiatorMemoryWriteEnabled };

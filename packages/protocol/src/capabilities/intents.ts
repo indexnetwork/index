@@ -23,7 +23,7 @@
 import type { DefineTool } from "../internal/shared/agent/tool.helpers.js";
 import type { IntentGraphDatabase } from "../platform/database.js";
 import type { EmbeddingGenerator } from "../platform/discovery/embedder.js";
-import type { IntentGraphQueue } from "../platform/runtime/queue.js";
+import type { IntentFollowUp } from "../platform/runtime/follow-up.js";
 
 import { IntentGraphFactory } from "../internal/intents/graph/intent.graph.js";
 import { IntentIndexer } from "../internal/shared/intent-indexer.js";
@@ -69,8 +69,8 @@ export interface IntentsDeps {
   database?: IntentGraphDatabase;
   /** Embedding generator used to vectorize executed signals. */
   embedder?: EmbeddingGenerator;
-  /** Queue that picks up post-execution work (network assignment, discovery). */
-  queue?: IntentGraphQueue;
+  /** Host follow-up work started after a persist (HyDE, network assignment, discovery). */
+  followUp?: IntentFollowUp;
   /**
    * Model-backed stages, injectable so tests can run the graph without a model.
    * Omitted stages construct their canonical implementation on first use.
@@ -109,11 +109,11 @@ export class Intents {
    * @throws If the instance was constructed without a `database`.
    */
   public createGraph() {
-    const { database, embedder, queue, agents } = this.deps;
+    const { database, embedder, followUp, agents } = this.deps;
     if (!database) {
       throw new Error("Intents.createGraph() requires a `database` dependency.");
     }
-    return new IntentGraphFactory(database, embedder, queue, agents).createGraph();
+    return new IntentGraphFactory(database, embedder, followUp, agents).createGraph();
   }
 
   // ── Verification ────────────────────────────────────────────────────────────

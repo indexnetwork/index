@@ -16,7 +16,7 @@ import type { NormalizedIntentAction } from "../intent.reconciler.js";
 import { IntentGraphDatabase } from "../../../platform/database.js";
 import { getAbortSignalConfig } from "../../shared/agent/model-signal.js";
 import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
-import type { IntentGraphQueue } from "../../../platform/runtime/queue.js";
+import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { timed } from "../../shared/observability/performance.js";
 import { requestContext } from "../../shared/observability/request-context.js";
@@ -29,7 +29,7 @@ export type IntentState = typeof IntentGraphState.State;
 export interface IntentGraphDeps {
   database: IntentGraphDatabase;
   embedder?: EmbeddingGenerator;
-  intentQueue?: IntentGraphQueue;
+  intentFollowUp?: IntentFollowUp;
   inferrer: Pick<ExplicitIntentInferrer, 'invoke'>;
   verifier: Pick<SemanticVerifier, 'invoke'>;
   reconciler: Pick<IntentReconciler, 'invoke'>;

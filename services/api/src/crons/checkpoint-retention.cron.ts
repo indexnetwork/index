@@ -1,4 +1,4 @@
-// services/api/src/queues/checkpoint/retention.queue.ts
+// services/api/src/crons/checkpoint-retention.cron.ts
 //
 // Hourly retention sweep for LangGraph PostgresSaver checkpoint tables.
 //
@@ -8,8 +8,8 @@
 // write-only data. Without this sweep the checkpoint tables grow without
 // bound (they reached ~40% of the prod database before this cron existed).
 import cron from 'node-cron';
-import { log } from '../../lib/log';
-import { pruneStaleCheckpointThreads, type CheckpointPruneResult } from '../../adapters/checkpointer.adapter';
+import { log } from '../lib/log';
+import { pruneStaleCheckpointThreads, type CheckpointPruneResult } from '../adapters/checkpointer.adapter';
 
 /** The persistence surface the cron needs: one stale-thread delete batch. */
 export interface CheckpointRetentionDeps {
@@ -35,7 +35,7 @@ const MAX_BATCHES_PER_RUN = 10;
 const CRON_EXPRESSION = '43 * * * *';
 
 export class CheckpointRetentionCron {
-  private readonly logger = log.queue.from('CheckpointRetention');
+  private readonly logger = log.job.from('CheckpointRetention');
   private task: ReturnType<typeof cron.schedule> | null = null;
   private readonly deps: CheckpointRetentionDeps;
 

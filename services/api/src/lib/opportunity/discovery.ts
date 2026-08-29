@@ -1,6 +1,6 @@
-// services/api/src/queues/opportunity/discovery.queue.ts
-import { log } from '../../lib/log';
-import { background } from '../../lib/background';
+// services/api/src/lib/opportunity/discovery.ts
+import { log } from '../log';
+import { background } from '../background';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import type { MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
 
@@ -8,7 +8,7 @@ import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGrap
 import { buildIntentDiscoveryTrigger, type DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
 export type { DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
 import { createIntentDiscoveryLock, type IntentDiscoveryLock } from './discovery.intent-lock';
-import { maybeRunNegotiationEvidenceShadow } from '../pool/negotiation-evidence.shadow';
+import { maybeRunNegotiationEvidenceShadow } from '../negotiation/negotiation-evidence.shadow';
 
 /**
  * Same-intent overlap guard (see discovery.intent-lock.ts). The lock outlives
@@ -58,9 +58,8 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class DiscoveryQueue {
-  private readonly logger = log.job.from('DiscoveryJob');
-  private readonly queueLogger = log.queue.from('DiscoveryQueue');
+export class IntentDiscovery {
+  private readonly logger = log.job.from('IntentDiscovery');
   private readonly database: DiscoveryDatabase | ChatDatabaseAdapter;
   private readonly graphDb: OpportunityGraphDb;
   private readonly intentLock: IntentDiscoveryLock;
@@ -85,7 +84,7 @@ export class DiscoveryQueue {
    * Record the run as queued, then trigger the scan in the background,
    * unbounded — one call per trigger, no cap, no retry, no dedup.
    */
-  async addJob(data: DiscoveryJobData): Promise<void> {
+  async start(data: DiscoveryJobData): Promise<void> {
     const assignedCommunityCount = (await this.getValidDiscoveryNetworkIds(
       data.intentId,
       data.userId,
@@ -121,7 +120,7 @@ export class DiscoveryQueue {
         return;
       }
       if (Date.now() >= waitDeadline) {
-        this.queueLogger.warn('Gave up waiting for the same-intent lock; scan skipped', {
+        this.logger.warn('Gave up waiting for the same-intent lock; scan skipped', {
           event: 'intent_discovery_overlap_wait_exhausted',
           intentId: data.intentId,
           userId: data.userId,
@@ -130,7 +129,7 @@ export class DiscoveryQueue {
         await this.recordProgress(data, 'failed', 1);
         throw new Error(`Gave up waiting for the same-intent discovery lock for ${data.intentId} after ${this.maxSameIntentWaitMs}ms`);
       }
-      this.queueLogger.info('Discovery already running for intent; waiting to retry', {
+      this.logger.info('Discovery already running for intent; waiting to retry', {
         event: 'intent_discovery_overlap_deferred',
         intentId: data.intentId,
         userId: data.userId,
@@ -149,7 +148,7 @@ export class DiscoveryQueue {
     counts?: { processedCommunityCount: number; possibleOverlapCount: number; conversationsStartedCount: number },
   ): Promise<void> {
     const record = (this.database as Partial<DiscoveryDatabase>).recordIntentDiscoveryProgress;
-    // Isolated queue tests and a rolling deploy may run before its adapter has
+    // A rolling deploy may run before its adapter has
     // been updated. Production adapters always provide this.
     if (!record) return;
     await record.call(this.database, {
@@ -305,7 +304,7 @@ export class DiscoveryQueue {
     try {
       if (!(await this.intentLock.tryAcquire(data.intentId, token, SAME_INTENT_LOCK_TTL_MS))) return null;
     } catch (error) {
-      this.queueLogger.warn('Same-intent lock unavailable; running unguarded', {
+      this.logger.warn('Same-intent lock unavailable; running unguarded', {
         intentId: data.intentId,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -315,7 +314,7 @@ export class DiscoveryQueue {
       try {
         await this.intentLock.release(data.intentId, token);
       } catch (error) {
-        this.queueLogger.warn('Same-intent lock release failed; TTL will clear it', {
+        this.logger.warn('Same-intent lock release failed; TTL will clear it', {
           intentId: data.intentId,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -324,12 +323,12 @@ export class DiscoveryQueue {
   }
 }
 
-export const discoveryQueue = new DiscoveryQueue();
+export const intentDiscovery = new IntentDiscovery();
 
 /**
  * Run one discovery scan to completion. For callers (CLI scripts) that need
- * the scan to finish before they exit, rather than firing it via `addJob`.
+ * the scan to finish before they exit, rather than firing it via `start`.
  */
 export function runDiscovery(data: DiscoveryJobData): Promise<void> {
-  return discoveryQueue.runDiscover(data);
+  return intentDiscovery.runDiscover(data);
 }

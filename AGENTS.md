@@ -35,7 +35,7 @@ directory. It was deleted on 2026-08-28 and is not being restored.
 | Path | Responsibility |
 |---|---|
 | `packages/protocol` | `@indexnetwork/protocol`: domain graphs, agents, tools, MCP server, and host interfaces. Published to npm and used by external integrators. |
-| `services/api` | Bun HTTP host and workers. Wires infrastructure (Drizzle/Postgres, Redis, BullMQ, OpenRouter) into the protocol. |
+| `services/api` | Bun HTTP host and workers. Wires infrastructure (Drizzle/Postgres, Redis, OpenRouter) into the protocol. |
 | `apps/web` | Vite + React Router SPA. `src/services/*.ts` are typed API clients, not business logic. |
 | `apps/mac` | Swift WKWebView shell around a self-contained React bundle. |
 | `packages/cli`, `packages/claude-plugin`, `packages/hermes-plugin` | HTTP/MCP clients mirrored to public repositories. Their dependencies must be exact pins; run `bun run check:subtree-parity` when they change. |
@@ -45,14 +45,19 @@ directory. It was deleted on 2026-08-28 and is not being restored.
 The ESLint boundaries enforce these roles:
 
 - `controllers/*.controller.ts`: HTTP decorators, input validation, and response
-  shape only. They may import services, guards, schemas, types, and queues;
-  never adapters, `db`, or Drizzle.
-- `services/*.service.ts`: business logic, transactions, events, and queue
-  enqueues. They may import adapters and `@indexnetwork/protocol`.
-- `adapters/*.adapter.ts`: concrete protocol-interface implementations over
-  infrastructure. This is the only place the protocol meets infrastructure.
-- `queues/*.queue.ts`: one BullMQ class per domain; call services or graphs and
-  keep business logic out of queues.
+  shape only. They may import services, guards, schemas, and types; never
+  adapters, `db`, or Drizzle.
+- `services/*.service.ts`: business logic, transactions, events, and background
+  triggers. They may import adapters and `@indexnetwork/protocol`, but not
+  another service.
+- `adapters/*.adapter.ts`: persistence and infrastructure shims. They may not
+  import `@indexnetwork/protocol`; declare aligned types locally and let the
+  composition root duck-type them.
+- `crons/*.cron.ts`: one `node-cron` sweep per file; schedule and orchestrate
+  only.
+- `lib/`: cross-cutting helpers, plus host port implementations that compose
+  graphs (`lib/intent/indexing.ts`) or would otherwise need a service-to-service
+  import.
 
 ### Protocol package (`packages/protocol`)
 
@@ -125,7 +130,7 @@ Publishing is handled by CI. Pushing `dev` to the indexnetwork remote publishes 
 - File naming is `{domain}.{purpose}.ts`, for example `chat.graph.ts` or
   `intent.inferrer.ts`. Purposes in use: `.graph`, `.state`, `.agent`,
   `.generator`, `.evaluator`, `.verifier`, `.inferrer`, `.reconciler`,
-  `.controller`, `.service`, `.queue`, `.adapter`, `.spec`. Exceptions are
+  `.controller`, `.service`, `.cron`, `.adapter`, `.spec`. Exceptions are
   `index.ts`, `schema.ts`, `main.ts`, and root-level `constants.ts`/`types.ts`.
 - Name adapters by concept, not technology: `database.adapter.ts` rather than
   `drizzle.adapter.ts`. `scripts/check-adapter-names.sh` enforces this.

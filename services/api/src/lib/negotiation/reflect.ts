@@ -26,8 +26,8 @@ import cron from 'node-cron';
 import { NegotiationReflector } from '@indexnetwork/protocol';
 import type { NegotiationReflectJobData, ReflectEnqueueFn, ReflectionTranscriptEntry, DistilledMemory } from '@indexnetwork/protocol';
 
-import { log } from '../../lib/log';
-import { background } from '../../lib/background';
+import { log } from '../log';
+import { background } from '../background';
 import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
 import { chatSessionService } from '../../services/chat.service';
 import { negotiatorMemoryWriteService, isNegotiatorMemoryWriteEnabled, type NegotiatorMemoryWriteService } from '../../services/negotiator-memory.service';
@@ -43,7 +43,7 @@ export interface ChatReflectJobData {
 }
 
 /** Optional deps for testing — abstractions only, no real DB/LLM. */
-export interface ReflectQueueDeps {
+export interface NegotiationReflectDeps {
   conversations?: {
     getMessagesForConversation: (conversationId: string) => Promise<Array<{
       id: string;
@@ -70,15 +70,15 @@ export interface ReflectQueueDeps {
 }
 
 /** Reflection: background triggers, a chat-reflect debounce, and the decay cron. */
-export class NegotiationReflectQueue {
+export class NegotiationReflect {
   private readonly logger = log.job.from('NegotiationReflectJob');
-  private readonly deps: ReflectQueueDeps | undefined;
+  private readonly deps: NegotiationReflectDeps | undefined;
   private reflector: Pick<NegotiationReflector, 'reflectNegotiation' | 'reflectChat'> | null;
   private cronStarted = false;
   private readonly chatReflectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly chatReflectDelayMs: number;
 
-  constructor(deps?: ReflectQueueDeps) {
+  constructor(deps?: NegotiationReflectDeps) {
     this.deps = deps;
     this.reflector = deps?.reflector ?? null; // lazy — created on first use (defers OPENROUTER key need)
     this.chatReflectDelayMs = deps?.chatReflectDelayMs ?? CHAT_REFLECT_DELAY_MS;
@@ -141,7 +141,7 @@ export class NegotiationReflectQueue {
       return;
     }
 
-    const conversations: NonNullable<ReflectQueueDeps['conversations']> =
+    const conversations: NonNullable<NegotiationReflectDeps['conversations']> =
       this.deps?.conversations ?? conversationDatabaseAdapter;
     // A negotiation is its own conversation now — no pair-shared thread to
     // scope out of.
@@ -282,7 +282,7 @@ export class NegotiationReflectQueue {
 }
 
 /** Singleton reflect instance. */
-export const negotiationReflectQueue = new NegotiationReflectQueue();
+export const negotiationReflect = new NegotiationReflect();
 
 /**
  * The reflect trigger callback.
@@ -293,6 +293,6 @@ export const negotiationReflectQueue = new NegotiationReflectQueue();
  */
 export function reflectEnqueue(): ReflectEnqueueFn {
   return async (job) => {
-    await negotiationReflectQueue.addReflectJob(job);
+    await negotiationReflect.addReflectJob(job);
   };
 }

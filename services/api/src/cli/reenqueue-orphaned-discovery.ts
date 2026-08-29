@@ -19,7 +19,7 @@ import { and, eq, isNull, lt } from 'drizzle-orm';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, intentDiscoveryProgress } from '../schemas/database.schema';
-import { runDiscovery } from '../queues/opportunity/discovery.queue';
+import { runDiscovery } from '../lib/opportunity/discovery';
 
 function numberFlag(flag: string, fallback: number): number {
   const index = process.argv.indexOf(flag);

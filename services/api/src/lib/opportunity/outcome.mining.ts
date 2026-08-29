@@ -22,11 +22,11 @@
  */
 import { OUTCOME_MAX_CANDIDATES, OUTCOME_MAX_PUBLIC_CONTEXT_CHARS, OUTCOME_MIN_INDEPENDENT_EXAMPLES, PoolDiscriminatorMiner, isOutcomeQuestionsActivated, runOutcomeShadow, type OutcomeExample } from '@indexnetwork/protocol';
 
-import { log } from '../../lib/log';
-import { buildFullIntentText, computeIntentFingerprint } from '../../lib/intent/intent.fingerprint';
+import { log } from '../log';
+import { buildFullIntentText, computeIntentFingerprint } from '../intent/intent.fingerprint';
 import { chatDatabaseAdapter } from '../../adapters/database.adapter';
-import { getOutcomeEventsForScope } from '../../lib/opportunity/outcome-events.store';
-import { computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash, isOutcomeHash } from '../../lib/opportunity/outcome-feedback.identity';
+import { getOutcomeEventsForScope } from './outcome-events.store';
+import { computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash, isOutcomeHash } from './outcome-feedback.identity';
 
 /** Intent lifecycle states in which a scope is still eligible for mining. */
 const ELIGIBLE_INTENT_STATUS = 'ACTIVE';

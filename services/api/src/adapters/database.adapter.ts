@@ -1,5 +1,5 @@
 /**
- * Database adapters used by controllers and queues — public barrel.
+ * Database adapters used by controllers, services, and crons — public barrel.
  * Postgres implementations split into ./database/*.database.adapter.ts by domain.
  * No dependency on lib/protocol. Import adapters/types/helpers from here.
  */

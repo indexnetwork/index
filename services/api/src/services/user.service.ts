@@ -2,7 +2,8 @@ import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
-import { premiseQueue } from '../queues/premise.queue';
+import { premiseCascade } from '../lib/premise/cascade';
+import { background } from '../lib/background';
 
 const logger = log.service.from("UserService");
 
@@ -87,9 +88,7 @@ export class UserService {
     }
 
     private enqueuePremisesFromProfile(userId: string): void {
-        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
-            logger.error('Failed to enqueue premise rebuild after profile update', { userId, error: err }),
-        );
+        background('premise', () => premiseCascade.decomposeProfile({ userId }));
     }
 
     /** Update an owned intent through the normal material-update chokepoint. */
@@ -177,12 +176,7 @@ export class UserService {
         }
 
         // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
-        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
-            logger.error('Failed to enqueue premise rebuild after social update', {
-                userId,
-                error: err,
-            }),
-        );
+        background('premise', () => premiseCascade.decomposeProfile({ userId }));
     }
 
     async softDelete(userId: string) {
