@@ -156,6 +156,22 @@ function amountsIn(text: string): number[] {
   return [...new Set(amounts)];
 }
 
+/**
+ * Why a second negotiation with the same counterparty is refused, and
+ * what to do with the one that already exists. Shared so the thrown
+ * error and the skipped event say the same thing.
+ */
+function secondNegotiationRefusal(live: NegotiationSession): string {
+  const who = live.peer?.name ?? live.url ?? "them";
+  const next = live.pending
+    ? `It is waiting on your party: ${JSON.stringify(live.pending.question)} — answer it with negotiate_resume`
+    : "Continue it with negotiate_turn";
+  return (
+    `You are already negotiating with ${who} ("${live.id}"). ${next}, ` +
+    "rather than opening a second one: both would settle independently, and your party would be committed twice."
+  );
+}
+
 /** How many turns this side has sent. Client-side moves go over the wire
  * with role "user", so the Task history carries the count. */
 function sentTurns(session: NegotiationSession): number {
@@ -465,7 +481,8 @@ export class Agent<A extends string = DefaultAction> {
   private record(sessions: NegotiationSession[]): string {
     if (!sessions.length) return "";
 
-    const lines = sessions.slice(-RECORDED_NEGOTIATIONS).map((session) => {
+    const shown = sessions.slice(-RECORDED_NEGOTIATIONS);
+    const lines = shown.map((session) => {
       const who = session.direction === "outbound" ? "you contacted them" : "they contacted you";
       const peer = session.peer?.name ? ` with ${session.peer.name}` : "";
       const agreement: AgreementResult = session.task
@@ -481,10 +498,23 @@ export class Agent<A extends string = DefaultAction> {
       return `- ${session.id}${peer} — ${who}; ${detail}`;
     });
 
+    // Naming the parked ones here, rather than only in the digest a tool
+    // returned, is the difference between an instruction the agent read
+    // once and one it is holding: a run that ends with a question still
+    // unanswered has abandoned a live negotiation, and the counterparty
+    // is still waiting.
+    const parked = shown.filter((session) => session.pending);
+
     return [
       "Negotiations you are party to. This is the record of what happened, which is not the same as what you remember saying — trust it over the conversation above:",
       ...lines,
       "Only negotiations you opened can be continued — with negotiate_turn, or negotiate_resume for one waiting on your guidance; in the others the counterparty calls you.",
+      "Never open a second negotiation with a counterparty you already have one open with: both would settle, and your party would be committed twice.",
+      ...(parked.length
+        ? [
+            `Waiting on your party right now: ${parked.map((session) => session.id).join(", ")}. Ask with ask_user, then call negotiate_resume with every id the answer applies to — before you report back, not after.`,
+          ]
+        : []),
     ].join("\n");
   }
 
@@ -660,6 +690,37 @@ export class Agent<A extends string = DefaultAction> {
   // --- outbound, one turn at a time ----------------------------------
 
   /**
+   * A negotiation with this counterparty that hasn't finished.
+   *
+   * Opening a second one is almost never what was meant: the two Tasks
+   * are independent, so both can settle, and the party ends up committed
+   * twice over to a thing they wanted once. It happens when an agent
+   * can't see how to move a negotiation it already has — a live run
+   * re-opened four counterparties rather than answer the one question it
+   * had been asked, and bought the same bike twice.
+   *
+   * A *settled* negotiation is no obstacle: reopening terms is exactly
+   * what a new negotiation is for. Only the unfinished ones block.
+   */
+  private liveNegotiationWith(
+    url: string,
+    context?: Pick<ToolContext, "negotiations">,
+  ): NegotiationSession | undefined {
+    // The run's own view when there is one — `run()` seeds it from the
+    // store, so it holds everything the store does and anything opened
+    // since. Without a context this is a direct API call, and the store
+    // is all there is.
+    const sessions = context ? [...context.negotiations.values()] : this.sessions.list();
+
+    return sessions.find(
+      (session) =>
+        session.direction === "outbound" &&
+        session.url === url &&
+        !(session.task && isTerminalTaskState(session.task.status.state)),
+    );
+  }
+
+  /**
    * Opens a negotiation and takes the first turn. The session is recorded
    * on `context.negotiations` so `continueNegotiation()` can pick it up,
    * and travels out on `RunResult.negotiations` so a later run — in
@@ -670,6 +731,9 @@ export class Agent<A extends string = DefaultAction> {
     options: OpenNegotiationOptions = {},
     context?: Pick<ToolContext, "negotiations" | "signal">,
   ): Promise<NegotiationTurn<A>> {
+    const live = this.liveNegotiationWith(url, context);
+    if (live) throw new Error(secondNegotiationRefusal(live));
+
     const signal = context?.signal;
     const peer = options.discover === false ? null : await this.inspect(url, { signal });
     const objective = this.objectiveFor(options.objective);
@@ -760,6 +824,19 @@ export class Agent<A extends string = DefaultAction> {
     options: OpenNegotiationOptions = {},
     context?: Pick<ToolContext, "negotiations" | "signal">,
   ): Promise<NegotiationEvent<A>> {
+    // Checked and registered before the first await, so two targets
+    // naming the same counterparty in one batch can't both get past it.
+    const live = this.liveNegotiationWith(url, context);
+    if (live) {
+      return {
+        kind: "skipped",
+        id: live.id,
+        ...(live.peer?.name ? { peer: live.peer.name } : {}),
+        url,
+        reason: secondNegotiationRefusal(live),
+      };
+    }
+
     const session: NegotiationSession = {
       id: `local:${crypto.randomUUID()}`,
       direction: "outbound",
@@ -775,7 +852,7 @@ export class Agent<A extends string = DefaultAction> {
         session.peer = await this.inspect(url, { signal: context?.signal });
       } catch (cause) {
         context?.negotiations.delete(session.id);
-        return { kind: "failed", id: session.id, error: describe(cause), turns: 0 };
+        return { kind: "failed", id: session.id, url, error: describe(cause), turns: 0 };
       }
     }
 
@@ -797,6 +874,7 @@ export class Agent<A extends string = DefaultAction> {
       kind: "skipped",
       id,
       peer: session?.peer?.name,
+      ...(session?.url ? { url: session.url } : {}),
       reason,
     });
 
@@ -824,11 +902,12 @@ export class Agent<A extends string = DefaultAction> {
     context?: Pick<ToolContext, "negotiations" | "signal">,
   ): Promise<NegotiationEvent<A>> {
     const peer = session.peer?.name;
+    const url = session.url;
 
     for (;;) {
       const turns = sentTurns(session);
       if (turns >= this.maxTurns) {
-        return { kind: "budget", id: session.id, peer, last: lastPeerDecision(session), turns };
+        return { kind: "budget", id: session.id, peer, url, last: lastPeerDecision(session), turns };
       }
 
       const before = session.id;
@@ -844,6 +923,7 @@ export class Agent<A extends string = DefaultAction> {
             kind: "asking",
             id: session.id,
             peer,
+            url,
             question: cause.decision.message,
             last: lastPeerDecision(session),
             turns,
@@ -857,7 +937,7 @@ export class Agent<A extends string = DefaultAction> {
           context?.negotiations.delete(session.id);
           this.sessions.delete?.(session.id);
         }
-        return { kind: "failed", id: session.id, peer, error: describe(cause), turns };
+        return { kind: "failed", id: session.id, peer, url, error: describe(cause), turns };
       }
       // A negotiation parked before its first turn was keyed by a
       // provisional id; `takeTurn` re-keys the store the moment the Task
@@ -870,6 +950,7 @@ export class Agent<A extends string = DefaultAction> {
           kind: "settled",
           id: session.id,
           peer,
+          url,
           state: turn.state,
           ...(turn.settlement ? { settlement: turn.settlement } : {}),
           turns: sentTurns(session),

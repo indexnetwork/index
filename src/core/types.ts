@@ -262,27 +262,40 @@ export interface NegotiationTurn<A extends string = string> {
  * refused connection does not sink the other negotiations in the batch.
  */
 export type NegotiationEvent<A extends string = string> =
-  | {
+  | (NegotiationEventBase & {
       kind: "settled";
-      id: string;
-      peer?: string;
       state: A2ATaskState;
       settlement?: Settlement<A>;
       turns: number;
-    }
-  | {
+    })
+  | (NegotiationEventBase & {
       kind: "asking";
-      id: string;
-      peer?: string;
       question: string;
       /** The counterparty's most recent move, so the party can be told
        * what is on the table when asked. */
       last: NegotiationDecision<A> | null;
       turns: number;
-    }
-  | { kind: "budget"; id: string; peer?: string; last: NegotiationDecision<A> | null; turns: number }
-  | { kind: "failed"; id: string; peer?: string; error: string; turns: number }
-  | { kind: "skipped"; id: string; peer?: string; reason: string };
+    })
+  | (NegotiationEventBase & {
+      kind: "budget";
+      last: NegotiationDecision<A> | null;
+      turns: number;
+    })
+  | (NegotiationEventBase & { kind: "failed"; error: string; turns: number })
+  | (NegotiationEventBase & { kind: "skipped"; reason: string });
+
+/** What every event says about which negotiation it belongs to. */
+interface NegotiationEventBase {
+  id: string;
+  peer?: string;
+  /**
+   * The counterparty's endpoint — the same URL the caller named as a
+   * target. A batch of results comes back keyed by task id and party
+   * name, neither of which the caller chose, so without this there is
+   * nothing to join a line back to the target it came from.
+   */
+  url?: string;
+}
 
 export interface Negotiation<A extends string = string> {
   peer: IdentifiedAgentCard | null;

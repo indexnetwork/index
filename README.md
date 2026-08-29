@@ -327,17 +327,40 @@ groups what came back:
 
 ```
 Settled (2):
-- 61b3061c with Alice's Agent — agreed: {"amount":460}
-- 9f2a1c3d with Bob's Agent — declined
+- 61b3061c with Alice's Agent (https://alice.example) — agreed: {"amount":460}
+- 9f2a1c3d with Bob's Agent (https://bob.example) — declined
 Waiting on you (1) — ask your party once with ask_user, then call negotiate_resume with every id the answer applies to:
-- 1a2b3c4d with Carol's Agent — asks: "Latest pickup day?" (their last move: "$480, Saturday" {"amount":480})
+- 1a2b3c4d with Carol's Agent (https://carol.example) — asks: "Latest pickup day?" (their last move: "$480, Saturday" {"amount":480})
 ```
+
+Every line names the URL it came from. Ids and party names are what the
+counterparty chose; the URL is what *you* named the target as, and it is
+the only thing a batch of results can be joined back on — an agent
+without it eventually reports one seller's price under another's name.
 
 Same-kind questions from several negotiations are the model's to
 coalesce: it asks the party once and passes every applicable id to
 `negotiate_resume`. Guidance given that way is standing — it holds for
 the rest of each negotiation — unlike `negotiate_turn`'s per-turn
 `guidance`.
+
+#### One live negotiation per counterparty
+
+Opening a second negotiation with a counterparty you already have an
+unfinished one with is refused — `negotiate_open` throws, and
+`negotiate_many` skips that target and says why. The two Tasks would be
+independent, so both could settle, and the party would be committed
+twice to a thing they wanted once.
+
+It is a real failure, not a theoretical one: an agent that couldn't see
+how to move a negotiation waiting on its party re-opened all four of its
+counterparties instead, and agreed the same purchase twice. Every
+Task-level invariant held throughout — nothing had told it not to. The
+record now names what is waiting and what to do about it, and this
+refuses the shortcut.
+
+A *settled* negotiation blocks nothing: reopening terms is exactly what a
+new negotiation is for.
 
 Parked negotiations travel on `RunResult.negotiations` and live in the
 `NegotiationStore`, so a fresh `Agent` over the same store can resume

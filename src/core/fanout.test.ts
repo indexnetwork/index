@@ -396,7 +396,7 @@ describe("digest()", () => {
         '- 5e6f7a8b with Dan\'s Agent — 10 turns, still open (their last move: "$500")',
         "Failed (1):",
         "- local:x — fetch failed",
-        "Not resumed (1):",
+        "Skipped (1):",
         "- abcd — already ended (completed)",
       ].join("\n"),
     );
@@ -463,8 +463,8 @@ describe("negotiate_many / negotiate_resume", () => {
       )) as string;
 
       expect(text).toStartWith("Settled (2):");
-      expect(text).toContain("with Seller —");
-      expect(text).toContain("with Seller B —");
+      expect(text).toContain(`with Seller (${a.url}) —`);
+      expect(text).toContain(`with Seller B (${b.url}) —`);
       expect(context.negotiations.size).toBe(2);
     } finally {
       a.stop();
@@ -651,6 +651,242 @@ describe("through the agent loop", () => {
 
       expect(event.kind).toBe("settled");
       expect(sessions.get(parked.id)?.pending).toBeUndefined();
+    } finally {
+      stop();
+    }
+  });
+});
+
+// A live run showed the loop model, handed a digest with one negotiation
+// waiting on its party, re-opening all four counterparties from scratch
+// instead of answering — and agreeing with one of them twice, at which
+// point the party had bought two bikes. The Task-level invariants all
+// held; nothing had told the agent not to, and nothing had stopped it.
+describe("one negotiation per counterparty", () => {
+  test("opening a second negotiation with a counterparty already open is refused", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "counter", message: "Not yet." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400?" }]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+      const first = await agent.openNegotiation(url, {}, { negotiations });
+      expect(first.done).toBe(false);
+
+      await expect(agent.openNegotiation(url, {}, { negotiations })).rejects.toThrow(
+        /already negotiating with/,
+      );
+      // Nothing was opened: one negotiation, and the counterparty was
+      // never called a second time.
+      expect(negotiations.size).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
+  test("a settled negotiation does not block a fresh one — that is how terms change", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+      const first = await agent.openNegotiation(url, {}, { negotiations });
+      expect(first.done).toBe(true);
+
+      const second = await agent.openNegotiation(url, {}, { negotiations });
+      expect(second.id).not.toBe(first.id);
+      expect(negotiations.size).toBe(2);
+    } finally {
+      stop();
+    }
+  });
+
+  test("negotiate_many skips a counterparty it is already negotiating with", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "counter", message: "$480?" }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          { action: "propose", message: "$400?" },
+          { action: "ask", message: "Ceiling?" },
+        ]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+      const first = await agent.runNegotiation(url, {}, { negotiations });
+      expect(first.kind).toBe("asking");
+
+      const again = await agent.runNegotiation(url, {}, { negotiations });
+
+      expect(again.kind).toBe("skipped");
+      if (again.kind !== "skipped") return;
+      // Points at the negotiation that already exists, and at the tool
+      // that moves it — a parked one needs the party's answer.
+      expect(again.id).toBe(first.id);
+      expect(again.reason).toContain("negotiate_resume");
+      expect(negotiations.size).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
+  test("the same counterparty twice in one batch opens one negotiation", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator,
+      });
+      const context = {
+        agent: agent as unknown as Agent,
+        negotiations: new Map<string, NegotiationSession>(),
+      };
+
+      const text = (await tool("negotiate_many").run!(
+        { targets: [{ url, objective: "a" }, { url, objective: "again" }] } as never,
+        context,
+      )) as string;
+
+      expect(text).toContain("Settled (1):");
+      expect(text).toContain("Skipped (1):");
+      expect(context.negotiations.size).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+});
+
+describe("the record says what to do next", () => {
+  test("a parked negotiation is named, with the tool that answers it", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "counter", message: "$480." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          { action: "propose", message: "$400?" },
+          { action: "ask", message: "Ceiling?" },
+        ]).negotiator,
+      });
+      const parked = await agent.runNegotiation(url, {}, { negotiations: new Map() });
+
+      const instructions = agent.instructions();
+      expect(instructions).toContain(`Waiting on your party right now: ${parked.id}`);
+      expect(instructions).toContain("negotiate_resume");
+      // The failure this prevents: finishing the run with the question
+      // still unanswered.
+      expect(instructions).toContain("before you report back");
+    } finally {
+      stop();
+    }
+  });
+
+  test("nothing parked, nothing to chase", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator,
+      });
+      await agent.runNegotiation(url, {}, { negotiations: new Map() });
+
+      expect(agent.instructions()).not.toContain("Waiting on your party right now");
+    } finally {
+      stop();
+    }
+  });
+});
+
+describe("digest lines name the counterparty's URL", () => {
+  // A live run misread its own digest and recommended a seller that had
+  // declined: it had passed URLs to negotiate_many and got back lines
+  // keyed by id and name, with nothing to join them on.
+  test("the URL each result came from is on the line", () => {
+    const text = digest([
+      {
+        kind: "settled",
+        id: "61b3061c",
+        peer: "Alice's Agent",
+        url: "http://localhost:8101",
+        state: "completed",
+        turns: 3,
+        settlement: { outcome: "agreed", basis: "terms", reason: "", terms: { amount: 460 } } as never,
+      },
+      {
+        kind: "asking",
+        id: "1a2b3c4d",
+        peer: "Carol's Agent",
+        url: "http://localhost:8102",
+        turns: 1,
+        question: "Latest pickup day?",
+        last: null,
+      },
+    ]);
+
+    expect(text).toBe(
+      [
+        "Settled (1):",
+        '- 61b3061c with Alice\'s Agent (http://localhost:8101) — agreed: {"amount":460}',
+        "Waiting on you (1) — ask your party once with ask_user, then call negotiate_resume with every id the answer applies to:",
+        '- 1a2b3c4d with Carol\'s Agent (http://localhost:8102) — asks: "Latest pickup day?"',
+      ].join("\n"),
+    );
+  });
+
+  test("events carry the URL they negotiated against", async () => {
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator,
+      });
+      const event = await agent.runNegotiation(url, {}, { negotiations: new Map() });
+
+      expect(event.url).toBe(url);
+      expect(digest([event])).toContain(`(${url})`);
     } finally {
       stop();
     }

@@ -9,7 +9,7 @@ state. See README.md for the API.
 
 ```bash
 cd ../negotiator && bun run build   # required: `file:../negotiator` resolves to its dist/
-bun test                            # 103 tests, no network
+bun test                            # 111 tests, no network
 bun run typecheck
 bun run console                     # drive several agents in one terminal
 bun run dev/stress.ts               # live scenarios — real model calls, real money
@@ -57,6 +57,13 @@ These were each a bug at some point, and the code reads oddly without them.
   digest; the turns in between never enter the transcript. Ten
   negotiations once cost the main model a call per turn each. `ask` is
   offered only under that pump and is intercepted before the wire.
+- **One live negotiation per counterparty.** Opening a second one while
+  the first is unfinished commits the party twice: both Tasks settle
+  independently. `openNegotiation` throws and `runNegotiation` returns a
+  `skipped` event; a settled negotiation blocks nothing, since that is
+  how terms get reopened. An agent that couldn't see how to move a parked
+  negotiation once re-opened four counterparties and bought the same
+  thing twice, with every Task-level invariant intact.
 - **One clock.** `now` feeds both the loop's system message and the
   negotiator's, read as UTC, so an agent can't tell its party one date and
   its counterparty another. It's a function, not a `Date`, so a long-lived

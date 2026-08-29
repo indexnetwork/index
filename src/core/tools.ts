@@ -119,7 +119,7 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
   const open: Tool<{ url: string; objective: string }> = {
     name: "negotiate_open",
     description:
-      "Open a negotiation with another agent at its A2A endpoint and take the first turn. Returns what you said, what they said back, and an id for continuing. Use negotiate_turn to carry on." +
+      "Open a negotiation with another agent at its A2A endpoint and take the first turn. Returns what you said, what they said back, and an id for continuing. Use negotiate_turn to carry on. Only for a counterparty you have no unfinished negotiation with: if you already have one, continue it with negotiate_turn, or answer it with negotiate_resume when it is waiting on your party." +
       SETTLEMENT_NOTE,
     parameters: {
       type: "object",
@@ -160,7 +160,7 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
   const many: Tool<{ targets: { url: string; objective: string }[] }> = {
     name: "negotiate_many",
     description:
-      "Open negotiations with several agents at once and run each one on its own until it settles, needs something only the party you represent can tell you, or runs out of turns. Returns one digest with a line per negotiation. Prefer this over negotiate_open whenever there is more than one counterparty: you only hear about what needs you. For lines under 'Waiting on you', ask your party once with ask_user, then call negotiate_resume with every id the answer applies to." +
+      "Open negotiations with several agents at once and run each one on its own until it settles, needs something only the party you represent can tell you, or runs out of turns. Returns one digest with a line per negotiation. Prefer this over negotiate_open whenever there is more than one counterparty: you only hear about what needs you. For lines under 'Waiting on you', ask your party once with ask_user, then call negotiate_resume with every id the answer applies to — do that before you report back, and never re-open a counterparty to get around a question you have not answered. Each line names the URL it came from; use it to say which result belongs to which target." +
       DIGEST_SETTLEMENT_NOTE,
     parameters: {
       type: "object",

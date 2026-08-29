@@ -16,7 +16,7 @@ export function digest(events: NegotiationEvent[]): string {
     ["Waiting on you", "asking"],
     ["Out of turns", "budget"],
     ["Failed", "failed"],
-    ["Not resumed", "skipped"],
+    ["Skipped", "skipped"],
   ];
 
   const sections: string[] = [];
@@ -34,7 +34,12 @@ export function digest(events: NegotiationEvent[]): string {
 
 function line(event: NegotiationEvent): string {
   const who = event.peer ? ` with ${event.peer}` : "";
-  const head = `- ${event.id}${who} — `;
+  // The URL is what the caller named this counterparty as; the id and the
+  // party name are what came back. Without it a reader has to remember
+  // which target produced which line, and a model reporting on ten of
+  // them will eventually attribute the wrong deal to the wrong party.
+  const where = event.url ? ` (${event.url})` : "";
+  const head = `- ${event.id}${who}${where} — `;
   switch (event.kind) {
     case "settled": {
       if (!event.settlement) return `${head}ended (${event.state})`;
