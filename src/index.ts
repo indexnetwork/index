@@ -19,7 +19,7 @@ export {
 } from "./core/tools.ts";
 export type { NegotiationToolOptions, Tool, ToolContext } from "./core/tools.ts";
 
-export { MemoryNegotiationStore } from "./core/sessions.ts";
+export { MemoryMessageStore, MemoryNegotiationStore } from "./core/sessions.ts";
 export { digest } from "./core/digest.ts";
 export { ModelClient, DEFAULT_MODEL } from "./core/model.ts";
 export type {
@@ -35,6 +35,7 @@ export type {
   Direction,
   IdentifiedAgentCard,
   Intent,
+  MessageStore,
   Negotiation,
   NegotiationEnd,
   NegotiationEvent,

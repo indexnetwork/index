@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Agent } from "./agent.ts";
 import type { ModelMessage, ToolCall } from "./model.ts";
+import { MemoryMessageStore } from "./sessions.ts";
 import { askUserTool, type Tool } from "./tools.ts";
 
 const originalFetch = globalThis.fetch;
@@ -43,13 +44,18 @@ const TODAY = new Date("2026-08-28T09:00:00Z");
 const TODAY_LINE =
   'Today is Friday, 28 August 2026. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.';
 
-function agent(tools: Tool<never>[], systemPrompt = "You act for Alice.") {
+function agent(
+  tools: Tool<never>[],
+  systemPrompt = "You act for Alice.",
+  options: { history?: MemoryMessageStore } = {},
+) {
   return new Agent({
     identity: { name: "Alice's Agent", id: "did:example:alice" },
     systemPrompt,
     apiKey: "test-key",
     now: () => TODAY,
     tools,
+    ...options,
   });
 }
 
@@ -250,6 +256,53 @@ describe("continuing a conversation", () => {
     const requests = mockModel([{ role: "assistant", content: "second" }]);
     await agent([echo], "New instructions.").run("two", { messages: first.messages });
 
+    expect(requests[0]?.messages).toEqual([
+      {
+        role: "system",
+        content: `New instructions.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}`,
+      },
+      { role: "user", content: "one" },
+      { role: "assistant", content: "first" },
+      { role: "user", content: "two" },
+    ]);
+  });
+
+  test("falls back to the history store when messages is omitted", async () => {
+    const history = new MemoryMessageStore();
+    mockModel([{ role: "assistant", content: "first" }]);
+    await agent([echo], "You act for Alice.", { history }).run("one");
+
+    const requests = mockModel([{ role: "assistant", content: "second" }]);
+    // A fresh Agent, over the same store, with no `messages` passed at all.
+    await agent([echo], "You act for Alice.", { history }).run("two");
+
+    expect(requests[0]?.messages).toEqual([
+      {
+        role: "system",
+        content: `You act for Alice.\n\nYou are Alice's Agent, acting on behalf of did:example:alice.\n\n${TODAY_LINE}`,
+      },
+      { role: "user", content: "one" },
+      { role: "assistant", content: "first" },
+      { role: "user", content: "two" },
+    ]);
+  });
+
+  test("an explicit messages argument wins over the history store", async () => {
+    const history = new MemoryMessageStore();
+    history.save([
+      { role: "system", content: "stale" },
+      { role: "user", content: "stale turn" },
+    ]);
+
+    mockModel([{ role: "assistant", content: "first" }]);
+    const first = await agent([echo], "Old instructions.", {}).run("one");
+
+    const requests = mockModel([{ role: "assistant", content: "second" }]);
+    await agent([echo], "New instructions.", { history }).run("two", {
+      messages: first.messages,
+    });
+
+    expect(requests[0]?.messages).not.toContainEqual({ role: "user", content: "stale turn" });
     expect(requests[0]?.messages).toEqual([
       {
         role: "system",

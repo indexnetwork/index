@@ -74,6 +74,22 @@ export interface PendingQuestion {
   options?: string[];
 }
 
+/**
+ * Where this agent's H2A conversation is recorded.
+ *
+ * There's one conversation per agent instance, not many keyed by id — the
+ * agent holds no state itself, so this is the host's, and defaults to an
+ * in-memory store. Swap it for something shared and an agent picks a
+ * suspended conversation back up after a restart, or from another process.
+ */
+export interface MessageStore {
+  /** The conversation so far, including the system message once a run has
+   * produced one. Empty before the first run. */
+  list(): ModelMessage[];
+  /** Replaces the stored transcript with a run's full result. */
+  save(messages: ModelMessage[]): void;
+}
+
 export interface RunResult {
   /** The agent's final text. Empty if it never produced any. */
   output: string;
@@ -82,7 +98,9 @@ export interface RunResult {
   /** Set when `end` is "needs-input": what the agent needs to know. */
   pending?: PendingQuestion;
   /** The full transcript, including the system message. Pass it back as
-   * `messages` to continue — that's how a suspended run resumes. */
+   * `messages` to continue — that's how a suspended run resumes. A host
+   * with a shared `MessageStore` can rely on that instead: `run()` already
+   * saved this same array there. */
   messages: ModelMessage[];
   /** Negotiations still open at the end of this run. Pass these back
    * alongside `messages` so a resumed run can keep taking turns in them;

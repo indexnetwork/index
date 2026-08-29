@@ -38,3 +38,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # local intent directory (cli/chat.ts --serve)
 .agents.json
+
+# sqlite server example (examples/06-sqlite-server.ts)
+examples/.sqlite-server.db*

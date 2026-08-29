@@ -28,7 +28,7 @@ import {
 } from "@indexnetwork/negotiator/a2a";
 
 import { runLoop } from "./loop.ts";
-import { MemoryNegotiationStore } from "./sessions.ts";
+import { MemoryMessageStore, MemoryNegotiationStore } from "./sessions.ts";
 import { ModelClient, type ModelMessage } from "./model.ts";
 import { defaultTools, type Tool, type ToolContext } from "./tools.ts";
 import type {
@@ -37,6 +37,7 @@ import type {
   Direction,
   IdentifiedAgentCard,
   Intent,
+  MessageStore,
   Negotiation,
   NegotiationEvent,
   NegotiationSession,
@@ -340,12 +341,25 @@ export interface AgentOptions<A extends string = DefaultAction> {
    * another process.
    */
   sessions?: NegotiationStore;
+  /**
+   * Where this agent's H2A conversation is recorded.
+   *
+   * The agent holds no state of its own; this is the host's, like
+   * `sessions`, and defaults to an in-memory store. Swap it for something
+   * shared and an agent picks a suspended conversation back up after a
+   * restart, or from another process, without the host having to thread
+   * `messages` through every `run()` call itself.
+   */
+  history?: MessageStore;
 }
 
 export interface RunOptions {
   maxSteps?: number;
   /** The conversation so far — pass `messages` from a previous result to
-   * continue it, including resuming a run that stopped on a question. */
+   * continue it, including resuming a run that stopped on a question.
+   * Omit it to fall back to the agent's `history` store instead; passing
+   * it always wins, so a host mixing both approaches doesn't get a stale
+   * transcript silently overriding a fresher one. */
   messages?: ModelMessage[];
   /** Negotiations still open — pass `negotiations` from a previous result
    * so the agent can keep taking turns in exchanges it already started. */
@@ -401,6 +415,8 @@ export class Agent<A extends string = DefaultAction> {
   private readonly strategy: DecisionStrategy<A>;
   /** What this agent has negotiated, in either direction. */
   private readonly sessions: NegotiationStore;
+  /** This agent's H2A conversation. */
+  private readonly history: MessageStore;
 
   constructor(private readonly options: AgentOptions<A>) {
     this.identity = options.identity;
@@ -430,6 +446,7 @@ export class Agent<A extends string = DefaultAction> {
     this.maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
     this.isTerminal = options.isTerminal ?? ((action: A) => DEFAULT_TERMINAL.has(action));
     this.sessions = options.sessions ?? new MemoryNegotiationStore();
+    this.history = options.history ?? new MemoryMessageStore();
 
     // An explicit strategy wins. Otherwise terms are on unless the host
     // turned them off with `terms: ""` — a decision that carries no terms
@@ -455,8 +472,9 @@ export class Agent<A extends string = DefaultAction> {
       ...this.options,
       identity: this.identity,
       // Shared, not copied — an intent scopes what the agent is working
-      // on, not what it remembers negotiating.
+      // on, not what it remembers negotiating or has already said.
       sessions: this.sessions,
+      history: this.history,
       intent: typeof intent === "string" ? { statement: intent } : intent,
     });
   }
@@ -552,11 +570,16 @@ export class Agent<A extends string = DefaultAction> {
       this.sessions.list().map((session) => [session.id, session]),
     );
 
-    return runLoop({
+    // Same either-is-enough rule as negotiations: a host can pass `messages`
+    // message-style, lean on a shared `history` store, or both — whichever
+    // arrived travels into this run.
+    const messages = options.messages ?? this.history.list();
+
+    const result = await runLoop({
       model: this.model,
       systemPrompt: this.instructions([...negotiations.values()]),
       tools: this.tools,
-      messages: options.messages ?? [],
+      messages,
       input,
       maxSteps: options.maxSteps ?? this.maxSteps,
       context: {
@@ -567,6 +590,9 @@ export class Agent<A extends string = DefaultAction> {
       onStep: options.onStep,
       signal: options.signal,
     });
+
+    this.history.save(result.messages);
+    return result;
   }
 
   // --- identity ------------------------------------------------------

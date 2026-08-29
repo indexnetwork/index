@@ -1,4 +1,5 @@
-import type { NegotiationSession, NegotiationStore } from "./types.ts";
+import type { MessageStore, NegotiationSession, NegotiationStore } from "./types.ts";
+import type { ModelMessage } from "./model.ts";
 
 /**
  * The default `NegotiationStore`: in memory, per process.
@@ -27,5 +28,24 @@ export class MemoryNegotiationStore implements NegotiationStore {
 
   delete(id: string): void {
     this.sessions.delete(id);
+  }
+}
+
+/**
+ * The default `MessageStore`: in memory, per process.
+ *
+ * Same trade-off as `MemoryNegotiationStore` — good enough for one host
+ * process. A deployment that survives restarts, or runs more than one
+ * instance, implements the interface over something shared.
+ */
+export class MemoryMessageStore implements MessageStore {
+  private transcript: ModelMessage[] = [];
+
+  list(): ModelMessage[] {
+    return this.transcript;
+  }
+
+  save(messages: ModelMessage[]): void {
+    this.transcript = messages;
   }
 }
