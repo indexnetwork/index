@@ -4,8 +4,8 @@
  * Also clears discovery-progress, pool/intent questions, intent-agent acts,
  * dossiers, orphan orchestrator conversations, and any conversation that
  * has an agent participant (H2A / A2A chat shells).
- * Also wipes every BullMQ queue in Redis (all `bull:*` keys) and resets each
- * intent's negotiation-cycle state (batch id) plus its round-log events.
+ * Also resets each intent's negotiation-cycle state (batch id) plus its
+ * round-log events.
  * Keeps intents, users, HyDE, and profile data.
  *
  * Usage:
@@ -18,7 +18,6 @@ dotenv.config({ path: path.resolve(import.meta.dir, '../..', '.env.development')
 
 import { sql } from 'drizzle-orm/sql';
 
-import { getRedisClient } from '../adapters/cache.adapter';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { setLevel } from '../lib/log';
 
@@ -129,20 +128,6 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
   return readCounts();
 }
 
-/** Deletes every BullMQ key (`bull:*`) so no queued/delayed/repeating jobs survive the wipe. */
-async function clearQueues(): Promise<number> {
-  const redis = getRedisClient();
-  let deleted = 0;
-  let cursor = '0';
-  do {
-    const [next, keys] = await redis.scan(cursor, 'MATCH', 'bull:*', 'COUNT', 1000);
-    cursor = next;
-    if (keys.length > 0) deleted += await redis.del(...keys);
-  } while (cursor !== '0');
-  await redis.quit();
-  return deleted;
-}
-
 async function main(): Promise<void> {
   const opts = parseArgs();
   if (opts.silent) setLevel('error');
@@ -154,7 +139,7 @@ async function main(): Promise<void> {
   }
 
   if (!opts.confirm) {
-    console.log('⚠️  This deletes ALL negotiation + opportunity data for every user on .env.development, plus every queued BullMQ job in Redis.');
+    console.log('⚠️  This deletes ALL negotiation + opportunity data for every user on .env.development.');
     console.log('Use --confirm to proceed.');
     await closeDb();
     process.exit(1);
@@ -166,11 +151,9 @@ async function main(): Promise<void> {
   }
 
   const after = await clearNegotiationsAndOpportunities();
-  const queueKeysDeleted = await clearQueues();
   if (!opts.silent) {
     console.log('[db-clear-negotiations] after:', after);
-    console.log('[db-clear-negotiations] queue keys deleted:', queueKeysDeleted);
-    console.log('✅ Cleared negotiation + opportunity data and all queued jobs');
+    console.log('✅ Cleared negotiation + opportunity data');
   }
 }
 

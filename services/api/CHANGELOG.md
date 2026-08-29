@@ -35,6 +35,9 @@ section before promoting to `main`).
   `NotificationDeliveryService.publishOpportunityActionable`. Its removal left
   `background()`'s `retries` option without a call site, so that option and its
   backoff loop are gone too — `background()` now runs `fn` exactly once.
+- **The `bull:*` Redis purge in `db:clear-negotiations`.** `clearQueues()` had
+  scanned and deleted BullMQ keys that have not existed since the queue system
+  was removed.
 - **The `log.queue` namespace.** Its callers moved to the existing `log.job`.
   Thin `addCascadeJob`/`addDecomposeProfileJob`/`addReconcileJob`/
   `addOrphanReconciliationJob` wrappers are gone; callers invoke
