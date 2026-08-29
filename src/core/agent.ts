@@ -674,15 +674,15 @@ export class Agent<A extends string = DefaultAction> {
     // to be decoded from the request before the handler runs, and this
     // agent's from the Task the handler returns; the clones leave both
     // bodies intact, and anything that won't parse is left for the handler
-    // to reject exactly as it otherwise would.
+    // to reject exactly as it otherwise would. Both are only *emitted*
+    // once the Task exists, though — its id is what tags each turn, and an
+    // inbound negotiation has no other identity to give it (`peer: null`
+    // below — nobody fetched an AgentCard for a caller we didn't dial).
     return async (request: Request): Promise<Response> => {
       if (request.method !== "POST") return inner(request);
 
       const body = await peek<{ params?: { message?: A2AMessage } }>(request);
       const incoming = body?.params?.message ? messageToDecision(body.params.message) : null;
-      if (incoming) {
-        onTurn?.({ speaker: "peer", decision: incoming as NegotiationDecision<A> }, "inbound");
-      }
 
       const response = await inner(request);
 
@@ -705,10 +705,14 @@ export class Agent<A extends string = DefaultAction> {
         });
       }
 
+      if (incoming && task) {
+        onTurn?.({ speaker: "peer", decision: incoming as NegotiationDecision<A>, id: task.id }, "inbound");
+      }
+
       const reply = task?.history.at(-1);
       const decision = reply ? messageToDecision(reply) : null;
       if (decision && task) {
-        onTurn?.({ speaker: "self", decision: decision as NegotiationDecision<A> }, "inbound");
+        onTurn?.({ speaker: "self", decision: decision as NegotiationDecision<A>, id: task.id }, "inbound");
 
         // Read off the same Task the initiator reads, so a conflict is
         // visible from both ends rather than only the side that dialed.
@@ -719,7 +723,7 @@ export class Agent<A extends string = DefaultAction> {
           incoming as NegotiationDecision<A> | null,
           false,
         );
-        if (settlement) onSettled?.(settlement, "inbound");
+        if (settlement) onSettled?.({ ...settlement, id: task.id }, "inbound");
       }
 
       return response;
@@ -1047,9 +1051,12 @@ export class Agent<A extends string = DefaultAction> {
       evaluate: this.options.evaluate,
       credentials: this.options.credentials,
       timeoutMs: this.options.turnTimeout,
+      // `onTurn` isn't fired here: a brand-new negotiation's session.id is
+      // still the provisional key `openNegotiation` gave it, not the real
+      // Task id below — tagging it now would leave this turn under a
+      // different id than the peer's reply to it, in the same negotiation.
       onDecision: (decision) => {
         sent = decision;
-        this.options.onTurn?.({ speaker: "self", decision }, "outbound");
       },
     });
 
@@ -1075,9 +1082,20 @@ export class Agent<A extends string = DefaultAction> {
     // session was saved under before, so the store never carries both.
     if (before !== session.id) this.sessions.delete?.(before);
 
+    // Both turns of the round trip, now that `session.id` is the real Task
+    // id and `session.peer` (if a card was fetched) names who this is.
+    if (sent) {
+      this.options.onTurn?.({ speaker: "self", decision: sent, id: session.id, peer: session.peer?.name }, "outbound");
+    }
+
     const reply = result.task.history.at(-1);
     const received = reply ? (messageToDecision(reply) as NegotiationDecision<A> | null) : null;
-    if (received) this.options.onTurn?.({ speaker: "peer", decision: received }, "outbound");
+    if (received) {
+      this.options.onTurn?.(
+        { speaker: "peer", decision: received, id: session.id, peer: session.peer?.name },
+        "outbound",
+      );
+    }
 
     // Who did what. Both halves can be true at once — this agent can accept
     // in the same round trip the counterparty rejects — so this records the
@@ -1093,7 +1111,9 @@ export class Agent<A extends string = DefaultAction> {
     this.sessions.save(session);
 
     const settlement = this.settle(result.task, result.decision, received, true);
-    if (settlement) this.options.onSettled?.(settlement, "outbound");
+    if (settlement) {
+      this.options.onSettled?.({ ...settlement, id: session.id, peer: session.peer?.name }, "outbound");
+    }
 
     return {
       id: session.id,
@@ -1213,8 +1233,9 @@ export class Agent<A extends string = DefaultAction> {
     let turns = 1;
 
     const collect = (result: NegotiationTurn<A>) => {
-      transcript.push({ speaker: "self", decision: result.sent });
-      if (result.received) transcript.push({ speaker: "peer", decision: result.received });
+      const peer = negotiations.get(result.id)?.peer?.name;
+      transcript.push({ speaker: "self", decision: result.sent, id: result.id, peer });
+      if (result.received) transcript.push({ speaker: "peer", decision: result.received, id: result.id, peer });
       if (result.artifact) artifacts.push(result.artifact);
     };
     collect(turn);

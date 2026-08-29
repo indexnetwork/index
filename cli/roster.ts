@@ -155,17 +155,21 @@ export class Roster {
       onTurn: (turn) => {
         // Both halves, from this party's side: what it said and what came
         // back. The counterparty keeps its own account of the same
-        // exchange, and the two are worth comparing.
+        // exchange, and the two are worth comparing. Tagged with which
+        // negotiation this is — `negotiate_many` runs several at once, and
+        // without the tag their turns would interleave indistinguishably.
         const mine = turn.speaker === "self";
+        const who = dim(`[${turn.peer ?? turn.id.slice(0, 8)}]`);
         party.wire.push(
-          `${dim(mine ? "→" : "←")} ${mine ? party.paint("me") : dim("them")}  ${turn.decision.message}`,
+          `${dim(mine ? "→" : "←")} ${mine ? party.paint("me") : dim("them")} ${who}  ${turn.decision.message}`,
         );
         this.options.onWire(party);
       },
       onSettled: (settlement) => {
         const disputed = settlement.outcome === "conflict" || settlement.outcome === "unconfirmed";
+        const who = settlement.peer ?? settlement.id?.slice(0, 8);
         const terms = settlement.terms ? ` ${JSON.stringify(settlement.terms)}` : "";
-        const line = `${settlement.outcome} (${settlement.basis})${terms} — ${settlement.reason}`;
+        const line = `${who ? `[${who}] ` : ""}${settlement.outcome} (${settlement.basis})${terms} — ${settlement.reason}`;
         party.wire.push(disputed ? red(`  ⚠ ${line}`) : dim(`  ⚖ ${line}`));
         this.options.onWire(party);
         if (disputed) this.options.onDisputed(party, line);

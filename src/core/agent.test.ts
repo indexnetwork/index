@@ -392,6 +392,64 @@ describe("negotiate()", () => {
       stop();
     }
   });
+
+  test("tags turns and settlement with the negotiation id and counterparty name", async () => {
+    const outbound: AgentTurn[] = [];
+    const settlements: Settlement[] = [];
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Sure." }]).negotiator,
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400?" }]).negotiator,
+        onTurn: (turn) => outbound.push(turn),
+        onSettled: (settlement) => settlements.push(settlement),
+      });
+
+      const result = await agent.negotiate(url);
+
+      // Both turns of the round trip, and its settlement, carry the same
+      // id — the Task's — and the counterparty's name, discovered via its
+      // AgentCard before the first turn was sent.
+      expect(outbound.map((turn) => turn.id)).toEqual([result.task.id, result.task.id]);
+      expect(outbound.map((turn) => turn.peer)).toEqual(["Seller", "Seller"]);
+      expect(settlements).toHaveLength(1);
+      expect(settlements[0]?.id).toBe(result.task.id);
+      expect(settlements[0]?.peer).toBe("Seller");
+    } finally {
+      stop();
+    }
+  });
+
+  test("inbound turns are tagged with the task id but no peer name", async () => {
+    const inbound: AgentTurn[] = [];
+    const { url, stop } = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([{ action: "accept", message: "Sure." }]).negotiator,
+        onTurn: (turn) => inbound.push(turn),
+      }),
+    );
+
+    try {
+      const agent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$400?" }]).negotiator,
+      });
+
+      const result = await agent.negotiate(url);
+
+      expect(inbound.map((turn) => turn.id)).toEqual([result.task.id, result.task.id]);
+      expect(inbound.every((turn) => turn.peer === undefined)).toBe(true);
+    } finally {
+      stop();
+    }
+  });
 });
 
 describe("custom action vocabularies", () => {

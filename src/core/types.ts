@@ -119,6 +119,15 @@ export type Speaker = "self" | "peer";
 export type Direction = "outbound" | "inbound";
 
 export interface AgentTurn<A extends string = string> {
+  /** The negotiation this turn belongs to — the A2A task id. Several
+   * negotiations can be underway at once (`negotiate_many` runs one per
+   * counterparty, concurrently), and their turns interleave in a single
+   * `onTurn` stream with no other way to tell them apart. */
+  id: string;
+  /** The counterparty's name, when known. Unset on an inbound negotiation:
+   * the counterparty called us, so no AgentCard was ever fetched for them —
+   * `id` is the only handle a caller has on which negotiation this is. */
+  peer?: string;
   speaker: Speaker;
   decision: NegotiationDecision<A>;
 }
@@ -218,6 +227,14 @@ export type SettlementOutcome =
  * through `basis`.
  */
 export interface Settlement<A extends string = string> {
+  /** The negotiation this settlement is for — the A2A task id. Set on
+   * whatever reaches `onSettled`, the same way `AgentTurn.id` disambiguates
+   * `onTurn` when several negotiations are running at once; absent when a
+   * `Settlement` is read some other way (e.g. `NegotiationTurn.settlement`,
+   * which is already scoped to one negotiation). */
+  id?: string;
+  /** The counterparty's name, when known. See `AgentTurn.peer`. */
+  peer?: string;
   outcome: SettlementOutcome;
   /**
    * What evidence the verdict rests on, weakest to strongest: `prose` (a

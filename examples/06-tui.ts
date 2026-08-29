@@ -22,6 +22,7 @@ import {
   type PartyConfig,
   type ScopeRequest,
   type ScopeResponse,
+  type WireEvent,
 } from "./06-shared.ts";
 
 function pickParty(): Promise<PartyConfig> {
@@ -49,6 +50,7 @@ const party = await pickParty();
 const paint = accent(0);
 
 const lines: string[] = [];
+const wire: string[] = [];
 let busy: { label: string; since: number } | undefined;
 let pending = false;
 let controller: AbortController | undefined;
@@ -59,7 +61,7 @@ let lastIntents: IntentRecord[] = [];
 function view(): View {
   return {
     title: `${party.name} — http://localhost:${party.port} (acting remotely, via /chat)`,
-    parties: [{ name: party.name, intent: "connected to 06-server.ts", lines, wire: [], paint, busy, pending }],
+    parties: [{ name: party.name, intent: "connected to 06-server.ts", lines, wire, paint, busy, pending }],
     focus: 0,
     prompt: "> ",
   };
@@ -175,6 +177,20 @@ async function call<T>(path: string, init?: RequestInit): Promise<T | undefined>
   return (await response.json()) as T;
 }
 
+// Mirrors the formatting `cli/roster.ts` applies inline in its `onTurn` and
+// `onSettled` callbacks, since this party's own turns arrive here as data
+// instead of a direct in-process callback.
+function formatWireEvent(event: WireEvent): string {
+  if (event.kind === "turn") {
+    const who = dim(`[${event.peer ?? event.id.slice(0, 8)}]`);
+    return `${dim(event.mine ? "→" : "←")} ${event.mine ? accent(1)("me") : dim("them")} ${who}  ${event.message}`;
+  }
+  const who = event.peer ?? event.id?.slice(0, 8);
+  const terms = event.terms ? ` ${JSON.stringify(event.terms)}` : "";
+  const line = `${who ? `[${who}] ` : ""}${event.outcome} (${event.basis})${terms} — ${event.reason}`;
+  return event.disputed ? red(`  ⚠ ${line}`) : dim(`  ⚖ ${line}`);
+}
+
 async function chat(message: string): Promise<void> {
   controller = new AbortController();
   const request: ChatRequest = { message };
@@ -199,6 +215,7 @@ async function chat(message: string): Promise<void> {
 
   const result = (await response.json()) as ChatResponse;
   for (const step of result.steps) lines.push(...formatStep(step));
+  for (const event of result.wire) wire.push(formatWireEvent(event));
 
   if (result.end === "needs-input" && result.pending) {
     lines.push(`  ? ${result.pending.question}`);

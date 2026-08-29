@@ -19,6 +19,7 @@ import { Database } from "bun:sqlite";
 import {
   Agent,
   askUserTool,
+  negotiationTools,
   TaskStore,
   type A2ATask,
   type ModelMessage,
@@ -37,6 +38,7 @@ import {
   type IntentsResponse,
   type ScopeRequest,
   type ScopeResponse,
+  type WireEvent,
 } from "./06-shared.ts";
 
 // --- storage: one sqlite file backs every agent, scoped by agent id -----
@@ -290,23 +292,52 @@ for (const party of PARTIES) {
   // overwrite. Tools are fixed at construction (`Agent.for` reuses
   // `options.tools` unchanged), so the whole agent is rebuilt, not just
   // rescoped, whenever the intent is set.
+  // Negotiation turns happen inside a single `/chat` call — an agent can
+  // open and settle a negotiation in one run of tool calls — so they are
+  // buffered here and drained into that call's response, the same events
+  // `cli/console.ts` gets straight from `onTurn`/`onSettled` in-process.
   function buildAgent(intentStatement: string | undefined): Agent<never> {
     return new Agent({
       identity: { name: party.name, id: party.id, url: `http://localhost:${party.port}` },
       systemPrompt: party.systemPrompt,
       tools: [
         askUserTool() as Tool<never>,
+        ...negotiationTools(),
         ...(intentStatement ? [findMatchesTool(party)] : [createIntentTool(party, rescope)]),
       ],
       ...(intentStatement ? { intent: { statement: intentStatement } } : {}),
       sessions: new SqliteNegotiationStore(db, party.id),
       taskStore: new SqliteTaskStore(db, party.id),
+      onTurn: (turn) => {
+        wireBuffer.push({
+          kind: "turn",
+          mine: turn.speaker === "self",
+          message: turn.decision.message,
+          id: turn.id,
+          peer: turn.peer,
+        });
+      },
+      onSettled: (settlement) => {
+        const disputed = settlement.outcome === "conflict" || settlement.outcome === "unconfirmed";
+        wireBuffer.push({
+          kind: "settled",
+          outcome: settlement.outcome,
+          basis: settlement.basis,
+          reason: settlement.reason,
+          disputed,
+          terms: settlement.terms,
+          id: settlement.id,
+          peer: settlement.peer,
+        });
+      },
     });
   }
 
   function rescope(statement: string | undefined): void {
     agent = buildAgent(statement);
   }
+
+  let wireBuffer: WireEvent[] = [];
 
   const savedScope = currentScope(party.id);
   let agent = buildAgent(savedScope?.statement);
@@ -327,6 +358,7 @@ for (const party of PARTIES) {
         POST: async (request: Request): Promise<Response> => {
           const { message } = (await request.json()) as ChatRequest;
 
+          wireBuffer = [];
           const result: RunResult = await agent.run(message, {
             messages: loadMessages(party.id),
             negotiations: new SqliteNegotiationStore(db, party.id).list(),
@@ -343,6 +375,7 @@ for (const party of PARTIES) {
             end: result.end,
             pending: result.pending,
             steps: result.steps,
+            wire: wireBuffer,
           };
           return Response.json(response);
         },
