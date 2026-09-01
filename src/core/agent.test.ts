@@ -179,6 +179,47 @@ describe("handler()", () => {
     }
   });
 
+  test("answerInbound folds guidance into the run's own negotiations map, not just this.sessions", async () => {
+    // A host like examples/06-server.ts doesn't read an agent's private
+    // `this.sessions` — it persists `RunResult.negotiations` (the same map
+    // `ToolContext.negotiations` is, mid-run) after every call. If
+    // `answerInbound` only saved to `this.sessions`, that persisted map
+    // would still carry the stale, still-pending session, and the next
+    // host round-trip would silently revert the party's answer.
+    const server = scripted([{ action: "ask", message: "What's your ceiling?" }]);
+    const sellerAgent = new Agent({ ...seller, negotiator: server.negotiator });
+    const { url, stop } = serve(sellerAgent);
+
+    try {
+      const buyerAgent = new Agent({
+        ...buyer,
+        negotiator: scripted([{ action: "propose", message: "$300?" }]).negotiator,
+      });
+      const first = await buyerAgent.openNegotiation(url);
+
+      // The map a host would carry across `run()` calls, built the same
+      // way `Agent.run()` builds it: from every session this agent knows.
+      // Cloned, the way a sqlite round-trip (examples/06-server.ts) would
+      // leave it — otherwise this map shares object identity with
+      // `this.sessions`'s own entries and a mutate-in-place bug would pass
+      // even without the context fix, which defeats the point of the test.
+      const negotiations = new Map<string, NegotiationSession>();
+      for (const session of (sellerAgent as unknown as { sessions: { list(): NegotiationSession[] } }).sessions.list()) {
+        negotiations.set(session.id, structuredClone(session));
+      }
+      const context = { agent: sellerAgent, negotiations };
+
+      const answerInbound = defaultTools().find((tool) => tool.name === "answer_inbound");
+      await answerInbound?.run?.({ ids: [first.id], guidance: "Ceiling is $500." } as never, context);
+
+      const persisted = negotiations.get(first.id);
+      expect(persisted?.pending).toBeUndefined();
+      expect(persisted?.guidance).toEqual(["Ceiling is $500."]);
+    } finally {
+      stop();
+    }
+  });
+
   test("answerInbound refuses a negotiation you opened, and one not waiting on you", async () => {
     const server = scripted([{ action: "counter", message: "No." }]);
     const { url, stop } = serve(new Agent({ ...seller, negotiator: server.negotiator }));

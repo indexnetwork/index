@@ -256,7 +256,7 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
       [...new Set(ids)]
         .map((id) => {
           try {
-            context.agent.answerInbound(id, guidance);
+            context.agent.answerInbound(id, guidance, context);
             return `${id}: recorded.`;
           } catch (cause) {
             return `${id}: ${cause instanceof Error ? cause.message : String(cause)}`;

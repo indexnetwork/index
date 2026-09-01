@@ -1124,8 +1124,12 @@ export class Agent<A extends string = DefaultAction> {
    * pump here — the guidance just waits, folded into `objective` the next
    * time their message continues this task (see `handler()`).
    */
-  answerInbound(id: string, guidance: string): NegotiationSession {
-    const session = this.sessions.get(id);
+  answerInbound(
+    id: string,
+    guidance: string,
+    context?: Pick<ToolContext, "negotiations" | "signal">,
+  ): NegotiationSession {
+    const session = context?.negotiations.get(id) ?? this.sessions.get(id);
     if (!session) throw new Error(`No negotiation "${id}".`);
     if (session.direction !== "inbound") {
       throw new Error(
@@ -1139,6 +1143,7 @@ export class Agent<A extends string = DefaultAction> {
     session.guidance = [...(session.guidance ?? []), guidance];
     delete session.pending;
     this.sessions.save(session);
+    context?.negotiations.set(session.id, session);
     return session;
   }
 

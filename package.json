@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "console": "bun run cli/console.ts",
+    "reset:06": "examples/06-reset.sh",
     "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target node --format esm --packages external && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
