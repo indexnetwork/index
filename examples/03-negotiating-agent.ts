@@ -2,19 +2,20 @@
  * Everything together: the agent opens a negotiation, stops partway to ask
  * Tomas a question, and carries on in the *same* exchange once he answers.
  *
- * That pause is why negotiation is one turn per tool call. If `negotiate()`
- * ran the whole exchange inside a single tool call there would be no gap to
- * stop in — the agent could only ask before it started or after it finished.
+ * The negotiation runs to an event inside one tool call — settled, out of
+ * turns, or waiting on Tomas. When the negotiator would commit to something
+ * he never said, it takes the `ask` action instead; that is intercepted
+ * before the wire and parks the negotiation. `ask_user` carries the question
+ * to Tomas, and `answer` folds his reply back into the same task.
  *
  * Note what the host passes back on resume: `messages` *and* `negotiations`.
- * The first is the conversation, the second is the open A2A task. Without
- * the second the agent could still talk, but not take another turn in an
- * exchange it had already started.
+ * The first is the conversation, the second is the parked A2A task. Without
+ * the second the agent could still talk, but not pick the exchange back up.
  *
  *   OPENROUTER_API_KEY=... bun run examples/03-negotiating-agent.ts
  */
-import { Agent, askUserTool, negotiationTools, type RunResult, type Tool } from "../src/index.ts";
-import { logStep, serve } from "./shared.ts";
+import { Agent, askUserTool, negotiationTools, type Tool } from "../src/index.ts";
+import { answerUntilDone, logStep, serve } from "./shared.ts";
 
 // A plain A2A responder: it answers turns with Negotiator, no loop involved.
 const advisor = new Agent({
@@ -48,22 +49,13 @@ const answers = [
   "Yes, agree that.",
 ];
 
-let result: RunResult = await founder.run(
+let result = await founder.run(
   `There is an agent for a fractional CFO at ${url}. Agree terms for Tomas on the best basis you can.`,
   { onStep: logStep },
 );
 
-let asked = 0;
-while (result.end === "needs-input" && asked < answers.length) {
-  const answer = answers[asked++]!;
-  console.log(`  > ${answer}\n`);
-
-  result = await founder.run(answer, {
-    messages: result.messages,
-    negotiations: result.negotiations, // the open A2A task travels with it
-    onStep: logStep,
-  });
-}
+// The parked A2A task travels with `negotiations` on every resume.
+result = await answerUntilDone(founder, result, answers, { onStep: logStep });
 
 console.log(`\n— ${result.end} after ${result.steps.length} steps`);
 for (const session of result.negotiations) {

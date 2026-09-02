@@ -1,58 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  Negotiator,
-  type DecideOptions,
-  type NegotiationDecision,
-  type NegotiationState,
-} from "@indexnetwork/a2a/negotiator";
+import type { NegotiationDecision } from "@indexnetwork/a2a/negotiator";
 
 import { Agent } from "./agent.ts";
 import { digest } from "./digest.ts";
-import { negotiationTools, type Tool } from "./tools.ts";
-import type { ModelMessage, ToolCall } from "./model.ts";
-import type { NegotiationSession } from "./types.ts";
 import { MemoryNegotiationStore } from "./sessions.ts";
-
-/** A Negotiator whose decide() replays a script, recording both the
- * state and the options each call was handed. */
-export function scripted(decisions: NegotiationDecision[]) {
-  const negotiator = new Negotiator({ apiKey: "test-key" });
-  const calls: { state: NegotiationState; options: DecideOptions<string> }[] = [];
-  let call = 0;
-
-  (negotiator as unknown as { decide: unknown }).decide = async (
-    state: NegotiationState,
-    options: DecideOptions<string>,
-  ) => {
-    // `options.signal` is the incoming request's AbortSignal, which
-    // structuredClone cannot clone (DataCloneError) — record everything
-    // else about the call.
-    const { signal: _signal, ...clonable } = options;
-    calls.push({ state: structuredClone(state), options: structuredClone(clonable) as DecideOptions<string> });
-    const decision = decisions[call] ?? decisions.at(-1);
-    call++;
-    if (!decision) throw new Error("no scripted decision left");
-    return decision;
-  };
-
-  return { negotiator, calls };
-}
-
-export const seller = {
-  identity: { name: "Seller", id: "did:example:alice" },
-  systemPrompt: "Sell the bike for as much as possible",
-  apiKey: "test-key",
-};
-export const buyer = {
-  identity: { name: "Buyer", id: "did:example:bob" },
-  systemPrompt: "Buy the bike for as little as possible",
-  apiKey: "test-key",
-};
-
-export function serve<A extends string>(agent: Agent<A>) {
-  const server = Bun.serve({ port: 0, fetch: agent.handler() });
-  return { url: server.url.toString(), stop: () => server.stop(true) };
-}
+import {
+  buyer,
+  call,
+  mockModel,
+  restoreFetch,
+  scripted,
+  scriptedBySession,
+  seller,
+  serve,
+  tool,
+} from "./test-helpers.ts";
+import type { NegotiationSession } from "./types.ts";
 
 describe("runNegotiation()", () => {
   test("pumps turns to a settlement and reports one event", async () => {
@@ -430,47 +393,6 @@ describe("digest()", () => {
   });
 });
 
-/** A Negotiator shared by several concurrently pumped sessions, whose
- * decide() is scripted per session instead of by call order.
- *
- * `scripted()`'s shared call counter assumes one negotiation is in
- * flight at a time; under `Promise.all` two sessions' calls interleave
- * unpredictably. Keying on `state.history.length` doesn't work either —
- * an `ask` is intercepted locally before anything is sent, so it and the
- * decide that follows a resume see the *same* history length. What does
- * stay stable per session is the negotiation's own objective: `objectiveFor`
- * always renders it as "...In this negotiation: <objective>", untouched by
- * whatever guidance gets appended after it. So key each call on that
- * `<objective>` tag and give each session its own sequential index. */
-function scriptedBySession(scripts: Record<string, NegotiationDecision[]>) {
-  const negotiator = new Negotiator({ apiKey: "test-key" });
-  const calls: { state: NegotiationState; options: DecideOptions<string> }[] = [];
-  const counts = new Map<string, number>();
-
-  (negotiator as unknown as { decide: unknown }).decide = async (
-    state: NegotiationState,
-    options: DecideOptions<string>,
-  ) => {
-    const { signal: _signal, ...clonable } = options;
-    calls.push({ state: structuredClone(state), options: structuredClone(clonable) as DecideOptions<string> });
-    const key = /In this negotiation: (\S+)/.exec(state.party.objective)?.[1];
-    const decisions = (key && scripts[key]) || [];
-    const index = counts.get(key ?? "") ?? 0;
-    counts.set(key ?? "", index + 1);
-    const decision = decisions[index] ?? decisions.at(-1);
-    if (!decision) throw new Error(`no scripted decision left for "${key}"`);
-    return decision;
-  };
-
-  return { negotiator, calls };
-}
-
-function tool(name: string) {
-  const found = negotiationTools().find((t) => t.name === name) as Tool<never> | undefined;
-  if (!found?.run) throw new Error(`no tool ${name}`);
-  return found;
-}
-
 describe("negotiate_many / negotiate_resume", () => {
   test("runs every target concurrently and returns one digest", async () => {
     const a = serve(new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator }));
@@ -580,32 +502,8 @@ describe("negotiate_many / negotiate_resume", () => {
   });
 });
 
-const originalFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-});
 
-/** Intercepts only OpenRouter chat calls and replays scripted assistant
- * messages; A2A traffic on local ports passes through. */
-function mockModel(replies: Partial<ModelMessage>[]) {
-  const requests: { messages: ModelMessage[] }[] = [];
-  let call = 0;
-  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : String((input as Request).url ?? input);
-    if (!url.startsWith("https://openrouter.ai")) {
-      return (originalFetch as (i: unknown, x?: RequestInit) => Promise<Response>)(input, init);
-    }
-    requests.push(JSON.parse(String(init?.body)));
-    const message = replies[call] ?? replies.at(-1);
-    call++;
-    return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
-  }) as unknown as typeof fetch;
-  return requests;
-}
-
-function call(name: string, args: unknown, id = `call_${name}`): ToolCall {
-  return { id, type: "function", function: { name, arguments: JSON.stringify(args) } };
-}
+afterEach(restoreFetch);
 
 describe("through the agent loop", () => {
   test("three negotiations cost the main model one round, not three", async () => {
@@ -1012,7 +910,7 @@ describe("cross-direction rivals (the same deal, from the other side)", () => {
     // Same identity and session store, rescoped to something unrelated and
     // served on its own port — `for()` is a lens, not a new agent, but a
     // host that rescopes what's listening swaps which intent a caller
-    // actually reaches, the way `examples/06-server.ts` rebuilds and
+    // actually reaches, the way `examples/06-persistence.ts` rebuilds and
     // re-serves an agent whenever its intent changes.
     const desk = middle.for({ statement: "Buy a standing desk" });
     const { url: deskUrl, stop: stopDesk } = serve(desk);

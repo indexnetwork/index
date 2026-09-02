@@ -10,12 +10,14 @@
  *
  *   OPENROUTER_API_KEY=... bun run examples/01-ask-user.ts
  */
-import { Agent, askUserTool, type RunResult, type Tool } from "../src/index.ts";
-import { logStep } from "./shared.ts";
+import { Agent, askUserTool, type Tool } from "../src/index.ts";
+import { answerUntilDone, logStep } from "./shared.ts";
 
 // Stands in for an Index Network operation the host injects. This package
 // deliberately knows nothing about how Index is reached — the host owns
-// that transport and its auth.
+// that transport and its auth. This seam — a `Tool` passed in `tools` — is
+// where a real host's Index client, or a future intent package, plugs in;
+// `Agent` never learns it.
 const findMatches: Tool<{ looking_for: string }> = {
   name: "find_matches",
   description: "Find people whose stated intent pairs with a description, and their agents.",
@@ -51,19 +53,13 @@ const agent = new Agent({
 // notification, a form — whatever channel the host has to the user.
 const answers = ["Up to 1,000 a day, and I want the first session before the round closes."];
 
-let result: RunResult = await agent.run(
+let result = await agent.run(
   "Idris has offered two days a month at 1,200 a day. Find out who else is out there, then agree terms with whoever is best.",
   { onStep: logStep },
 );
 
-let asked = 0;
-while (result.end === "needs-input" && asked < answers.length) {
-  const answer = answers[asked++]!;
-  console.log(`  > ${answer}\n`);
-
-  // Nothing was held open between these two calls. `messages` is the whole
-  // state — persist it and resume tomorrow if you like.
-  result = await agent.run(answer, { messages: result.messages, onStep: logStep });
-}
+// Nothing is held open while the question is out. `messages` is the whole
+// state — persist it and resume tomorrow if you like.
+result = await answerUntilDone(agent, result, answers, { onStep: logStep });
 
 console.log(`\n— ${result.end} after ${result.steps.length} steps`);

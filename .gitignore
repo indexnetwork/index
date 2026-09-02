@@ -33,11 +33,5 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# saved chat sessions (cli/chat.ts /save)
-.sessions
-
-# local intent directory (cli/chat.ts --serve)
-.agents.json
-
-# sqlite server example (examples/06-sqlite-server.ts)
-examples/.sqlite-server.db*
+# sqlite state written by examples/06-persistence.ts
+examples/.persistence.db*

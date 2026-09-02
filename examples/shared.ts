@@ -4,7 +4,7 @@
  * Every run is capped at MAX_TURNS, since a live model isn't guaranteed to
  * reach a terminal action on its own.
  */
-import type { AgentTurn, Negotiation, Step } from "../src/index.ts";
+import type { Agent, AgentTurn, Negotiation, RunOptions, RunResult, Step } from "../src/index.ts";
 
 export const MAX_TURNS = 6;
 
@@ -38,6 +38,30 @@ export function logStep(step: Step): void {
 
 function truncate(text: string, max = 140): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * The host's side of a conversation: whenever the run stops to ask, hand it
+ * the next scripted answer and resume. In production the answer comes from
+ * a chat message, a push notification, a form — whatever channel the host
+ * has to the user, seconds or days later.
+ *
+ * Nothing is held open between the two runs. `messages` and `negotiations`
+ * are the whole state — persist them and resume tomorrow if you like.
+ */
+export async function answerUntilDone(
+  agent: Agent,
+  result: RunResult,
+  answers: string[],
+  options: RunOptions = {},
+): Promise<RunResult> {
+  let asked = 0;
+  while (result.end === "needs-input" && asked < answers.length) {
+    const answer = answers[asked++]!;
+    console.log(`  > ${answer}\n`);
+    result = await agent.run(answer, { ...options, messages: result.messages, negotiations: result.negotiations });
+  }
+  return result;
 }
 
 /** Serves an agent handler on an ephemeral local port. */

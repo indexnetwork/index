@@ -1,46 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { Negotiator, type NegotiationDecision, type NegotiationState } from "@indexnetwork/a2a/negotiator";
+import type { NegotiationDecision } from "@indexnetwork/a2a/negotiator";
 import { messageToDecision } from "@indexnetwork/a2a";
 
 import { Agent } from "./agent.ts";
 import { MemoryNegotiationStore } from "./sessions.ts";
 import { defaultTools } from "./tools.ts";
+import { buyer, scripted, seller, serve, silent } from "./test-helpers.ts";
 import type { AgentTurn, Direction, NegotiationSession, Settlement } from "./types.ts";
 
-/** A Negotiator whose decide() replays a script instead of calling
- * OpenRouter, while still recording the state it was handed. */
-function scripted(decisions: NegotiationDecision[]) {
-  const negotiator = new Negotiator({ apiKey: "test-key" });
-  const calls: NegotiationState[] = [];
-  let call = 0;
-
-  (negotiator as unknown as { decide: unknown }).decide = async (state: NegotiationState) => {
-    calls.push(structuredClone(state));
-    const decision = decisions[call] ?? decisions.at(-1);
-    call++;
-    if (!decision) throw new Error("no scripted decision left");
-    return decision;
-  };
-
-  return { negotiator, calls };
-}
-
-const seller = {
-  identity: { name: "Seller", id: "did:example:alice" },
-  systemPrompt: "Sell the bike for as much as possible",
-  apiKey: "test-key",
+/** What `seller`'s card comes out as, spelled out so no test compares
+ * `card()` to itself. `description` is undefined and drops out of JSON. */
+const SELLER_CARD = {
+  name: "Seller",
+  id: "did:example:alice",
+  url: "",
+  version: "0.1.0",
+  capabilities: {},
+  skills: [
+    {
+      id: "negotiate",
+      name: "Negotiate",
+      description: "Negotiates on its party's behalf over A2A message/send. Understands: propose, counter, accept, reject.",
+    },
+  ],
 };
-const buyer = {
-  identity: { name: "Buyer", id: "did:example:bob" },
-  systemPrompt: "Buy the bike for as little as possible",
-  apiKey: "test-key",
-};
-
-/** Serves an Agent on an ephemeral port and hands back its base URL. */
-function serve<A extends string>(agent: Agent<A>) {
-  const server = Bun.serve({ port: 0, fetch: agent.handler() });
-  return { url: server.url.toString(), stop: () => server.stop(true) };
-}
 
 describe("AgentCard", () => {
   test("derives a card from the name and the card options", () => {
@@ -94,10 +77,34 @@ describe("AgentCard", () => {
 
     try {
       const response = await fetch(new URL("/.well-known/agent-card.json", url));
-      expect(await response.json()).toEqual(agent.card() as unknown as Record<string, unknown>);
+      // Against a literal, not `agent.card()` — that is the same code path
+      // the handler serves, so comparing to it can only catch a broken route.
+      expect(await response.json()).toEqual(SELLER_CARD);
     } finally {
       stop();
     }
+  });
+
+  test("for() is a lens: same identity object, same card, different instructions", () => {
+    const monday = new Date("2026-08-31T09:00:00Z");
+    const agent = new Agent({ ...seller, negotiator: scripted([]).negotiator, now: () => monday });
+    const raising = agent.for({ id: "int_round", statement: "Raise a 400k pre-seed round" });
+    const hiring = agent.for("Hire a senior backend engineer");
+    const intentOf = (scoped: Agent) => scoped.instructions().match(/Current intent: ([^\n]+)/)?.[1];
+
+    expect({
+      // Shared by reference, not copied: anything a scoped agent signs is
+      // signed by the same party.
+      identities: [raising.identity === agent.identity, hiring.identity === agent.identity],
+      cards: [raising.card(), hiring.card()],
+      intents: [agent, raising, hiring].map(intentOf),
+      clocks: [raising, hiring].map((scoped) => scoped.instructions().includes("Today is Monday, 31 August 2026.")),
+    }).toEqual({
+      identities: [true, true],
+      cards: [SELLER_CARD, SELLER_CARD],
+      intents: [undefined, "Raise a 400k pre-seed round", "Hire a senior backend engineer"],
+      clocks: [true, true],
+    });
   });
 
   test("inspect() fetches a peer's card without negotiating", async () => {
@@ -126,11 +133,11 @@ describe("handler()", () => {
       });
       await agent.negotiate(url, { maxTurns: 1 });
 
-      expect(server.calls[0]?.party).toEqual({
+      expect(server.calls[0]?.state.party).toEqual({
         name: "Seller",
         objective: "Sell the bike for as much as possible",
       });
-      expect(server.calls[0]?.history).toEqual([{ role: "incoming", content: "$300?" }]);
+      expect(server.calls[0]?.state.history).toEqual([{ role: "incoming", content: "$300?" }]);
     } finally {
       stop();
     }
@@ -173,14 +180,14 @@ describe("handler()", () => {
       const second = await buyerAgent.continueNegotiation(first.id);
       expect(second.received?.action).toBe("accept");
       expect(second.done).toBe(true);
-      expect(server.calls[1]?.party.objective).toContain("Ceiling is $500.");
+      expect(server.calls[1]?.state.party.objective).toContain("Ceiling is $500.");
     } finally {
       stop();
     }
   });
 
   test("answerInbound folds guidance into the run's own negotiations map, not just this.sessions", async () => {
-    // A host like examples/06-server.ts doesn't read an agent's private
+    // A host like examples/06-persistence.ts doesn't read an agent's private
     // `this.sessions` — it persists `RunResult.negotiations` (the same map
     // `ToolContext.negotiations` is, mid-run) after every call. If
     // `answerInbound` only saved to `this.sessions`, that persisted map
@@ -199,7 +206,7 @@ describe("handler()", () => {
 
       // The map a host would carry across `run()` calls, built the same
       // way `Agent.run()` builds it: from every session this agent knows.
-      // Cloned, the way a sqlite round-trip (examples/06-server.ts) would
+      // Cloned, the way a sqlite round-trip (examples/06-persistence.ts) would
       // leave it — otherwise this map shares object identity with
       // `this.sessions`'s own entries and a mutate-in-place bug would pass
       // even without the context fix, which defeats the point of the test.
@@ -445,13 +452,13 @@ describe("negotiate()", () => {
         { negotiations },
       );
 
-      const objective = client.calls[1]?.party.objective ?? "";
+      const objective = client.calls[1]?.state.party.objective ?? "";
       expect(objective).toContain("Buy the bike for as little as possible");
       expect(objective).toContain("In this negotiation: buy the bike");
       expect(objective).toContain("For this turn: Bob can collect on Tuesday");
 
       // Guidance is for one turn only.
-      expect(client.calls[0]?.party.objective).not.toContain("Tuesday");
+      expect(client.calls[0]?.state.party.objective).not.toContain("Tuesday");
     } finally {
       stop();
     }
@@ -1335,16 +1342,6 @@ describe("what the agent knows it negotiated", () => {
 });
 
 describe("interrupting a negotiation", () => {
-  /** A counterparty that accepts the connection and never answers — the
-   * failure that used to park the caller with no way out. */
-  function silent() {
-    const server = Bun.serve({
-      port: 0,
-      fetch: () => new Promise<Response>(() => {}),
-    });
-    return { url: server.url.toString(), stop: () => server.stop(true) };
-  }
-
   test("a run's signal reaches the turn in flight", async () => {
     const server = silent();
     const controller = new AbortController();

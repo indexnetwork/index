@@ -1,41 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Agent } from "./agent.ts";
-import type { ModelMessage, ToolCall } from "./model.ts";
 import { MemoryMessageStore } from "./sessions.ts";
+import { call, mockModel, restoreFetch } from "./test-helpers.ts";
 import { askUserTool, type Tool } from "./tools.ts";
 
-const originalFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-});
-
-/**
- * Intercepts only OpenRouter chat calls and replays scripted assistant
- * messages. Everything else — the A2A traffic between agents on real local
- * ports — is passed through to the original fetch.
- */
-function mockModel(replies: Partial<ModelMessage>[]) {
-  const requests: { model: string; messages: ModelMessage[]; tools?: unknown[] }[] = [];
-  let call = 0;
-
-  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : String((input as Request).url ?? input);
-    if (!url.startsWith("https://openrouter.ai")) {
-      return (originalFetch as (i: unknown, x?: RequestInit) => Promise<Response>)(input, init);
-    }
-
-    requests.push(JSON.parse(String(init?.body)));
-    const message = replies[call] ?? replies.at(-1);
-    call++;
-    return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
-  }) as unknown as typeof fetch;
-
-  return requests;
-}
-
-function call(name: string, args: unknown, id = `call_${name}`): ToolCall {
-  return { id, type: "function", function: { name, arguments: JSON.stringify(args) } };
-}
+afterEach(restoreFetch);
 
 /** A fixed clock, so the system message is the same on every run. The
  * agent is told the date so it can resolve "next Tuesday"; a test that

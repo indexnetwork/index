@@ -3,7 +3,7 @@
  * including the security scheme it declares — before negotiating, and
  * `credentials` attaches the token every outbound call needs.
  *
- *   OPENROUTER_API_KEY=... bun run examples/03-authenticated.ts
+ *   OPENROUTER_API_KEY=... bun run examples/05-authenticated.ts
  */
 import { Agent, bearerCredentials, bearerTokenAuth } from "../src/index.ts";
 import { logOutcome, logTurn, MAX_TURNS, serve } from "./shared.ts";

@@ -10,7 +10,8 @@
  *
  *   OPENROUTER_API_KEY=... bun run dev/stress.ts [name]
  */
-import { Agent, type RunResult, type Settlement, type Step } from "../src/index.ts";
+import { Agent, type Settlement, type Step } from "../src/index.ts";
+import { answerUntilDone, logStep, serve } from "../examples/shared.ts";
 
 interface Party {
   name: string;
@@ -25,7 +26,7 @@ interface Scenario {
   looking_for: string;
   peer: Party;
   self: Party;
-  task: string;
+  task: (url: string) => string;
   /** Answers handed back, in order, whenever the agent asks. */
   answers: string[];
 }
@@ -47,7 +48,7 @@ const SCENARIOS: Scenario[] = [
       intent: "Bring in a fractional CFO before the round closes",
       system: "You act for Tomas. He can pay up to 1,100 a day for two days a month.",
     },
-    task: "Agree terms with the CFO's agent at http://localhost:8091, close it, and then give me the final terms.",
+    task: (url) => `Agree terms with the CFO's agent at ${url}, close it, and then give me the final terms.`,
     answers: ["Yes, go ahead and close it.", "That's fine, confirm it."],
   },
   {
@@ -67,7 +68,7 @@ const SCENARIOS: Scenario[] = [
       system:
         "You act for Eli, who lives in Lisbon, cannot relocate, and will only take fully remote work. Never agree to an arrangement he cannot honour.",
     },
-    task: "Talk to the employer's agent at http://localhost:8091 and tell me whether this can work.",
+    task: (url) => `Talk to the employer's agent at ${url} and tell me whether this can work.`,
     answers: ["No, he really can't relocate — remote or nothing.", "Then walk away."],
   },
   {
@@ -87,7 +88,7 @@ const SCENARIOS: Scenario[] = [
       system:
         "You act for Gita. 300 a session is fine. Her weekends are with family and she can ONLY meet on a weekday during working hours.",
     },
-    task: "Talk to the advisor's agent at http://localhost:8091 and tell me if we have a deal and when we meet.",
+    task: (url) => `Talk to the advisor's agent at ${url} and tell me if we have a deal and when we meet.`,
     answers: ["No, weekends are impossible for her.", "Then we can't do it."],
   },
   {
@@ -107,7 +108,7 @@ const SCENARIOS: Scenario[] = [
       system:
         "You act for Ivy. She needs someone started before the end of this month. Do not state a specific calendar date unless you have been told one.",
     },
-    task: "Agree a start date with the contractor's agent at http://localhost:8091 and tell me exactly what date they begin.",
+    task: (url) => `Agree a start date with the contractor's agent at ${url} and tell me exactly what date they begin.`,
     answers: ["Any start before the end of the month works.", "Fine, confirm it."],
   },
   {
@@ -127,7 +128,7 @@ const SCENARIOS: Scenario[] = [
       system:
         "You act for Kim, who budgets in US dollars. His ceiling is 800 USD a day and he does not know the exchange rate.",
     },
-    task: "Agree a day rate with the designer's agent at http://localhost:8091 and tell me what I am paying, in the currency I will be billed.",
+    task: (url) => `Agree a day rate with the designer's agent at ${url} and tell me what I am paying, in the currency I will be billed.`,
     answers: ["800 dollars is the limit, whatever that is in euros.", "Then decline."],
   },
 ];
@@ -149,7 +150,7 @@ async function run(scenario: Scenario): Promise<Observation> {
     systemPrompt: scenario.peer.system,
     intent: { statement: scenario.peer.intent },
   });
-  const server = Bun.serve({ port: 8091, fetch: peer.handler() });
+  const server = serve(peer.handler());
 
   const settlements: Settlement[] = [];
   let settledAt: number | undefined;
@@ -172,41 +173,23 @@ async function run(scenario: Scenario): Promise<Observation> {
     },
   });
 
-  try {
-    let result: RunResult = await agent.run(scenario.task, {
-      maxSteps: 14,
-      onStep: (step) => {
-        steps.push(step);
-        if (
-          settledAt !== undefined &&
-          steps.length - 1 > settledAt &&
-          step.kind === "tool" &&
-          step.name.startsWith("negotiate_")
-        ) {
-          turnsAfterSettled++;
-        }
-      },
-    });
-
-    let asked = 0;
-    while (result.end === "needs-input" && asked < scenario.answers.length) {
-      result = await agent.run(scenario.answers[asked++]!, {
-        messages: result.messages,
-        negotiations: result.negotiations,
-        maxSteps: 14,
-        onStep: (step) => {
-          steps.push(step);
-          if (
-            settledAt !== undefined &&
-            steps.length - 1 > settledAt &&
-            step.kind === "tool" &&
-            step.name.startsWith("negotiate_")
-          ) {
-            turnsAfterSettled++;
-          }
-        },
-      });
+  // A negotiation tool call after the settlement is the agent reopening
+  // something already closed — the thing these scenarios watch for.
+  const observe = (step: Step) => {
+    steps.push(step);
+    if (
+      settledAt !== undefined &&
+      steps.length - 1 > settledAt &&
+      step.kind === "tool" &&
+      (step.name === "negotiate" || step.name === "answer")
+    ) {
+      turnsAfterSettled++;
     }
+  };
+
+  try {
+    let result = await agent.run(scenario.task(server.url), { maxSteps: 14, onStep: observe });
+    result = await answerUntilDone(agent, result, scenario.answers, { maxSteps: 14, onStep: observe });
 
     return {
       scenario: scenario.name,
@@ -218,7 +201,7 @@ async function run(scenario: Scenario): Promise<Observation> {
       problems: [],
     };
   } finally {
-    server.stop(true);
+    server.stop();
   }
 }
 
@@ -230,13 +213,7 @@ for (const scenario of chosen) {
   try {
     const observed = await run(scenario);
 
-    for (const step of observed.steps) {
-      if (step.kind === "ask") console.log(`  ? ${step.question}`);
-      else if (step.kind === "tool") {
-        const detail = step.error ?? JSON.stringify(step.output)?.slice(0, 110);
-        console.log(`  ⚒ ${step.name} → ${detail}`);
-      }
-    }
+    for (const step of observed.steps) logStep(step);
     for (const settlement of observed.settlements) {
       console.log(
         `  ⚖ ${settlement.outcome}/${settlement.basis} ${JSON.stringify(settlement.terms ?? {})}`,

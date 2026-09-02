@@ -18,21 +18,17 @@
     "dist"
   ],
   "scripts": {
-    "console": "bun run cli/console.ts",
-    "reset:06": "examples/06-reset.sh",
+    "stress": "bun run dev/stress.ts",
     "build": "rm -rf dist && bun build ./src/index.ts --outdir dist --target node --format esm --packages external && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "prepublishOnly": "bun run typecheck && bun run test && bun run build"
+    "check": "bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
     "@indexnetwork/a2a": "file:../a2a"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "typescript": "^5"
-  },
-  "peerDependencies": {
     "typescript": "^5"
   }
 }
