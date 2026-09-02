@@ -1,9 +1,4 @@
-import type {
-  A2AArtifact,
-  A2ATask,
-  A2ATaskState,
-  AgentCard,
-} from "@indexnetwork/a2a";
+import type { A2AArtifact, A2ATask, A2ATaskState, AgentCard } from "@indexnetwork/a2a";
 import type { NegotiationDecision, NegotiationTerms } from "@indexnetwork/a2a/negotiator";
 import type { AgreementBasis } from "@indexnetwork/a2a";
 import type { ModelMessage } from "./model.ts";

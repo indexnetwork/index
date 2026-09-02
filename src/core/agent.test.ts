@@ -1155,7 +1155,7 @@ describe("what the agent knows it negotiated", () => {
     });
     const server = serve(responder);
 
-    let id = "";
+    let id: string;
     try {
       const initiator = new Agent({
         ...buyer,

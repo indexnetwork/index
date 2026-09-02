@@ -13,18 +13,7 @@
  *   OPENROUTER_API_KEY=... bun run examples/06-persistence.ts
  */
 import { Database } from "bun:sqlite";
-import {
-  Agent,
-  askUserTool,
-  negotiationTools,
-  TaskStore,
-  type A2ATask,
-  type MessageStore,
-  type ModelMessage,
-  type NegotiationSession,
-  type NegotiationStore,
-  type Tool,
-} from "../src/index.ts";
+import { Agent, askUserTool, negotiationTools, TaskStore, type A2ATask, type MessageStore, type ModelMessage, type NegotiationSession, type NegotiationStore, type Tool } from "../src/index.ts";
 import { answerUntilDone, logStep, serve } from "./shared.ts";
 
 const db = new Database(new URL("./.persistence.db", import.meta.url).pathname);

@@ -1,11 +1,6 @@
 // Fixtures shared by the test files. Not a `.test.ts`, so `bun test` doesn't
 // collect it as a suite, and excluded from the build so no `.d.ts` is emitted.
-import {
-  Negotiator,
-  type DecideOptions,
-  type NegotiationDecision,
-  type NegotiationState,
-} from "@indexnetwork/a2a/negotiator";
+import { Negotiator, type DecideOptions, type NegotiationDecision, type NegotiationState } from "@indexnetwork/a2a/negotiator";
 
 import type { Agent } from "./agent.ts";
 import type { ModelMessage, ToolCall } from "./model.ts";
