@@ -6,7 +6,7 @@ export interface NegotiationParty {
 export type MessageRole = "incoming" | "outgoing";
 
 /** The substance of an offer, as structured data rather than prose — e.g.
- * `{ amount: 450, currency: "USD", pickupDay: "Wednesday" }`. Keeping terms
+ * `{ hoursPerWeek: 4, weeks: 6, startDate: "2026-09-08" }`. Keeping terms
  * out of the message text is what lets two agents verify they agreed to the
  * same thing instead of both claiming "accept" over different numbers. */
 export type NegotiationTerms = Record<string, unknown>;

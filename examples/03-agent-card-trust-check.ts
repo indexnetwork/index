@@ -1,7 +1,10 @@
 /**
  * Using fetchAgentCard() as a trust check before negotiating with a URL
- * you don't already trust — see the "Using the AgentCard as a trust check"
- * section of the README for when this matters (and when it doesn't).
+ * you don't already trust. Here Priya's agent has been handed a URL that
+ * supposedly serves Tomas's agent — a studio hiring a part-time designer.
+ * Before it sends anything about Priya, it checks that's who is actually
+ * there. See the "Using the AgentCard as a trust check" section of the
+ * README for when this matters (and when it doesn't).
  *
  *   bun run examples/03-agent-card-trust-check.ts
  */
@@ -13,9 +16,9 @@ const server = Bun.serve({
   port: 0,
   fetch: createA2AHandler({
     negotiator: new Negotiator(),
-    party: { name: "Seller", objective: "Sell" },
+    party: { name: "Tomas", objective: "Hire a part-time product designer for your studio" },
     allowedActions: ["propose"],
-    agentCard: agentCard("Seller Agent"),
+    agentCard: agentCard("Tomas's Agent"),
   }),
 });
 
@@ -29,8 +32,8 @@ const url = server.url.toString();
 const card = await fetchAgentCard(url);
 console.log("Fetched agent card:", card);
 
-assertIdentity(card.name, "Seller Agent");
-console.log(`\nIdentity check passed (name === "Seller Agent") — safe to negotiate.`);
+assertIdentity(card.name, "Tomas's Agent");
+console.log(`\nIdentity check passed (name === "Tomas's Agent") — safe to negotiate.`);
 
 // A mismatched expectation throws instead of silently negotiating:
 try {

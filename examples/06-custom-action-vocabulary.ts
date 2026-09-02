@@ -1,37 +1,44 @@
 /**
- * Negotiator/decide() and the A2A layer don't hardcode any action
+ * Negotiator.decide() and the A2A layer don't hardcode any action
  * vocabulary — allowedActions can be any domain-specific set, with
- * per-action descriptions for names that aren't self-explanatory, and
- * isTerminal() decides which of *your* actions end the negotiation.
+ * per-action descriptions for names that aren't self-explanatory,
+ * isTerminal() decides which of *your* actions end the negotiation, and
+ * terminalState() says which final state each one lands in.
  *
- * This models a support-escalation flow instead of a price negotiation:
- * "resolve" and "escalate" are terminal; "clarify" continues the thread.
+ * This models a mentorship request: Hana is moving from engineering into
+ * product management and wants a mentor; Kofi mentors one person at a
+ * time. "ask" and "offer" keep the conversation open; "commit", "pass" and
+ * "defer" end it — as completed, rejected, and canceled respectively, so
+ * all three final states are in play.
  *
  *   bun run examples/06-custom-action-vocabulary.ts
  */
 import { A2ANegotiationClient, createA2AHandler } from "../src/a2a/index.ts";
-import { Negotiator, type NegotiationDecision } from "../src/index.ts";
-import { agentCard, logTurn, MAX_TURNS } from "./shared.ts";
+import { Negotiator } from "../src/index.ts";
+import { agentCard, logReply, logTurn, MAX_TURNS } from "./shared.ts";
 
 const ALLOWED = [
-  "clarify",
-  { action: "resolve", description: "The issue is fixed; close the case" },
-  { action: "escalate", description: "Hand off to a human specialist" },
+  { action: "ask", description: "Ask a clarifying question about what they're looking for; keeps the conversation open" },
+  { action: "offer", description: "Put a concrete mentoring arrangement on the table: cadence, duration, format" },
+  { action: "commit", description: "Agree to the arrangement as last stated; ends with a deal" },
+  { action: "pass", description: "Decline the arrangement; ends without one" },
+  { action: "defer", description: "Not now: suggest revisiting in a few months; ends without a deal" },
 ] as const;
 
-const TERMINAL = new Set(["resolve", "escalate"]);
+const TERMINAL = new Set(["commit", "pass", "defer"]);
 
 const handler = createA2AHandler({
   negotiator: new Negotiator(),
   party: {
-    name: "Support Agent",
+    name: "Kofi",
     objective:
-      "Resolve the customer's issue by asking clarifying questions until you can diagnose it, then resolve or escalate",
+      "You're a senior product manager who mentors one person at a time; take someone on for 30-minute calls every two weeks for three months, starting in October, if their goals are specific",
   },
   allowedActions: [...ALLOWED],
-  agentCard: agentCard("Support Agent"),
+  agentCard: agentCard("Kofi's Agent"),
   isTerminal: (action) => TERMINAL.has(action),
-  terminalState: (action) => (action === "resolve" ? "completed" : "rejected"),
+  terminalState: (action) =>
+    action === "commit" ? "completed" : action === "defer" ? "canceled" : "rejected",
 });
 
 const server = Bun.serve({ port: 0, fetch: handler });
@@ -40,22 +47,24 @@ const url = server.url.toString();
 const client = new A2ANegotiationClient({
   negotiator: new Negotiator(),
   party: {
-    name: "Customer",
-    objective: "Get your crash fixed; your app crashes on startup with error code E-4021",
+    name: "Hana",
+    objective:
+      "Find a mentor for your move from engineering into product management; you'd like a monthly hour-long call for six months and are flexible on format",
   },
   allowedActions: [...ALLOWED],
-  onDecision: (decision) => logTurn("Customer", decision),
+  onDecision: (decision) => logTurn("Hana", decision),
 });
 
 let { task } = await client.initiate(url);
-logTurn("Support", task.history.at(-1)!.parts[0]!.data as NegotiationDecision);
+logReply("Kofi", task);
 
 let turns = 1;
 while (task.status.state === "input-required" && turns < MAX_TURNS) {
   ({ task } = await client.continue(url, task));
-  logTurn("Support", task.history.at(-1)!.parts[0]!.data as NegotiationDecision);
+  logReply("Kofi", task);
   turns++;
 }
 
-console.log(`\nCase ended: ${task.status.state}`); // "completed" for resolve, "rejected" for escalate
+// "completed" for commit, "canceled" for defer, "rejected" for pass
+console.log(`\nEnded: ${task.status.state}`);
 server.stop();

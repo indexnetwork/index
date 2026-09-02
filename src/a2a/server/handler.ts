@@ -34,7 +34,7 @@ export interface A2AHandlerOptions<A extends string> {
   /** Maps a terminal action to the Task's final state. Defaults to
    * accept -> completed, withdraw -> canceled, anything else -> rejected —
    * override this for a custom action vocabulary where those defaults
-   * don't apply (e.g. "resolve"/"escalate" instead of "accept"/"reject"). */
+   * don't apply (e.g. "commit"/"pass"/"defer" instead of "accept"/"reject"). */
   terminalState?: (action: A) => "completed" | "rejected" | "canceled";
   /** Customize how a turn is decided. Defaults to a plain `negotiator.decide()` call. */
   strategy?: DecisionStrategy<A>;
@@ -123,7 +123,7 @@ export function createA2AHandler<A extends string>(
       // message on one would append a turn, re-stamp the state from the new
       // decision, and erase the agreement the task had already certified —
       // leaving both parties looking at an open negotiation and, quite
-      // correctly given what they can see, haggling over settled terms.
+      // correctly given what they can see, renegotiating settled terms.
       // The server owns the task, so refusing here is the only place this
       // can be stopped: a well-behaved counterparty can't protect us.
       if (isTerminalTaskState(existing.status.state)) {

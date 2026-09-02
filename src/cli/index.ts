@@ -7,7 +7,7 @@ import { sim } from "./commands/sim.ts";
 import { requireOption } from "./options.ts";
 import { bold, dim, printError } from "./ui.ts";
 
-const HELP = `${bold("index-a2a")} — try out LLM-backed negotiation agents
+const HELP = `${bold("index-a2a")} — try out personal agents negotiating on someone's behalf
 
 ${bold("USAGE")}
   index-a2a <command> [options]
@@ -20,28 +20,35 @@ ${bold("COMMANDS")}
 
 ${bold("COMMON OPTIONS")}
   --model <id>        OpenRouter model (default: the library's default)
+  --fallback <list>   Models to route to when --model is rate-limited or
+                      down, in order (default: openai/gpt-5.4-mini;
+                      \`none\` disables fallback)
   --actions <list>    Comma-separated action vocabulary
-                      (default: propose,counter,accept,reject)
+                      (default: propose,refine,accept,decline)
   --terminal <list>   Which actions end the negotiation
                       (default: accept,reject,decline,withdraw)
   --terms <fields>    Ask for structured terms alongside each message, e.g.
-                      "amount (number, USD), pickupDay (day of week)". Makes
+                      "hoursPerWeek (number), startDate (YYYY-MM-DD)". Makes
                       acceptance name the offer it binds to, so the agreed
                       terms are verifiable instead of buried in prose.
                       (sim, serve, connect)
 
 ${bold("EXAMPLES")}
-  ${dim("# watch two agents haggle")}
-  index-a2a sim --a Buyer --a-objective "Buy a bike under $400" \\
-                 --b Seller --b-objective "Sell the bike above $450"
+  ${dim("# watch two personal agents work out a collaboration")}
+  index-a2a sim --a Mara  --a-objective "Get a designer to pair on your prototype, about 6 hours a week for 4 weeks; co-creator credit, no pay" \\
+                --b Deniz --b-objective "Help on a side project, at most 4 hours a week, not before you're back next Tuesday"
 
-  ${dim("# negotiate against an agent yourself")}
-  index-a2a play --agent Seller --objective "Sell the bike above $450"
+  ${dim("# negotiate against one yourself")}
+  index-a2a play --agent Deniz --objective "Help on a side project, at most 4 hours a week, not before next Tuesday" --me Mara
 
   ${dim("# two processes over HTTP, with bearer auth")}
-  index-a2a serve --name Seller --objective "Sell above $450" --port 3000 --token s3cret
-  index-a2a connect http://localhost:3000 --name Buyer \\
-                     --objective "Buy under $400" --token s3cret
+  index-a2a serve --name Deniz --objective "Help on a side project, at most 4 hours a week" --port 3000 --token s3cret
+  index-a2a connect http://localhost:3000 --name Mara \\
+                    --objective "Get a designer to pair on your prototype, about 6 hours a week" --token s3cret --expect Deniz
+
+  ${dim("# structured terms, so acceptance binds to a specific offer")}
+  index-a2a sim --a Mara --a-objective "..." --b Deniz --b-objective "..." \\
+                --terms "hoursPerWeek (number), weeks (number), startDate (YYYY-MM-DD)"
 
 Needs OPENROUTER_API_KEY in the environment (a .env file works too).
 `;
@@ -66,18 +73,20 @@ async function main(): Promise<void> {
           actions: { type: "string" },
           terminal: { type: "string" },
           model: { type: "string" },
+          fallback: { type: "string" },
           turns: { type: "string" },
           terms: { type: "string" },
         },
       });
       await sim({
-        a: values.a ?? "Buyer",
+        a: values.a ?? "Agent A",
         aObjective: requireOption(values["a-objective"], "--a-objective"),
-        b: values.b ?? "Seller",
+        b: values.b ?? "Agent B",
         bObjective: requireOption(values["b-objective"], "--b-objective"),
         actions: values.actions,
         terminal: values.terminal,
         model: values.model,
+        fallback: values.fallback,
         turns: values.turns,
         terms: values.terms,
       });
@@ -94,6 +103,7 @@ async function main(): Promise<void> {
           actions: { type: "string" },
           terminal: { type: "string" },
           model: { type: "string" },
+          fallback: { type: "string" },
         },
       });
       await play({
@@ -103,6 +113,7 @@ async function main(): Promise<void> {
         actions: values.actions,
         terminal: values.terminal,
         model: values.model,
+        fallback: values.fallback,
       });
       return;
     }
@@ -117,6 +128,7 @@ async function main(): Promise<void> {
           actions: { type: "string" },
           terminal: { type: "string" },
           model: { type: "string" },
+          fallback: { type: "string" },
           token: { type: "string" },
           terms: { type: "string" },
         },
@@ -128,6 +140,7 @@ async function main(): Promise<void> {
         actions: values.actions,
         terminal: values.terminal,
         model: values.model,
+        fallback: values.fallback,
         token: values.token,
         terms: values.terms,
       });
@@ -143,6 +156,7 @@ async function main(): Promise<void> {
           objective: { type: "string" },
           actions: { type: "string" },
           model: { type: "string" },
+          fallback: { type: "string" },
           token: { type: "string" },
           turns: { type: "string" },
           expect: { type: "string" },
@@ -155,6 +169,7 @@ async function main(): Promise<void> {
         objective: requireOption(values.objective, "--objective"),
         actions: values.actions,
         model: values.model,
+        fallback: values.fallback,
         token: values.token,
         turns: values.turns,
         expect: values.expect,
@@ -164,7 +179,7 @@ async function main(): Promise<void> {
     }
 
     default:
-      throw new Error(`unknown command "${command}" — run \`negotiator help\``);
+      throw new Error(`unknown command "${command}" — run \`index-a2a help\``);
   }
 }
 

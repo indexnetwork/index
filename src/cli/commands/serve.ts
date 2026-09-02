@@ -11,6 +11,7 @@ export interface ServeOptions {
   actions?: string;
   terminal?: string;
   model?: string;
+  fallback?: string;
   token?: string;
   terms?: string;
 }
@@ -44,7 +45,7 @@ export async function serve(options: ServeOptions): Promise<void> {
   };
 
   const handler = createA2AHandler({
-    negotiator: buildNegotiator(options.model),
+    negotiator: buildNegotiator(options.model, options.fallback),
     party: { name: options.name, objective: options.objective },
     allowedActions,
     agentCard,

@@ -15,6 +15,7 @@ export interface ConnectOptions {
   objective: string;
   actions?: string;
   model?: string;
+  fallback?: string;
   token?: string;
   turns?: string;
   expect?: string;
@@ -55,7 +56,7 @@ export async function connect(options: ConnectOptions): Promise<void> {
     console.log(dim(`actions: ${allowedActions.join(", ")} · max turns: ${maxTurns}\n`));
 
     const client = new A2ANegotiationClient({
-      negotiator: buildNegotiator(options.model),
+      negotiator: buildNegotiator(options.model, options.fallback),
       party: { name: options.name, objective: options.objective },
       allowedActions,
       ...(credentials ? { credentials } : {}),

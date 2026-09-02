@@ -10,6 +10,15 @@ export interface OpenRouterMessage {
 export interface OpenRouterClientOptions {
   apiKey?: string;
   model: string;
+  /**
+   * Models OpenRouter may route to, in order, when `model` fails — a
+   * rate limit, an outage, a moderation flag. Sent as OpenRouter's
+   * `models` list; the request is billed at whichever model answered.
+   * Empty disables fallback.
+   */
+  fallbackModels?: string[];
+  /** Fires when a response came from a model other than `model`. */
+  onFallback?: (model: string) => void;
   referer?: string;
   title?: string;
   maxTokens?: number;
@@ -34,12 +43,17 @@ const DEFAULT_MAX_TOKENS = 2048;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 interface CompletionResponse {
+  /** The model that actually answered — differs from the request's
+   * `model` when OpenRouter fell back. */
+  model?: string;
   choices: { message: { content: string }; finish_reason?: string }[];
 }
 
 export class OpenRouterClient {
   private readonly apiKey: string;
   private readonly model: string;
+  private readonly fallbackModels: string[];
+  private readonly onFallback?: (model: string) => void;
   private readonly referer?: string;
   private readonly title?: string;
   private readonly maxTokens: number;
@@ -54,20 +68,39 @@ export class OpenRouterClient {
     }
     this.apiKey = apiKey;
     this.model = options.model;
+    // The primary is always tried first; listing it again would only
+    // retry the same failure.
+    this.fallbackModels = (options.fallbackModels ?? []).filter((model) => model !== options.model);
+    this.onFallback = options.onFallback;
     this.referer = options.referer;
     this.title = options.title;
     this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
+  /** Whether a failed call has anywhere else to go. */
+  get hasFallback(): boolean {
+    return this.fallbackModels.length > 0;
+  }
+
+  /**
+   * Runs one completion. `preferFallback` skips the primary and goes
+   * straight to the fallback chain — for a failure OpenRouter's own
+   * routing doesn't classify as one, such as a 200 with nothing in it,
+   * which this method handles itself, or a body the caller can't parse.
+   */
   async complete(
     messages: OpenRouterMessage[],
-    options: { jsonResponse?: boolean } & DeadlineOptions = {},
+    options: { jsonResponse?: boolean; preferFallback?: boolean } & DeadlineOptions = {},
   ): Promise<string> {
     const deadline: DeadlineOptions = {
       signal: options.signal,
       timeoutMs: options.timeoutMs ?? this.timeoutMs,
     };
+    const models =
+      options.preferFallback && this.hasFallback
+        ? this.fallbackModels
+        : [this.model, ...this.fallbackModels];
 
     let response: Response;
     let body: string;
@@ -81,7 +114,11 @@ export class OpenRouterClient {
           ...(this.title ? { "X-Title": this.title } : {}),
         },
         body: JSON.stringify({
-          model: this.model,
+          model: models[0],
+          // OpenRouter tries these in order, moving on when one errors
+          // (rate limit, downtime, moderation) — see model fallbacks in
+          // its docs. `model` stays set as the first to try.
+          ...(models.length > 1 ? { models } : {}),
           messages,
           max_tokens: this.maxTokens,
           ...(options.jsonResponse
@@ -109,9 +146,19 @@ export class OpenRouterClient {
       throw new Error(`OpenRouter returned a non-JSON response: ${body}`);
     }
 
+    if (data.model && data.model !== this.model && this.hasFallback) {
+      this.onFallback?.(data.model);
+    }
+
     const choice = data.choices?.[0];
     const content = choice?.message.content;
     if (!content) {
+      // A 200 with nothing in it is a failed call by any useful measure,
+      // but not by OpenRouter's, so its routing never moved on. Move on
+      // ourselves, once.
+      if (!options.preferFallback && this.hasFallback) {
+        return this.complete(messages, { ...options, preferFallback: true });
+      }
       throw new Error("OpenRouter response had no content.");
     }
     // Truncation produces syntactically broken output, which downstream

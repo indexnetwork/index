@@ -49,6 +49,7 @@ export interface SimOptions {
   actions?: string;
   terminal?: string;
   model?: string;
+  fallback?: string;
   turns?: string;
   terms?: string;
 }
@@ -67,8 +68,8 @@ export async function sim(options: SimOptions): Promise<void> {
   }
 
   const sides = [
-    { name: options.a, objective: options.aObjective, negotiator: buildNegotiator(options.model) },
-    { name: options.b, objective: options.bObjective, negotiator: buildNegotiator(options.model) },
+    { name: options.a, objective: options.aObjective, negotiator: buildNegotiator(options.model, options.fallback) },
+    { name: options.b, objective: options.bObjective, negotiator: buildNegotiator(options.model, options.fallback) },
   ] as const;
 
   console.log(dim(`actions: ${allowedActions.join(", ")} · max turns: ${maxTurns}\n`));

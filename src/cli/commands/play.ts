@@ -10,6 +10,7 @@ export interface PlayOptions {
   actions?: string;
   terminal?: string;
   model?: string;
+  fallback?: string;
 }
 
 /**
@@ -20,7 +21,7 @@ export interface PlayOptions {
 export async function play(options: PlayOptions): Promise<void> {
   const allowedActions = parseActions(options.actions);
   const isTerminal = parseTerminal(options.terminal);
-  const negotiator = buildNegotiator(options.model);
+  const negotiator = buildNegotiator(options.model, options.fallback);
   const myName = options.me ?? "You";
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });

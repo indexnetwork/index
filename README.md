@@ -1,19 +1,28 @@
 # @indexnetwork/a2a
 
-Agent2Agent (A2A) negotiation: a client and server for negotiating with
-another agent over the wire, with an LLM negotiator behind them, powered by
-[OpenRouter](https://openrouter.ai).
+Agent2Agent (A2A) negotiation for personal agents: a client and server that
+let an agent negotiate on a person's behalf with another person's agent over
+the wire — a collaboration, a job, a first meeting — with an LLM negotiator
+behind them, powered by [OpenRouter](https://openrouter.ai).
 
 ## Purpose
 
-This package is how a personal agent negotiates with another one. It
-implements a minimal subset of the [Agent2Agent (A2A)](https://a2a-protocol.org)
+This package is how a personal agent negotiates with another one. In an
+LLM-enhanced social discovery protocol, people don't browse each other; their
+agents find a match and then work out the specifics — whether two builders
+pair on a prototype and for how many hours a week, whether a candidate and a
+hiring manager can agree on a start date, whether two people who matched
+settle on a first meeting. The negotiation is where a match becomes something
+concrete, and it needs to be checkable afterwards by both sides.
+
+It implements a minimal subset of the [Agent2Agent (A2A)](https://a2a-protocol.org)
 protocol — agent discovery and negotiation turns over `message/send` — plus
 the decision-making core that decides what to say on each of those turns. A
 personal agent, whether it's built with this package or is an OpenClaw,
 Hermes, or Claude Agent implementation that just speaks A2A, can initiate or
-respond to a negotiation task with any other A2A agent without
-reimplementing the protocol itself.
+respond to a negotiation task with any other A2A agent — one hosted by Index
+Network, say, or by a different product entirely — without reimplementing
+the protocol itself.
 
 The negotiation semantics are the point here, not incidental: turns carry a
 structured `NegotiationDecision`, acceptance binds to the offer it names,
@@ -89,6 +98,8 @@ export OPENROUTER_API_KEY=sk-or-...
 | --------- | -------- | -------- | ---------------------------------------------------------------------------- |
 | `apiKey`  | `string` | No       | OpenRouter API key. Falls back to `OPENROUTER_API_KEY` if omitted.            |
 | `model`   | `string` | No       | OpenRouter model id. Defaults to `google/gemini-3.7-flash`.                        |
+| `fallbackModels` | `string[]` | No | Models to route to, in order, when `model` fails. Defaults to `["openai/gpt-5.4-mini"]`; `[]` disables. See [Model fallback](#model-fallback). |
+| `onFallback` | `(model: string) => void` | No | Called when a turn was answered by a fallback model rather than `model`. |
 | `referer` | `string` | No       | Sent as `HTTP-Referer`, per [OpenRouter's app attribution](https://openrouter.ai/docs). |
 | `title`   | `string` | No       | Sent as `X-Title`, per OpenRouter's app attribution.                         |
 | `maxTokens` | `number` | No     | Output token cap per call. Defaults to 2048; raise it if decisions carrying large structured terms hit truncation. |
@@ -106,6 +117,39 @@ const negotiator = new Negotiator({
 
 Constructing a `Negotiator` throws immediately if no API key is available
 from either source.
+
+### Model fallback
+
+A model can be rate-limited upstream, down, or refuse a request, and a
+negotiation turn that fails for any of those reasons is a turn the other
+party never sees. So every model call carries a fallback list, sent as
+OpenRouter's `models` routing parameter: OpenRouter tries `model` first and
+moves down the list when a call errors, and bills the request at whichever
+model answered.
+
+The default fallback is `openai/gpt-5.4-mini` — fast, reliable at
+structured JSON, in the same price tier as the default Gemini Flash, and on
+a different upstream, so one provider's bad hour doesn't stall every
+negotiation. Override the list to taste, or pass `[]` to insist on one
+model:
+
+```ts
+const negotiator = new Negotiator({
+  model: "google/gemini-3.7-flash",
+  fallbackModels: ["openai/gpt-5.4-mini", "z-ai/glm-5.3-flash"],
+  onFallback: (model) => console.warn(`turn answered by ${model}`),
+});
+```
+
+Two failures OpenRouter doesn't count as errors are covered on this side:
+a `200` with no content in it, and a `decide()` body that isn't JSON (a
+model that stopped mid-string). Either one gets a single further call that
+skips `model` and goes straight to the fallback chain.
+
+`onFallback` fires when a response came from anything other than `model`,
+so a transcript never changes model silently. Fallback covers a failed
+call; it is not a retry of a slow one — see
+[Deadlines and cancellation](#deadlines-and-cancellation) for that side.
 
 ## CLI: trying it out
 
@@ -125,26 +169,26 @@ the package is installed, just `index-a2a <command>`.
 | `serve` | Runs one agent as an A2A server answering incoming negotiations. |
 | `connect <url>` | Negotiates against another agent's A2A endpoint over HTTP. |
 
-Watch two agents haggle:
+Watch two personal agents work out a collaboration:
 
 ```bash
 index-a2a sim \
-  --a Buyer  --a-objective "Buy a used bike for as little as possible, under \$400" \
-  --b Seller --b-objective "Sell the bike for as much as possible, above \$450"
+  --a Mara  --a-objective "Get a designer to pair on your local-events prototype, about 6 hours a week for 4 weeks, starting as soon as possible; you can offer a co-creator credit but no pay" \
+  --b Deniz --b-objective "Help on a side project you find interesting, at most 4 hours a week, not before you're back from a trip next Tuesday; you want a co-creator credit"
 ```
 
 ```
-Buyer (propose) Hi! I'm very interested in the bike. Would you be willing to let it go for $300 cash?
-Seller (counter) Thanks for reaching out! ... I would be willing to do $500. Let me know if that works!
-Buyer (counter) $500 is a bit out of my budget. How about we meet in the middle around $375?
+Mara (propose) Hi Deniz — I'm building a small local-events app and would love a designer to pair with. Could you do about 6 hours a week for 4 weeks, starting Monday? I can't pay, but you'd be credited as co-creator.
+Deniz (refine) That sounds like something I'd enjoy. Six hours a week is more than I can give right now, and I'm away until next Tuesday — could we do 4 hours a week over 6 weeks instead, starting the 8th?
+Mara (refine) 4 hours works if we can do 5 weeks — I'd like something to show by mid-October. Starting the 8th is fine.
 ...
-ended after 7 turns — Buyer chose "reject"
+ended after 5 turns — Deniz chose "accept"
 ```
 
 Negotiate against one yourself:
 
 ```bash
-index-a2a play --agent Seller --objective "Sell the bike above \$450"
+index-a2a play --agent Deniz --objective "Help on a side project, at most 4 hours a week, not before next Tuesday" --me Mara
 ```
 
 Or run the real A2A path across two processes, with bearer auth on the wire
@@ -152,13 +196,13 @@ Or run the real A2A path across two processes, with bearer auth on the wire
 
 ```bash
 # terminal 1
-index-a2a serve --name Seller --objective "Sell above \$450, accept over \$420" \
-                 --port 3000 --token s3cret
+index-a2a serve --name Deniz --objective "Help on a side project you find interesting, at most 4 hours a week, not before next Tuesday; co-creator credit required" \
+                --port 3000 --token s3cret
 
 # terminal 2
-index-a2a connect http://localhost:3000 --name Buyer \
-                   --objective "Buy the bike; hard max \$440" \
-                   --token s3cret --expect Seller
+index-a2a connect http://localhost:3000 --name Mara \
+                  --objective "Get a designer to pair on your prototype, about 6 hours a week for 4 weeks; nothing longer than 8 weeks" \
+                  --token s3cret --expect Deniz
 ```
 
 `connect` fetches the counterparty's AgentCard first and warns if it
@@ -167,8 +211,10 @@ declares a security requirement you haven't supplied a `--token` for;
 agent.
 
 Shared options across commands: `--model <id>` to pick an OpenRouter model,
+`--fallback <list>` for the models to route to when it fails (default
+`openai/gpt-5.4-mini`; `none` disables — see [Model fallback](#model-fallback)),
 `--actions <list>` for a custom action vocabulary (default
-`propose,counter,accept,reject`), `--terminal <list>` for which of those end
+`propose,refine,accept,decline`), `--terminal <list>` for which of those end
 the negotiation (default `accept,reject,decline,withdraw`), and `--turns <n>`
 as a safety cap. Run `index-a2a help` for the full list.
 
@@ -178,22 +224,27 @@ living in prose — see [Knowing what actually happened](#knowing-what-actually-
 
 ```bash
 index-a2a sim \
-  --a Buyer  --a-objective "Buy a used bike; hard max \$440. Settle a pickup day too." \
-  --b Seller --b-objective "Sell it above \$450 ideally; accept over \$420." \
-  --terms "amount (number, USD), pickupDay (day of week)"
+  --a Mara  --a-objective "Get a designer to pair on your prototype, about 6 hours a week for 4 weeks, starting as soon as possible; co-creator credit, no pay. Settle a start date too." \
+  --b Deniz --b-objective "Help on a side project, at most 4 hours a week, not before you're back next Tuesday; co-creator credit required." \
+  --terms "hoursPerWeek (number), weeks (number), startDate (YYYY-MM-DD)"
 ```
 
 ```
-Buyer (counter) Could you do $410? If that works, I can pick it up this Saturday.
-    terms {"amount":410,"pickupDay":"Saturday"}
-Seller (counter) I could meet you at $430 for pickup this Saturday.
-    terms {"amount":430,"pickupDay":"Saturday"}
-Buyer (accept) $430 sounds fair! I'll pick it up this Saturday.
-    terms {"amount":430,"pickupDay":"Saturday"} accepts:6d8eb29a
+Mara (propose) Hi Deniz — I'm building a small local-events app and would love a designer to pair with. Could you do about 6 hours a week for 4 weeks, starting Monday? I can't pay, but you'd be credited as co-creator.
+    terms {"hoursPerWeek":6,"weeks":4,"startDate":"2026-09-07"}
+Deniz (refine) That sounds like something I'd enjoy. Six hours a week is more than I can give right now, and I'm away until next Tuesday. Could we do 4 hours a week over 6 weeks instead, starting the 8th? Same total time, and co-creator credit works for me.
+    terms {"hoursPerWeek":4,"weeks":6,"startDate":"2026-09-08"}
+Mara (accept) That works — 4 hours a week for 6 weeks from 8 September, co-creator credit. I'll have the repo ready before then.
+    terms {"hoursPerWeek":4,"weeks":6,"startDate":"2026-09-08"} accepts:3f2a9c1e
 
-ended after 7 turns — Buyer chose "accept"
-agreed {"amount":430,"pickupDay":"Saturday"}
+ended after 3 turns — Mara chose "accept"
+agreed {"hoursPerWeek":4,"weeks":6,"startDate":"2026-09-08"}
 ```
+
+Over HTTP, pass the same `--terms` to both `serve` and `connect`. If only one
+side emits terms, there is no counterparty `offerId` for an acceptance to
+bind to, so `connect`'s closing verdict can at best be `basis: "terms"`,
+never `"reference"`.
 
 ## Usage
 
@@ -203,9 +254,9 @@ import { Negotiator } from "@indexnetwork/a2a/negotiator";
 const negotiator = new Negotiator({ model: "google/gemini-3.7-flash" });
 
 const reply = await negotiator.respond({
-  party: { name: "Seller", objective: "Sell the item for as much as possible" },
+  party: { name: "Deniz", objective: "Help on a side project, at most 4 hours a week, not before next Tuesday" },
   history: [
-    { role: "incoming", content: "I'll offer $300." },
+    { role: "incoming", content: "Could you pair with me on my prototype, about 6 hours a week for 4 weeks, starting Monday?" },
   ],
 });
 
@@ -226,26 +277,26 @@ OpenRouter request fails or returns no content.
 ### Deciding a structured turn
 
 When the caller needs more than a message — e.g. an explicit action to
-record, such as `accept`/`reject`/`counter` — use `decide()` instead. It
+record, such as `accept`/`decline`/`refine` — use `decide()` instead. It
 takes the same `NegotiationState`, plus the set of actions allowed for this
 turn, and returns one of them along with the message:
 
 ```ts
 const decision = await negotiator.decide(
   {
-    party: { name: "Seller", objective: "Sell the item for as much as possible" },
-    history: [{ role: "incoming", content: "I'll offer $300." }],
+    party: { name: "Deniz", objective: "Help on a side project, at most 4 hours a week, not before next Tuesday" },
+    history: [{ role: "incoming", content: "Could you pair with me on my prototype, about 6 hours a week for 4 weeks, starting Monday?" }],
   },
   {
     allowedActions: [
-      "counter",
+      "refine",
       "accept",
-      { action: "reject", description: "Refuse the offer outright" },
+      { action: "decline", description: "End the conversation without an arrangement" },
     ],
   },
 );
 
-console.log(decision); // { action: "counter", message: "..." }
+console.log(decision); // { action: "refine", message: "..." }
 ```
 
 `allowedActions` entries can be a bare string, or `{ action, description }`
@@ -281,14 +332,14 @@ import { createA2AHandler } from "@indexnetwork/a2a";
 
 const handler = createA2AHandler({
   negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
-  party: { name: "Seller", objective: "Sell the item for as much as possible" },
-  allowedActions: ["propose", "counter", "accept", "reject"],
+  party: { name: "Deniz", objective: "Help on a side project, at most 4 hours a week, not before next Tuesday" },
+  allowedActions: ["propose", "refine", "accept", "decline"],
   agentCard: {
-    name: "Seller Agent",
-    url: "https://seller.example.com/a2a",
+    name: "Deniz's Agent",
+    url: "https://deniz.example.com/a2a",
     version: "1.0.0",
     capabilities: {},
-    skills: [{ id: "negotiate", name: "Negotiate a sale" }],
+    skills: [{ id: "negotiate", name: "Negotiate a collaboration" }],
   },
 });
 
@@ -296,12 +347,13 @@ Bun.serve({ port: 3000, fetch: handler });
 ```
 
 A negotiation ends (`task.status.state` becomes `completed`/`rejected`/`canceled`)
-once `decide()` picks a terminal action — `accept`, `reject`, or `withdraw` by
-default. Pass `isTerminal(action)` to `createA2AHandler()` to override which
-actions end the negotiation, and `terminalState(action)` to override which
-final state a terminal action maps to (the accept/withdraw/else-rejected
-default only makes sense for that default vocabulary — a custom one, e.g.
-`resolve`/`escalate`, needs its own mapping).
+once `decide()` picks a terminal action. By default those are `accept`
+(→ `completed`), `withdraw` (→ `canceled`), and `reject` or `decline`
+(→ `rejected`). Pass `isTerminal(action)` to `createA2AHandler()` to override
+which actions end the negotiation, and `terminalState(action)` to override
+which final state a terminal action maps to (the default mapping only makes
+sense for that default vocabulary — a custom one, e.g. `commit`/`pass`/`defer`,
+needs its own).
 
 ### Customizing how a turn is decided, and extracting value from it
 
@@ -355,16 +407,16 @@ import { A2ANegotiationClient } from "@indexnetwork/a2a";
 
 const client = new A2ANegotiationClient({
   negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
-  party: { name: "Buyer", objective: "Buy the item for as little as possible" },
-  allowedActions: ["propose", "counter", "accept", "reject"],
+  party: { name: "Mara", objective: "Get a designer to pair on your prototype, about 6 hours a week for 4 weeks; co-creator credit, no pay" },
+  allowedActions: ["propose", "refine", "accept", "decline"],
 });
 
-let { task, decision, outcome } = await client.initiate("https://seller.example.com/a2a");
+let { task, decision, outcome } = await client.initiate("https://deniz.example.com/a2a");
 console.log(decision); // { action: "propose", message: "..." } — this side's own move
 console.log(outcome); // "input-required" — what the negotiation actually is now
 
 while (outcome === "input-required") {
-  ({ task, decision, outcome } = await client.continue("https://seller.example.com/a2a", task));
+  ({ task, decision, outcome } = await client.continue("https://deniz.example.com/a2a", task));
 }
 
 console.log(outcome); // "completed" | "rejected" | "canceled"
@@ -381,19 +433,20 @@ agents end up reporting different results for the same negotiation:
 
 - **`decision.action`** is *this side's own move* — an input to the outcome,
   never a verdict on it. Your agent can pick `accept` in the very round trip
-  where the counterparty picks `reject`.
+  where the counterparty picks `decline`.
 - **`outcome`** (`=== task.status.state`) is *what the negotiation is*. The
   A2A spec makes the server the single authority on task state, so this is
   the answer to "did we close?". Read this, not your own action.
 
 That covers *whether* a deal closed. **What** was agreed is a separate
 question, and prose can't answer it: two agents can both say `accept` while
-naming different numbers, and nothing in the message text makes that
-detectable. A `NegotiationDecision` can therefore carry structured terms:
+one means six hours a week for four weeks and the other means four hours a
+week for six, and nothing in the message text makes that detectable. A
+`NegotiationDecision` can therefore carry structured terms:
 
 | Field | Meaning |
 | --- | --- |
-| `terms` | The concrete offer this decision puts on the table, as data — `{ amount: 450, pickupDay: "Wed" }`. |
+| `terms` | The concrete offer this decision puts on the table, as data — `{ hoursPerWeek: 4, weeks: 6, startDate: "2026-09-08" }`. |
 | `offerId` | Identifies this decision's own offer. Assigned automatically whenever a decision carries `terms`. |
 | `acceptsOfferId` | For an accepting move: which `offerId` it binds to. Without it, "accept" names no particular offer. |
 
@@ -406,7 +459,7 @@ import { strategyWithTerms, verifyAgreement } from "@indexnetwork/a2a";
 
 const client = new A2ANegotiationClient({
   // ...negotiator, party, allowedActions,
-  strategy: strategyWithTerms("amount (number, USD), pickupDay (day of week)"),
+  strategy: strategyWithTerms("hoursPerWeek (number), weeks (number), startDate (YYYY-MM-DD)"),
 });
 ```
 
@@ -420,11 +473,11 @@ precisely to be read back after the fact.
 
 Without a clock the model can't comply even when asked, so it invents a
 date, and a confident wrong date is worse than a visibly vague one. With
-one, a seller who is "away until next Tuesday" writes
-`{"collection": "2026-09-01"}`, a buyer who must collect by 31 August can
-see the conflict, and a deal that should never have closed doesn't. If you
-write your own `terms` description, you don't need to restate the date rule
-— it's already in the prompt.
+one, a collaborator who is "away until next Tuesday" writes
+`{"startDate": "2026-09-08"}`, a counterpart who needs to start by 4
+September can see the conflict, and a deal that should never have closed
+doesn't. If you write your own `terms` description, you don't need to
+restate the date rule — it's already in the prompt.
 
 Two things about that clock are worth knowing, because neither is visible
 from the outside:
@@ -446,7 +499,7 @@ same verdict:
 
 ```ts
 const result = verifyAgreement(task);
-// { status: "agreed", basis: "reference", terms: { amount: 430, pickupDay: "Saturday" } }
+// { status: "agreed", basis: "reference", terms: { hoursPerWeek: 4, weeks: 6, startDate: "2026-09-08" } }
 ```
 
 | `status` | Meaning |
@@ -487,7 +540,7 @@ strategyWithTerms("whatever terms are material to this deal, as flat key/value p
 That works — the model picks domain-appropriate keys, and both sides
 converge on the same ones because each sees the other's terms in the
 history. One caveat: key naming isn't stable *across* negotiations (one run
-produces `price`/`pickup_day`, another `amount`/`pickupDay`), and
+produces `hours_per_week`/`start`, another `hoursPerWeek`/`startDate`), and
 `basis: "terms"` comparison is exact-match. `basis: "reference"` is immune,
 since it compares offer ids rather than shapes.
 
@@ -523,8 +576,8 @@ a finished task would append a turn and re-stamp the state from the new
 decision — so the agreement the task had already certified disappears from
 the record, `verifyAgreement()` reverts to `open`, and the outcome artifact
 is left contradicting the task's own state. Both agents then see an open
-negotiation and, quite correctly given what they can see, resume haggling
-over terms that were already settled. That looks like a prompting problem
+negotiation and, quite correctly given what they can see, reopen terms
+that were already settled. That looks like a prompting problem
 and isn't one: the model reads the state accurately, the state is wrong.
 
 The check lives on the server because that's where the task is owned. A
@@ -552,8 +605,8 @@ and verify it identifies as who you expect:
 ```ts
 import { fetchAgentCard } from "@indexnetwork/a2a";
 
-const card = await fetchAgentCard("https://seller.example.com/a2a");
-if (card.name !== "Seller Agent") {
+const card = await fetchAgentCard("https://deniz.example.com/a2a");
+if (card.name !== "Deniz's Agent") {
   throw new Error(`Unexpected agent at this URL: ${card.name}`);
 }
 // proceed to client.initiate(...) / client.continue(...)
@@ -711,12 +764,12 @@ than scripted:
 
 | Script | Shows |
 | --- | --- |
-| `01-basic-negotiation.ts` | One server (Seller), one client (Buyer) — the minimal shape. |
-| `02-symmetric-peers.ts` | Both sides run their own server *and* initiate their own negotiation — real peer-to-peer. |
-| `03-agent-card-trust-check.ts` | `fetchAgentCard()` as an identity check before negotiating. |
-| `04-custom-strategy.ts` | A `strategy` hook that skips the LLM entirely for deterministic business logic. |
-| `05-evaluate-artifacts.ts` | An `evaluate` hook attaching structured findings to a Task, both server- and client-side. |
-| `06-custom-action-vocabulary.ts` | A non-price domain (support escalation) with custom actions and `terminalState`. |
+| `01-basic-negotiation.ts` | A collaboration: one server (Deniz), one client (Mara) — the minimal shape, on the scenario this README follows, with structured terms and `verifyAgreement()`. |
+| `02-symmetric-peers.ts` | Ideas and introductions: both sides run their own server *and* initiate their own negotiation — real peer-to-peer. |
+| `03-agent-card-trust-check.ts` | Hiring: `fetchAgentCard()` as an identity check before sending anything about a candidate. |
+| `04-custom-strategy.ts` | Finding a job: a `strategy` hook that skips the LLM entirely and decides from the counterparty's structured terms — and still closes a verifiable deal. |
+| `05-evaluate-artifacts.ts` | Dating: an `evaluate` hook scoring each turn from its terms, both server- and client-side. |
+| `06-custom-action-vocabulary.ts` | Mentorship: a vocabulary shaped like the domain (`ask`/`offer`/`commit`/`pass`/`defer`), with a `terminalState` that uses all three final states. |
 
 Run any of them directly: `OPENROUTER_API_KEY=... bun run examples/01-basic-negotiation.ts`
 (Bun loads `.env` automatically, so a project-root `.env` with the key works too).
@@ -736,23 +789,23 @@ a relative import from within this repo, e.g. from a script or test:
 import { Negotiator } from "../src/index.ts";
 import { runNegotiation } from "./simulate.ts";
 
-const seller = {
-  party: { name: "Seller", objective: "Sell for as much as possible, ideally above $450" },
+const mara = {
+  party: { name: "Mara", objective: "Get a designer to pair on your prototype, about 6 hours a week for 4 weeks; co-creator credit, no pay" },
   negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
 };
 
-const buyer = {
-  party: { name: "Buyer", objective: "Buy for as little as possible, ideally under $400" },
+const deniz = {
+  party: { name: "Deniz", objective: "Help on a side project, at most 4 hours a week, not before next Tuesday" },
   negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
 };
 
-const transcript = await runNegotiation([seller, buyer], {
+const transcript = await runNegotiation([mara, deniz], {
   maxTurns: 10,
-  stopWhen: (entry) => /deal|agreed/i.test(entry.content),
+  stopWhen: (entry) => /works for me|agreed|deal/i.test(entry.content),
 });
 
 for (const entry of transcript) {
-  console.log(`[${entry.speaker === 0 ? seller.party.name : buyer.party.name}] ${entry.content}`);
+  console.log(`[${entry.speaker === 0 ? mara.party.name : deniz.party.name}] ${entry.content}`);
 }
 ```
 

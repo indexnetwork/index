@@ -10,6 +10,15 @@ import type {
 export interface NegotiatorOptions {
   apiKey?: string;
   model?: string;
+  /**
+   * Models to fall back to, in order, when `model` fails — rate-limited,
+   * down, or refusing. Defaults to `openai/gpt-5.4-mini`, a fast model on
+   * a different upstream than the default Gemini Flash so one provider's
+   * bad hour doesn't stall every negotiation. Pass `[]` to disable.
+   */
+  fallbackModels?: string[];
+  /** Fires when a turn was answered by a fallback rather than `model`. */
+  onFallback?: (model: string) => void;
   referer?: string;
   title?: string;
   /** Caps output tokens per call. Defaults to 2048 — raise it if decisions
@@ -51,7 +60,7 @@ export interface DecideOptions<A extends string> extends DeadlineOptions {
   allowedActions: ActionSpec<A>[];
   /**
    * Describes the structured terms a decision should carry alongside its
-   * message — e.g. `"amount (number, USD), pickupDay (ISO date)"`. When set,
+   * message — e.g. `"hoursPerWeek (number), startDate (YYYY-MM-DD)"`. When set,
    * the model is asked to emit a `terms` object with those fields, and to
    * name the `offerId` it's accepting when it takes an accepting action.
    * Leave unset to keep decisions prose-only.
@@ -64,6 +73,9 @@ function actionName<A extends string>(spec: ActionSpec<A>): A {
 }
 
 const DEFAULT_MODEL = "google/gemini-3.7-flash";
+/** A fast model on a different upstream than the default, so a Google
+ * rate limit doesn't take both out at once. */
+const DEFAULT_FALLBACK_MODELS = ["openai/gpt-5.4-mini"];
 
 /** Renders the date for the prompt, with the weekday — resolving "next
  * Tuesday" needs to know what day today is, not just the date. UTC for both
@@ -138,6 +150,8 @@ export class Negotiator {
     this.client = new OpenRouterClient({
       apiKey: options.apiKey,
       model: options.model ?? DEFAULT_MODEL,
+      fallbackModels: options.fallbackModels ?? DEFAULT_FALLBACK_MODELS,
+      onFallback: options.onFallback,
       referer: options.referer,
       title: options.title,
       maxTokens: options.maxTokens,
@@ -157,6 +171,30 @@ export class Negotiator {
     });
   }
 
+  /** One JSON-mode completion, parsed. A body that isn't JSON — a model
+   * that stopped mid-string, say — gets one more try on the fallback
+   * chain, since the primary has shown it can't be relied on this turn. */
+  private async completeJson(
+    messages: OpenRouterMessage[],
+    options: DeadlineOptions,
+    preferFallback = false,
+  ): Promise<{ raw: string; parsed: unknown }> {
+    const raw = await this.client.complete(messages, {
+      jsonResponse: true,
+      preferFallback,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+    try {
+      return { raw, parsed: JSON.parse(raw) };
+    } catch {
+      if (!preferFallback && this.client.hasFallback) {
+        return this.completeJson(messages, options, true);
+      }
+      throw new Error(`Negotiator.decide(): model did not return valid JSON: ${raw}`);
+    }
+  }
+
   async decide<A extends string>(
     state: NegotiationState,
     options: DecideOptions<A>,
@@ -174,18 +212,7 @@ export class Negotiator {
       ...buildHistoryMessages(state),
     ];
 
-    const raw = await this.client.complete(messages, {
-      jsonResponse: true,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error(`Negotiator.decide(): model did not return valid JSON: ${raw}`);
-    }
+    const { raw, parsed } = await this.completeJson(messages, options);
 
     if (
       typeof parsed !== "object" ||

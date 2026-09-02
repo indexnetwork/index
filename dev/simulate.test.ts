@@ -63,7 +63,7 @@ describe("runNegotiation", () => {
   });
 
   test("stops as soon as stopWhen matches, without running further turns", async () => {
-    const a = participant("A", ["offer $100"]);
+    const a = participant("A", ["could you do Tuesday?"]);
     const b = participant("B", ["deal!"]);
 
     const transcript = await runNegotiation([a.participant, b.participant], {

@@ -1,7 +1,7 @@
 {
   "name": "@indexnetwork/a2a",
   "version": "0.1.0",
-  "description": "Agent2Agent (A2A) negotiation: a client and server for negotiating over the wire, with an LLM negotiator behind them.",
+  "description": "Agent2Agent (A2A) negotiation for personal agents: a client and server for negotiating on someone's behalf with another person's agent over the wire — collaborations, hiring, dating — with an LLM negotiator behind them.",
   "license": "MIT",
   "type": "module",
   "private": true,

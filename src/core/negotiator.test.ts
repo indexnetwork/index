@@ -436,3 +436,144 @@ describe("Negotiator clock", () => {
     expect(fetchMock.body.messages[0].content).toContain(today);
   });
 });
+
+describe("Negotiator model fallback", () => {
+  test("sends the default fallback after the primary in OpenRouter's models list", async () => {
+    const fetchMock = mockFetchOnce("ok");
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+    await negotiator.respond(state);
+
+    expect(fetchMock.body.model).toBe("google/gemini-3.7-flash");
+    expect(fetchMock.body.models).toEqual(["google/gemini-3.7-flash", "openai/gpt-5.4-mini"]);
+  });
+
+  test("uses the given fallbacks, in order, and never repeats the primary", async () => {
+    const fetchMock = mockFetchOnce("ok");
+    const negotiator = new Negotiator({
+      apiKey: "test-key",
+      model: "openai/gpt-5.4-mini",
+      fallbackModels: ["openai/gpt-5.4-mini", "z-ai/glm-5.3-flash", "deepseek/deepseek-v4-flash-0731"],
+    });
+    await negotiator.respond(state);
+
+    expect(fetchMock.body.model).toBe("openai/gpt-5.4-mini");
+    expect(fetchMock.body.models).toEqual([
+      "openai/gpt-5.4-mini",
+      "z-ai/glm-5.3-flash",
+      "deepseek/deepseek-v4-flash-0731",
+    ]);
+  });
+
+  test("an empty fallback list disables routing and omits `models`", async () => {
+    const fetchMock = mockFetchOnce("ok");
+    const negotiator = new Negotiator({ apiKey: "test-key", fallbackModels: [] });
+    await negotiator.respond(state);
+
+    expect(fetchMock.body.model).toBe("google/gemini-3.7-flash");
+    expect(fetchMock.body.models).toBeUndefined();
+  });
+
+  test("reports the model that answered when it wasn't the primary", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ model: "openai/gpt-5.4-mini", choices: [{ message: { content: "ok" } }] }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const seen: string[] = [];
+    const negotiator = new Negotiator({ apiKey: "test-key", onFallback: (model) => seen.push(model) });
+
+    await negotiator.respond(state);
+
+    expect(seen).toEqual(["openai/gpt-5.4-mini"]);
+  });
+
+  test("stays quiet when the primary answered", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ model: "google/gemini-3.7-flash", choices: [{ message: { content: "ok" } }] }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const seen: string[] = [];
+    const negotiator = new Negotiator({ apiKey: "test-key", onFallback: (model) => seen.push(model) });
+
+    await negotiator.respond(state);
+
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("Negotiator client-side fallback", () => {
+  function mockFetchSequence(bodies: object[]) {
+    const requests: { model: string; models?: string[] }[] = [];
+    let call = 0;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      requests.push({ model: body.model, models: body.models });
+      const response = bodies[call] ?? bodies.at(-1)!;
+      call++;
+      return new Response(JSON.stringify(response), { status: 200 });
+    }) as unknown as typeof fetch;
+    return requests;
+  }
+
+  test("an empty 200 is retried on the fallback chain, skipping the primary", async () => {
+    const requests = mockFetchSequence([
+      { model: "google/gemini-3.7-flash", choices: [{ message: { content: "" } }] },
+      { model: "openai/gpt-5.4-mini", choices: [{ message: { content: "Hello from the fallback." } }] },
+    ]);
+    const seen: string[] = [];
+    const negotiator = new Negotiator({ apiKey: "test-key", onFallback: (model) => seen.push(model) });
+
+    const reply = await negotiator.respond(state);
+
+    expect(reply).toBe("Hello from the fallback.");
+    expect(requests).toEqual([
+      { model: "google/gemini-3.7-flash", models: ["google/gemini-3.7-flash", "openai/gpt-5.4-mini"] },
+      { model: "openai/gpt-5.4-mini", models: undefined },
+    ]);
+    expect(seen).toEqual(["openai/gpt-5.4-mini"]);
+  });
+
+  test("an empty 200 with no fallback configured is the error it always was", async () => {
+    mockFetchSequence([{ choices: [{ message: { content: "" } }] }]);
+    const negotiator = new Negotiator({ apiKey: "test-key", fallbackModels: [] });
+
+    await expect(negotiator.respond(state)).rejects.toThrow("OpenRouter response had no content.");
+  });
+
+  test("the fallback gets one try, not a loop", async () => {
+    const requests = mockFetchSequence([{ choices: [{ message: { content: "" } }] }]);
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    await expect(negotiator.respond(state)).rejects.toThrow("OpenRouter response had no content.");
+    expect(requests).toHaveLength(2);
+  });
+
+  test("decide() retries a non-JSON body on the fallback chain", async () => {
+    const requests = mockFetchSequence([
+      { model: "google/gemini-3.7-flash", choices: [{ message: { content: '{"action": "refine", "message": "I can do 4 hours a' } }] },
+      {
+        model: "openai/gpt-5.4-mini",
+        choices: [{ message: { content: '{"action": "refine", "message": "I can do 4 hours a week."}' } }],
+      },
+    ]);
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    const decision = await negotiator.decide(state, { allowedActions: ["refine", "accept"] });
+
+    expect(decision).toEqual({ action: "refine", message: "I can do 4 hours a week." });
+    expect(requests.map((request) => request.model)).toEqual([
+      "google/gemini-3.7-flash",
+      "openai/gpt-5.4-mini",
+    ]);
+  });
+
+  test("decide() still reports non-JSON when the fallback returns it too", async () => {
+    mockFetchSequence([{ choices: [{ message: { content: "not json" } }] }]);
+    const negotiator = new Negotiator({ apiKey: "test-key" });
+
+    await expect(
+      negotiator.decide(state, { allowedActions: ["refine", "accept"] }),
+    ).rejects.toThrow("model did not return valid JSON: not json");
+  });
+});
