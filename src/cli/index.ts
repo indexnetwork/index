@@ -7,10 +7,10 @@ import { sim } from "./commands/sim.ts";
 import { requireOption } from "./options.ts";
 import { bold, dim, printError } from "./ui.ts";
 
-const HELP = `${bold("negotiator")} — try out LLM-backed negotiation agents
+const HELP = `${bold("index-a2a")} — try out LLM-backed negotiation agents
 
 ${bold("USAGE")}
-  negotiator <command> [options]
+  index-a2a <command> [options]
 
 ${bold("COMMANDS")}
   sim       Run both sides locally — two agents negotiate with each other
@@ -32,15 +32,15 @@ ${bold("COMMON OPTIONS")}
 
 ${bold("EXAMPLES")}
   ${dim("# watch two agents haggle")}
-  negotiator sim --a Buyer --a-objective "Buy a bike under $400" \\
+  index-a2a sim --a Buyer --a-objective "Buy a bike under $400" \\
                  --b Seller --b-objective "Sell the bike above $450"
 
   ${dim("# negotiate against an agent yourself")}
-  negotiator play --agent Seller --objective "Sell the bike above $450"
+  index-a2a play --agent Seller --objective "Sell the bike above $450"
 
   ${dim("# two processes over HTTP, with bearer auth")}
-  negotiator serve --name Seller --objective "Sell above $450" --port 3000 --token s3cret
-  negotiator connect http://localhost:3000 --name Buyer \\
+  index-a2a serve --name Seller --objective "Sell above $450" --port 3000 --token s3cret
+  index-a2a connect http://localhost:3000 --name Buyer \\
                      --objective "Buy under $400" --token s3cret
 
 Needs OPENROUTER_API_KEY in the environment (a .env file works too).

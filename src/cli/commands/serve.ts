@@ -17,7 +17,7 @@ export interface ServeOptions {
 
 /**
  * Runs one agent as an A2A server: serves its AgentCard and answers
- * incoming `message/send` calls. Pair with `negotiator connect` in another
+ * incoming `message/send` calls. Pair with `index-a2a connect` in another
  * terminal to watch two independent processes negotiate over HTTP.
  */
 export async function serve(options: ServeOptions): Promise<void> {

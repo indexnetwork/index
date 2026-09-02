@@ -1,41 +1,49 @@
-# @indexnetwork/negotiator
+# @indexnetwork/a2a
 
-An LLM-enhanced negotiator library, powered by [OpenRouter](https://openrouter.ai).
-
-`Negotiator` plays one side of a negotiation: given a party's objective and
-the conversation so far, it returns that party's next message or decision.
-It doesn't run or own the other side of the conversation — the caller owns
-the transcript and calls `respond()`/`decide()` once per turn.
+Agent2Agent (A2A) negotiation: a client and server for negotiating with
+another agent over the wire, with an LLM negotiator behind them, powered by
+[OpenRouter](https://openrouter.ai).
 
 ## Purpose
 
-This package is the decision-making core for a personal agent's side of a
-negotiation, plus an [Agent2Agent (A2A)](https://a2a-protocol.org) client
-and server built on top of it (`@indexnetwork/negotiator/a2a`) so that core
-can actually send and receive negotiation turns over the wire. A personal
-agent — whether it's built with this package, or is an OpenClaw, Hermes, or
-Claude Agent implementation that just speaks A2A — can use the `./a2a`
-entry point to initiate or respond to a negotiation task with any other A2A
-agent, without needing to reimplement the protocol itself.
+This package is how a personal agent negotiates with another one. It
+implements a minimal subset of the [Agent2Agent (A2A)](https://a2a-protocol.org)
+protocol — agent discovery and negotiation turns over `message/send` — plus
+the decision-making core that decides what to say on each of those turns. A
+personal agent, whether it's built with this package or is an OpenClaw,
+Hermes, or Claude Agent implementation that just speaks A2A, can initiate or
+respond to a negotiation task with any other A2A agent without
+reimplementing the protocol itself.
+
+The negotiation semantics are the point here, not incidental: turns carry a
+structured `NegotiationDecision`, acceptance binds to the offer it names,
+and the outcome lands in a Task artifact you can verify. This is not a
+general-purpose A2A transport, and the default path needs an OpenRouter key.
 
 ## How to use this package
 
 Want to see what it does before writing any code? Skip to the
-[CLI](#cli-trying-it-out) — `negotiator sim` runs both sides of a
+[CLI](#cli-trying-it-out) — `index-a2a sim` runs both sides of a
 negotiation in your terminal.
 
 There are two layers, and most projects only need to reach for one:
 
-- **Just need to draft a message or pick an action?** Use `Negotiator` directly
-  (`respond()` for a plain message, `decide()` for a structured action) — see
-  [Usage](#usage). This is the right level if you already have your own way
-  of sending/receiving negotiation turns (your own transport, or another A2A
-  implementation) and only need the "what do I say next" part.
-- **Need to actually talk to another agent over the network?** Use
-  `@indexnetwork/negotiator/a2a` — see [A2A](#a2a-sending-and-receiving-negotiations-over-the-wire).
-  It wraps a `Negotiator` with a real A2A client and server, so you can
+- **Need to talk to another agent over the network?** Use `@indexnetwork/a2a`
+  — see [A2A](#a2a-sending-and-receiving-negotiations-over-the-wire). It
+  wraps a `Negotiator` with a real A2A client and server, so you can
   `initiate()`/`continue()` a negotiation with another agent's endpoint, or
   mount `createA2AHandler()` in your own server to receive one.
+- **Just need to draft a message or pick an action?** Use `Negotiator` from
+  `@indexnetwork/a2a/negotiator` directly (`respond()` for a plain message,
+  `decide()` for a structured action) — see [Usage](#usage). This is the
+  right level if you already have your own way of sending and receiving
+  negotiation turns (your own transport, or another A2A implementation) and
+  only need the "what do I say next" part.
+
+`Negotiator` plays one side of a negotiation: given a party's objective and
+the conversation so far, it returns that party's next message or decision.
+It doesn't run or own the other side — the caller owns the transcript and
+calls `respond()`/`decide()` once per turn.
 
 Either way, install the package first:
 
@@ -46,24 +54,27 @@ Either way, install the package first:
   no CommonJS build.
 - **TypeScript ≥ 5** if you're consuming it from a TS project (listed as a
   peer dependency; not required at runtime — `dist/` ships plain JS + `.d.ts`).
-- **An [OpenRouter](https://openrouter.ai) API key** — required by `Negotiator`
-  (and therefore by `@indexnetwork/negotiator/a2a`, which wraps it). See
-  [Configuration](#configuration).
-- **A network-reachable HTTP endpoint** if you're using `@indexnetwork/negotiator/a2a`'s
+- **An [OpenRouter](https://openrouter.ai) API key** — required by `Negotiator`,
+  and therefore by the A2A layer's default decision path, which wraps one.
+  See [Configuration](#configuration).
+- **A network-reachable HTTP endpoint** if you're using `@indexnetwork/a2a`'s
   server side (`createA2AHandler()`) to actually receive negotiations from
   other agents — the library gives you the handler, you still need to host it.
 
 ## Installation
 
 ```bash
-bun add @indexnetwork/negotiator
+bun add @indexnetwork/a2a
 ```
 
 or with npm/yarn/pnpm:
 
 ```bash
-npm install @indexnetwork/negotiator
+npm install @indexnetwork/a2a
 ```
+
+Coming from `@indexnetwork/negotiator`? The two entry points swapped places
+in the rename — see [MIGRATION.md](./MIGRATION.md).
 
 ## Configuration
 
@@ -98,14 +109,14 @@ from either source.
 
 ## CLI: trying it out
 
-The package ships a `negotiator` command for exercising the library from a
+The package ships an `index-a2a` command for exercising the library from a
 terminal — useful for feeling out how an objective shapes an agent's
 behavior before wiring anything up. It needs `OPENROUTER_API_KEY` in the
 environment (a `.env` file in the working directory works too), and Bun to
 run (the `serve` command uses `Bun.serve`).
 
 Inside this repo, run it with `bun run src/cli/index.ts <command>`; once
-the package is installed, just `negotiator <command>`.
+the package is installed, just `index-a2a <command>`.
 
 | Command | What it does |
 | --- | --- |
@@ -117,7 +128,7 @@ the package is installed, just `negotiator <command>`.
 Watch two agents haggle:
 
 ```bash
-negotiator sim \
+index-a2a sim \
   --a Buyer  --a-objective "Buy a used bike for as little as possible, under \$400" \
   --b Seller --b-objective "Sell the bike for as much as possible, above \$450"
 ```
@@ -133,7 +144,7 @@ ended after 7 turns — Buyer chose "reject"
 Negotiate against one yourself:
 
 ```bash
-negotiator play --agent Seller --objective "Sell the bike above \$450"
+index-a2a play --agent Seller --objective "Sell the bike above \$450"
 ```
 
 Or run the real A2A path across two processes, with bearer auth on the wire
@@ -141,11 +152,11 @@ Or run the real A2A path across two processes, with bearer auth on the wire
 
 ```bash
 # terminal 1
-negotiator serve --name Seller --objective "Sell above \$450, accept over \$420" \
+index-a2a serve --name Seller --objective "Sell above \$450, accept over \$420" \
                  --port 3000 --token s3cret
 
 # terminal 2
-negotiator connect http://localhost:3000 --name Buyer \
+index-a2a connect http://localhost:3000 --name Buyer \
                    --objective "Buy the bike; hard max \$440" \
                    --token s3cret --expect Seller
 ```
@@ -159,14 +170,14 @@ Shared options across commands: `--model <id>` to pick an OpenRouter model,
 `--actions <list>` for a custom action vocabulary (default
 `propose,counter,accept,reject`), `--terminal <list>` for which of those end
 the negotiation (default `accept,reject,decline,withdraw`), and `--turns <n>`
-as a safety cap. Run `negotiator help` for the full list.
+as a safety cap. Run `index-a2a help` for the full list.
 
 `--terms <fields>` (on `sim`, `serve`, and `connect`) turns on structured
 terms, so you can watch acceptance bind to a specific offer instead of
 living in prose — see [Knowing what actually happened](#knowing-what-actually-happened):
 
 ```bash
-negotiator sim \
+index-a2a sim \
   --a Buyer  --a-objective "Buy a used bike; hard max \$440. Settle a pickup day too." \
   --b Seller --b-objective "Sell it above \$450 ideally; accept over \$420." \
   --terms "amount (number, USD), pickupDay (day of week)"
@@ -187,7 +198,7 @@ agreed {"amount":430,"pickupDay":"Saturday"}
 ## Usage
 
 ```ts
-import { Negotiator } from "@indexnetwork/negotiator";
+import { Negotiator } from "@indexnetwork/a2a/negotiator";
 
 const negotiator = new Negotiator({ model: "google/gemini-3.7-flash" });
 
@@ -249,7 +260,7 @@ invalid JSON, or chooses an action outside `allowedActions`.
 
 ## A2A: sending and receiving negotiations over the wire
 
-`@indexnetwork/negotiator/a2a` implements a minimal subset of the
+The package root, `@indexnetwork/a2a`, implements a minimal subset of the
 [Agent2Agent protocol](https://a2a-protocol.org): agent discovery via an
 AgentCard, and negotiation turns as JSON-RPC `message/send` calls carrying
 this package's `NegotiationDecision` as a data part. Streaming (SSE) and
@@ -265,8 +276,8 @@ default via `negotiator.decide()` — see [Customizing how a turn is decided](#c
 below) and replies with the updated Task:
 
 ```ts
-import { Negotiator } from "@indexnetwork/negotiator";
-import { createA2AHandler } from "@indexnetwork/negotiator/a2a";
+import { Negotiator } from "@indexnetwork/a2a/negotiator";
+import { createA2AHandler } from "@indexnetwork/a2a";
 
 const handler = createA2AHandler({
   negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
@@ -339,8 +350,8 @@ starts a new negotiation; `continue()` keeps responding to one that's still
 `input-required`:
 
 ```ts
-import { Negotiator } from "@indexnetwork/negotiator";
-import { A2ANegotiationClient } from "@indexnetwork/negotiator/a2a";
+import { Negotiator } from "@indexnetwork/a2a/negotiator";
+import { A2ANegotiationClient } from "@indexnetwork/a2a";
 
 const client = new A2ANegotiationClient({
   negotiator: new Negotiator({ model: "google/gemini-3.7-flash" }),
@@ -391,7 +402,7 @@ describe the fields a decision should emit, and the model is asked to fill
 them in and to name the offer it accepts:
 
 ```ts
-import { strategyWithTerms, verifyAgreement } from "@indexnetwork/negotiator/a2a";
+import { strategyWithTerms, verifyAgreement } from "@indexnetwork/a2a";
 
 const client = new A2ANegotiationClient({
   // ...negotiator, party, allowedActions,
@@ -539,7 +550,7 @@ before negotiating with a URL you don't otherwise trust, use `fetchAgentCard()`
 and verify it identifies as who you expect:
 
 ```ts
-import { fetchAgentCard } from "@indexnetwork/negotiator/a2a";
+import { fetchAgentCard } from "@indexnetwork/a2a";
 
 const card = await fetchAgentCard("https://seller.example.com/a2a");
 if (card.name !== "Seller Agent") {
@@ -567,8 +578,8 @@ over an internal network), a static bearer token is enough — use the
 built-in helpers:
 
 ```ts
-import { bearerCredentials } from "@indexnetwork/negotiator/a2a"; // client side
-import { bearerTokenAuth } from "@indexnetwork/negotiator/a2a"; // server side
+import { bearerCredentials } from "@indexnetwork/a2a"; // client side
+import { bearerTokenAuth } from "@indexnetwork/a2a"; // server side
 
 const handler = createA2AHandler({
   // ...negotiator, party, allowedActions, agentCard,
@@ -761,15 +772,17 @@ git-ignored and rebuilt via `prepublishOnly`, not committed.
 
 ```
 src/
-  index.ts        # public entry point — re-exports core/ only
+  index.ts         # entry point for @indexnetwork/a2a/negotiator —
+                   #   re-exports core/ only. Note the inversion: this is
+                   #   the subpath, and a2a/index.ts is the package root.
   core/            # the decision engine: Negotiator.respond()/decide(),
                    #   plus the shared deadline/cancellation helper
   a2a/             # the A2A protocol layer, built on core/
-    index.ts       # public entry point for @indexnetwork/negotiator/a2a
+    index.ts       # entry point for @indexnetwork/a2a (the package root)
     wire/          # shared protocol types and NegotiationDecision <-> A2A message encoding
     server/        # createA2AHandler() + Task storage + the authenticate hook helper
     client/        # A2ANegotiationClient + the raw message/send transport call
-  cli/             # the `negotiator` command (see "CLI" above), built to dist/cli
+  cli/             # the `index-a2a` command (see "CLI" above), built to dist/cli
 dev/
   simulate.ts      # local two-sided harness (see "Local simulation" above), not published
 ```

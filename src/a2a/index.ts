@@ -1,3 +1,6 @@
+// Public entry point for `@indexnetwork/a2a` — the A2A client and server
+// that carry negotiation turns over the wire. The decision engine they
+// drive is exported separately as `@indexnetwork/a2a/negotiator`.
 export { createA2AHandler, OUTCOME_ARTIFACT_ID } from "./server/handler.ts";
 export type { A2AHandlerOptions } from "./server/handler.ts";
 export { TaskStore } from "./server/task-store.ts";

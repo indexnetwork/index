@@ -1,24 +1,24 @@
 {
-  "name": "@indexnetwork/negotiator",
+  "name": "@indexnetwork/a2a",
   "version": "0.1.0",
-  "description": "An LLM-enhanced negotiator library, powered by OpenRouter.",
+  "description": "Agent2Agent (A2A) negotiation: a client and server for negotiating over the wire, with an LLM negotiator behind them.",
   "license": "MIT",
   "type": "module",
   "private": true,
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/a2a/index.js",
+  "module": "./dist/a2a/index.js",
+  "types": "./dist/a2a/index.d.ts",
   "bin": {
-    "negotiator": "./dist/cli/index.js"
+    "index-a2a": "./dist/cli/index.js"
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./a2a": {
       "types": "./dist/a2a/index.d.ts",
       "import": "./dist/a2a/index.js"
+    },
+    "./negotiator": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "files": [

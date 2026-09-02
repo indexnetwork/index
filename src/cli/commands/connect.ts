@@ -23,7 +23,7 @@ export interface ConnectOptions {
 
 /**
  * Negotiates against another agent's A2A endpoint — the client half of
- * `negotiator serve`, or of any other A2A agent that speaks `message/send`.
+ * `index-a2a serve`, or of any other A2A agent that speaks `message/send`.
  */
 export async function connect(options: ConnectOptions): Promise<void> {
   const allowedActions = parseActions(options.actions);
