@@ -1,83 +1,39 @@
 // Public API: a personal agent run by a host on someone's behalf. One
 // identity, scopeable to an intent, with a loop that can stop to ask the
 // party it represents a question — and negotiate with other agents over
-// A2A, one turn at a time, via @indexnetwork/a2a.
-export { Agent, ASK_ACTION, DEFAULT_ACTIONS } from "./core/agent.ts";
-export type {
-  AgentOptions,
-  DefaultAction,
-  NegotiateOptions,
-  OpenNegotiationOptions,
-  RunOptions,
-} from "./core/agent.ts";
+// A2A via @indexnetwork/a2a.
+export { Agent } from "./core/agent.ts";
+export type { AgentOptions, RunOptions } from "./core/agent.ts";
 
-export {
-  askUserTool,
-  defaultTools,
-  negotiationTools,
-  toolDefinition,
-} from "./core/tools.ts";
+export { askUserTool, defaultTools, negotiationTools } from "./core/tools.ts";
 export type { Tool, ToolContext } from "./core/tools.ts";
 
 export { MemoryMessageStore, MemoryNegotiationStore } from "./core/sessions.ts";
-export { digest } from "./core/digest.ts";
-export { ModelClient, DEFAULT_MODEL } from "./core/model.ts";
-export type {
-  ModelClientOptions,
-  ModelMessage,
-  ToolCall,
-  ToolDefinition,
-} from "./core/model.ts";
+export type { ModelMessage } from "./core/model.ts";
 
 export type {
   AgentIdentity,
   AgentTurn,
   Direction,
-  IdentifiedAgentCard,
   Intent,
   MessageStore,
   Negotiation,
-  NegotiationEnd,
   NegotiationEvent,
   NegotiationSession,
   NegotiationStore,
   NegotiationTurn,
   PendingQuestion,
-  RunEnd,
   RunResult,
   Settlement,
   SettlementOutcome,
-  Speaker,
   Step,
 } from "./core/types.ts";
 
-// Re-exported for convenience: the negotiation half of this package is
-// @indexnetwork/a2a/negotiator, and its types turn up on `Negotiation` and the
-// hooks. Importing them from the negotiator directly is equivalent.
+// The pieces of @indexnetwork/a2a a host reaches for alongside this
+// package: the decision engine and its types on the negotiation hooks, and
+// the A2A auth and storage a handler needs. Anything else is imported from
+// @indexnetwork/a2a directly.
 export { Negotiator } from "@indexnetwork/a2a/negotiator";
-export type {
-  ActionSpec,
-  NegotiationDecision,
-  NegotiationParty,
-  NegotiationTerms,
-  NegotiatorOptions,
-} from "@indexnetwork/a2a/negotiator";
-export {
-  TaskStore,
-  bearerCredentials,
-  bearerTokenAuth,
-  strategyWithTerms,
-  verifyAgreement,
-} from "@indexnetwork/a2a";
-export type {
-  A2AArtifact,
-  A2ACredentials,
-  A2AIdentity,
-  A2ATask,
-  A2ATaskState,
-  AgentCard,
-  AgentCardSkill,
-  AgreementBasis,
-  AgreementResult,
-  AgreementStatus,
-} from "@indexnetwork/a2a";
+export type { ActionSpec, NegotiationDecision } from "@indexnetwork/a2a/negotiator";
+export { TaskStore, bearerCredentials, bearerTokenAuth } from "@indexnetwork/a2a";
+export type { A2ACredentials, A2ATask, AgentCard } from "@indexnetwork/a2a";

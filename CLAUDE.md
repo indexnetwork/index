@@ -9,10 +9,9 @@ state. See README.md for the API.
 
 ```bash
 cd ../a2a && bun run build   # required: `file:../a2a` resolves to its dist/
-bun test                            # 116 tests, no network
+bun test                     # no network
 bun run typecheck
-bun run console                     # drive several agents in one terminal
-bun run dev/stress.ts               # live scenarios — real model calls, real money
+bun run stress               # live scenarios — real model calls, real money
 ```
 
 `examples/` and `dev/stress.ts` hit OpenRouter. Tests don't: they script
@@ -52,11 +51,13 @@ These were each a bug at some point, and the code reads oddly without them.
 - **Reading negotiations is uniform; acting on them is not.** An inbound
   negotiation has no URL — the counterparty called us — so it can be known
   but not continued.
-- **The loop hears events, not turns.** `negotiate_many` runs each
+- **The loop hears events, not turns.** `negotiate` runs each
   negotiation to a settlement, a question, or a budget and returns one
   digest; the turns in between never enter the transcript. Ten
   negotiations once cost the main model a call per turn each. `ask` is
-  offered only under that pump and is intercepted before the wire.
+  offered only under that pump and is intercepted before the wire;
+  `answer` is the only way the party's reply gets back in, and it holds
+  for the rest of the negotiation.
 - **One binding negotiation per counterparty, per intent.** A second one
   is refused while the first could still bind the party — unfinished, or
   closed as a deal. `openNegotiation` throws, `runNegotiation` returns
@@ -73,13 +74,12 @@ These were each a bug at some point, and the code reads oddly without them.
 - **Retries live in `ModelClient` only.** The negotiator deliberately has
   none; two layers would multiply, and neither backoff would see the other.
 - **Index Network operations are host-injected as tools.** This package
-  must not learn Index transport, auth, or vocabulary. `cli/directory.ts`
-  is a local stand-in for the match layer, not the real thing, and
-  `cli/roster.ts` injects it as each party's `find_matches` and
-  `create_intent` tools — which is where a future intent package would
-  plug in, not into `Agent`.
-- **`files` is `dist`.** `cli/`, `dev/` and `examples/` are never
-  published; `@indexnetwork/a2a` is externalized, not bundled.
+  must not learn Index transport, auth, or vocabulary.
+  `examples/01-ask-user.ts` injects a fixed `find_matches` as a stand-in
+  for the match layer; that seam — a `Tool` in `tools` — is where a future
+  intent package plugs in, not into `Agent`.
+- **`files` is `dist`.** `dev/` and `examples/` are never published;
+  `@indexnetwork/a2a` is externalized, not bundled.
 
 ## Bun
 
