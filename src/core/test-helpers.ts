@@ -117,7 +117,9 @@ export function restoreFetch(): void {
  * else — the A2A traffic between agents on real local ports — is passed
  * through to the original fetch. Returns the request bodies it saw.
  */
-export function mockModel(replies: (Partial<ModelMessage> | (() => Response | Promise<Response>))[]) {
+export function mockModel(
+  replies: (Partial<ModelMessage> | ((init?: RequestInit) => Response | Promise<Response>))[],
+) {
   const requests: { model: string; messages: ModelMessage[]; tools?: unknown[] }[] = [];
   let call = 0;
 
@@ -130,7 +132,7 @@ export function mockModel(replies: (Partial<ModelMessage> | (() => Response | Pr
     requests.push(JSON.parse(String(init?.body)));
     const reply = replies[call] ?? replies.at(-1);
     call++;
-    if (typeof reply === "function") return await reply();
+    if (typeof reply === "function") return await reply(init);
     return new Response(JSON.stringify({ choices: [{ message: reply }] }), { status: 200 });
   }) as unknown as typeof fetch;
 

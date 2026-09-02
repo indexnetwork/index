@@ -85,7 +85,7 @@ describe("ModelClient timeouts and retries", () => {
     const { client, restore } = clientAgainst(server.url, { attempts: 3 });
 
     try {
-      expect(client.complete([])).rejects.toThrow(/401/);
+      await expect(client.complete([])).rejects.toThrow(/401/);
       await Bun.sleep(50);
       expect(server.calls()).toBe(1);
     } finally {
@@ -99,7 +99,7 @@ describe("ModelClient timeouts and retries", () => {
     const { client, restore } = clientAgainst(server.url, { attempts: 2 });
 
     try {
-      expect(client.complete([])).rejects.toThrow(/after 2 attempts/);
+      await expect(client.complete([])).rejects.toThrow(/after 2 attempts/);
     } finally {
       restore();
       server.stop();
@@ -116,7 +116,7 @@ describe("ModelClient timeouts and retries", () => {
     try {
       const pending = client.complete([], [], controller.signal);
       setTimeout(() => controller.abort(), 50);
-      expect(pending).rejects.toThrow();
+      await expect(pending).rejects.toThrow();
       await Bun.sleep(200);
       expect(server.calls()).toBe(1);
     } finally {

@@ -364,10 +364,9 @@ describe("asking the user", () => {
     expect(result.end).toBe("needs-input");
     expect(result.steps.map((s) => s.kind)).toEqual(["tool", "ask"]);
     // echo answered; the question left open for the host.
-    expect(requests[0]).toBeDefined();
-    const tools = result.messages.filter((m) => m.role === "tool");
-    expect(tools).toHaveLength(1);
-    expect(tools[0]?.tool_call_id).toBe("e");
+    expect(result.messages.filter((m) => m.role === "tool")).toEqual([
+      { role: "tool", tool_call_id: "e", content: JSON.stringify({ echoed: "hi" }) },
+    ]);
   });
 
   test("tells the model to ask a second question only after the first is answered", async () => {
@@ -384,5 +383,33 @@ describe("asking the user", () => {
     expect(result.pending?.question).toBe("First?");
     const second = result.messages.find((m) => m.role === "tool" && m.tool_call_id === "q2");
     expect(String(second?.content)).toContain("Only one question at a time");
+  });
+});
+
+describe("model options reach the client", () => {
+  // `timeout`, `attempts` and `onRetry` are forwarded to the ModelClient
+  // in the constructor. model.test.ts covers the client; this covers the
+  // seam, which no other test reads.
+  test("timeout, attempts and onRetry are forwarded to the model client", async () => {
+    mockModel([
+      // Never answers, but honours the deadline the client attached.
+      (init) =>
+        new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")))),
+      { role: "assistant", content: "ok" },
+    ]);
+    const retries: [number, string][] = [];
+    const agent = new Agent({
+      identity: { name: "Alice's Agent", id: "did:example:alice" },
+      systemPrompt: "You act for Alice.",
+      apiKey: "test-key",
+      tools: [],
+      timeout: 50,
+      attempts: 2,
+      onRetry: (attempt, reason) => retries.push([attempt, reason]),
+    });
+
+    const result = await agent.run("Say hello");
+
+    expect({ output: result.output, retries }).toEqual({ output: "ok", retries: [[2, "no answer within 50ms"]] });
   });
 });

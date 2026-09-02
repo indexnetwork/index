@@ -727,36 +727,76 @@ describe("evaluate", () => {
   });
 });
 
-describe("settlement", () => {
-  /** Runs one negotiation between two scripted agents and returns it. */
-  async function trade(sellerScript: NegotiationDecision[], buyerScript: NegotiationDecision[]) {
-    const server = serve(new Agent({ ...seller, negotiator: scripted(sellerScript).negotiator }));
-    try {
-      const agent = new Agent({ ...buyer, negotiator: scripted(buyerScript).negotiator });
-      return await agent.negotiate(server.url, { maxTurns: 4 });
-    } finally {
-      server.stop();
-    }
-  }
+/** Runs one negotiation between two scripted agents and returns it, with
+ * what each side's `onSettled` saw. One helper for every settlement test,
+ * so a verdict, both sides' view of it, and the direction each played can
+ * be asserted together. */
+async function trade(sellerScript: NegotiationDecision[], buyerScript: NegotiationDecision[], maxTurns = 4) {
+  const sellerSaw: Settlement[] = [];
+  const buyerSaw: Settlement[] = [];
+  const directions = { seller: [] as Direction[], buyer: [] as Direction[] };
 
+  const server = serve(
+    new Agent({
+      ...seller,
+      negotiator: scripted(sellerScript).negotiator,
+      onSettled: (settlement, direction) => {
+        sellerSaw.push(settlement as Settlement);
+        directions.seller.push(direction);
+      },
+    }),
+  );
+
+  try {
+    const agent = new Agent({
+      ...buyer,
+      negotiator: scripted(buyerScript).negotiator,
+      onSettled: (settlement, direction) => {
+        buyerSaw.push(settlement as Settlement);
+        directions.buyer.push(direction);
+      },
+    });
+    const negotiation = await agent.negotiate(server.url, { maxTurns });
+    const verdicts = { seller: sellerSaw.map((s) => s.outcome), buyer: buyerSaw.map((s) => s.outcome) };
+    return { negotiation, sellerSaw, buyerSaw, directions, verdicts };
+  } finally {
+    server.stop();
+  }
+}
+
+const STILL_460: NegotiationDecision = { action: "counter", message: "Still $460." };
+
+describe("settlement", () => {
   // Prose-only decisions can't say *what* was agreed, so the verdict is
-  // `unconfirmed` rather than a guess. Terms make it checkable — see below.
-  test("prose-only closes are unconfirmed, not agreed", async () => {
-    const negotiation = await trade(
-      [{ action: "accept", message: "Yes — $450, Wednesday evening." }],
-      [{ action: "counter", message: "$450 and I collect Wednesday." }],
+  // `unconfirmed` rather than a guess — on both sides, and `endedBy` still
+  // records who closed. Terms make it checkable; see "structured terms".
+  test("a prose-only close is unconfirmed, records who closed, and reads the same from both ends", async () => {
+    const { negotiation, verdicts } = await trade(
+      [{ action: "accept", message: "$450 works. Wednesday it is." }],
+      [{ action: "counter", message: "I can do $450, collecting Wednesday." }],
     );
 
-    expect(negotiation.settlement?.outcome).toBe("unconfirmed");
-    expect(negotiation.settlement?.basis).toBe("state");
+    expect({
+      endedBy: negotiation.endedBy,
+      outcome: negotiation.settlement?.outcome,
+      basis: negotiation.settlement?.basis,
+      verdicts,
+    }).toEqual({
+      endedBy: { speaker: "peer", action: "accept" },
+      outcome: "unconfirmed",
+      basis: "state",
+      verdicts: { seller: ["unconfirmed"], buyer: ["unconfirmed"] },
+    });
   });
 
   // The reported bug: each side decides its own turn, so both can say yes
   // to different numbers in one round trip and walk away believing
   // different things. `endedBy` reads as authoritative to whoever produced
-  // it; only comparing the two closing statements catches this.
-  test("two accepts naming different amounts is a conflict, not a deal", async () => {
-    const negotiation = await trade(
+  // it; only comparing the two closing statements catches this — and both
+  // parties compare the same pair, so both reach the same verdict. The
+  // prose fallback labels itself as the weak evidence it is.
+  test("prose-only closes naming different amounts are a conflict, from both ends", async () => {
+    const { negotiation, verdicts } = await trade(
       [
         { action: "counter", message: "The lowest I can do is $460." },
         { action: "accept", message: "Deal — $450 it is." },
@@ -767,15 +807,26 @@ describe("settlement", () => {
       ],
     );
 
-    expect(negotiation.endedBy).toEqual({ speaker: "self", action: "accept" });
-    expect(negotiation.settlement?.outcome).toBe("conflict");
-    expect(negotiation.settlement?.disputed).toEqual({ mine: [460], theirs: [450] });
+    expect({
+      endedBy: negotiation.endedBy,
+      outcome: negotiation.settlement?.outcome,
+      basis: negotiation.settlement?.basis,
+      disputed: negotiation.settlement?.disputed,
+      verdicts,
+    }).toEqual({
+      endedBy: { speaker: "self", action: "accept" },
+      outcome: "conflict",
+      basis: "prose",
+      disputed: { mine: [460], theirs: [450] },
+      verdicts: { seller: ["conflict"], buyer: ["conflict"] },
+    });
   });
 
-  // The Task ended `rejected`, so there is no deal — `declined` is the
-  // truthful verdict, and `mine` still records that this side said accept.
+  // The case that started this: `endedBy` says this side accepted, the
+  // record says the task was rejected. Neither is the verdict — `declined`
+  // is, and `mine` still records that this side said accept.
   test("accepting into a rejection is declined, and says so", async () => {
-    const negotiation = await trade(
+    const { negotiation } = await trade(
       [
         { action: "counter", message: "The lowest I can do is $460." },
         { action: "reject", message: "$450 is below my floor. I'll pass." },
@@ -786,24 +837,59 @@ describe("settlement", () => {
       ],
     );
 
-    expect(negotiation.state).toBe("rejected");
-    expect(negotiation.endedBy).toEqual({ speaker: "self", action: "accept" });
-    expect(negotiation.settlement?.outcome).toBe("declined");
-    expect(negotiation.settlement?.mine.action).toBe("accept");
+    expect({
+      state: negotiation.state,
+      endedBy: negotiation.endedBy,
+      outcome: negotiation.settlement?.outcome,
+      mine: negotiation.settlement?.mine.action,
+    }).toEqual({
+      state: "rejected",
+      endedBy: { speaker: "self", action: "accept" },
+      outcome: "declined",
+      mine: "accept",
+    });
   });
 
-  test("closing while the counterparty keeps haggling is unanswered", async () => {
-    const negotiation = await trade(
-      [{ action: "counter", message: "Still $460." }],
-      [{ action: "accept", message: "Fine, we accept $460." }],
+  // Replying to someone's accept with a counter is not agreement: this
+  // side closed, the Task is still open, and the exchange stops on that
+  // verdict rather than bargaining on to maxTurns. Both sides read it the
+  // same way, though who spoke second is reversed between them.
+  test("closing into a counter is unanswered from both ends, and stops on the verdict", async () => {
+    const { negotiation, verdicts } = await trade([STILL_460], [{ action: "accept", message: "We accept $460." }], 8);
+
+    expect({
+      outcome: negotiation.settlement?.outcome,
+      reason: negotiation.settlement?.reason,
+      verdicts,
+      // One round trip, not eight.
+      turns: negotiation.transcript.length,
+    }).toEqual({
+      outcome: "unanswered",
+      reason: 'You closed with "accept", but they replied with "counter" rather than closing too. Nothing is agreed until they do.',
+      verdicts: { seller: ["unanswered"], buyer: ["unanswered"] },
+      turns: 2,
+    });
+  });
+
+  // A2A generates task ids server-side and only the server transitions
+  // state, so the counterparty's Task — not this agent's own action — says
+  // whether a negotiation ended.
+  test("a refusal of a standing offer is terminal and declined from both ends", async () => {
+    const { negotiation, verdicts } = await trade(
+      [{ action: "reject", message: "$430 is too low. Passing." }],
+      [{ action: "counter", message: "Best I can do is $430." }],
     );
 
-    expect(negotiation.settlement?.outcome).toBe("unanswered");
-    expect(negotiation.settlement?.reason).toContain("Nothing is agreed");
+    expect({ state: negotiation.state, end: negotiation.end, endedBy: negotiation.endedBy, verdicts }).toEqual({
+      state: "rejected",
+      end: "terminal",
+      endedBy: { speaker: "peer", action: "reject" },
+      verdicts: { seller: ["declined"], buyer: ["declined"] },
+    });
   });
 
   test("both sides refusing is declined, not a conflict", async () => {
-    const negotiation = await trade(
+    const { negotiation } = await trade(
       [{ action: "reject", message: "Too low. Passing." }],
       [{ action: "reject", message: "Too expensive. Passing." }],
     );
@@ -812,267 +898,23 @@ describe("settlement", () => {
   });
 
   test("nothing is settled while the exchange is still open", async () => {
-    const negotiation = await trade(
-      [{ action: "counter", message: "$460." }],
-      [{ action: "counter", message: "$430." }],
-    );
+    const { negotiation } = await trade([{ action: "counter", message: "$460." }], [{ action: "counter", message: "$430." }]);
 
-    expect(negotiation.settlement).toBeUndefined();
-    expect(negotiation.end).toBe("max-turns");
-  });
-
-  test("records who closed even when the terms can't be verified", async () => {
-    const negotiation = await trade(
-      [{ action: "accept", message: "$450 works. Wednesday it is." }],
-      [{ action: "counter", message: "I can do $450, collecting Wednesday." }],
-    );
-
-    expect(negotiation.endedBy).toEqual({ speaker: "peer", action: "accept" });
-    expect(negotiation.settlement?.outcome).toBe("unconfirmed");
-  });
-});
-
-describe("onSettled", () => {
-  // The point of the hook: both parties compare the same pair of closing
-  // moves, so they reach the same verdict instead of each knowing only
-  // what it did itself.
-  test("both sides reach the same verdict on a conflicted close", async () => {
-    const sellerSaw: string[] = [];
-    const buyerSaw: string[] = [];
-
-    const server = serve(
-      new Agent({
-        ...seller,
-        negotiator: scripted([
-          { action: "counter", message: "The lowest I can do is $460." },
-          { action: "accept", message: "Deal — $450 it is." },
-        ]).negotiator,
-        onSettled: (settlement) => sellerSaw.push(settlement.outcome),
-      }),
-    );
-
-    try {
-      const agent = new Agent({
-        ...buyer,
-        negotiator: scripted([
-          { action: "propose", message: "I can offer $430." },
-          { action: "accept", message: "Approved — we have a deal at $460." },
-        ]).negotiator,
-        onSettled: (settlement) => buyerSaw.push(settlement.outcome),
-      });
-      await agent.negotiate(server.url, { maxTurns: 4 });
-    } finally {
-      server.stop();
-    }
-
-    expect(buyerSaw).toEqual(["conflict"]);
-    expect(sellerSaw).toEqual(["conflict"]);
+    expect({ settlement: negotiation.settlement, end: negotiation.end }).toEqual({ settlement: undefined, end: "max-turns" });
   });
 
   test("reports the direction each side played", async () => {
-    const directions: string[] = [];
-    const server = serve(
-      new Agent({
-        ...seller,
-        negotiator: scripted([{ action: "accept", message: "$450 works." }]).negotiator,
-        onSettled: (_settlement, direction) => directions.push(direction),
-      }),
+    const { directions } = await trade(
+      [{ action: "accept", message: "$450 works." }],
+      [{ action: "counter", message: "$450, Wednesday." }],
     );
 
-    try {
-      const agent = new Agent({
-        ...buyer,
-        negotiator: scripted([{ action: "counter", message: "$450, Wednesday." }]).negotiator,
-        onSettled: (_settlement, direction) => directions.push(direction),
-      });
-      await agent.negotiate(server.url, { maxTurns: 4 });
-    } finally {
-      server.stop();
-    }
-
-    expect(directions.sort()).toEqual(["inbound", "outbound"]);
-  });
-});
-
-describe("settlement is symmetric", () => {
-  /** Runs one exchange and returns the verdict each side reached. */
-  async function verdicts(
-    sellerScript: NegotiationDecision[],
-    buyerScript: NegotiationDecision[],
-  ): Promise<{ seller: string[]; buyer: string[] }> {
-    const sellerSaw: string[] = [];
-    const buyerSaw: string[] = [];
-
-    const server = serve(
-      new Agent({
-        ...seller,
-        negotiator: scripted(sellerScript).negotiator,
-        onSettled: (settlement) => sellerSaw.push(settlement.outcome),
-      }),
-    );
-
-    try {
-      const agent = new Agent({
-        ...buyer,
-        negotiator: scripted(buyerScript).negotiator,
-        onSettled: (settlement) => buyerSaw.push(settlement.outcome),
-      });
-      await agent.negotiate(server.url, { maxTurns: 3 });
-    } finally {
-      server.stop();
-    }
-
-    return { seller: sellerSaw, buyer: buyerSaw };
-  }
-
-  // Replying to someone's accept with a counter is not agreement, but
-  // accepting someone's standing offer is — so the verdict depends on who
-  // spoke second, which is reversed on the two sides.
-  test("closing into a counter reads as unanswered from both ends", async () => {
-    const seen = await verdicts(
-      [{ action: "counter", message: "Still $460, sorry." }],
-      [{ action: "accept", message: "We accept $460." }],
-    );
-
-    expect(seen.buyer).toEqual(["unanswered"]);
-    expect(seen.seller).toEqual(["unanswered"]);
-  });
-
-  test("a prose-only close reads the same from both ends", async () => {
-    const seen = await verdicts(
-      [{ action: "accept", message: "$450 works, Wednesday." }],
-      [{ action: "counter", message: "$450 and I collect Wednesday." }],
-    );
-
-    expect(seen.buyer).toEqual(["unconfirmed"]);
-    expect(seen.seller).toEqual(["unconfirmed"]);
-  });
-
-  test("a refusal of a standing offer reads as declined from both ends", async () => {
-    const seen = await verdicts(
-      [{ action: "reject", message: "$430 is too low. Passing." }],
-      [{ action: "counter", message: "Best I can do is $430." }],
-    );
-
-    expect(seen.buyer).toEqual(["declined"]);
-    expect(seen.seller).toEqual(["declined"]);
-  });
-});
-
-describe("the task state is the record", () => {
-  // A2A generates task ids server-side and only the server transitions
-  // state, so the counterparty's Task — not this agent's own action — says
-  // whether a negotiation ended.
-  test("a terminal state ends the exchange even when this side didn't close", async () => {
-    const server = serve(
-      new Agent({
-        ...seller,
-        negotiator: scripted([{ action: "reject", message: "Too low. Passing." }]).negotiator,
-      }),
-    );
-
-    try {
-      const agent = new Agent({
-        ...buyer,
-        negotiator: scripted([{ action: "counter", message: "$430 is my best." }]).negotiator,
-      });
-      const result = await agent.negotiate(server.url, { maxTurns: 4 });
-
-      expect(result.state).toBe("rejected");
-      expect(result.end).toBe("terminal");
-      expect(result.endedBy).toEqual({ speaker: "peer", action: "reject" });
-    } finally {
-      server.stop();
-    }
-  });
-
-  // The case that started this: `endedBy` says this side accepted, the
-  // record says the task was rejected. Neither is the verdict.
-  test("an accept against a rejected task is reported as what it is", async () => {
-    const server = serve(
-      new Agent({
-        ...seller,
-        negotiator: scripted([
-          { action: "counter", message: "The lowest I can do is $460." },
-          { action: "reject", message: "$450 is below my floor." },
-        ]).negotiator,
-      }),
-    );
-
-    try {
-      const agent = new Agent({
-        ...buyer,
-        negotiator: scripted([
-          { action: "propose", message: "I can offer $430." },
-          { action: "accept", message: "We have a deal at $460." },
-        ]).negotiator,
-      });
-      const result = await agent.negotiate(server.url, { maxTurns: 4 });
-
-      expect(result.state).toBe("rejected");
-      expect(result.endedBy).toEqual({ speaker: "self", action: "accept" });
-      expect(result.settlement?.outcome).toBe("declined");
-      expect(result.settlement?.mine.action).toBe("accept");
-    } finally {
-      server.stop();
-    }
-  });
-
-  test("stops taking turns once there is a verdict, without waiting for maxTurns", async () => {
-    const server = serve(
-      new Agent({
-        ...seller,
-        negotiator: scripted([{ action: "counter", message: "Still $460." }]).negotiator,
-      }),
-    );
-
-    try {
-      const agent = new Agent({
-        ...buyer,
-        negotiator: scripted([{ action: "accept", message: "We accept $460." }]).negotiator,
-      });
-      const result = await agent.negotiate(server.url, { maxTurns: 8 });
-
-      // One round trip: it accepted, so it doesn't carry on bargaining
-      // just because the counterparty's reply left the task open.
-      expect(result.transcript).toHaveLength(2);
-      expect(result.settlement?.outcome).toBe("unanswered");
-    } finally {
-      server.stop();
-    }
+    // Per side, not a sorted pair: a sorted pair passes with the sides swapped.
+    expect(directions).toEqual({ seller: ["inbound"], buyer: ["outbound"] });
   });
 });
 
 describe("structured terms", () => {
-  /** Runs one exchange and returns the settlement each side reached. */
-  async function trade(
-    sellerScript: NegotiationDecision[],
-    buyerScript: NegotiationDecision[],
-  ) {
-    const sellerSaw: Settlement[] = [];
-    const buyerSaw: Settlement[] = [];
-
-    const server = serve(
-      new Agent({
-        ...seller,
-        negotiator: scripted(sellerScript).negotiator,
-        onSettled: (settlement) => sellerSaw.push(settlement as Settlement),
-      }),
-    );
-
-    try {
-      const agent = new Agent({
-        ...buyer,
-        negotiator: scripted(buyerScript).negotiator,
-        onSettled: (settlement) => buyerSaw.push(settlement as Settlement),
-      });
-      const negotiation = await agent.negotiate(server.url, { maxTurns: 4 });
-      return { negotiation, sellerSaw, buyerSaw };
-    } finally {
-      server.stop();
-    }
-  }
-
   // What prose can never establish: acceptance naming the offer it binds
   // to, so the agreed terms are the offer's, not a re-statement of them.
   test("an accept that names the offer it takes is agreed by reference", async () => {
@@ -1092,9 +934,11 @@ describe("structured terms", () => {
       ],
     );
 
-    expect(negotiation.settlement?.outcome).toBe("agreed");
-    expect(negotiation.settlement?.basis).toBe("reference");
-    expect(negotiation.settlement?.terms).toEqual({ amount: 460, pickupDay: "Wednesday" });
+    expect({
+      outcome: negotiation.settlement?.outcome,
+      basis: negotiation.settlement?.basis,
+      terms: negotiation.settlement?.terms,
+    }).toEqual({ outcome: "agreed", basis: "reference", terms: { amount: 460, pickupDay: "Wednesday" } });
   });
 
   // The multi-field case: same price, different day. No amount comparison
@@ -1117,8 +961,10 @@ describe("structured terms", () => {
       ],
     );
 
-    expect(negotiation.settlement?.outcome).toBe("conflict");
-    expect(negotiation.settlement?.basis).toBe("terms");
+    expect({ outcome: negotiation.settlement?.outcome, basis: negotiation.settlement?.basis }).toEqual({
+      outcome: "conflict",
+      basis: "terms",
+    });
   });
 
   test("an accept naming an offer that was never made is a conflict", async () => {
@@ -1154,28 +1000,10 @@ describe("structured terms", () => {
       ],
     );
 
-    expect(buyerSaw.at(-1)?.outcome).toBe("agreed");
-    expect(sellerSaw.at(-1)?.outcome).toBe("agreed");
-    expect(sellerSaw.at(-1)?.terms).toEqual(buyerSaw.at(-1)?.terms ?? {});
-  });
-
-  // The prose fallback survives for counterparties that send no terms: it
-  // is weaker evidence, and labels itself as such.
-  test("prose-only closes naming different amounts still surface as a conflict", async () => {
-    const { negotiation } = await trade(
-      [
-        { action: "counter", message: "The lowest I can do is $460." },
-        { action: "accept", message: "Deal — $450 it is." },
-      ],
-      [
-        { action: "propose", message: "I can offer $430." },
-        { action: "accept", message: "Approved. We have a deal at $460." },
-      ],
-    );
-
-    expect(negotiation.settlement?.outcome).toBe("conflict");
-    expect(negotiation.settlement?.basis).toBe("prose");
-    expect(negotiation.settlement?.disputed).toEqual({ mine: [460], theirs: [450] });
+    expect([sellerSaw.at(-1), buyerSaw.at(-1)].map((s) => [s?.outcome, s?.terms])).toEqual([
+      ["agreed", { amount: 460, pickupDay: "Wednesday" }],
+      ["agreed", { amount: 460, pickupDay: "Wednesday" }],
+    ]);
   });
 });
 
@@ -1339,7 +1167,7 @@ describe("what the agent knows it negotiated", () => {
       server.stop();
     }
 
-    expect(responder.continueNegotiation(id)).rejects.toThrow(
+    await expect(responder.continueNegotiation(id)).rejects.toThrow(
       /opened by the counterparty/,
     );
   });
@@ -1410,7 +1238,7 @@ describe("interrupting a negotiation", () => {
       setTimeout(() => controller.abort(new Error("interrupted")), 100);
       const started = Date.now();
 
-      expect(
+      await expect(
         agent.negotiate(server.url, { discover: false, signal: controller.signal }),
       ).rejects.toThrow();
 
@@ -1431,7 +1259,7 @@ describe("interrupting a negotiation", () => {
         negotiator: scripted([{ action: "propose", message: "$430?" }]).negotiator,
       });
 
-      expect(
+      await expect(
         agent.negotiate(server.url, {
           discover: false,
           signal: AbortSignal.abort(new Error("already gone")),
@@ -1456,7 +1284,7 @@ describe("interrupting a negotiation", () => {
 
       // Exactly what the `negotiate` tool does per target, with the context the loop hands
       // its tools.
-      expect(
+      await expect(
         agent.openNegotiation(
           server.url,
           { discover: false },
@@ -1500,32 +1328,21 @@ describe("a settled negotiation stays settled", () => {
   // Reopening a closed exchange doesn't reopen the question, it destroys
   // the answer: the counterparty replies, the Task drops out of its
   // terminal state, and the agreement that was on the record is gone.
-  test("refuses another turn once the exchange has ended", async () => {
+  test("refuses another turn once the exchange has ended, and points at a new negotiation", async () => {
     const { agent, negotiations, first, stop } = await settleThenPush();
 
     try {
       expect(first.settlement?.outcome).toBe("agreed");
       expect(first.state).toBe("completed");
 
-      expect(agent.continueNegotiation(first.id, {}, { negotiations })).rejects.toThrow(
-        /already ended \(completed\)/,
+      // Refused, and pointed at the way forward.
+      await expect(agent.continueNegotiation(first.id, {}, { negotiations })).rejects.toThrow(
+        `Negotiation "${first.id}" already ended (completed). Taking another turn would erase what was settled — open a new negotiation if the terms need to change.`,
       );
 
       // The record still holds the deal.
       await Bun.sleep(20);
       expect(negotiations.get(first.id)?.task?.status.state).toBe("completed");
-    } finally {
-      stop();
-    }
-  });
-
-  test("points at opening a new negotiation instead", async () => {
-    const { agent, negotiations, first, stop } = await settleThenPush();
-
-    try {
-      expect(agent.continueNegotiation(first.id, {}, { negotiations })).rejects.toThrow(
-        /open a new negotiation/i,
-      );
     } finally {
       stop();
     }
@@ -1548,7 +1365,7 @@ describe("a settled negotiation stays settled", () => {
       const turn = await agent.openNegotiation(server.url, { discover: false }, { negotiations });
 
       expect(turn.state).toBe("rejected");
-      expect(agent.continueNegotiation(turn.id, {}, { negotiations })).rejects.toThrow(
+      await expect(agent.continueNegotiation(turn.id, {}, { negotiations })).rejects.toThrow(
         /already ended \(rejected\)/,
       );
     } finally {
@@ -1558,27 +1375,17 @@ describe("a settled negotiation stays settled", () => {
 });
 
 describe("knowing the date", () => {
-  const monday = new Date("2026-08-31T10:00:00Z");
-
   // Without a clock the agent can only repeat "next Tuesday", never
   // resolve it — and a relative date in the settled terms stops meaning
-  // the same thing a week later.
-  test("tells the model today's date", () => {
+  // the same thing a week later. (That an intent scope keeps the clock is
+  // pinned by the `for()` lens test.)
+  test("tells the model today's date and asks for absolute dates in the record", () => {
+    const monday = new Date("2026-08-31T10:00:00Z");
     const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator, now: () => monday });
 
-    expect(agent.instructions()).toContain("Today is Monday, 31 August 2026");
-  });
-
-  test("asks for absolute dates in the record", () => {
-    const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator, now: () => monday });
-
-    expect(agent.instructions()).toContain("record the actual date");
-  });
-
-  test("an intent scope keeps the clock", () => {
-    const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator, now: () => monday });
-
-    expect(agent.for("Buy a bike").instructions()).toContain("Monday, 31 August 2026");
+    expect(agent.instructions()).toContain(
+      'Today is Monday, 31 August 2026. When you agree a date, record the actual date rather than a relative one like "next Tuesday", so the terms still mean the same thing when someone reads them later.',
+    );
   });
 });
 
@@ -1641,18 +1448,17 @@ describe("a counterparty cannot reopen our settled negotiation", () => {
 describe("one clock", () => {
   // Two clocks in one agent disagree across midnight, and then the agent's
   // negotiation turns contradict what it told its own party.
-  test("the negotiator is built with the agent's clock", async () => {
-    const seen: string[] = [];
-    const agent = new Agent({
-      ...buyer,
-      apiKey: "test-key",
-      now: () => new Date("2026-08-31T23:30:00Z"),
-    });
+  test("the negotiator is built with the agent's clock", () => {
+    const now = () => new Date("2026-08-31T23:30:00Z");
+    const agent = new Agent({ ...buyer, apiKey: "test-key", now });
 
-    // The negotiator states the date in its own system prompt; both halves
-    // read the same instant, so both name the same day.
-    seen.push(agent.instructions());
-    expect(seen[0]).toContain("Monday, 31 August 2026");
+    // The negotiator states the date in its own system prompt; handing it
+    // the same function is what makes both halves read the same instant.
+    const negotiator = (agent as unknown as { negotiator: { now?: () => Date } }).negotiator;
+    expect({ shared: negotiator.now === now, told: agent.instructions().includes("Monday, 31 August 2026") }).toEqual({
+      shared: true,
+      told: true,
+    });
   });
 
   // Pins the timezone rather than inheriting the machine's, which is what

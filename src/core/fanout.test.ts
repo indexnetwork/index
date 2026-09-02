@@ -77,13 +77,29 @@ describe("runNegotiation()", () => {
   });
 
   test("a counterparty that cannot be reached is a failed event, not a throw", async () => {
-    const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator });
-    const event = await agent.runNegotiation("http://127.0.0.1:1", {}, { negotiations: new Map() });
+    // A server that is up but broken, so the error text is deterministic;
+    // a refused connection says different things on different machines.
+    const down = Bun.serve({ port: 0, fetch: () => new Response("down", { status: 500 }) });
+    const url = down.url.toString();
+    try {
+      const agent = new Agent({ ...buyer, negotiator: scripted([]).negotiator });
+      const negotiations = new Map<string, NegotiationSession>();
+      const event = await agent.runNegotiation(url, {}, { negotiations });
 
-    expect(event.kind).toBe("failed");
-    if (event.kind !== "failed") return;
-    expect(event.id).toStartWith("local:");
-    expect(event.error).not.toBe("");
+      expect({ event, left: negotiations.size }).toEqual({
+        event: {
+          kind: "failed",
+          id: expect.stringMatching(/^local:/),
+          url,
+          error: `Failed to fetch agent card from ${url}.well-known/agent-card.json (500)`,
+          turns: 0,
+        },
+        // Nothing to resume, so nothing is left behind.
+        left: 0,
+      });
+    } finally {
+      down.stop(true);
+    }
   });
 });
 
@@ -603,19 +619,26 @@ describe("negotiate / answer", () => {
         context,
       )) as string;
 
-      expect(second).toStartWith("Settled (2):");
       // Three sessions × 2 pre-resume calls (propose, ask) each = 6, then
-      // the resume drives one more decide per resumed session.
-      const after = client.calls.slice(6);
-      expect(after).toHaveLength(2);
-      expect(after.every((call) => call.state.party.objective.includes("ceiling is $460"))).toBe(true);
-
-      // c was never resumed: still parked, and no call for it ever saw
-      // the guidance meant for a and b.
-      expect(sessionFor("c").pending).toBeDefined();
-      const cCalls = client.calls.filter((call) => call.state.party.objective.includes("In this negotiation: c"));
-      expect(cCalls.length).toBeGreaterThan(0);
-      expect(cCalls.every((call) => !call.state.party.objective.includes("ceiling is $460"))).toBe(true);
+      // the answer drives one more decide per answered session — and only
+      // those. c was never answered: still parked, and no call for it ever
+      // saw the guidance meant for a and b.
+      const tagOf = (call: { state: { party: { objective: string } } }) =>
+        /In this negotiation: (\S+)/.exec(call.state.party.objective)?.[1];
+      const told = (call: { state: { party: { objective: string } } }) =>
+        call.state.party.objective.includes("ceiling is $460");
+      expect({
+        heading: second.split("\n")[0],
+        after: client.calls.slice(6).map((call) => [tagOf(call), told(call)]).sort(),
+        c: {
+          pending: sessionFor("c").pending,
+          told: client.calls.filter((call) => tagOf(call) === "c").map(told),
+        },
+      }).toEqual({
+        heading: "Settled (2):",
+        after: [["a", true], ["b", true]],
+        c: { pending: { question: "Ceiling?" }, told: [false, false] },
+      });
     } finally {
       a.stop();
       b.stop();
