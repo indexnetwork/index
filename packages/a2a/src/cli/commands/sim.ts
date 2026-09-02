@@ -1,8 +1,4 @@
-import type {
-  NegotiationDecision,
-  NegotiationMessage,
-  NegotiationTerms,
-} from "../../core/types.ts";
+import type { NegotiationDecision, NegotiationMessage, NegotiationTerms } from "../../core/types.ts";
 import { buildNegotiator, parseActions, parseTerminal } from "../options.ts";
 import { dim, green, printTurn, yellow } from "../ui.ts";
 

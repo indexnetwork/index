@@ -14,12 +14,7 @@
  *
  *   bun run examples/04-custom-strategy.ts
  */
-import {
-  A2ANegotiationClient,
-  createA2AHandler,
-  strategyWithTerms,
-  verifyAgreement,
-} from "../src/a2a/index.ts";
+import { A2ANegotiationClient, createA2AHandler, strategyWithTerms, verifyAgreement } from "../src/a2a/index.ts";
 import { Negotiator, type NegotiationTerms } from "../src/index.ts";
 import { type Action, ACTIONS, agentCard, logReply, logTurn, MAX_TURNS } from "./shared.ts";
 

@@ -1,53 +1,11 @@
-import {
-  Negotiator,
-  type ActionSpec,
-  type NegotiationDecision,
-} from "@indexnetwork/a2a/negotiator";
-import {
-  A2ANegotiationClient,
-  createA2AHandler,
-  fetchAgentCard,
-  defaultStrategy,
-  isTerminalTaskState,
-  messageToDecision,
-  strategyWithTerms,
-  TaskStore,
-  verifyAgreement,
-  type A2AArtifact,
-  type A2ACredentials,
-  type A2AIdentity,
-  type A2AMessage,
-  type A2ATask,
-  type AgreementBasis,
-  type AgreementResult,
-  type DeadlineOptions,
-  type AgentCardSkill,
-  type DecisionStrategy,
-  type EvaluateHook,
-} from "@indexnetwork/a2a";
+import { Negotiator, type ActionSpec, type NegotiationDecision } from "@indexnetwork/a2a/negotiator";
+import { A2ANegotiationClient, createA2AHandler, fetchAgentCard, defaultStrategy, isTerminalTaskState, messageToDecision, strategyWithTerms, TaskStore, verifyAgreement, type A2AArtifact, type A2ACredentials, type A2AIdentity, type A2AMessage, type A2ATask, type AgreementBasis, type AgreementResult, type DeadlineOptions, type AgentCardSkill, type DecisionStrategy, type EvaluateHook } from "@indexnetwork/a2a";
 
 import { runLoop } from "./loop.ts";
 import { MemoryMessageStore, MemoryNegotiationStore } from "./sessions.ts";
 import { ModelClient, type ModelMessage } from "./model.ts";
 import { defaultTools, NEGOTIATION_TOOLS, type Tool, type ToolContext } from "./tools.ts";
-import type {
-  AgentIdentity,
-  AgentTurn,
-  Direction,
-  IdentifiedAgentCard,
-  Intent,
-  MessageStore,
-  Negotiation,
-  NegotiationEvent,
-  NegotiationSession,
-  NegotiationStore,
-  NegotiationTurn,
-  Settlement,
-  SettlementOutcome,
-  RunResult,
-  Speaker,
-  Step,
-} from "./types.ts";
+import type { AgentIdentity, AgentTurn, Direction, IdentifiedAgentCard, Intent, MessageStore, Negotiation, NegotiationEvent, NegotiationSession, NegotiationStore, NegotiationTurn, Settlement, SettlementOutcome, RunResult, Speaker, Step } from "./types.ts";
 
 /** The negotiation vocabulary an `Agent` uses when you don't give it one. */
 export const DEFAULT_ACTIONS = ["propose", "counter", "accept", "reject"] as const;

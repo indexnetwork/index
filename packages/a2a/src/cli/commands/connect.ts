@@ -1,9 +1,4 @@
-import {
-  A2ANegotiationClient,
-  fetchAgentCard,
-  strategyWithTerms,
-  verifyAgreement,
-} from "../../a2a/index.ts";
+import { A2ANegotiationClient, fetchAgentCard, strategyWithTerms, verifyAgreement } from "../../a2a/index.ts";
 import { bearerCredentials } from "../../a2a/client/auth.ts";
 import type { NegotiationDecision } from "../../core/types.ts";
 import { buildNegotiator, parseActions } from "../options.ts";

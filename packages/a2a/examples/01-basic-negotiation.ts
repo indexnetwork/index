@@ -10,12 +10,7 @@
  *
  *   OPENROUTER_API_KEY=... bun run examples/01-basic-negotiation.ts
  */
-import {
-  A2ANegotiationClient,
-  createA2AHandler,
-  strategyWithTerms,
-  verifyAgreement,
-} from "../src/a2a/index.ts";
+import { A2ANegotiationClient, createA2AHandler, strategyWithTerms, verifyAgreement } from "../src/a2a/index.ts";
 import { Negotiator } from "../src/index.ts";
 import { type Action, ACTIONS, agentCard, logReply, logTurn, MAX_TURNS } from "./shared.ts";
 

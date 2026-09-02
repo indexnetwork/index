@@ -8,7 +8,9 @@
     "packages/protocol",
     "packages/cli",
     "packages/claude-plugin",
-    "packages/hermes-plugin"
+    "packages/hermes-plugin",
+    "packages/a2a",
+    "packages/agent"
   ],
   "scripts": {
     "dev": "bash scripts/dev.sh",

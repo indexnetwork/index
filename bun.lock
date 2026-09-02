@@ -63,6 +63,31 @@
         "vitest": "^4.0.18",
       },
     },
+    "packages/a2a": {
+      "name": "@indexnetwork/a2a",
+      "version": "0.1.0",
+      "bin": {
+        "index-a2a": "./dist/cli/index.js",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.14",
+        "typescript": "5.9.3",
+      },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
+    },
+    "packages/agent": {
+      "name": "@indexnetwork/agent",
+      "version": "0.1.0",
+      "dependencies": {
+        "@indexnetwork/a2a": "file:../a2a",
+      },
+      "devDependencies": {
+        "@types/bun": "1.3.14",
+        "typescript": "5.9.3",
+      },
+    },
     "packages/claude-plugin": {
       "name": "@indexnetwork/claude-plugin",
       "version": "0.3.1",
@@ -406,6 +431,10 @@
     "@humanwhocodes/module-importer": ["@humanwhocodes/module-importer@1.0.1", "", {}, "sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA=="],
 
     "@humanwhocodes/retry": ["@humanwhocodes/retry@0.4.3", "", {}, "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ=="],
+
+    "@indexnetwork/a2a": ["@indexnetwork/a2a@workspace:packages/a2a"],
+
+    "@indexnetwork/agent": ["@indexnetwork/agent@workspace:packages/agent"],
 
     "@indexnetwork/api": ["@indexnetwork/api@workspace:services/api"],
 

@@ -1,11 +1,6 @@
 import type { DeadlineOptions } from "./deadline.ts";
 import { OpenRouterClient, type OpenRouterMessage } from "./openrouter-client.ts";
-import type {
-  NegotiationDecision,
-  NegotiationMessage,
-  NegotiationState,
-  NegotiationTerms,
-} from "./types.ts";
+import type { NegotiationDecision, NegotiationMessage, NegotiationState, NegotiationTerms } from "./types.ts";
 
 export interface NegotiatorOptions {
   apiKey?: string;
