@@ -20,6 +20,40 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 41.0.0 - 2026-09-02
+
+### Removed
+
+- **BREAKING: the in-process personal agent is gone.** `PersonalAgentGraph` and
+  everything it needed — its judgment, prompt, act types, activity port, match
+  refs and the `personal-agent.e2e` spec — are deleted. Index no longer runs an
+  agent; a host that wants one builds it as a client over REST/MCP.
+- **BREAKING: `ChatGraph` and the whole chat capability are gone.**
+  `ChatGraphFactory`, `ChatAgent`, the personas (`SIGNAL_PERSONA`,
+  `ONBOARDING_PERSONA`, `withPersona`), the streamer, suggester, summarizer,
+  title generator, interrupt classifier, question-dedup, chat state/tools/utils
+  and the chat-streaming types no longer exist. There is no H2A chat runtime in
+  the protocol.
+- **BREAKING: `NegotiationGraph` and the negotiation MCP tools are gone.**
+  `NegotiationGraphFactory`, the turn author, the round-reflect enqueue, the
+  `IndexNegotiator` agent, the insight generator and summarizer, and the
+  `list_negotiations` / `get_negotiation` / `respond_to_negotiation` /
+  `answer_pending_question` tools are all deleted. Negotiation turn shapes and
+  the `NegotiationGraphDatabase` port remain, because the host still persists
+  and reads negotiation conversations.
+- **BREAKING: host ports for the deleted runtimes are gone** —
+  `AgentDispatcher`, `ChatSessionReader`, `ChatSummaryReader`,
+  `ChatMessageWriter`, `NegotiationSummaryReader`, `MintConnectLink`, and
+  `AgentRepositoryPort.findAuthorizedAgents`.
+- Specs are down to three: `capabilities/tests/intents`,
+  `internal/opportunities/tests/opportunity.graph`, and
+  `internal/premises/tests/premise.decomposer`.
+
+**Kept:** intents, premises, networks, opportunities (including
+`OpportunityGraphFactory` discovery into candidates), radar, HyDE, the agent
+registry tools, the owner-verdict tools, and the MCP server shell over what
+remains.
+
 ## 40.0.0 - 2026-08-29
 
 ### Changed

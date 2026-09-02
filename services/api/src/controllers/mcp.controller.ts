@@ -1,8 +1,7 @@
 /**
  * MCP HTTP Handler — wires the MCP server factory to the Streamable HTTP transport.
  * This is the MCP composition root: its request-local adapter/service wiring
- * lives here. The process-wide PersonalAgent and Negotiation graphs come from
- * the host graph composition root.
+ * lives here.
  */
 
 import { jwtVerify, createRemoteJWKSet } from 'jose';
@@ -14,27 +13,18 @@ import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, 
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
-import { chatSessionAdapter } from '../adapters/chat-session.adapter';
-import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
-import { ChatMessageWriterAdapter } from '../adapters/chat-message-writer.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { checkMcpRateLimit, checkMcpHttpRateLimit } from '../lib/limiter/mcp';
 import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
-import { chatSessionService } from '../services/chat.service';
-import { ChatSummaryService } from '../services/chat-summary.service';
-import { NegotiationSummaryService } from '../services/negotiation-summary.service';
-import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
-import { matchesReadyBestEffort, negotiationGraph } from '../lib/negotiation/negotiation-graph';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
-import { isHermesNegotiatorAudience } from '../lib/agent/hermes-credential';
 
-import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, ChatGraphFactory, PremiseGraphFactory, createPersonalAgentPersona, PERSONAL_AGENT_PERSONA_ID, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, PremiseGraphFactory, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
@@ -54,11 +44,6 @@ type McpToolDeps = ToolDeps & {
 // MCP COMPOSITION ROOT (was protocol-init.ts)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
-const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
-const negotiationSummaryService = new NegotiationSummaryService();
-const agentDispatcher = new AgentDispatcherImpl(agentService);
-
 const apiBaseUrl = resolveProtocolBaseUrl();
 
 const protocolDeps = {
@@ -69,20 +54,8 @@ const protocolDeps = {
   hydeCache: hydeCacheAdapter,
   intentFollowUp: intentIndexing,
   intentProposalStore: intentProposalDatabaseAdapter,
-  chatSession: chatSessionAdapter,
-  chatSummary: chatSummaryService,
-  negotiationSummary: negotiationSummaryService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
-  // The one fully-wired composition (reflectEnqueue included) — chat/MCP
-  // tool.factory.ts must use this instead of building its own reflect-less
-  // instance, or the all-paused -> reflect trigger is silently lost on
-  // every negotiation opened through this surface.
-  negotiationGraph,
-  // The same hand-off discovery uses. `tool.factory` builds its own
-  // OpportunityGraph from this field; unset, its matches_ready edge ends at
-  // END and a chat-run discovery persists matches nobody is ever woken for.
-  matchesReady: matchesReadyBestEffort,
   createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
   createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
@@ -90,43 +63,17 @@ const protocolDeps = {
   agentDatabase: agentDatabaseAdapter,
   grantDefaultSystemPermissions: (userId: string) =>
     agentService.grantDefaultSystemPermissions(userId),
-  agentDispatcher,
-  chatMessageWriter: new ChatMessageWriterAdapter(chatSessionService),
   deliveryLedger: opportunityDeliveryService,
   // IND-593: authoritative owner-proof verifier/consumer for opportunity state
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
-  // route; threaded into chat tools by the protocol chat factory.
+  // route.
   opportunityOwnerApproval: getOpportunityOwnerApprovalAuthority(),
   frontendUrl: process.env.WEB_APP_URL ?? 'https://index.network',
   apiBaseUrl,
-  // #1471: host bridge for the negotiator persona's `reject_opportunity` /
-  // `accept_opportunity` tools — the owner's VERDICT lane, which had no lever
-  // in chat before. Registered only in intent-pinned negotiator sessions; the
-  // orchestrator registry never sees it.
+  // #1471: host bridge for the `reject_opportunity` / `accept_opportunity`
+  // tools — the owner's VERDICT lane.
   negotiatorVerdictTools: negotiatorVerdictToolsHost,
 };
-
-const chatSessionReader = {
-  getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
-  // Intent-pinned DMs are excluded: a signal's DM transcript belongs to its
-  // signal surface, never to a generic MCP session reader.
-  listSessions: (userId: string, limit?: number) =>
-    conversationDatabaseAdapter.listChatSessionSummaries(userId, limit ?? 25, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
-  getSession: (userId: string, sessionId: string, messageLimit?: number) =>
-    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit ?? 50, PERSONAL_AGENT_PERSONA_ID, { excludeIntentPinned: true }),
-};
-/**
- * Composition-root chat factory. Signal is the product's primary chat persona,
- * so it is the one this factory carries; every other persona (onboarding,
- * negotiator) is derived from it via `withPersona`, sharing the
- * persona-neutral runtime and all injected deps. There is no default persona —
- * the retired orchestrator used to be it.
- */
-// The runtime has no default persona; this base factory just carries the deps.
-// Every chat surface derives a sibling factory bound to the client's own agent
-// identity (`ChatSessionService.get*GraphFactory`), so the nameless persona
-// here never drives a turn.
-export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps, createPersonalAgentPersona());
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)
@@ -157,8 +104,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
-    undefined, undefined, matchesReadyBestEffort,
-    protocolDeps.agentDispatcher,
   ).createGraph();
   const networks = new Networks({ database, indexer: intents });
   const indexGraph = networks.createGraph();
@@ -301,17 +246,9 @@ export function resolveMcpApiKeyPrincipal(
   enrollmentCapable?: boolean;
   isDeliveryAgent?: boolean;
 } | null {
-  // Check the raw metadata before the canonical MCP schema parses (and strips)
-  // unknown fields. Audience is deliberately outside MCP's capability schema.
-  if (isHermesNegotiatorAudience(row.metadata)) {
-    throw new Error('Hermes negotiator credentials are not accepted by MCP');
-  }
   const metadata = parseApiKeyMetadata(row.metadata);
 
-  // Negotiation-only Hermes credentials are REST principals and have no MCP
-  // capability profile. Reject them before owner identity resolution can
-  // collapse the credential into a broad owner principal.
-  // Agent keys must additionally carry BOTH principal columns (the adapter
+  // Agent keys must carry BOTH principal columns (the adapter
   // mints them with referenceId === userId); a missing side signals a
   // cross-wired/tampered agent key. Divergence between populated columns is
   // rejected for every key by resolveApiKeyUserId below.
@@ -371,8 +308,8 @@ export async function finalizeMcpIdentity(
   port: TelegramBindingPort = defaultTelegramBindingPort,
 ): Promise<ResolvedMcpIdentity> {
   // Telegram identity binding: any client may send the
-  // x-index-telegram-username/-handle headers (the Hermes plugin sends one
-  // whenever INDEX_TELEGRAM_USERNAME is set), so header presence is only a
+  // x-index-telegram-username/-handle headers (a plugin sends one whenever
+  // INDEX_TELEGRAM_USERNAME is set), so header presence is only a
   // request to bind, never a claim of identity. Binding is additive and
   // optional: a handle we cannot attribute to the authenticated user is
   // skipped, not rejected.
@@ -620,19 +557,12 @@ function createMcpServerInstance(): McpServer {
     cache: protocolDeps.cache,
     enricher: protocolDeps.enricher,
     negotiationDatabase: protocolDeps.negotiationDatabase,
-    negotiationGraph,
-    matchesReady: protocolDeps.matchesReady,
-    agentDispatcher: protocolDeps.agentDispatcher,
     // #1471: owner-verdict host behind reject/accept_opportunity (the Radar
     // Skip/Start-Chat path). Registered on the MCP surface only; the
     // capability matrix confines verdicts to session-authenticated owners.
     negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
-    chatSession: protocolDeps.chatSession,
-    chatSummary: protocolDeps.chatSummary,
-    negotiationSummary: protocolDeps.negotiationSummary,
-    chatMessageWriter: protocolDeps.chatMessageWriter,
     deliveryLedger: protocolDeps.deliveryLedger,
     opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,
     reportToolError: (error, report) => captureAppException(error, {

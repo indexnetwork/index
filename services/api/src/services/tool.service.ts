@@ -1,17 +1,15 @@
 /**
  * Tool Service — owns graph compilation, tool deps assembly, and context resolution.
- * Provides direct HTTP invocation of chat tools without LangChain wrapping.
+ * Provides direct HTTP invocation of protocol tools without LangChain wrapping.
  */
 
 import { z } from 'zod';
 
-import { matchesReadyBestEffort } from '../lib/negotiation/negotiation-graph';
 import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
-import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentIndexing } from '../lib/intent/indexing';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
@@ -63,10 +61,6 @@ export class ToolService {
       cache: this.cache,
       enricher: { enrichUserProfile },
       negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
-      // Discovery run from a tool must wake the signal's agent exactly as the
-      // background queue does. Without it the tool-built opportunity graph's
-      // matches_ready edge ends at END: matches persist and nobody is woken.
-      matchesReady: matchesReadyBestEffort,
       // IND-593: direct authenticated-owner tool calls (REST tool controller /
       // CLI) traverse the owner-approval boundary via host attestation. Own
       // authority instance over the store shared with the MCP composition.
@@ -230,22 +224,10 @@ export class ToolService {
       new LensInferrer(),
       new HydeGenerator(),
     ).createGraph();
-    // No-op dispatcher: ToolService is used for non-chat tool invocations.
-    // Only the opportunity graph below still needs one (hasExternalAgent,
-    // the unlimited-maxTurns rule) — the negotiation graph no longer takes a
-    // dispatcher at all (external-agent turn dispatch is offline, #1494
-    // round-3 Option A).
-    const noOpDispatcher: AgentDispatcher = {
-      hasExternalAgent: async () => false,
-    };
     const opportunityGraph = new OpportunityGraphFactory(
       database,
       this.embedder,
       compiledHydeGraph,
-      undefined,
-      undefined,
-      matchesReadyBestEffort,
-      noOpDispatcher,
     ).createGraph();
     const networks = new Networks({ database, indexer: intents });
     const indexGraph = networks.createGraph();

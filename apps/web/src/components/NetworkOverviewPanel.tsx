@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useAIChat } from '@/contexts/AIChatContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useNetworks } from '@/contexts/APIContext';
@@ -26,7 +25,6 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
   const navigate = useNavigate();
   const { removeIndex } = useNetworksState();
   const { success, error } = useNotifications();
-  const { clearChat, resolveIntentSession } = useAIChat();
   const { setSelectedNetworkIds } = useNetworkFilter();
   const api = useAuthenticatedAPI();
   const indexesService = useNetworks();
@@ -69,18 +67,10 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
     loadOverview();
   }, [index.id, indexesService]);
 
-  const handleOpenIntentChat = useCallback(async (intent: { id: string; payload: string; summary?: string | null }) => {
-    try {
-      clearChat({ abortStream: false });
-      setSelectedNetworkIds([]);
-      const label = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
-      const sessionId = await resolveIntentSession({ id: intent.id, label });
-      if (!sessionId) return;
-      navigate(`/d/${sessionId}`);
-    } catch {
-      error('Failed to open signal chat');
-    }
-  }, [clearChat, setSelectedNetworkIds, resolveIntentSession, navigate, error]);
+  const handleOpenIntent = useCallback((intent: { id: string }) => {
+    setSelectedNetworkIds([]);
+    navigate(`/i/${intent.id}`);
+  }, [setSelectedNetworkIds, navigate]);
 
   const handleLeaveNetwork = async () => {
     try {
@@ -136,7 +126,7 @@ export default function NetworkOverviewPanel({ index, onLeft, onLeaveRequest, on
             intents={intents}
             isLoading={overviewLoading}
             emptyMessage="You haven't shared any signals in this network yet"
-            onIntentClick={handleOpenIntentChat}
+            onIntentClick={handleOpenIntent}
           />
         </div>
       </div>

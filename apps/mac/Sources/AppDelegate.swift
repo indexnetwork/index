@@ -21,11 +21,6 @@ document.addEventListener('mousedown', function (e) {
 // write network.index.system6 API_URL https://…`) or Info.plist, so production
 // URLs are switchable without recompiling. Defaults target a local dev backend.
 // ---------------------------------------------------------------------------
-struct HermesRuntimeProgress: Encodable {
-    let requestId: String
-    let event: String
-}
-
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     var window: NSWindow!
     var webView: WKWebView!
@@ -39,8 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
         return Data(bytes)
     }
-    private let hermesRuntime = HermesRuntimeManager()
-    private let hermesRuntimeQueue = DispatchQueue(label: "network.index.hermes-runtime", qos: .userInitiated)
     /// Exact file URL authorized to invoke the credential-bearing runtime bridge.
     /// Set before navigation starts and never derived from page-controlled data.
     private var trustedBundledDocumentURL: URL?
@@ -110,7 +103,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // window.INDEX_NATIVE (injected at document start from CredentialStore).
         config.userContentController.add(self, name: "indexAuth")
         config.userContentController.add(self, name: "indexAPI")
-        config.userContentController.add(self, name: "hermesRuntime")
         config.userContentController.addUserScript(WKUserScript(
             source: nativeInjectionScript(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
@@ -415,10 +407,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // while the button stays down, follow the cursor and reposition the window.
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
-        if message.name == "hermesRuntime" {
-            handleHermesRuntimeMessage(message)
-            return
-        }
         if message.name == "indexAPI" {
             handleNativeAPIMessage(message)
             return
@@ -432,20 +420,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             let action = body?["action"] as? String
             if action == "login" { startLogin(admittedGeneration: admittedGeneration) }
             else if action == "completeLogout" {
-                logout(
-                    ownerId: body?["ownerId"] as? String,
-                    admittedGeneration: admittedGeneration
-                )
+                logout(admittedGeneration: admittedGeneration)
             }
             else if action == "detectHarnesses" { detectHarnesses(admittedGeneration: admittedGeneration) }
-            else if action == "setupHermes" {
-                if let key = body?["value"] as? String {
-                    setupHermes(apiKey: key, admittedGeneration: admittedGeneration)
-                }
-            }
-            else if action == "teardownHermes" {
-                teardownHermes(admittedGeneration: admittedGeneration)
-            }
             else if action == "setAgentFace" {
                 // The page is loaded from a file:// URL, where WebKit gives the
                 // document an opaque origin and localStorage is not persisted.
@@ -499,89 +476,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
 
-    /// Write ~/.hermes/.env and install/enable the Index plugin off the main
-    /// thread, then hand the result to the page via window.__indexHermesSetup.
-    private func setupHermes(apiKey: String, admittedGeneration: UInt64) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = HermesSetup.run(apiKey: apiKey)
-            let json = (try? JSONSerialization.data(withJSONObject: result))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
-            DispatchQueue.main.async {
-                guard let self,
-                      self.webViewReady,
-                      admittedGeneration == self.trustedDocumentGeneration,
-                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
-                self.webView.evaluateJavaScript(
-                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
-                    completionHandler: nil)
-            }
-        }
-    }
-
-    /// Uninstall the hermes plugin and scrub its env off the main thread,
-    /// then hand the result to the page via window.__indexHermesSetup.
-    private func teardownHermes(admittedGeneration: UInt64) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = HermesSetup.teardown()
-            let json = (try? JSONSerialization.data(withJSONObject: result))
-                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
-            DispatchQueue.main.async {
-                guard let self,
-                      self.webViewReady,
-                      admittedGeneration == self.trustedDocumentGeneration,
-                      self.webView.url?.standardizedFileURL == self.trustedBundledDocumentURL else { return }
-                self.webView.evaluateJavaScript(
-                    "if (typeof window.__indexHermesSetup === 'function') { window.__indexHermesSetup(\(json)); }",
-                    completionHandler: nil)
-            }
-        }
-    }
-
-    /// Decode on the WebKit callback thread, execute all filesystem/Process
-    /// work on one serial background queue, then deliver the correlated result
-    /// back on the main thread. The decoded bootstrap credential never enters
-    /// the callback result or an error/log message.
-    private func handleHermesRuntimeMessage(_ message: WKScriptMessage) {
-        // This trust check deliberately precedes even reading/decoding the body:
-        // subframes and any replacement document get no bridge work or reply.
-        guard isTrustedBridgeMessage(message) else { return }
-        let admittedGeneration = trustedDocumentGeneration
-        let body = message.body as? [String: Any]
-        let requestId = body?["requestId"] as? String ?? ""
-        guard let body,
-              JSONSerialization.isValidJSONObject(body),
-              let data = try? JSONSerialization.data(withJSONObject: body),
-              let request = try? JSONDecoder().decode(HermesRuntimeRequest.self, from: data) else {
-            emitHermesRuntimeResult(HermesRuntimeResult(
-                requestId: requestId,
-                ok: false,
-                stage: "decode",
-                state: nil,
-                errorCode: "invalid_request",
-                retryable: false
-            ), admittedGeneration: admittedGeneration)
-            return
-        }
-
-        hermesRuntimeQueue.async { [weak self] in
-            guard let self else { return }
-            // Credential-free dequeue acknowledgement. It is emitted from
-            // inside the serial queue immediately before handle so JavaScript
-            // can distinguish bounded queue wait from bounded execution.
-            self.emitHermesRuntimeProgress(
-                HermesRuntimeProgress(requestId: request.requestId, event: "started"),
-                admittedGeneration: admittedGeneration
-            )
-            let result = self.hermesRuntime.handle(request)
-            DispatchQueue.main.async { [weak self] in
-                self?.emitHermesRuntimeResult(
-                    result,
-                    admittedGeneration: admittedGeneration
-                )
-            }
-        }
-    }
-
     private func isTrustedBridgeMessage(_ message: WKScriptMessage) -> Bool {
         guard webViewReady,
               message.frameInfo.isMainFrame,
@@ -594,45 +488,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return true
     }
 
-    private func emitHermesRuntimeProgress(
-        _ progress: HermesRuntimeProgress,
-        admittedGeneration: UInt64
-    ) {
-        let json = (try? JSONEncoder().encode(progress))
-            .flatMap { String(data: $0, encoding: .utf8) }
-            ?? "{\"requestId\":\"\",\"event\":\"invalid\"}"
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  self.webViewReady,
-                  admittedGeneration == self.trustedDocumentGeneration,
-                  let trustedBundledDocumentURL = self.trustedBundledDocumentURL,
-                  self.webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }
-            self.webView.evaluateJavaScript(
-                "if (typeof window.__indexHermesRuntimeProgress === 'function') { window.__indexHermesRuntimeProgress(\(json)); }",
-                completionHandler: nil
-            )
-        }
-    }
-
-    private func emitHermesRuntimeResult(
-        _ result: HermesRuntimeResult,
-        admittedGeneration: UInt64
-    ) {
-        // A trusted request may finish after navigation. Readiness plus the
-        // captured epoch distinguishes a same-URL replacement from its sender.
-        guard webViewReady,
-              admittedGeneration == trustedDocumentGeneration,
-              let trustedBundledDocumentURL,
-              webView.url?.standardizedFileURL == trustedBundledDocumentURL else { return }
-        let json = (try? JSONEncoder().encode(result))
-            .flatMap { String(data: $0, encoding: .utf8) }
-            ?? "{\"requestId\":\"\",\"ok\":false,\"stage\":\"encode\",\"errorCode\":\"internal_failure\",\"retryable\":true}"
-        webView.evaluateJavaScript(
-            "if (typeof window.__indexHermesRuntimeResult === 'function') { window.__indexHermesRuntimeResult(\(json)); }",
-            completionHandler: nil
-        )
-    }
-
     // MARK: - Desktop notifications
     //
     // Delivery is native (UNUserNotificationCenter); everything else — which
@@ -642,7 +497,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // `imageUrl` an https avatar attached to the toast (fail-open on any error).
 
     private func postNotification(_ body: [String: Any]) {
-        // Hermes-style background gating: never toast over the app itself.
+        // Never toast over the app itself.
         guard !NSApp.isActive else { return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
@@ -874,15 +729,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         notifyAuthChanged(authenticated: true, admittedGeneration: admittedGeneration)
     }
 
-    private func logout(ownerId: String?, admittedGeneration: UInt64) {
-        // Simple connect path does not require a Hermes saga journal. Evidence
-        // is optional and only finishes a leftover Personal Agent setup row.
-        let evidence = ownerId.flatMap { hermesRuntime.logoutEvidence(ownerId: $0) }
+    private func logout(admittedGeneration: UInt64) {
         guard currentOwnerCredential() != nil else { return }
         notifyAuthChanged(authenticated: false, admittedGeneration: admittedGeneration)
         guard let bridge = nativeAPIBridge, let record = currentOwnerCredential() else { return }
         bridge.beginQuarantine { [weak self] in
-            self?.revokeAndDelete(record: record, evidence: evidence)
+            self?.revokeAndDelete(record: record)
         }
     }
 
@@ -892,7 +744,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         catch { return nil }
     }
 
-    private func revokeAndDelete(record: OwnerCredentialRecord, evidence: HermesSagaOperationRecord?) {
+    private func revokeAndDelete(record: OwnerCredentialRecord) {
         // Ordinary Better Auth API-key revocation - the same endpoint the CLI
         // logout uses. Local deletion waits for server denial so a lost
         // response never strands a still-live key.
@@ -904,10 +756,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             guard let self, case .success = revokeResult else { return }
             self.verifyCredentialDenied(record.credential) { denied in
                 guard denied, let store = self.ownerCredentialStore else { return }
-                do {
-                    try store.deleteAndVerify()
-                    if let evidence { self.hermesRuntime.finishLogoutEvidence(evidence) }
-                } catch { return }
+                do { try store.deleteAndVerify() } catch { return }
             }
         }
     }

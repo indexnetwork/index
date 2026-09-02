@@ -1,6 +1,6 @@
 {
   "name": "index-network",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Index Network - find the right people and let them find you.",
   "author": {
     "name": "Index Network",
@@ -22,7 +22,7 @@
     "websiteURL": "https://index.network",
     "defaultPrompt": [
       "Use Index Network to find relevant people for this signal.",
-      "Use Index Network to review pending negotiations."
+      "Use Index Network to see what is on my radar."
     ],
     "brandColor": "#111827"
   }

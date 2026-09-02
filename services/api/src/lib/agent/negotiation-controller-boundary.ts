@@ -1,11 +1,3 @@
-// The hermetic negotiation-pickup controller boundary
-// (`pickupNegotiationAtControllerBoundary`, `NegotiationPickupPort`,
-// `NegotiationPickupBoundaryResult`) was retired whole-cloth by the
-// negotiation-graph rewrite (#1494, docs/plans/2026-08-23-personal-agent-
-// and-negotiation-graphs.md): a negotiation can no longer be claimed under
-// the new working-only lifecycle, so the pickup route behind this seam is
-// deleted (agent.controller.ts).
-
 /** Preserve the historical test-message ordering: authorize, fetch, heartbeat. */
 export async function pickupTestMessageAtControllerBoundary<Result>(input: {
   agentId: string;

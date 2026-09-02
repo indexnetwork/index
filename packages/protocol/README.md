@@ -395,7 +395,6 @@ The reference implementation exposes the protocol to agents through a Model Cont
 flowchart LR
     ExternalAgent[External agent] -->|MCP tools| McpServer[Index Network MCP server]
     FirstPartyAgent[First-party agent] -->|typed runtime| Runtime[Protocol runtime]
-    PersonalAgent[Personal agent] -->|MCP tools or REST polling| McpServer
 
     McpServer --> Identity[Identity resolution]
     Identity --> AgentGate[Agent registration and scope]
@@ -403,7 +402,7 @@ flowchart LR
     ScopedDeps --> Runtime
 
     Runtime --> Tools[Protocol tools]
-    Tools --> Graphs[Discovery, context, signal, negotiation graphs]
+    Tools --> Graphs[Discovery, context, signal graphs]
     Graphs --> Results[Bounded results]
     Results --> Runtime
     Runtime --> ParticipantOutput[Participant-facing output rules]

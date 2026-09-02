@@ -248,10 +248,6 @@ final class NativeAPIRequestBridge {
     // strings are admitted only on routes whose wrappers need them.
     static let allowedHTTPRoutes: [(String, String)] = [
         ("GET", #"^/auth/me$"#), ("PATCH", #"^/auth/profile/update$"#),
-        ("GET", #"^/agent-runtime(?:\?installationId=[A-Za-z0-9_-]+)?$"#),
-        ("PUT", #"^/agent-runtime$"#),
-        ("POST", #"^/agent-runtime/(?:hermes/prepare|rollback|reconcile-index)$"#),
-        ("DELETE", #"^/agent-runtime/hermes/[A-Za-z0-9_-]+$"#),
         ("GET", #"^/networks$"#), ("POST", #"^/networks$"#),
         ("GET", #"^/networks/discovery/public(?:\?.*)?$"#),
         ("GET", #"^/networks/[^/?]+/(?:overview|my-intents)$"#),
@@ -289,7 +285,7 @@ final class NativeAPIRequestBridge {
         "data:image/webp;base64": ("image/webp", "webp"),
     ]
     static let allowedSSERoutes: Set<String> = [
-        "GET /notifications/stream", "GET /conversations/stream", "POST /chat/stream",
+        "GET /notifications/stream", "GET /conversations/stream",
     ]
     static let allowedMCPTools: Set<String> = ["create_intent", "register_agent"]
     static let allowedAgentPermissionActions: Set<String> = [
@@ -605,27 +601,6 @@ final class NativeAPIRequestBridge {
                     && (item["socials"] == nil || validSocials(item["socials"]))
                     && (item["notificationPreferences"] == nil || exactTypedObject(item["notificationPreferences"], optional: ["connectionUpdates", "weeklyNewsletter"]) { prefs in optionalBool(prefs, "connectionUpdates") && optionalBool(prefs, "weeklyNewsletter") })
             }
-        case "/agent-runtime":
-            return exactTypedObject(body, required: ["runtime"], optional: ["installationId", "executorId", "setupAttemptId"]) { item in
-                enumString(item["runtime"], ["index", "hermes"])
-                    && ["installationId", "executorId", "setupAttemptId"].allSatisfy { item[$0] == nil || uuidIdentifier(item[$0]) }
-                    && (item["runtime"] == .string("index")
-                        ? Set(item.keys) == ["runtime"]
-                        : ["installationId", "executorId", "setupAttemptId"].allSatisfy { item[$0] != nil })
-            }
-        case "/agent-runtime/hermes/prepare":
-            return exactTypedObject(body, required: ["installationId", "setupAttemptId"]) { uuidIdentifier($0["installationId"]) && uuidIdentifier($0["setupAttemptId"]) }
-        case "/agent-runtime/rollback":
-            return exactTypedObject(body, required: ["setupAttemptId"]) { uuidIdentifier($0["setupAttemptId"]) }
-        case "/agent-runtime/reconcile-index":
-            return exactTypedObject(
-                body,
-                required: ["agentId", "installationId", "setupAttemptId"]
-            ) {
-                uuidIdentifier($0["agentId"])
-                    && uuidIdentifier($0["installationId"])
-                    && uuidIdentifier($0["setupAttemptId"])
-            }
         case "/networks":
             return exactTypedObject(body, required: ["title"], optional: ["prompt", "imageUrl", "joinPolicy"]) { item in
                 boundedString(item["title"], maximum: 256) && optionalString(item, "prompt", maximum: 65_536)
@@ -727,15 +702,6 @@ final class NativeAPIRequestBridge {
         if method == "GET" && ["/notifications/stream", "/conversations/stream"].contains(path) {
             return body == nil
         }
-        if method == "POST" && path == "/chat/stream" {
-            return exactTypedObject(body, required: ["message"], optional: ["sessionId", "scopeType", "scopeId"]) { item in
-                boundedString(item["message"], maximum: 65_536)
-                    && (item["sessionId"] == nil || identifier(item["sessionId"]))
-                    && (item["scopeType"] == nil || enumString(item["scopeType"], ["network", "intent"]))
-                    && (item["scopeId"] == nil || identifier(item["scopeId"]))
-                    && ((item["scopeType"] == nil) == (item["scopeId"] == nil))
-            }
-        }
         return false
     }
 
@@ -780,7 +746,6 @@ final class NativeAPIRequestBridge {
               items.allSatisfy({ ($0.value?.count ?? 0) <= 1_024 }) else { return false }
         let allowed: Set<String>
         switch route {
-        case "/agent-runtime": allowed = ["installationId"]
         case "/users/batch": allowed = ["ids"]
         case "/networks/discovery/public": allowed = ["page", "limit"]
         case let value where value.range(of: #"^/users/[^/?]+/negotiations$"#, options: .regularExpression) != nil:

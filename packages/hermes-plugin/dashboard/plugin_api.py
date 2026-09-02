@@ -28,7 +28,6 @@ from urllib.parse import quote, urlsplit
 
 _DASHBOARD_DIR = Path(__file__).resolve().parent
 _PLUGIN_ROOT = _DASHBOARD_DIR.parent
-_MODE_PATH = _PLUGIN_ROOT / "_mode.py"
 _TOOLS_PATH = _PLUGIN_ROOT / "tools.py"
 
 try:
@@ -122,21 +121,6 @@ _DESKTOP_ASSETS = {
     "loading2-white.webp": "image/webp",
     "loading2.png": "image/png",
 }
-
-
-def _load_mode_module():
-    spec = importlib.util.spec_from_file_location("index_network_hermes_dashboard_mode", _MODE_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Could not load Index Network mode parser")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-@full_router.get("/mode")
-def dashboard_mode() -> dict[str, Any]:
-    """Confirm that the independently mounted dashboard runtime is full-only."""
-    return {"success": True, "mode": "full"}
 
 
 @full_router.get("/assets/{name}")
@@ -2306,10 +2290,4 @@ async def notifications_snapshot() -> Any:
     return await asyncio.to_thread(_notification_snapshot_request)
 
 
-try:
-    _dashboard_runtime_mode = _load_mode_module().resolve_plugin_mode()
-except Exception:  # noqa: BLE001 - parser/load failures must not mount broad routes.
-    _dashboard_runtime_mode = "negotiator"
-
-if _dashboard_runtime_mode == "full":
-    router.include_router(full_router)
+router.include_router(full_router)

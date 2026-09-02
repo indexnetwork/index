@@ -48,9 +48,9 @@ npm install @indexnetwork/protocol
 
 The package reads `OPENROUTER_API_KEY` (required), `CHAT_MODEL`, and `CHAT_REASONING_EFFORT` from environment variables. No startup call is needed.
 
-Environment variables are the supported way to configure models. `CHAT_MODEL` and `CHAT_REASONING_EFFORT` (`minimal | low | medium | high | xhigh`) drive the built-in chat runtime (`ChatGraphFactory` / `ChatAgent`); every other protocol agent — evaluators, generators, miners — reads `OPENROUTER_API_KEY` from the environment.
+Environment variables are the supported way to configure models. `CHAT_MODEL` and `CHAT_REASONING_EFFORT` (`minimal | low | medium | high | xhigh`) drive the default model; every protocol agent — evaluators, generators, miners — reads `OPENROUTER_API_KEY` from the environment.
 
-There is a per-instance `modelConfig` (chat model, reasoning effort, `apiKey`, `baseURL`) that `ChatAgent` reads off the resolved tool context, but it lives on the internal composition types (`ToolContext` / `ProtocolDeps`), not on `ToolDeps`, and those types are not exported. **Programmatic model override is therefore not part of the public contract in 15.0.0** — use the environment variables. If you need a typed override path, open an issue rather than reaching through a deep import.
+Programmatic model override is not part of the public contract — use the environment variables. If you need a typed override path, open an issue rather than reaching through a deep import.
 
 ### 2. Implement the adapters
 
@@ -67,22 +67,16 @@ The package defines interfaces — your application provides the concrete implem
 | `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
 | `IntegrationAdapter` | OAuth and external tool actions |
 | `IntentFollowUp` | Post-persist intent follow-up (HyDE, resume discovery) |
-| `ChatSessionReader` | Load conversation history |
 | `ProfileEnricher` | Enrich profiles from external sources |
-| `NegotiationGraphDatabase` | Negotiation state persistence |
+| `NegotiationGraphDatabase` | Negotiation and conversation persistence |
 
 **Optional** (enable specific capabilities; omit to run without that feature):
 
 | Interface | Responsibility |
 |---|---|
 | `AgentDatabase` | Agent registry CRUD (agents, transports, permissions) |
-| `AgentDispatcher` | Resolves and invokes personal agents during negotiation turns — required to register the negotiation tools |
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
 | `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
-| `MintConnectLink` | Mints short connect links for opportunity accepts |
-| `ChatSummaryReader` | Read-through chat-session digest |
-| `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |
-| `NegotiationSummaryReader` | Negotiation-digest summarization (falls back to deterministic digests) |
 
 All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
 
@@ -135,13 +129,12 @@ const result = await invokeToolRuntime({
 
 The dependency object carries the required adapters listed above; optional
 capabilities default to a degraded-but-functional mode when omitted (for
-example, without `agentDispatcher` the negotiation tools are not registered).
+example, without `agentDatabase` the agent registry tools are not registered).
 
 The per-capability tool factories behind these entry points
-(`createChatTools`, `createIntentTools`, `createNegotiationTools`, …) are
-package-internal as of 15.0.0 and are not part of the supported surface.
-`createEnrichmentTools` remains exported for hosts that run enrichment on its
-own worker, separately from the chat runtime.
+(`createIntentTools`, `createOpportunityTools`, …) are package-internal and are
+not part of the supported surface. `createEnrichmentTools` remains exported for
+hosts that run enrichment on its own worker.
 
 ## Graphs
 
@@ -149,10 +142,8 @@ For direct graph invocation (bypassing the tool layer), a `*GraphFactory` class 
 
 ```typescript
 import {
-  ChatGraphFactory,
   OpportunityGraphFactory,
   PremiseGraphFactory,
-  NegotiationGraphFactory,
   HydeGraphFactory,
   RadarGraphFactory,
 } from "@indexnetwork/protocol";
@@ -167,16 +158,10 @@ The intent and community graphs are the exceptions: they are reached through the
 
 | Factory | Workflow |
 |---|---|
-| `ChatGraphFactory` | ReAct chat loop — LLM calls tools, responds to the user |
-| `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, emit candidates. Creates no opportunities — the host database must implement `upsertDiscoveryMatchCandidates` and `listPendingCandidatesForIntent`, and the PersonalAgent's opportunity port must implement `createAndOpen`, which is what turns a candidate into a row at kickoff. |
+| `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, emit candidates. Creates no opportunities — the host database must implement `upsertDiscoveryMatchCandidates` and `listPendingCandidatesForIntent`; candidates become opportunities only through the host's own REST/MCP writes. |
 | `PremiseGraphFactory` | Decompose and index a user's premises |
-| `NegotiationGraphFactory` | Multi-turn bilateral negotiation flows |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
-
-### Persisted chat personas
-
-`ChatGraphFactory.withPersona()` keeps the runtime neutral while selecting an exported persona configuration. `SIGNAL_PERSONA` and `ONBOARDING_PERSONA` each own an exact positive tool allowlist; shared tools added later remain unavailable until reviewed. `ONBOARDING_PERSONA` reuses Signal's proposal-only, live-membership-narrowed `create_intent` contract and otherwise exposes only privacy consent, approved self-context preview/confirmation, guided questions, and validated completion. Hosts must persist the exported persona ID on session creation and treat it as authoritative on follow-ups.
 
 ## Intents
 
@@ -291,17 +276,7 @@ Per-tool timeout overrides use `MCP_TOOL_TIMEOUT_<TOOL_NAME>_MS`. Tool outputs a
 
 ### `MCP_INSTRUCTIONS`
 
-The instructions string is the single canonical behavioral contract for every runtime that connects to Index Network — voice, entity model, discovery-first rule, output rules, and the **Negotiation turn mode** block that tells a silent subagent how to handle a live negotiation turn when its session key is prefixed `index:negotiation:`. Plugin skills and bootstrap scripts do **not** redefine this guidance; they defer to whatever ships in `MCP_INSTRUCTIONS`.
-
-### Negotiation-facing tools
-
-Personal agents participate in bilateral negotiation via a small set of MCP tools:
-
-| Tool | Purpose |
-|---|---|
-| `get_negotiation` | Fetch the full turn history and assessment seed for a negotiation |
-| `list_negotiations` | List current and concluded agent negotiations with lifecycle-explicit opportunity and owner-action narration |
-| `respond_to_negotiation` | Submit `outreach`, `counter`, `question`, or an authored pause; terminal outcomes are resolved only by the signal's PersonalAgent |
+The instructions string is the single canonical behavioral contract for every runtime that connects to Index Network — voice, entity model, discovery-first rule, and output rules. Plugin skills and bootstrap scripts do **not** redefine this guidance; they defer to whatever ships in `MCP_INSTRUCTIONS`.
 
 ## Publishing
 

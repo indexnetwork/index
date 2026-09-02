@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { Check, CheckCircle2, Clock, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -131,34 +131,8 @@ interface OpportunityCardProps {
   showScore?: boolean;
   /** Current status fetched from server (overrides card.status if provided). */
   currentStatus?: string;
-  /** Owner-seat inspector for a negotiating opportunity, if task state is known. */
-  negotiationInspectorHref?: string;
-  /** Current owner-relative task state, used for truthful responsibility copy. */
-  negotiationState?: {
-    state: string;
-    pause: { reason: string; by: "yours" | "theirs" } | null;
-  };
-  /** Intent Radar only: pending may be acted on after its negotiation completes. */
+  /** Intent Radar only: pending may be acted on once it is the owner's move. */
   pendingActionable?: boolean;
-}
-
-function negotiationStatusCopy(negotiation: OpportunityCardProps["negotiationState"]): string {
-  if (!negotiation) return "This negotiation is in progress.";
-  if (negotiation.state !== "paused" || !negotiation.pause) {
-    return "Your PersonalAgent is handling this negotiation.";
-  }
-  if (negotiation.pause.by === "theirs") {
-    if (negotiation.pause.reason === "ready_for_verdict") return "The other side is deciding.";
-    if (negotiation.pause.reason === "needs_principal") return "The other side is waiting on its principal.";
-    return "Waiting for the other side.";
-  }
-  if (negotiation.pause.reason === "needs_principal") {
-    return "Your PersonalAgent needs your input. Questions appear in this intent's DM.";
-  }
-  if (negotiation.pause.reason === "ready_for_verdict") {
-    return "Your PersonalAgent is deciding what to do next.";
-  }
-  return "Your PersonalAgent is handling this negotiation.";
 }
 
 /**
@@ -211,8 +185,6 @@ export default function OpportunityCard({
   isLoading = false,
   showScore = false,
   currentStatus,
-  negotiationInspectorHref,
-  negotiationState,
   pendingActionable = true,
 }: OpportunityCardProps) {
   const navigate = useNavigate();
@@ -383,20 +355,6 @@ export default function OpportunityCard({
           </div>
         )}
       </div>
-
-      {effectiveStatus === "negotiating" && (
-        <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">
-          <p>{negotiationStatusCopy(negotiationState)}</p>
-          {negotiationInspectorHref && (
-            <Link
-              to={negotiationInspectorHref}
-              className="mt-1.5 inline-block font-medium text-[#35799C] hover:underline"
-            >
-              Inspect negotiation seat
-            </Link>
-          )}
-        </div>
-      )}
 
       {/* Main Text (Personalized Summary) — shimmer while the presenter text is
           still being generated. */}

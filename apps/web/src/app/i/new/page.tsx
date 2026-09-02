@@ -4,7 +4,6 @@ import { Navigate, useNavigate } from "react-router";
 
 import { FastSignalIntake } from "@/components/signals/FastSignalIntake";
 import { type GuidedSignalConfirmation } from "@/components/signals/GuidedSignalIntake";
-import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { apiClient } from "@/lib/api";
@@ -13,7 +12,6 @@ export default function NewSignalPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthContext();
   const { addNotification } = useNotifications();
-  const { clearChat } = useAIChat();
 
   const handleConfirmed = useCallback(async ({
     intentId,
@@ -29,12 +27,11 @@ export default function NewSignalPage() {
       duration: 10000,
       onAction: async () => {
         await apiClient.patch(`/intents/${intentId}/archive`);
-        clearChat();
         navigate("/i/new");
       },
     });
     navigate(`/i/${intentId}`);
-  }, [addNotification, clearChat, navigate]);
+  }, [addNotification, navigate]);
 
   if (!isAuthenticated) return <Navigate to="/" replace />;
 

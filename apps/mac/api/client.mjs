@@ -290,33 +290,6 @@ export function createIndexApiClient(options = {}) {
   return {
     request,
 
-    // Owner-control runtime binding. These methods deliberately use the Mac's
-    // unbound owner credential; agent-bound Hermes credentials are rejected by
-    // the server guard and never flow back through this client after prepare.
-    getRuntimeBinding: (installationId, options = {}) => request(
-      `/agent-runtime${toQueryString({ installationId })}`,
-      options,
-    ),
-    prepareHermesRuntime: (installationId, setupAttemptId, options = {}) => request(
-      '/agent-runtime/hermes/prepare',
-      { ...options, method: 'POST', body: { installationId, setupAttemptId } },
-    ),
-    setRuntimeBinding: (body, options = {}) => request(
-      '/agent-runtime',
-      { ...options, method: 'PUT', body },
-    ),
-    compareAndSelectIndex: (expected, options = {}) => request(
-      '/agent-runtime/reconcile-index',
-      { ...options, method: 'POST', body: expected },
-    ),
-    rollbackHermesRuntime: (setupAttemptId, options = {}) => request(
-      '/agent-runtime/rollback',
-      { ...options, method: 'POST', body: { setupAttemptId } },
-    ),
-    disconnectHermesRuntime: (installationId, options = {}) => request(
-      `/agent-runtime/hermes/${encodeURIComponent(installationId)}`,
-      { ...options, method: 'DELETE' },
-    ),
     auth: {
       me: (options = {}) => request('/auth/me', options),
       updateProfile: (body, options = {}) => request('/auth/profile/update', { ...options, method: 'PATCH', body }),

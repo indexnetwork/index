@@ -446,8 +446,8 @@ function Agents({ onClose }) {
     busy.current.add(id);
     const done = () => busy.current.delete(id);
     if (row.live) {
-      // Toggling off deregisters: delete the agent server-side (which also
-      // revokes its api keys) and, for hermes, uninstall the local plugin.
+      // Toggling off deregisters: delete the agent server-side, which also
+      // revokes its api keys.
       window.IndexApp.getClient().agents.remove(row.id)
         .then(() => {
           setRegistered(r => {
@@ -456,11 +456,6 @@ function Agents({ onClose }) {
             return next;
           });
           if (negotiator === row.id) setNegotiator("index");
-          if (row.name.toLowerCase() === "hermes") {
-            return window.IndexApp.teardownHermes().then((r) => {
-              if (!(r && r.ok)) alert(`deregistered, but plugin removal failed: ${(r && r.error) || "unknown error"}`);
-            });
-          }
         })
         .catch((err) => alert(`could not deregister ${row.name}: ${err && err.message || err}`))
         .then(done, done);
@@ -481,14 +476,6 @@ function Agents({ onClose }) {
         window.IndexApp.getClient().agents.createToken(agent.id).then((res) => {
           const key = res && res.token && res.token.key;
           if (!key) throw new Error("no key in bootstrap response");
-          if (row.id === "local-hermes") {
-            // Hand the key to the Swift shell: it writes ~/.hermes/.env and
-            // installs/enables the indexnetwork/hermes-plugin.
-            return window.IndexApp.setupHermes(key).then((r) => {
-              if (r && r.ok) alert("Hermes agent registered and its Index plugin is configured.");
-              else alert(`Hermes agent registered, but plugin setup failed: ${(r && r.error) || "unknown error"}`);
-            });
-          }
           alert(`${row.name} registered. its api key (shown once):\n\n${key}`);
         })
       )

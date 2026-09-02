@@ -54,9 +54,6 @@ FORWARDED_MCP_TOOLS = (
     "create_intent_index",
     "read_intent_indexes",
     "search_intents",
-    "list_negotiations",
-    "get_negotiation",
-    "respond_to_negotiation",
     "read_networks",
     "read_network_memberships",
     "update_network",
@@ -95,9 +92,9 @@ def forwarded_mcp_schema(tool_name: str) -> dict:
 INDEX_AGENT_ME = {
     "name": "index_agent_me",
     "description": (
-        "Return the authenticated Index Network personal agent bound to the "
-        "configured API key. Use this before autonomous negotiation when "
-        "you need the agent id or want to verify the connection is agent-bound."
+        "Return the authenticated Index Network agent bound to the configured "
+        "API key. Use this when you need the agent id or want to verify the "
+        "connection is agent-bound."
     ),
     "parameters": {
         "type": "object",
@@ -131,28 +128,3 @@ INDEX_OPEN_APP = {
     },
 }
 
-INDEX_RESPOND_NEGOTIATION = {
-    "name": "index_respond_negotiation",
-    "description": (
-        "Submit one non-terminal negotiation turn through Index MCP. Use exactly one "
-        "of verb or pauseReason. Continuing verbs are outreach (opening turn only), "
-        "counter, and question, each requiring message and reasoning. Pauses are "
-        "needs_principal (question required) or ready_for_verdict (recommendation "
-        "pending/reject and reasoning required). Never accept, decline, or withdraw: "
-        "to recommend rejection, pause ready_for_verdict with recommendation=reject."
-    ),
-    "parameters": {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "negotiationId": {"type": "string", "description": "Negotiation task ID."},
-            "verb": {"type": "string", "enum": ["outreach", "counter", "question"]},
-            "message": {"type": "string", "description": "Required with verb."},
-            "reasoning": {"type": "string", "description": "Required with verb and ready_for_verdict."},
-            "pauseReason": {"type": "string", "enum": ["needs_principal", "ready_for_verdict"]},
-            "question": {"type": "string", "description": "Required for needs_principal."},
-            "recommendation": {"type": "string", "enum": ["pending", "reject"], "description": "Required for ready_for_verdict."},
-        },
-        "required": ["negotiationId"],
-    },
-}

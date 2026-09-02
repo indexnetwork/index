@@ -61,12 +61,12 @@ export interface AssignmentResult {
  * }
  */
 export const IntentNetworkGraphState = Annotation.Root({
-  // --- Core Inputs (from ChatGraph via ToolContext) ---
+  // --- Core Inputs (from ToolContext) ---
 
   /** User performing the action. Always required. */
   userId: Annotation<string>,
 
-  /** Target network for assign/read-by-network. From ChatGraph or tool arg. */
+  /** Target network for assign/read-by-network. From ToolContext or tool arg. */
   networkId: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,

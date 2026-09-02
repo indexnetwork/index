@@ -4,15 +4,11 @@
  *
  * Sources:
  *   packages/protocol/skills/claude-plugin/index-orchestrator.template.md
- *   packages/protocol/skills/claude-plugin/index-negotiator.template.md
  *   packages/protocol/skills/hermes-plugin/index-orchestrator.template.md
- *   packages/protocol/skills/hermes-plugin/index-negotiator.template.md
  *
  * Destinations:
  *   - packages/claude-plugin/skills/index-orchestrator/SKILL.md
- *   - packages/claude-plugin/skills/index-negotiator/SKILL.md
  *   - packages/hermes-plugin/skills/index-orchestrator/SKILL.md
- *   - packages/hermes-plugin/skills/index-negotiator/SKILL.md
  *
  * The build fails loudly if any {{TOKEN}} remains unreplaced in the output.
  */
@@ -33,36 +29,20 @@ const CLAUDE_ORCHESTRATOR_TEMPLATE_PATH = join(
   REPO_ROOT,
   'packages/protocol/skills/claude-plugin/index-orchestrator.template.md',
 );
-const CLAUDE_NEGOTIATOR_TEMPLATE_PATH = join(
-  REPO_ROOT,
-  'packages/protocol/skills/claude-plugin/index-negotiator.template.md',
-);
 const HERMES_ORCHESTRATOR_TEMPLATE_PATH = join(
   REPO_ROOT,
   'packages/protocol/skills/hermes-plugin/index-orchestrator.template.md',
 );
-const HERMES_NEGOTIATOR_TEMPLATE_PATH = join(
-  REPO_ROOT,
-  'packages/protocol/skills/hermes-plugin/index-negotiator.template.md',
-);
 
-export function resolveClaudePluginOutputs(repoRoot = REPO_ROOT): {
-  orchestrator: string[];
-  negotiator: string[];
-} {
+export function resolveClaudePluginOutputs(repoRoot = REPO_ROOT): { orchestrator: string[] } {
   return {
     orchestrator: [join(repoRoot, 'packages/claude-plugin/skills/index-orchestrator/SKILL.md')],
-    negotiator: [join(repoRoot, 'packages/claude-plugin/skills/index-negotiator/SKILL.md')],
   };
 }
 
-export function resolveHermesPluginOutputs(repoRoot = REPO_ROOT): {
-  orchestrator: string[];
-  negotiator: string[];
-} {
+export function resolveHermesPluginOutputs(repoRoot = REPO_ROOT): { orchestrator: string[] } {
   return {
     orchestrator: [join(repoRoot, 'packages/hermes-plugin/skills/index-orchestrator/SKILL.md')],
-    negotiator: [join(repoRoot, 'packages/hermes-plugin/skills/index-negotiator/SKILL.md')],
   };
 }
 
@@ -99,9 +79,7 @@ if (import.meta.main) {
 
   const claudeOutputs = resolveClaudePluginOutputs();
   build(CLAUDE_ORCHESTRATOR_TEMPLATE_PATH, claudeOutputs.orchestrator, partials);
-  build(CLAUDE_NEGOTIATOR_TEMPLATE_PATH, claudeOutputs.negotiator, partials);
 
   const hermesOutputs = resolveHermesPluginOutputs();
   build(HERMES_ORCHESTRATOR_TEMPLATE_PATH, hermesOutputs.orchestrator, partials);
-  build(HERMES_NEGOTIATOR_TEMPLATE_PATH, hermesOutputs.negotiator, partials);
 }

@@ -27,7 +27,7 @@ function SignalAction({ label, active = false, onClick, danger = false }) {
   );
 }
 
-function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, setDraft, sendDraft, negotiatingPeople = [], onRespondPerson, paused = false, onTogglePause, onArchive }) {
+function ConversationPane({ profile, conversation, onAnswer, onDismiss, negotiatingPeople = [], onRespondPerson, paused = false, onTogglePause, onArchive }) {
   const scrollRef = useRef(null);
   // Archiving takes the signal off the hub and there's no way back to it from
   // here, so the first click arms the button and the second one commits. It
@@ -222,40 +222,6 @@ function ConversationPane({ profile, conversation, onAnswer, onDismiss, draft, s
         }}>↓ {unread} new</button>
       )}
 
-      {/* Composer. White-on-white with a hairline rule made this read as more
-          conversation rather than as the place you type, so the band gets the
-          quiet fill and the 2px rule the app uses for major divisions, and the
-          field itself gets the sunken well from the settings inputs. Grey
-          around, white sunken inside, the input is the only editable thing
-          here, so it should be the only thing that looks editable. */}
-      <div style={{
-        borderTop:"2px solid #000",
-        padding:"10px 14px",
-        background:"#F2F0EC",
-      }}>
-        <div style={{
-          display:"flex", gap:10, alignItems:"center",
-          border:"1px solid #000", background:"#fff",
-          boxShadow:"inset 1px 1px 0 var(--ink-3), inset -1px -1px 0 #FFF",
-          padding:"7px 11px",
-        }}>
-          <span style={{ fontFamily:"var(--mac-mono)", fontSize:13, color:"#000" }}>›</span>
-          <input
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") sendDraft(); }}
-            placeholder="message index, or just let it keep working"
-            style={{
-              flex:1, background:"transparent", border:"none", outline:"none",
-              color:"#000", fontFamily:"var(--mac-sans)", fontSize:13,
-              padding:"2px 0",
-            }}
-          />
-          {draft.trim() && (
-            <span style={{ fontFamily:"var(--mac-mono)", fontSize:11, color:"var(--ink-2)" }}>↵</span>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

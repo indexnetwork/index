@@ -20,8 +20,8 @@ packages/protocol/src/
 ```
 
 The existing domain-first implementation tree now lives under `internal/`.
-`Intents`, `Networks`, `Contexts`, `Opportunities`, `Negotiations`,
-`Agents`, and `Discovery` are executable capability modules; consumers continue
+`Intents`, `Networks`, `Contexts`, `Opportunities`, `Agents`, and `Discovery`
+are executable capability modules; consumers continue
 to import only from the package root. `platform/`
 defines TypeScript ports for a host to implement; it contains no adapter,
 controller, web, database, queue, cache, or dependency-wiring implementation.
@@ -36,7 +36,6 @@ output with `setLoggerFactory()`. The package does not implement
 
 | Graph | File | Purpose |
 |-------|------|---------|
-| Chat | `internal/chat/chat.graph.ts` | ReAct agent loop — LLM calls tools, responds to user |
 | Intent | `internal/intents/graph/intent.graph.ts` | Clarify, infer, verify felicity conditions, reconcile, and persist intents |
 | Premise | `internal/premises/premise.graph.ts` | Decompose self-descriptive input into atomic premises, classify/score felicity, index + assign to networks |
 | Opportunity | `internal/opportunities/opportunity.graph.ts` | HyDE-based discovery: search, evaluate (valency), rank, persist |
@@ -45,20 +44,11 @@ output with `setLoggerFactory()`. The package does not implement
 | Network Membership | `internal/networks/membership.graph.ts` | Manage network member join/leave |
 | Intent Indexer | `internal/networks/indexer.graph.ts` | Evaluate and assign/unassign intents to indexes |
 | Radar | `internal/opportunities/radar/radar.graph.ts` | Build the radar view: flat presenter-card list, optionally intent-scoped |
-| Maintenance | `internal/maintenance/maintenance.graph.ts` | Periodic maintenance tasks (radar health, opportunity expiration) |
-| Negotiation | `internal/negotiations/negotiation.graph.ts` | Multi-turn bilateral negotiation flows |
 
 ## Agents
 
 | Agent | File | Used By |
 |-------|------|---------|
-| ChatAgent | `internal/chat/chat.agent.ts` | Chat graph — orchestrates ReAct loop and tool calls |
-| Chat Prompt | `internal/chat/chat.prompt.ts` | Chat graph — system prompt and context builder |
-| Chat Prompt Modules | `internal/chat/chat.prompt.modules.ts` | Chat graph — composable prompt modules |
-| Title Generator | `internal/chat/chat.title.generator.ts` | Chat service — generates conversation titles |
-| Chat Suggester | `internal/chat/chat.suggester.ts` | Chat — generates proactive reply suggestions |
-| Chat Summarizer | `internal/chat/chat.summarizer.ts` | Chat — produces a read-through digest of a chat session |
-| Chat Interrupt Classifier | `internal/chat/chat.interrupt.classifier.ts` | Chat — classifies whether a new message interrupts an in-flight turn |
 | Intent Clarifier | `internal/intents/verification/intent.clarifier.ts` | Intent tools — checks specificity (entropy threshold) before persisting |
 | Intent Inferrer | `internal/intents/inference/intent.inferrer.ts` | Intent graph — extracts structured intents from free text |
 | Intent Reconciler | `internal/intents/inference/intent.reconciler.ts` | Intent graph — determines create/update/expire action (Donnellan's distinction) |
@@ -73,11 +63,8 @@ output with `setLoggerFactory()`. The package does not implement
 | Lens Inferrer | `internal/discovery/lens.inferrer.ts` | HyDE graph — infers 1–N free-text search lenses; the `profiles` compatibility hint resolves to premise retrieval, alongside intent and premise targets |
 | Opportunity Evaluator | `internal/opportunities/opportunity.evaluator.ts` | Opportunity graph — scores matches; assigns valency role (Agent/Patient/Peer) |
 | Opportunity Presenter | `internal/opportunities/opportunity.presenter.ts` | Home graph, opportunity tools — generates role-appropriate descriptions (Grice's Maxim of Relation) |
-| Index Negotiator | `internal/negotiations/negotiation.agent.ts` | Negotiation graph — system AI that drafts/evaluates a turn when no personal agent responds |
-| Negotiation Insights Generator | `internal/negotiations/insight.generator.ts` | Negotiation graph — synthesizes negotiation session insights |
-| Negotiation Summarizer | `internal/negotiations/negotiation.summarizer.ts` | Negotiation — builds the discovery negotiation digest (deterministic fallback when LLM unavailable) |
 
-## Tools (Chat)
+## Tools
 
 Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled per session by `internal/shared/agent/tool.factory.ts`.
 
@@ -89,13 +76,10 @@ Tools are registered in `internal/shared/agent/tool.registry.ts` and assembled p
 | `internal/networks/network.tools.ts` | `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership` |
 | `internal/opportunities/opportunity.tools.ts` | `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`¹ |
 | `internal/agents/agent.tools.ts` | `read_own_agent`, `register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission` |
-| `internal/negotiations/negotiation.tools.ts`² | `list_negotiations`, `get_negotiation`, `respond_to_negotiation` |
-| `internal/questions/question.tools.ts` | `read_pending_questions` |
-| `internal/shared/agent/utility.tools.ts` | `scrape_url`³, `read_docs` |
+| `internal/shared/agent/utility.tools.ts` | `scrape_url`², `read_docs` |
 
-¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — it is filtered out of regular chat sessions and only reachable over MCP.
-² Negotiation tools are only registered when an `agentDispatcher` is provided.
-³ Chat/REST-only: `scrape_url` is omitted from the MCP registry entirely
+¹ `confirm_opportunity_delivery` is an OpenClaw delivery-ledger write — only reachable over MCP.
+² REST-only: `scrape_url` is omitted from the MCP registry entirely
   (IND-596/597). MCP does not gate on web/CLI onboarding. On the MCP surface,
   agent administration follows the IND-599 split:
   registered agents get `read_own_agent` only; session humans get the owned
@@ -124,87 +108,17 @@ The system models human collaboration through a linguistic and information-theor
 
 The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `internal/opportunities/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
 
-## How a User Message Flows Through the System
+## How a Tool Call Flows Through the System
 
-When a user sends a message, everything starts at the Chat Graph. The agent decides which tools to call, and those tools invoke subgraphs.
-
-### High-Level Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant ChatGraph as Chat Graph
-    participant Agent as ChatAgent
-    participant Tools as Chat Tools
-    participant SubGraphs as SubGraphs
-
-    User->>ChatGraph: message + userId + indexId?
-    ChatGraph->>ChatGraph: Load session context + truncate tokens
-    ChatGraph->>Agent: ChatAgent.create(context)
-    Note over Agent: Resolve user name/email, index name from DB
-    Note over Agent: Build system prompt with session context
-    loop ReAct Loop (max 12 iterations)
-        Agent->>Agent: LLM decides: call tools or respond?
-        alt Tool calls
-            Agent->>Tools: Execute tool(s)
-            Tools->>SubGraphs: Invoke subgraph if needed
-            SubGraphs-->>Tools: Result
-            Tools-->>Agent: Tool result string
-        else Final response
-            Agent-->>ChatGraph: responseText + messages
-        end
-    end
-    ChatGraph-->>User: Stream response via SSE
-```
-
-### What Happens Inside the Agent Loop
-
-The ChatAgent is a ReAct-style loop. Each iteration, the LLM sees the full conversation (system prompt + messages + tool results) and either makes tool calls or produces a final response.
-
-```mermaid
-flowchart TD
-    Start([User message arrives]) --> Init[ChatAgent.create]
-    Init --> |"Resolve user/index from DB\nBuild system prompt\nCompile all subgraphs\nBind tools to LLM"| Loop
-
-    Loop[LLM Iteration] --> Decision{Tool calls\nor response?}
-    Decision --> |Tool calls| Execute[Execute tools in parallel]
-    Execute --> |Add ToolMessage results| Loop
-    Decision --> |Response text| Done([Return to user])
-
-    Loop --> |Iteration 8+| Nudge[Inject nudge: wrap up soon]
-    Nudge --> Decision
-    Loop --> |Iteration 12| ForceExit([Force exit])
-```
-
-### Example: "Set up my profile"
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Agent as ChatAgent
-    participant RP as research_profile
-    participant PL as Parallel (enricher)
-
-    User->>Agent: "Set up my profile"
-    Agent->>RP: research_profile({})
-    RP->>PL: enrichUserProfile(name, email, socials)
-    Note over PL: public profile research — a suggestion, not a write
-    PL-->>RP: enrichment result
-    alt Confident human match
-        RP-->>Agent: {enriched: true, profile: {name, intro, location, socials}}
-        Agent-->>User: "Here's what I found — does this look right?"
-    else No confident match
-        RP-->>Agent: {enriched: false, profile: null}
-        Agent-->>User: "Tell me a bit about yourself"
-    end
-```
+A host runtime resolves a tool context and invokes a registered tool; the tool
+invokes subgraphs and returns a serialized result.
 
 ### Example: "I'm looking for a React co-founder"
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Agent as ChatAgent
+    participant Host as Host runtime
     participant CI as create_intent
     participant IC as IntentClarifier
     participant IG as Intent Graph
@@ -212,8 +126,8 @@ sequenceDiagram
     participant OG as Opportunity Graph
     participant HG as HyDE Graph
 
-    User->>Agent: "I'm looking for a React co-founder"
-    Agent->>CI: create_intent({content: "Looking for React co-founder", indexId})
+    User->>Host: "I'm looking for a React co-founder"
+    Host->>CI: create_intent({content: "Looking for React co-founder", indexId})
 
     CI->>IC: Check semantic entropy
     Note over IC: Entropy acceptable — commissive act, specific enough
@@ -241,21 +155,19 @@ sequenceDiagram
     Note over OG: Persist as latent — patient (user) sees draft
 
     OG-->>CO: opportunities found
-    CO-->>Agent: "Created intent + found 3 draft opportunities"
-    Agent-->>User: "Intent created. I found 3 potential matches..."
+    CO-->>Host: intent created + 3 draft opportunities
+    Host-->>User: intent created, 3 candidate matches persisted
 ```
 
 ### Tool-to-Subgraph Mapping
 
 ```mermaid
 flowchart LR
-    subgraph tools [Chat Tools]
+    subgraph tools [Tools]
         PT[enrichment.tools]
         IT[intent.tools]
         IdxT[network.tools]
         OT[opportunity.tools]
-        CT[contact.tools]
-        IntT[integration.tools]
         UT[utility.tools]
     end
 
@@ -318,10 +230,6 @@ Handled by the **Opportunity Graph**:
 5. **Presentation**: `OpportunityPresenter` generates two descriptions per Grice's Maxim of Relation — one from the source's frame, one from the candidate's frame.
 6. **Persist**: Opportunities created as `latent` with actor roles. Role determines tier-0 visibility (see Opportunity Lifecycle above).
 
-### Chat as Orchestration
-
-The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides to call tools or respond. All protocol operations are accessible through tools. Destructive actions (update/delete) go through the intent/opportunity graph's reconciler rather than direct mutation, preserving semantic governance invariants.
-
 ## Key Invariants
 
 - **Network-scoped discovery**: Opportunities only arise between intents sharing an index
@@ -339,10 +247,8 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 | `internal/shared/agent/model.config.ts` | Centralized model and OpenRouter configuration |
 | `internal/shared/agent/model-signal.ts` | Abort-signal-aware model invocation helper |
 | `internal/shared/agent/tool.runtime.ts` | Per-tool timeout/output-budget runtime and stable error envelopes |
-| `internal/chat/chat.streamer.ts` | Streams chat responses |
 | `internal/shared/assignment/network-assignment.policy.ts` | Threshold-based network-assignment scoring and scope resolution |
 | `internal/shared/network/metadata.renderer.ts` | Renders network metadata into prompt context |
-| `internal/chat/chat.utils.ts` | Token counting and context window management |
 | `internal/opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `internal/opportunities/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
 | `internal/opportunities/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, radar composition helpers |
@@ -354,7 +260,7 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 ## Data Model
 
 This package is adapter-free and owns **no** schema — it accesses data only through the
-interfaces in `internal/shared/interfaces/`. The canonical Drizzle schema lives in the backend at
+interfaces in `platform/`. The canonical Drizzle schema lives in the backend at
 `services/api/src/schemas/database.schema.ts`.
 
 Core tables the protocol interfaces read/write:

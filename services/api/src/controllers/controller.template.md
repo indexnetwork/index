@@ -201,7 +201,7 @@ export async function syncEnrichment(userId: string) {
 
 | Adapter | Interface | Purpose |
 |---------|-----------|---------|
-| `ChatDatabaseAdapter` | `ChatGraphCompositeDatabase` | Chat graph database operations |
+| `ChatDatabaseAdapter` | `ChatGraphCompositeDatabase` | Core protocol database operations |
 | `IntentDatabaseAdapter` | `IntentGraphDatabase` | Intent graph database operations |
 | `UserDatabaseAdapter` | — | User CRUD, findByEmail, create, deleteById |
 | `EnrichmentDatabaseAdapter` | — | Profile CRUD, getProfileRow |

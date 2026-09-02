@@ -2075,7 +2075,7 @@ export const SANDBOX_PERSONAS: SandboxPersona[] = buildPersonas(SCENARIOS);
 export const SANDBOX_MINIMAL_PERSONAS: SandboxPersona[] = buildPersonas([MINIMAL_SCENARIO]);
 
 /**
- * Stable people and signals used by the paid, live PersonalAgent E2E suite.
+ * Stable people and signals used by the paid, live capability E2E suites.
  * They intentionally use email plus intent position: fixture ids are derived
  * by the seeder and should remain an implementation detail of the fixture.
  */

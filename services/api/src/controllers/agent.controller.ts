@@ -391,25 +391,6 @@ export class AgentController {
     }
   }
 
-  // Negotiation pickup (claim a turn to work on) is retired whole-cloth by the
-  // negotiation-graph rewrite (#1494, docs/plans/2026-08-23-personal-agent-
-  // and-negotiation-graphs.md): a negotiation stays `working` until it pauses
-  // or resolves — it is never claimed into a distinct state, so there is
-  // nothing left to pick up.
-  //
-  // The REST respond route (`POST /:id/negotiations/:negotiationId/respond`)
-  // remains retired with polling. Authenticated external agents — including
-  // the Hermes bridge — submit authored `respond_to_negotiation` MCP verbs;
-  // the shared NegotiationGraph validates and applies them under the speaking
-  // seat.
-  //
-  // Owner consultation was retired whole-cloth by the negotiation-graph
-  // rewrite: a negotiator that cannot continue without the principal pauses
-  // `needs_principal` instead.
-  //
-  // Both routes are deleted rather than kept as dead stubs, since there is no
-  // longer a meaningful request/response shape for either.
-
   @Post('/:id/test-messages')
   @UseGuards(RateLimit('write'), AuthGuard)
   async enqueueTestMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {

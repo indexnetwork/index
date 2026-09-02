@@ -106,67 +106,6 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
-/** Debug projection for the PersonalAgent's intent-scoped negotiation cycle. */
-export interface IntentCycleSnapshot {
-  batch: {
-    id: string | null;
-    active: number;
-    paused: number;
-  };
-  negotiations: Array<{
-    taskId: string;
-    conversationId: string;
-    opportunityId: string;
-    opportunityStatus: NegotiationOpportunityStatus;
-    counterpartLabel: string;
-    batchId: string | null;
-    state: NegotiationTaskState;
-    /** A pause reason is state, not its private payload. */
-    pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
-    latestActivity: {
-      actor: 'yours' | 'theirs';
-      verb: string | null;
-      /** Shared A2A prose only; pause payloads are never projected here. */
-      text: string | null;
-      createdAt: string;
-    } | null;
-    updatedAt: string;
-  }>;
-}
-
-/** Owner-only debugging detail for one seat in one negotiation. */
-export interface IntentCycleNegotiationDetail {
-  intent: { id: string; payload: string };
-  task: {
-    id: string;
-    conversationId: string;
-    opportunityId: string;
-    batchId: string | null;
-    state: NegotiationTaskState;
-    updatedAt: string;
-    brief: string | null;
-    pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null; payload?: unknown } | null;
-  };
-  transcript: Array<{
-    id: string;
-    actor: 'yours' | 'theirs';
-    verb: string | null;
-    pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
-    text: string | null;
-    createdAt: string;
-  }>;
-  /** Present only when this owner resolved the negotiation. */
-  outcome: { verdict: 'pending' | 'reject'; reasoning: string | null } | null;
-}
-
-/** Append-only, owner-scoped record of executed IS-A acts. */
-export interface IntentCycleTimelineEntry {
-  id: string;
-  event: Record<string, unknown>;
-  act: Record<string, unknown>;
-  createdAt: string;
-}
-
 /** One authenticated owner's bound seat, regardless of intent or task state. */
 export interface NegotiationTaskIndexEntry {
   intentId: string;
@@ -199,27 +138,6 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   getNegotiationTaskIndex: async (): Promise<NegotiationTaskIndexEntry[]> => {
     const response = await api.get<{ entries: NegotiationTaskIndexEntry[] }>('/conversations/negotiations/task-index');
     return response.entries;
-  },
-
-  getIntentCycle: async (intentId: string): Promise<IntentCycleSnapshot> => {
-    const response = await api.get<{ cycle: IntentCycleSnapshot }>(
-      `/conversations/negotiations/intent-cycle?intentId=${encodeURIComponent(intentId)}`,
-    );
-    return response.cycle;
-  },
-
-  getIntentCycleTimeline: async (intentId: string): Promise<IntentCycleTimelineEntry[]> => {
-    const response = await api.get<{ entries: IntentCycleTimelineEntry[] }>(
-      `/conversations/negotiations/intent-cycle/timeline?intentId=${encodeURIComponent(intentId)}`,
-    );
-    return response.entries;
-  },
-
-  getIntentCycleNegotiation: async (intentId: string, taskId: string): Promise<IntentCycleNegotiationDetail> => {
-    const response = await api.get<{ negotiation: IntentCycleNegotiationDetail }>(
-      `/conversations/negotiations/intent-cycle/${encodeURIComponent(taskId)}?intentId=${encodeURIComponent(intentId)}`,
-    );
-    return response.negotiation;
   },
 
   /** Create a new conversation. */

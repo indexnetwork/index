@@ -181,7 +181,6 @@ export class AgentService {
       await this.db.setNegotiationExecutorBinding({
         ownerId: userId,
         targetAgentId: updates.handleNegotiations ? agentId : null,
-        exactTargetPermissions: false,
         ...(!updates.handleNegotiations && { disableTargetAgentId: agentId }),
       });
     }
@@ -396,11 +395,6 @@ export class AgentService {
     return this.db.touchLastSeen(agentId);
   }
 
-  /** Stamp only the negotiation polling heartbeat used for runtime routing. */
-  async touchNegotiationPickup(agentId: string): Promise<void> {
-    return this.db.touchNegotiationPickup(agentId);
-  }
-
   async hasPermission(
     agentId: string,
     userId: string,
@@ -408,14 +402,6 @@ export class AgentService {
     scope?: AgentScope,
   ): Promise<boolean> {
     return this.db.hasPermission(agentId, userId, action, scope);
-  }
-
-  async findAuthorizedAgents(
-    userId: string,
-    action: string,
-    scope?: AgentScope,
-  ): Promise<AgentWithRelations[]> {
-    return this.db.findAuthorizedAgents(userId, action, scope);
   }
 
   private async requireOwnedAgent(agentId: string, userId: string): Promise<AgentRow> {

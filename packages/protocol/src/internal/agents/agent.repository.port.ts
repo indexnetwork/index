@@ -117,19 +117,6 @@ export interface AgentDatabase {
   ): Promise<boolean>;
 
   /**
-   * Returns all agents authorized for a user and action, optionally within a scope.
-   * @param userId - The user to check authorization for.
-   * @param action - The action string (e.g. `"read"`, `"write"`).
-   * @param scope - Optional scope restriction.
-   * @returns Array of authorized agents with their relations.
-   */
-  findAuthorizedAgents(
-    userId: string,
-    action: string,
-    scope?: { type: 'global' | 'node' | 'network'; id?: string },
-  ): Promise<AgentWithRelations[]>;
-
-  /**
    * Returns the well-known IDs for built-in system agents.
    * @returns Object mapping system agent roles to their fixed UUIDs.
    */

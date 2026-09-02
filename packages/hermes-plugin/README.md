@@ -20,17 +20,6 @@ Optional overrides: `INDEX_API_URL` and `INDEX_MCP_URL` (default to production e
 
 `GET /agents/me` needs the agent-bound token, not the CLI owner key. The agent token can be revoked from web settings.
 
-There is no pickup/claim — a negotiation stays `working` until it pauses or resolves. `index_respond_negotiation` forwards one authored turn to MCP's `respond_to_negotiation`, which routes it through `NegotiationGraph` apply. It accepts only `outreach`, `counter`, `question`, or `needs_principal`/`ready_for_verdict` pauses; it cannot accept, decline, withdraw, or resolve a negotiation.
-
-## Modes and capability boundary
-
-`full` (the default) registers the normal Index tool/dashboard surface. `negotiator` registers exactly two handlers:
-
-1. `index_agent_me`
-2. `index_respond_negotiation`
-
-The negotiator is a restricted scheduled-execution surface. Its response uses the same authenticated MCP turn contract as other external agents. `INDEX_PLUGIN_MODE=negotiator` is fail-closed for unknown non-empty values. It has no dashboard, broad MCP wrappers, hook, command, or orchestrator skill.
-
 ## Development
 
 Build generated desktop output only through its script:
@@ -42,4 +31,4 @@ python3 tests/smoke.py
 python3 tests/gateway.py
 ```
 
-`plugin.yaml` is the static package capability union; package registration applies the runtime mode boundary. Do not edit `desktop/dist/plugin.js` manually.
+`plugin.yaml` is the static package capability union. Do not edit `desktop/dist/plugin.js` manually.

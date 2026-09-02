@@ -21,20 +21,16 @@ export type PremiseGraphDatabase = Pick<
 >;
 
 /**
- * Composite database interface for Chat Graph.
- * Includes direct ChatGraph operations plus all methods needed by
- * internally composed subgraphs (ProfileGraph, OpportunityGraph, IntentGraph, NetworkGraph).
- *
- * Use this type when ChatGraph orchestrates subgraphs internally.
+ * Composite database interface for a tool composition that reaches every
+ * subgraph (ProfileGraph, OpportunityGraph, IntentGraph, NetworkGraph).
  *
  * Access layer: Both UserDatabase + SystemDatabase (orchestrates all operations)
  */
 export type ChatGraphCompositeDatabase = Pick<
   Database,
-  // Direct ChatGraph operations
   | 'getProfile'
-  // The chat/MCP discovery path builds an OpportunityGraph too, and its
-  // terminal stage records candidates.
+  // The MCP discovery path builds an OpportunityGraph too, and its terminal
+  // stage records candidates.
   | 'upsertDiscoveryMatchCandidates'
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossIndexes'

@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from . import schemas, tools, transport
-from ._mode import resolve_plugin_mode
 
 _INDEX_HINT = (
     'For Index Network signals/intents/opportunities/discovery requests, load '
@@ -32,7 +31,7 @@ _INDEX_TERMS = (
 )
 
 
-def _register_skills(ctx, allowed_names: set[str] | None = None):
+def _register_skills(ctx):
     """Register bundled plugin skills when skills are added.
 
     Plugin skills are namespaced and read-only in Hermes; they are not copied
@@ -45,7 +44,7 @@ def _register_skills(ctx, allowed_names: set[str] | None = None):
 
     for child in sorted(skills_dir.iterdir()):
         skill_md = child / "SKILL.md"
-        if child.is_dir() and skill_md.exists() and (allowed_names is None or child.name in allowed_names):
+        if child.is_dir() and skill_md.exists():
             ctx.register_skill(child.name, skill_md)
 
 
@@ -105,39 +104,8 @@ def _install_desktop_plugin():
         pass
 
 
-def _remove_desktop_plugin():
-    """Remove a stale Index dashboard copy when the runtime is negotiation-only."""
-    dest = Path.home() / ".hermes" / "desktop-plugins" / "index-network"
-    try:
-        if dest.is_symlink():
-            dest.unlink()
-        else:
-            shutil.rmtree(dest, ignore_errors=True)
-    except Exception:  # noqa: BLE001 - dashboard cleanup must not break startup.
-        pass
-
-
-def _plugin_mode() -> str:
-    """Resolve the shared runtime authorization mode."""
-    return resolve_plugin_mode()
-
-
-def _register_negotiation_tools(ctx):
-    for name, schema, handler in (
-        ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),
-        ("index_respond_negotiation", schemas.INDEX_RESPOND_NEGOTIATION, tools.index_respond_negotiation),
-    ):
-        ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
-
-
 def register(ctx):
-    """Register the mode-authorized Index Network capabilities with Hermes."""
-    if _plugin_mode() == "negotiator":
-        _remove_desktop_plugin()
-        _register_negotiation_tools(ctx)
-        _register_skills(ctx, {"index-negotiator"})
-        return
-
+    """Register the Index Network capabilities with Hermes."""
     _install_desktop_plugin()
     ctx.register_tool(
         name="index_read_intents",
@@ -155,7 +123,6 @@ def register(ctx):
     for name, schema, handler in (
         ("index_agent_me", schemas.INDEX_AGENT_ME, tools.index_agent_me),
         ("index_open_app", schemas.INDEX_OPEN_APP, tools.index_open_app),
-        ("index_respond_negotiation", schemas.INDEX_RESPOND_NEGOTIATION, tools.index_respond_negotiation),
     ):
         ctx.register_tool(name=name, toolset="index-network", schema=schema, handler=handler)
     if hasattr(ctx, "register_hook"):
@@ -167,10 +134,3 @@ def register(ctx):
             description="Load Index Network orchestrator guidance",
         )
     _register_skills(ctx)
-    # negotiation_wake.py (the conversation-SSE listener that auto-started a
-    # Hermes turn on a negotiation message) is deleted: external-agent
-    # negotiation dispatch is offline (#1494 round-3, Option A — see the PR
-    # body). There is no server-side signal left to wake on, and no route left
-    # to submit to either — `index_respond_negotiation` stays registered only
-    # to say so, so a negotiator asked for a turn learns why it cannot take one
-    # instead of reaching for some other tool.

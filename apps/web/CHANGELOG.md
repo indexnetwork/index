@@ -8,6 +8,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- **The agent chat surface.** Routes `/agent`, `/agent/:tab`, `/d/:id`,
+  `/agents/connected`, `/i/:intentId/negotiations/:taskId`, `/dev/floor` and
+  `/dev/intent-proposal` are gone, along with `ChatContent`,
+  `AgentSessionsPanel`, `IntentNegotiatorChat`, `NegotiatorMemoryPanel`,
+  `PersonalAgentTimeline`, `IntentCycleInspector`,
+  `IntentNegotiationInspector`, `AgentHandlingOpportunity`, the `chat/*`
+  message components, the `AIChat*` contexts, and the connected-agents and
+  negotiator-memory services. The signal page is a single column: signal CRUD
+  plus Radar. The `agent-handling` radar bucket is gone and buckets are purely
+  status-based. `/agents` and `/agents/:id` stay.
+
+### Removed
 - Delete `tests/`, including the Playwright e2e suite. No source change.
 
 ### Removed

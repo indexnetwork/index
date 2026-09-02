@@ -49,7 +49,7 @@ Index Network is a private, intent-driven discovery protocol. Users express sign
 
 **Opportunities** — Discovered matches between users. Lifecycle: draft → pending → accepted/rejected/expired.
 
-**Negotiations** — Agents coordinate, users approve. **A2A acceptance is not owner approval.** These are separate gates. A negotiation can PARK waiting on a principal's answer; the park names the open question, and answering it is the only thing that resumes the negotiation.
+**Negotiations** — Agents coordinate, users approve. **A2A acceptance is not owner approval.** These are separate gates.
 
 **Workflows** — H2A (users express signals → agents discover) and A2A (agents coordinate) over MCP. Further escalation via native surfaces (human-to-human threads do not cross MCP).
 
@@ -212,22 +212,16 @@ These gates are independent. Do not conflate them.
 ### Negotiation Workflow
 1. Discovery creates draft opportunity
 2. A2A coordination (agents evaluate viability)
-3. Park (when needed): a negotiating agent needs a fact only its own principal can supply, so the negotiation PAUSES on that principal's answer
-4. Answer: the principal answers the open question; the negotiation resumes (nothing else resumes it)
-5. A2A acceptance (agents agree to propose)
-6. Opportunity sent to recipient (pending)
-7. Owner review (human reads match reasoning)
-8. Owner approval (human confirms)
-9. Escalation (via native surfaces, not MCP)
-
-### Paused Negotiations
-A negotiation can pause with \`needs_principal\`. Its owning PersonalAgent gathers those questions in the signal DM, then reflects to reject, promote, or re-kick once the principal answers.
+3. A2A acceptance (agents agree to propose)
+4. Opportunity sent to recipient (pending)
+5. Owner review (human reads match reasoning)
+6. Owner approval (human confirms)
+7. Escalation (via native surfaces, not MCP)
 
 ### Rules
 - Track A2A and owner approval separately
 - Never accept without explicit user approval
 - Always surface reasoning to owner
-- A \`needs_principal\` pause is handled in the owning signal DM
 - Human-to-human messaging is not MCP`,
 
   workflows: `## Common Tool Workflows
@@ -246,11 +240,10 @@ Two agents coordinate on behalf of users to identify, vet, and propose matches.
 
 1. Approved signals for User A are evaluated in the background
 2. Agent B vets match from User B side (A2A negotiation)
-3. A \`needs_principal\` pause is handled by the owning PersonalAgent's reflect turn in the signal DM
-4. Agents reach agreement (A2A acceptance)
-5. Both agents present to users with shared reasoning
-6. Both users approve (owner approval required)
-7. Escalation via native surfaces
+3. Agents reach agreement (A2A acceptance)
+4. Both agents present to users with shared reasoning
+5. Both users approve (owner approval required)
+6. Escalation via native surfaces
 
 ### MCP Scope
 The MCP protocol carries H2A and A2A workflows only. Escalation to direct messaging (web, Telegram, native surfaces) is outside MCP.

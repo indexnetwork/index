@@ -2,8 +2,6 @@
 import { log } from '../log';
 import { background } from '../background';
 import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
-import type { MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
-
 import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGraphDb } from './discovery.shared';
 import { buildIntentDiscoveryTrigger, type DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
 export type { DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
@@ -44,8 +42,6 @@ export type DiscoveryDatabase = Pick<
 export interface DiscoveryDeps {
   database?: DiscoveryDatabase;
   invokeOpportunityGraph?: (opts: DiscoveryGraphInvokeOptions) => Promise<void>;
-  matchesReady?: MatchesReadyFn;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
   /** Same-intent overlap guard; defaults to an in-process map. */
   intentLock?: IntentDiscoveryLock;
   /** Test hook: shortens the re-check delay of a deferred same-intent run. */
@@ -74,10 +70,6 @@ export class IntentDiscovery {
     this.intentLock = deps?.intentLock ?? createIntentDiscoveryLock();
     this.sameIntentDeferDelayMs = deps?.sameIntentDeferDelayMs ?? SAME_INTENT_DEFER_DELAY_MS;
     this.maxSameIntentWaitMs = deps?.maxSameIntentWaitMs ?? MAX_SAME_INTENT_WAIT_MS;
-  }
-
-  setRuntimeDeps(runtimeDeps: Pick<DiscoveryDeps, 'matchesReady' | 'agentDispatcher'>): void {
-    this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
   /**
@@ -158,8 +150,8 @@ export class IntentDiscovery {
 
   private async handleDiscover(data: DiscoveryJobData): Promise<void> {
     const { intentId, userId, networkIds } = data;
-    // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()` and
-    // setRuntimeDeps never replaces `database`, so this is the injected db when provided.
+    // `this.database` is already `deps?.database ?? new ChatDatabaseAdapter()`,
+    // so this is the injected db when provided.
     const intent = await this.database.getIntentForIndexing(intentId);
     if (!intent) {
       this.logger.warn('Intent not found, skipping admission', { intentId, userId });

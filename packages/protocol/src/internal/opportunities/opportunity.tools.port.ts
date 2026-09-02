@@ -14,9 +14,8 @@ export interface OpportunityOwnerApprovalDeps {
 
 /** Host capabilities consumed by opportunity discovery, delivery, and presentation tools. */
 export type OpportunityToolDeps = Pick<ToolRegistryCompositionDeps,
-  "database" | "userDb" | "systemDb" | "cache" | "chatSummary"
+  "database" | "userDb" | "systemDb" | "cache"
   | "opportunityPresentation"
-  | "negotiationSummary"
   | "negotiationDatabase" | "deliveryLedger"
   | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
   | "opportunityOperations"

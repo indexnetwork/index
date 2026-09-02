@@ -8,6 +8,13 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Removed
+- **The negotiator mode and its tools.** `INDEX_PLUGIN_MODE`, `_mode.py`, the
+  `index-negotiator` skill, `index_respond_negotiation`, and the forwarded
+  `list_negotiations` / `get_negotiation` / `respond_to_negotiation` MCP
+  wrappers are gone: Index no longer exposes a negotiation turn surface. The
+  dashboard is always mounted and its `/mode` endpoint is removed.
+
+### Removed
 - Delete `tests/`. No source or tool-contract change.
 
 ### Breaking

@@ -1,62 +1,29 @@
-import type { IntentCycleSnapshot } from "@/services/conversation";
 import type { OpportunityLifecycleStatus } from "@/services/opportunities";
 
 export type RadarBucket =
   | "needs-you"
-  | "agent-handling"
   | "waiting"
   | "connected"
   | "closed";
 
-type IntentCycleNegotiation = IntentCycleSnapshot["negotiations"][number];
-
-export const DEFAULT_RADAR_BUCKET: RadarBucket = "agent-handling";
-
-const TERMINAL_BUCKETS: Partial<Record<OpportunityLifecycleStatus, RadarBucket>> = {
-  accepted: "connected",
-  rejected: "closed",
-  expired: "closed",
-  stalled: "closed",
-};
+export const DEFAULT_RADAR_BUCKET: RadarBucket = "needs-you";
 
 const STATUS_BUCKETS: Record<OpportunityLifecycleStatus, RadarBucket> = {
-  latent: "agent-handling",
-  draft: "agent-handling",
+  latent: "waiting",
+  draft: "waiting",
   pending: "needs-you",
-  negotiating: "agent-handling",
+  negotiating: "waiting",
   stalled: "closed",
   accepted: "connected",
   rejected: "closed",
   expired: "closed",
 };
 
-/** Assign an opportunity to the person or agent currently responsible for it. */
+/** Assign an opportunity to the person currently responsible for it. */
 export function radarBucketForOpportunity(
   status: OpportunityLifecycleStatus | undefined,
-  negotiation?: Pick<IntentCycleNegotiation, "state" | "pause">,
 ): RadarBucket {
-  const terminalBucket = status ? TERMINAL_BUCKETS[status] : undefined;
-  if (terminalBucket) return terminalBucket;
-
-  if (status === "pending") {
-    // A pending outcome is human-actionable only after its PersonalAgent
-    // negotiation has completed. While the cycle snapshot has no completed
-    // task, keep it with the agent rather than exposing the direct chat CTA.
-    return negotiation?.state === "completed" ? "needs-you" : "agent-handling";
-  }
-
-  if (status !== "negotiating") {
-    return status ? STATUS_BUCKETS[status] : "agent-handling";
-  }
-
-  if (negotiation?.state === "paused") {
-    if (negotiation.pause?.by === "theirs") return "waiting";
-    if (negotiation.pause?.reason === "needs_principal") return "needs-you";
-    return "agent-handling";
-  }
-
-  if (negotiation?.state === "working") return "agent-handling";
-  return "agent-handling";
+  return status ? STATUS_BUCKETS[status] : "waiting";
 }
 
 /** Only a non-zero Needs you count calls for visual attention. */

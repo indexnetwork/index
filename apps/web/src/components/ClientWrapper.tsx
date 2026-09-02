@@ -4,16 +4,15 @@ import { useLocation } from 'react-router';
 import Header from "@/components/Header";
 import TopBar from "@/components/TopBar";
 import ChatSidebar from "@/components/ChatSidebar";
-import AgentSessionsPanel from "@/components/AgentSessionsPanel";
 import { NetworkFilterProvider } from "@/contexts/IndexFilterContext";
 import { NetworksProvider } from "@/contexts/IndexesContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
-const appRoutes = ['/', '/d', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/agent', '/questions'];
+const appRoutes = ['/', '/i', '/u', '/networks', '/chat', '/negotiations', '/settings', '/agents', '/questions'];
 const publicRoutes = ['/c'];
 // /l is chrome-free web invite join; /index stays app-only public join.
-const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe', '/dev/floor'];
+const bareRoutes = ['/', '/l', '/index', '/download', '/i/new', '/oauth/callback', '/found-in-translation', '/overview', '/protocol', '/blog', '/about', '/pages', '/waitlist', '/9db20a5fbe'];
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const { pathname } = useLocation();
@@ -57,12 +56,6 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     pathname === '/chat' || pathname?.startsWith('/chat/') || pathname === '/negotiations' || pathname?.startsWith('/negotiations/') || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
   [pathname]);
 
-  // Agent chat routes get the conversation-history aside (relocated from the
-  // retired sidebar). Covers the agent landing and specific /d/:sessionId chats.
-  const isAgentView = useMemo(() =>
-    pathname === '/agent' || pathname?.startsWith('/agent/') || pathname?.startsWith('/d/'),
-  [pathname]);
-
   if (isBareRoute) {
     return <NetworksProvider>{children}</NetworksProvider>;
   }
@@ -96,15 +89,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               <div className="flex flex-col h-screen overflow-hidden">
                 <TopBar />
                 <div className="flex flex-1 min-h-0 overflow-hidden">
-                  {/* Secondary aside: DM list on messages, conversation history on agent */}
+                  {/* Secondary aside: DM list on messages */}
                   {isMessagesView && (
                     <aside className="hidden lg:block w-80 bg-white border-r border-gray-200 flex-shrink-0">
                       <ChatSidebar />
-                    </aside>
-                  )}
-                  {isAgentView && !isMessagesView && (
-                    <aside className="hidden lg:block w-72 bg-white border-r border-gray-200 flex-shrink-0">
-                      <AgentSessionsPanel />
                     </aside>
                   )}
 

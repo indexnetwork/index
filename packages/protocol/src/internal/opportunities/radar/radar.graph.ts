@@ -2,7 +2,7 @@
  * Radar Graph: Build the opportunity radar view — a flat, presenter-texted
  * list of opportunity cards for a viewer, optionally scoped to one intent.
  *
- * Independent of ChatGraph. Flow:
+ * Flow:
  * loadOpportunities → checkPresenterCache → [generateCardText if misses]
  * → cachePresenterResults → normalizeItems
  *

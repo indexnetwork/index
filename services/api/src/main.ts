@@ -2,9 +2,7 @@ import './startup.env';
 
 import * as Sentry from '@sentry/bun';
 
-import { ChatController } from './controllers/chat.controller';
 import { DebugController } from './controllers/debug.controller';
-import { FloorLabController } from './controllers/floor-lab.controller';
 import { ToolController } from './controllers/tool.controller';
 import { ToolService } from './services/tool.service';
 import { S3StorageAdapter } from './adapters/storage.adapter';
@@ -22,8 +20,6 @@ import { SubscribeController } from './controllers/subscribe.controller';
 import { ConversationController } from './controllers/conversation.controller';
 import { NotificationController } from './controllers/notification.controller';
 import { AgentController } from './controllers/agent.controller';
-import { AgentRuntimeController } from './controllers/agent-runtime.controller';
-import { ConnectedAgentsController } from './controllers/connected-agents.controller';
 import { ConversationService } from './services/conversation.service';
 import { NotificationService } from './services/notification.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
@@ -34,7 +30,7 @@ import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { IntegrationService } from './services/integration.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
-import { HermesNegotiatorRouteDeniedError, OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
+import { OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
 import { RateLimiterError } from './lib/limiter/error';
 import { getRateLimitInfo } from './guards/limiter.guard';
 import { bindLimiterServer } from './lib/limiter/identifier';
@@ -42,21 +38,15 @@ import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { mcpHandler, chatFactory } from './controllers/mcp.controller';
-import { chatSessionService } from './services/chat.service';
+import { mcpHandler } from './controllers/mcp.controller';
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
 import { intentIndexing } from './lib/intent/indexing';
-import { intentDiscovery } from './lib/opportunity/discovery';
-import { negotiationWatchdogCron, isNegotiationWatchdogEnabled } from './crons/negotiation-watchdog.cron';
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
 import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
 import { frameDriftCron } from './crons/frame-drift.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
-import { negotiationReflect } from './lib/negotiation/reflect';
-import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
-import { personalAgentService } from './services/personal-agent.service';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
@@ -77,9 +67,6 @@ setLoggerFactory(
   sanitizeForLog,
 );
 
-// Wire ChatGraphFactory into chat service at startup
-chatSessionService.setFactory(chatFactory);
-
 setTimingWrapper((name, fn) => traceAppOperation(
   {
     name,
@@ -93,19 +80,6 @@ setTimingWrapper((name, fn) => traceAppOperation(
 ));
 
 setRequestContextStore(hostRequestContext);
-
-// Wire the matches_ready hand-off into background discovery, so the
-// post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
-// discovery does. Without this, the graph's matches_ready node
-// short-circuits and a persisted batch never reaches its agent.
-intentDiscovery.setRuntimeDeps({
-  matchesReady,
-  agentDispatcher: backgroundAgentDispatcher,
-});
-negotiationWatchdogCron.setNegotiationGraph(negotiationGraph);
-negotiationWatchdogCron.setReflectEnqueue(async (job) => {
-  await personalAgentService.addAllPausedEvent(job);
-});
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
 const notificationDeliveryService = new NotificationDeliveryService({
@@ -146,11 +120,6 @@ PremiseEvents.onExpired = (premiseId: string, userId: string) => {
   background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'expired' }));
 };
 
-if (isNegotiationWatchdogEnabled()) {
-  void negotiationWatchdogCron.start().catch((error) => {
-    log.job.from('NegotiationWatchdogCron').error('Negotiation watchdog startup failed', { error });
-  });
-}
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
 void frameDriftCron.start().catch((error) => {
@@ -160,7 +129,6 @@ void frameDriftCron.start().catch((error) => {
   });
 });
 hydeMaintenanceCron.startCrons();
-negotiationReflect.startCrons();
 premiseCascade.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -169,11 +137,11 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
 
-// Warm up the PostgresSaver checkpointer at boot so the first chat request
+// Warm up the PostgresSaver checkpointer at boot so the first graph run
 // doesn't pay the table-setup round trip and misconfiguration surfaces at
-// startup instead of mid-stream. Non-fatal: chat degrades to no checkpointer.
+// startup instead of mid-run. Non-fatal: graphs degrade to no checkpointer.
 getCheckpointer().catch((err) => {
-  logger.warn('Checkpointer warm-up failed; chat will run without persistence', {
+  logger.warn('Checkpointer warm-up failed; graphs will run without persistence', {
     error: err instanceof Error ? err.message : String(err),
   });
 });
@@ -229,7 +197,6 @@ const storageAdapter = new S3StorageAdapter({
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(EnrichmentController, new EnrichmentController());
-controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(NetworkRequestController, new NetworkRequestController());
 controllerInstances.set(IntentController, new IntentController());
@@ -245,14 +212,11 @@ controllerInstances.set(
   new NotificationController(new NotificationService(), notificationDeliveryService),
 );
 controllerInstances.set(AgentController, new AgentController());
-controllerInstances.set(AgentRuntimeController, new AgentRuntimeController());
-controllerInstances.set(ConnectedAgentsController, new ConnectedAgentsController());
 const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
 controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
-controllerInstances.set(FloorLabController, new FloorLabController());
 const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
 
@@ -462,7 +426,7 @@ const server = Bun.serve({
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             // Session-only endpoints reject API-key credentials outright
-            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError || error instanceof HermesNegotiatorRouteDeniedError) {
+            if (error instanceof SessionRequiredError || error instanceof OwnerControlRequiredError) {
               setSpanHttpStatus(403);
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }

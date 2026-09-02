@@ -79,7 +79,7 @@ export class ExperimentService {
 
     // New users get their first key; existing users get an additional key.
     // We deliberately do not revoke prior keys here: signup may be retried by
-    // portals/installers, and invalidating a just-installed Hermes key creates
+    // portals/installers, and invalidating a just-installed key creates
     // a setup race. Explicit rotation paths remain responsible for revocation.
     const apiKey = result.apiKey!;
 

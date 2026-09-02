@@ -74,11 +74,11 @@ The ESLint boundaries enforce these roles:
 
 ## Tests
 
-The repository keeps five specs, all under `packages/protocol`, and nothing else:
-`src/capabilities/tests/{intents,negotiations.e2e,personal-agent.e2e}.spec.ts`
-and `src/internal/opportunities/tests/opportunity.graph.spec.ts` plus
+The repository keeps three specs, all under `packages/protocol`, and nothing
+else: `src/capabilities/tests/intents.spec.ts`,
+`src/internal/opportunities/tests/opportunity.graph.spec.ts`, and
 `src/internal/premises/tests/premise.decomposer.spec.ts`. The rest were deleted
-on 2026-08-28 because maintaining them cost more than they returned.
+because maintaining them cost more than they returned.
 
 - Do not add tests unless you are asked. A missing spec is not a gap to fill.
 - If a change genuinely warrants one, say so and ask before writing it. The only

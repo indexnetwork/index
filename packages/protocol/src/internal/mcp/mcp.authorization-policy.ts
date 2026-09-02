@@ -58,9 +58,6 @@ export const HERMES_AGENT_MCP_TOOL_PERMISSIONS = defineMcpToolPermissionMap({
   update_intent: { action: 'manage:intents', reach: 'network' },
   read_intent_indexes: { action: 'manage:intents', reach: 'network' },
   create_intent_index: { action: 'manage:intents', reach: 'network' },
-  list_negotiations: { action: 'manage:negotiations', reach: 'network' },
-  get_negotiation: { action: 'manage:negotiations', reach: 'network' },
-  respond_to_negotiation: { action: 'manage:negotiations', reach: 'network' },
   read_networks: { action: 'manage:networks', reach: 'network' },
   read_network_memberships: { action: 'manage:networks', reach: 'network' },
   create_network: { action: 'manage:networks', reach: 'network' },
@@ -163,29 +160,11 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   update_opportunity: { access: 'permission', actions: ['manage:opportunities'], reach: 'network' },
   confirm_opportunity_delivery: { access: 'delivery_only', reach: 'network' },
 
-  // A2A negotiations.
-  list_negotiations: { access: 'permission', actions: ['manage:negotiations'], reach: 'network' },
-  get_negotiation: { access: 'permission', actions: ['manage:negotiations'], reach: 'network' },
-  respond_to_negotiation: { access: 'permission', actions: ['manage:negotiations'], reach: 'network' },
-
-  // The question flow (conversational-questions). `answer_pending_question` is
-  // the recipient principal's own answer lane: session humans (blanket allow)
-  // and the user's own agents holding manage:negotiations — the same trust the
-  // sibling negotiation tools extend, with the host scoping every read to the
-  // recipient's side. Principal reach: an open question is meta-network (it
-  // indexes the recipient's own signal), like the question aggregates in
-  // read_activity_summary. The owner VERDICT tools are `human_only` — exactly
-  // the session-authenticated class the IND-593 owner-provenance binding
-  // admits; an API-key agent must never gain an owner-verdict lever. None of
-  // the three appears in HERMES_AGENT_MCP_TOOL_PERMISSIONS, deliberately:
-  // Hermes negotiator credentials fail closed as unclassified.
-  answer_pending_question: { access: 'permission', actions: ['manage:negotiations'], reach: 'principal' },
+  // The owner VERDICT tools are `human_only` — exactly the session-authenticated
+  // class the IND-593 owner-provenance binding admits; an API-key agent must
+  // never gain an owner-verdict lever.
   reject_opportunity: { access: 'human_only', reach: 'network' },
   accept_opportunity: { access: 'human_only', reach: 'network' },
-
-  // H2A chat history.
-  list_conversations: { access: 'human_only', reach: 'principal' },
-  get_conversation: { access: 'human_only', reach: 'principal' },
 
   // Agent administration.
   read_own_agent: { access: 'agent_admin', reach: 'principal' },

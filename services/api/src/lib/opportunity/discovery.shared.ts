@@ -3,18 +3,11 @@ import { ChatDatabaseAdapter } from '../../adapters/database.adapter';
 import { EmbedderAdapter } from '../../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, MatchesReadyFn, AgentDispatcher } from '@indexnetwork/protocol';
+import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache } from '@indexnetwork/protocol';
 
 
 /** Graph DB shape the opportunity/HyDE graphs require; discovery casts its ChatDatabaseAdapter to this. */
 export type OpportunityGraphDb = OpportunityGraphDatabase & HydeGraphDatabase;
-
-/** Runtime deps shared by every opportunity-discovery run. */
-export interface OpportunityDiscoveryDeps {
-  /** Wakes a signal's PersonalAgent once the batch is persisted. */
-  matchesReady?: MatchesReadyFn;
-  agentDispatcher?: Pick<AgentDispatcher, 'hasExternalAgent'>;
-}
 
 type DiscoveryLogger = ReturnType<typeof log.job.from>;
 
@@ -24,10 +17,10 @@ export function createOpportunityGraphDb(database: object = new ChatDatabaseAdap
 }
 
 /**
- * Assemble the configured opportunity graph (HyDE sub-graph + matches_ready wiring).
+ * Assemble the configured opportunity graph (HyDE sub-graph included).
  * Shared by every discovery entry point, so it lives here once.
  */
-export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: OpportunityDiscoveryDeps) {
+export function buildOpportunityGraph(graphDb: OpportunityGraphDb) {
   const embedder: Embedder = new EmbedderAdapter();
   const cache: HydeCache = new RedisCacheAdapter();
   const inferrer = new LensInferrer();
@@ -37,10 +30,6 @@ export function buildOpportunityGraph(graphDb: OpportunityGraphDb, deps?: Opport
     graphDb,
     embedder,
     hydeGraph,
-    undefined,
-    undefined,
-    deps?.matchesReady,
-    deps?.agentDispatcher,
   ).createGraph();
 }
 
@@ -121,7 +110,7 @@ export function summarizeOpportunityDiscoveryResult(
 
 export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOptions>(params: {
   graphDb: OpportunityGraphDb;
-  deps?: OpportunityDiscoveryDeps & { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
+  deps?: { invokeOpportunityGraph?: (opts: TOpts) => Promise<void> };
   invokeOpts: TOpts;
   logger: DiscoveryLogger;
   /** Human label for the run, e.g. `'Discovery'`. */
@@ -144,7 +133,7 @@ export async function runOpportunityDiscovery<TOpts extends OpportunityInvokeOpt
     return null;
   }
 
-  const opportunityGraph = buildOpportunityGraph(graphDb, deps);
+  const opportunityGraph = buildOpportunityGraph(graphDb);
   const result = await opportunityGraph.invoke(invokeOpts);
   if (result.error) {
     logger.error('Graph failed', { ...logContext, error: result.error });

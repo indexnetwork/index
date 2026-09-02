@@ -36,9 +36,6 @@ _FORWARDED_MCP_TOOLS = frozenset(
         "create_intent_index",
         "read_intent_indexes",
         "search_intents",
-        "list_negotiations",
-        "get_negotiation",
-        "respond_to_negotiation",
         "read_networks",
         "read_network_memberships",
         "update_network",
@@ -381,9 +378,3 @@ def index_agent_me(args: dict, **kwargs) -> str:
     merged["success"] = True
     return _json(merged)
 
-def index_respond_negotiation(args: dict, **kwargs) -> str:
-    """Submit the MCP negotiation turn shape; the server routes it through apply."""
-    del kwargs
-    if not isinstance(args, dict):
-        return _error("Arguments must be an object.")
-    return _call_index_mcp("respond_to_negotiation", args)

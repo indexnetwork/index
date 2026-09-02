@@ -11,7 +11,6 @@ Find the right people and let them find you, directly from Claude Code.
 ## Skills
 
 - **index-orchestrator** — discovery, connections, signals, contacts, and community management
-- **index-negotiator** — review and respond to pending negotiations
 
 ## Auth
 

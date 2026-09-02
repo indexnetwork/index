@@ -54,20 +54,6 @@ jobs:
             target_branch: ''
             ignore_joins: 'false'
             rebase_onto_main: 'false'
-          - prefix: packages/a2a
-            repo: indexnetwork/a2a
-            source_branch: ''
-            upstream_repo: ''
-            target_branch: ''
-            ignore_joins: 'false'
-            rebase_onto_main: 'false'
-          - prefix: packages/agent
-            repo: indexnetwork/agent
-            source_branch: ''
-            upstream_repo: ''
-            target_branch: ''
-            ignore_joins: 'false'
-            rebase_onto_main: 'false'
           - prefix: apps/mac
             repo: indexnetwork/mac-client
             source_branch: ''

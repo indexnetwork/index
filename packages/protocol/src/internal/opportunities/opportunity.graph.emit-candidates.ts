@@ -2,8 +2,8 @@
  * Discovery pipeline, terminal stage: emit candidates.
  *
  * Replaces the persist node. Discovery no longer creates opportunities — it
- * records the pairs it found, keyed by `pairKey`, and the PersonalAgent that
- * decides to reach out is what turns one into a row.
+ * records the pairs it found, keyed by `pairKey`; opening one is a separate
+ * decision.
  *
  * There is no dedup here, deliberately. The ~600 lines that used to live in
  * the persist node — the 30-day window, same-intent-pair suppression, latent

@@ -63,21 +63,6 @@ export async function publishConversationMessageEvent(
 }
 
 /**
- * Publishes a completed PersonalAgent turn after the graph has returned from
- * its durable writes. This is owner-scoped: no counterpart or turn payload is
- * carried over the shared conversation channel.
- */
-export async function publishPersonalAgentTurnCompletedEvent(input: {
-  userId: string;
-  intentId: string;
-}): Promise<void> {
-  await getRedisClient().publish(
-    `conversations:user:${input.userId}`,
-    JSON.stringify({ type: 'personal_agent_turn_completed', intentId: input.intentId }),
-  );
-}
-
-/**
  * Publishes an owner-scoped invalidation after the durable discovery-progress
  * snapshot changes. The client re-fetches its authoritative intent response;
  * no progress data crosses the shared SSE channel.

@@ -90,22 +90,6 @@ export class ConversationService {
   }
 
   /**
-   * Returns the latest persisted A2A turns grouped by correspondent for one
-   * intent owned by the authenticated user.
-   */
-  async getIntentCycleForIntent(userId: string, intentId: string) {
-    return this.db.getIntentCycleForIntent(userId, intentId);
-  }
-
-  async getIntentCycleTimelineForIntent(userId: string, intentId: string) {
-    return this.db.getIntentCycleTimelineForIntent(userId, intentId);
-  }
-
-  async getIntentCycleNegotiationForIntent(userId: string, intentId: string, taskId: string) {
-    return this.db.getIntentCycleNegotiationForIntent(userId, intentId, taskId);
-  }
-
-  /**
    * Finds an existing DM between two users, or creates one if none exists.
    * @param userA - First user ID
    * @param userB - Second user ID

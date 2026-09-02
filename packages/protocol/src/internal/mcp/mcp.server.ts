@@ -49,14 +49,12 @@ const mcpToolMetadataCache = new Map<string, McpToolRegistrationMetadata[]>();
  * the cached metadata set is automatically invalidated.
  */
 export function getMcpToolMetadataCacheKey(deps: Pick<ToolDeps,
-  'chatSession' | 'agentDatabase' | 'agentDispatcher'
+  'agentDatabase'
 >): string {
   // Contact tools are omitted from the MCP surface entirely (IND-596), so no
   // Request-scoped input can change the MCP tool set.
   return [
-    `chat:${deps.chatSession ? '1' : '0'}`,
     `agent:${deps.agentDatabase ? '1' : '0'}`,
-    `negotiation:${deps.agentDispatcher ? '1' : '0'}`,
   ].join('|');
 }
 
@@ -347,9 +345,6 @@ NEVER dump raw JSON or expose IDs (except actionable ones like conversationId). 
 
 # Authentication & Opportunity Lifecycle
 API key in \`x-api-key\` header. Opportunities: draft → pending → accepted/rejected. Agent acceptance ≠ owner approval. Only call update_opportunity with accepted after explicit user confirmation.
-
-# Paused Negotiations
-A negotiation can PAUSE while its opportunity still reads \`negotiating\` — opportunity status never answers "is anything waiting on the user?". list_negotiations/get_negotiation annotate a paused negotiation with \`pause\` (\`reason\`, plus the private question/recommendation \`payload\` when this user's own side is the one paused). There is no separate answer tool: resuming means submitting the next turn via respond_to_negotiation, same as any other turn.
 
 # Tool Guidance
 Read each tool's description for usage rules (when, prerequisites, follow-ups). Tools contain workflow patterns.

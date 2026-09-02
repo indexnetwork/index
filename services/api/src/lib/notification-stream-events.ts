@@ -1,6 +1,6 @@
 import { getRedisClient } from '../adapters/cache.adapter';
 
-/** Wire event types for Hermes Desktop OS notifications. */
+/** Wire event types for desktop OS notifications. */
 export type NotificationStreamEventType =
   | 'opportunity.new';
 

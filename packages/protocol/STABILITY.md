@@ -44,13 +44,13 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 | Barrel section | What it is |
 |---|---|
 | **Public API** | `createToolRegistry`, model config helpers, tool/runtime helpers (`ResolvedToolContext`, `ToolDeps`, `invokeToolRuntime`, …), `requestContext`. |
-| **Interfaces** | Every `*.interface.ts` port you implement to inject infrastructure (databases, embedder, cache, scraper, queues, integration, agent dispatcher, …). |
+| **Interfaces** | Every port you implement to inject infrastructure (databases, embedder, cache, scraper, integration, …). |
 | **Shared schemas** | Zod schemas + inferred types that cross the boundary (questions, identity, network-assignment, chat-context, …). |
-| **Graph factories** | `*GraphFactory` classes (`ChatGraphFactory`, `OpportunityGraphFactory`, `NegotiationGraphFactory`, …). |
+| **Graph factories** | `*GraphFactory` classes (`OpportunityGraphFactory`, `PremiseGraphFactory`, `HydeGraphFactory`, `RadarGraphFactory`). |
 | **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, network indexing, guided intake, tools) plus `IntentsDeps` and the intake/indexer types. Replaced the six separate intent exports in 18.0.0. |
-| **Agents** | Structured LLM agents (`IndexNegotiator`, `OpportunityEvaluator`, …). |
+| **Agents** | Structured LLM agents (`OpportunityEvaluator`, …). |
 | **MCP** | `createMcpServer` plus the types needed to call it: `ScopedDepsFactory`, `McpCapabilityPolicyOptions`, `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS`, `McpAuthorizationObserver`, `McpAuthorizationDenialEvent`. The rest of `mcp.authorization-policy.ts` is package-internal as of 15.0.0. |
-| **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories became package-internal in 15.0.0 — compose them through `createMcpServer` or `createToolRegistry`. |
+| **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories are package-internal — compose them through `createMcpServer` or `createToolRegistry`. |
 
 ### Experimental
 
@@ -59,7 +59,7 @@ a major bump. Use at your own risk and pin a version if you depend on them.
 
 | Area | What it is |
 |---|---|
-| **States** | Advanced graph-state shapes (`UserNegotiationContext`, `NegotiationTurn`, `NegotiationGraphLike`, …) exposed for advanced graph consumers. |
+| **States** | Advanced graph-state shapes (`NegotiationTurn`, `NegotiationTaskState`, …) exposed for advanced graph consumers. |
 | **Internal helpers** | Low-level support utilities re-exported for the backend's own use (selection/eval/evidence helpers) that are not part of the recommended integration surface. |
 
 > Most symbols in the barrel are consumed by the Index Network backend itself; a

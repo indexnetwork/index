@@ -9,6 +9,20 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Removed
+- **The in-process personal agent and every host path that fed it.**
+  `personal-agent.service.ts`, the PersonalAgent reply stream, the intent
+  dossier/ledger adapters, `lib/negotiation/negotiation-graph.ts`, the chat
+  H2A endpoints (`/chat/stream`, `/chat/web/stream`,
+  `/chat/onboarding/stream`), the `ChatGraphFactory` composition, the
+  negotiation watchdog, the `matchesReady` wakes, the intent-cycle/timeline
+  debug endpoints, the negotiator-memory and negotiation-insights endpoints,
+  the connected-agents and agent-runtime controllers/services/adapters, the
+  Hermes credential/capability/telemetry helpers, the floor lab, and
+  `PERSONAL_AGENT_KICKOFF_CONCURRENCY`. Discovery still records candidates and
+  the Radar owner verdict still works; nothing advances a negotiation until an
+  external agent is built against the API.
+
 ### Changed
 - **Delete `src/queues/`.** Nothing in it had been a queue since BullMQ was
   removed; the folder, filenames and class names were the only thing left

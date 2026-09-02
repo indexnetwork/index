@@ -10,7 +10,7 @@ import { and, asc, db, discoveryMatchCandidates, eq, inArray, networkMembers, op
 /**
  * API-local structural twin of protocol's `CreateAndOpenResult`. Adapters must
  * not import protocol interfaces; TypeScript verifies compatibility where the
- * PersonalAgent's opportunity port is composed.
+ * opportunity port is composed.
  */
 export type CreateAndOpenResult =
   | { status: 'created' | 'existing'; opportunityId: string }
@@ -37,8 +37,8 @@ function toCandidate(row: CandidateRow) {
 export class DiscoveryCandidateDatabaseAdapter {
   /**
    * Upsert on `pair_key`. A pair rediscovered with a fresher read updates in
-   * place; a pair already opened is left alone — reopening it is the
-   * PersonalAgent's decision, not discovery's.
+   * place; a pair already opened is left alone — reopening it is a separate
+   * decision, not discovery's.
    */
   async upsertDiscoveryMatchCandidates(items: CreateDiscoveryMatchCandidateInput[]) {
     if (items.length === 0) return [];

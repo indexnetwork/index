@@ -57,15 +57,7 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
   // Current user id (for telling "you" from "them" in H2H threads). Mirrored
   // onto INDEX_DATA.ME by app.jsx after the snapshot loads.
   const myId = (window.INDEX_DATA && window.INDEX_DATA.ME && window.INDEX_DATA.ME.id) || null;
-  // Agent chat is the signal's DM — the one PersonalAgent chat in intent
-  // scope. This app only ever drives that scope: api-key callers may not
-  // start global chats (those are web-only), so every stream here is
-  // intent-scoped.
   const { patchIntentStatus, refreshIntents } = useIndexEnv();
-  // Agent-chat session id per intent, persisted across signal switches.
-  const chatSessions = (window.__indexChatSessions = window.__indexChatSessions || {});
-  const chatKey = intentId;
-  const chatSessionRef = useRef(chatSessions[chatKey] || null);
   const seenQuestionIds = useRef(new Set());   // question ids already in the feed
   const radarSeqRef = useRef(0);               // drops stale radar responses
   const convByPerson = useRef({});             // opportunityId -> conversationId
@@ -388,71 +380,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
     }
   };
 
-  const [draft, setDraft] = useState("");
-  const sendDraft = () => {
-    if (!draft.trim()) return;
-    const text = draft.trim();
-    setDraft("");
-    setConversation(prev => [
-      ...prev,
-      { kind:"user", id: Math.random().toString(36).slice(2), text, t: now() },
-    ]);
-
-    if (live && window.IndexApp) {
-      const agentMsgId = rid();
-      setConversation(prev => [...prev, { kind:"agent", id: agentMsgId, text: "", t: now() }]);
-      const setAgentText = (t) => setConversation(prev =>
-        prev.map(it => it.id === agentMsgId ? { ...it, text: t } : it));
-      let acc = "";
-      // Always intent-scoped: `live` (see its definition above) is only true
-      // with a truthy intentId, and this pane is per-signal. Passed straight
-      // through rather than as `intentId ? "intent" : undefined`, whose false
-      // branch is unreachable and reads as if unscoped were a supported mode
-      // for this app — it is not. streamChat rejects a half-supplied
-      // scope, so loosening `live` surfaces as an error instead of a
-      // silently-unscoped turn.
-      window.IndexApp.streamChat({
-        message: text,
-        sessionId: chatSessionRef.current,
-        scopeType: "intent",
-        scopeId: intentId,
-        onEvent: (e) => {
-          if (!e || !e.type) return;
-          if (e.type === "token") { acc += e.content || ""; setAgentText(acc); }
-          else if (e.type === "response_reset") { acc = ""; setAgentText(""); }
-          else if (e.type === "done") { setAgentText(e.response || acc); }
-          else if (e.type === "error") { setAgentText(acc || `· ${e.message || "something went wrong"}`); }
-          else if (e.type === "user_question") { fetchChatQuestions(); }
-        },
-      }).then((sid) => {
-        if (sid) { chatSessionRef.current = sid; if (intentId) chatSessions[chatKey] = sid; }
-      }).catch((err) => {
-        // A rejected turn (transport failure, or a 4xx such as the API
-        // refusing a scopeless negotiator stream) used to be swallowed here,
-        // leaving an empty agent bubble and no signal that anything broke.
-        setAgentText(acc || `· ${(err && err.message) || "something went wrong"}`);
-      });
-      return;
-    }
-
-    // demo fallback, the agent reads what you wrote and reaches back.
-    const reply = agentReplyTo(text, { profile, negotiatingPeople, people });
-    setTimeout(() => {
-      setConversation(prev => [
-        ...prev,
-        { kind:"agent", id: Math.random().toString(36).slice(2), text: reply, t: now() },
-      ]);
-    }, 650);
-  };
-
-  // On a blocking chat-mode question, pull it and render it inline as a clarifier.
-  const fetchChatQuestions = () => {
-    if (!client || !chatSessionRef.current) return;
-    client.questions.pending({ conversationId: chatSessionRef.current, mode: "chat" })
-      .then((res) => injectClarifiers(window.IndexApp.normalizeList(res, "questions")))
-      .catch(() => {});
-  };
-
   /* ----- chat (3rd window): opens when you click someone in the pipeline ----- */
   const [chatId, setChatId] = useState(null);
   const chatIdRef = useRef(null);
@@ -744,7 +671,6 @@ function MainView({ profile, people, setPeople, conversation, setConversation,
             conversation={conversation}
             onAnswer={answerClarifier}
             onDismiss={dismissClarifier}
-            draft={draft} setDraft={setDraft} sendDraft={sendDraft}
             negotiatingPeople={live ? [] : negotiatingPeople}
             onRespondPerson={respondPerson}
             paused={paused}

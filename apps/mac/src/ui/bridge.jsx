@@ -101,69 +101,6 @@ window.IndexApp = (function () {
     });
   }
 
-  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
-  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
-  const hermesWaiters = [];
-  window.__indexHermesSetup = function (result) {
-    while (hermesWaiters.length) hermesWaiters.shift()(result || {});
-  };
-  function setupHermes(apiKey) {
-    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
-    return new Promise((resolve) => {
-      hermesWaiters.push(resolve);
-      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
-    });
-  }
-  // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
-  function teardownHermes() {
-    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
-    return new Promise((resolve) => {
-      hermesWaiters.push(resolve);
-      post("teardownHermes");
-    });
-  }
-
-  // ---- generation-fenced Hermes runtime bridge (kept for native recovery) ---
-
-  function hasHermesRuntimeBridge() {
-    return !!(window.webkit && window.webkit.messageHandlers
-      && window.webkit.messageHandlers.hermesRuntime);
-  }
-
-  function runtimeRequestId() {
-    if (window.crypto && typeof window.crypto.randomUUID === "function") {
-      return window.crypto.randomUUID();
-    }
-    return `runtime-${Math.random().toString(36).slice(2)}-${performance.now()}`;
-  }
-
-  const hermesRuntimeBridge = window.IndexApi.createHermesRuntimeBridge({
-    createRequestId: runtimeRequestId,
-    postMessage:(message) => {
-      if (!hasHermesRuntimeBridge()) throw new Error("no native Hermes runtime bridge");
-      window.webkit.messageHandlers.hermesRuntime.postMessage(message);
-    },
-  });
-
-  // Swift emits this credential-free callback only after dequeueing the request
-  // on its trusted serial queue. Only then does JS start the execution timeout.
-  window.__indexHermesRuntimeProgress = function (progress) {
-    hermesRuntimeBridge.receiveProgress(progress);
-  };
-
-  // Late replies after timeout/abort are consumed as unknown and cannot settle
-  // a later request because the production bridge already removed the waiter.
-  window.__indexHermesRuntimeResult = function (result) {
-    hermesRuntimeBridge.receive(result);
-  };
-
-  function hermesRuntime(command, payload, options) {
-    if (!hasHermesRuntimeBridge()) {
-      return Promise.reject(new Error("no native Hermes runtime bridge"));
-    }
-    return hermesRuntimeBridge.request(command, payload || {}, options || {});
-  }
-
   // Swift publishes only an authentication-state boolean, never credential material.
   const authSubscribers = new Set();
   window.__indexAuthChanged = function (authenticated) {
@@ -360,45 +297,6 @@ window.IndexApp = (function () {
   }
 
   // ---- bounded native SSE -------------------------------------------------
-
-  // POST /chat/stream. There is one server persona, so the request names no
-  // persona field. Resolves with
-  // the session id (from the X-Session-Id response header) once the stream ends.
-  // onSession fires as soon as headers arrive, so mid-stream events (e.g.
-  // user_question) can be resolved against the conversation right away.
-  async function streamChat({ message, sessionId, scopeType, scopeId, onEvent, onSession, signal }) {
-    // A half-supplied scope is a caller bug, not a request to drop the scope.
-    // This used to send `if (scopeType && scopeId)`, so a null scopeId silently
-    // downgraded the turn to unscoped — which this app has no surface for
-    // (the API answers a scopeless api-key turn with 403).
-    // Fail here, where the caller is named, rather than at the server.
-    if (Boolean(scopeType) !== Boolean(scopeId)) {
-      throw new Error(
-        `streamChat needs scopeType and scopeId together (got scopeType=${JSON.stringify(scopeType)}, scopeId=${JSON.stringify(scopeId)})`,
-      );
-    }
-
-    const body = { message };
-    if (sessionId) body.sessionId = sessionId;
-    if (scopeType) { body.scopeType = scopeType; body.scopeId = scopeId; }
-
-    let immediateSession = sessionId || null;
-    const receive = (event) => {
-      if (event && event.type === "native_headers") {
-        immediateSession = event.headers && event.headers["x-session-id"] || immediateSession;
-        if (immediateSession && onSession) { try { onSession(immediateSession); } catch (e) { /* ignore */ } }
-        return;
-      }
-      if (onEvent) onEvent(event);
-    };
-    const response = await nativeAPIBridge.request(
-      { kind:"sse", method:"POST", path:"/chat/stream", body },
-      { signal, onEvent:receive, timeoutMs:300000 },
-    );
-    const resolvedSession = response.headers["x-session-id"] || immediateSession || null;
-    if (resolvedSession && resolvedSession !== immediateSession && onSession) { try { onSession(resolvedSession); } catch (e) { /* ignore */ } }
-    return resolvedSession;
-  }
 
   // GET /conversations/stream, live inbox events. Returns an abort handle.
   function streamInbox(onEvent) {
@@ -616,15 +514,11 @@ window.IndexApp = (function () {
     login,
     logout,
     detectHarnesses,
-    setupHermes,
-    teardownHermes,
-    hermesRuntime,
     onAuthChanged,
     onDeepLink,
     createIntent,
     registerAgent,
     parseIntentProposals,
-    streamChat,
     streamInbox,
     notify,
     setNotifyPrefs,

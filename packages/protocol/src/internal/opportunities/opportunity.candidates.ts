@@ -2,8 +2,8 @@
  * A pair discovery found and has not yet opened.
  *
  * Discovery does not create opportunities. It records the pair, once, keyed by
- * {@link pairKeyOf} — and the PersonalAgent that decides to reach out is what
- * turns a candidate into a row. The pair key IS the dedup: both principals'
+ * {@link pairKeyOf}; opening one is a separate decision. The pair key IS the
+ * dedup: both principals'
  * discovery runs converge on the same candidate instead of racing to persist
  * two opportunities between the same two people.
  */

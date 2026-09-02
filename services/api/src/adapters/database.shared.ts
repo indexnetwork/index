@@ -323,7 +323,7 @@ export type ChatScopeType = 'network' | 'intent';
 /**
  * Value of `conversations.persona`.
  *
- * - `personal` — the one live chat persona (PersonalAgent). The retired
+ * - `personal` — the one live chat persona. The retired
  *   signal/negotiator/onboarding ids were collapsed into it by migration.
  * - `telegram` — Telegram notification transcript. Not a chat persona: nothing
  *   drives a turn in it, it only collects delivered notifications.
