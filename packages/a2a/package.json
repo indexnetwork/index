@@ -1,0 +1,40 @@
+{
+  "name": "@indexnetwork/a2a",
+  "version": "0.1.0",
+  "description": "Agent2Agent (A2A) negotiation for personal agents: a client and server for negotiating on someone's behalf with another person's agent over the wire — collaborations, hiring, dating — with an LLM negotiator behind them.",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "main": "./dist/a2a/index.js",
+  "module": "./dist/a2a/index.js",
+  "types": "./dist/a2a/index.d.ts",
+  "bin": {
+    "index-a2a": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/a2a/index.d.ts",
+      "import": "./dist/a2a/index.js"
+    },
+    "./negotiator": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && bun build ./src/index.ts ./src/a2a/index.ts --outdir dist --target node --format esm --splitting && bun build ./src/cli/index.ts --outdir dist/cli --target bun --format esm && tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
