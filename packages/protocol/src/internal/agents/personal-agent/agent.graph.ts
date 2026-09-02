@@ -26,11 +26,15 @@ import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { requestContext } from "../../shared/observability/request-context.js";
 import { turnsWithSenders, type NegotiationAuthoredTurn } from "../../negotiations/negotiation.turn.js";
 import { maybeEnqueueRoundReflect } from "../../negotiations/negotiation.round-reflect.js";
+import { foldNegotiationRoundLog, type NegotiationRoundLogEvent } from "../../negotiations/negotiation.round-log.js";
 import type { NegotiationTaskRow } from "../../../platform/database/negotiation.js";
 import type { IntentRecord } from "../../../platform/database/entities.js";
 import { canonicalCounterpartyStatusProse, isSupportedPersonalAgentStatusProse, normalizeMessageQuestions, PersonalAgentModel } from "./agent.judgment.js";
 import type { Question } from "../../../protocol/question.js";
 import type { PersonalAgentActivity, PersonalAgentDecidedAct, PersonalAgentDeps, PersonalAgentExecutedAct, PersonalAgentInput, PersonalAgentIntentEventKind, PersonalAgentMatch, PersonalAgentNonDurableObservation, PersonalAgentPausedNegotiation, PersonalAgentResult, PersonalAgentScope, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
+import { matchRefId } from "./agent.types.js";
+import type { CreateAndOpenResult } from "../../../platform/database.js";
+import type { PersonalAgentOpportunityPort } from "./agent.types.js";
 
 const logger = protocolLogger("PersonalAgentGraph");
 
@@ -259,9 +263,8 @@ async function assembleContext(
   // `accept_opportunity` is for.
   const eligibility = await Promise.all(matches.map(async (match) => ({
     match,
-    eligible: !match.awaitingIntroducerApproval
-      && !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
-      && !paused.some((entry) => entry.opportunityId === match.opportunityId && !entry.pausedByUs)
+    eligible: !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status)
+      && !paused.some((entry) => entry.opportunityId === matchRefId(match) && !entry.pausedByUs)
       && !(await spentItsTurnBudget(deps, match)),
   })));
   const kickoffTargets = eligibility.filter((entry) => entry.eligible).map((entry) => entry.match);
@@ -270,10 +273,9 @@ async function assembleContext(
       intentId,
       matches: matches.length,
       kickoffTargets: kickoffTargets.length,
-      awaitingIntroducerApproval: eligibility.filter((entry) => entry.match.awaitingIntroducerApproval).length,
       pending: eligibility.filter((entry) => NOT_KICKOFF_ELIGIBLE_STATUSES.has(entry.match.status)).length,
       counterpartyPaused: eligibility.filter((entry) =>
-        paused.some((pausedEntry) => pausedEntry.opportunityId === entry.match.opportunityId && !pausedEntry.pausedByUs),
+        paused.some((pausedEntry) => pausedEntry.opportunityId === matchRefId(entry.match) && !pausedEntry.pausedByUs),
       ).length,
     });
   }
@@ -285,7 +287,7 @@ async function assembleContext(
     ...(input.event === "user_message"
       ? { message: { text: input.text, sessionId: input.sessionId, messageId: input.messageId } }
       : {}),
-    ...(input.event === "all_paused" ? { round: input.round } : {}),
+    ...(input.event === "all_paused" ? { batchId: input.batchId } : {}),
     ...(name ? { agentName: name } : {}),
     signalText: intent ? (intent.summary ?? intent.payload ?? null) : null,
     matches,
@@ -294,7 +296,7 @@ async function assembleContext(
     // display cap held back. The re-check compares against THIS, or a signal
     // with more matches than a round opens would read its own remainder as
     // new arrivals and wake itself for them, round after round.
-    knownMatchIds: allMatches.map((match) => match.opportunityId),
+    knownMatchIds: allMatches.map(matchRefId),
     paused,
     dossier,
     recentDm,
@@ -316,7 +318,7 @@ async function appendLedger(
       kind: context.event,
       ...(context.traceId ? { traceId: context.traceId } : {}),
       ...(context.message ? { messageId: context.message.messageId } : {}),
-      ...(context.round !== undefined ? { round: context.round } : {}),
+      ...(context.batchId !== undefined ? { batchId: context.batchId } : {}),
     },
     act: act as unknown as Record<string, unknown>,
   });
@@ -466,7 +468,7 @@ async function ledgerTerminalFallback(
     await deps.ledger.append({
       userId: context.userId,
       intentId: context.intentId,
-      event: { kind: context.event, ...(context.round !== undefined ? { round: context.round } : {}) },
+      event: { kind: context.event, ...(context.batchId !== undefined ? { batchId: context.batchId } : {}) },
       act: {
         tool: "terminal_fallback",
         text,
@@ -530,6 +532,25 @@ export const PERSONAL_AGENT_STRATEGY_FALLBACK =
  * Before the bump the opposite holds: those failures are safe to retry, so
  * they propagate.
  */
+/**
+ * One match → one opportunity id, resolved at the moment of open.
+ *
+ * This is the ONLY place a candidate becomes a row. Everything above it
+ * addresses matches by ref; everything below it needs a real id. Returns
+ * rather than throws — it is called below the round bump (D54).
+ */
+export async function resolveMatchToOpportunity(
+  opportunities: Pick<PersonalAgentOpportunityPort, "createAndOpen">,
+  userId: string,
+  intentId: string,
+  match: PersonalAgentMatch,
+): Promise<CreateAndOpenResult> {
+  if (match.ref.kind === "opportunity") {
+    return { status: "existing", opportunityId: match.ref.id };
+  }
+  return opportunities.createAndOpen(userId, { intentId, candidateId: match.ref.id });
+}
+
 async function runKickoff(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
@@ -538,12 +559,8 @@ async function runKickoff(
 ): Promise<void> {
   const judgment = deps.judgment ?? defaultJudgment();
 
-  const lifecycle = await deps.negotiationDatabase.getIntentNegotiationRound(context.intentId);
-  const interruptedRound = lifecycle.kickoffStartedAt
-    && lifecycle.roundSize === null
-    && Date.now() - lifecycle.kickoffStartedAt.getTime() >= KICKOFF_STALE_AFTER_MS
-    ? lifecycle.round
-    : null;
+  const lifecycle = await deps.negotiationDatabase.getIntentNegotiationBatch(context.intentId);
+  const interruptedBatch = await detectInterruptedBatch(deps, context.intentId, lifecycle.batchId);
 
   // Exactly the set the agent was shown, minus anything THIS turn resolved a
   // moment ago — a promote or reject completed that negotiation, and opening
@@ -553,16 +570,16 @@ async function runKickoff(
     .filter((act): act is Extract<PersonalAgentExecutedAct, { tool: "promote" | "reject" }> =>
       (act.tool === "promote" || act.tool === "reject") && act.outcome === "resolved")
     .map((act) => act.opportunityId));
-  const matches = context.kickoffTargets.filter((match) => !resolvedHere.has(match.opportunityId));
+  const matches = context.kickoffTargets.filter((match) => !resolvedHere.has(matchRefId(match)));
 
-  // A round a kickoff began and never finished has to be settled, and BEFORE
-  // this turn bumps: the size stamp is guarded on the intent's current round,
-  // so once the counter moves that round can never be stamped again.
-  let repairedRound: number | null = null;
-  if (interruptedRound !== null) {
-    logger.warn("Repairing a kickoff that did not finish its round", { intentId: context.intentId, round: interruptedRound });
-    const settled = await settleRound(deps, context, interruptedRound, { triggerReflect: matches.length === 0 });
-    if (settled > 0 && matches.length > 0) repairedRound = interruptedRound;
+  // A batch a kickoff began and never finished has to be settled, and BEFORE
+  // this turn bumps: once the intent's current batch moves, the old batch id
+  // is no longer reachable from `getIntentNegotiationBatch`.
+  let repairedBatch: string | null = null;
+  if (interruptedBatch !== null) {
+    logger.warn("Repairing a kickoff that did not finish its batch", { intentId: context.intentId, batchId: interruptedBatch });
+    const settled = await settleBatch(deps, context, interruptedBatch, { triggerReflect: matches.length === 0 });
+    if (settled > 0 && matches.length > 0) repairedBatch = interruptedBatch;
   }
 
   if (matches.length === 0) {
@@ -575,7 +592,7 @@ async function runKickoff(
         context.matches.length === 0 ? PERSONAL_AGENT_NO_MATCHES_YET : PERSONAL_AGENT_NOTHING_TO_OPEN);
     }
     await recordKickoff(deps, context, accumulator, {
-      tool: "kickoff", round: lifecycle.round, opened: 0, attempted: 0, failed: 0, reasoning,
+      tool: "kickoff", batchId: lifecycle.batchId, opened: 0, attempted: 0, failed: 0, reasoning,
     });
     // Runs on this path too: it is the authoritative recovery for a batch the
     // inbox could not coalesce, and a turn with nothing to open is exactly
@@ -600,26 +617,47 @@ async function runKickoff(
   await say(deps, context, accumulator, "message_user", publicStrategy);
 
   throwIfIntentAborted();
-  const round = await deps.negotiationDatabase.bumpIntentNegotiationRound(context.intentId);
+  const { batchId } = await deps.negotiationDatabase.bumpIntentNegotiationBatch(context.intentId);
   // ─── from here down, nothing throws (D54) ───────────────────────────────
   // There are deliberately no cancellation gates below the bump. This
   // kickoff is already underway: abort-aware brief/open calls reject into the
-  // settled results so compensation and round settlement can still finish.
+  // settled results so compensation and batch settlement can still finish.
   const threadByOpportunity = new Map(context.paused.map((paused) => [paused.opportunityId, paused.thread]));
 
   const opens = await mapWithConcurrency(matches, kickoffConcurrency(), async (match) => {
+    // The row first, then the brief. A brief written for a pair we then fail
+    // to materialize is a model call spent on nothing.
+    const resolved = await resolveMatchToOpportunity(
+      deps.opportunities, context.userId, context.intentId, match,
+    );
+    if (!("opportunityId" in resolved)) {
+      logger.warn("Could not materialize a match at kickoff", {
+        intentId: context.intentId, ref: match.ref, reason: resolved.reason,
+      });
+      return { status: "rejected" as const, reason: resolved.reason };
+    }
     const brief = await judgment.brief(kickoffContext, {
       match,
       strategy,
-      thread: threadByOpportunity.get(match.opportunityId) ?? [],
+      thread: threadByOpportunity.get(matchRefId(match)) ?? [],
     });
     const result = await deps.negotiations.invoke({
-      opportunityId: match.opportunityId,
+      opportunityId: resolved.opportunityId,
       brief,
       intentId: context.intentId,
-      round,
+      batchId,
     });
     if (result.status === "error") throw new Error(result.error ?? "Negotiation open failed");
+    // Best-effort: a lost 'opened' event only means this task's stop, when it
+    // comes, is not one the fold was expecting — harmless, since the fold
+    // only requires stops for tasks it saw open. It never blocks settlement.
+    await deps.roundLog.appendNegotiationRoundLogEvent(context.intentId, {
+      kind: "opened", taskId: result.negotiationId, batchId,
+    }).catch((err: unknown) => {
+      logger.error("Failed to append an opened round-log event", {
+        intentId: context.intentId, batchId, negotiationId: result.negotiationId, error: err,
+      });
+    });
     return result;
   });
 
@@ -628,7 +666,7 @@ async function runKickoff(
     if (open.status !== "rejected") continue;
     const match = matches[index]!;
     failed.push(match);
-    await compensateFailedOpen(deps, context, match, round, open.reason);
+    await compensateFailedOpen(deps, context, match, batchId, open.reason);
   }
   if (failed.length > 0) {
     // Recorded, not silent: a brief that never generated leaves no task for
@@ -637,7 +675,7 @@ async function runKickoff(
     // accounted for.
     await ledgerOrLog(deps, context, {
       tool: "kickoff",
-      round,
+      batchId,
       opened: 0,
       attempted: matches.length,
       failed: failed.length,
@@ -645,12 +683,35 @@ async function runKickoff(
     });
   }
 
-  const opened = await settleRound(deps, context, round, { triggerReflect: true });
-  if (opened === 0 && repairedRound !== null) await triggerRoundReflect(deps, context, repairedRound);
+  const opened = await settleBatch(deps, context, batchId, { triggerReflect: true });
+  if (opened === 0 && repairedBatch !== null) await triggerBatchReflect(deps, context, repairedBatch);
   await recordKickoff(deps, context, accumulator, {
-    tool: "kickoff", round, opened, attempted: matches.length, failed: failed.length, reasoning,
+    tool: "kickoff", batchId, opened, attempted: matches.length, failed: failed.length, reasoning,
   });
   if (opened > 0) await wakeForNewMatches(deps, context);
+}
+
+/**
+ * A batch a kickoff began but never finished settling (crash, restart)
+ * leaves its round-log without an `opening_complete` marker. Staleness is
+ * read from the log's own event timestamps rather than a separate started-at
+ * stamp: the max timestamp across whatever events exist is how long ago this
+ * batch last did anything. A batch with zero events (the process died before
+ * even the first 'opened' event landed) cannot be distinguished this way from
+ * one that just began this instant — an accepted, narrow gap, since kickoff's
+ * own opens follow the bump within the same turn almost immediately.
+ */
+async function detectInterruptedBatch(
+  deps: PersonalAgentDeps,
+  intentId: string,
+  batchId: string | null,
+): Promise<string | null> {
+  if (!batchId) return null;
+  const events = await deps.roundLog.readNegotiationRoundLogEvents(intentId, batchId);
+  if (events.length === 0) return null;
+  if (foldNegotiationRoundLog(events as NegotiationRoundLogEvent[]).settled) return null;
+  const lastEventAt = events.reduce((max, event) => Math.max(max, event.createdAt.getTime()), 0);
+  return Date.now() - lastEventAt >= KICKOFF_STALE_AFTER_MS ? batchId : null;
 }
 
 /**
@@ -695,26 +756,35 @@ async function compensateFailedOpen(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
   match: PersonalAgentMatch,
-  round: number,
+  batchId: string,
   failure: unknown,
 ): Promise<void> {
-  logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, round, error: failure });
+  logger.warn("PersonalAgent kickoff open failed", { intentId: context.intentId, batchId, error: failure });
+  // A candidate that never became a row has no task to compensate: the
+  // failure was the materialization itself, so there is nothing holding this
+  // batch open. Anything else would look up a task id that is a candidate id.
+  if (match.ref.kind === "candidate") {
+    logger.warn("Nothing to compensate: the match was never opened", {
+      intentId: context.intentId, batchId, candidateId: match.ref.id,
+    });
+    return;
+  }
   // Post-bump: a read that fails here must not fail the turn either.
-  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId).catch((err: unknown) => {
-    logger.error("Could not look up a failed open's task", { opportunityId: match.opportunityId, error: err });
+  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(matchRefId(match)).catch((err: unknown) => {
+    logger.error("Could not look up a failed open's task", { opportunityId: matchRefId(match), error: err });
     return null;
   });
-  if (!task || task.state !== "working" || task.metadata.seats[context.intentId]?.round !== round) return;
+  if (!task || task.state !== "working" || task.metadata.seats[context.intentId]?.batchId !== batchId) return;
   const spoke = (await deps.negotiationDatabase.getNegotiationMessages(task.id).catch(() => [])).length > 0;
   const result = await deps.negotiations.invoke({
     negotiationId: task.id,
     pause: spoke ? "counterparty_silent" : "open_failed",
   });
   if (result.status !== "paused") {
-    // Left live, this task holds its round open — but the round bump has
-    // already happened, so throwing would retry the whole turn into a second
-    // strategy message and a second round (D54). Recorded instead: the round
-    // stays unsettled, and the interrupted-round repair picks it up.
+    // Left live, this task holds its batch open — but the bump has already
+    // happened, so throwing would retry the whole turn into a second
+    // strategy message and a second batch (D54). Recorded instead: the batch
+    // stays unsettled, and the interrupted-kickoff repair picks it up.
     logger.error("Could not pause a stranded negotiation", {
       negotiationId: task.id,
       outcome: result.error ?? result.status,
@@ -723,52 +793,36 @@ async function compensateFailedOpen(
 }
 
 /**
- * Settle a round: run its all-paused check and stamp its size. Returns how
- * many negotiations the round actually holds — zero means there is nothing to
- * settle, and the round is deliberately left unstamped, because a settled
- * empty round is instantly "all paused" and reflect would kick off again,
- * forever.
+ * Settle a batch: run its all-paused check and append its opening_complete
+ * marker. Returns how many negotiations the batch actually holds — read back
+ * from the database rather than counted from the opens, since a compensated
+ * task and a re-kicked task that `init` had already moved into this batch
+ * both belong to it, and only the database knows which survived.
  *
- * The SIZE is read back from the database rather than counted from the opens:
- * a compensated task and a re-kicked task that `init` had already moved into
- * this round both belong to it, and only the database knows which survived.
- * The value is a record; what gates a pause-driven check is that it is no
- * longer null.
- *
- * The all-paused check runs on BOTH sides of the stamp, and the enqueue is
- * allowed to throw. Before, so that a failed enqueue leaves the round
- * unstamped and therefore still findable by the repair path above — retryable
- * rather than a settled round nothing will ever reflect on. After, because a
- * negotiation that pauses in between gets nothing otherwise: its own
- * pause-side check bailed on the still-null stamp, and this one had already
- * counted. The enqueue is keyed by (signal, round), so running it twice is
- * one job either way.
+ * The all-paused check runs only AFTER the marker is appended: before that,
+ * the fold can never be settled (nothing has told it opening finished), so an
+ * earlier check would be a pure no-op. The marker write is retried, then
+ * given up on loudly (D54); an un-appended marker is not lost — the
+ * interrupted-kickoff repair settles it once its log goes stale.
  */
-async function settleRound(
+async function settleBatch(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
-  round: number,
+  batchId: string,
   options: { triggerReflect: boolean },
 ): Promise<number> {
-  const tasks = await deps.negotiationDatabase.getNegotiationTasksForIntentRound(context.intentId, round)
+  const tasks = await deps.negotiationDatabase.getNegotiationTasksForIntentBatch(context.intentId, batchId)
     .catch((err: unknown) => {
-      logger.error("Could not read a round's tasks to settle it", { intentId: context.intentId, round, error: err });
+      logger.error("Could not read a batch's tasks to settle it", { intentId: context.intentId, batchId, error: err });
       return [] as NegotiationTaskRow[];
     });
-  if (tasks.length === 0) return 0;
 
-  if (options.triggerReflect) await triggerRoundReflect(deps, context, round);
-  // Retried, then given up on loudly: this is the one post-bump write whose
-  // loss matters, and it must not throw (D54). An unstamped round is not
-  // lost — the interrupted-round repair settles it once it goes stale.
   await retryWrite(
-    () => deps.negotiationDatabase.stampIntentNegotiationRoundSize(context.intentId, round, tasks.length),
-    "stamp a round's size",
-    { intentId: context.intentId, round },
+    () => deps.roundLog.appendNegotiationRoundLogEvent(context.intentId, { kind: "opening_complete", batchId }),
+    "append a batch's opening_complete marker",
+    { intentId: context.intentId, batchId },
   );
-  // The window the stamp opens: anything that paused since the count above saw
-  // a null stamp and bailed, and would be waited on forever.
-  if (options.triggerReflect) await triggerRoundReflect(deps, context, round);
+  if (options.triggerReflect) await triggerBatchReflect(deps, context, batchId);
   return tasks.length;
 }
 
@@ -792,18 +846,18 @@ async function retryWrite(
   }
 }
 
-/** Enqueue this round's reflect if every negotiation in it has stopped. */
-async function triggerRoundReflect(
+/** Enqueue this batch's reflect if every negotiation in it has stopped. */
+async function triggerBatchReflect(
   deps: PersonalAgentDeps,
   context: PersonalAgentTurnContext,
-  round: number,
+  batchId: string,
 ): Promise<void> {
   const enqueue = deps.reflectEnqueue;
   if (!enqueue) return;
-  await maybeEnqueueRoundReflect(deps.negotiationDatabase, enqueue, {
+  await maybeEnqueueRoundReflect(deps.roundLog, enqueue, {
     userId: context.userId,
     intentId: context.intentId,
-    round,
+    batchId,
   });
 }
 
@@ -832,11 +886,10 @@ async function wakeForNewMatches(
   try {
     const known = new Set(context.knownMatchIds);
     const arrivals = (await deps.opportunities.readMatches(context.userId, context.intentId))
-      .filter((match) => !known.has(match.opportunityId))
-      .filter((match) => !match.awaitingIntroducerApproval)
+      .filter((match) => !known.has(matchRefId(match)))
       .filter((match) => !NOT_KICKOFF_ELIGIBLE_STATUSES.has(match.status));
     const unopened = await Promise.all(arrivals.map(async (match) =>
-      (await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId)) ? null : match));
+      (await deps.negotiationDatabase.getNegotiationTaskForOpportunity(matchRefId(match))) ? null : match));
     if (!unopened.some((match) => match !== null)) return;
     logger.info("Waking again for matches that arrived during this turn", { intentId: context.intentId });
     await deps.wakeForMatches({ userId: context.userId, intentId: context.intentId });
@@ -871,7 +924,7 @@ async function recordKickoff(
  * swallowed read here re-opens exactly what the guarantee exists to stop.
  */
 async function spentItsTurnBudget(deps: PersonalAgentDeps, match: PersonalAgentMatch): Promise<boolean> {
-  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(match.opportunityId);
+  const task = await deps.negotiationDatabase.getNegotiationTaskForOpportunity(matchRefId(match));
   return task?.state === "paused" && task.metadata.pause?.reason === "turn_cap";
 }
 
@@ -932,7 +985,7 @@ async function executeAct(
       // validator is not the effects boundary. The host may read the signal's
       // wider match set; never let an injected id reach a hidden match that
       // was outside this turn's bounded snapshot.
-      if (!context.matches.some((match) => match.opportunityId === act.opportunityId)) {
+      if (!context.matches.some((match) => matchRefId(match) === act.opportunityId)) {
         logger.warn("Decided acceptance on a match this turn cannot see", {
           intentId: context.intentId,
           opportunityId: act.opportunityId,

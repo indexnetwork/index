@@ -57,11 +57,9 @@ export function presentOpportunity(
   opp: Opportunity,
   viewerId: string,
   otherPartyInfo: UserInfo,
-  introducerInfo: UserInfo | null,
   format: 'card' | 'email' | 'notification'
 ): OpportunityPresentation {
   const myActor = opp.actors.find((a) => a.userId === viewerId);
-  const introducer = opp.actors.find((a) => a.role === 'introducer');
 
   if (!myActor) {
     throw new Error('Viewer is not an actor in this opportunity');
@@ -106,15 +104,9 @@ export function presentOpportunity(
       break;
     case 'party':
     default:
-      if (introducer && introducerInfo) {
-        title = `${introducerInfo.name} thinks you should meet ${otherName}`;
-        description = safeReasoning;
-        descriptionIsReasoning = true;
-      } else {
-        title = `Opportunity with ${otherName}`;
-        description = safeReasoning;
-        descriptionIsReasoning = true;
-      }
+      title = `Opportunity with ${otherName}`;
+      description = safeReasoning;
+      descriptionIsReasoning = true;
       break;
   }
 
@@ -190,108 +182,6 @@ export function truncateAtBoundary(text: string, maxChars: number): string {
   return body.replace(/[\s,;:.!?'"-]+$/, "").trim() + "\u2026";
 }
 
-/**
- * Strips introducer mentions from opportunity summary text.
- * Removes patterns like:
- * - "[Introducer] introduced you to [Counterpart]"
- * - "[Introducer] thinks you should meet [Counterpart]"
- * - "[Introducer] connected you to [Counterpart]"
- * - "[Introducer] suggested you meet [Counterpart]"
- *
- * @param text - The text to clean (personalizedSummary)
- * @param introducerName - Full name of the introducer to strip
- * @returns Text with introducer mentions removed, counterpart preserved
- */
-export function stripIntroducerMentions(
-  text: string,
-  introducerName: string | undefined,
-): string {
-  if (!introducerName?.trim()) return text;
-
-  const fullName = introducerName.trim();
-  const firstName = fullName.split(/\s+/)[0];
-  const namesToCheck = [fullName];
-  if (firstName && firstName.length > 1) {
-    namesToCheck.push(firstName);
-  }
-
-  let result = text;
-
-  for (const [idx, name] of namesToCheck.entries()) {
-    const escapedName = escapeRegex(name);
-
-    // Pattern: "Name introduced you to " (with or without comma, optionally with "directly")
-    result = result.replace(
-      new RegExp(`\\b${escapedName}\\s+introduced\\s+you\\s+(?:directly\\s+)?to\\s*`, "gi"),
-      "",
-    );
-
-    // Pattern: "Name thinks you should meet "
-    result = result.replace(
-      new RegExp(`\\b${escapedName}\\s+thinks\\s+you\\s+should\\s+meet\\s*`, "gi"),
-      "",
-    );
-
-    // Pattern: "Name connected you to "
-    result = result.replace(
-      new RegExp(`\\b${escapedName}\\s+connected\\s+you\\s+(?:to|with)\\s*`, "gi"),
-      "",
-    );
-
-    // Pattern: "Name suggested you meet "
-    result = result.replace(
-      new RegExp(`\\b${escapedName}\\s+suggested\\s+you\\s+(?:meet|connect\\s+(?:to|with))\\s*`, "gi"),
-      "",
-    );
-
-    // Pattern: "Name recommended you meet "
-    result = result.replace(
-      new RegExp(`\\b${escapedName}\\s+recommended\\s+you\\s+(?:meet|connect)\\s*`, "gi"),
-      "",
-    );
-
-    // Pattern: "Name thinks you and Counterpart should meet" -> remove entire phrase up to Counterpart
-    result = result.replace(
-      new RegExp(`\\b${escapedName}\\s+thinks\\s+you\\s+and\\s+`, "gi"),
-      "",
-    );
-
-    // Pattern: "Name also thought..." - remove sentences starting with Name + also/also thought
-    result = result.replace(
-      new RegExp(`\\b${escapedName}\\s+(?:also\\s+)?(?:thought|thinks?|believes?|felt)\\s*`, "gi"),
-      "",
-    );
-
-    // General: Remove any remaining standalone mention of the introducer name at sentence start.
-    // Only apply for fullName (idx === 0) to avoid stripping valid counterpart first names
-    // (e.g. "David Smith" intro to "David Johnson" → we strip "David Smith" but not "David" in "David Johnson").
-    if (idx === 0) {
-      result = result.replace(
-        new RegExp(`(?:^|\\.\\s*)\\b${escapedName}\\s+`, "gi"),
-        (match, offset) => {
-          if (offset === 0 || match.startsWith(".")) {
-            return match.startsWith(".") ? ". " : "";
-          }
-          return match;
-        },
-      );
-    }
-  }
-
-  // Clean up: remove leading/trailing whitespace and common punctuation artifacts
-  result = result
-    .replace(/^[\,\s]+/, "") // Remove leading commas/spaces
-    .replace(/\s{2,}/g, " ") // Normalize multiple spaces
-    .trim();
-
-  // Capitalize first letter if we removed from start
-  if (result.length > 0) {
-    result = result.charAt(0).toUpperCase() + result.slice(1);
-  }
-
-  return result;
-}
-
 // Helper function
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -326,7 +216,6 @@ function splitSentences(text: string): string[] {
  * @param counterpartName - Display name of the suggested connection (e.g. "Alex Chen").
  * @param maxChars - Max length of returned string (default MINIMAL_MAIN_TEXT_MAX_CHARS).
  * @param viewerName - Optional display name of the viewer (signed-in user). When provided, sentences or prefixes describing the viewer are skipped so the card introduces the counterpart, not the viewer.
- * @param introducerName - Optional display name of the introducer. When provided, introducer phrases (e.g., "X introduced you to...") are stripped from the summary to keep the body text focused on match quality.
  * @returns Viewer-centric snippet mentioning the counterpart when possible; if counterpartName is empty, returns reasoning truncated to maxChars. Never null; may be "A suggested connection." when reasoning is empty.
  */
 export function viewerCentricCardSummary(
@@ -334,7 +223,6 @@ export function viewerCentricCardSummary(
   counterpartName: string,
   maxChars: number = MINIMAL_MAIN_TEXT_MAX_CHARS,
   viewerName?: string,
-  introducerName?: string,
 ): string {
   const raw = stripUnsupportedOpportunityClaims(stripUuids(reasoning));
   if (!raw) return "A suggested connection.";
@@ -342,10 +230,6 @@ export function viewerCentricCardSummary(
   const name = counterpartName.trim();
   if (!name) {
     let out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
-    // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
-    if (introducerName) {
-      out = stripIntroducerMentions(out, introducerName);
-    }
     out = replaceViewerNameWithYou(out, viewerName);
     return out;
   }
@@ -376,10 +260,6 @@ export function viewerCentricCardSummary(
     if (cleanIdx !== -1) {
       const result = sentences.slice(cleanIdx).join(" ").trim();
       let out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
-      // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
-      if (introducerName) {
-        out = stripIntroducerMentions(out, introducerName);
-      }
       out = replaceViewerNameWithYou(out, viewerName, [name]);
       return out;
     }
@@ -401,10 +281,6 @@ export function viewerCentricCardSummary(
         const rest = sentences.slice(compoundIdx + 1).join(" ").trim();
         const result = rest ? `${extracted} ${rest}` : extracted;
         let out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
-        // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
-        if (introducerName) {
-          out = stripIntroducerMentions(out, introducerName);
-        }
         out = replaceViewerNameWithYou(out, viewerName, [name]);
         return out;
       }
@@ -415,10 +291,6 @@ export function viewerCentricCardSummary(
   const idx = sentences.findIndex(hasCounterpartName);
   if (idx === -1) {
     let out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
-    // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
-    if (introducerName) {
-      out = stripIntroducerMentions(out, introducerName);
-    }
     out = replaceViewerNameWithYou(out, viewerName, [name]);
     return out;
   }
@@ -428,10 +300,6 @@ export function viewerCentricCardSummary(
     fromCounterpart.length <= maxChars
       ? fromCounterpart
       : fromCounterpart.slice(0, maxChars) + "...";
-  // Strip introducer mentions BEFORE replacing viewer name to avoid "you introduced..." artifacts
-  if (introducerName) {
-    out = stripIntroducerMentions(out, introducerName);
-  }
   out = replaceViewerNameWithYou(out, viewerName, [name]);
   return out;
 }
@@ -704,7 +572,7 @@ export function buildApiChatCardPresentationCacheKey(
  *
  *   raw reasoning
  *     → whitespace-normalize
- *     → viewer-centric rewrite (incl. UUID stripping + introducer-mention stripping)
+ *     → viewer-centric rewrite (incl. UUID stripping)
  *     → boundary-aware truncation
  *     → per-surface empty-text default
  *
@@ -734,8 +602,6 @@ export interface SafeFallbackOptions {
   counterpartName?: string;
   /** Display name of the viewer; sentences describing the viewer are skipped/rewritten to "you". */
   viewerName?: string;
-  /** Introducer display name; introducer mentions are stripped from the summary body. */
-  introducerName?: string | null;
   /** Max output length (boundary-aware). Default {@link SAFE_FALLBACK_MAX_CHARS}. */
   maxChars?: number;
   /** Copy returned when reasoning is empty/blank. Default {@link DEFAULT_EMPTY_FALLBACK_TEXT}. */
@@ -745,7 +611,7 @@ export interface SafeFallbackOptions {
 /**
  * Produce safe user-facing fallback copy from raw match reasoning.
  *
- * This is the ONE sanitization standard: UUID stripping, introducer-mention
+ * This is the ONE sanitization standard: UUID stripping,
  * stripping, and viewer-centric rewrite (via {@link viewerCentricCardSummary}),
  * followed by whitespace normalization and boundary-aware truncation (via
  * {@link truncateAtBoundary}). Never returns raw reasoning verbatim beyond
@@ -766,7 +632,7 @@ export function safeFallbackSummary(
   const claimSafeInput = stripUnsupportedOpportunityClaims(normalized);
   if (!claimSafeInput) return emptyText;
 
-  // viewerCentricCardSummary handles UUID stripping, introducer-mention
+  // viewerCentricCardSummary handles UUID stripping,
   // stripping, and the viewer-centric rewrite. Pass Infinity so truncation is
   // handled by boundary-aware logic below instead of a mid-word hard slice.
   const rewritten = viewerCentricCardSummary(
@@ -774,7 +640,6 @@ export function safeFallbackSummary(
     opts.counterpartName ?? "",
     Number.POSITIVE_INFINITY,
     opts.viewerName,
-    opts.introducerName ?? undefined,
   );
 
   // Claim validation intentionally runs after viewer-centric rewriting: rewrite
@@ -1013,9 +878,7 @@ export interface PresenterInput {
   viewerRole: string;
   opportunityStatus?: string;
   /** True when this opportunity was created via an explicit introduction (not automatic discovery). */
-  isIntroduction?: boolean;
   /** Name of the person who made the introduction, if applicable. */
-  introducerName?: string;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -1036,20 +899,9 @@ Rules:
 6. Prefer first names in user-facing copy. Do not repeatedly use full names unless needed to disambiguate.
 7. Network assignment, network title/type, and network/event metadata are retrieval context only. They are NEVER proof that a person attended or will attend, belongs to a group, resides in a place, knows anyone from the network, or shared a session, time, place, or location with anyone. Do not make co-attendance, membership, residence, shared-session, or same-place/same-time claims from network co-membership.
 
-**Introduction-originated opportunities:**
-When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created by an introducer (a real person who saw value in this connection). This is NOT an automatic system discovery — someone made a deliberate judgment.
-- For ALL roles: acknowledge the introducer's role naturally. E.g., "[Introducer name] thinks you should meet [other person]" or "[Introducer name] connected you because..."
-- The introduction itself is a strong signal — treat it with the weight of a personal recommendation.
-- If the parties' intents don't obviously overlap, that's fine — the introducer saw something worth connecting. Focus on what the introducer likely saw.
 
 **Role-Specific Presentation:**
 
-**If viewer is "introducer":**
-- The viewer suggested this connection between two (or more) OTHER people. The opportunity is NOT about the viewer's own needs.
-- Headline: describe the connection between the parties (e.g., "Connecting a React expert with a startup founder").
-- Personalized summary: explain why the people YOU are introducing should meet. Reference THEIR profiles and intents, not yours. Frame it as "you're connecting X and Y because..." rather than "this matches your intent".
-- Suggested action: guide sharing (e.g., "Share this with [name] to get things started").
-- CRITICAL: Do NOT reference the introducer's own intents, skills, or needs. The introducer is the matchmaker, not a party.
 
 **If viewer is "patient" or "party":**
 - Reference their specific intents, skills, or interests that align with this opportunity.
@@ -1093,33 +945,10 @@ Rules:
 - Vary wording for the match itself. Do not repeat "opportunity" across headline, summary, and narratorRemark when alternatives fit.
 - Prefer first names in user-facing copy. Avoid repeated full names unless disambiguation is necessary.
 - Network assignment, network title/type, and network/event metadata are retrieval context only. They are NEVER proof that a person attended or will attend, belongs to a group, resides in a place, knows anyone from the network, or shared a session, time, place, or location with anyone. Do not make co-attendance, membership, residence, shared-session, or same-place/same-time claims from network co-membership.
-- digestSummary must be grammatically complete as a standalone sentence. It should usually start with "You might like meeting {Name} because ..." for direct connections, or "You may be able to help {Name} because ..." for connector/introducer cards.
+- digestSummary must be grammatically complete as a standalone sentence. It should usually start with "You might like meeting {Name} because ...".
 - digestSummary must NOT use awkward third-person fragments like "Name is...", "they're ..., and is...", "you is...", or "the discoverer's query".
 - digestSummary must be one sentence, MUST fit within 180 characters when possible, and MUST contain no markdown links; the caller will attach links.
 - If you cannot fit every detail, choose one clear reason and stop. Do not rely on downstream truncation.
-
-**Introduction-originated opportunities (ONLY when INTRODUCTION CONTEXT is provided):**
-When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created by an introducer. It was NOT automatically discovered.
-- For parties/patients/agents/peers viewing an introduction: keep the introducer signal in narratorRemark (and narrator chip), not in personalizedSummary.
-- For these introduced parties, personalizedSummary must focus ONLY on fit/value between viewer and counterpart. Do NOT mention the introducer there.
-- narratorRemark should carry the introduction signal (e.g., "saw strong alignment between you two" or "thought this connection could be valuable"), without repeating the narrator name at the start.
-- This is a personal recommendation, not an algorithm match. Frame it accordingly.
-
-**CRITICAL: NEVER include introducer names in personalizedSummary. Examples:**
-❌ WRONG: "Seref introduced you to Lucy, who is actively seeking a product co-founder..."
-✅ CORRECT: "Lucy is actively seeking a product co-founder for a niche APAC marketplace. With your expertise in UX and AI, this could be an ideal collaboration."
-
-❌ WRONG: "Bob thinks you should meet Alice because your React skills align with her needs."
-✅ CORRECT: "Alice is building a React-based platform and needs frontend expertise. Your experience with component architecture makes you a strong fit."
-
-❌ WRONG: "Jane connected you to Mark, who is looking for a designer."
-✅ CORRECT: "Mark is building a consumer app and needs design expertise. Your background in user-centered design aligns well with what he's building."
-
-Remember: The introducer's name goes ONLY in narratorRemark, NEVER in personalizedSummary.
-
-**When INTRODUCTION CONTEXT is NOT provided (system-discovered match):**
-- Do NOT use introducer-style wording. Do NOT say "you suggested", "this is an introduction you suggested", or "you suggested this connection". The system found this match; no human introducer was involved.
-- Instead, narratorRemark should describe why the match is relevant (e.g. "Based on your overlapping intents", "Your skills align with what they need").
 
 **Negotiation-grounded explanations (ONLY when NEGOTIATION CONTEXT is provided):**
 When NEGOTIATION CONTEXT is provided, this opportunity passed through an agent-to-agent negotiation. Use the transcript to ground your explanation in the concrete reasoning the agents exchanged.
@@ -1130,19 +959,6 @@ When NEGOTIATION CONTEXT is provided, this opportunity passed through an agent-t
 - For status "rejected": the agents declined. The card should explain the reason briefly so the user understands — not dwell on it.
 - Do NOT invent turn content. Only reference what is in the NEGOTIATION CONTEXT block.
 
-- Exception for connector/introducer: if viewer role is "introducer" (any status), this is a curation/connector card. Use:
-  - suggestedAction: one short line about sharing the intro or confirming the match.
-  - mutualIntentsLabel: a short connector label (e.g. "Connector match", "You can bridge this").
-  - headline: describe the connection between the parties (e.g., "Connecting a PhD researcher with a translator"). Do NOT reference the introducer's own needs.
-  - personalizedSummary: explain why the parties you're introducing should meet, referencing THEIR profiles and intents, not yours.
-
-**CRITICAL for latent introducer cards (opportunity status is "latent"):**
-When the viewer is the introducer and the opportunity status is "latent", the introducer has NOT yet approved this match. They are evaluating whether to make the introduction.
-- narratorRemark MUST use evaluation/curation language (e.g. "Could be a strong match", "Worth introducing?", "Interesting overlap here").
-- Do NOT say "you suggested", "you introduced", "you connected", or any past-tense language implying the introduction was already made.
-- suggestedAction should encourage evaluation (e.g. "Approve if you see the fit").
-- Exception for new-connection reveal: if viewer role is "agent", status is "accepted", and there is an introducer, this is the agent's first time seeing this opportunity. Use:
-  - suggestedAction: a short line about joining the conversation.
 `;
 
 // ──────────────────────────────────────────────────────────────
@@ -1214,9 +1030,6 @@ export class OpportunityPresenter {
     input: PresenterInput,
     options: { signal?: AbortSignal } = {},
   ): Promise<OpportunityPresentationResult> {
-    const introContext = input.isIntroduction
-      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
-      : "";
     const humanContent = `
 VIEWER (the person seeing this opportunity):
 ${input.viewerContext}
@@ -1229,7 +1042,6 @@ MATCH CONTEXT:
 - Confidence: ${input.confidence}
 - Why we matched: ${input.matchReasoning}
 - Signals: ${input.signalsSummary}
-${introContext}
 COMMUNITY: ${input.indexName}
 Viewer's role in this opportunity: ${input.viewerRole}
 
@@ -1309,9 +1121,6 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
       input.mutualIntentCount != null && input.mutualIntentCount > 0
         ? `There are ${input.mutualIntentCount} overlapping intent(s) between viewer and other party.`
         : "Match is based on profile and intent alignment. Do not cite a numeric intent count.";
-    const introContext = input.isIntroduction
-      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
-      : "";
     const negotiationBlock = buildNegotiationPromptBlock(input.negotiationContext);
     // When negotiation context exists, lead with it — these cards exist
     // *because* the negotiation happened. Trailing the block lets weaker
@@ -1333,7 +1142,6 @@ MATCH CONTEXT:
 - Why we matched: ${input.matchReasoning}
 - Signals: ${input.signalsSummary}
 - ${mutualHint}
-${introContext}
 COMMUNITY: ${input.indexName}
 Viewer's role in this opportunity: ${input.viewerRole}
 Opportunity status: ${input.opportunityStatus ?? "pending"}
@@ -1341,7 +1149,6 @@ Opportunity status: ${input.opportunityStatus ?? "pending"}
 Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorRemark, greeting, and mutualIntentsLabel.
 `;
 
-    const isIntroducer = input.viewerRole === "introducer";
 
     try {
       const messages = [
@@ -1353,31 +1160,19 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
       if (/^0\s+(mutual|overlapping)\s+intent/i.test(parsed.presentation.mutualIntentsLabel)) {
         parsed.presentation.mutualIntentsLabel = "Shared interests";
       }
-      if (input.isIntroduction && input.introducerName) {
-        parsed.presentation.personalizedSummary = stripIntroducerMentions(
-          parsed.presentation.personalizedSummary,
-          input.introducerName,
-        );
-        parsed.presentation.digestSummary = stripIntroducerMentions(
-          parsed.presentation.digestSummary,
-          input.introducerName,
-        );
-      }
 
       const fields = {
         headline: sanitizePresenterField(parsed.presentation.headline, DEFAULT_FALLBACK_HEADLINE),
         personalizedSummary: sanitizePresenterField(parsed.presentation.personalizedSummary, DEFAULT_EMPTY_FALLBACK_TEXT),
         digestSummary: sanitizePresenterField(
           parsed.presentation.digestSummary,
-          isIntroducer
-            ? "You may be able to help make a useful introduction here."
-            : "You might like meeting them based on your current interests.",
+          "You might like meeting them based on your current interests.",
         ),
         suggestedAction: sanitizePresenterField(parsed.presentation.suggestedAction, DEFAULT_FALLBACK_ACTION),
         narratorRemark: sanitizePresenterField(parsed.presentation.narratorRemark, "Worth a look."),
         mutualIntentsLabel: sanitizePresenterField(
           parsed.presentation.mutualIntentsLabel,
-          isIntroducer ? "Connector match" : "Shared interests",
+          "Shared interests",
         ),
         greeting: sanitizePresenterField(parsed.presentation.greeting, ""),
       };
@@ -1405,22 +1200,15 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
           timeoutReason,
         },
       );
-      const fallbackSummary = safeFallbackSummary(input.matchReasoning, {
-        introducerName: input.isIntroduction ? input.introducerName : undefined,
-      });
+      const fallbackSummary = safeFallbackSummary(input.matchReasoning);
       return {
         headline: "A promising connection",
         personalizedSummary: fallbackSummary,
-        digestSummary: isIntroducer
-          ? "You may be able to help make a useful introduction here."
-          : "You might like meeting them based on your current interests.",
-        suggestedAction: isIntroducer
-          ? "Share this introduction to get things started."
-          : "Take a look and decide whether to reach out.",
+        digestSummary: "You might like meeting them based on your current interests.",
+        suggestedAction: "Take a look and decide whether to reach out.",
         narratorRemark: "Worth a look.",
-        mutualIntentsLabel: isIntroducer
-          ? "Connector match"
-          : input.mutualIntentCount != null && input.mutualIntentCount > 0
+        mutualIntentsLabel:
+          input.mutualIntentCount != null && input.mutualIntentCount > 0
             ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}`
             : "Shared interests",
         greeting: "",
@@ -1499,7 +1287,11 @@ function buildNegotiationPromptBlock(context: NegotiationContext | undefined): s
     if (turn.verb === 'pause') {
       return `Turn ${index + 1} (pause: ${turn.reason})`;
     }
-    return `Turn ${index + 1} (${turn.verb}): ${turn.reasoning} — said: "${turn.message}"`;
+    // Only the seat that authored a turn sees its reasoning — every other
+    // reader gets the message alone.
+    return turn.reasoning?.trim()
+      ? `Turn ${index + 1} (${turn.verb}): ${turn.reasoning} — said: "${turn.message}"`
+      : `Turn ${index + 1} (${turn.verb}): "${turn.message}"`;
   });
 
   return `
@@ -1558,8 +1350,8 @@ export function summarizeSignalsForPresenter(
  * Gather all context needed for the presenter from the database.
  * Fetches viewer profile, viewer intents, other party profile(s), and index in parallel.
  *
- * @param displayCounterpartUserId - When set (e.g. for a radar card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card. Omitted for introducer view (card shows both parties).
- * @param focusedViewerIntentId - When set for a non-introducer viewer, include only that active intent in viewer context.
+ * @param displayCounterpartUserId - When set (e.g. for a radar card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card.
+ * @param focusedViewerIntentId - When set, include only that active intent in viewer context.
  */
 export async function gatherPresenterContext(
   database: PresenterDatabase,
@@ -1573,50 +1365,28 @@ export async function gatherPresenterContext(
     throw new Error("Viewer is not an actor in this opportunity");
   }
 
-  const isIntroducer = myActor.role === "introducer";
   const otherActors = opportunity.actors.filter((a) => a.userId !== viewerId);
   let otherPartyIds = [...new Set(otherActors.map((a) => a.userId))];
-  if (
-    displayCounterpartUserId &&
-    !isIntroducer &&
-    otherPartyIds.includes(displayCounterpartUserId)
-  ) {
+  if (displayCounterpartUserId && otherPartyIds.includes(displayCounterpartUserId)) {
     otherPartyIds = [displayCounterpartUserId];
   }
 
   const contextIndexId = opportunity.context?.networkId;
 
-  // For introducers: fetch profiles + intents for both parties; skip introducer's own intents.
-  // For other roles: fetch viewer's profile + intents and other party profiles.
+  // Viewer's profile + intents, plus the other party's profile.
   const [viewerProfile, indexRecord, ...otherProfiles] = await Promise.all([
     database.getProfile(viewerId),
     contextIndexId ? database.getNetwork(contextIndexId) : Promise.resolve(null),
     ...otherPartyIds.map((uid) => database.getProfile(uid)),
   ]);
 
-  // Fetch intents: for introducer, fetch each party's intents; otherwise fetch viewer's intents.
   let viewerIntents:
     | Awaited<ReturnType<typeof database.getActiveIntents>>
     | undefined;
-  let partyIntentsMap:
-    | Map<string, Awaited<ReturnType<typeof database.getActiveIntents>>>
-    | undefined;
 
-  if (isIntroducer) {
-    const partyIntentResults = await Promise.all(
-      otherPartyIds.map(async (uid) => ({
-        uid,
-        intents: await database.getActiveIntents(uid),
-      })),
-    );
-    partyIntentsMap = new Map(
-      partyIntentResults.map((r) => [r.uid, r.intents]),
-    );
-  } else {
-    viewerIntents = await database.getActiveIntents(viewerId);
-    if (focusedViewerIntentId) {
-      viewerIntents = viewerIntents.filter((intent) => intent.id === focusedViewerIntentId);
-    }
+  viewerIntents = await database.getActiveIntents(viewerId);
+  if (focusedViewerIntentId) {
+    viewerIntents = viewerIntents.filter((intent) => intent.id === focusedViewerIntentId);
   }
 
   // Fetch premises when any actor is premise-grounded
@@ -1666,47 +1436,7 @@ export async function gatherPresenterContext(
   let viewerContext: string;
   let otherPartyContext: string;
 
-  if (isIntroducer) {
-    // Introducer view: minimal viewer context (just name + role), rich other-party context with intents
-    const introducerApproved = opportunity.actors.find(a => a.role === 'introducer')?.approved === true;
-    const hasApproved = introducerApproved || opportunity.status !== 'latent';
-    viewerContext = [
-      "Profile:",
-      `Name: ${viewerProfile?.identity?.name ?? "Unknown"}`,
-      hasApproved
-        ? "Role: You are the introducer who suggested this connection."
-        : "Role: You are being asked whether these two people would benefit from meeting. You have NOT yet approved this introduction.",
-    ].join("\n");
-
-    const otherParts = otherPartyIds.map((uid, idx) => {
-      const profile = otherProfiles[idx] as Awaited<
-        ReturnType<typeof database.getProfile>
-      >;
-      const name = profile?.identity?.name ?? "Unknown";
-      const bio = profile?.identity?.bio ?? "";
-      const location = profile?.identity?.location ?? "";
-      const context = profile?.context ?? "";
-      const intents = partyIntentsMap?.get(uid);
-      const intentLines = intents?.length
-        ? intents
-            .slice(0, 5)
-            .map((i) => `  - ${i.payload}${i.summary ? ` (${i.summary})` : ""}`)
-        : ["  (no active intents)"];
-      return [
-        `${name}:`,
-        `  Bio: ${bio}`,
-        location ? `  Location: ${location}` : null,
-        context ? `  Context: ${context}` : null,
-        `  Active intents:`,
-        ...intentLines,
-      ]
-        .filter(Boolean)
-        .join("\n");
-    });
-    otherPartyContext =
-      otherParts.join("\n\n") || "Parties (details not available).";
-  } else {
-    // Non-introducer view: full viewer profile + intents, other party profiles
+  {
     const viewerContextLines = [
       "Profile:",
       `Name: ${viewerProfile?.identity?.name ?? "Unknown"}`,
@@ -1737,23 +1467,6 @@ export async function gatherPresenterContext(
   const interp = opportunity.interpretation;
   const signalsSummary = summarizeSignalsForPresenter(interp.signals);
 
-  // Detect introduction-originated opportunities: only when there is an explicit introducer actor.
-  // Do NOT use detection.source === "manual" alone — system-discovered opportunities can have manual source without an introducer.
-  const introducerActor = opportunity.actors.find(
-    (a) => a.role === "introducer",
-  );
-  const isIntroduction = !!introducerActor;
-  let introducerName: string | undefined;
-  if (introducerActor) {
-    introducerName = opportunity.detection.createdByName;
-    if (!introducerName) {
-      const introducerProfile = await database.getProfile(
-        introducerActor.userId,
-      );
-      introducerName = introducerProfile?.identity?.name ?? undefined;
-    }
-  }
-
   const counterpartName =
     otherPartyIds.length === 1 && otherProfiles[0]
       ? (otherProfiles[0] as { identity?: { name?: string } })?.identity?.name?.trim()
@@ -1766,7 +1479,6 @@ export async function gatherPresenterContext(
           counterpartName,
           400,
           viewerNameForFilter,
-          introducerName,
         )
       : stripUuids(interp.reasoning);
 
@@ -1789,8 +1501,6 @@ export async function gatherPresenterContext(
     signalsSummary,
     indexName: indexRecord?.title ?? contextIndexId ?? "",
     viewerRole: myActor.role ?? "party",
-    isIntroduction,
-    introducerName,
   };
 
   return result;

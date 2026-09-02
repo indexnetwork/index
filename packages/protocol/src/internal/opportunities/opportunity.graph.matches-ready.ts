@@ -1,72 +1,64 @@
 /**
- * Discovery pipeline, stage 7: matches_ready.
+ * Discovery pipeline, final stage: matches_ready.
  *
- * Discovery no longer opens negotiations. It persists the batch and emits ONE
- * `matches_ready` event per signal that got matches; the signal's
- * PersonalAgent decides whether to reach out at all, writes the strategy into
- * the DM, derives a brief per match and kicks them off itself
- * (docs/plans/2026-08-23-personal-agent-and-negotiation-graphs.md, "IS-A
- * decides to kick off negotiations; they are not automatically kicked off").
+ * Discovery no longer opens negotiations, and no longer creates opportunities.
+ * It records candidates and emits ONE `matches_ready` event per SEAT that got
+ * one; that seat's PersonalAgent decides whether to reach out at all, writes
+ * the strategy into the DM, derives a brief per match and kicks them off
+ * itself (docs/plans/2026-08-23-personal-agent-and-negotiation-graphs.md,
+ * "IS-A decides to kick off negotiations; they are not automatically kicked
+ * off").
  *
- * One event per intent, not per opportunity: kickoff is a batch, and a
- * per-opportunity event would give the agent one round of one negotiation
- * each time — reflect would then fire at the very first pause.
+ * BOTH sides of every pair are woken, not just the user whose discovery run
+ * found it. A candidate is one row shared by two signals, and each principal's
+ * agent decides for itself. That is also why `createAndOpen` locks on the
+ * pair: two agents can now reach the same candidate at once.
+ *
+ * One event per signal, not per candidate: kickoff is a batch, and a
+ * per-candidate event would give the agent one round of one negotiation each
+ * time — reflect would then fire at the very first pause.
  */
 
-import type { OpportunityActor } from '../../platform/database.js';
-import { resolveOpportunityActorIntent } from './opportunity.actor.js';
 import { matchesReadyLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
-/**
- * Node 3b: matches_ready (post-persist)
- */
 export async function matchesReadyNode(state: OpportunityState, deps: OpportunityGraphDeps) {
   if (!deps.matchesReady) return {};
-  if (!state.opportunities || state.opportunities.length === 0) return {};
+  const candidates = state.candidatesEmitted ?? [];
+  if (candidates.length === 0) return {};
 
-  const discoveryUserId = state.userId as string;
-  const intentIds = new Set<string>();
-  for (const opportunity of state.opportunities) {
-    const actors = opportunity.actors as OpportunityActor[];
-    const introducers = actors.filter((a) => a.role === 'introducer');
-    if (introducers.length > 0 && !introducers.every((a) => a.approved === true)) continue;
-
-    const sourceActor = actors.find((a) => a.userId === discoveryUserId && a.role !== 'introducer');
-    const candidateActor = actors.find((a) => a.userId !== discoveryUserId && a.role !== 'introducer');
-    if (!sourceActor || !candidateActor) continue;
-
-    const intentId = resolveOpportunityActorIntent(sourceActor) ?? state.triggerIntentId;
-    if (intentId) intentIds.add(intentId);
+  // Keyed by intent: a seat woken twice in one batch is one wake.
+  const seats = new Map<string, { userId: string; intentId: string }>();
+  for (const candidate of candidates) {
+    seats.set(candidate.intentA, { userId: candidate.userA, intentId: candidate.intentA });
+    seats.set(candidate.intentB, { userId: candidate.userB, intentId: candidate.intentB });
   }
 
-  // A swallowed failure here is a batch that persisted and an agent that was
+  // A swallowed failure here is a batch that recorded and an agent that was
   // never woken — discovery reporting success for the one thing it exists to
-  // hand off. Let it fail so the discovery job retries: persistence dedupes,
-  // and the wake itself coalesces on the signal, so a retry is idempotent.
+  // hand off. Let it fail so the discovery job retries: the candidate upsert
+  // is idempotent on the pair key, and the wake coalesces on the signal.
   matchesReadyLog.info('Emitting matches_ready', {
-    userId: discoveryUserId,
-    signals: intentIds.size,
-    opportunities: state.opportunities.length,
+    seats: seats.size,
+    candidates: candidates.length,
   });
-  const emitted = await Promise.allSettled([...intentIds].map(async (intentId) => {
-    await deps.matchesReady!({ userId: discoveryUserId, intentId });
-  }));
+  const emitted = await Promise.allSettled(
+    [...seats.values()].map((seat) => deps.matchesReady!(seat)),
+  );
   const failed = emitted.filter((result) => result.status === 'rejected');
   if (failed.length > 0) {
     matchesReadyLog.error('Failed to emit matches_ready', {
-      userId: discoveryUserId,
-      signals: intentIds.size,
+      seats: seats.size,
       failed: failed.length,
       error: (failed[0] as PromiseRejectedResult).reason,
     });
-    throw new Error(`Could not wake ${failed.length} of ${intentIds.size} signal(s) for their new matches`);
+    throw new Error(`Could not wake ${failed.length} of ${seats.size} signal(s) for their new matches`);
   }
 
   return {
     trace: [{
       node: 'matches_ready',
-      detail: `${intentIds.size} signal(s) notified for ${state.opportunities.length} opportunit(y/ies)`,
-      data: { candidateCount: state.opportunities.length, signals: intentIds.size },
+      detail: `${seats.size} signal(s) notified for ${candidates.length} candidate(s)`,
+      data: { candidateCount: candidates.length, seats: seats.size },
     }],
   };
 }

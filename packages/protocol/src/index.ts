@@ -61,7 +61,7 @@ export type {
   ConfirmProposalResult,
 } from "./platform/database.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/discovery/embedder.js";
-export type { IntentGraphQueue } from "./platform/runtime/queue.js";
+export type { IntentFollowUp } from "./platform/runtime/follow-up.js";
 export type { Scraper } from "./platform/discovery/scraper.js";
 export type { Logger, ProtocolError, ProtocolTraceEvent, RequestContext, RequestContextStore } from "./platform/runtime/observability.js";
 export type { AgentDispatcher } from "./internal/shared/interfaces/agent-dispatcher.interface.js";
@@ -89,10 +89,6 @@ export {
 } from "./protocol/question.js";
 export type {
   Question,
-  QuestionPoolPush,
-  QuestionPoolPushRequestReason,
-  QuestionPoolPushRequestStatus,
-  QuestionPoolSnapshot,
   QuestionPurpose,
   QuestionRecoverySnapshot,
   QuestionStrategy,
@@ -120,8 +116,6 @@ export type { PersonalAgentPersonaOptions } from "./internal/chat/personal-agent
 export { buildAgentSelfIntroduction } from "./internal/chat/agent-identity.prompt.js";
 export type { AgentIdentityOptions } from "./internal/chat/agent-identity.prompt.js";
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
-export { Discovery } from "./capabilities/discovery.js";
-export type { DiscoveryDeps } from "./capabilities/discovery.js";
 // ─── Networks ─────────────────────────────────────────────────────────────────
 // The whole capability behind one class: the community lifecycle graph, the
 // membership graph, signal assignment, and the agent-facing tools.
@@ -132,8 +126,6 @@ export type {
   NetworksDeps,
   NetworkToolDeps,
 } from "./capabilities/networks.js";
-export { Opportunities } from "./capabilities/opportunities.js";
-export type { OpportunitiesDeps } from "./capabilities/opportunities.js";
 export { Negotiations } from "./capabilities/negotiations.js";
 export type { NegotiationsDeps } from "./capabilities/negotiations.js";
 
@@ -158,8 +150,6 @@ export type {
   SynthesisResult,
 } from "./capabilities/intents.js";
 
-export { MaintenanceGraphFactory } from "./internal/maintenance/maintenance.graph.js";
-export type { MaintenanceGraphDatabase, MaintenanceGraphCache, MaintenanceGraphQueue } from "./internal/maintenance/maintenance.graph.js";
 export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
@@ -223,7 +213,6 @@ export {
   NegotiationOpeningTurnSchema,
   NegotiationVerdictSchema,
   isPauseTurn,
-  isContinueTurn,
 } from "./internal/negotiations/negotiation.turn.js";
 export type {
   NegotiationTurn,
@@ -242,6 +231,14 @@ export type {
   NegotiationRoundReflectCheck,
   NegotiationRoundReflectEnqueueFn,
 } from "./internal/negotiations/negotiation.round-reflect.js";
+export { foldNegotiationRoundLog } from "./internal/negotiations/negotiation.round-log.js";
+export type {
+  NegotiationRoundLogEvent,
+  NegotiationRoundLogOpenedEvent,
+  NegotiationRoundLogStoppedEvent,
+  NegotiationRoundLogResumedEvent,
+  NegotiationRoundLogFoldResult,
+} from "./internal/negotiations/negotiation.round-log.js";
 // ─── PersonalAgent (AgentGraph) ─────────────────────────────────────────────
 /**
  * One persona, three scopes, routed on the shape of the invoke input. The
@@ -290,7 +287,6 @@ export type {
   ReflectEnqueueFn,
   ReflectionTranscriptEntry,
 } from "./internal/negotiations/negotiation.reflect.js";
-export { renderNegotiatorChatMemorySection } from "./internal/negotiations/negotiation.memory.js";
 export type { NegotiatorMemoryEntry } from "./internal/negotiations/negotiation.memory.js";
 export type { NegotiationToolDeps } from "./internal/negotiations/negotiation.tools.port.js";
 export type {
@@ -300,6 +296,9 @@ export type {
   NegotiationSeatBinding,
   NegotiationTaskState,
   NegotiationMessageRow,
+  NegotiationRoundLogDatabase,
+  NegotiationRoundLogEventKind,
+  NegotiationRoundLogEventRecord,
 } from "./platform/database/negotiation.js";
 
 // ─── Opportunity compatibility exports ─────────────────────────────────────
@@ -314,22 +313,29 @@ export {
   getOrCreateDeliveryCardBatch,
 } from "./internal/opportunities/delivery-card.cache.js";
 export {
-  OpportunityEvaluator,
-} from "./internal/opportunities/opportunity.evaluator.js";
-export type {
-  EvaluatorInput,
-} from "./internal/opportunities/opportunity.evaluator.js";
-export {
   OpportunityGraphFactory,
 } from "./internal/opportunities/opportunity.graph.js";
 export type {
   OpportunityGraphThresholdOverrides,
 } from "./internal/opportunities/opportunity.graph.js";
 export type { MatchesReadyFn } from "./internal/opportunities/opportunity.graph.shared.js";
+export {
+  pairKeyOf,
+} from "./internal/opportunities/opportunity.candidates.js";
+export type { OpportunityEvidence } from "./protocol/schemas/network-assignment.schema.js";
+export {
+  matchRefId,
+  opportunityRef,
+} from "./internal/agents/personal-agent/agent.types.js";
 export type {
-  StampNewbornOpportunitiesFn,
-  StampNewbornOpportunitiesInput,
-} from "./internal/opportunities/opportunity.newborn-stamping.js";
+  PersonalAgentMatchRef,
+} from "./internal/agents/personal-agent/agent.types.js";
+export type {
+  CreateAndOpenResult,
+  CreateDiscoveryMatchCandidateData,
+  DiscoveryMatchCandidate,
+  DiscoveryMatchCandidateStatus,
+} from "./internal/opportunities/opportunity.candidates.js";
 export {
   opportunityOwnerActionForStatus,
 } from "./internal/opportunities/opportunity.owner-approval.js";
@@ -348,9 +354,6 @@ export {
   bindOwnerApprovalProvenance,
 } from "./internal/opportunities/opportunity.owner-provenance.js";
 export {
-  persistOpportunities,
-} from "./internal/opportunities/opportunity.persist.js";
-export {
   gatherPresenterContext,
   OpportunityPresenter,
 } from "./internal/opportunities/opportunity.presentation.js";
@@ -364,35 +367,12 @@ export {
   createOpportunityVerdictTools,
 } from "./internal/opportunities/opportunity.verdict.tools.js";
 export {
-  DISCOVERY_EVALUATOR_MIN_SCORE,
   DISCOVERY_MIN_SIMILARITY,
-  validateDiscoveryEvaluatorMinScore,
   validateDiscoveryMinSimilarity,
 } from "./internal/opportunities/discovery.env.js";
-export type {
-} from "./internal/opportunities/discovery.env.js";
-export {
-  buildPoolAdjustment,
-  mergePoolAdjustment,
-  planPoolAdjustments,
-} from "./internal/opportunities/discriminator/discriminator.adjustments.js";
-export type {
-  PoolAdjustment,
-  PoolAdjustmentSignal,
-} from "./internal/opportunities/discriminator/discriminator.adjustments.js";
-export {
-  PoolDiscriminatorAssigner,
-} from "./internal/opportunities/discriminator/discriminator.assigner.js";
-export type {
-  PoolDiscriminatorAssignedAxis,
-  PoolDiscriminatorAssignmentInput,
-} from "./internal/opportunities/discriminator/discriminator.assigner.js";
 export {
   PoolDiscriminatorMiner,
 } from "./internal/opportunities/discriminator/discriminator.miner.js";
-export {
-  runPoolDiscriminatorShadow,
-} from "./internal/opportunities/discriminator/discriminator.shadow.js";
 export type {
   DiscriminatorMiningInput,
   MinedDiscriminator,
@@ -470,9 +450,3 @@ export type {
 export {
   RadarGraphFactory,
 } from "./internal/opportunities/radar/radar.graph.js";
-export {
-  computeRadarHealth,
-} from "./internal/opportunities/radar/radar.health.js";
-export type {
-  RadarHealthInput,
-} from "./internal/opportunities/radar/radar.health.js";

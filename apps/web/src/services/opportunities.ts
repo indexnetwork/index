@@ -21,7 +21,7 @@ export interface OpportunityInterpretation {
 
 export interface OpportunityListItem {
   id: string;
-  status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   context: OpportunityContext;
   interpretation: OpportunityInterpretation;
   actors: OpportunityActor[];
@@ -39,8 +39,6 @@ export interface GetOpportunitiesOptions {
 
 /** Full lifecycle status union (see API OpportunityStatus). */
 export type OpportunityLifecycleStatus =
-  | 'latent'
-  | 'draft'
   | 'negotiating'
   | 'pending'
   | 'stalled'
@@ -65,16 +63,8 @@ export interface RadarCardItem {
   /** Presenter-generated subtitle under the other party name (e.g. "1 mutual signal"). */
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
-  /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
+  /** Viewer's role in this opportunity (e.g. 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
-  /** Template-only pool-answer demotion explanation from server metadata. */
-  deprioritizedReason?: string;
-  /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
-  secondParty?: {
-    name: string;
-    avatar?: string | null;
-    userId?: string;
-  };
   /**
    * True when this card came from a skeleton-presentation fetch: identity
    * fields are real but mainText/cta are empty (presenter LLM skipped).
@@ -100,7 +90,7 @@ export interface GetRadarViewOptions {
   presentation?: 'skeleton';
 }
 
-export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
 
 export interface OpportunityStatusUpdateResponse {
   opportunity: OpportunityListItem | null;
@@ -120,7 +110,6 @@ export interface OpportunityDetailResponse {
   category?: string;
   confidence?: number;
   network?: { id: string; title: string };
-  introducedBy?: { id: string; name: string; avatar?: string | null };
   /** Present when the requested opportunity was superseded by this enriched opportunity. */
   resolvedFromOpportunityId?: string;
 }
@@ -131,7 +120,6 @@ export interface ChatContextOpportunity {
   headline: string;
   personalizedSummary: string;
   narratorRemark: string;
-  introducerName: string | null;
   peerName: string;
   peerAvatar: string | null;
   /** ISO-8601 acceptance time (from opportunities.updatedAt). May be null for legacy rows. */

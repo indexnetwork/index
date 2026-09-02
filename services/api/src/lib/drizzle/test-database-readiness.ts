@@ -1,38 +1,7 @@
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 
 import postgres from 'postgres';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
-
-const TEST_OPTIONS_WITH_VALUES = new Set([
-  '--timeout',
-  '--rerun-each',
-  '--retry',
-  '--seed',
-  '--coverage-reporter',
-  '--coverage-dir',
-  '--bail',
-  '--reporter',
-  '--reporter-outfile',
-  '--max-concurrency',
-  '--parallel',
-  '--parallel-delay',
-  '--preload',
-  '--config',
-]);
-
-const PARTIAL_TEST_OPTIONS = [
-  '--watch',
-  '--watcher',
-  '--hot',
-  '--only',
-  '--test-name-pattern',
-  '-t',
-  '--path-ignore-patterns',
-  '--changed',
-  '--shard',
-] as const;
 
 export const REQUIRED_TEST_DATABASE_OBJECTS = [
   'public.users',
@@ -51,7 +20,6 @@ export const REQUIRED_TEST_DATABASE_OBJECTS = [
   'public.negotiator_memories',
   'public.opportunity_outcome_events',
   'public.questions_recovery_recipient_intent_fingerprint_uniq',
-  'public.questions_pool_push_recipient_intent_cycle_uniq',
 ] as const;
 
 export const REQUIRED_TEST_DATABASE_COLUMNS = [
@@ -150,124 +118,6 @@ export function validateTestDatabaseUrl(value: string | undefined): string {
   }
 
   return value;
-}
-
-/**
- * Reads the operating system's original command line before Bun rewrites its
- * JavaScript argv to the first discovered test file.
- *
- * @returns Original process arguments, or Bun's rewritten argv as a safe fallback.
- */
-export function readOriginalProcessArgv(): string[] {
-  try {
-    if (process.platform === 'linux') {
-      return readFileSync('/proc/self/cmdline')
-        .toString('utf8')
-        .split('\0')
-        .filter(Boolean);
-    }
-
-    if (process.platform === 'darwin') {
-      const command = execFileSync(
-        '/bin/ps',
-        ['-ww', '-p', String(process.pid), '-o', 'command='],
-        { encoding: 'utf8' },
-      ).trim();
-      if (command) return command.split(/\s+/);
-    }
-  } catch {
-    // Fall back to Bun.argv. A rewritten targeted-looking argv fails closed and
-    // defers readiness to real Drizzle imports rather than assuming a full run.
-  }
-
-  return [...Bun.argv];
-}
-
-/**
- * Decides whether the preload must validate the database before loading any specs.
- * Targeted hermetic specs may skip the preload probe; importing the real Drizzle
- * singleton still performs the same check.
- *
- * @param argv - Original operating-system process arguments.
- * @param env - Environment variables controlling full-suite execution.
- * @param _discoverableFiles - Retained for call-site compatibility.
- * @returns True for bare/full-suite test invocations.
- */
-export function shouldRequireTestDatabase(
-  argv: readonly string[],
-  env: Readonly<Record<string, string | undefined>>,
-  _discoverableFiles: readonly string[] = [],
-): boolean {
-  if (env.API_TEST_REQUIRE_DATABASE === '1') return true;
-
-  const testCommandIndex = argv.findIndex((arg) => arg === 'test');
-  if (testCommandIndex === -1) {
-    // Bun's fallback argv contains only the executable for a true bare run.
-    return argv.length <= 1;
-  }
-
-  const testArgs = argv.slice(testCommandIndex + 1);
-  for (let index = 0; index < testArgs.length; index += 1) {
-    const arg = testArgs[index];
-
-    if (PARTIAL_TEST_OPTIONS.some((option) => arg === option || arg.startsWith(`${option}=`))) {
-      return false;
-    }
-
-    if (TEST_OPTIONS_WITH_VALUES.has(arg)) {
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith('-')) continue;
-
-    // Any positional argument is a file/directory pattern, hence targeted.
-    return false;
-  }
-
-  return true;
-}
-
-export interface TestDatabasePreloadPolicy {
-  checkDatabase: boolean;
-  closeDatabase: boolean;
-  runIsolatedSuite: boolean;
-}
-
-const ISOLATED_IMPORT_HARNESS = 'src/lib/testing/isolated-test-import-harness.spec.ts';
-
-function isExactIsolatedImportHarnessInvocation(argv: readonly string[]): boolean {
-  const testCommandIndex = argv.findIndex((arg) => arg === 'test');
-  if (testCommandIndex === -1) return false;
-  const testArgs = argv.slice(testCommandIndex + 1);
-  if (testArgs.length !== 1) return false;
-  const target = testArgs[0].startsWith('./') ? testArgs[0].slice(2) : testArgs[0];
-  return target === ISOLATED_IMPORT_HARNESS;
-}
-
-/**
- * Plans preload database lifecycle work independently from test discovery.
- *
- * @param argv - Original operating-system process arguments.
- * @param env - Environment variables controlling readiness and isolated targets.
- * @param registeredIsolatedTargets - Manifest-validated isolated test targets.
- * @returns Whether to probe, close, and fan out isolated tests.
- */
-export function resolveTestDatabasePreloadPolicy(
-  argv: readonly string[],
-  env: Readonly<Record<string, string | undefined>>,
-  registeredIsolatedTargets: readonly string[],
-): TestDatabasePreloadPolicy {
-  const checkDatabase = shouldRequireTestDatabase(argv, env);
-  const isolatedTarget = env.API_TEST_ISOLATED_TARGET;
-  const targetedIsolatedImport = isolatedTarget !== undefined
-    && registeredIsolatedTargets.includes(isolatedTarget)
-    && isExactIsolatedImportHarnessInvocation(argv);
-  return {
-    checkDatabase,
-    closeDatabase: checkDatabase,
-    runIsolatedSuite: checkDatabase && !targetedIsolatedImport,
-  };
 }
 
 /**

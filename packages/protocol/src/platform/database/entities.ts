@@ -8,12 +8,57 @@
 
 import type { ScopeMembership } from '../../protocol/core.js';
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
-import type { NetworkAssignmentMetadata } from '../../protocol/schemas/network-assignment.schema.js';
+import type { NetworkAssignmentMetadata, OpportunityEvidence } from '../../protocol/schemas/network-assignment.schema.js';
 
 // ─── Inlined types (previously imported from outside the protocol lib) ───────
 
 /** Branded string ID for type-safe entity references (keyed by Drizzle table name). */
 export type Id<T extends string = string> = string & { readonly __table?: T };
+
+// ─── Discovery match candidates ──────────────────────────────────────────────
+
+export type DiscoveryMatchCandidateStatus = 'pending' | 'opened' | 'superseded' | 'expired';
+
+/**
+ * A pair discovery found, before anyone reached out.
+ *
+ * Discovery does not create opportunities; it records the pair, keyed by
+ * `pairKey`. The uniqueness of that key IS the dedup — both principals'
+ * discovery runs converge on one row instead of racing to persist two
+ * opportunities between the same two people.
+ */
+export interface CreateDiscoveryMatchCandidateData {
+  pairKey: string;
+  networkId: Id<'networks'>;
+  intentA: Id<'intents'>;
+  intentB: Id<'intents'>;
+  userA: Id<'users'>;
+  userB: Id<'users'>;
+  score: number;
+  reasoning: string;
+  evidence: OpportunityEvidence[];
+}
+
+export interface DiscoveryMatchCandidate extends CreateDiscoveryMatchCandidateData {
+  id: string;
+  status: DiscoveryMatchCandidateStatus;
+  createdAt: Date;
+  /** Set once this candidate became a row. */
+  openedOpportunityId?: Id<'opportunities'> | null;
+  /** Resolved for the reader: the party on the other side of the pair. */
+  counterpartName?: string;
+}
+
+/**
+ * What materializing a candidate reports back.
+ *
+ * There is no error case because there is no throw: this is called below the
+ * kickoff round bump, where a throw would be retried into a second strategy
+ * message and a second round.
+ */
+export type CreateAndOpenResult =
+  | { status: 'created' | 'existing'; opportunityId: string }
+  | { status: 'raced' | 'failed'; reason: string };
 
 export interface OnboardingProfileSeed {
   source: 'experiment_signup' | 'experiment_csv_import';
@@ -64,8 +109,7 @@ export interface UserSocial {
 
 /** Detection metadata recorded when an opportunity is created. */
 export interface OpportunityDetection {
-  /** `introducer_discovery` is read-only history: no path stamps it any more, but existing rows carry it. */
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
+  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -78,15 +122,13 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
-  /** Which premise grounded this match (set when discoverySource is 'premise-similarity'). */
+  /** Which premise grounded this match, when the match was premise-grounded. */
   premise?: Id<'premises'>;
   role: string;
-  /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
-  approved?: boolean;
   /**
    * ISO-8601 timestamp set the first time this actor advanced the opportunity's
    * state (patient sending, agent accepting, peer "accepting" on draft = sending
-   * under the hood, peer accepting on pending, introducer sending). Once set,
+   * under the hood, peer accepting on pending). Once set,
    * this actor has committed and cannot be the one to subsequently `accept` the
    * same opportunity — enforced by the self-accept guard in `updateNode`.
    */
@@ -98,12 +140,6 @@ export interface OpportunitySignal {
   type: string;
   weight: number;
   detail?: string;
-  /** Optional source question for reversible pool-preference provenance. */
-  questionId?: string;
-  /** Recipient provenance for pool-discriminator signals. */
-  recipientUserId?: string;
-  /** Intent-pool provenance for pool-discriminator signals. */
-  intentId?: string;
 }
 
 /** LLM-generated interpretation of an opportunity's category and confidence. */
@@ -552,7 +588,7 @@ export interface CreateHydeDocumentData {
 // OPPORTUNITY TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type OpportunityStatus = 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
 
 /**
  * Minimal opportunity lifecycle evidence used to narrate an agent negotiation.
@@ -621,6 +657,8 @@ export interface OpportunityQueryOptions {
   scopeType?: 'intent';
   scopeId?: string;
   role?: string;
+  /** When set, filter to opportunities this user is an actor on. Applied in the query so pagination counts only visible rows. */
+  actorUserId?: string;
   limit?: number;
   offset?: number;
   /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. radar view, API). */

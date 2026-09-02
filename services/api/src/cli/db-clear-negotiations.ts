@@ -4,8 +4,8 @@
  * Also clears discovery-progress, pool/intent questions, intent-agent acts,
  * dossiers, orphan orchestrator conversations, and any conversation that
  * has an agent participant (H2A / A2A chat shells).
- * Also wipes every BullMQ queue in Redis (all `bull:*` keys) and resets each
- * intent's negotiation-cycle state (round, round size, kickoff stamp).
+ * Also resets each intent's negotiation-cycle state (batch id) plus its
+ * round-log events.
  * Keeps intents, users, HyDE, and profile data.
  *
  * Usage:
@@ -18,7 +18,6 @@ dotenv.config({ path: path.resolve(import.meta.dir, '../..', '.env.development')
 
 import { sql } from 'drizzle-orm/sql';
 
-import { getRedisClient } from '../adapters/cache.adapter';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { setLevel } from '../lib/log';
 
@@ -46,10 +45,10 @@ async function readCounts(): Promise<Counts> {
     UNION ALL SELECT 'opportunity_deliveries', count(*)::text FROM opportunity_deliveries
     UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
     UNION ALL SELECT 'agents_with_neg_pickup', count(*)::text FROM agents WHERE last_negotiation_pickup_at IS NOT NULL
-    UNION ALL SELECT 'intents_with_round_state', count(*)::text FROM intents
-      WHERE negotiation_round > 0 OR negotiation_round_size IS NOT NULL OR negotiation_kickoff_started_at IS NOT NULL
+    UNION ALL SELECT 'intents_with_batch_state', count(*)::text FROM intents
+      WHERE negotiation_batch_id IS NOT NULL
+    UNION ALL SELECT 'negotiation_round_log_events', count(*)::text FROM negotiation_round_log_events
     UNION ALL SELECT 'intent_discovery_progress', count(*)::text FROM intent_discovery_progress
-    UNION ALL SELECT 'questions_pool_discovery', count(*)::text FROM questions WHERE detection->>'mode' = 'pool_discovery'
     UNION ALL SELECT 'questions_intent', count(*)::text FROM questions WHERE detection->>'mode' = 'intent'
     UNION ALL SELECT 'questions_nego_opp', count(*)::text FROM questions
       WHERE detection->>'mode' IN ('negotiation', 'negotiation_inflight')
@@ -108,7 +107,7 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
     await tx.execute(sql`
       DELETE FROM questions
       WHERE detection->>'mode' IN (
-            'negotiation', 'negotiation_inflight', 'pool_discovery', 'intent'
+            'negotiation', 'negotiation_inflight', 'intent'
           )
          OR detection->'negotiation' IS NOT NULL
          OR detection->>'sourceType' = 'opportunity'
@@ -119,29 +118,14 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
       WHERE last_negotiation_pickup_at IS NOT NULL
     `);
     // Intents survive the wipe, so their negotiation-cycle state must not:
-    // a kept round/kickoff stamp with no matches or tasks behind it renders
-    // as a permanently "opening" round in the UI.
+    // a kept batch id with no matches or tasks behind it renders as a
+    // permanently "opening" batch in the UI.
     await tx.execute(sql`
-      UPDATE intents
-      SET negotiation_round = 0, negotiation_round_size = NULL, negotiation_kickoff_started_at = NULL
-      WHERE negotiation_round > 0 OR negotiation_round_size IS NOT NULL OR negotiation_kickoff_started_at IS NOT NULL
+      UPDATE intents SET negotiation_batch_id = NULL WHERE negotiation_batch_id IS NOT NULL
     `);
+    await tx.execute(sql`DELETE FROM negotiation_round_log_events`);
   });
   return readCounts();
-}
-
-/** Deletes every BullMQ key (`bull:*`) so no queued/delayed/repeating jobs survive the wipe. */
-async function clearQueues(): Promise<number> {
-  const redis = getRedisClient();
-  let deleted = 0;
-  let cursor = '0';
-  do {
-    const [next, keys] = await redis.scan(cursor, 'MATCH', 'bull:*', 'COUNT', 1000);
-    cursor = next;
-    if (keys.length > 0) deleted += await redis.del(...keys);
-  } while (cursor !== '0');
-  await redis.quit();
-  return deleted;
 }
 
 async function main(): Promise<void> {
@@ -155,7 +139,7 @@ async function main(): Promise<void> {
   }
 
   if (!opts.confirm) {
-    console.log('⚠️  This deletes ALL negotiation + opportunity data for every user on .env.development, plus every queued BullMQ job in Redis.');
+    console.log('⚠️  This deletes ALL negotiation + opportunity data for every user on .env.development.');
     console.log('Use --confirm to proceed.');
     await closeDb();
     process.exit(1);
@@ -167,11 +151,9 @@ async function main(): Promise<void> {
   }
 
   const after = await clearNegotiationsAndOpportunities();
-  const queueKeysDeleted = await clearQueues();
   if (!opts.silent) {
     console.log('[db-clear-negotiations] after:', after);
-    console.log('[db-clear-negotiations] queue keys deleted:', queueKeysDeleted);
-    console.log('✅ Cleared negotiation + opportunity data and all queued jobs');
+    console.log('✅ Cleared negotiation + opportunity data');
   }
 }
 

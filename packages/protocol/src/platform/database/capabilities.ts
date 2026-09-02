@@ -35,6 +35,9 @@ export type ChatGraphCompositeDatabase = Pick<
   Database,
   // Direct ChatGraph operations
   | 'getProfile'
+  // The chat/MCP discovery path builds an OpportunityGraph too, and its
+  // terminal stage records candidates.
+  | 'upsertDiscoveryMatchCandidates'
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
@@ -67,7 +70,6 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'findOpportunitiesByActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
-  | 'updateOpportunityActorApproval'
   | 'stampOpportunityActorAction'
   | 'getOrCreateDM'
   // HyDE graph (used by OpportunityGraph)
@@ -124,7 +126,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // Premise-to-premise discovery (path D) in OpportunityGraph
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'
-  // User context text for context-to-intent discovery in OpportunityGraph
+  // User context text for discovery in OpportunityGraph
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
 > & Pick<
@@ -132,7 +134,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // Orphan heal in OpportunityGraph persist node
   | 'getNegotiationTaskForOpportunity'
   // negotiateNode bumps the round once per (intentId) in a kickoff batch
-  | 'bumpIntentNegotiationRound'
+  | 'bumpIntentNegotiationBatch'
 >;
 
 /**
@@ -145,6 +147,7 @@ export type ChatGraphCompositeDatabase = Pick<
 export type OpportunityGraphDatabase = Pick<
   Database,
   | 'getProfile'
+  | 'upsertDiscoveryMatchCandidates'
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
@@ -167,7 +170,6 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
   | 'stampOpportunityActorAction'
-  | 'updateOpportunityActorApproval'
   | 'isNetworkMember'
   | 'isIndexOwner'
   | 'getUser'
@@ -181,10 +183,10 @@ export type OpportunityGraphDatabase = Pick<
   | 'getPremisesForUserInNetworks'
   | 'searchPremisesBySimilarity'
   | 'searchPremisesBySimilarityBatch'
-  // User context text for context-to-intent discovery
+  // User context text for discovery
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
-  // HyDE documents for context-to-intent HyDE search
+  // HyDE documents for HyDE search
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)
   | 'getRecentlyRejectedOpportunityCounterparties'
@@ -194,7 +196,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'getNegotiationTaskForOpportunity'
   // negotiateNode bumps the round once per (intentId) in a kickoff batch and
   // passes it to every open() in that batch — a round is the batch, not one opportunity.
-  | 'bumpIntentNegotiationRound'
+  | 'bumpIntentNegotiationBatch'
 >;
 export interface OutcomeOutbox {
   event: unknown;
@@ -229,8 +231,6 @@ export type OpportunityControllerDatabase = Pick<
   // owned by OpportunityService — services cannot import other services.
   | 'getOrCreateDM'
   | 'unhideConversation'
-  // Approve-introduction endpoint: flip introducer actor's approved flag.
-  | 'updateOpportunityActorApproval'
   // Self-accept guard + actedAt stamping on service-layer status flips.
   | 'stampOpportunityActorAction'
 >;

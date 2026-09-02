@@ -1,10 +1,9 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
-import { RadarGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
-import type { OpportunityControllerDatabase, RadarGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, OpportunityCache } from '@indexnetwork/protocol';
+import { RadarGraphFactory, presentOpportunity, type UserInfo, canUserSeeOpportunity, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, safeFallbackSummary, truncateAtBoundary, buildApiChatCardPresentationCacheKey } from '@indexnetwork/protocol';
+import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
@@ -17,15 +16,11 @@ const updateStatusLogger = log.service.from("OpportunityService.updateOpportunit
  * Lifecycle statuses surfaced in the default opportunity list (when no explicit
  * `status` filter is given). This is everything a user currently sees EXCEPT the
  * terminal-stale `expired` and `rejected`, which otherwise clutter the live list
- * inline with active matches (IND-254). Pre-send `draft` is excluded simply by
- * its absence from this list: passing an explicit `statuses` filter makes the
- * adapter treat it as a caller-chosen filter, which bypasses the adapter's own
- * `!= 'draft'` default branch — so the omission here is what keeps drafts out on
- * this path, not that branch. A caller can still request a single terminal status
- * explicitly (e.g. `?status=expired`) for a history view — that path bypasses
- * this default.
+ * inline with active matches (IND-254). A caller can still request a single
+ * terminal status explicitly (e.g. `?status=expired`) for a history view — that
+ * path bypasses this default.
  */
-const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['latent', 'negotiating', 'pending', 'stalled', 'accepted'];
+const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
 
 /**
  * Default statuses for the per-network community list. Stricter than
@@ -195,14 +190,13 @@ interface ChatCardCached {
   headline: string;
   personalizedSummary: string;
   narratorRemark: string;
-  introducerName: string | null;
   peerName: string;
   peerAvatar: string | null;
   acceptedAt: string | null;
 }
 
 /**
- * Resolve the counterpart actor for a viewer: the first non-introducer actor
+ * Resolve the counterpart actor for a viewer: the first other actor
  * other than the viewer, falling back to the first non-viewer actor of any role.
  * Returns `undefined` when the viewer is the only actor.
  */
@@ -211,7 +205,7 @@ function resolveCounterpart<A extends { userId: string; role: string }>(
   viewerId: string,
 ): A | undefined {
   return (
-    actors.find((a) => a.role !== 'introducer' && a.userId !== viewerId)
+    actors.find((a) => a.userId !== viewerId)
     ?? actors.find((a) => a.userId !== viewerId)
   );
 }
@@ -256,7 +250,6 @@ export class OpportunityService {
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
   private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
-  private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
   /** Injected only by specs; production resolves the real graph lazily. */
@@ -364,26 +357,6 @@ export class OpportunityService {
       this.cache,
     ).createGraph();
     return this.radarGraph;
-  }
-
-  private getMaintenanceGraph(): ReturnType<MaintenanceGraphFactory['createGraph']> {
-    this.maintenanceGraph ??= new MaintenanceGraphFactory(
-      this.db as unknown as MaintenanceGraphDatabase,
-      this.cache as unknown as MaintenanceGraphCache,
-      {
-        addJob: async (
-          data: { intentId: string; userId: string; indexIds?: string[] },
-          options?: { priority?: number; jobId?: string },
-        ) => {
-          const { fromIntentQueue } = await import('../queues/opportunity/from-intent.queue');
-          return fromIntentQueue.addJob(
-            { intentId: data.intentId, userId: data.userId },
-            options,
-          );
-        },
-      } satisfies MaintenanceGraphQueue,
-    ).createGraph();
-    return this.maintenanceGraph;
   }
 
   /**
@@ -576,7 +549,7 @@ export class OpportunityService {
       return null;
     }
 
-    // Check actor visibility; the code-traceable rules live in docs/design/opportunity-status-lifecycle.md (§3.E).
+    // Check actor visibility.
     const visibilityError = this.assertOpportunityVisible(opp, viewerId);
     if (visibilityError) {
       return visibilityError;
@@ -586,22 +559,16 @@ export class OpportunityService {
     opp = replacementResolution.opportunity;
 
     const myActor = opp.actors.find((a) => a.userId === viewerId)!;
-    const introducer = opp.actors.find((a) => a.role === 'introducer');
-    const introducerId = introducer?.userId;
-    const nonIntroducerActors = opp.actors.filter((a) => a.role !== 'introducer' && a.userId !== viewerId);
-    const otherPartyIds = nonIntroducerActors.map((a) => a.userId);
+    const otherActors = opp.actors.filter((a) => a.userId !== viewerId);
+    const otherPartyIds = otherActors.map((a) => a.userId);
 
     const contextNetworkId = opp.context?.networkId;
-    const actorNetworkId = nonIntroducerActors[0]?.networkId ?? myActor?.networkId;
+    const actorNetworkId = otherActors[0]?.networkId ?? myActor?.networkId;
     const networkIdForDisplay = contextNetworkId ?? actorNetworkId;
     const [indexRecord, ...userRecords] = await Promise.all([
       networkIdForDisplay ? this.db.getNetwork(networkIdForDisplay) : Promise.resolve(null),
       ...otherPartyIds.map((uid) => this.db.getUser(uid)),
     ]);
-    const introducerRecord = introducerId ? await this.db.getUser(introducerId) : null;
-    const introducerInfo: UserInfo | null = introducerRecord
-      ? { id: introducerRecord.id, name: introducerRecord.name ?? 'Unknown', avatar: introducerRecord.avatar ?? null }
-      : null;
 
     const userMap = new Map<string | null, UserInfo>();
     otherPartyIds.forEach((uid, i) => {
@@ -611,9 +578,9 @@ export class OpportunityService {
 
     const otherPartyInfo = otherPartyIds[0] ? userMap.get(otherPartyIds[0])! : { id: '', name: 'Unknown', avatar: null as string | null };
     const counterpartUser = userRecords[0];
-    const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, introducerInfo, 'card');
+    const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, 'card');
 
-    const otherParties = nonIntroducerActors.map((a) => {
+    const otherParties = otherActors.map((a) => {
       const info = userMap.get(a.userId) ?? { id: a.userId, name: 'Unknown', avatar: null as string | null };
       return { id: info.id, name: info.name, avatar: info.avatar, role: a.role };
     });
@@ -627,7 +594,6 @@ export class OpportunityService {
       presentation,
       myRole: myActor.role,
       otherParties,
-      introducedBy: introducerInfo ?? undefined,
       category: opp.interpretation.category,
       confidence: confidenceNum,
       index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
@@ -857,9 +823,9 @@ export class OpportunityService {
         opportunity: sanitizeOpportunityForResponse(opp),
       };
     }
-    if (opp.status !== 'pending' && opp.status !== 'draft' && opp.status !== 'latent') {
+    if (opp.status !== 'pending') {
       return {
-        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending, draft, or latent.`,
+        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending.`,
         status: 400,
       };
     }
@@ -994,110 +960,19 @@ export class OpportunityService {
 
     // IND-254: the network list had no status filtering at all, so it leaked
     // draft/latent and terminal-stale expired/rejected into the community view.
-    // Default to live community statuses (no latent — there's no per-actor
-    // visibility guard here) unless an explicit status/statuses filter is given.
+    // Default to live community statuses (no latent) unless an explicit
+    // status/statuses filter is given. Non-owner members only see opportunities
+    // they are an actor on; owners keep the full curator list. The actor filter
+    // goes to the query, not to the result, so limit/offset paginate visible rows.
     const hasExplicitStatus = !!options?.status || (options?.statuses?.length ?? 0) > 0;
+    const scoped = { ...options, ...(isOwner ? {} : { actorUserId: userId }) };
     const rows = await this.db.getOpportunitiesForNetwork(
       networkId,
-      hasExplicitStatus ? options : { ...options, statuses: DEFAULT_NETWORK_LIST_STATUSES },
+      hasExplicitStatus ? scoped : { ...scoped, statuses: DEFAULT_NETWORK_LIST_STATUSES },
     );
     return rows.map((opp) => sanitizeOpportunityForResponse(opp));
   }
 
-  /**
-   * Create a manual opportunity (curator feature).
-   *
-   * @param networkId - The network ID
-   * @param creatorId - User creating the opportunity
-   * @param data - Opportunity creation data
-   * @returns Created opportunity or error
-   */
-  async createManualOpportunity(
-    networkId: string,
-    creatorId: string,
-    data: {
-      parties: Array<{ userId: string; intentId?: string }>;
-      reasoning: string;
-      category?: string;
-      confidence?: number;
-    }
-  ) {
-    logger.verbose('Creating manual opportunity', { networkId, creatorId });
-
-    // Check permission
-    const permission = await this.checkCreatePermission(creatorId, data.parties, networkId);
-    if (!permission.allowed) {
-      return { error: 'Not authorized to create opportunities in this network', status: 403 };
-    }
-
-    // Check for duplicates
-    const partyIds = data.parties.map((p) => p.userId);
-    const exists = await this.db.opportunityExistsBetweenActors(partyIds, networkId);
-    if (exists) {
-      return { error: 'Opportunity already exists between these parties', status: 409 };
-    }
-
-    // Build actors (manual opportunities are single-index; all actors share networkId)
-    const actors: OpportunityActor[] = data.parties.map((p) => ({
-      networkId,
-      userId: p.userId,
-      role: 'party',
-      ...(p.intentId ? { intent: p.intentId } : {}),
-    }));
-    actors.push({ networkId, userId: creatorId, role: 'introducer' });
-
-    try {
-      validateOpportunityActors(actors);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Invalid opportunity actors';
-      return { error: message, status: 400 };
-    }
-
-    const conf = data.confidence ?? 0.8;
-    const opportunityData: CreateOpportunityData = {
-      detection: {
-        source: 'manual',
-        createdBy: creatorId,
-        timestamp: new Date().toISOString(),
-      },
-      actors,
-      interpretation: {
-        category: data.category ?? 'collaboration',
-        reasoning: data.reasoning,
-        confidence: conf,
-        signals: [{ type: 'curator_judgment', weight: 1, detail: 'Manual match by curator' }],
-      },
-      context: { networkId },
-      confidence: String(conf),
-      status: 'pending',
-    };
-
-    const embedder = new EmbedderAdapter();
-    try {
-      const { created, expired, errors } = await persistOpportunities({
-        database: this.db,
-        embedder,
-        items: [opportunityData],
-      });
-
-      if (!created?.length) {
-        const message =
-          errors?.length ? (errors[0].error instanceof Error ? errors[0].error.message : String(errors[0].error)) : 'Failed to persist opportunity';
-        logger.warn('createManualOpportunity persistence failed', { errors, creatorId, networkId });
-        return { error: message, status: 500 };
-      }
-
-      this.events.emit('created', { opportunity: created[0] });
-      for (const opp of expired) {
-        this.events.emit('expired', { opportunity: opp });
-      }
-      return sanitizeOpportunityForResponse(created[0]);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to persist opportunity';
-      logger.warn('createManualOpportunity persistence failed', { error: err, creatorId, networkId });
-      return { error: message, status: 500 };
-    }
-  }
 
   /**
    * Get chat context for a conversation between two users.
@@ -1115,13 +990,7 @@ export class OpportunityService {
       this.db.getUser(peerUserId),
     ]);
 
-    // Filter out opportunities where either chat participant is the introducer.
-    // Chat context should only show direct connections, not introductions they facilitated.
-    const rows = allRows.filter((opp) =>
-      !opp.actors.some((a) =>
-        (a.userId === userId || a.userId === peerUserId) && a.role === 'introducer'
-      )
-    );
+    const rows = allRows;
 
     // Check cache for all opportunities (graceful fallback if Redis unavailable)
     let cachedResults: (ChatCardCached | null)[] = [];
@@ -1157,7 +1026,6 @@ export class OpportunityService {
             headline: presented.headline,
             personalizedSummary: presented.personalizedSummary,
             narratorRemark: '',
-            introducerName: presenterInput.introducerName ?? null,
             peerName: peerUser?.name ?? 'Someone',
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
@@ -1176,12 +1044,9 @@ export class OpportunityService {
           return card;
         } catch (err) {
           logger.warn('getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });
-          const introducerActor = opp.actors.find((a) => a.role === 'introducer');
-          const introducerName = introducerActor ? opp.detection?.createdByName ?? null : null;
           // Shared sanitization standard — see opportunity.safe-presentation.ts in protocol.
           const fallbackSummary = safeFallbackSummary(opp.interpretation?.reasoning, {
             counterpartName: peerUser?.name ?? undefined,
-            introducerName,
             emptyText: 'Connection opportunity',
           });
           return {
@@ -1189,7 +1054,6 @@ export class OpportunityService {
             headline: truncateAtBoundary(fallbackSummary, 79) || 'Connection opportunity',
             personalizedSummary: fallbackSummary,
             narratorRemark: '',
-            introducerName,
             peerName: peerUser?.name ?? 'Someone',
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
@@ -1202,19 +1066,6 @@ export class OpportunityService {
   }
 
 
-  /**
-   * Trigger maintenance for a specific user via the maintenance graph.
-   * Fire-and-forget: logs errors but does not throw.
-   *
-   * @param userId - The user whose feed to evaluate
-   * @param source - What triggered this maintenance check
-   */
-  triggerMaintenance(userId: string, source: string): void {
-    logger.info('Triggering maintenance', { userId, source });
-    this.getMaintenanceGraph().invoke({ userId }).catch((err) =>
-      logger.warn('Maintenance graph failed', { userId, source, error: err })
-    );
-  }
 
   /**
    * Check if user has permission to create opportunities in an index.

@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/bun';
 
 import { ChatController } from './controllers/chat.controller';
 import { DebugController } from './controllers/debug.controller';
+import { FloorLabController } from './controllers/floor-lab.controller';
 import { ToolController } from './controllers/tool.controller';
 import { ToolService } from './services/tool.service';
 import { S3StorageAdapter } from './adapters/storage.adapter';
@@ -12,7 +13,6 @@ import { NetworkRequestController } from './controllers/network-request.controll
 import { IntentController } from './controllers/intent.controller';
 import { IntentIntakeController } from './controllers/intent-intake.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
-import { ConnectLinkController } from './controllers/connect-link.controller';
 import { AuthController } from './controllers/auth.controller';
 import { EnrichmentController } from './controllers/enrichment.controller';
 import { UserController } from './controllers/user.controller';
@@ -42,31 +42,29 @@ import { log, sanitizeForLog } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { captureAppException } from './lib/sentry';
 import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/sentry-performance';
-import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
-// Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
-import { intentQueue } from './queues/intent.queue';
-import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
-import { negotiationWatchdogQueue, isNegotiationWatchdogEnabled } from './queues/negotiations/watchdog.queue';
-import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
-import { checkpointRetentionCron } from './queues/checkpoint/retention.queue';
-import { frameDriftQueue } from './queues/frame-drift.queue';
+// Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
+import { intentIndexing } from './lib/intent/indexing';
+import { intentDiscovery } from './lib/opportunity/discovery';
+import { negotiationWatchdogCron, isNegotiationWatchdogEnabled } from './crons/negotiation-watchdog.cron';
+import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
+import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
+import { frameDriftCron } from './crons/frame-drift.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
-import { notificationQueue } from './queues/notification.queue';
-import { hydeQueue } from './queues/hyde.queue';
-import { emailQueue } from './queues/email.queue';
-import { negotiationReflectQueue } from './queues/negotiations/reflect.queue';
+import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
+import { negotiationReflect } from './lib/negotiation/reflect';
 import { matchesReady, negotiationGraph, agentDispatcher as backgroundAgentDispatcher } from './lib/negotiation/negotiation-graph';
-import { personalAgentQueue } from './queues/personal-agent.queue';
+import { personalAgentService } from './services/personal-agent.service';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { handleIntentCreatedMaintenance, IntentEvents } from './events/intent.event';
+import { IntentEvents } from './events/intent.event';
 import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import db from './lib/drizzle/drizzle';
-import { premiseQueue } from './queues/premise.queue';
+import { premiseCascade } from './lib/premise/cascade';
+import { background } from './lib/background';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
@@ -108,13 +106,13 @@ setRequestContextStore(hostRequestContext);
 // post-assignment HyDE path wakes the signal's agent exactly as chat/MCP
 // discovery does. Without this, the graph's matches_ready node
 // short-circuits and a persisted batch never reaches its agent.
-fromIntentQueue.setRuntimeDeps({
+intentDiscovery.setRuntimeDeps({
   matchesReady,
   agentDispatcher: backgroundAgentDispatcher,
 });
-negotiationWatchdogQueue.setNegotiationGraph(negotiationGraph);
-negotiationWatchdogQueue.setReflectEnqueue(async (job) => {
-  await personalAgentQueue.addAllPausedEvent(job);
+negotiationWatchdogCron.setNegotiationGraph(negotiationGraph);
+negotiationWatchdogCron.setReflectEnqueue(async (job) => {
+  await personalAgentService.addAllPausedEvent(job);
 });
 
 const notificationOpportunityAdapter = new OpportunityDatabaseAdapter();
@@ -132,8 +130,8 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   // Intents created before joining never get an assignment pass for this network
   // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
   // regen / opportunity discovery); scoped to this network.
-  intentQueue.addNetworkReconcileForUser(userId, networkId).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to enqueue intent network reconcile', { userId, networkId, error: err });
+  intentIndexing.addNetworkReconcileForUser(userId, networkId).catch((err) => {
+    log.job.from('NetworkMembership').error('Failed to trigger intent network reconcile', { userId, networkId, error: err });
   });
 };
 
@@ -148,56 +146,30 @@ PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
 
 PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
   log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade', { premiseId, userId });
-  premiseQueue.addCascadeJob({ premiseId, userId, event: 'retracted' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
+  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'retracted' }));
 };
 
 PremiseEvents.onExpired = (premiseId: string, userId: string) => {
   log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade', { premiseId, userId });
-  premiseQueue.addCascadeJob({ premiseId, userId, event: 'expired' })
-    .catch(err => log.job.from('PremiseEvents').error('Failed to enqueue cascade', { premiseId, userId, error: err }));
+  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'expired' }));
 };
 
-intentQueue.startWorker();
-fromIntentQueue.startWorker();
 if (isNegotiationWatchdogEnabled()) {
-  void negotiationWatchdogQueue.start().catch((error) => {
-    log.queue.from('NegotiationWatchdogQueue').error('Negotiation watchdog startup failed', { error });
+  void negotiationWatchdogCron.start().catch((error) => {
+    log.job.from('NegotiationWatchdogCron').error('Negotiation watchdog startup failed', { error });
   });
 }
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
-void frameDriftQueue.start().catch((error) => {
-  log.queue.from('FrameDriftQueue').error('Frame-drift queue startup failed', {
+void frameDriftCron.start().catch((error) => {
+  log.job.from('FrameDriftCron').error('Frame-drift cron startup failed', {
     event: 'frame_drift_monitoring_startup_failed',
     error,
   });
 });
-notificationQueue.startWorker();
-hydeQueue.startCrons();
-emailQueue.startWorker();
-negotiationReflectQueue.startWorker();
-negotiationReflectQueue.startCrons();
-personalAgentQueue.startWorker();
-premiseQueue.startWorker();
-premiseQueue.startCrons();
-
-IntentEvents.onCreated = (intentId: string, userId: string) => {
-  // IntentQueue owns the authoritative discovery trigger: it assigns networks,
-  // generates HyDE, then awaits one from-intent enqueue. Starting here races the
-  // assignment transaction and produces a misleading successful fail-closed run.
-  log.job.from('IntentEvents').verbose('Intent created, triggering maintenance', { intentId, userId });
-  handleIntentCreatedMaintenance(
-    intentId,
-    userId,
-    (ownerUserId, reason) => opportunityService.triggerMaintenance(ownerUserId, reason),
-  );
-};
-
-IntentEvents.onArchived = (intentId: string, userId: string) => {
-  log.job.from('IntentEvents').verbose('Intent archived, triggering maintenance', { intentId, userId });
-  opportunityService.triggerMaintenance(userId, 'intent-archived');
-};
+hydeMaintenanceCron.startCrons();
+negotiationReflect.startCrons();
+premiseCascade.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
@@ -272,7 +244,6 @@ controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(IntentIntakeController, new IntentIntakeController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
-controllerInstances.set(ConnectLinkController, new ConnectLinkController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
@@ -289,6 +260,7 @@ const integrationService = new IntegrationService(integrationAdapter);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
 controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
+controllerInstances.set(FloorLabController, new FloorLabController());
 const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));
 
@@ -299,12 +271,11 @@ function classifyRequestSubsystem(pathname: string): string {
   if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return 'mcp';
   if (pathname.startsWith('/api/auth') || pathname.startsWith('/.well-known/')) return 'auth';
   if (pathname.startsWith('/api/tools')) return 'protocol';
-  if (pathname.startsWith('/dev/queues')) return 'queue-admin';
   if (pathname.startsWith('/api/')) return 'controller';
   return 'server';
 }
 
-// Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
+// Cron jobs (newsletter, opportunity finder, HyDE) are registered above.
 const server = Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors
@@ -356,14 +327,6 @@ const server = Bun.serve({
       );
     }
 
-    // Bull Board UI at /dev/queues (before API loop so it is always served in dev)
-    if (!IS_PRODUCTION && (url.pathname === '/dev/queues' || url.pathname.startsWith('/dev/queues/'))) {
-      const res = await adminQueuesApp.fetch(req);
-      const newHeaders = new Headers(res.headers);
-      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
-      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
-    }
-
     // Better Auth handles its own /api/auth/* routes (sign-in, sign-up, session, etc.)
     // Our custom auth routes (/api/auth/me, /api/auth/profile/update) fall through to controllers
     const betterAuthPaths = [
@@ -404,13 +367,6 @@ const server = Bun.serve({
     // MCP Streamable HTTP endpoint (OPTIONS already handled globally above)
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
       return mcpHandler(req, corsHeaders);
-    }
-
-    // Short connect-link URLs are minted at <base>/c/<code> (no /api prefix
-    // — the brevity is the point). Rewrite to the controller path so the
-    // normal route-matching loop can dispatch to ConnectLinkController.
-    if (url.pathname.startsWith('/c/')) {
-      url.pathname = `/api${url.pathname}`;
     }
 
     // Iterate over controllers and routes to find a match.
@@ -601,20 +557,9 @@ bindLimiterServer(server);
 logger.info('Server running', { port: PORT });
 
 
-// Graceful shutdown: close BullMQ workers so stale workers don't linger after restart
+// Graceful shutdown
 const shutdown = async () => {
-  logger.info('Shutting down workers...');
-  await Promise.allSettled([
-    intentQueue.close(),
-    fromIntentQueue.close(),
-    negotiationWatchdogQueue.close(),
-    notificationQueue.close(),
-    emailQueue.close(),
-    personalAgentQueue.close(),
-    premiseQueue.close(),
-    frameDriftQueue.close(),
-  ]);
-  logger.info('Workers closed');
+  logger.info('Shutting down...');
   await Sentry.close(2000);
   process.exit(0);
 };

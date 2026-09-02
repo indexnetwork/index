@@ -639,7 +639,7 @@ export class IntentDatabaseAdapter {
    */
   private async attachIntentExtras(
     rows: (Omit<IntentListRow, 'networks' | 'pendingQuestionCount' | 'waitingOpportunityCount' | 'warming' | 'awaitingReply'> & {
-      /** Stamped by the from-intent queue on first successful discovery (IND-482). */
+      /** Stamped by the discovery queue on first successful discovery (IND-482). */
       firstDiscoverySucceededAt: Date | null;
     })[],
     userId: string,
@@ -827,7 +827,6 @@ export class IntentDatabaseAdapter {
           CROSS JOIN LATERAL unnest(ARRAY[${idList}]::text[]) AS requested(intent_id)
           WHERE ${schema.opportunities.status} = 'pending'
             AND actor->>'userId' = ${userId}
-            AND actor->>'role' IS DISTINCT FROM 'introducer'
             AND actor->>'actedAt' IS NULL
             AND (
               ${schema.opportunities.detection}->>'triggeredBy' = requested.intent_id

@@ -29,27 +29,19 @@ export interface OpportunityCardData {
   secondaryActionLabel?: string;
   /** Subtitle under the other party name (e.g. "1 mutual signal"). */
   mutualIntentsLabel?: string;
-  /** Narrator chip (Index or introducer). */
+  /** Narrator chip. */
   narratorChip?: {
     name: string;
     text: string;
     avatar?: string | null;
     userId?: string;
   };
-  /** Viewer's role in this opportunity (e.g. 'party', 'agent', 'introducer'). */
+  /** Viewer's role in this opportunity (e.g. 'party', 'agent'). */
   viewerRole?: string;
   /** Match confidence score (0-1). */
   score?: number;
   /** Opportunity status at the time the card was created. */
   status?: string;
-  /** Template-only pool-answer demotion explanation from server metadata. */
-  deprioritizedReason?: string;
-  /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
-  secondParty?: {
-    name: string;
-    avatar?: string | null;
-    userId?: string;
-  };
   /**
    * True for cards from a skeleton-presentation fetch: identity fields are
    * real but mainText/cta are empty. The body renders a shimmer until a full
@@ -115,16 +107,6 @@ function getNarratorHoverClass(status?: string): string {
     default:
       return "hover:bg-[#E8E8E8]";
   }
-}
-
-/** Keep only the user's own selected side; never expose an axis/evaluator rationale. */
-function formatDeprioritizedReason(detail: string): string {
-  const marker = ": you chose ";
-  const markerIndex = detail.lastIndexOf(marker);
-  const chosenSide = markerIndex >= 0
-    ? detail.slice(markerIndex + marker.length).trim()
-    : detail.trim();
-  return `Deprioritized — you chose ${chosenSide}`;
 }
 
 interface OpportunityCardProps {
@@ -220,7 +202,7 @@ export function OpportunitySkeleton() {
  * - Avatar, name, and mutual intents label
  * - Primary and secondary action buttons
  * - Main text (personalized summary)
- * - Narrator chip (Index or introducer)
+ * - Narrator chip
  */
 export default function OpportunityCard({
   card,
@@ -288,12 +270,7 @@ export default function OpportunityCard({
   };
 
   const handleSecondPartyClick = () => {
-    if (card.secondParty?.userId) {
-      navigate(`/u/${card.secondParty.userId}`);
-    }
   };
-
-  const isIntroducerArrow = card.viewerRole === "introducer" && !!card.secondParty;
 
   const handleNarratorClick = () => {
     if (card.narratorChip?.userId) {
@@ -324,70 +301,6 @@ export default function OpportunityCard({
     <div className={cn("rounded-md p-4", getCardWrapperClass(effectiveStatus))}>
       {/* Header: Avatar, Name, Mutual Intents, Actions */}
       <div className="flex items-center justify-between gap-2 mb-3">
-        {isIntroducerArrow ? (
-          /* Introducer arrow layout: [Avatar] Name → [Avatar] Name */
-          <div className="flex items-center gap-1.5 min-w-0">
-            <div
-              className="flex items-center gap-1.5 min-w-0 cursor-pointer"
-              role="link"
-              tabIndex={0}
-              onClick={handleProfileClick}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleProfileClick();
-                }
-              }}
-              aria-label={`View profile of ${card.name || "Someone"}`}
-            >
-              <UserAvatar
-                id={card.userId}
-                name={card.name || "User"}
-                avatar={card.avatar || null}
-                size={28}
-                className="shrink-0"
-              />
-              <span className="font-bold text-gray-900 text-sm hover:underline truncate">
-                {card.name || "Someone"}
-              </span>
-            </div>
-            <span className="text-gray-400 text-sm shrink-0">→</span>
-            <div
-              className={cn(
-                "flex items-center gap-1.5 min-w-0",
-                card.secondParty?.userId && "cursor-pointer",
-              )}
-              {...(card.secondParty?.userId
-                ? {
-                    role: "link" as const,
-                    tabIndex: 0,
-                    onClick: handleSecondPartyClick,
-                    onKeyDown: (e: React.KeyboardEvent) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleSecondPartyClick();
-                      }
-                    },
-                    "aria-label": `View profile of ${card.secondParty.name}`,
-                  }
-                : {})}
-            >
-              <UserAvatar
-                id={card.secondParty?.userId}
-                name={card.secondParty!.name}
-                avatar={card.secondParty!.avatar || null}
-                size={28}
-                className="shrink-0"
-              />
-              <span className={cn(
-                "font-bold text-gray-900 text-sm truncate",
-                card.secondParty?.userId && "hover:underline",
-              )}>
-                {card.secondParty!.name}
-              </span>
-            </div>
-          </div>
-        ) : (
           /* Standard single-user layout */
           <div
             className="flex items-center gap-2 min-w-0 cursor-pointer"
@@ -418,7 +331,6 @@ export default function OpportunityCard({
               </p>
             </div>
           </div>
-        )}
         {hasActions && (
           <div className="flex gap-1.5 shrink-0">
             {onPrimaryAction && (
@@ -474,14 +386,6 @@ export default function OpportunityCard({
           </div>
         )}
       </div>
-
-      {card.deprioritizedReason && (
-        <div>
-          <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">
-            {formatDeprioritizedReason(card.deprioritizedReason)}
-          </span>
-        </div>
-      )}
 
       {effectiveStatus === "negotiating" && (
         <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">

@@ -123,33 +123,6 @@ export class UserDatabaseAdapter {
   }
 
   /**
-   * Check if a key already exists for any user.
-   * @param key - The key to check
-   * @returns True if the key is taken
-   */
-  async keyExists(key: string): Promise<boolean> {
-    const result = await db.select({ id: users.id })
-      .from(users)
-      .where(eq(users.key, key))
-      .limit(1);
-    return result.length > 0;
-  }
-
-  /**
-   * Update a user's key.
-   * @param userId - The user ID
-   * @param key - The new key value
-   * @returns Updated user or null
-   */
-  async updateKey(userId: string, key: string): Promise<typeof users.$inferSelect | null> {
-    const result = await db.update(users)
-      .set({ key, updatedAt: new Date() })
-      .where(eq(users.id, userId))
-      .returning();
-    return result[0] ?? null;
-  }
-
-  /**
    * Find user with joined profile and notification settings
    */
   async findWithGraph(userId: string): Promise<UserWithGraph | null> {
@@ -180,10 +153,8 @@ export class UserDatabaseAdapter {
       hasProfile,
       notificationPreferences: settings?.preferences as {
         connectionUpdates: boolean;
-        weeklyNewsletter: boolean;
       } || {
         connectionUpdates: true,
-        weeklyNewsletter: true,
       }
     };
   }
@@ -290,7 +261,6 @@ export class UserDatabaseAdapter {
         userId,
         preferences: {
           connectionUpdates: true,
-          weeklyNewsletter: true,
         }
       })
       .onConflictDoNothing();
@@ -305,7 +275,6 @@ export class UserDatabaseAdapter {
         userId,
         preferences: {
           connectionUpdates: true,
-          weeklyNewsletter: true,
         }
       })
       .onConflictDoUpdate({
@@ -353,7 +322,7 @@ export class UserDatabaseAdapter {
 
   /**
    * Upsert the telegram key inside user_notification_settings.preferences,
-   * preserving existing connectionUpdates / weeklyNewsletter values.
+   * preserving the existing connectionUpdates value.
    * @param userId - The user whose Telegram prefs to update
    * @param telegramPrefs - The new Telegram prefs to store
    */
@@ -365,7 +334,6 @@ export class UserDatabaseAdapter {
       .limit(1);
     const current = (existing[0]?.preferences as NotificationPreferences | undefined) ?? {
       connectionUpdates: true,
-      weeklyNewsletter: true,
     };
     const updated: NotificationPreferences = { ...current, telegram: telegramPrefs };
     await db

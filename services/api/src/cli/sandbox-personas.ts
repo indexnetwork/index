@@ -86,7 +86,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Looking for an applied AI developer to prototype document extraction and topic classification for insurance claims.',
           'I can offer insurance-domain expertise and real workflow requirements to an AI product team.',
-          'Seeking peers in claims or underwriting operations to compare notes on rolling out automation responsibly.',
+          'Seeking peers in claims, underwriting, or healthcare-operations roles to compare notes on rolling out document automation responsibly.',
           'Open to speaking at an insurance-technology meetup about what document AI gets wrong in practice.',
         ],
       },
@@ -123,7 +123,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Exploring document-automation options for faxed prior-authorization forms and want to talk with practitioners who have done it.',
           'I can describe real healthcare intake workflows to people building document tools.',
-          'Looking for other healthcare operations managers to compare automation experiences.',
+          'Looking for other insurance or healthcare operations managers rolling out document automation, to compare what actually worked.',
         ],
       },
     ],
@@ -144,7 +144,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         ],
         intents: [
           'Looking for reliable climbing partners for weekday bouldering sessions and occasional weekend crag trips near Istanbul.',
-          'Happy to help newer climbers with trip planning and gym orientation.',
+          'Happy to show beginner climbers around Istanbul gyms on weekends, including ones just visiting town.',
           'Want to find someone who can teach me to lead-belay safely outdoors.',
         ],
       },
@@ -180,7 +180,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Looking for beginner-friendly climbing partners in Ankara for weekend gym sessions.',
           'Would love to join a guided outdoor climbing day somewhere in Turkey when I am ready.',
-          'Open to climbing in Istanbul on the weekends I am in town.',
+          'Looking for an Istanbul local to climb with and show me around a gym on the weekends I am in town for family.',
         ],
       },
     ],
@@ -202,7 +202,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Looking for a fractional growth marketer experienced in taking vertical SaaS products from pilot customers to repeatable acquisition.',
           'I can share healthcare-practice customer research with other founders building operational tools.',
-          'Seeking other vertical SaaS founders at a similar stage for a monthly accountability call.',
+          'Seeking other early-stage Texas founders, not just vertical SaaS, for a monthly accountability call about runway and traction pressure.',
           'Open to meeting angels who focus on healthcare operations software.',
         ],
       },
@@ -237,6 +237,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Looking for a growth marketer who has launched a consumer fintech app and can help plan our first 90 days.',
           'Seeking other solo founders in Texas building consumer products.',
+          'Looking for other early-stage Texas founders, any vertical, for a monthly accountability call on runway and fundraising decisions.',
           'Open to a cofounder conversation with someone who has consumer growth experience.',
         ],
       },
@@ -278,6 +279,7 @@ const SCENARIOS: ScenarioDefinition[] = [
           'Available for a four-week fintech onboarding research project, including Portuguese and English participant interviews.',
           'Looking for product teams that will let research findings directly shape their roadmap.',
           'Seeking a research partner who covers French and German for larger European studies.',
+          'Looking for other UX researchers in Portugal to trade research-ops tooling and interview-logistics tips.',
           'Interested in teaching a short workshop on interview synthesis for product teams.',
         ],
       },
@@ -293,7 +295,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         ],
         intents: [
           'Available later this year for UX research engagements with B2B software teams in Portugal.',
-          'Looking for other researchers to share a research-ops toolkit with.',
+          'Looking for other UX researchers in Portugal to share a research-ops toolkit and interview-logistics tips with.',
           'Open to occasional consumer research if the timeline is flexible.',
         ],
       },
@@ -317,6 +319,7 @@ const SCENARIOS: ScenarioDefinition[] = [
           'Looking for a data scientist to analyze a public dataset on municipal heat-adaptation investments and outcomes.',
           'I can offer policy context and co-author an open research brief on local climate resilience.',
           'Seeking council officers willing to be interviewed about how adaptation funding decisions are made.',
+          'Open to being quoted by journalists writing about local government funding gaps in climate adaptation.',
         ],
       },
       {
@@ -407,6 +410,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Looking for a grant writer who knows arts funders to guide our first national application.',
           'Seeking other small arts organizations in the Southeast to share funder intelligence.',
+          'Would value a free office-hour conversation with an experienced grant consultant before committing to paid help.',
           'Offering our gallery space for community meetings and workshops.',
         ],
       },
@@ -447,6 +451,7 @@ const SCENARIOS: ScenarioDefinition[] = [
           'Available to give classroom talks or practical demonstrations about solar and battery engineering in Seattle.',
           'Seeking a teacher partner to adapt an energy-storage demonstration for high-school students.',
           'Looking for other engineers who do STEM outreach to share demo materials.',
+          'Willing to help another Washington-state trades or engineering volunteer prepare their first classroom talk.',
           'Interested in mentoring a student capstone project on home solar design.',
         ],
       },
@@ -487,6 +492,7 @@ const SCENARIOS: ScenarioDefinition[] = [
           'I can offer production coaching to first-time indie teams struggling with scope.',
           'Seeking publishers or funds interested in narrative-driven indie games.',
           'Looking for a narrative designer to review our branching dialogue structure.',
+          'Open to a Unreal-background VFX artist willing to ramp up on Unity for stylized particle and material polish on our slice.',
         ],
       },
       {
@@ -617,6 +623,7 @@ const SCENARIOS: ScenarioDefinition[] = [
           'Looking for Pacific Northwest ceramicists or small manufacturers who can produce a 600-piece restaurant tableware set.',
           'Seeking other restaurant owners who have commissioned local tableware.',
           'Open to a small pilot run of plates before committing to a full order.',
+          'Looking for a Portland or Seattle-area ceramicist willing to test a new chip-resistant stoneware body with a small pilot batch in daily restaurant service.',
         ],
       },
     ],
@@ -677,7 +684,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         ],
         intents: [
           'Looking for an incident-response facilitator to run a realistic ransomware tabletop exercise.',
-          'I can share a reusable security readiness checklist with other startup teams.',
+          'I can share a reusable security readiness checklist with other startup teams building a security function from scratch.',
           'Seeking other security leads at mid-sized European software companies for a peer group.',
         ],
       },
@@ -749,8 +756,8 @@ const SCENARIOS: ScenarioDefinition[] = [
           'I specialize in explainable models that a loan officer can understand.',
         ],
         intents: [
-          'Available to advise a financial-inclusion startup on transparent alternative-data risk modeling.',
-          'Seeking a founder partner with strong borrower relationships and clear consent practices.',
+          'Available to advise a financial-inclusion startup or lender on transparent alternative-data risk and collections models a loan officer can actually understand.',
+          'Seeking a founder or lending-operations partner with strong borrower relationships and clear consent practices.',
           'Looking for other African data scientists working on credit to share methods.',
         ],
       },
@@ -1028,6 +1035,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Looking for a technical writer to redesign contributor documentation and first-issue pathways.',
           'I can mentor developers who want experience maintaining a widely used TypeScript library.',
+          'Open to a volunteer contributor writing tutorials and example content alongside our paid docs contract.',
           'Seeking other maintainers to compare sponsorship and sustainability approaches.',
         ],
       },
@@ -1221,6 +1229,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Offering monthly mentorship to a first-time engineering manager navigating team leadership and delegation.',
           'Seeking experienced individual contributors who can mentor early-career developers in a community program.',
+          'Open to a few informal video conversations with senior ICs elsewhere in Spain who are weighing whether to move into management.',
           'Looking for other engineering executives in Spain for a quarterly dinner.',
         ],
       },
@@ -1338,7 +1347,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         ],
         intents: [
           'Looking for a jazz pianist in New Orleans for a monthly residency and occasional private events.',
-          'Seeking a drummer and bassist to fill out a working trio.',
+          'Seeking a drummer and bassist to fill out a working trio, and open to a weekend-only drummer for private events even if they cannot make the Thursday residency.',
           'Open to co-writing with a songwriter who works in jazz or Brazilian idioms.',
         ],
       },
@@ -1492,6 +1501,7 @@ const SCENARIOS: ScenarioDefinition[] = [
         intents: [
           'Offering informal mentorship to a PhD student working on low-resource machine translation.',
           'Seeking academic collaborators on evaluation methods for low-resource languages.',
+          'Separately from my one PhD mentoring slot, I have a bounded evaluation project a masters student could contribute to over a few months.',
           'Looking for a co-organizer for a small Edinburgh NLP reading group.',
         ],
       },
@@ -2082,19 +2092,12 @@ export const SANDBOX_E2E_CASES = {
     source: { email: 'maya.chen@sandbox.test', intentIndex: 1 },
     candidate: { email: 'sofia.martinez@sandbox.test', intentIndex: 0 },
   },
-  unapprovedIntroducer: {
-    opportunityId: 'e8dd4e42-2f66-469d-8c0c-61e0bcb3e56b',
-    source: { email: 'maya.chen@sandbox.test', intentIndex: 1 },
-    candidate: { email: 'sofia.martinez@sandbox.test', intentIndex: 0 },
-    introducer: { email: 'ethan.brooks@sandbox.test' },
-  },
 } as const;
 
 /**
  * A bounded market for live provider tests: the five designated Launch people
  * plus these sixteen already-authored personas from the full curated
- * population (still exported/named "twenty" — see docs/guides/development-
- * reference.md's "Immutable local playground" — the count drifted by one
+ * population (still exported/named "twenty" — the count drifted by one
  * pair in exchange for content relevance, see below).
  */
 // Every name here is plausibly launch-adjacent by content, not just by an

@@ -805,8 +805,6 @@
   // Rejected is hidden (null bucket), matching the mac app: those are mostly
   // agent-side filtering decisions, and listing them reads as user rejection.
   const STATUS_BUCKET = {
-    latent: "pending",
-    draft: "pending",
     pending: "pending",
     negotiating: "negotiating",
     stalled: "negotiating",

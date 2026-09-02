@@ -93,13 +93,11 @@ _QUESTION_LIMIT = 10
 _PREVIEW_CHARS = 240
 
 # Maps raw opportunity status values to the radar status strip buckets.
-# latent/draft (pre-send) fold into "pending"; stalled (a stalled negotiation)
-# folds into "negotiating". Rejected opportunities are hidden entirely
-# (mac-app parity): those are mostly agent-side filtering decisions, and
-# listing them reads as if the user (or the other person) did the rejecting.
+# stalled (a stalled negotiation) folds into "negotiating". Rejected
+# opportunities are hidden entirely (mac-app parity): those are mostly
+# agent-side filtering decisions, and listing them reads as if the user (or the
+# other person) did the rejecting.
 _STATUS_BUCKET = {
-    "latent": "pending",
-    "draft": "pending",
     "pending": "pending",
     "negotiating": "negotiating",
     "stalled": "negotiating",
@@ -112,7 +110,7 @@ _STATUS_BUCKET = {
 _NEGOTIATION_STATUSES = {"pending", "negotiating", "stalled"}
 
 # Lifecycle statuses the web intent radar requests (rejected hidden client-side).
-_RADAR_STATUSES = "latent,pending,negotiating,stalled,accepted,expired"
+_RADAR_STATUSES = "pending,negotiating,stalled,accepted,expired"
 
 # Static images the DESKTOP plugin fetches as base64 (its REST bridge cannot
 # address the dashboard's static file mount by URL). Allow-list only.
@@ -634,7 +632,7 @@ def _normalize_member(member: dict[str, Any]) -> dict[str, Any]:
 
 
 def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> str:
-    """Resolve the displayed counterpart, preferring non-introducer actors."""
+    """Resolve the displayed counterpart: the first actor who is not the viewer."""
     if not current_user_id:
         return ""
     fallback = ""
@@ -644,10 +642,7 @@ def _counterpart_user_id(opp: dict[str, Any], current_user_id: str | None) -> st
         uid = _text(actor.get("userId"))
         if not uid or uid == current_user_id:
             continue
-        if not fallback:
-            fallback = uid
-        if _text(actor.get("role")) != "introducer":
-            return uid
+        return uid
     return fallback
 
 
@@ -658,7 +653,7 @@ def _visible_counterpart_user_ids(current_user_id: str) -> set[str]:
         opportunities, _ = _fetch_opportunities(query)
         for opp in opportunities:
             status = _text(opp.get("status"))
-            if status in {"latent", "pending"} and not _is_actionable_for_viewer(opp, current_user_id):
+            if status == "pending" and not _is_actionable_for_viewer(opp, current_user_id):
                 continue
             counterpart_id = _counterpart_user_id(opp, current_user_id)
             if counterpart_id:
@@ -696,25 +691,11 @@ def _is_actionable_for_viewer(opp: dict[str, Any], current_user_id: str | None) 
     if not viewer_actors:
         return False
 
-    status = _text(opp.get("status"))
-    introducer = next((actor for actor in actors if _text(actor.get("role")) == "introducer"), None)
-    has_introducer = introducer is not None
-    introducer_approved = bool(introducer and introducer.get("approved") is True)
+    if _text(opp.get("status")) != "pending":
+        return False
     # Acting is per-user, not per-actor-row: re-detection can append duplicate
     # viewer rows without actedAt after the viewer already accepted/rejected.
-    viewer_acted = any(_text(actor.get("actedAt")) for actor in viewer_actors)
-
-    for actor in viewer_actors:
-        role = _text(actor.get("role"))
-        if role == "introducer":
-            if status == "latent" and not introducer_approved:
-                return True
-            continue
-        if status == "latent" and (not has_introducer or introducer_approved):
-            return True
-        if status == "pending" and not viewer_acted:
-            return True
-    return False
+    return not any(_text(actor.get("actedAt")) for actor in viewer_actors)
 
 
 def _intent_for_opportunity(opp: dict[str, Any], known_ids: set[str]) -> str | None:
@@ -1038,7 +1019,7 @@ def _build_dashboard(
         status = _text(opp.get("status"))
         if status == "rejected":
             return  # hidden — see _STATUS_BUCKET comment
-        if status in {"latent", "pending"} and not _is_actionable_for_viewer(opp, current_user_id):
+        if status == "pending" and not _is_actionable_for_viewer(opp, current_user_id):
             return
         bucket = _STATUS_BUCKET.get(status, "pending")
         item = _opportunity_item(opp, current_user_id)

@@ -11,17 +11,13 @@
  */
 
 import type { Id, OpportunityActor } from '../../platform/database.js';
-import type { DebugMetaAgent } from "../../protocol/core.js";
 import type { EvaluatedOpportunity, EvaluatedOpportunityActor } from './opportunity.state.js';
-import type { EvaluatorEntity, EvaluatorInput, OpportunityEvaluator } from "./opportunity.evaluator.js";
+import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import { timed } from '../shared/observability/performance.js';
-import { requestContext } from '../shared/observability/request-context.js';
-import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
 import { safeFallbackSummary } from "./opportunity.presentation.js";
 import type { OpportunityMutationResult } from "./opportunity.lifecycle.js";
-import { approveOpportunityIntroduction, deleteOpportunityLifecycle, sendOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
-import { buildNetworkContexts, deleteLog, introEvaluationLog, introValidationLog, readLog, sendLog, updateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
-import { persistNode } from "./opportunity.graph.persist-node.js";
+import { deleteOpportunityLifecycle, updateOpportunityLifecycle } from "./opportunity.lifecycle.js";
+import { deleteLog, introEvaluationLog, introValidationLog, readLog, sendLog, updateLog, type OpportunityGraphDeps, type OpportunityState } from "./opportunity.graph.shared.js";
 
 /** Identifies the caller and the opportunity every mutation mode acts on. */
 export interface OpportunityMutationRequest {
@@ -82,7 +78,7 @@ export async function readOpportunities(
       // Dedupe by counterpart set (same people = one row) so chat does not show "You and X" per index
       const counterpartKey = (opp: (typeof list)[number]) =>
         opp.actors
-          .filter((a: OpportunityActor) => a.userId !== request.userId && a.role !== 'introducer')
+          .filter((a: OpportunityActor) => a.userId !== request.userId)
           .map((a: OpportunityActor) => a.userId)
           .sort()
           .join(',');
@@ -104,12 +100,10 @@ export async function readOpportunities(
 
       const enriched = await Promise.all(
         dedupedList.map(async (opp) => {
-          // "Other parties" = all actors who are not the current user (exclude introducer for suggestedBy).
-          // Opportunity graph persists roles as 'agent'|'patient'|'peer'; manual/createManual use 'party'.
-          const otherParties = opp.actors.filter((a: OpportunityActor) => a.userId !== request.userId && a.role !== 'introducer');
-          const introducer = opp.actors.find((a: OpportunityActor) => a.role === 'introducer');
+          // "Other parties" = every actor who is not the current user.
+          const otherParties = opp.actors.filter((a: OpportunityActor) => a.userId !== request.userId);
           const partyIds = otherParties.map((a: OpportunityActor) => a.userId);
-          const idsToResolve = introducer ? [...partyIds, introducer.userId] : partyIds;
+          const idsToResolve = partyIds;
           // Use the counterpart's (non-viewer) networkId — it reflects where the match was found.
           // actors[0] is typically the viewer with an arbitrary first-target-index value.
           const counterpartActor = opp.actors.find((a: OpportunityActor) => a.userId !== request.userId);
@@ -125,7 +119,7 @@ export async function readOpportunities(
             }),
           ]);
           const connectedWith = profileAndUserPairs.slice(0, partyIds.length);
-          const suggestedBy = introducer ? profileAndUserPairs[partyIds.length] ?? null : null;
+          const suggestedBy = null;
           const category = opp.interpretation?.category ?? 'connection';
           const confidence = opp.interpretation?.confidence ?? (opp.confidence ? Number(opp.confidence) : null);
           const source = opp.detection?.source ? (OPPORTUNITY_SOURCE_LABEL[opp.detection.source] ?? opp.detection.source) : null;
@@ -170,7 +164,6 @@ const OPPORTUNITY_SOURCE_LABEL: Record<string, string> = {
   cron: 'Scheduled',
   member_added: 'Member added',
   // Read-only history: nothing stamps this source any more, but old rows carry it.
-  introducer_discovery: 'Suggested by contact',
 };
 
 /**
@@ -229,342 +222,4 @@ export async function deleteOpportunity(
       return { mutationResult: { success: false, error: 'Failed to delete opportunity.' } };
     }
   });
-}
-
-/** Send mode: promote a latent or draft opportunity to pending + queue notification. */
-export async function sendOpportunity(
-  deps: Pick<OpportunityGraphDeps, 'database' | 'queueNotification'>,
-  request: OpportunityMutationRequest,
-): Promise<OpportunityMutationOutcome> {
-  return timed("OpportunityGraph.send", async () => {
-    sendLog.verbose('Sending opportunity', {
-      userId: request.userId,
-      opportunityId: request.opportunityId,
-    });
-
-    try {
-      return {
-        mutationResult: await sendOpportunityLifecycle(
-          deps.database,
-          { opportunityId: request.opportunityId, actorUserId: request.userId },
-          deps.queueNotification,
-        ),
-      };
-    } catch (err) {
-      sendLog.error('Failed', { error: err });
-      return { mutationResult: { success: false, error: 'Failed to send opportunity.' } };
-    }
-  });
-}
-
-/**
- * Approve-introduction mode.
- * Called by the introducer to approve a latent introducer-pattern opportunity.
- * Sets approved=true on the introducer actor. Once every introducer approved,
- * it wakes the source participant's bound PersonalAgent signal with matches_ready.
- */
-export async function approveIntroduction(
-  deps: Pick<OpportunityGraphDeps, 'database' | 'matchesReady'>,
-  request: OpportunityMutationRequest,
-): Promise<OpportunityMutationOutcome> {
-  return {
-    mutationResult: await approveOpportunityIntroduction(
-      deps.database,
-      { opportunityId: request.opportunityId, actorUserId: request.userId },
-      deps.matchesReady,
-    ),
-  };
-}
-
-
-/** What the caller supplies to create an introduction. */
-export interface IntroductionRequest {
-  userId: Id<'users'>;
-  networkId?: Id<'networks'>;
-  /** Pre-gathered entities (profiles + intents per party). */
-  introductionEntities: EvaluatorEntity[];
-  /** Optional hint from the introducer. */
-  introductionHint?: string;
-  /** When set (e.g. chat scope), networkId must match this. */
-  requiredNetworkId?: Id<'networks'>;
-  options?: Partial<OpportunityState['options']>;
-}
-
-/**
- * Introduction mode: validate → evaluate → persist.
- *
- * Validation gates on scope and membership; evaluation asks the evaluator to
- * justify the pairing (falling back to the introducer's own word); persistence
- * reuses the discovery pipeline's persist stage.
- */
-export async function createIntroduction(
-  deps: OpportunityGraphDeps,
-  request: IntroductionRequest,
-) {
-  const state = introductionState(request);
-  const validation = await validateIntroduction(deps, state);
-  // Mirrors what the graph produced on this path: the error, and empty results.
-  if (validation.error) return { opportunities: [], evaluatedOpportunities: [], agentTimings: [], ...validation };
-
-  const evaluation = await evaluateIntroduction(deps, { ...state, ...validation });
-  const persisted = await persistNode({ ...state, ...evaluation } as OpportunityState, deps);
-  return { ...evaluation, ...persisted };
-}
-
-/**
- * Introduction validation: network scope, membership for introducer and all
- * party users, and no existing opportunity between the parties.
- */
-export async function validateIntroduction(
-  deps: Pick<OpportunityGraphDeps, 'database'>,
-  state: Pick<OpportunityState, 'userId' | 'networkId' | 'introductionEntities' | 'requiredNetworkId'>,
-): Promise<{ error?: string; trace?: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> }> {
-  return timed("OpportunityGraph.introValidation", async () => {
-    introValidationLog.verbose('Starting', {
-      userId: state.userId,
-      networkId: state.networkId,
-      entitiesCount: state.introductionEntities?.length ?? 0,
-    });
-
-    try {
-      const entities = state.introductionEntities ?? [];
-      const primaryNetworkId = (state.networkId ?? entities[0]?.networkId) as Id<'networks'> | undefined;
-      const partyUserIds = [...new Set(entities.map((e) => e.userId).filter((id) => id !== state.userId))];
-
-      if (!primaryNetworkId || partyUserIds.length < 1) {
-        return {
-          error: 'Introduction requires networkId and at least two entities (introducer + one counterpart).',
-        };
-      }
-
-      if (state.requiredNetworkId && primaryNetworkId !== state.requiredNetworkId) {
-        return {
-          error: 'This chat is scoped to a different community. You can only introduce members of the current community.',
-        };
-      }
-
-      const [introducerIsMember, introducerIsOwner] = await Promise.all([
-        deps.database.isNetworkMember(primaryNetworkId, state.userId),
-        deps.database.isIndexOwner(primaryNetworkId, state.userId),
-      ]);
-      if (!introducerIsMember && !introducerIsOwner) {
-        return {
-          error: 'One or more users are not members of the specified community. You can only introduce members who share a network.',
-        };
-      }
-      const partyInScope = await Promise.all(
-        partyUserIds.map(async (userId) => {
-          const [isMember, isOwner] = await Promise.all([
-            deps.database.isNetworkMember(primaryNetworkId, userId),
-            deps.database.isIndexOwner(primaryNetworkId, userId),
-          ]);
-          return isMember || isOwner;
-        }),
-      );
-      const allPartyMembers = partyInScope.every(Boolean);
-      if (!allPartyMembers) {
-        return {
-          error: 'One or more users are not members of the specified community. You can only introduce members who share a network.',
-        };
-      }
-
-      const exists = await deps.database.opportunityExistsBetweenActors(partyUserIds, primaryNetworkId);
-      if (exists) {
-        return { error: 'An opportunity already exists between these people.' };
-      }
-
-      introValidationLog.verbose('Validation passed');
-      return {};
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      introValidationLog.error('Failed', {
-        userId: state.userId,
-        networkId: state.networkId,
-        error: err,
-      });
-      return {
-        error: 'Introduction validation failed.',
-        trace: [{
-          node: "intro_validation_fatal",
-          detail: `IntroValidation failed: ${errMsg}`,
-          data: { error: errMsg },
-        }],
-      };
-    }
-  });
-}
-
-/**
- * Build fallback reasoning and actors when the evaluator returns empty or throws.
- */
-function buildIntroFallback(
-  entities: EvaluatorEntity[],
-  state: Pick<OpportunityState, 'userId' | 'introductionHint'>,
-  primaryNetworkId: Id<'networks'>,
-  introducerName?: string
-): { reasoning: string; score: number; actors: EvaluatedOpportunityActor[] } {
-  const reasoning =
-    `${introducerName ?? 'A member'} believes these people should connect.` +
-    (state.introductionHint ? ` Context: ${state.introductionHint}` : '');
-  const score = 70;
-  const partyUserIds = entities.map((e) => e.userId).filter((id) => id !== state.userId);
-  const actors: EvaluatedOpportunityActor[] = partyUserIds.map((uid) => ({
-    userId: uid as Id<'users'>,
-    role: 'peer' as const,
-    networkId: primaryNetworkId,
-  }));
-  return { reasoning, score, actors };
-}
-
-/**
- * Introduction evaluation: runs the entity-bundle evaluator and sets
- * evaluatedOpportunities (one) + introductionContext.
- */
-export async function evaluateIntroduction(
-  deps: Pick<OpportunityGraphDeps, 'database' | 'evaluatorAgent'>,
-  state: Pick<OpportunityState, 'userId' | 'networkId' | 'introductionEntities' | 'introductionHint' | 'options' | 'error'>,
-) {
-  return timed("OpportunityGraph.introEvaluation", async () => {
-    introEvaluationLog.verbose('Starting', { userId: state.userId });
-
-    if (state.error) {
-      return { evaluatedOpportunities: [], agentTimings: [] };
-    }
-
-    const entities = state.introductionEntities ?? [];
-    const primaryNetworkId = (state.networkId ?? entities[0]?.networkId) as Id<'networks'> | undefined;
-    if (!primaryNetworkId || entities.length < 2) {
-      return { evaluatedOpportunities: [], error: 'Missing entities or network for introduction.', agentTimings: [] };
-    }
-
-    const agentTimingsAccum: DebugMetaAgent[] = [];
-    let introducerName: string | undefined;
-    let reasoning: string;
-    let score: number;
-    let actors: EvaluatedOpportunityActor[] = [];
-
-    const _traceEmitterIntro = requestContext.getStore()?.traceEmitter;
-    let _introEvalStarted = false;
-    let _evalStart = Date.now();
-    try {
-      const introducerUser = await deps.database.getUser(state.userId);
-      introducerName = introducerUser?.name ?? undefined;
-      const networkContexts = await buildNetworkContexts(entities, deps.database);
-      const input: EvaluatorInput = {
-        discovererId: state.userId,
-        entities,
-        introductionMode: true,
-        introducerName,
-        introductionHint: state.introductionHint ?? undefined,
-        networkContexts,
-      };
-
-      _evalStart = Date.now();
-      _traceEmitterIntro?.({ type: "agent_start", name: "intro-evaluator" });
-      _introEvalStarted = true;
-      const evaluated = await (deps.evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0, ...getAbortSignalConfig() });
-      const _introDuration = Date.now() - _evalStart;
-      agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introDuration });
-      _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introDuration, summary: "Evaluated introduction" });
-      if (evaluated.length > 0) {
-        const best = evaluated[0];
-        reasoning = best.reasoning;
-        score = best.score;
-        actors = best.actors.map((a) => ({
-          userId: a.userId as Id<'users'>,
-          role: a.role,
-          intentId: a.intentId ?? undefined,
-          networkId: primaryNetworkId,
-        }));
-      } else {
-        const fallback = buildIntroFallback(entities, state, primaryNetworkId, introducerName);
-        reasoning = fallback.reasoning;
-        score = fallback.score;
-        actors = fallback.actors;
-      }
-    } catch (evalErr) {
-      const errMsg = evalErr instanceof Error ? evalErr.message : String(evalErr);
-      // Close the intro-evaluator span if it was started before the error
-      if (_introEvalStarted) {
-        const _introErrDuration = Date.now() - _evalStart;
-        _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introErrDuration, summary: `error — ${errMsg}` });
-        agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introErrDuration });
-      }
-      introEvaluationLog.warn('Evaluator or getUser failed, using fallback', { error: evalErr });
-      const fallback = buildIntroFallback(entities, state, primaryNetworkId, introducerName);
-      reasoning = fallback.reasoning;
-      score = fallback.score;
-      actors = fallback.actors;
-      return {
-        evaluatedOpportunities: [{ actors, score, reasoning }],
-        introductionContext: { createdByName: introducerName },
-        options: { ...state.options, initialStatus: state.options.initialStatus ?? 'latent' },
-        agentTimings: agentTimingsAccum,
-        trace: [{
-          node: "intro_evaluation_fatal",
-          detail: `IntroEvaluation failed (using fallback): ${errMsg}`,
-          data: { error: errMsg },
-        }],
-      };
-    }
-
-    const evaluatedOpportunity: EvaluatedOpportunity = { actors, score, reasoning };
-
-    return {
-      evaluatedOpportunities: [evaluatedOpportunity],
-      introductionContext: { createdByName: introducerName },
-      options: { ...state.options, initialStatus: state.options.initialStatus ?? 'latent' },
-      agentTimings: agentTimingsAccum,
-    };
-  });
-}
-
-/**
- * The channel defaults the introduction path relies on. Discovery-only channels
- * stay at their empty values because the introduction path never fills them.
- */
-function introductionState(request: IntroductionRequest): OpportunityState {
-  return {
-    userId: request.userId,
-    searchQuery: undefined,
-    networkId: request.networkId,
-    indexScope: undefined,
-    triggerIntentId: undefined,
-    targetUserId: undefined,
-    options: { ...(request.options ?? {}) },
-    operationMode: 'create_introduction',
-    introductionEntities: request.introductionEntities,
-    introductionHint: request.introductionHint,
-    requiredNetworkId: request.requiredNetworkId,
-    introductionContext: undefined,
-    opportunityId: undefined,
-    newStatus: undefined,
-    indexedIntents: [],
-    userNetworks: [],
-    targetNetworks: [],
-    indexRelevancyScores: {},
-    discoverySource: 'context',
-    resolvedTriggerIntentId: undefined,
-    sourceProfile: null,
-    sourcePremises: [],
-    sourceContexts: [],
-    resolvedIntentInIndex: false,
-    createIntentSuggested: false,
-    suggestedIntentDescription: undefined,
-    hydeEmbeddings: {},
-    candidates: [],
-    discoveryId: null,
-    evaluatedCandidates: [],
-    evaluatedOpportunities: [],
-    opportunities: [],
-    existingBetweenActors: [],
-    persistenceOutcome: undefined,
-    error: undefined,
-    readResult: undefined,
-    mutationResult: undefined,
-    trace: [],
-    agentTimings: [],
-    discoveryNegotiations: [],
-    discoverySummary: null,
-  } as unknown as OpportunityState;
 }

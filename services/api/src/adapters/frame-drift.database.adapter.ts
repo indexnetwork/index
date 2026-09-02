@@ -398,7 +398,6 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
                  actor->>'intent' AS intent_id
           FROM graph_opportunities o
           CROSS JOIN LATERAL jsonb_array_elements(o.actors) actor
-          WHERE actor->>'role' <> 'introducer'
             AND actor ? 'userId'
             AND actor ? 'intent'
         ), verified_actor_assignments AS MATERIALIZED (

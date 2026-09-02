@@ -26,8 +26,6 @@ import type { DebugMetaAgent } from "../../../protocol/core.js";
 import { protocolLogger } from '../../shared/observability/protocol.logger.js';
 import { timed } from '../../shared/observability/performance.js';
 import { requestContext } from "../../shared/observability/request-context.js";
-import { adjustedConfidence, latestPoolDemotionDetail, readActivePoolAdjustments } from '../discriminator/discriminator.adjustments.js';
-import type { PoolAdjustmentProvenance } from '../discriminator/discriminator.adjustments.js';
 
 const logger = protocolLogger('RadarGraph');
 const checkPresenterCacheLog = protocolLogger('RadarGraph:checkPresenterCache');
@@ -68,14 +66,12 @@ export type RadarGraphInvokeResult = {
 };
 
 /** Default radar statuses: the lifecycle stages a viewer can act on today. */
-export const DEFAULT_RADAR_STATUSES: OpportunityStatus[] = ['latent', 'pending'];
+export const DEFAULT_RADAR_STATUSES: OpportunityStatus[] = ['pending'];
 
 // Exhaustive registry — keys must cover every OpportunityStatus union member.
 // Adding a new status to OpportunityStatus without adding a key here is a TS error,
 // which is the whole point: prevents ALL_OPPORTUNITY_STATUSES from silently drifting.
 const OPPORTUNITY_STATUS_REGISTRY: Record<OpportunityStatus, true> = {
-  latent: true,
-  draft: true,
   negotiating: true,
   pending: true,
   stalled: true,
@@ -160,51 +156,14 @@ const getRawConfidence = (opp: typeof RadarGraphState.State['opportunities'][num
   return 0;
 };
 
-/**
- * Sort confidence, pool-adjusted (IND-419): answered discriminators multiply
- * confidence by their stored factors (floor 0.3) so the user's answers re-rank
- * the radar. Adjustments are written on every pool_discovery answer.
- */
-const getPoolRankingProvenance = (
-  state: typeof RadarGraphState.State,
-): PoolAdjustmentProvenance | null => {
-  if (
-    !state.userId ||
-    state.scopeType !== 'intent' ||
-    !state.scopeId
-  ) return null;
-  return { recipientUserId: state.userId, intentId: state.scopeId };
-};
-
-const hasPoolAdjustment = (
-  opp: typeof RadarGraphState.State['opportunities'][number],
-  provenance: PoolAdjustmentProvenance,
-): boolean => readActivePoolAdjustments(
-  (opp as { metadata?: Record<string, unknown> | null }).metadata,
-  provenance,
-).length > 0;
-
-const getConfidence = (
-  opp: typeof RadarGraphState.State['opportunities'][number],
-  provenance: PoolAdjustmentProvenance | null,
-): number => {
-  const raw = getRawConfidence(opp);
-  if (!provenance) return raw;
-  return adjustedConfidence(
-    raw,
-    (opp as { metadata?: Record<string, unknown> | null }).metadata,
-    provenance,
-  );
-};
-
-/** Unique non-introducer, non-viewer userIds for an opportunity (actors can repeat). */
+/** Unique non-viewer userIds for an opportunity (actors can repeat). */
 const getUniqueCounterpartUserIds = (
   opp: typeof RadarGraphState.State['opportunities'][number],
   viewerId: string
 ): Set<string> => {
   const ids = new Set<string>();
   for (const a of opp.actors) {
-    if (a.role !== 'introducer' && a.userId !== viewerId && a.userId) {
+    if (a.userId !== viewerId && a.userId) {
       ids.add(a.userId);
     }
   }
@@ -216,7 +175,7 @@ const pickDisplayCounterpartActor = (
   viewerId: string
 ): { userId: string; role: string } | null => {
   const candidates = opportunity.actors.filter(
-    (actor) => actor.userId !== viewerId && actor.role !== 'introducer'
+    (actor) => actor.userId !== viewerId
   );
   if (candidates.length === 0) {
     return null;
@@ -287,11 +246,10 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
     }
     try {
       // Minimum of 50 ensures enough candidates across all radar categories
-      // (connection, connector-flow, expired) for selectByComposition to fill
+      // (connection, expired) for selectByComposition to fill
       // its soft targets, even after visibility filtering and dedup.
       const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
       const statuses = state.statuses ?? DEFAULT_RADAR_STATUSES;
-      const poolRankingProvenance = getPoolRankingProvenance(state);
       const options: { limit?: number; networkId?: string; scopeType?: 'intent'; scopeId?: string; statuses?: OpportunityStatus[] } = {
         limit: fetchLimit,
         statuses,
@@ -317,7 +275,7 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
       const requestedStatuses = new Set<OpportunityStatus>(statuses);
       const visibleForRadar = visible.filter((opp) => {
         if (!requestedStatuses.has(opp.status)) return false;
-        if (opp.status === 'latent' || opp.status === 'pending') {
+        if (opp.status === 'pending') {
           return isActionableForViewer(opp.actors, opp.status, state.userId);
         }
         return true;
@@ -339,32 +297,11 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
           for (const id of counterpartIds) seenIds.add(id);
           return true;
         });
-        // Preserve byte-identical newest-first behavior while the flag is
-        // off. When on, re-order the already-deduped lifecycle set by
-        // adjusted confidence so each client-side radar bucket reflects
-        // pool answers immediately.
-        if (
-          !poolRankingProvenance ||
-          !dedupedByCounterpart.some((opportunity) => hasPoolAdjustment(opportunity, poolRankingProvenance))
-        ) {
-          return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
-        }
-        const adjustedOrder = [...dedupedByCounterpart].sort((a, b) => {
-          const confidenceDelta = getConfidence(b, poolRankingProvenance) - getConfidence(a, poolRankingProvenance);
-          if (confidenceDelta !== 0) return confidenceDelta;
-          return safeParseDate(b.updatedAt) - safeParseDate(a.updatedAt);
-        });
-        return { opportunities: adjustedOrder.slice(0, state.limit) };
+        return { opportunities: dedupedByCounterpart.slice(0, state.limit) };
       }
       const sorted = [...visibleForRadar].sort((a, b) => {
-        // Connections before connector-flow so dedup claims counterpart IDs
-        // for direct connections first — prevents introducer cards from
-        // shadowing a user's own connection opportunities.
-        const aIsIntroducer = a.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
-        const bIsIntroducer = b.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
-        if (aIsIntroducer !== bIsIntroducer) return aIsIntroducer ? 1 : -1;
-        const confA = getConfidence(a, poolRankingProvenance);
-        const confB = getConfidence(b, poolRankingProvenance);
+        const confA = getRawConfidence(a);
+        const confB = getRawConfidence(b);
         if (confB !== confA) return confB - confA;
         const aTime = safeParseDate(a.updatedAt);
         const bTime = safeParseDate(b.updatedAt);
@@ -390,7 +327,6 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
 export async function checkPresenterCacheNode(state: RadarState, deps: RadarGraphDeps) {
   return timed("RadarGraph.checkPresenterCache", async () => {
     const { opportunities, userId, scopeId } = state;
-    const poolRankingProvenance = getPoolRankingProvenance(state);
     if (opportunities.length === 0) {
       return { cachedCards: new Map(), uncachedOpportunities: [] };
     }
@@ -425,16 +361,9 @@ export async function checkPresenterCacheNode(state: RadarState, deps: RadarGrap
           const originalIndex = opportunities.indexOf(cacheable[i]);
           // Stamp the live status: pre-status cache entries lack the field,
           // and the key already guarantees it matches the current status.
-          const deprioritizedReason = poolRankingProvenance
-            ? latestPoolDemotionDetail(
-                (cacheable[i] as { metadata?: Record<string, unknown> | null }).metadata,
-                poolRankingProvenance,
-              )
-            : undefined;
           cachedCards.set(cacheable[i].id, {
             ...cached,
             status: cacheable[i].status,
-            deprioritizedReason,
             _cardIndex: originalIndex,
           });
         } else {
@@ -508,38 +437,23 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
         const cardIndex = oppIndexMap.get(opportunity.id) ?? (i + offset);
         const viewerActor = opportunity.actors.find((a) => a.userId === state.userId);
         const viewerRole = viewerActor?.role ?? 'party';
-        const isIntroducer = viewerRole === 'introducer';
         const preferredActor = pickDisplayCounterpartActor(opportunity, state.userId)
-          ?? opportunity.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
+          ?? opportunity.actors.find((a) => a.userId !== state.userId);
         const actorWithProfile = opportunity.actors.find(
-          (a) => a.userId !== state.userId && a.role !== 'introducer' && !!userMap.get(a.userId)
+          (a) => a.userId !== state.userId && !!userMap.get(a.userId)
         );
-        const introducer = opportunity.actors.find((a) => a.role === 'introducer');
-        let otherActor = (preferredActor && userMap.get(preferredActor.userId))
+        const otherActor = (preferredActor && userMap.get(preferredActor.userId))
           ? preferredActor
           : (actorWithProfile ?? preferredActor);
-        // When the only other participant is the introducer (no separate party), use introducer as display counterpart so the card shows a name instead of "Unknown"
-        if (!otherActor && introducer && introducer.userId !== state.userId && introducer.userId) {
-          otherActor = { userId: introducer.userId, role: introducer.role };
-        }
         const otherUser = otherActor ? userMap.get(otherActor.userId) ?? null : null;
-        const introducerCounterparts = opportunity.actors.filter(
-          (a) => a.userId !== state.userId && a.role !== 'introducer'
-        );
+        const counterparts = opportunity.actors.filter((a) => a.userId !== state.userId);
         // Deduplicate by userId — actors array can contain multiple rows per user
         // (e.g. from different intents), which would produce repeated names.
-        const uniqueCounterpartIds = [...new Set(introducerCounterparts.map((a) => a.userId))];
+        const uniqueCounterpartIds = [...new Set(counterparts.map((a) => a.userId))];
         const participantNames = uniqueCounterpartIds
           .map((uid) => userMap.get(uid)?.name ?? 'Unknown')
           .sort();
-        // When secondPartyData will be present (2+ counterparts), use single counterpart name
-        // because the frontend arrow layout renders "card.name → secondParty.name".
-        // Using the joined "A ↔ B" format here would produce redundant "A ↔ B → B".
-        // Only use the joined format when there is a single counterpart (no arrow layout).
-        const willHaveSecondParty = isIntroducer && uniqueCounterpartIds.length > 1;
-        let userName = isIntroducer && participantNames.length > 0 && !willHaveSecondParty
-          ? participantNames.join(' ↔ ')
-          : (otherUser?.name ?? 'Unknown');
+        let userName = otherUser?.name ?? 'Unknown';
         // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
         if ((userName === 'Unknown' || !userName?.trim()) && otherActor?.userId && db.getProfile) {
           const profile = await db.getProfile(otherActor.userId).catch((err) => {
@@ -576,19 +490,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           },
         );
 
-        // Build secondParty for introducer arrow layout (the party that isn't the display counterpart)
-        let secondPartyData: { name: string; avatar?: string | null; userId?: string } | undefined;
-        if (isIntroducer && introducerCounterparts.length > 1 && otherActor) {
-          const secondActor = introducerCounterparts.find((a) => a.userId !== otherActor.userId);
-          if (secondActor) {
-            const secondUser = userMap.get(secondActor.userId) ?? null;
-            secondPartyData = {
-              name: secondUser?.name ?? 'Unknown',
-              avatar: secondUser?.avatar ?? null,
-              userId: secondActor.userId,
-            };
-          }
-        }
 
         // Skeleton presentation: return an identity-only card without the
         // deps.presenter LLM or negotiation-context load. Name resolution and
@@ -605,14 +506,12 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             cta: '',
             primaryActionLabel: getPrimaryActionLabel(viewerRole),
             secondaryActionLabel: SECONDARY_ACTION_LABEL,
-            mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
+            mutualIntentsLabel: 'Shared interests',
             viewerRole,
-            ...(secondPartyData ? { secondParty: secondPartyData } : {}),
             presentationPending: true,
             _cardIndex: cardIndex,
           } satisfies RadarCardItem;
         }
-        const isPendingIntroducerFallback = isIntroducer && opportunity.status !== 'latent';
         const fallbackCard = (outcomeReasoning?: string): RadarCardItem => ({
           opportunityId: opportunity.id,
           status: opportunity.status,
@@ -620,17 +519,12 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           name: userName,
           avatar: userAvatar,
           mainText: outcomeReasoning ?? reasoningSnippet,
-          cta: isIntroducer
-            ? (isPendingIntroducerFallback ? 'Share this introduction to get things started.' : 'Take a look and decide if this is a good match.')
-            : 'Take a look and decide whether to reach out.',
+          cta: 'Take a look and decide whether to reach out.',
           primaryActionLabel: getPrimaryActionLabel(viewerRole),
           secondaryActionLabel: SECONDARY_ACTION_LABEL,
-          mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
-          narratorChip: isIntroducer
-            ? { name: 'You', text: 'Worth a look.', userId: state.userId }
-            : { name: 'Index', text: 'Worth a look.' },
+          mutualIntentsLabel: 'Shared interests',
+          narratorChip: { name: 'Index', text: 'Worth a look.' },
           viewerRole,
-          ...(secondPartyData ? { secondParty: secondPartyData } : {}),
           _presentationFallback: true,
           _cardIndex: cardIndex,
         });
@@ -662,24 +556,9 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           if (presentation.isFallback) {
             return fallbackCard(negotiationContext?.outcomeReasoning);
           }
-          let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
-          // Only show a person as narrator when they are the introducer and not the display counterpart
-          // (bad data can have same user as introducer and party, e.g. "Amina introduced you to Amina")
-          const introducerIsCounterpart = introducer && otherActor && introducer.userId === otherActor.userId;
-          if (introducer && introducer.userId !== state.userId && !introducerIsCounterpart) {
-            const introUser = userMap.get(introducer.userId) ?? null;
-            const narratorName = introUser?.name ?? 'Someone';
-            narratorChip = {
-              name: narratorName,
-              text: stripLeadingNarratorName(presentation.narratorRemark, narratorName),
-              avatar: introUser?.avatar ?? null,
-              userId: introducer.userId,
-            };
-          } else if (introducer?.userId === state.userId) {
-            narratorChip = { name: 'You', text: presentation.narratorRemark, userId: state.userId };
-          } else {
-            narratorChip = { name: 'Index', text: presentation.narratorRemark };
-          }
+          // Every card is system-discovered now: one narrator.
+          const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
+            { name: 'Index', text: presentation.narratorRemark };
           return {
             opportunityId: opportunity.id,
             status: opportunity.status,
@@ -697,7 +576,6 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             mutualIntentsLabel: presentation.mutualIntentsLabel,
             narratorChip,
             viewerRole,
-            ...(secondPartyData ? { secondParty: secondPartyData } : {}),
             _cardIndex: cardIndex,
           } satisfies RadarCardItem;
         } catch (e) {
@@ -720,21 +598,9 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
 export async function cachePresenterResultsNode(state: RadarState, deps: RadarGraphDeps) {
   return timed("RadarGraph.cachePresenterResults", async () => {
     const { cards, cachedCards, userId, opportunities, scopeId } = state;
-    const poolRankingProvenance = getPoolRankingProvenance(state);
-    const liveById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
-    const cardsWithAdjustments = cards.map((card) => {
-      const opportunity = liveById.get(card.opportunityId);
-      const deprioritizedReason = poolRankingProvenance
-        ? latestPoolDemotionDetail(
-            (opportunity as { metadata?: Record<string, unknown> | null } | undefined)?.metadata,
-            poolRankingProvenance,
-          )
-        : undefined;
-      return { ...card, deprioritizedReason };
-    });
 
     // Only cache cards that weren't already from cache
-    const newCards = cardsWithAdjustments.filter((card) => !cachedCards.has(card.opportunityId));
+    const newCards = cards.filter((card) => !cachedCards.has(card.opportunityId));
     const statusById = new Map(opportunities.map((opp) => [opp.id, opp.status]));
 
     try {
@@ -756,9 +622,9 @@ export async function cachePresenterResultsNode(state: RadarState, deps: RadarGr
     }
 
     // Merge cached cards into full card list
-    const allCards: RadarCardItem[] = [...cardsWithAdjustments];
+    const allCards: RadarCardItem[] = [...cards];
     for (const [oppId, cachedCard] of cachedCards) {
-      if (!cardsWithAdjustments.some((card) => card.opportunityId === oppId)) {
+      if (!cards.some((card) => card.opportunityId === oppId)) {
         allCards.push(cachedCard);
       }
     }

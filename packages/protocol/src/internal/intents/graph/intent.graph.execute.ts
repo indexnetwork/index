@@ -89,7 +89,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
           results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
           logger.verbose('Created intent', { intentId: created.id });
 
-          deps.intentQueue?.addGenerateHydeJob({
+          deps.intentFollowUp?.generateHyde({
             intentId: created.id,
             userId: state.userId,
             ...scopeEnvelope,
@@ -139,7 +139,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
           });
           logger.verbose('Updated intent', { intentId: updateAction.id });
           if (updated) {
-            deps.intentQueue?.addGenerateHydeJob({
+            deps.intentFollowUp?.generateHyde({
               intentId: updateAction.id,
               userId: state.userId,
               ...scopeEnvelope,
@@ -172,7 +172,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             } catch (err) {
               logger.error('Failed to expire opportunities', { intentId: expireAction.id, error: err });
             }
-            deps.intentQueue?.addDeleteHydeJob({ intentId: expireAction.id }).catch((err) =>
+            deps.intentFollowUp?.deleteHyde({ intentId: expireAction.id }).catch((err) =>
               logger.error('Failed to enqueue intent HyDE delete job', { intentId: expireAction.id, error: err })
             );
           }
@@ -191,7 +191,7 @@ export async function executorNode(state: IntentState, deps: IntentGraphDeps) {
             outcome = dbResult;
           } else {
             try {
-              await deps.intentQueue?.addResumeDiscoveryJob({
+              await deps.intentFollowUp?.resumeDiscovery({
                 intentId: dbResult.id,
                 userId: state.userId,
                 lifecycleVersionMs: dbResult.lifecycleVersionMs,
@@ -338,7 +338,7 @@ async function executeConfirmAction(
 
   const intentId = confirmation.intent.id;
   try {
-    await deps.intentQueue?.addGenerateHydeJob({
+    await deps.intentFollowUp?.generateHyde({
       intentId,
       userId: state.userId,
       ...(proposal.networkId ? { scopeType: 'network' as const, scopeId: proposal.networkId } : {}),

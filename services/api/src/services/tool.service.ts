@@ -13,7 +13,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { AgentDispatcher } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
-import { intentQueue } from '../queues/intent.queue';
+import { intentIndexing } from '../lib/intent/indexing';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { enrichUserProfile } from '../lib/parallel/parallel';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
@@ -219,7 +219,7 @@ export class ToolService {
     const intents = new Intents({
       database,
       embedder: this.embedder,
-      queue: intentQueue,
+      followUp: intentIndexing,
     });
     const intentGraph = intents.createGraph();
     const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();

@@ -115,27 +115,3 @@ export function renderNegotiatorMemorySection(
 
   return lines.join("\n");
 }
-
-/**
- * Renders the memory section for the negotiator CHAT persona — the audience
- * is the client themself, so disclosure rules are their own standing
- * instructions (context, not secrets), and the client's live word always
- * outranks a stored note.
- *
- * @returns Empty string when there are no entries (byte-identical prompts).
- */
-export function renderNegotiatorChatMemorySection(entries: NegotiatorMemoryEntry[]): string {
-  if (entries.length === 0) return "";
-
-  const lines: string[] = [
-    "",
-    "## Your negotiator memory",
-    "Notes you have accumulated from negotiations and prior conversations with your client (private to the two of you; weigh by confidence):",
-  ];
-  for (const entry of entries) {
-    lines.push(`- [${KIND_LABELS[entry.kind]}] ${entry.content}${confidenceSuffix(entry)}`);
-  }
-  lines.push("Use these to inform reports and recommendations. If the client contradicts one, trust the client — their current word always outranks a stored note.");
-
-  return lines.join("\n");
-}

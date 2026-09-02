@@ -1051,6 +1051,48 @@
       "when": 1786886087830,
       "tag": "0152_drop_links_and_files",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1786886087831,
+      "tag": "0153_dismiss_retired_pool_discovery_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1787861836036,
+      "tag": "0154_add_negotiation_round_log_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1787948236037,
+      "tag": "0155_drop_orphaned_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1788034636038,
+      "tag": "0156_negotiation_batch_cutover",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1788034636039,
+      "tag": "0157_discovery_match_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1788034636040,
+      "tag": "0158_single_path_opportunities",
+      "breakpoints": true
     }
   ]
 }

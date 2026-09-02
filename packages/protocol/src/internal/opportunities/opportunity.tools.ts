@@ -26,7 +26,7 @@ import { selectOpportunityFeed } from "./opportunity.feed-selection.js";
 
 export { buildOpportunityPresentation } from "./opportunity.presentation.js";
 
-import { sendOpportunity, updateOpportunityStatus } from "./opportunity.graph.modes.js";
+import { updateOpportunityStatus } from "./opportunity.graph.modes.js";
 import { createListOpportunitiesTool } from "./opportunity.tools.list.js";
 import { confirmDeliveryError, logger, ownerApprovalDenial } from "./opportunity.tools.cards.js";
 
@@ -155,21 +155,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: Opportunity
         if (verdict.kind === 'denied') return ownerApprovalDenial(opportunityId, ownerAction, verdict);
       }
 
-      const isSend = query.status === "pending";
       const _updateGraphStart = Date.now();
       const _updateTraceEmitter = requestContext.getStore()?.traceEmitter;
       _updateTraceEmitter?.({ type: "graph_start", name: "opportunity" });
-      const operations = deps.opportunityOperations ?? { sendOpportunity, updateOpportunityStatus };
-      const result = isSend
-        ? await operations.sendOpportunity(deps, {
-            userId: context.userId,
-            opportunityId: query.opportunityId,
-          })
-        : await operations.updateOpportunityStatus(deps, {
-            userId: context.userId,
-            opportunityId: query.opportunityId,
-            newStatus: query.status,
-          });
+      // One transition path. `pending` used to promote a pre-kickoff row;
+      // there is no pre-kickoff state any more, so it is an ordinary status
+      // change like the rest.
+      const operations = deps.opportunityOperations ?? { updateOpportunityStatus };
+      const result = await operations.updateOpportunityStatus(deps, {
+        userId: context.userId,
+        opportunityId: query.opportunityId,
+        newStatus: query.status,
+      });
       const _updateGraphMs = Date.now() - _updateGraphStart;
       _updateTraceEmitter?.({ type: "graph_end", name: "opportunity", durationMs: _updateGraphMs });
 

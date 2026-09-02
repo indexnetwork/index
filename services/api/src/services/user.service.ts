@@ -2,7 +2,8 @@ import { log } from '../lib/log';
 import { userDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
 import { validateKey } from '../lib/keys';
-import { premiseQueue } from '../queues/premise.queue';
+import { premiseCascade } from '../lib/premise/cascade';
+import { background } from '../lib/background';
 
 const logger = log.service.from("UserService");
 
@@ -87,9 +88,7 @@ export class UserService {
     }
 
     private enqueuePremisesFromProfile(userId: string): void {
-        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
-            logger.error('Failed to enqueue premise rebuild after profile update', { userId, error: err }),
-        );
+        background('premise', () => premiseCascade.decomposeProfile({ userId }));
     }
 
     /** Update an owned intent through the normal material-update chokepoint. */
@@ -177,12 +176,7 @@ export class UserService {
         }
 
         // Re-enrichment is fire-and-forget — failure is logged but does not propagate to caller.
-        premiseQueue.addDecomposeProfileJob(userId).catch(err =>
-            logger.error('Failed to enqueue premise rebuild after social update', {
-                userId,
-                error: err,
-            }),
-        );
+        background('premise', () => premiseCascade.decomposeProfile({ userId }));
     }
 
     async softDelete(userId: string) {
@@ -224,31 +218,6 @@ export class UserService {
     }
 
     /**
-     * Update the authenticated user's key.
-     * @param userId - The user ID
-     * @param key - The new key value
-     * @returns Updated user or error object
-     */
-    async updateKey(userId: string, key: string): Promise<{ user: User } | { error: string; status: number }> {
-        const validation = validateKey(key);
-        if (!validation.valid) {
-            return { error: validation.error!, status: 400 };
-        }
-
-        const existing = await this.db.keyExists(key);
-        if (existing) {
-            return { error: 'Key is already taken', status: 409 };
-        }
-
-        const updated = await this.db.updateKey(userId, key);
-        if (!updated) {
-            return { error: 'User not found', status: 404 };
-        }
-
-        return { user: updated };
-    }
-
-    /**
      * Ensure notification settings exist for a user
      */
     async ensureNotificationSettings(userId: string) {
@@ -258,7 +227,7 @@ export class UserService {
     /**
      * Update notification preferences for a user (upsert)
      */
-    async updateNotificationPreferences(userId: string, preferences: { connectionUpdates?: boolean; weeklyNewsletter?: boolean }) {
+    async updateNotificationPreferences(userId: string, preferences: { connectionUpdates?: boolean }) {
         return this.db.updateNotificationPreferences(userId, preferences as import('../schemas/database.schema').NotificationPreferences);
     }
 

@@ -213,8 +213,9 @@ export function mapPeopleFromOpportunities(opportunities = []) {
     score: typeof opportunity.confidence === 'number' ? opportunity.confidence : null,
     status: mapOpportunityStatusToPrototype(opportunity.status),
     pitchFromAgent: opportunity.interpretation?.reasoning || opportunity.presentation?.callToAction || '',
-    introVia: opportunity.introducedBy?.name || '',
-    hidden: opportunity.status === 'latent',
+    // Nothing is pre-surfacing any more: an opportunity exists only once an
+    // agent has opened it, so the POOL bucket below is always empty.
+    hidden: false,
     ...mapCounterpartProfile(opportunity),
     source: opportunity,
   }));
@@ -282,9 +283,7 @@ export function mapOpportunityStatusToPrototype(status) {
   switch (status) {
     case 'accepted':
       return 'accepted';
-    case 'latent':
     case 'pending':
-    case 'draft':
       return 'ready';
     case 'negotiating':
     case 'stalled':

@@ -20,6 +20,47 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 39.0.0 - 2026-08-29
+
+### Changed
+
+- **BREAKING: the intent follow-up port is no longer named after a queue.**
+  `IntentGraphQueue` is `IntentFollowUp` and `IntentGraphQueueScope` is
+  `IntentFollowUpScope`, both now in `platform/runtime/follow-up.ts`. The
+  methods lose their job wording: `addGenerateHydeJob` → `generateHyde`,
+  `addDeleteHydeJob` → `deleteHyde`, `addResumeDiscoveryJob` →
+  `resumeDiscovery`. `IntentsDeps.queue` is `IntentsDeps.followUp` and the
+  agent tool context's `intentQueue` is `intentFollowUp`. Behaviour is
+  unchanged; the host has run this work in-process since the queue system was
+  removed. Update call sites by renaming — there is no compatibility shim.
+
+## 38.0.1 - 2026-08-28
+
+### Removed
+- Delete `docs/` and every spec except five (`capabilities/tests/intents`,
+  `capabilities/tests/negotiations.e2e`, `capabilities/tests/personal-agent.e2e`,
+  `internal/opportunities/tests/opportunity.graph`,
+  `internal/premises/tests/premise.decomposer`), along with
+  `scripts/tests/` and `scripts/architecture/tests/`. The `test:architecture`
+  script is gone and `architecture:check` no longer calls it; the three
+  `architecture:*` scripts are unchanged and still gate the package.
+  `LIVE_MODEL_SPECS` drops two entries that no longer existed. No source or
+  public-surface change: `src/index.ts` exports exactly what it did in 38.0.0.
+
+## 37.0.0 - 2026-08-27
+
+### Breaking
+
+- **`read_premises(userId)` is scoped to shared networks.** Cross-user premise
+  reads are denied unless the caller and target share at least one network
+  membership, and return only the premises assigned to a shared network — a
+  premise its author never put into a network you are both in stays private.
+  `includeRetracted` is own-only.
+- **`get_negotiation` redacts counterparty continue-turn `reasoning`.** The
+  shared thread still exposes `message`; each seat keeps its own `reasoning`.
+  Pause payloads remain private to the pausing seat (now also on the presenter
+  loader path).
+
 ## 36.0.0 - 2026-08-24
 
 ### Breaking
@@ -2000,6 +2041,49 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
 - Added the independently reviewed 25-participant historical shared-pool contract, single-configuration dual-trigger pilot planner, descriptive stage-funnel metrics, and strict execution-completeness artifact schema for IND-638A.
 
 ## [Unreleased]
+
+### Removed
+
+- **Breaking (38.0.0): single-path opportunities.** Discovery no longer creates
+  opportunities. It records one `discovery_match_candidates` row per pair, keyed by
+  `pairKeyOf(networkId, intentA, intentB)`, and the `opportunities` row is INSERTed at
+  kickoff by `createAndOpen` when a principal's PersonalAgent decides to reach out.
+  - `PersonalAgentMatch.opportunityId` is replaced by
+    `ref: { kind: 'candidate' | 'opportunity'; id: string }`. Read it with
+    `matchRefId(match)`; build one with `opportunityRef(id)`.
+  - `PersonalAgentOpportunityPort` requires `createAndOpen`.
+  - `OpportunityStatus` loses `latent` and `draft`. An opportunity is born
+    `negotiating`; there is no pre-kickoff state.
+  - The `introducer` actor role is removed, with its `approved` field,
+    `updateOpportunityActorApproval`, and every visibility rule that keyed on it.
+    `canUserSeeOpportunity` now answers one question — is the viewer an actor.
+  - Removed exports: `MaintenanceGraphFactory`, `MaintenanceGraphDatabase`,
+    `MaintenanceGraphCache`, `MaintenanceGraphQueue`, `createIntroduction`,
+    `approveIntroduction`, `sendOpportunity`, `evaluateIntroduction`,
+    `validateIntroduction`, `IntroductionRequest`, `persistOpportunities`,
+    `StampNewbornOpportunitiesFn`, `StampNewbornOpportunitiesInput`,
+    `OpportunityPersistenceOutcome`, and the `radar.health` scoring module.
+  - `operationMode` narrows to `create | read | update | delete`.
+  - Discovery sources narrow to `query`; `premise-similarity`,
+    `context-similarity` and `context-to-intent` are gone, as are their evidence
+    kinds.
+  - Hosts must implement `upsertDiscoveryMatchCandidates` and
+    `listPendingCandidatesForIntent`.
+- **Breaking (38.0.0): `QuestionRecoverySnapshot` drops its discovery-completion
+  fields.** `completionSource` narrows to `z.enum(["intent_creation"])` — the
+  `from_intent`/`discovery_run` values belonged to the post-discovery
+  recovery-question generator, retired in `6a3b65b0e` with no writer left.
+  `rejectedNegotiationCount` and `runId` are removed for the same reason.
+  Existing persisted `questions.detection` rows written before the retirement
+  may still carry the old values; nothing in the host parses them against this
+  schema at read time.
+
+### Added
+
+- `pairKeyOf`, `DiscoveryMatchCandidate`, `CreateDiscoveryMatchCandidateData`,
+  `DiscoveryMatchCandidateStatus`, `CreateAndOpenResult`, `PersonalAgentMatchRef`,
+  `matchRefId`, `opportunityRef`, `OpportunityEvidence`.
+
 
 ### Changed
 - Behaviour-neutral internal refactor (16.1.1): split the six largest modules and hoist every graph node to a top-level function. The opportunity graph is now the discovery pipeline only — its eight non-pipeline modes (read, update, delete, send, negotiate_existing, approve_introduction, and the two introduction stages) are plain functions on `OpportunityGraphFactory` instead of `operationMode` conditional-edge routing. `database.interface.ts` becomes a barrel over entity, query-group, and capability-view modules; every `Pick<Database, ...>` resolves as before. The opportunity presentation cluster is one module. `opportunity.graph.ts` 4167 → 250 lines, `database.interface.ts` 2925 → 17, `negotiation.graph.ts` 1619 → 111, `opportunity.tools.ts` 1200 → 354, `enrichment.tools.ts` 1198 → 178, `intent.graph.ts` 1091 → 174. No public export, feature flag, or environment variable changed.

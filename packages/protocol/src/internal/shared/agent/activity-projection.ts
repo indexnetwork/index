@@ -62,11 +62,12 @@ export type ActivityQuestionDomain = z.infer<typeof ActivityQuestionDomainSchema
  * bucket so a future protocol mode can never leak to an agent caller.
  */
 export const QUESTION_MODE_TO_DOMAIN: Readonly<Record<string, ActivityQuestionDomain>> = {
-  // `enrichment` and `discovery` are retired generators — no new question is
-  // ever produced in either mode. Their rows predate the removal and remain
-  // answerable, so both keep their original affected-domain mapping: dropping
-  // them here would silently fall back to the "chat" domain and change which
-  // permission an agent needs to answer a pre-existing row.
+  // `enrichment`, `discovery`, and `pool_discovery` are retired generators —
+  // no new question is ever produced in any of them. Their rows predate the
+  // removal and remain answerable, so all three keep their original
+  // affected-domain mapping: dropping them here would silently fall back to
+  // the "chat" domain and change which permission an agent needs to answer a
+  // pre-existing row.
   //
   // Enrichment answers run the PremiseGraph lifecycle (createPremiseFromAnswer →
   // PremiseEvents.onCreated), so enrichment questions affect the premises domain.

@@ -122,7 +122,7 @@ The system models human collaboration through a linguistic and information-theor
 
 ## Opportunity Lifecycle and Role-Based Visibility
 
-The authoritative lifecycle, actor-state rules, and code citations live in [`docs/design/opportunity-status-lifecycle.md`](../../../docs/design/opportunity-status-lifecycle.md). The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `internal/opportunities/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
+The package predicates are `canUserSeeOpportunity` and `isActionableForViewer` in `internal/opportunities/opportunity.utils.ts`; keep their source comments aligned with that reference when either changes.
 
 ## How a User Message Flows Through the System
 
@@ -297,7 +297,7 @@ Handled by the **Premise Graph**, **Enrichment Graph**, and **User Context Gener
 2. **Analysis**: `PremiseAnalyzer` classifies each premise's speech act (declarative vs. assertive) and scores its felicity conditions — premises are the *constitutive* facts that establish what a user has the authority to do.
 3. **Indexing & assignment**: `PremiseIndexer` embeds each premise and scores network fit; the shared network-assignment policy (`internal/shared/assignment/network-assignment.policy.ts`) decides which networks the premise is assigned to.
 4. **Premise indexing**: premise changes are embedded and assigned to networks for discovery.
-5. **Discovery feed**: stored context embeddings power **context-to-intent discovery** in the opportunity graph, complementing premise-to-premise matching.
+5. **Discovery feed**: stored embeddings power candidate retrieval in the opportunity graph.
 
 ### HyDE Pipeline
 
@@ -313,7 +313,7 @@ Handled by the **HyDE Graph** and **Enrichment Graph**. The pipeline is **lens-b
 Handled by the **Opportunity Graph**:
 1. **Prep**: Load user's indexed intents and HyDE documents.
 2. **Scope**: Determine target indexes (single or all).
-3. **Discovery**: Vector similarity search within network scope. Two complementary strategies run and merge: **premise-to-premise** matching (the user's premise embeddings are searched against candidate premises) and **context-to-intent** matching (a user's network-scoped context embeddings are searched against candidate intents). (Profile-HyDE discovery was retired in WS10.)
+3. **Discovery**: HyDE-driven vector search within network scope, against candidate intents.
 4. **Evaluation**: `OpportunityEvaluator` scores each candidate pair via **valency** (does the candidate fill the argument slot of the source's goal verb?) and **constraint satisfaction** (does the candidate's constitutive context match all extracted constraints?). Assigns role: Agent, Patient, or Peer.
 5. **Presentation**: `OpportunityPresenter` generates two descriptions per Grice's Maxim of Relation — one from the source's frame, one from the candidate's frame.
 6. **Persist**: Opportunities created as `latent` with actor roles. Role determines tier-0 visibility (see Opportunity Lifecycle above).
@@ -328,7 +328,7 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 - **Specific Indefinites only**: Underspecified (high-entropy) intents do not enter the graph — they trigger elaboration
 - **Felicity-gated persistence**: Only intents classified as `felicitous` are persisted as active
 - **Dual synthesis**: Each opportunity has descriptions framed for both actors (Grice's Maxim of Relation)
-- **Role-based visibility**: Opportunity reveal follows a tiered cascade; agent visibility is deferred when a patient or introducer is present
+- **Role-based visibility**: the actors on a pairing may read it
 - **Encoding bottleneck**: HyDE hallucinations are never stored or shown — only their embeddings are used
 
 ## Shared Infrastructure
@@ -346,7 +346,6 @@ The **Chat Graph** is a ReAct loop: one `agent_loop` node where the LLM decides 
 | `internal/opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `internal/opportunities/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |
 | `internal/opportunities/opportunity.utils.ts` | Lens-corpus → actor-role derivation, opportunity visibility, radar composition helpers |
-| `internal/opportunities/opportunity.introducer.ts` | Introducer-driven contact-pair discovery |
 | `internal/opportunities/opportunity.evidence.ts` | Builds and merges per-candidate opportunity evidence |
 | `internal/opportunities/delivery-card.cache.ts` | Cached delivery-card batch builder for opportunity delivery |
 | `internal/opportunities/radar/radar.health.ts` | Radar health metrics computation |

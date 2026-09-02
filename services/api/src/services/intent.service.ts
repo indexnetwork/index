@@ -3,7 +3,7 @@ import { Intents } from '@indexnetwork/protocol';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { IntentProposalDatabaseAdapter, intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
-import { intentQueue } from '../queues/intent.queue';
+import { intentIndexing } from '../lib/intent/indexing';
 import { IntentEvents } from '../events/intent.event';
 import { indexExistingIntentForSeed as indexSeedIntent } from '../lib/intent/seed-indexer';
 
@@ -96,7 +96,7 @@ export class IntentService {
   private adapter: IntentDatabaseAdapter;
   private proposalAdapter: IntentProposalDatabaseAdapter;
   private embedder: EmbedderAdapter;
-  private seedIndexQueue: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
+  private seedIndexer: Pick<typeof intentIndexing, 'runGenerateHydeSync'>;
   private emitProposalCreated: (intentId: string, userId: string) => void;
 
   /**
@@ -106,17 +106,17 @@ export class IntentService {
     adapter?: IntentDatabaseAdapter;
     proposalAdapter?: IntentProposalDatabaseAdapter;
     embedder?: EmbedderAdapter;
-    seedIndexQueue?: Pick<typeof intentQueue, 'runGenerateHydeSync'>;
+    seedIndexer?: Pick<typeof intentIndexing, 'runGenerateHydeSync'>;
     emitProposalCreated?: (intentId: string, userId: string) => void;
     intentGraph?: IntentGraphRunner;
   }) {
     this.adapter = deps?.adapter ?? intentDatabaseAdapter;
     this.proposalAdapter = deps?.proposalAdapter ?? intentProposalDatabaseAdapter;
     this.embedder = deps?.embedder ?? new EmbedderAdapter();
-    this.seedIndexQueue = deps?.seedIndexQueue ?? intentQueue;
+    this.seedIndexer = deps?.seedIndexer ?? intentIndexing;
     this.emitProposalCreated = deps?.emitProposalCreated ?? ((intentId, userId) => IntentEvents.onCreated(intentId, userId));
     this.intentGraph = deps?.intentGraph
-      ?? new Intents({ database: this.adapter, embedder: this.embedder, queue: intentQueue }).createGraph();
+      ?? new Intents({ database: this.adapter, embedder: this.embedder, followUp: intentIndexing }).createGraph();
   }
 
   /**
@@ -337,7 +337,7 @@ export class IntentService {
     await indexSeedIntent({
       generateEmbedding: (text) => this.embedder.generate(text),
       updateIntent: (id, data) => this.adapter.updateIntent(id, data),
-      runHyde: ({ intentId: id, userId: ownerId }) => this.seedIndexQueue.runGenerateHydeSync(
+      runHyde: ({ intentId: id, userId: ownerId }) => this.seedIndexer.runGenerateHydeSync(
         { intentId: id, userId: ownerId },
         { skipOpportunity: true },
       ),
@@ -377,7 +377,7 @@ export class IntentService {
     });
 
     try {
-      await intentQueue.runGenerateHydeSync(
+      await intentIndexing.runGenerateHydeSync(
         { intentId: created.id, userId },
         { skipOpportunity: true }
       );

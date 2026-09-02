@@ -3,7 +3,7 @@
  * Backfill CLI: assignment-only reconciliation of intents → networks.
  *
  * Finds active intents that have ZERO intent_networks rows (orphans) and runs
- * the SAME network-assignment policy the HyDE queue uses
+ * the SAME network-assignment policy intent indexing uses
  * (`buildNetworkAssignmentDecision`), writing intent_networks rows for matches.
  *
  * It deliberately does NOT regenerate HyDE documents and does NOT enqueue

@@ -9,7 +9,7 @@ export const sourceType = pgEnum('source_type', ['integration', 'discovery_form'
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
@@ -79,7 +79,6 @@ export interface TelegramPrefs {
 
 export interface NotificationPreferences {
   connectionUpdates: boolean;
-  weeklyNewsletter: boolean;
   telegram?: TelegramPrefs;
 }
 
@@ -255,7 +254,6 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
   preferences: json('preferences').$type<NotificationPreferences>().default({
     connectionUpdates: true,
-    weeklyNewsletter: true,
   }),
   unsubscribeToken: text('unsubscribe_token').$defaultFn(() => crypto.randomUUID()).notNull().unique(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -386,8 +384,7 @@ export const hydeDocuments = pgTable('hyde_documents', {
 }));
 
 export interface OpportunityDetection {
-  /** `introducer_discovery` is read-only history: no path stamps it any more, but existing rows carry it. */
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
+  source: 'opportunity_graph' | 'chat' | 'cron' | 'member_added';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -399,15 +396,13 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
-  /** Which premise grounded this match (set when discoverySource is 'premise-similarity'). */
+  /** Which premise grounded this match, when the match was premise-grounded. */
   premise?: Id<'premises'>;
   role: string;
-  /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
-  approved?: boolean;
   /**
    * ISO-8601 timestamp set the first time this actor advanced the opportunity's
    * state (patient sending, agent accepting, peer "accepting" on draft = sending
-   * under the hood, peer accepting on pending, introducer sending). Once set,
+   * under the hood, peer accepting on pending). Once set,
    * this actor has committed and cannot be the one to subsequently `accept` the
    * same opportunity — enforced by the self-accept guard in `updateNode`.
    */
@@ -418,12 +413,6 @@ export interface OpportunitySignal {
   type: string;
   weight: number;
   detail?: string;
-  /** Question provenance for reversible pool-discriminator signals (IND-419). */
-  questionId?: string;
-  /** Recipient provenance for pool-discriminator signals. */
-  recipientUserId?: string;
-  /** Intent-pool provenance for pool-discriminator signals. */
-  intentId?: string;
 }
 
 export interface OpportunityInterpretation {
@@ -455,8 +444,39 @@ export const opportunities = pgTable('opportunities', {
   statusIdx: index('opportunities_status_idx').on(table.status),
 }));
 
+export const discoveryMatchCandidateStatusEnum = pgEnum('discovery_match_candidate_status', [
+  'pending', 'opened', 'superseded', 'expired',
+]);
+
+/**
+ * A pair discovery found, before anyone reached out. One row per pair — the
+ * unique `pair_key` is what stops both principals' discovery runs from
+ * producing two opportunities between the same two people.
+ */
+export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  pairKey: text('pair_key').notNull(),
+  networkId: text('network_id').notNull().references(() => networks.id, { onDelete: 'cascade' }),
+  intentA: text('intent_a').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  intentB: text('intent_b').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  userA: text('user_a').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userB: text('user_b').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  score: numeric('score').notNull(),
+  reasoning: text('reasoning').notNull(),
+  evidence: jsonb('evidence').$type<import('@indexnetwork/protocol').OpportunityEvidence[]>().notNull().default([]),
+  status: discoveryMatchCandidateStatusEnum('status').notNull().default('pending'),
+  /** Set when this candidate became a row, by `createAndOpen`. */
+  openedOpportunityId: text('opened_opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pairKeyIdx: uniqueIndex('discovery_match_candidates_pair_key_idx').on(table.pairKey),
+  intentAIdx: index('discovery_match_candidates_intent_a_idx').on(table.intentA),
+  intentBIdx: index('discovery_match_candidates_intent_b_idx').on(table.intentB),
+}));
+
 export interface QuestionDetection {
-  mode: 'intent' | 'chat' | 'pool_discovery';
+  mode: 'intent' | 'chat';
   /** Internal generation purpose; stripped from public API responses. */
   purpose?: import('@indexnetwork/protocol').QuestionPurpose;
   sourceType: string;
@@ -471,29 +491,10 @@ export interface QuestionDetection {
   messageId?: string;
   /** Durable conversation-session binding for verified in-chat rendering. */
   sessionId?: string;
-  /**
-   * pool_discovery only: mined pool snapshot (assignments + chain alternates).
-   * INTERNAL — stripped from every client-facing read (web + MCP).
-   */
-  pool?: import('@indexnetwork/protocol').QuestionPoolSnapshot;
   /** Post-discovery intent recovery snapshot. Never exposed publicly. */
   recovery?: import('@indexnetwork/protocol').QuestionRecoverySnapshot;
-  /** Durable proactive-delivery request marker. Never exposed publicly. */
-  pushRequestedAt?: string;
-  /** Last bounded recovery sweep that selected this request. Never exposed publicly. */
-  pushRecoveryAttemptedAt?: string;
-  /** Durable request outcome. Never exposed publicly. */
-  pushRequestStatus?: import('@indexnetwork/protocol').QuestionPoolPushRequestStatus;
-  /** Permanent suppression reason for an unclaimed request. Never exposed publicly. */
-  pushRequestReason?: import('@indexnetwork/protocol').QuestionPoolPushRequestReason;
-  /** Timestamp at which an unclaimed request was suppressed. Never exposed publicly. */
-  pushRequestSuppressedAt?: string;
-  /** Internal proactive push claim/delivery state. Never exposed publicly. */
-  push?: import('@indexnetwork/protocol').QuestionPoolPush;
-  /** Internal reason a pool question was voided after drift. */
+  /** Internal reason a question was voided after drift or retirement. */
   voidedReason?: import('@indexnetwork/protocol').QuestionVoidedReason;
-  /** Authoritative successful-delivery ledger timestamp. Never exposed publicly. */
-  pushedAt?: string;
 }
 
 export interface QuestionActor {
@@ -544,23 +545,6 @@ export const questions = pgTable('questions', {
       sql`(${table.detection}->'recovery'->>'intentFingerprint')`,
     )
     .where(sql`${table.detection}->>'purpose' = 'recovery' AND ${table.detection}->>'mode' = 'intent' AND ${table.detection}->>'sourceType' = 'intent'`),
-  // One claim per recipient + intent + pool refresh cycle. The advisory lock
-  // enforces budgets; this expression index is the final cross-worker guard.
-  poolPushRecipientIntentCycleUnique: uniqueIndex('questions_pool_push_recipient_intent_cycle_uniq')
-    .on(
-      sql`(${table.detection}->'push'->>'recipientId')`,
-      sql`(${table.detection}->'push'->>'intentId')`,
-      sql`(${table.detection}->'push'->>'cycleKey')`,
-    )
-    .where(sql`${table.detection}->>'mode' = 'pool_discovery' AND ${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
-  // Supports the strict UTC daily budget ledger, including claims whose
-  // question lifecycle later resolves.
-  poolPushRecipientClaimedAtIndex: index('questions_pool_push_recipient_claimed_at_idx')
-    .on(
-      sql`(${table.actors}->0->>'userId')`,
-      sql`(${table.detection}->'push'->>'claimedAt')`,
-    )
-    .where(sql`${table.detection}->'push'->>'claimedAt' IS NOT NULL`),
 }));
 
 export type QuestionRow = typeof questions.$inferSelect;
@@ -597,28 +581,16 @@ export const intents = pgTable('intents', {
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   /**
-   * Bumped by NegotiationGraph at every fresh kickoff of a round of
-   * negotiations for this intent. The reflect trigger's key, alongside the
-   * negotiation task's `round` metadata (design doc 2026-08-23).
+   * Written by NegotiationGraph at every fresh kickoff batch for this intent.
+   * A fresh UUID per kickoff; null means this signal has never itself kicked
+   * off (#1494). The reflect trigger's key, alongside the negotiation task's
+   * `batchId` metadata — settlement itself is folded from
+   * `negotiation_round_log_events`, not read from a size/timestamp pair here.
    */
-  negotiationRound: integer('negotiation_round').notNull().default(0),
-  /**
-   * How many negotiations the current round actually opened, stamped by
-   * kickoff only after every parallel open has settled. NULL means the round
-   * is still opening, and the all-paused → reflect check is a no-op until the
-   * stamp lands (design doc 2026-08-23, decision D2).
-   */
-  negotiationRoundSize: integer('negotiation_round_size'),
-  /**
-   * When a kickoff for the CURRENT round began — stamped by the round bump,
-   * the one write that begins one. Read with `negotiationRoundSize`: set with
-   * a null size is a kickoff that did not finish; null means no kickoff has
-   * ever run for this signal, which is where every pre-0146 intent starts.
-   */
-  negotiationKickoffStartedAt: timestamp('negotiation_kickoff_started_at', { withTimezone: true }),
+  negotiationBatchId: text('negotiation_batch_id'),
   /**
    * When the intent's first background discovery run completed successfully
-   * (any path: web from-intent queue or async MCP discovery-run). Null until
+   * (any path: web discovery queue or async MCP discovery-run). Null until
    * then. Read-side "warming" derivation clears as soon as this is stamped,
    * instead of waiting out the 24-hour freshness window (IND-482).
    */
@@ -852,7 +824,7 @@ export const networkIntegrations = pgTable('network_integrations', {
 }));
 
 /**
- * Owner-visible, aggregate-only observability for the ordinary from-intent
+ * Owner-visible, aggregate-only observability for the ordinary discovery
  * worker. Unlike BullMQ retention this survives completed, failed and stale
  * jobs and deliberately has no error payload or candidate-level data.
  */
@@ -1203,6 +1175,40 @@ export const intentAgentActs = pgTable(
 
 export type IntentAgentAct = typeof intentAgentActs.$inferSelect;
 export type NewIntentAgentAct = typeof intentAgentActs.$inferInsert;
+
+export const negotiationRoundLogEventKindEnum = pgEnum('negotiation_round_log_event_kind', ['opened', 'stopped', 'resumed', 'opening_complete']);
+export const negotiationRoundLogEventViaEnum = pgEnum('negotiation_round_log_event_via', ['paused', 'completed']);
+
+/**
+ * Append-only event log a batch's "has everything settled" answer is folded
+ * from (`@indexnetwork/protocol`'s `foldNegotiationRoundLog`), replacing the
+ * racy quartet of separately-written fields (`intents.negotiation_round`,
+ * `negotiation_round_size`, `negotiation_kickoff_started_at`,
+ * `metadata.drainGeneration`) that used to live on `intents`/`tasks`.
+ */
+export const negotiationRoundLogEvents = pgTable(
+  'negotiation_round_log_events',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    intentId: text('intent_id').notNull(),
+    batchId: text('batch_id').notNull(),
+    /** Absent only for 'opening_complete', which has no task. */
+    taskId: text('task_id'),
+    kind: negotiationRoundLogEventKindEnum('kind').notNull(),
+    /** Only set on 'stopped' events. */
+    via: negotiationRoundLogEventViaEnum('via'),
+    /** Only set on 'stopped' events whose `via` is 'paused' (a `NegotiationPauseReasonName`). */
+    reason: text('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // The fold's read: one intent's one batch, in append order.
+    batchIdx: index('idx_negotiation_round_log_events_batch').on(t.intentId, t.batchId, t.createdAt),
+  }),
+);
+
+export type NegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$inferSelect;
+export type NewNegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations

@@ -9,9 +9,9 @@ import { Controller, Get, Post, UseGuards } from "../lib/router/router.decorator
 import { chatSessionService, RETIRED_ORCHESTRATOR_PERSONA_ID, TELEGRAM_TRANSCRIPT_PERSONA_ID, type ChatStreamSurface } from "../services/chat.service";
 import { agentService } from "../services/agent.service";
 import { userService } from "../services/user.service";
-import { negotiationReflectQueue } from "../queues/negotiations/reflect.queue";
-import { personalAgentQueue } from "../queues/personal-agent.queue";
-import type { PersonalAgentUserMessageEvent } from "../queues/personal-agent.queue";
+import { negotiationReflect } from "../lib/negotiation/reflect";
+import { personalAgentService } from "../services/personal-agent.service";
+import type { PersonalAgentUserMessageEvent } from "../services/personal-agent.service";
 import { subscribePersonalAgentReply } from "../lib/agent/personal-agent-reply.stream";
 import type { PersonalAgentReplyStreamEvent } from "../lib/agent/personal-agent-reply.stream";
 import { SuggestionGenerator, ChatInterruptClassifier, PERSONAL_AGENT_PERSONA_ID } from '@indexnetwork/protocol';
@@ -36,13 +36,13 @@ async function* emptyEventStream(): AsyncGenerator<never, void, unknown> {}
 
 /**
  * Server-owned copy for a PersonalAgent turn that failed or timed out. The
- * client's message is already persisted and its event is durable on the
- * agent's inbox, retrying in the background — nothing is lost, so the copy
- * says exactly that instead of asking them to resend.
+ * turn runs once, with no retry, so the copy makes no promise that it will
+ * be picked up later — only that the message itself was not lost and can be
+ * sent again.
  */
 export const PERSONAL_AGENT_TURN_FAILURE_REPLY =
-  'I hit a snag acting on that just now, but your message is saved and I will pick it up shortly — '
-  + 'no need to send it again.';
+  'I hit a snag acting on that just now, but your message is saved. '
+  + 'Feel free to try again.';
 
 
 function normalizeChatScope(input: {
@@ -214,7 +214,7 @@ export class ChatController {
     /** Seam for tests; production awaits the serialized inbox turn. */
     private readonly runPersonalAgentUserTurn: (
       event: PersonalAgentUserMessageEvent,
-    ) => Promise<PersonalAgentResult> = (event) => personalAgentQueue.runUserMessageTurn(event),
+    ) => Promise<PersonalAgentResult> = (event) => personalAgentService.runUserMessageTurn(event),
   ) {}
   /**
    * SSE streaming endpoint for chat messages with context support.
@@ -537,9 +537,10 @@ export class ChatController {
 
           // ─── The IntentAgent's turn (phase 2: full chat ownership) ──────
           // EVERY turn of a negotiator intent-scoped DM belongs to the
-          // signal's IntentAgent: the message is persisted, its event runs
-          // on the agent's serialized inbox, and the agent's reply streams
-          // back over the turn's Redis channel as token events. The persona
+          // signal's IntentAgent: the message is persisted, its turn runs
+          // directly on the agent's serialized inbox lane, and the agent's
+          // reply streams back over the turn's in-process channel as token
+          // events. The persona
           // graph never runs for this scope — the 2026-08-20 incident's fix
           // is now unconditional, and the client talks to one mind. If the
           // channel yields nothing (or only a prefix) but the turn
@@ -559,9 +560,9 @@ export class ChatController {
               role: 'user',
               content: messageContent,
             });
-            // Subscribe BEFORE enqueueing so no chunk can be published into
-            // an unwatched channel. Everything on the channel was checked
-            // and persisted by the host before publishing.
+            // Subscribe BEFORE invoking the turn so no chunk can be published
+            // into an unwatched channel. Everything on the channel was
+            // checked and persisted by the host before publishing.
             let streamedText = '';
             let lastSeq = 0;
             let unsubscribeReply: (() => void) | null = null;
@@ -623,9 +624,9 @@ export class ChatController {
                 // event's response is authoritative for the final text.
               }
             } catch (agentErr) {
-              // The event is durable on the inbox and retries in the
-              // background; the client hears honest fixed copy rather than
-              // losing the turn.
+              // The client's message is already persisted; the turn itself
+              // ran once and failed, so the client hears honest fixed copy
+              // rather than a dropped stream.
               logger.error('PersonalAgent turn failed; replying with fixed copy', { sessionId, error: agentErr });
               fullResponse = PERSONAL_AGENT_TURN_FAILURE_REPLY;
               try {
@@ -775,7 +776,7 @@ export class ChatController {
           // distilling stated preferences into negotiator memories. Never
           // blocks the stream.
           if (agentOwnsTurn && fullResponse) {
-            negotiationReflectQueue.scheduleChatReflect({ sessionId, userId: user.id })
+            negotiationReflect.scheduleChatReflect({ sessionId, userId: user.id })
               .catch((err) => logger.error("Failed to schedule negotiator chat reflection", { sessionId, error: err }));
           }
 

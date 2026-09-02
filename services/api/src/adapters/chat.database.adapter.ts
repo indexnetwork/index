@@ -3,6 +3,7 @@ import { readPremisesForUser, upsertIntentNetworkAssignment, schema, ActiveInten
 import { tasks } from '../schemas/conversation.schema';
 import { notArchivedNegotiationTaskWhere } from './negotiation-attempt.atomic';
 
+import { discoveryCandidateAdapter, type DiscoveryCandidateDatabaseAdapter } from './discovery-candidate.database.adapter';
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
 import { PremiseEvents } from '../events/premise.event';
@@ -55,7 +56,7 @@ export class ChatDatabaseAdapter {
 
   // Negotiation context methods — required by RadarGraphDatabase
   async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
-  async bumpIntentNegotiationRound(intentId: string) { return _convDb().bumpIntentNegotiationRound(intentId); }
+  async bumpIntentNegotiationBatch(intentId: string) { return _convDb().bumpIntentNegotiationBatch(intentId); }
   async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
   async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
   async getNegotiationMessages(opportunityId: string) { return _convDb().getNegotiationMessages(opportunityId); }
@@ -1892,33 +1893,6 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  /**
-   * Check if a network key already exists.
-   * @param key - The key to check
-   * @returns True if the key is taken
-   */
-  async networkKeyExists(key: string): Promise<boolean> {
-    const result = await db.select({ id: networks.id })
-      .from(networks)
-      .where(eq(networks.key, key))
-      .limit(1);
-    return result.length > 0;
-  }
-
-  /**
-   * Update a network's key. Owner-only check should be done at the service level.
-   * @param indexId - The network ID
-   * @param key - The new key value
-   * @returns Updated network or null
-   */
-  async updateIndexKey(indexId: string, key: string) {
-    const result = await db.update(networks)
-      .set({ key, updatedAt: new Date() })
-      .where(and(eq(networks.id, indexId), isNull(networks.deletedAt)))
-      .returning();
-    return result[0] ?? null;
-  }
-
   async createNetwork(data: {
     title: string;
     prompt?: string | null;
@@ -2454,6 +2428,16 @@ export class ChatDatabaseAdapter {
     await this.softDeleteNetwork(networkId);
   }
 
+  // Discovery candidates (delegate to DiscoveryCandidateDatabaseAdapter)
+  async upsertDiscoveryMatchCandidates(
+    items: Parameters<DiscoveryCandidateDatabaseAdapter['upsertDiscoveryMatchCandidates']>[0],
+  ) {
+    return discoveryCandidateAdapter.upsertDiscoveryMatchCandidates(items);
+  }
+  async listPendingCandidatesForIntent(userId: string, intentId: string) {
+    return discoveryCandidateAdapter.listPendingCandidatesForIntent(userId, intentId);
+  }
+
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)
   async createOpportunity(data: CreateOpportunityInput): Promise<OpportunityRow> {
     return this.opportunityAdapter.createOpportunity(data);
@@ -2531,13 +2515,13 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForNetwork(
     networkId: string,
-    options?: { status?: string; statuses?: string[]; limit?: number; offset?: number }
+    options?: { status?: string; statuses?: string[]; actorUserId?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForNetwork(networkId, options);
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatus']>[3],
   ): Promise<OpportunityRow | null> {
@@ -2557,7 +2541,7 @@ export class ChatDatabaseAdapter {
    */
   async updateOpportunityStatusIfNetworkEligible(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     actors: Array<{ userId: string; networkId: string }>,
     eligibility: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[3],
     expectedStatus?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[4],
@@ -2570,33 +2554,13 @@ export class ChatDatabaseAdapter {
       expectedStatus,
     );
   }
-  async updateOpportunityActorApproval(
-    id: string,
-    introducerUserId: string,
-    approved: boolean,
-  ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
-  }
   async updateOpportunityMetadata(id: string, metadata: Record<string, unknown>): Promise<void> {
     await this.opportunityAdapter.updateOpportunityMetadata(id, metadata);
-  }
-  async applyOpportunityPoolAdjustments(
-    recipientUserId: string,
-    intentId: string,
-    expectedIntentFingerprint: string,
-    writes: Parameters<OpportunityDatabaseAdapter['applyOpportunityPoolAdjustments']>[3],
-  ): Promise<string[] | null> {
-    return this.opportunityAdapter.applyOpportunityPoolAdjustments(
-      recipientUserId,
-      intentId,
-      expectedIntentFingerprint,
-      writes,
-    );
   }
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: Parameters<OpportunityDatabaseAdapter['stampOpportunityActorAction']>[4],
   ): Promise<OpportunityRow | null> {
@@ -3307,7 +3271,7 @@ export class ChatDatabaseAdapter {
           subsystem: 'database',
           'db.system': 'postgresql',
           'db.operation': 'vector_search',
-          'search.strategy': 'context-to-intent',
+          'search.strategy': 'context-embedding',
           'search.index_scope_count': params.networkIds.length,
           'search.limit': params.limit,
         },

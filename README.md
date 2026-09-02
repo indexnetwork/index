@@ -150,34 +150,21 @@ Presentation:
 
 ## Documentation
 
-Detailed documentation lives in the `docs/` directory:
+The repository has no `docs/` directory. Agent and contributor guidance lives in
+`CLAUDE.md` and `AGENTS.md` at the root: repository map, commands, naming and import
+conventions, environment and Neon topology, the migration checklist, and the git and
+release workflow.
 
-### Guides
+Per-package detail lives in the package itself:
 
-- **[Getting Started](docs/guides/getting-started.md)** -- Full setup walkthrough with prerequisites, environment config, database setup, and troubleshooting
-
-### Design
-
-- **[Architecture Overview](docs/design/architecture-overview.md)** -- Monorepo structure, protocol layering, agent system, data flow diagrams
-- **[Protocol Deep Dive](docs/design/protocol-deep-dive.md)** -- Detailed graph, agent, and tool documentation with sequence diagrams
-
-### Domain
-
-- **[Intents](docs/domain/intents.md)** -- Intent lifecycle, semantic governance, speech act validation
-- **[Opportunities](docs/domain/opportunities.md)** -- Opportunity detection, evaluation, and persistence
-- **[Negotiation](docs/domain/negotiation.md)** -- Bilateral agent-to-agent negotiation protocol
-- **[Identity and Context](docs/domain/identity-and-context.md)** -- User identity, synthesized context, enrichment, and HyDE document embeddings
-- **[Networks](docs/domain/networks.md)** -- Community structure, membership, and access control
-
-
-
-### Specs
-
-- **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
-- **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
-- **[CLI Reference Spec](docs/specs/cli-reference.md)** -- Complete CLI command behavior specification
-- **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
-
+- **[packages/protocol/README.md](packages/protocol/README.md)** -- the protocol package,
+  with `STABILITY.md` for tiers and SemVer policy and `IMPLEMENTATION.md` for host-side
+  wiring and the interface list
+- **[packages/protocol/src/README.md](packages/protocol/src/README.md)** -- source layout
+  and capability boundaries
+- **[CLI Reference](packages/cli/cli-output-reference.html)** -- full rendered output
+  reference for every CLI command
+- **[apps/mac/README.md](apps/mac/README.md)** -- the macOS shell
 
 
 ## Development
@@ -186,12 +173,12 @@ Detailed documentation lives in the `docs/` directory:
 
 - **Bun** 1.2+ (runtime, package manager, test runner)
 - **PostgreSQL** 14+ with **pgvector** 0.5+ extension
-- **Redis** 6+ (for BullMQ job queues and caching)
+- **Redis** 6+ (cache, locks, and SSE)
 - **Git** 2.30+
 
 ### Setup
 
-For the full setup walkthrough (environment variables, database creation, troubleshooting), see [docs/guides/getting-started.md](docs/guides/getting-started.md).
+Environment variables are documented in the root `.env.example`; the database and Neon topology are covered in `CLAUDE.md`.
 
 1. **Clone the repository**
 
@@ -254,7 +241,7 @@ index/
 
 ### Development Commands
 
-For the full list of API service commands (DB, workers, maintenance), see the [Development Reference](docs/guides/development-reference.md).
+The full command list, including maintenance scripts, is in `CLAUDE.md`.
 
 ```bash
 cd services/api

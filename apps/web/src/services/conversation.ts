@@ -21,8 +21,6 @@ export const NEGOTIATION_PAUSE_REASONS = [
 export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
 
 export type NegotiationOpportunityStatus =
-  | 'latent'
-  | 'draft'
   | 'negotiating'
   | 'pending'
   | 'stalled'
@@ -110,10 +108,8 @@ export interface ConversationMessage {
 
 /** Debug projection for the PersonalAgent's intent-scoped negotiation cycle. */
 export interface IntentCycleSnapshot {
-  round: {
-    number: number;
-    size: number | null;
-    kickoffStartedAt: string | null;
+  batch: {
+    id: string | null;
     active: number;
     paused: number;
   };
@@ -123,7 +119,7 @@ export interface IntentCycleSnapshot {
     opportunityId: string;
     opportunityStatus: NegotiationOpportunityStatus;
     counterpartLabel: string;
-    round: number;
+    batchId: string | null;
     state: NegotiationTaskState;
     /** A pause reason is state, not its private payload. */
     pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
@@ -145,7 +141,7 @@ export interface IntentCycleNegotiationDetail {
     id: string;
     conversationId: string;
     opportunityId: string;
-    round: number;
+    batchId: string | null;
     state: NegotiationTaskState;
     updatedAt: string;
     brief: string | null;
@@ -180,7 +176,7 @@ export interface NegotiationTaskIndexEntry {
   opportunityId: string;
   opportunityStatus: NegotiationOpportunityStatus;
   counterpartLabel: string;
-  round: number;
+  batchId: string | null;
   state: NegotiationTaskState;
   pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
   latestActivity: { actor: 'yours' | 'theirs'; verb: string | null; createdAt: string | null };

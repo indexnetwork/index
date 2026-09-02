@@ -36,7 +36,6 @@ const updateProfileSchema = z.object({
   ).optional(),
   notificationPreferences: z.object({
     connectionUpdates: z.boolean().optional(),
-    weeklyNewsletter: z.boolean().optional(),
   }).optional(),
 });
 
