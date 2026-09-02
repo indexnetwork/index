@@ -46,7 +46,7 @@ describe("runNegotiation()", () => {
       expect(event.settlement?.outcome).toBe("agreed");
       // The whole exchange ran inside one call.
       expect(client.calls).toHaveLength(2);
-      expect(negotiations.get(event.id)?.task.history).toHaveLength(4);
+      expect(negotiations.get(event.id)?.task?.history).toHaveLength(4);
     } finally {
       stop();
     }
@@ -120,47 +120,25 @@ describe("escalation", () => {
     }
   });
 
-  test("negotiate_open and negotiate_turn offer ask too, and park instead of committing", async () => {
+  test("only the pump offers ask — the one-turn methods and negotiate() have no loop to answer one", async () => {
     const { url, stop } = serve(
       new Agent({ ...seller, negotiator: scripted([{ action: "counter", message: "No." }]).negotiator }),
     );
     try {
-      const client = scripted([{ action: "propose", message: "$400?" }, { action: "ask", message: "Ceiling?" }]);
-      const agent = new Agent({ ...buyer, negotiator: client.negotiator });
+      const client = scripted([{ action: "propose", message: "$400?" }]);
+      // One turn each, so every method decides exactly once.
+      const agent = new Agent({ ...buyer, negotiator: client.negotiator, maxTurns: 1 });
       const negotiations = new Map<string, NegotiationSession>();
       const first = await agent.openNegotiation(url, {}, { negotiations });
-      const second = await agent.continueNegotiation(first.id, {}, { negotiations });
+      await agent.continueNegotiation(first.id, {}, { negotiations });
+      await agent.negotiate(url);
+      await agent.runNegotiation(url, {}, { negotiations: new Map() });
 
       const offered = client.calls.map((c) =>
         c.options.allowedActions.map((a) => (typeof a === "string" ? a : a.action)),
       );
-      expect(offered).toEqual([
-        ["propose", "counter", "accept", "reject", "ask"],
-        ["propose", "counter", "accept", "reject", "ask"],
-      ]);
-
-      // The second turn asked instead of sending — parked, not on the wire.
-      expect(second.asking).toEqual({ question: "Ceiling?" });
-      expect(second.done).toBe(false);
-      expect(negotiations.get(first.id)?.pending).toEqual({ question: "Ceiling?" });
-    } finally {
-      stop();
-    }
-  });
-
-  test("negotiate() itself still never offers ask — no loop to answer one", async () => {
-    const { url, stop } = serve(
-      new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Deal." }]).negotiator }),
-    );
-    try {
-      const client = scripted([{ action: "propose", message: "$400?" }]);
-      const agent = new Agent({ ...buyer, negotiator: client.negotiator });
-      await agent.negotiate(url);
-
-      const offered = client.calls[0]?.options.allowedActions.map((a) =>
-        typeof a === "string" ? a : a.action,
-      );
-      expect(offered).toEqual(["propose", "counter", "accept", "reject"]);
+      const plain = ["propose", "counter", "accept", "reject"];
+      expect(offered).toEqual([plain, plain, plain, [...plain, "ask"]]);
     } finally {
       stop();
     }
@@ -239,7 +217,7 @@ describe("escalation", () => {
       });
       const negotiations = new Map<string, NegotiationSession>();
       const settled = await agent.runNegotiation(url, {}, { negotiations });
-      const before = negotiations.get(settled.id)?.task.status.state;
+      const before = negotiations.get(settled.id)?.task?.status.state;
 
       const ended = await agent.resumeNegotiation(settled.id, "go lower", { negotiations });
       const unknown = await agent.resumeNegotiation("nope", "go lower", { negotiations });
@@ -249,7 +227,7 @@ describe("escalation", () => {
       expect(unknown.kind).toBe("skipped");
       if (unknown.kind === "skipped") expect(unknown.reason).toContain("No negotiation");
       // Nothing was walked backwards.
-      expect(negotiations.get(settled.id)?.task.status.state).toBe(before);
+      expect(negotiations.get(settled.id)?.task?.status.state).toBe(before);
     } finally {
       stop();
     }

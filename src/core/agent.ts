@@ -18,7 +18,6 @@ import {
   type A2AIdentity,
   type A2AMessage,
   type A2ATask,
-  type A2ATaskState,
   type AgreementBasis,
   type AgreementResult,
   type DeadlineOptions,
@@ -64,6 +63,11 @@ const DEFAULT_VERSION = "0.1.0";
  * limit. */
 const RECORDED_NEGOTIATIONS = 10;
 
+/** What a negotiation method sees of the run it is part of: the map of
+ * sessions the loop's caller gets back, and the run's abort signal. Absent
+ * on a direct API call, when the store is all there is. */
+type RunContext = Pick<ToolContext, "negotiations" | "signal">;
+
 /** The negotiating skill, described with the vocabulary this agent
  * actually understands. A counterparty reading the card learns which
  * actions it can expect back, which is the part of the card that changes
@@ -83,9 +87,9 @@ function negotiateSkill(actions: string[]): AgentCardSkill {
 const DEFAULT_TERMINAL: ReadonlySet<string> = new Set(["accept", "reject", "decline", "withdraw"]);
 
 /**
- * The one action a negotiation under the fan-out pump may take that a
- * one-vs-one turn may not: stop and ask the party. It is intercepted
- * before the wire, so the counterparty never sees it.
+ * The one action a negotiation under the pump may take that a one-vs-one
+ * turn may not: stop and ask the party. It is intercepted before the wire,
+ * so the counterparty never sees it.
  *
  * That interception is `takeTurn`'s doing, not something inherent to this
  * value: it happens only when this package's own pump offers `ask` among
@@ -136,14 +140,6 @@ function formatDate(now: Date): string {
   });
 }
 
-/** Mirrors the A2A handler's own mapping, so both halves agree on which
- * terminal action means a deal rather than a refusal. */
-function defaultTerminalState(action: string): "completed" | "rejected" | "canceled" {
-  if (action === "accept") return "completed";
-  if (action === "withdraw") return "canceled";
-  return "rejected";
-}
-
 /** Amounts named in a closing statement. Text is all the protocol carries,
  * so this is a backstop for the common case — a price — not a guarantee
  * that the rest of the terms match. */
@@ -158,15 +154,28 @@ function amountsIn(text: string): number[] {
 }
 
 /**
+ * Whether a negotiation could still bind the party: unfinished, or closed
+ * as a deal. Only a no-deal ending frees the counterparty up again —
+ * `declined` and `conflict` leave the party holding nothing, and going
+ * back with a new offer is exactly what a new negotiation is for.
+ * `unconfirmed` is an ending nobody can read, which is a reason to verify
+ * it, not to negotiate over the top of it.
+ */
+function stillBinding(session: NegotiationSession): boolean {
+  if (!session.task || !isTerminalTaskState(session.task.status.state)) return true;
+  const status = verifyAgreement(session.task).status;
+  return status !== "declined" && status !== "conflict";
+}
+
+/**
  * Why a second negotiation with the same counterparty is refused, and
  * what to do with the one that already exists. Shared so the thrown
  * error and the skipped event say the same thing.
  */
 function secondNegotiationRefusal(rival: NegotiationSession): string {
   const who = rival.peer?.name ?? rival.url ?? "them";
-  const settled = rival.task && isTerminalTaskState(rival.task.status.state);
 
-  if (settled) {
+  if (rival.task && isTerminalTaskState(rival.task.status.state)) {
     const agreement = verifyAgreement(rival.task);
     const terms = agreement.terms ? ` on ${JSON.stringify(agreement.terms)}` : "";
     return (
@@ -204,11 +213,25 @@ function sentTurns(session: NegotiationSession): number {
   return session.task?.history.filter((message) => message.role === "user").length ?? 0;
 }
 
+/** A decision off a wire message, or null when there is no message or it
+ * doesn't decode. */
+function decode<A extends string>(message: A2AMessage | undefined): NegotiationDecision<A> | null {
+  return message ? (messageToDecision(message) as NegotiationDecision<A> | null) : null;
+}
+
 /** The counterparty's most recent move, decoded, or null before they have
  * said anything. */
 function lastPeerDecision<A extends string>(session: NegotiationSession): NegotiationDecision<A> | null {
-  const reply = session.task?.history.findLast((message) => message.role === "agent");
-  return reply ? (messageToDecision(reply) as NegotiationDecision<A> | null) : null;
+  return decode<A>(session.task?.history.findLast((message) => message.role === "agent"));
+}
+
+/** The objective with the party's standing guidance folded in. Guidance
+ * given to a parked negotiation holds for the rest of it, so every later
+ * turn — outbound, or a reply to an inbound call — is decided under it. */
+function brief(objective: string, guidance?: string[]): string {
+  return guidance?.length
+    ? `${objective}\n\nGuidance from the party you act for:\n${guidance.join("\n")}`
+    : objective;
 }
 
 function describe(cause: unknown): string {
@@ -246,10 +269,6 @@ export interface AgentOptions<A extends string = DefaultAction> {
   model?: string;
   /** OpenRouter API key. Falls back to `OPENROUTER_API_KEY`. */
   apiKey?: string;
-  /** Sent as `HTTP-Referer`, per OpenRouter's app attribution. */
-  referer?: string;
-  /** Sent as `X-Title`, per OpenRouter's app attribution. */
-  title?: string;
   /** Step cap for `run()`. Defaults to 10. */
   maxSteps?: number;
   /** How long one model request may take, in ms. Defaults to 120s. A hung
@@ -277,12 +296,8 @@ export interface AgentOptions<A extends string = DefaultAction> {
   negotiator?: Negotiator;
   /** Defaults to `DEFAULT_ACTIONS` (propose/counter/accept/reject). */
   allowedActions?: ActionSpec<A>[];
-  /** Turn cap for `negotiate()`. Defaults to 10. */
+  /** Turn cap per negotiation. Defaults to 10. */
   maxTurns?: number;
-  /** How long one negotiation turn may wait on the counterparty, in ms.
-   * Defaults to the negotiator's 180s; `0` disables it and leaves a
-   * `signal` as the only stop. */
-  turnTimeout?: number;
   /**
    * Describes the structured terms decisions should carry — e.g.
    * `"amount (number, USD), pickupDay (day of week)"`.
@@ -330,8 +345,6 @@ export interface AgentOptions<A extends string = DefaultAction> {
   isTerminal?: (action: A) => boolean;
   /** Maps a terminal action to the Task's final state. */
   terminalState?: (action: A) => "completed" | "rejected" | "canceled";
-  /** Replaces the per-turn `negotiator.decide()` call. */
-  strategy?: DecisionStrategy<A>;
   /** Attaches structured findings to a negotiation turn. */
   evaluate?: EvaluateHook<A>;
 
@@ -388,15 +401,6 @@ export interface OpenNegotiationOptions {
   objective?: string;
   /** Set false to skip fetching the counterparty's AgentCard. */
   discover?: boolean;
-  /**
-   * Offer `ask` and intercept it before the wire, the same way the
-   * fan-out pump does — parking the turn on `NegotiationTurn.asking`
-   * instead of letting the negotiator invent a number and send it.
-   * Defaults to `true`. `negotiate()` turns this off: it is a
-   * run-to-completion convenience with no loop around it to answer a
-   * parked question.
-   */
-  escalate?: boolean;
 }
 
 export interface NegotiateOptions extends OpenNegotiationOptions {
@@ -432,8 +436,8 @@ export class Agent<A extends string = DefaultAction> {
   private readonly maxSteps: number;
   private readonly maxTurns: number;
   private readonly isTerminal: (action: A) => boolean;
-  /** How each turn is decided. Defaults to asking for structured terms, so
-   * an agreement can be verified rather than read. */
+  /** How each turn is decided. Asks for structured terms unless the host
+   * turned them off, so an agreement can be verified rather than read. */
   private readonly strategy: DecisionStrategy<A>;
   /** What this agent has negotiated, in either direction. */
   private readonly sessions: NegotiationStore;
@@ -449,8 +453,6 @@ export class Agent<A extends string = DefaultAction> {
     this.model = new ModelClient({
       apiKey: options.apiKey,
       model: options.model,
-      referer: options.referer,
-      title: options.title,
       timeout: options.timeout,
       attempts: options.attempts,
       onRetry: options.onRetry,
@@ -470,13 +472,12 @@ export class Agent<A extends string = DefaultAction> {
     this.sessions = options.sessions ?? new MemoryNegotiationStore();
     this.history = options.history ?? new MemoryMessageStore();
 
-    // An explicit strategy wins. Otherwise terms are on unless the host
-    // turned them off with `terms: ""` — a decision that carries no terms
-    // can only ever settle as `unconfirmed`.
+    // Terms are on unless the host turned them off with `terms: ""` — a
+    // decision that carries no terms can only ever settle as `unconfirmed`.
     const terms = options.terms ?? DEFAULT_TERMS;
-    this.strategy =
-      options.strategy ??
-      (terms ? strategyWithTerms<A>(terms) : (defaultStrategy as unknown as DecisionStrategy<A>));
+    this.strategy = terms
+      ? strategyWithTerms<A>(terms)
+      : (defaultStrategy as unknown as DecisionStrategy<A>);
   }
 
   // --- intent scoping ------------------------------------------------
@@ -709,22 +710,22 @@ export class Agent<A extends string = DefaultAction> {
       // else to 404 — the rest of this block simply no-ops when `task`
       // never comes back.
       const body = await peek<{ id?: string; params?: { message?: A2AMessage } }>(request);
-      const incoming = body?.params?.message ? messageToDecision(body.params.message) : null;
+      const incoming = decode<A>(body?.params?.message);
 
       // A brand-new task (no `taskId`) under this same intent while this
       // agent already has an unfinished outbound negotiation about it is
-      // the inbound half of `crossDirectionRival` — refused before `inner`
-      // ever creates a Task for it, the same way `openNegotiation` refuses
-      // the outbound half. A continuation of an existing task is routed by
-      // its `taskId` regardless, so this only ever catches an opening move.
+      // the inbound half of the rival rule — refused before `inner` ever
+      // creates a Task for it, the same way `openNegotiation` refuses the
+      // outbound half. A continuation of an existing task is routed by its
+      // `taskId` regardless, so this only ever catches an opening move.
       if (body?.params?.message && !body.params.message.taskId) {
-        const rival = this.crossDirectionRival("inbound");
+        const rival = this.binding().find((session) => session.direction === "outbound");
         if (rival) {
           // `secondNegotiationRefusal` is written for this agent's own
           // model to read (an exception it catches, an event's `reason`
-          // it sees in a digest) — it names this agent's own tools
-          // (`negotiate_turn`, `answerInbound`), which mean nothing to
-          // whoever is calling in. This message is for them instead.
+          // it sees in a digest) — it names this agent's own tools, which
+          // mean nothing to whoever is calling in. This message is for
+          // them instead.
           return Response.json(
             {
               jsonrpc: "2.0",
@@ -741,16 +742,14 @@ export class Agent<A extends string = DefaultAction> {
       }
 
       // A reply already parked on `ask` folds the party's answer in as
-      // standing guidance, the same way `takeTurn`'s `standing` does for
-      // an outbound turn — an answered inbound question would otherwise
-      // never reach the negotiator, because there is no per-request
-      // `objective` to carry it except the one built fresh right here.
+      // standing guidance, the same way an outbound turn does — an
+      // answered inbound question would otherwise never reach the
+      // negotiator, because there is no per-request `objective` to carry
+      // it except the one built fresh right here.
       const existing = body?.params?.message?.taskId
         ? this.sessions.get(body.params.message.taskId)
         : undefined;
-      const objective = existing?.guidance?.length
-        ? `${this.objectiveFor()}\n\nGuidance from the party you act for:\n${existing.guidance.join("\n")}`
-        : this.objectiveFor();
+      const objective = brief(this.objectiveFor(), existing?.guidance);
 
       // `ask` offered here lands as a legitimate `input-required` wire
       // reply — unlike the outbound pump's `Escalation`, there is nothing
@@ -774,9 +773,7 @@ export class Agent<A extends string = DefaultAction> {
 
       const answered = await peek<{ result?: A2ATask }>(response);
       const task = answered?.result;
-
-      const reply = task?.history.at(-1);
-      const decision = reply ? (messageToDecision(reply) as NegotiationDecision<A> | null) : null;
+      const decision = decode<A>(task?.history.at(-1));
 
       // A negotiation this agent answered is one it was party to, so it
       // goes in the same record as the ones it opened. Without this the
@@ -803,21 +800,16 @@ export class Agent<A extends string = DefaultAction> {
       }
 
       if (incoming && task) {
-        onTurn?.({ speaker: "peer", decision: incoming as NegotiationDecision<A>, id: task.id }, "inbound");
+        onTurn?.({ speaker: "peer", decision: incoming, id: task.id }, "inbound");
       }
 
       if (decision && task) {
-        onTurn?.({ speaker: "self", decision: decision as NegotiationDecision<A>, id: task.id }, "inbound");
+        onTurn?.({ speaker: "self", decision, id: task.id }, "inbound");
 
         // Read off the same Task the initiator reads, so a conflict is
         // visible from both ends rather than only the side that dialed.
         // Inbound: they spoke first and this agent replied.
-        const settlement = this.settle(
-          task,
-          decision as NegotiationDecision<A>,
-          incoming as NegotiationDecision<A> | null,
-          false,
-        );
+        const settlement = this.settle(task, decision, incoming, false);
         if (settlement) onSettled?.({ ...settlement, id: task.id }, "inbound");
       }
 
@@ -825,78 +817,71 @@ export class Agent<A extends string = DefaultAction> {
     };
   }
 
-  // --- outbound, one turn at a time ----------------------------------
+  // --- the rival rule ------------------------------------------------
 
   /**
-   * A negotiation with this counterparty, for this intent, that a second
-   * one would collide with.
+   * The negotiations under this intent that could still bind the party.
    *
-   * Two collide when the first hasn't finished, or when it ended in
-   * something the party is now holding — a deal. Both cases end the same
-   * way: two independent Tasks, each able to settle, and a party
-   * committed twice over to a thing they wanted once. A live run did
-   * exactly this. Handed a digest with one negotiation waiting on its
-   * party, it re-opened all four counterparties instead of answering,
-   * and agreed the same purchase twice.
+   * One binding negotiation per counterparty, per intent: a second one is
+   * refused while the first is unfinished or closed as a deal. An agent
+   * that couldn't see how to move a negotiation waiting on its party once
+   * re-opened all four of its counterparties instead, and agreed the same
+   * purchase twice. Every Task-level invariant held throughout — the two
+   * Tasks were independent and each was valid — and nothing had told it
+   * not to.
    *
-   * A negotiation that ended in *no deal* blocks nothing: `declined` and
-   * `conflict` leave the party holding nothing, and going back with a
-   * new offer is exactly what a new negotiation is for.
+   * Read from the run's own view when there is one — `run()` seeds it from
+   * the store, so it holds everything the store does and anything opened
+   * since. Without a context this is a direct API call, and the store is
+   * all there is.
    */
-  private rivalNegotiationWith(
-    url: string,
-    context?: Pick<ToolContext, "negotiations">,
-  ): NegotiationSession | undefined {
-    // The run's own view when there is one — `run()` seeds it from the
-    // store, so it holds everything the store does and anything opened
-    // since. Without a context this is a direct API call, and the store
-    // is all there is.
+  private binding(context?: Pick<ToolContext, "negotiations">): NegotiationSession[] {
     const sessions = context ? [...context.negotiations.values()] : this.sessions.list();
     const intent = this.intent?.statement;
-
-    return sessions.find((session) => {
-      if (session.direction !== "outbound" || session.url !== url) return false;
-      if (session.intent !== intent) return false;
-      if (!session.task || !isTerminalTaskState(session.task.status.state)) return true;
-
-      // Ended. Only a no-deal ending frees the counterparty up again;
-      // `unconfirmed` is an ending nobody can read, which is a reason to
-      // verify it, not to negotiate over the top of it.
-      const status = verifyAgreement(session.task).status;
-      return status !== "declined" && status !== "conflict";
-    });
+    return sessions.filter((session) => session.intent === intent && stillBinding(session));
   }
 
   /**
-   * An unfinished negotiation running the *other* direction for the same
-   * intent — this agent already has a live exchange going one way about
-   * this deal when a call arrives (or is about to be sent) the other way.
-   * A live run once had one party's agent dial a counterparty while that
-   * same counterparty's agent was mid-dial back, and each side settled its
-   * own Task without ever seeing the other — two records for one deal.
+   * What refuses a new outbound negotiation with `url`: a binding one with
+   * the same counterparty, or a binding *inbound* one under this intent.
    *
-   * Unlike `rivalNegotiationWith`, this can't confirm it's the *same*
-   * counterparty: an inbound negotiation carries no return address, so
-   * there's no `url` to match against. Matching on intent alone is
-   * coarser — and deliberately so, since two Tasks for one deal is worse
-   * than occasionally refusing an unrelated second counterparty until the
-   * first exchange resolves.
+   * The second is coarser on purpose. An inbound negotiation carries no
+   * return address, so there is no `url` to match against; a live run once
+   * had one party's agent dial a counterparty while that same
+   * counterparty's agent was mid-dial back, and each side settled its own
+   * Task without ever seeing the other — two records for one deal. Two
+   * Tasks for one deal is worse than occasionally refusing an unrelated
+   * second counterparty until the first exchange resolves.
    */
-  private crossDirectionRival(
-    direction: Direction,
-    context?: Pick<ToolContext, "negotiations">,
-  ): NegotiationSession | undefined {
-    const sessions = context ? [...context.negotiations.values()] : this.sessions.list();
-    const intent = this.intent?.statement;
-    const other: Direction = direction === "outbound" ? "inbound" : "outbound";
+  private rival(url: string, context?: Pick<ToolContext, "negotiations">): NegotiationSession | undefined {
+    const binding = this.binding(context);
+    return (
+      binding.find((session) => session.direction === "outbound" && session.url === url) ??
+      binding.find((session) => session.direction === "inbound")
+    );
+  }
 
-    return sessions.find((session) => {
-      if (session.direction !== other || session.intent !== intent) return false;
-      if (!session.task || !isTerminalTaskState(session.task.status.state)) return true;
+  // --- outbound ------------------------------------------------------
 
-      const status = verifyAgreement(session.task).status;
-      return status !== "declined" && status !== "conflict";
-    });
+  /** A session for a negotiation this agent is about to open, keyed under
+   * a provisional id until the counterparty's Task exists — needed so a
+   * negotiation that parks before its first turn can still be found and
+   * resumed. `takeTurn` re-keys it the moment the Task comes back. */
+  private newSession(url: string, objective?: string): NegotiationSession {
+    return {
+      id: `local:${crypto.randomUUID()}`,
+      direction: "outbound",
+      url,
+      objective: this.objectiveFor(objective),
+      ...(this.intent ? { intent: this.intent.statement } : {}),
+      peer: null,
+    };
+  }
+
+  /** Writes a session to the record and to the run's own view of it. */
+  private remember(session: NegotiationSession, context?: Pick<ToolContext, "negotiations">): void {
+    this.sessions.save(session);
+    context?.negotiations.set(session.id, session);
   }
 
   /**
@@ -908,37 +893,19 @@ export class Agent<A extends string = DefaultAction> {
   async openNegotiation(
     url: string,
     options: OpenNegotiationOptions = {},
-    context?: Pick<ToolContext, "negotiations" | "signal">,
+    context?: RunContext,
   ): Promise<NegotiationTurn<A>> {
-    const rival = this.rivalNegotiationWith(url, context) ?? this.crossDirectionRival("outbound", context);
+    const rival = this.rival(url, context);
     if (rival) throw new Error(secondNegotiationRefusal(rival));
 
     const signal = context?.signal;
-    const peer = options.discover === false ? null : await this.inspect(url, { signal });
-    const objective = this.objectiveFor(options.objective);
-
-    const session: NegotiationSession = {
-      // Provisional until the counterparty's Task exists — the same key
-      // `runNegotiation` uses, needed here too now that a first turn can
-      // park on `ask_user` before ever reaching the wire.
-      id: `local:${crypto.randomUUID()}`,
-      direction: "outbound",
-      url,
-      objective,
-      ...(this.intent ? { intent: this.intent.statement } : {}),
-      peer,
-      task: undefined as unknown as A2ATask,
-    };
+    const session = this.newSession(url, options.objective);
+    if (options.discover !== false) session.peer = await this.inspect(url, { signal });
     context?.negotiations.set(session.id, session);
 
     try {
-      const before = session.id;
-      const turn = await this.takeTurn(session, undefined, signal, options.escalate ?? true);
-      if (before !== session.id) context?.negotiations.delete(before);
-      context?.negotiations.set(session.id, session);
-      return turn;
+      return await this.takeTurn(session, { signal }, context);
     } catch (cause) {
-      if (cause instanceof Escalation) return this.askingTurn(session, cause, context);
       context?.negotiations.delete(session.id);
       throw cause;
     }
@@ -950,24 +917,18 @@ export class Agent<A extends string = DefaultAction> {
    * agent acts for, a limit, a change of position — for this turn only.
    */
   async continueNegotiation(
-    session: NegotiationSession | string,
-    options: { guidance?: string; escalate?: boolean } = {},
-    context?: Pick<ToolContext, "negotiations" | "signal">,
+    id: string,
+    options: { guidance?: string } = {},
+    context?: RunContext,
   ): Promise<NegotiationTurn<A>> {
-    const resolved =
-      typeof session === "string"
-        ? (context?.negotiations.get(session) ?? this.sessions.get(session))
-        : session;
-
-    if (!resolved) {
-      throw new Error(
-        `No open negotiation "${String(session)}". Open one with negotiate_open first.`,
-      );
+    const session = context?.negotiations.get(id) ?? this.sessions.get(id);
+    if (!session) {
+      throw new Error(`No open negotiation "${id}". Open one with negotiate_open first.`);
     }
 
-    if (resolved.direction === "inbound") {
+    if (session.direction === "inbound") {
       throw new Error(
-        `Negotiation "${resolved.id}" was opened by the counterparty. You answer their turns as they arrive; you cannot take one on your own initiative.`,
+        `Negotiation "${session.id}" was opened by the counterparty. You answer their turns as they arrive; you cannot take one on your own initiative.`,
       );
     }
 
@@ -976,55 +937,23 @@ export class Agent<A extends string = DefaultAction> {
     // replies, the Task falls back out of its terminal state, and the
     // agreement that was on the record is no longer there. If the terms
     // need to change, that is a new negotiation.
-    const state = resolved.task?.status.state;
+    const state = session.task?.status.state;
     if (state && isTerminalTaskState(state)) {
       throw new Error(
-        `Negotiation "${resolved.id}" already ended (${state}). Taking another turn would erase what was settled — open a new negotiation if the terms need to change.`,
+        `Negotiation "${session.id}" already ended (${state}). Taking another turn would erase what was settled — open a new negotiation if the terms need to change.`,
       );
     }
 
     // Parked on a question for the party. Taking a turn here anyway would
     // send without the answer it's waiting for; negotiate_resume is the
     // way back in, and keeps the answer for the rest of the negotiation.
-    if (resolved.pending) {
+    if (session.pending) {
       throw new Error(
-        `Negotiation "${resolved.id}" is waiting on your party ("${resolved.pending.question}") — answer with negotiate_resume, which keeps the answer for the rest of the negotiation.`,
+        `Negotiation "${session.id}" is waiting on your party ("${session.pending.question}") — answer with negotiate_resume, which keeps the answer for the rest of the negotiation.`,
       );
     }
 
-    const before = resolved.id;
-    try {
-      const turn = await this.takeTurn(resolved, options.guidance, context?.signal, options.escalate ?? true);
-      if (before !== resolved.id) context?.negotiations.delete(before);
-      context?.negotiations.set(resolved.id, resolved);
-      return turn;
-    } catch (cause) {
-      if (cause instanceof Escalation) return this.askingTurn(resolved, cause, context);
-      throw cause;
-    }
-  }
-
-  /** Turns an escalation into a parked `NegotiationTurn` instead of
-   * letting it throw straight through — `openNegotiation`/
-   * `continueNegotiation` have no pump to catch it the way
-   * `negotiate_many`/`negotiate_resume` do, so they park the session here
-   * themselves, the same way `pump()` parks one under the fan-out tools. */
-  private askingTurn(
-    session: NegotiationSession,
-    cause: Escalation,
-    context?: Pick<ToolContext, "negotiations">,
-  ): NegotiationTurn<A> {
-    session.pending = { question: cause.decision.message };
-    this.sessions.save(session);
-    context?.negotiations.set(session.id, session);
-    return {
-      id: session.id,
-      sent: cause.decision as NegotiationDecision<A>,
-      received: null,
-      state: session.task?.status.state ?? "submitted",
-      done: false,
-      asking: { question: cause.decision.message },
-    };
+    return this.takeTurn(session, { guidance: options.guidance, signal: context?.signal }, context);
   }
 
   // --- outbound, run to an event ------------------------------------
@@ -1032,21 +961,17 @@ export class Agent<A extends string = DefaultAction> {
   /**
    * Opens a negotiation and pumps it until something the agent loop needs
    * to hear: it settled, it needs the party, it ran out of turns, or it
-   * failed. The turns in between never reach the loop. This is what
-   * `negotiate_many` runs, one per counterparty, concurrently.
-   *
-   * The session is keyed under a provisional `local:` id until the
-   * counterparty's Task exists, so a negotiation that stops before its
-   * first turn can still be found and resumed.
+   * failed. The turns in between never reach the loop. This is what the
+   * `negotiate` tool runs, one per counterparty, concurrently.
    */
   async runNegotiation(
     url: string,
     options: OpenNegotiationOptions = {},
-    context?: Pick<ToolContext, "negotiations" | "signal">,
+    context?: RunContext,
   ): Promise<NegotiationEvent<A>> {
     // Checked and registered before the first await, so two targets
     // naming the same counterparty in one batch can't both get past it.
-    const rival = this.rivalNegotiationWith(url, context) ?? this.crossDirectionRival("outbound", context);
+    const rival = this.rival(url, context);
     if (rival) {
       return {
         kind: "skipped",
@@ -1057,15 +982,7 @@ export class Agent<A extends string = DefaultAction> {
       };
     }
 
-    const session: NegotiationSession = {
-      id: `local:${crypto.randomUUID()}`,
-      direction: "outbound",
-      url,
-      objective: this.objectiveFor(options.objective),
-      ...(this.intent ? { intent: this.intent.statement } : {}),
-      peer: null,
-      task: undefined as unknown as A2ATask,
-    };
+    const session = this.newSession(url, options.objective);
     context?.negotiations.set(session.id, session);
 
     if (options.discover !== false) {
@@ -1088,7 +1005,7 @@ export class Agent<A extends string = DefaultAction> {
   async resumeNegotiation(
     id: string,
     guidance: string,
-    context?: Pick<ToolContext, "negotiations" | "signal">,
+    context?: RunContext,
   ): Promise<NegotiationEvent<A>> {
     const session = context?.negotiations.get(id) ?? this.sessions.get(id);
     const skip = (reason: string): NegotiationEvent<A> => ({
@@ -1111,8 +1028,7 @@ export class Agent<A extends string = DefaultAction> {
 
     session.guidance = [...(session.guidance ?? []), guidance];
     delete session.pending;
-    this.sessions.save(session);
-    context?.negotiations.set(session.id, session);
+    this.remember(session, context);
     return this.pump(session, context);
   }
 
@@ -1124,11 +1040,7 @@ export class Agent<A extends string = DefaultAction> {
    * pump here — the guidance just waits, folded into `objective` the next
    * time their message continues this task (see `handler()`).
    */
-  answerInbound(
-    id: string,
-    guidance: string,
-    context?: Pick<ToolContext, "negotiations" | "signal">,
-  ): NegotiationSession {
+  answerInbound(id: string, guidance: string, context?: RunContext): NegotiationSession {
     const session = context?.negotiations.get(id) ?? this.sessions.get(id);
     if (!session) throw new Error(`No negotiation "${id}".`);
     if (session.direction !== "inbound") {
@@ -1142,17 +1054,13 @@ export class Agent<A extends string = DefaultAction> {
 
     session.guidance = [...(session.guidance ?? []), guidance];
     delete session.pending;
-    this.sessions.save(session);
-    context?.negotiations.set(session.id, session);
+    this.remember(session, context);
     return session;
   }
 
   /** Takes turns until an event. Turns are counted from the Task, so a
    * session resumed in another process picks up the right count. */
-  private async pump(
-    session: NegotiationSession,
-    context?: Pick<ToolContext, "negotiations" | "signal">,
-  ): Promise<NegotiationEvent<A>> {
+  private async pump(session: NegotiationSession, context?: RunContext): Promise<NegotiationEvent<A>> {
     const peer = session.peer?.name;
     const url = session.url;
 
@@ -1162,15 +1070,13 @@ export class Agent<A extends string = DefaultAction> {
         return { kind: "budget", id: session.id, peer, url, last: lastPeerDecision(session), turns };
       }
 
-      const before = session.id;
       let turn: NegotiationTurn<A>;
       try {
-        turn = await this.takeTurn(session, undefined, context?.signal, true);
+        turn = await this.takeTurn(session, { signal: context?.signal, ask: true }, context);
       } catch (cause) {
         if (cause instanceof Escalation) {
           session.pending = { question: cause.decision.message };
-          this.sessions.save(session);
-          context?.negotiations.set(session.id, session);
+          this.remember(session, context);
           return {
             kind: "asking",
             id: session.id,
@@ -1191,11 +1097,6 @@ export class Agent<A extends string = DefaultAction> {
         }
         return { kind: "failed", id: session.id, peer, url, error: describe(cause), turns };
       }
-      // A negotiation parked before its first turn was keyed by a
-      // provisional id; `takeTurn` re-keys the store the moment the Task
-      // exists, and this re-keys the map the loop's caller sees.
-      if (before !== session.id) context?.negotiations.delete(before);
-      context?.negotiations.set(session.id, session);
 
       if (turn.done || turn.settlement) {
         return {
@@ -1211,24 +1112,29 @@ export class Agent<A extends string = DefaultAction> {
     }
   }
 
-  /** Decides and sends one turn, updating the session in place. */
+  /**
+   * Decides and sends one turn, updating the session in place — and
+   * re-keying it, in the store and in the run's view, once the
+   * counterparty's Task gives it a real id.
+   *
+   * `ask` puts the ask action on the menu and intercepts it before the
+   * wire: only the pump does that, because only the pump's caller has a
+   * loop around it to answer the question.
+   */
   private async takeTurn(
     session: NegotiationSession,
-    guidance?: string,
-    signal?: AbortSignal,
-    escalate = false,
+    options: { guidance?: string; signal?: AbortSignal; ask?: boolean },
+    context?: RunContext,
   ): Promise<NegotiationTurn<A>> {
     let sent: NegotiationDecision<A> | undefined;
 
     // Standing guidance from the party holds for the rest of this
     // negotiation; per-turn guidance is for this turn only.
-    const standing = session.guidance?.length
-      ? `${session.objective}\n\nGuidance from the party you act for:\n${session.guidance.join("\n")}`
-      : session.objective;
+    const standing = brief(session.objective, session.guidance);
 
     // Under the pump, `ask` is on the menu — and taking it throws before
     // anything is sent, which is the whole point of offering it.
-    const strategy: DecisionStrategy<A> = escalate
+    const strategy: DecisionStrategy<A> = options.ask
       ? async (negotiator, state, actions, opts) => {
           const decision = await this.strategy(negotiator, state, actions, opts);
           if ((decision.action as string) === ASK_ACTION.action) throw new Escalation(decision);
@@ -1240,19 +1146,18 @@ export class Agent<A extends string = DefaultAction> {
       negotiator: this.negotiator,
       party: {
         name: this.identity.name,
-        objective: guidance ? `${standing}\n\nFor this turn: ${guidance}` : standing,
+        objective: options.guidance ? `${standing}\n\nFor this turn: ${options.guidance}` : standing,
       },
-      allowedActions: escalate
+      allowedActions: options.ask
         ? [...this.allowedActions, ASK_ACTION as unknown as ActionSpec<A>]
         : this.allowedActions,
       strategy,
       evaluate: this.options.evaluate,
       credentials: this.options.credentials,
-      timeoutMs: this.options.turnTimeout,
       // `onTurn` isn't fired here: a brand-new negotiation's session.id is
-      // still the provisional key `openNegotiation` gave it, not the real
-      // Task id below — tagging it now would leave this turn under a
-      // different id than the peer's reply to it, in the same negotiation.
+      // still the provisional key it was opened under, not the real Task
+      // id below — tagging it now would leave this turn under a different
+      // id than the peer's reply to it, in the same negotiation.
       onDecision: (decision) => {
         sent = decision;
       },
@@ -1267,6 +1172,7 @@ export class Agent<A extends string = DefaultAction> {
     // The signal covers the whole turn — this side's model call and the
     // wait on the counterparty — so an interrupted run stops the request in
     // flight instead of orphaning it.
+    const { signal } = options;
     const before = session.id;
     const result = session.task
       ? await client.continue(session.url, session.task, { signal })
@@ -1275,10 +1181,13 @@ export class Agent<A extends string = DefaultAction> {
     session.task = result.task;
     session.id = result.task.id;
 
-    // The Task's id is the real one now; drop whatever provisional key
-    // (`local:...`, or the empty id `openNegotiation` starts with) this
-    // session was saved under before, so the store never carries both.
-    if (before !== session.id) this.sessions.delete?.(before);
+    // The Task's id is the real one now; drop the provisional key this
+    // session was known under, so neither the store nor the run's view
+    // carries both.
+    if (before !== session.id) {
+      this.sessions.delete?.(before);
+      context?.negotiations.delete(before);
+    }
 
     // Both turns of the round trip, now that `session.id` is the real Task
     // id and `session.peer` (if a card was fetched) names who this is.
@@ -1286,8 +1195,7 @@ export class Agent<A extends string = DefaultAction> {
       this.options.onTurn?.({ speaker: "self", decision: sent, id: session.id, peer: session.peer?.name }, "outbound");
     }
 
-    const reply = result.task.history.at(-1);
-    const received = reply ? (messageToDecision(reply) as NegotiationDecision<A> | null) : null;
+    const received = decode<A>(result.task.history.at(-1));
     if (received) {
       this.options.onTurn?.(
         { speaker: "peer", decision: received, id: session.id, peer: session.peer?.name },
@@ -1305,9 +1213,9 @@ export class Agent<A extends string = DefaultAction> {
       endedBy = { speaker: "peer", action: received.action };
     }
 
-    // Outbound: this agent spoke first and they replied.
-    this.sessions.save(session);
+    this.remember(session, context);
 
+    // Outbound: this agent spoke first and they replied.
     const settlement = this.settle(result.task, result.decision, received, true);
     if (settlement) {
       this.options.onSettled?.({ ...settlement, id: session.id, peer: session.peer?.name }, "outbound");
@@ -1417,8 +1325,8 @@ export class Agent<A extends string = DefaultAction> {
   /**
    * Runs a negotiation to a conclusion in one call, by taking turns until
    * one side ends it or `maxTurns` is spent. A convenience for hosts that
-   * want a negotiation without an agent loop around it — the loop uses the
-   * turn-level methods instead, so that it can stop in between.
+   * want a negotiation without an agent loop around it — and so it never
+   * offers `ask`: there is nobody on the other end of the loop to answer.
    */
   async negotiate(url: string, options: NegotiateOptions = {}): Promise<Negotiation<A>> {
     const maxTurns = options.maxTurns ?? this.maxTurns;
@@ -1427,7 +1335,7 @@ export class Agent<A extends string = DefaultAction> {
 
     const negotiations = new Map<string, NegotiationSession>();
     const context = { negotiations, signal: options.signal };
-    let turn = await this.openNegotiation(url, { ...options, escalate: false }, context);
+    let turn = await this.openNegotiation(url, options, context);
     let turns = 1;
 
     const collect = (result: NegotiationTurn<A>) => {
@@ -1442,13 +1350,13 @@ export class Agent<A extends string = DefaultAction> {
     // terminal action shouldn't carry on bargaining just because the
     // counterparty's reply left the Task open.
     while (!turn.done && !turn.settlement && turns < maxTurns) {
-      turn = await this.continueNegotiation(turn.id, { escalate: false }, context);
+      turn = await this.continueNegotiation(turn.id, {}, context);
       collect(turn);
       turns++;
     }
 
     const session = negotiations.get(turn.id);
-    if (!session) throw new Error("negotiate(): the negotiation was never opened.");
+    if (!session?.task) throw new Error("negotiate(): the negotiation was never opened.");
 
     return {
       peer: session.peer,

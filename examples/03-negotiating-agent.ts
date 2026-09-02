@@ -59,6 +59,6 @@ result = await answerUntilDone(founder, result, answers, { onStep: logStep });
 
 console.log(`\n— ${result.end} after ${result.steps.length} steps`);
 for (const session of result.negotiations) {
-  console.log(`  negotiation ${session.id}: ${session.task.status.state}`);
+  console.log(`  negotiation ${session.id}: ${session.task?.status.state ?? "not started"}`);
 }
 stop();

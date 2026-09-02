@@ -427,7 +427,7 @@ describe("negotiate()", () => {
       expect(second.endedBy).toEqual({ speaker: "peer", action: "accept" });
 
       // One task, four messages — the same exchange, not a new one.
-      expect(negotiations.get(first.id)?.task.history).toHaveLength(4);
+      expect(negotiations.get(first.id)?.task?.history).toHaveLength(4);
     } finally {
       stop();
     }
@@ -1458,7 +1458,7 @@ describe("a settled negotiation stays settled", () => {
 
       // The record still holds the deal.
       await Bun.sleep(20);
-      expect(negotiations.get(first.id)?.task.status.state).toBe("completed");
+      expect(negotiations.get(first.id)?.task?.status.state).toBe("completed");
     } finally {
       stop();
     }

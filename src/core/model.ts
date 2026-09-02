@@ -30,8 +30,6 @@ export interface ToolDefinition {
 export interface ModelClientOptions {
   apiKey?: string;
   model?: string;
-  referer?: string;
-  title?: string;
   /**
    * How long one request may take before it is abandoned, in ms. Defaults
    * to 120s — long enough for a slow model on a long transcript, short
@@ -87,8 +85,6 @@ class TransientError extends Error {
 export class ModelClient {
   private readonly apiKey: string;
   private readonly model: string;
-  private readonly referer?: string;
-  private readonly title?: string;
   private readonly timeout: number;
   private readonly attempts: number;
   private readonly onRetry?: (attempt: number, reason: string) => void;
@@ -100,8 +96,6 @@ export class ModelClient {
     }
     this.apiKey = apiKey;
     this.model = options.model ?? DEFAULT_MODEL;
-    this.referer = options.referer;
-    this.title = options.title;
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT;
     this.attempts = Math.max(1, options.attempts ?? DEFAULT_ATTEMPTS);
     this.onRetry = options.onRetry;
@@ -165,8 +159,6 @@ export class ModelClient {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
-          ...(this.referer ? { "HTTP-Referer": this.referer } : {}),
-          ...(this.title ? { "X-Title": this.title } : {}),
         },
         body: JSON.stringify({
           model: this.model,

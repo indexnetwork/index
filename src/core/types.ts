@@ -155,7 +155,10 @@ export interface NegotiationSession {
   /** The counterparty's AgentCard, if it was fetched. Null inbound, where
    * nothing was fetched. */
   peer: IdentifiedAgentCard | null;
-  task: A2ATask;
+  /** The A2A Task as the counterparty last returned it. Absent until the
+   * first turn has been sent — a negotiation can park on a question for
+   * the party before ever reaching the wire. */
+  task?: A2ATask;
   /** Which intent this negotiation serves, when the agent was scoped to
    * one. Two negotiations with the same counterparty are only rivals if
    * they are about the same thing: an agent that has bought a bike from
@@ -165,9 +168,8 @@ export interface NegotiationSession {
    * agent acts for. Cleared by `resumeNegotiation()`. */
   pending?: { question: string };
   /** Standing guidance from the party, oldest first, folded into the
-   * objective of every later turn. Unlike `negotiate_turn`'s per-turn
-   * guidance, an answer given to a parked negotiation has to hold for
-   * the rest of it. */
+   * objective of every later turn: an answer given to a parked negotiation
+   * has to hold for the rest of it. */
   guidance?: string[];
 }
 
@@ -293,16 +295,6 @@ export interface NegotiationTurn<A extends string = string> {
   settlement?: Settlement<A>;
   /** An Artifact from this agent's `evaluate` hook, if it produced one. */
   artifact?: A2AArtifact;
-  /**
-   * Set when this turn stopped short of the wire because taking it would
-   * commit to something only the party this agent acts for can decide.
-   * `sent` is the decision that would have gone out, not something the
-   * counterparty ever saw; `received`/`state`/`done` describe the
-   * negotiation as it stood before this turn — nothing changed. The
-   * session is parked the same way a `negotiate_many` "asking" event parks
-   * one: answer with `ask_user`, then resume with `negotiate_resume`.
-   */
-  asking?: { question: string };
 }
 
 /**
