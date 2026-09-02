@@ -120,7 +120,7 @@ export type Direction = "outbound" | "inbound";
 
 export interface AgentTurn<A extends string = string> {
   /** The negotiation this turn belongs to — the A2A task id. Several
-   * negotiations can be underway at once (`negotiate_many` runs one per
+   * negotiations can be underway at once (`negotiate` runs one per
    * counterparty, concurrently), and their turns interleave in a single
    * `onTurn` stream with no other way to tell them apart. */
   id: string;
@@ -165,7 +165,7 @@ export interface NegotiationSession {
    * someone can still negotiate a desk with them. */
   intent?: string;
   /** Set while the negotiation is parked on a question for the party this
-   * agent acts for. Cleared by `resumeNegotiation()`. */
+   * agent acts for. Cleared by `answer()`. */
   pending?: { question: string };
   /** Standing guidance from the party, oldest first, folded into the
    * objective of every later turn: an answer given to a parked negotiation
@@ -324,7 +324,11 @@ export type NegotiationEvent<A extends string = string> =
       turns: number;
     })
   | (NegotiationEventBase & { kind: "failed"; error: string; turns: number })
-  | (NegotiationEventBase & { kind: "skipped"; reason: string });
+  | (NegotiationEventBase & { kind: "skipped"; reason: string })
+  /** The party's guidance was recorded on an inbound negotiation. Nothing
+   * was sent: the counterparty holds the initiative, and the guidance is
+   * folded into this agent's reply the next time they continue it. */
+  | (NegotiationEventBase & { kind: "recorded" });
 
 /** What every event says about which negotiation it belongs to. */
 interface NegotiationEventBase {

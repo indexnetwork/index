@@ -29,7 +29,7 @@ import {
 import { runLoop } from "./loop.ts";
 import { MemoryMessageStore, MemoryNegotiationStore } from "./sessions.ts";
 import { ModelClient, type ModelMessage } from "./model.ts";
-import { defaultTools, type Tool, type ToolContext } from "./tools.ts";
+import { defaultTools, NEGOTIATION_TOOLS, type Tool, type ToolContext } from "./tools.ts";
 import type {
   AgentIdentity,
   AgentTurn,
@@ -185,12 +185,11 @@ function secondNegotiationRefusal(rival: NegotiationSession): string {
     );
   }
 
-  // An inbound rival can't be continued or resumed the way an outbound one
-  // can — `continueNegotiation`/`resumeNegotiation` both refuse a session
-  // this agent didn't dial, because the counterparty holds the initiative.
+  // An inbound rival can't be moved from this side — the counterparty
+  // holds the initiative; the party's answer waits for their next call.
   if (rival.direction === "inbound") {
     const next = rival.pending
-      ? `it is waiting on your party: ${JSON.stringify(rival.pending.question)} — answer it with answerInbound`
+      ? `it is waiting on your party: ${JSON.stringify(rival.pending.question)} — give them the answer with the answer tool`
       : "they hold the initiative on it — wait for their next message";
     return (
       `${who} is already negotiating this with you ("${rival.id}"), under the same intent. ${next}. ` +
@@ -199,8 +198,8 @@ function secondNegotiationRefusal(rival: NegotiationSession): string {
   }
 
   const next = rival.pending
-    ? `It is waiting on your party: ${JSON.stringify(rival.pending.question)} — answer it with negotiate_resume`
-    : "Continue it with negotiate_turn";
+    ? `It is waiting on your party: ${JSON.stringify(rival.pending.question)} — give them the answer with the answer tool`
+    : "Move it on with the answer tool";
   return (
     `You are already negotiating with ${who} ("${rival.id}"). ${next}, ` +
     "rather than opening a second one: both would settle independently, and your party would be committed twice."
@@ -257,7 +256,7 @@ export interface AgentOptions<A extends string = DefaultAction> {
 
   /**
    * Tools the loop may call. Defaults to `ask_user` plus the negotiation
-   * pair. Index Network operations belong here, injected by the host —
+   * tools. Index Network operations belong here, injected by the host —
    * this package deliberately knows nothing about how Index is reached.
    * Passing your own array replaces the defaults entirely, so spread
    * `defaultTools()` if you want to keep them.
@@ -556,26 +555,17 @@ export class Agent<A extends string = DefaultAction> {
     // returned, is the difference between an instruction the agent read
     // once and one it is holding: a run that ends with a question still
     // unanswered has abandoned a live negotiation, and the counterparty
-    // is still waiting. Split by direction — resuming the two isn't the
-    // same tool: an outbound one is pumped on, an inbound one just has its
-    // answer recorded for when they continue it.
+    // is still waiting.
     const parked = shown.filter((session) => session.pending);
-    const parkedOutbound = parked.filter((session) => session.direction === "outbound");
-    const parkedInbound = parked.filter((session) => session.direction === "inbound");
 
     return [
       "Negotiations you are party to. This is the record of what happened, which is not the same as what you remember saying — trust it over the conversation above:",
       ...lines,
-      "Only negotiations you opened can be continued — with negotiate_turn, or negotiate_resume for one waiting on your guidance; in the others the counterparty calls you.",
+      "Only negotiations you opened move when you answer them; in the others the counterparty calls you, and your answer waits for their next message.",
       "Never open a second negotiation with a counterparty you already have one open with: both would settle, and your party would be committed twice.",
-      ...(parkedOutbound.length
+      ...(parked.length
         ? [
-            `Waiting on your party right now: ${parkedOutbound.map((session) => session.id).join(", ")}. Ask with ask_user, then call negotiate_resume with every id the answer applies to — before you report back, not after.`,
-          ]
-        : []),
-      ...(parkedInbound.length
-        ? [
-            `They are waiting on your party too, right now: ${parkedInbound.map((session) => session.id).join(", ")}. Ask with ask_user, then call answer_inbound with every id the answer applies to — this doesn't take a turn, it just has your answer ready for when they continue it.`,
+            `Waiting on your party right now: ${parked.map((session) => session.id).join(", ")}. Ask with ask_user, then call answer with every id the answer applies to — before you report back, not after.`,
           ]
         : []),
     ].join("\n");
@@ -665,7 +655,7 @@ export class Agent<A extends string = DefaultAction> {
     if (!this.options.publishTools) return skills;
 
     for (const tool of this.tools) {
-      if (tool.suspends || tool.name.startsWith("negotiate_") || tool.name === "answer_inbound") continue;
+      if (tool.suspends || NEGOTIATION_TOOLS.has(tool.name)) continue;
       skills.push({ id: tool.name, name: tool.name, description: tool.description });
     }
     return skills;
@@ -923,7 +913,7 @@ export class Agent<A extends string = DefaultAction> {
   ): Promise<NegotiationTurn<A>> {
     const session = context?.negotiations.get(id) ?? this.sessions.get(id);
     if (!session) {
-      throw new Error(`No open negotiation "${id}". Open one with negotiate_open first.`);
+      throw new Error(`No open negotiation "${id}". Open one with openNegotiation first.`);
     }
 
     if (session.direction === "inbound") {
@@ -945,11 +935,11 @@ export class Agent<A extends string = DefaultAction> {
     }
 
     // Parked on a question for the party. Taking a turn here anyway would
-    // send without the answer it's waiting for; negotiate_resume is the
-    // way back in, and keeps the answer for the rest of the negotiation.
+    // send without the answer it's waiting for; `answer` is the way back
+    // in, and keeps the answer for the rest of the negotiation.
     if (session.pending) {
       throw new Error(
-        `Negotiation "${session.id}" is waiting on your party ("${session.pending.question}") — answer with negotiate_resume, which keeps the answer for the rest of the negotiation.`,
+        `Negotiation "${session.id}" is waiting on your party ("${session.pending.question}") — give them the answer with the answer tool, which keeps it for the rest of the negotiation.`,
       );
     }
 
@@ -998,15 +988,26 @@ export class Agent<A extends string = DefaultAction> {
   }
 
   /**
-   * Folds the party's answer into a parked negotiation and pumps it on.
+   * Gives a negotiation the party's answer, and moves it on.
+   *
+   * One rule: guidance may be given to any negotiation that has not
+   * ended. It holds for the rest of the negotiation — every later turn is
+   * decided under it — and clears a question the negotiation was parked
+   * on. What happens next depends on who holds the initiative:
+   *
+   * - outbound, this agent dialed: the negotiation is pumped on, parked or
+   *   not. That is also how an `unanswered` settlement — this side closed,
+   *   they countered — gets a next move instead of a dead end. A
+   *   negotiation that has spent `maxTurns` comes straight back as
+   *   `budget`; the cap is per negotiation, read from the Task.
+   * - inbound, they dialed: nothing is sent. The guidance waits, folded
+   *   into this agent's reply the next time their message continues the
+   *   task (see `handler()`), and the event says so.
+   *
    * Refusals are `skipped` events rather than throws, so a batch of
-   * resumes reports every id.
+   * answers reports every id.
    */
-  async resumeNegotiation(
-    id: string,
-    guidance: string,
-    context?: RunContext,
-  ): Promise<NegotiationEvent<A>> {
+  async answer(id: string, guidance: string, context?: RunContext): Promise<NegotiationEvent<A>> {
     const session = context?.negotiations.get(id) ?? this.sessions.get(id);
     const skip = (reason: string): NegotiationEvent<A> => ({
       kind: "skipped",
@@ -1017,45 +1018,19 @@ export class Agent<A extends string = DefaultAction> {
     });
 
     if (!session) return skip(`No negotiation "${id}".`);
-    if (session.direction === "inbound") {
-      return skip("They contacted you and hold the initiative — you cannot take a turn yourself. Use answerInbound to give your guidance for when they continue it.");
-    }
     const state = session.task?.status.state;
     if (state && isTerminalTaskState(state)) {
       return skip(`already ended (${state}) — open a new negotiation if the terms need to change.`);
     }
-    if (!session.pending) return skip("not waiting on you.");
 
     session.guidance = [...(session.guidance ?? []), guidance];
     delete session.pending;
     this.remember(session, context);
+
+    if (session.direction === "inbound") {
+      return { kind: "recorded", id: session.id, ...(session.peer?.name ? { peer: session.peer.name } : {}) };
+    }
     return this.pump(session, context);
-  }
-
-  /**
-   * Folds the party's answer into an inbound negotiation parked on `ask`.
-   *
-   * Unlike `resumeNegotiation`, this never takes a turn: the counterparty
-   * holds the initiative on an inbound negotiation, so there is nothing to
-   * pump here — the guidance just waits, folded into `objective` the next
-   * time their message continues this task (see `handler()`).
-   */
-  answerInbound(id: string, guidance: string, context?: RunContext): NegotiationSession {
-    const session = context?.negotiations.get(id) ?? this.sessions.get(id);
-    if (!session) throw new Error(`No negotiation "${id}".`);
-    if (session.direction !== "inbound") {
-      throw new Error(
-        `Negotiation "${id}" is one you opened yourself — answer it with negotiate_resume, not answerInbound.`,
-      );
-    }
-    if (!session.pending) {
-      throw new Error(`Negotiation "${id}" is not waiting on your party.`);
-    }
-
-    session.guidance = [...(session.guidance ?? []), guidance];
-    delete session.pending;
-    this.remember(session, context);
-    return session;
   }
 
   /** Takes turns until an event. Turns are counted from the Task, so a

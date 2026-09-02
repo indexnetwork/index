@@ -75,38 +75,24 @@ export function askUserTool(): Tool<{ question: string; options?: string[] }> {
   };
 }
 
-export interface NegotiationToolOptions {
-  /** Skip fetching the counterparty's AgentCard when opening. */
-  discover?: boolean;
-}
+/** The names of the tools `negotiationTools()` returns, for anything that
+ * needs to tell them apart from host-injected ones. */
+export const NEGOTIATION_TOOLS: ReadonlySet<string> = new Set(["negotiate", "answer"]);
 
 /**
- * Negotiating with another agent, one turn per tool call.
+ * Negotiating with other agents, the way a subagent works: each
+ * negotiation runs in its own context and reports back once.
  *
- * Splitting open/continue is what lets the agent stop mid-negotiation — to
- * ask the user something, to check Index Network, to reconsider — and pick
- * the same exchange back up afterwards. A single run-to-completion call
- * would give it no gap to think in.
- *
- * Both tools return a `settlement` once either side closes. It is the only
- * thing that says whether anything was agreed — your own `accept` does
- * not, because the counterparty decides their turn independently and can
- * close differently in the same round trip.
+ * Reading every turn of every exchange would bury the agent in payloads it
+ * can't act on, and cost a model call per turn. So `negotiate` runs each
+ * negotiation to an event — settled, waiting on the party, out of turns —
+ * and returns one digest. The negotiator may take `ask` under that pump;
+ * it is intercepted before the wire and the negotiation parks with its
+ * question. `answer` is how the party's reply gets back in, and it holds
+ * for the rest of the negotiation.
  */
-const SETTLEMENT_NOTE =
-  " The result carries a `settlement` once either side closes. Read it before telling anyone what happened: `agreed` means both sides closed on the same deal; `conflict` or `unconfirmed` means nothing is agreed yet — whatever your own action was — so say that plainly, or take another turn to settle it.";
-
-/** What a result carrying `asking` instead of a settled turn means — read
- * before treating the tool's return value as something that actually went
- * out. Shared between `negotiate_open` and `negotiate_turn`. */
-const ASKING_NOTE =
-  " If the result carries `asking` instead, nothing was sent this turn — the negotiation would have committed to something you have not been told, so it is parked the same way a 'Waiting on you' line from negotiate_many is. Ask your party once with ask_user, then call negotiate_resume with this id and their answer — do not call negotiate_open or negotiate_turn again for it, that would either refuse (a rival) or send without the answer.";
-
-/** The digest tools (`negotiate_many`/`negotiate_resume`) return prose, not
- * an object with `settlement` — this is `SETTLEMENT_NOTE`'s equivalent for
- * reading a `Settled` line in that text. */
 const DIGEST_SETTLEMENT_NOTE =
-  " Each Settled line names the outcome: `agreed` means both sides closed on the same deal; `conflict` or `unconfirmed` means nothing is agreed yet, whatever your own action was — say that plainly, or open a new negotiation to settle it. `unanswered` is different: you closed and the counterparty is still talking, so the Task is still open — a new negotiation with them is refused as a rival of itself; continue the same id with negotiate_turn instead.";
+  " Each Settled line names the outcome: `agreed` means both sides closed on the same deal; `conflict` or `unconfirmed` means nothing is agreed yet, whatever your own action was — say that plainly, or open a new negotiation to settle it. `unanswered` is different: you closed and the counterparty is still talking, so the Task is still open — a new negotiation with them is refused as a rival of itself; give this id to answer with how to respond to their last move instead.";
 
 /** Turns a rejection from a promise in a `Promise.all` batch into the same
  * `failed` shape a negotiation itself would report, so one host-store
@@ -121,54 +107,11 @@ function asFailed<A extends string>(id: string, cause: unknown): NegotiationEven
   };
 }
 
-export function negotiationTools(options: NegotiationToolOptions = {}): Tool<never>[] {
-  const open: Tool<{ url: string; objective: string }> = {
-    name: "negotiate_open",
+export function negotiationTools(): Tool<never>[] {
+  const negotiate: Tool<{ targets: { url: string; objective: string }[] }> = {
+    name: "negotiate",
     description:
-      "Open a negotiation with another agent at its A2A endpoint and take the first turn. Returns what you said, what they said back, and an id for continuing. Use negotiate_turn to carry on. Only for a counterparty you have no unfinished negotiation with: if you already have one, continue it with negotiate_turn, or answer it with negotiate_resume when it is waiting on your party." +
-      SETTLEMENT_NOTE +
-      ASKING_NOTE,
-    parameters: {
-      type: "object",
-      properties: {
-        url: { type: "string", description: "The counterparty agent's A2A base URL." },
-        objective: {
-          type: "string",
-          description:
-            "What to achieve in this negotiation specifically, e.g. 'buy the bike for under $400'. Read alongside your standing instructions and current intent.",
-        },
-      },
-      required: ["url", "objective"],
-    },
-    run: ({ url, objective }, context) =>
-      context.agent.openNegotiation(url, { objective, discover: options.discover }, context),
-  };
-
-  const turn: Tool<{ id: string; guidance?: string }> = {
-    name: "negotiate_turn",
-    description:
-      "Take one more turn in a negotiation you already opened and that is still open. Use `guidance` to fold in anything you have learned since the last turn — an answer from the party you represent, a limit, a change of position. Once an exchange has ended, it is finished: do not take another turn in it to revisit the price or the terms, because that erases what was settled. Open a new negotiation instead." +
-      SETTLEMENT_NOTE +
-      ASKING_NOTE,
-    parameters: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "The negotiation id from negotiate_open." },
-        guidance: {
-          type: "string",
-          description:
-            "Extra direction for this turn only, e.g. 'they asked about delivery — Alice can do next Tuesday'.",
-        },
-      },
-      required: ["id"],
-    },
-    run: ({ id, guidance }, context) => context.agent.continueNegotiation(id, { guidance }, context),
-  };
-
-  const many: Tool<{ targets: { url: string; objective: string }[] }> = {
-    name: "negotiate_many",
-    description:
-      "Open negotiations with several agents at once and run each one on its own until it settles, needs something only the party you represent can tell you, or runs out of turns. Returns one digest with a line per negotiation. Prefer this over negotiate_open whenever there is more than one counterparty: you only hear about what needs you. For lines under 'Waiting on you', ask your party once with ask_user, then call negotiate_resume with every id the answer applies to — do that before you report back, and never re-open a counterparty to get around a question you have not answered. Each line names the URL it came from; use it to say which result belongs to which target." +
+      "Open negotiations with one or more agents at their A2A endpoints and run each one on its own until it settles, needs something only the party you represent can tell you, or runs out of turns. Returns one digest with a line per negotiation; you only hear about what needs you. For lines under 'Waiting on you', ask your party once with ask_user, then call answer with every id the answer applies to — do that before you report back, and never re-open a counterparty to get around a question you have not answered. Each line names the URL it came from; use it to say which result belongs to which target." +
       DIGEST_SETTLEMENT_NOTE,
     parameters: {
       type: "object",
@@ -195,11 +138,7 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
         await Promise.all(
           targets.map((target) =>
             context.agent
-              .runNegotiation(
-                target.url,
-                { objective: target.objective, discover: options.discover },
-                context,
-              )
+              .runNegotiation(target.url, { objective: target.objective }, context)
               // The Task id isn't known until the negotiation opens, so a
               // rejection this early has nothing better to key on than
               // the target it was for.
@@ -209,15 +148,15 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
       ),
   };
 
-  const resume: Tool<{ ids: string[]; guidance: string }> = {
-    name: "negotiate_resume",
+  const answer: Tool<{ ids: string[]; guidance: string }> = {
+    name: "answer",
     description:
-      "Give parked negotiations the answer they were waiting for and run them on. Pass every id the answer applies to; the guidance holds for the rest of each negotiation. Returns the same digest as negotiate_many. A negotiation that has already ended is not resumed — open a new one if the terms need to change." +
+      "Give negotiations what your party said, and move them on. Pass every id the answer applies to; the guidance holds for the rest of each negotiation. A negotiation you opened runs on with it — one waiting on your party, or one you closed that they answered with a counter. One they opened just holds it: the counterparty has the initiative, so nothing is sent until their next message. Returns the same digest as negotiate. A negotiation that has already ended is not touched — open a new one if the terms need to change." +
       DIGEST_SETTLEMENT_NOTE,
     parameters: {
       type: "object",
       properties: {
-        ids: { type: "array", items: { type: "string" }, description: "Negotiation ids from the digest." },
+        ids: { type: "array", items: { type: "string" }, description: "Negotiation ids from a digest or your instructions." },
         guidance: {
           type: "string",
           description: "What your party said, as it applies to these negotiations, e.g. 'Bob's ceiling is $460 and he can collect Sunday'.",
@@ -231,47 +170,13 @@ export function negotiationTools(options: NegotiationToolOptions = {}): Tool<nev
           // De-duplicated, so an id repeated in the call doesn't pump the
           // same session twice concurrently.
           [...new Set(ids)].map((id) =>
-            context.agent.resumeNegotiation(id, guidance, context).catch((cause) => asFailed(id, cause)),
+            context.agent.answer(id, guidance, context).catch((cause) => asFailed(id, cause)),
           ),
         ),
       ),
   };
 
-  const answerInbound: Tool<{ ids: string[]; guidance: string }> = {
-    name: "answer_inbound",
-    description:
-      "Give your party's guidance to a negotiation someone else opened with you and that is waiting on you — see 'They are waiting on your party too' in your instructions. This does not take a turn: the counterparty holds the initiative, so nothing is sent. The guidance is just ready the next time they continue it. Pass every id the answer applies to.",
-    parameters: {
-      type: "object",
-      properties: {
-        ids: { type: "array", items: { type: "string" }, description: "Negotiation ids from your instructions." },
-        guidance: {
-          type: "string",
-          description: "What your party said, as it applies to these negotiations, e.g. 'the ceiling is $460, and Sunday works'.",
-        },
-      },
-      required: ["ids", "guidance"],
-    },
-    run: ({ ids, guidance }, context) =>
-      [...new Set(ids)]
-        .map((id) => {
-          try {
-            context.agent.answerInbound(id, guidance, context);
-            return `${id}: recorded.`;
-          } catch (cause) {
-            return `${id}: ${cause instanceof Error ? cause.message : String(cause)}`;
-          }
-        })
-        .join("\n"),
-  };
-
-  return [
-    open as Tool<never>,
-    turn as Tool<never>,
-    many as Tool<never>,
-    resume as Tool<never>,
-    answerInbound as Tool<never>,
-  ];
+  return [negotiate as Tool<never>, answer as Tool<never>];
 }
 
 /** The tools an agent has when you don't give it any: ask the party it

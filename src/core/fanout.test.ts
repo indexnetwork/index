@@ -15,7 +15,7 @@ import {
   serve,
   tool,
 } from "./test-helpers.ts";
-import type { NegotiationSession } from "./types.ts";
+import type { NegotiationSession, NegotiationStore } from "./types.ts";
 
 describe("runNegotiation()", () => {
   test("pumps turns to a settlement and reports one event", async () => {
@@ -164,7 +164,7 @@ describe("escalation", () => {
       const parked = await agent.runNegotiation(url, {}, { negotiations });
       expect(parked.kind).toBe("asking");
 
-      const event = await agent.resumeNegotiation(parked.id, "Bob can do Sunday at the latest", {
+      const event = await agent.answer(parked.id, "Bob can do Sunday at the latest", {
         negotiations,
       });
 
@@ -195,7 +195,7 @@ describe("escalation", () => {
       expect(parked.id).toStartWith("local:");
       expect([...negotiations.keys()]).toEqual([parked.id]);
 
-      const event = await agent.resumeNegotiation(parked.id, "$450", { negotiations });
+      const event = await agent.answer(parked.id, "$450", { negotiations });
 
       expect(event.kind).toBe("settled");
       expect(event.id).not.toStartWith("local:");
@@ -219,15 +219,23 @@ describe("escalation", () => {
       const settled = await agent.runNegotiation(url, {}, { negotiations });
       const before = negotiations.get(settled.id)?.task?.status.state;
 
-      const ended = await agent.resumeNegotiation(settled.id, "go lower", { negotiations });
-      const unknown = await agent.resumeNegotiation("nope", "go lower", { negotiations });
+      const ended = await agent.answer(settled.id, "go lower", { negotiations });
+      const unknown = await agent.answer("nope", "go lower", { negotiations });
 
-      expect(ended.kind).toBe("skipped");
-      if (ended.kind === "skipped") expect(ended.reason).toContain("already ended (completed)");
-      expect(unknown.kind).toBe("skipped");
-      if (unknown.kind === "skipped") expect(unknown.reason).toContain("No negotiation");
-      // Nothing was walked backwards.
-      expect(negotiations.get(settled.id)?.task?.status.state).toBe(before);
+      // One assertion over both, so a wrong `kind` can't hide a wrong
+      // `reason` behind a narrowing guard that never runs.
+      expect({ ended, unknown, after: negotiations.get(settled.id)?.task?.status.state }).toEqual({
+        ended: {
+          kind: "skipped",
+          id: settled.id,
+          peer: "Seller",
+          url,
+          reason: "already ended (completed) — open a new negotiation if the terms need to change.",
+        },
+        unknown: { kind: "skipped", id: "nope", peer: undefined, reason: 'No negotiation "nope".' },
+        // Nothing was walked backwards.
+        after: before,
+      });
     } finally {
       stop();
     }
@@ -252,7 +260,7 @@ describe("escalation", () => {
     }
   });
 
-  test("negotiate_turn refuses a negotiation parked before its first turn", async () => {
+  test("continueNegotiation refuses a negotiation parked before its first turn", async () => {
     const { url, stop } = serve(
       new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator }),
     );
@@ -266,14 +274,14 @@ describe("escalation", () => {
       expect(parked.kind).toBe("asking");
 
       await expect(agent.continueNegotiation(parked.id, {}, { negotiations })).rejects.toThrow(
-        /negotiate_resume/,
+        `Negotiation "${parked.id}" is waiting on your party ("What is Bob's ceiling?") — give them the answer with the answer tool, which keeps it for the rest of the negotiation.`,
       );
     } finally {
       stop();
     }
   });
 
-  test("negotiate_turn after a resume re-key leaves one record entry", async () => {
+  test("continueNegotiation after a resume re-key leaves one record entry", async () => {
     // Ask on the very first turn, before anything is sent — the case
     // that keys the session under a provisional `local:` id in the store
     // (see "an ask before the first turn gets a local id" above). Only
@@ -301,9 +309,9 @@ describe("escalation", () => {
       expect(parked.kind).toBe("asking");
       expect(parked.id).toStartWith("local:");
 
-      const resumed = await agent.resumeNegotiation(parked.id, "Sunday at the latest", { negotiations });
-      // maxTurns caps the pump, not negotiate_turn: the exchange is still
-      // open, which is what makes this a legal negotiate_turn target.
+      const resumed = await agent.answer(parked.id, "Sunday at the latest", { negotiations });
+      // maxTurns caps the pump, not continueNegotiation: the exchange is
+      // still open, which is what makes this a legal one-turn target.
       expect(resumed.kind).toBe("budget");
       if (resumed.kind !== "budget") return;
 
@@ -333,6 +341,142 @@ describe("escalation", () => {
   });
 });
 
+describe("answer()", () => {
+  /** A store that hands back copies, the way a sqlite-backed one does.
+   * With the in-memory store the agent's session and the stored one are
+   * the same object, so a save that lands before a mutation still reads
+   * back mutated — this store is what makes such a bug visible. */
+  function serializingStore(): NegotiationStore {
+    const rows = new Map<string, string>();
+    return {
+      get: (id) => {
+        const row = rows.get(id);
+        return row ? JSON.parse(row) : undefined;
+      },
+      save: (session) => {
+        rows.delete(session.id);
+        rows.set(session.id, JSON.stringify(session));
+      },
+      list: () => [...rows.values()].map((row) => JSON.parse(row)),
+      delete: (id) => {
+        rows.delete(id);
+      },
+    };
+  }
+
+  test("an inbound answer reaches the store, not just the object in hand", async () => {
+    // Inbound is the path with no later save: the answer is recorded and
+    // the counterparty's next call reads it back from the store. If the
+    // store were written before the guidance was folded in, the in-memory
+    // store would still pass — its session *is* the mutated object — and
+    // only a serializing one shows the reply being decided without it.
+    const sessions = serializingStore();
+    const server = scripted([
+      { action: "ask", message: "Would Bob take $450?" },
+      { action: "accept", message: "Then $450 it is." },
+    ]);
+    const { url, stop } = serve(new Agent({ ...seller, sessions, negotiator: server.negotiator }));
+    try {
+      const caller = new Agent({
+        ...buyer,
+        negotiator: scripted([
+          { action: "propose", message: "$450?" },
+          { action: "counter", message: "Still $450." },
+        ]).negotiator,
+      });
+      const first = await caller.openNegotiation(url);
+
+      // A fresh agent over the same store, as after a restart.
+      const second = new Agent({ ...seller, sessions, negotiator: server.negotiator });
+      const event = await second.answer(first.id, "Yes, $450 is fine.");
+      const stored = sessions.get(first.id);
+      const reply = await caller.continueNegotiation(first.id);
+
+      expect({
+        event,
+        stored: { guidance: stored?.guidance, pending: stored?.pending },
+        told: server.calls.map((c) => c.state.party.objective.includes("Yes, $450 is fine.")),
+        reply: reply.received?.action,
+      }).toEqual({
+        event: { kind: "recorded", id: first.id },
+        stored: { guidance: ["Yes, $450 is fine."], pending: undefined },
+        told: [false, true],
+        reply: "accept",
+      });
+    } finally {
+      stop();
+    }
+  });
+
+  test("an unanswered settlement is answered with a next move, not a dead end", async () => {
+    const server = scripted([
+      { action: "counter", message: "Still $460." },
+      { action: "accept", message: "Fine, $470." },
+    ]);
+    const { url, stop } = serve(new Agent({ ...seller, negotiator: server.negotiator }));
+    try {
+      const client = scripted([
+        { action: "accept", message: "We accept $460." },
+        { action: "counter", message: "$470 then." },
+      ]);
+      const agent = new Agent({ ...buyer, negotiator: client.negotiator });
+      const negotiations = new Map<string, NegotiationSession>();
+
+      // This side closed, they countered: the pump stops on the verdict,
+      // and the Task is still open.
+      const first = await agent.runNegotiation(url, {}, { negotiations });
+      const outcome = first.kind === "settled" ? first.settlement?.outcome : first.kind;
+
+      const second = await agent.answer(first.id, "Bob can go to $470", { negotiations });
+
+      expect({
+        outcome,
+        second: { kind: second.kind, state: second.kind === "settled" ? second.state : undefined },
+        told: client.calls.map((c) => c.state.party.objective.includes("Bob can go to $470")),
+        guidance: negotiations.get(first.id)?.guidance,
+      }).toEqual({
+        outcome: "unanswered",
+        second: { kind: "settled", state: "completed" },
+        told: [false, true],
+        guidance: ["Bob can go to $470"],
+      });
+    } finally {
+      stop();
+    }
+  });
+
+  test("a negotiation out of turns comes straight back as budget, sending nothing", async () => {
+    const server = scripted([{ action: "counter", message: "$480?" }]);
+    const { url, stop } = serve(new Agent({ ...seller, negotiator: server.negotiator }));
+    try {
+      const agent = new Agent({
+        ...buyer,
+        maxTurns: 1,
+        negotiator: scripted([{ action: "propose", message: "$400?" }]).negotiator,
+      });
+      const negotiations = new Map<string, NegotiationSession>();
+      const first = await agent.runNegotiation(url, {}, { negotiations });
+      const second = await agent.answer(first.id, "go to $450", { negotiations });
+
+      // The cap is per negotiation, read from the Task; the guidance is
+      // kept for a host that raises it.
+      expect({
+        first: first.kind,
+        second: { kind: second.kind, turns: second.kind === "budget" ? second.turns : undefined },
+        serverCalls: server.calls.length,
+        guidance: negotiations.get(first.id)?.guidance,
+      }).toEqual({
+        first: "budget",
+        second: { kind: "budget", turns: 1 },
+        serverCalls: 1,
+        guidance: ["go to $450"],
+      });
+    } finally {
+      stop();
+    }
+  });
+});
+
 describe("digest()", () => {
   test("groups events, one line each, and omits empty groups", () => {
     const text = digest([
@@ -354,7 +498,7 @@ describe("digest()", () => {
         "Settled (2):",
         '- 61b3061c with Alice\'s Agent — agreed: {"amount":460}',
         "- 9f2a1c3d with Bob's Agent — declined: They refused.",
-        "Waiting on you (1) — ask your party once with ask_user, then call negotiate_resume with every id the answer applies to:",
+        "Waiting on you (1) — ask your party once with ask_user, then call answer with every id the answer applies to:",
         '- 1a2b3c4d with Carol\'s Agent — asks: "Latest pickup day?" (their last move: "$480, Saturday" {"amount":480})',
         "Out of turns (1):",
         '- 5e6f7a8b with Dan\'s Agent — 10 turns, still open (their last move: "$500")',
@@ -371,7 +515,7 @@ describe("digest()", () => {
   });
 });
 
-describe("negotiate_many / negotiate_resume", () => {
+describe("negotiate / answer", () => {
   test("runs every target concurrently and returns one digest", async () => {
     const a = serve(new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator }));
     const b = serve(new Agent({ ...seller, identity: { name: "Seller B", id: "did:example:b" }, negotiator: scripted([{ action: "reject", message: "No." }]).negotiator }));
@@ -380,7 +524,7 @@ describe("negotiate_many / negotiate_resume", () => {
       const agent = new Agent({ ...buyer, negotiator: client.negotiator });
       const context = { agent: agent as unknown as Agent, negotiations: new Map<string, NegotiationSession>() };
 
-      const text = (await tool("negotiate_many").run!(
+      const text = (await tool("negotiate").run!(
         { targets: [{ url: a.url, objective: "a" }, { url: b.url, objective: "b" }] } as never,
         context,
       )) as string;
@@ -401,7 +545,7 @@ describe("negotiate_many / negotiate_resume", () => {
       const agent = new Agent({ ...buyer, negotiator: scripted([{ action: "propose", message: "$400." }]).negotiator });
       const context = { agent: agent as unknown as Agent, negotiations: new Map<string, NegotiationSession>() };
 
-      const text = (await tool("negotiate_many").run!(
+      const text = (await tool("negotiate").run!(
         { targets: [{ url: a.url, objective: "a" }, { url: "http://127.0.0.1:1", objective: "b" }] } as never,
         context,
       )) as string;
@@ -438,7 +582,7 @@ describe("negotiate_many / negotiate_resume", () => {
       const agent = new Agent({ ...buyer, negotiator: client.negotiator });
       const context = { agent: agent as unknown as Agent, negotiations: new Map<string, NegotiationSession>() };
 
-      const first = (await tool("negotiate_many").run!(
+      const first = (await tool("negotiate").run!(
         {
           targets: [
             { url: a.url, objective: "a" },
@@ -454,7 +598,7 @@ describe("negotiate_many / negotiate_resume", () => {
         [...context.negotiations.values()].find((s) => s.objective.includes(`In this negotiation: ${tag}`))!;
       const ids = [sessionFor("a").id, sessionFor("b").id];
 
-      const second = (await tool("negotiate_resume").run!(
+      const second = (await tool("answer").run!(
         { ids, guidance: "Bob's ceiling is $460" } as never,
         context,
       )) as string;
@@ -497,7 +641,7 @@ describe("through the agent loop", () => {
     try {
       const targets = servers.map((s, i) => ({ url: s.url, objective: `bike ${i}` }));
       const requests = mockModel([
-        { role: "assistant", content: "", tool_calls: [call("negotiate_many", { targets })] },
+        { role: "assistant", content: "", tool_calls: [call("negotiate", { targets })] },
         { role: "assistant", content: "All three agreed." },
       ]);
       const agent = new Agent({
@@ -546,7 +690,7 @@ describe("through the agent loop", () => {
         sessions,
         negotiator: scripted([{ action: "counter", message: "$450." }]).negotiator,
       });
-      const event = await second.resumeNegotiation(parked.id, "$460", { negotiations: new Map() });
+      const event = await second.answer(parked.id, "$460", { negotiations: new Map() });
 
       expect(event.kind).toBe("settled");
       expect(sessions.get(parked.id)?.pending).toBeUndefined();
@@ -684,7 +828,7 @@ describe("one negotiation per counterparty", () => {
     }
   });
 
-  test("negotiate_many skips a counterparty it is already negotiating with", async () => {
+  test("negotiate skips a counterparty it is already negotiating with", async () => {
     const { url, stop } = serve(
       new Agent({
         ...seller,
@@ -706,13 +850,18 @@ describe("one negotiation per counterparty", () => {
 
       const again = await agent.runNegotiation(url, {}, { negotiations });
 
-      expect(again.kind).toBe("skipped");
-      if (again.kind !== "skipped") return;
       // Points at the negotiation that already exists, and at the tool
       // that moves it — a parked one needs the party's answer.
-      expect(again.id).toBe(first.id);
-      expect(again.reason).toContain("negotiate_resume");
-      expect(negotiations.size).toBe(1);
+      expect({ again, size: negotiations.size }).toEqual({
+        again: {
+          kind: "skipped",
+          id: first.id,
+          peer: "Seller",
+          url,
+          reason: `You are already negotiating with Seller ("${first.id}"). It is waiting on your party: "Ceiling?" — give them the answer with the answer tool, rather than opening a second one: both would settle independently, and your party would be committed twice.`,
+        },
+        size: 1,
+      });
     } finally {
       stop();
     }
@@ -802,7 +951,7 @@ describe("one negotiation per counterparty", () => {
         negotiations: new Map<string, NegotiationSession>(),
       };
 
-      const text = (await tool("negotiate_many").run!(
+      const text = (await tool("negotiate").run!(
         { targets: [{ url, objective: "a" }, { url, objective: "again" }] } as never,
         context,
       )) as string;
@@ -961,12 +1110,11 @@ describe("the record says what to do next", () => {
       });
       const parked = await agent.runNegotiation(url, {}, { negotiations: new Map() });
 
-      const instructions = agent.instructions();
-      expect(instructions).toContain(`Waiting on your party right now: ${parked.id}`);
-      expect(instructions).toContain("negotiate_resume");
       // The failure this prevents: finishing the run with the question
       // still unanswered.
-      expect(instructions).toContain("before you report back");
+      expect(agent.instructions()).toContain(
+        `Waiting on your party right now: ${parked.id}. Ask with ask_user, then call answer with every id the answer applies to — before you report back, not after.`,
+      );
     } finally {
       stop();
     }
@@ -996,7 +1144,7 @@ describe("the record says what to do next", () => {
 
 describe("digest lines name the counterparty's URL", () => {
   // A live run misread its own digest and recommended a seller that had
-  // declined: it had passed URLs to negotiate_many and got back lines
+  // declined: it had passed URLs to negotiate and got back lines
   // keyed by id and name, with nothing to join them on.
   test("the URL each result came from is on the line", () => {
     const text = digest([
@@ -1024,7 +1172,7 @@ describe("digest lines name the counterparty's URL", () => {
       [
         "Settled (1):",
         '- 61b3061c with Alice\'s Agent (http://localhost:8101) — agreed: {"amount":460}',
-        "Waiting on you (1) — ask your party once with ask_user, then call negotiate_resume with every id the answer applies to:",
+        "Waiting on you (1) — ask your party once with ask_user, then call answer with every id the answer applies to:",
         '- 1a2b3c4d with Carol\'s Agent (http://localhost:8102) — asks: "Latest pickup day?"',
       ].join("\n"),
     );
@@ -1053,11 +1201,11 @@ describe("digest lines name the counterparty's URL", () => {
   });
 });
 
-describe("an unanswered settlement points back to negotiate_turn", () => {
+describe("an unanswered settlement points back to answer", () => {
   // `unanswered` is the one Settled outcome where the Task is still open —
   // this side closed and the counterparty kept talking. Read like every
   // other Settled line it looks finished; a model that believed that once
-  // left the exchange open forever, since a fresh negotiate_open with the
+  // left the exchange open forever, since a fresh negotiation with the
   // same counterparty is refused as a rival of the very session it just
   // walked away from.
   test("carries a hint distinct from a real terminal outcome", () => {
@@ -1077,23 +1225,13 @@ describe("an unanswered settlement points back to negotiate_turn", () => {
       },
     ]);
 
-    expect(text).toContain("continue this id with negotiate_turn");
-    expect(text).toContain("do not open a new one");
-  });
-
-  test("a genuinely terminal outcome carries no such hint", () => {
-    const text = digest([
-      {
-        kind: "settled",
-        id: "61b3061c",
-        peer: "Alice's Agent",
-        url: "http://localhost:8101",
-        state: "completed",
-        turns: 3,
-        settlement: { outcome: "agreed", basis: "terms", reason: "", terms: { amount: 460 } } as never,
-      },
-    ]);
-
-    expect(text).not.toContain("negotiate_turn");
+    // The whole line: a terminal outcome's line (see "groups events" above)
+    // carries no such hint, and this is what distinguishes the two.
+    expect(text).toBe(
+      [
+        "Settled (1):",
+        '- 56d1e4cf with Seller (http://localhost:8101) — unanswered: You closed with "accept", but they replied with "counter" rather than closing too. — the exchange is still open; answer this id with how to respond to their last move, do not open a new one',
+      ].join("\n"),
+    );
   });
 });

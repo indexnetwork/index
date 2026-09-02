@@ -17,7 +17,7 @@ export {
   negotiationTools,
   toolDefinition,
 } from "./core/tools.ts";
-export type { NegotiationToolOptions, Tool, ToolContext } from "./core/tools.ts";
+export type { Tool, ToolContext } from "./core/tools.ts";
 
 export { MemoryMessageStore, MemoryNegotiationStore } from "./core/sessions.ts";
 export { digest } from "./core/digest.ts";

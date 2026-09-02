@@ -14,6 +14,7 @@ export function digest(events: NegotiationEvent[]): string {
   const groups: [heading: string, kind: NegotiationEvent["kind"]][] = [
     ["Settled", "settled"],
     ["Waiting on you", "asking"],
+    ["Recorded", "recorded"],
     ["Out of turns", "budget"],
     ["Failed", "failed"],
     ["Skipped", "skipped"],
@@ -25,7 +26,7 @@ export function digest(events: NegotiationEvent[]): string {
     if (!members.length) continue;
     const hint =
       kind === "asking"
-        ? " — ask your party once with ask_user, then call negotiate_resume with every id the answer applies to"
+        ? " — ask your party once with ask_user, then call answer with every id the answer applies to"
         : "";
     sections.push(`${heading} (${members.length})${hint}:`, ...members.map(line));
   }
@@ -49,16 +50,18 @@ function line(event: NegotiationEvent): string {
       // this side closed. It reads like every other line in this section,
       // so without a hint here a model reads it as done and moves on,
       // leaving a still-open exchange it never comes back to. A new
-      // negotiate_open would be refused (the counterparty is a rival of
-      // itself); negotiate_turn on this same id is the way back in.
+      // negotiation would be refused (the counterparty is a rival of
+      // itself); answering this same id is the way back in.
       const hint =
         outcome === "unanswered"
-          ? " — the exchange is still open; continue this id with negotiate_turn, do not open a new one"
+          ? " — the exchange is still open; answer this id with how to respond to their last move, do not open a new one"
           : "";
       return `${head}${outcome}${detail ? `: ${detail}` : ""}${hint}`;
     }
     case "asking":
       return `${head}asks: ${JSON.stringify(event.question)}${lastMove(event.last)}`;
+    case "recorded":
+      return `${head}recorded; they hold the initiative, so it goes out with your reply to their next message`;
     case "budget":
       return `${head}${event.turns} turns, still open${lastMove(event.last)}`;
     case "failed":

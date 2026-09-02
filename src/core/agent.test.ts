@@ -143,12 +143,13 @@ describe("handler()", () => {
     }
   });
 
-  test("an inbound turn can ask instead of committing, and answerInbound folds the reply in", async () => {
+  test("an inbound turn can ask instead of committing, and answer folds the reply in", async () => {
     const server = scripted([
       { action: "ask", message: "What's your ceiling?" },
       { action: "accept", message: "Deal at your ceiling." },
     ]);
-    const sellerAgent = new Agent({ ...seller, negotiator: server.negotiator });
+    const sessions = new MemoryNegotiationStore();
+    const sellerAgent = new Agent({ ...seller, sessions, negotiator: server.negotiator });
     const { url, stop } = serve(sellerAgent);
 
     try {
@@ -164,16 +165,22 @@ describe("handler()", () => {
       // Asked, not committed: the reply is a legitimate `input-required`
       // wire message, not silently invented terms — and nothing was
       // agreed, so the exchange is still open.
-      expect(first.received?.action as string).toBe("ask");
-      expect(first.received?.message).toBe("What's your ceiling?");
-      expect(first.state).toBe("input-required");
-      expect(first.done).toBe(false);
+      expect({ action: first.received?.action as string, message: first.received?.message, state: first.state, done: first.done }).toEqual({
+        action: "ask",
+        message: "What's your ceiling?",
+        state: "input-required",
+        done: false,
+      });
 
       // The party this seller acts for answers, out of band — this
       // doesn't take a turn, nothing is sent yet.
-      const recorded = sellerAgent.answerInbound(first.id, "Ceiling is $500.");
-      expect(recorded.pending).toBeUndefined();
-      expect(recorded.guidance).toEqual(["Ceiling is $500."]);
+      const recorded = await sellerAgent.answer(first.id, "Ceiling is $500.");
+      const stored = sessions.get(first.id);
+      expect({ recorded, pending: stored?.pending, guidance: stored?.guidance }).toEqual({
+        recorded: { kind: "recorded", id: first.id },
+        pending: undefined,
+        guidance: ["Ceiling is $500."],
+      });
 
       // The buyer's next message continues the same task; the seller's
       // reply to it is decided with the answer folded into its objective.
@@ -186,13 +193,13 @@ describe("handler()", () => {
     }
   });
 
-  test("answerInbound folds guidance into the run's own negotiations map, not just this.sessions", async () => {
+  test("answer folds guidance into the run's own negotiations map, not just this.sessions", async () => {
     // A host like examples/06-persistence.ts doesn't read an agent's private
     // `this.sessions` — it persists `RunResult.negotiations` (the same map
     // `ToolContext.negotiations` is, mid-run) after every call. If
-    // `answerInbound` only saved to `this.sessions`, that persisted map
-    // would still carry the stale, still-pending session, and the next
-    // host round-trip would silently revert the party's answer.
+    // `answer` only saved to `this.sessions`, that persisted map would
+    // still carry the stale, still-pending session, and the next host
+    // round-trip would silently revert the party's answer.
     const server = scripted([{ action: "ask", message: "What's your ceiling?" }]);
     const sellerAgent = new Agent({ ...seller, negotiator: server.negotiator });
     const { url, stop } = serve(sellerAgent);
@@ -216,8 +223,8 @@ describe("handler()", () => {
       }
       const context = { agent: sellerAgent, negotiations };
 
-      const answerInbound = defaultTools().find((tool) => tool.name === "answer_inbound");
-      await answerInbound?.run?.({ ids: [first.id], guidance: "Ceiling is $500." } as never, context);
+      const answer = defaultTools().find((tool) => tool.name === "answer");
+      await answer?.run?.({ ids: [first.id], guidance: "Ceiling is $500." } as never, context);
 
       const persisted = negotiations.get(first.id);
       expect(persisted?.pending).toBeUndefined();
@@ -227,26 +234,72 @@ describe("handler()", () => {
     }
   });
 
-  test("answerInbound refuses a negotiation you opened, and one not waiting on you", async () => {
-    const server = scripted([{ action: "counter", message: "No." }]);
-    const { url, stop } = serve(new Agent({ ...seller, negotiator: server.negotiator }));
+  test("answer dispatches on direction: an outbound one is pumped on, an inbound one just holds it", async () => {
+    // The agent under test both dials out (to `counterparty`) and is
+    // dialed (by `caller`), and both negotiations park on a question.
+    // One `answer` call carries the party's reply to both, plus an id it
+    // has never heard of.
+    const counterparty = serve(
+      new Agent({
+        ...seller,
+        negotiator: scripted([
+          { action: "counter", message: "$480?" },
+          { action: "accept", message: "OK." },
+        ]).negotiator,
+      }),
+    );
+    const sessions = new MemoryNegotiationStore();
+    const client = scripted([
+      { action: "propose", message: "$400?" }, // outbound, first turn
+      { action: "ask", message: "Ceiling?" }, // outbound, parks
+      { action: "ask", message: "Would Bob sell his old one?" }, // inbound reply, parks
+      { action: "counter", message: "$450." }, // outbound, after the answer
+    ]);
+    const agent = new Agent({ ...buyer, sessions, negotiator: client.negotiator });
+    // The outbound one runs under an intent of its own — a binding
+    // negotiation under the same intent would refuse the inbound call as
+    // a rival (see "one negotiation per counterparty" in fanout.test.ts).
+    const scoped = agent.for("a second bike");
+    const served = serve(agent);
+    const caller = new Agent({
+      ...seller,
+      identity: { name: "Caller", id: "did:example:caller" },
+      negotiator: scripted([{ action: "propose", message: "Want to sell yours?" }]).negotiator,
+    });
 
     try {
-      const buyerAgent = new Agent({
-        ...buyer,
-        negotiator: scripted([{ action: "propose", message: "$300?" }]).negotiator,
+      const negotiations = new Map<string, NegotiationSession>();
+      const outbound = await scoped.runNegotiation(counterparty.url, { objective: "a" }, { negotiations });
+      const inbound = await caller.openNegotiation(served.url);
+      const parked = (id: string) => ({ pending: sessions.get(id)?.pending, guidance: sessions.get(id)?.guidance });
+      const before = { outbound: parked(outbound.id), inbound: parked(inbound.id) };
+
+      const answer = defaultTools().find((tool) => tool.name === "answer");
+      const text = (await answer?.run?.(
+        { ids: [outbound.id, inbound.id, "nope"], guidance: "Ceiling is $460; yes, he'd sell." } as never,
+        { agent, negotiations },
+      )) as string;
+
+      // Both were parked before; both hold the guidance after; only the
+      // outbound one moved (and settled), the inbound one is recorded and
+      // the unknown id is skipped.
+      expect({
+        before,
+        headings: text.split("\n").filter((line) => !line.startsWith("- ")),
+        outbound: { ...parked(outbound.id), state: sessions.get(outbound.id)?.task?.status.state },
+        inbound: { ...parked(inbound.id), state: sessions.get(inbound.id)?.task?.status.state },
+      }).toEqual({
+        before: {
+          outbound: { pending: { question: "Ceiling?" }, guidance: undefined },
+          inbound: { pending: { question: "Would Bob sell his old one?" }, guidance: undefined },
+        },
+        headings: ["Settled (1):", "Recorded (1):", "Skipped (1):"],
+        outbound: { pending: undefined, guidance: ["Ceiling is $460; yes, he'd sell."], state: "completed" },
+        inbound: { pending: undefined, guidance: ["Ceiling is $460; yes, he'd sell."], state: "input-required" },
       });
-      const turn = await buyerAgent.openNegotiation(url);
-
-      // Opened by this agent, not answered — the wrong tool entirely.
-      expect(() => buyerAgent.answerInbound(turn.id, "guidance")).toThrow(
-        /opened it yourself|answer it with negotiate_resume/,
-      );
-
-      // A negotiation this agent never heard of.
-      expect(() => buyerAgent.answerInbound("no-such-id", "guidance")).toThrow(/No negotiation/);
     } finally {
-      stop();
+      counterparty.stop();
+      served.stop();
     }
   });
 
@@ -255,7 +308,8 @@ describe("handler()", () => {
       { action: "ask", message: "What's your ceiling?" },
       { action: "counter", message: "Let's say $350." },
     ]);
-    const sellerAgent = new Agent({ ...seller, negotiator: server.negotiator });
+    const sessions = new MemoryNegotiationStore();
+    const sellerAgent = new Agent({ ...seller, sessions, negotiator: server.negotiator });
     const { url, stop } = serve(sellerAgent);
 
     try {
@@ -268,15 +322,16 @@ describe("handler()", () => {
       });
 
       const first = await buyerAgent.openNegotiation(url);
-      expect(sellerAgent.answerInbound(first.id, "Ceiling is $500.").pending).toBeUndefined();
+      await sellerAgent.answer(first.id, "Ceiling is $500.");
+      expect(sessions.get(first.id)?.pending).toBeUndefined();
 
       const second = await buyerAgent.continueNegotiation(first.id);
       expect(second.received?.action).toBe("counter");
       expect(second.done).toBe(false);
 
-      // The second turn answered instead of asking — nothing to record,
-      // and no leftover question from the first turn either.
-      expect(() => sellerAgent.answerInbound(first.id, "anything")).toThrow(/not waiting on your party/);
+      // The second turn answered instead of asking — no leftover question
+      // from the first turn either.
+      expect(sessions.get(first.id)?.pending).toBeUndefined();
     } finally {
       stop();
     }
@@ -1399,7 +1454,7 @@ describe("interrupting a negotiation", () => {
 
       setTimeout(() => controller.abort(new Error("interrupted")), 100);
 
-      // Exactly what `negotiate_open` does, with the context the loop hands
+      // Exactly what the `negotiate` tool does per target, with the context the loop hands
       // its tools.
       expect(
         agent.openNegotiation(
