@@ -1,4 +1,4 @@
-import type { NegotiationDecision } from "@indexnetwork/negotiator";
+import type { NegotiationDecision } from "@indexnetwork/a2a/negotiator";
 import type { NegotiationEvent } from "./types.ts";
 
 /**

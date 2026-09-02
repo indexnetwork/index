@@ -1,7 +1,7 @@
 {
   "name": "@indexnetwork/agent",
   "version": "0.1.0",
-  "description": "A host-run personal agent: one identity, scopeable to an intent, that can ask its party questions and negotiate over A2A via @indexnetwork/negotiator.",
+  "description": "A host-run personal agent: one identity, scopeable to an intent, that can ask its party questions and negotiate over A2A via @indexnetwork/a2a.",
   "license": "MIT",
   "type": "module",
   "private": true,
@@ -26,7 +26,7 @@
     "prepublishOnly": "bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
-    "@indexnetwork/negotiator": "file:../negotiator"
+    "@indexnetwork/a2a": "file:../a2a"
   },
   "devDependencies": {
     "@types/bun": "latest",

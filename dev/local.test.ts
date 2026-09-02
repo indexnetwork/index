@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Negotiator, type NegotiationDecision, type NegotiationState } from "@indexnetwork/negotiator";
+import { Negotiator, type NegotiationDecision, type NegotiationState } from "@indexnetwork/a2a/negotiator";
 
 import { Agent } from "../src/core/agent.ts";
 import { runLocally } from "./local.ts";

@@ -1,7 +1,7 @@
 # @indexnetwork/agent
 
 A personal agent that a host runs on someone's behalf, built on
-[`@indexnetwork/negotiator`](../negotiator).
+[`@indexnetwork/a2a`](../a2a).
 
 It works the way Claude Code, Hermes or OpenClaw do — a system prompt, a set
 of tools, and a loop that runs until the work is done. Two things make it
@@ -30,7 +30,7 @@ Two loops, doing different jobs:
 
 - **The agent loop** (`run()`) is this package. It decides *what to do* —
   which tools to call, when to ask the user, when the work is finished.
-- **The negotiation** is `@indexnetwork/negotiator`. Once a turn is being
+- **The negotiation** is `@indexnetwork/a2a`. Once a turn is being
   taken, it decides *what to say*, and moves it over A2A.
 
 > Why a separate model client: the negotiator's `OpenRouterClient` sends no
@@ -44,7 +44,7 @@ Two loops, doing different jobs:
   `crypto.randomUUID()` and `Request`/`Response`. ESM only, no CommonJS.
 - **TypeScript ≥ 5** to consume it from a TS project (peer dependency; not
   needed at runtime — `dist/` ships plain JS + `.d.ts`).
-- **`@indexnetwork/negotiator`**, a real dependency rather than a peer one.
+- **`@indexnetwork/a2a`**, a real dependency rather than a peer one.
 - **An [OpenRouter](https://openrouter.ai) API key**, and a model that
   supports tool calling.
 
@@ -55,11 +55,11 @@ bun add @indexnetwork/agent
 ```
 
 Neither package is published yet, so `agent` depends on its sibling by path
-(`"@indexnetwork/negotiator": "file:../negotiator"`), resolved through the
-negotiator's `exports` to its `dist/`. Build it once first:
+(`"@indexnetwork/a2a": "file:../a2a"`), resolved through the
+its `exports` to its `dist/`. Build it once first:
 
 ```bash
-cd ../negotiator && bun install && bun run build
+cd ../a2a && bun install && bun run build
 cd ../agent && bun install
 ```
 
@@ -677,7 +677,7 @@ bun run build      # bundle + emit .d.ts into dist/
 ```
 
 `dist/` is what gets published; it's git-ignored and rebuilt via
-`prepublishOnly`. `@indexnetwork/negotiator` is externalized rather than
+`prepublishOnly`. `@indexnetwork/a2a` is externalized rather than
 bundled, so consumers resolve one copy of it.
 
 ### Project layout

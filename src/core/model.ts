@@ -79,7 +79,7 @@ class TransientError extends Error {
 /**
  * A minimal OpenRouter chat client that supports tool calling.
  *
- * `@indexnetwork/negotiator` ships its own `OpenRouterClient`, but it sends
+ * `@indexnetwork/a2a/negotiator` ships its own `OpenRouterClient`, but it sends
  * no `tools` and reads only `choices[0].message.content` — tool calls would
  * be dropped on the floor. That client stays responsible for negotiation
  * turns; this one drives the agent loop.

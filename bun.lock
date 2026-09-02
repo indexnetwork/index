@@ -5,7 +5,7 @@
     "": {
       "name": "@indexnetwork/agent",
       "dependencies": {
-        "@indexnetwork/negotiator": "file:../negotiator",
+        "@indexnetwork/a2a": "file:../a2a",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -17,11 +17,11 @@
     },
   },
   "packages": {
-    "@indexnetwork/negotiator": ["@indexnetwork/negotiator@file:../negotiator", { "devDependencies": { "@types/bun": "latest", "typescript": "^5" }, "peerDependencies": { "typescript": "^5" } }],
+    "@indexnetwork/a2a": ["@indexnetwork/a2a@file:../a2a", { "devDependencies": { "@types/bun": "latest", "typescript": "^5" }, "peerDependencies": { "typescript": "^5" }, "bin": { "index-a2a": "./dist/cli/index.js" } }],
 
     "@types/bun": ["@types/bun@1.4.0", "", { "dependencies": { "bun-types": "1.4.0" } }, "sha512-K+lZULY23vRgK/CfTjFIV+tyifaNdSMlPh9j+6mQ/cLfpOznLyAuzgV/JQysyECpkBQLVMSyvjlr2fBUSA9wFQ=="],
 
-    "@types/node": ["@types/node@26.4.0", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-faiGnoIrLH/V8cibOMEAZ8pMw6oXqSukl29ra4mN8GdaB2ZewzeaLj+INpV5N+Z1eKWzY+IzaIZH2EIR6YZRNQ=="],
+    "@types/node": ["@types/node@26.4.1", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-k97ENvZWtvA6yqz5/FS6a7duDgOPEeOQOc2iKS/nY6mX6qJUKtLnWzQS+Xj6tXweyj6ZcTAK2Qecetnvi9nCLA=="],
 
     "bun-types": ["bun-types@1.4.0", "", { "dependencies": { "@types/node": "*" } }, "sha512-iIKw23BspnQQYd3prITOBxeUsxBHnwzX6YJfGMuNOZzeNcMmVqzIIVGRm1l69ogaPQmb4wB6BN8mA5bE9YuC5Q=="],
 

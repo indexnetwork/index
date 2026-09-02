@@ -157,7 +157,7 @@ class SqliteNegotiationStore implements NegotiationStore {
   }
 }
 
-/** `TaskStore` (@indexnetwork/negotiator/a2a) is a class, not an interface —
+/** `TaskStore` (@indexnetwork/a2a) is a class, not an interface —
  * a private field makes it nominal, so a sqlite-backed one has to extend it
  * rather than just match its shape. The inherited in-memory `Map` is simply
  * never touched. */

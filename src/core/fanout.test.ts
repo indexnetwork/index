@@ -4,7 +4,7 @@ import {
   type DecideOptions,
   type NegotiationDecision,
   type NegotiationState,
-} from "@indexnetwork/negotiator";
+} from "@indexnetwork/a2a/negotiator";
 
 import { Agent } from "./agent.ts";
 import { digest } from "./digest.ts";

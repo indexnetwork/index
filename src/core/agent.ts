@@ -2,7 +2,7 @@ import {
   Negotiator,
   type ActionSpec,
   type NegotiationDecision,
-} from "@indexnetwork/negotiator";
+} from "@indexnetwork/a2a/negotiator";
 import {
   A2ANegotiationClient,
   createA2AHandler,
@@ -25,7 +25,7 @@ import {
   type AgentCardSkill,
   type DecisionStrategy,
   type EvaluateHook,
-} from "@indexnetwork/negotiator/a2a";
+} from "@indexnetwork/a2a";
 
 import { runLoop } from "./loop.ts";
 import { MemoryMessageStore, MemoryNegotiationStore } from "./sessions.ts";

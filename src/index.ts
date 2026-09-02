@@ -1,7 +1,7 @@
 // Public API: a personal agent run by a host on someone's behalf. One
 // identity, scopeable to an intent, with a loop that can stop to ask the
 // party it represents a question — and negotiate with other agents over
-// A2A, one turn at a time, via @indexnetwork/negotiator.
+// A2A, one turn at a time, via @indexnetwork/a2a.
 export { Agent, ASK_ACTION, DEFAULT_ACTIONS } from "./core/agent.ts";
 export type {
   AgentOptions,
@@ -52,23 +52,23 @@ export type {
 } from "./core/types.ts";
 
 // Re-exported for convenience: the negotiation half of this package is
-// @indexnetwork/negotiator, and its types turn up on `Negotiation` and the
+// @indexnetwork/a2a/negotiator, and its types turn up on `Negotiation` and the
 // hooks. Importing them from the negotiator directly is equivalent.
-export { Negotiator } from "@indexnetwork/negotiator";
+export { Negotiator } from "@indexnetwork/a2a/negotiator";
 export type {
   ActionSpec,
   NegotiationDecision,
   NegotiationParty,
   NegotiationTerms,
   NegotiatorOptions,
-} from "@indexnetwork/negotiator";
+} from "@indexnetwork/a2a/negotiator";
 export {
   TaskStore,
   bearerCredentials,
   bearerTokenAuth,
   strategyWithTerms,
   verifyAgreement,
-} from "@indexnetwork/negotiator/a2a";
+} from "@indexnetwork/a2a";
 export type {
   A2AArtifact,
   A2ACredentials,
@@ -80,4 +80,4 @@ export type {
   AgreementBasis,
   AgreementResult,
   AgreementStatus,
-} from "@indexnetwork/negotiator/a2a";
+} from "@indexnetwork/a2a";

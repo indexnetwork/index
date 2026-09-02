@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Negotiator, type NegotiationDecision, type NegotiationState } from "@indexnetwork/negotiator";
-import { messageToDecision } from "@indexnetwork/negotiator/a2a";
+import { Negotiator, type NegotiationDecision, type NegotiationState } from "@indexnetwork/a2a/negotiator";
+import { messageToDecision } from "@indexnetwork/a2a";
 
 import { Agent } from "./agent.ts";
 import { MemoryNegotiationStore } from "./sessions.ts";

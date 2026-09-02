@@ -8,7 +8,7 @@ state. See README.md for the API.
 ## Working here
 
 ```bash
-cd ../negotiator && bun run build   # required: `file:../negotiator` resolves to its dist/
+cd ../a2a && bun run build   # required: `file:../a2a` resolves to its dist/
 bun test                            # 116 tests, no network
 bun run typecheck
 bun run console                     # drive several agents in one terminal
@@ -79,7 +79,7 @@ These were each a bug at some point, and the code reads oddly without them.
   `create_intent` tools — which is where a future intent package would
   plug in, not into `Agent`.
 - **`files` is `dist`.** `cli/`, `dev/` and `examples/` are never
-  published; `@indexnetwork/negotiator` is externalized, not bundled.
+  published; `@indexnetwork/a2a` is externalized, not bundled.
 
 ## Bun
 

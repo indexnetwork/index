@@ -3,9 +3,9 @@ import type {
   A2ATask,
   A2ATaskState,
   AgentCard,
-} from "@indexnetwork/negotiator/a2a";
-import type { NegotiationDecision, NegotiationTerms } from "@indexnetwork/negotiator";
-import type { AgreementBasis } from "@indexnetwork/negotiator/a2a";
+} from "@indexnetwork/a2a";
+import type { NegotiationDecision, NegotiationTerms } from "@indexnetwork/a2a/negotiator";
+import type { AgreementBasis } from "@indexnetwork/a2a";
 import type { ModelMessage } from "./model.ts";
 
 // --- identity and intent ---------------------------------------------
