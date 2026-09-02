@@ -1176,3 +1176,48 @@ describe("digest lines name the counterparty's URL", () => {
     }
   });
 });
+
+describe("an unanswered settlement points back to negotiate_turn", () => {
+  // `unanswered` is the one Settled outcome where the Task is still open —
+  // this side closed and the counterparty kept talking. Read like every
+  // other Settled line it looks finished; a model that believed that once
+  // left the exchange open forever, since a fresh negotiate_open with the
+  // same counterparty is refused as a rival of the very session it just
+  // walked away from.
+  test("carries a hint distinct from a real terminal outcome", () => {
+    const text = digest([
+      {
+        kind: "settled",
+        id: "56d1e4cf",
+        peer: "Seller",
+        url: "http://localhost:8101",
+        state: "input-required",
+        turns: 1,
+        settlement: {
+          outcome: "unanswered",
+          basis: "state",
+          reason: 'You closed with "accept", but they replied with "counter" rather than closing too.',
+        } as never,
+      },
+    ]);
+
+    expect(text).toContain("continue this id with negotiate_turn");
+    expect(text).toContain("do not open a new one");
+  });
+
+  test("a genuinely terminal outcome carries no such hint", () => {
+    const text = digest([
+      {
+        kind: "settled",
+        id: "61b3061c",
+        peer: "Alice's Agent",
+        url: "http://localhost:8101",
+        state: "completed",
+        turns: 3,
+        settlement: { outcome: "agreed", basis: "terms", reason: "", terms: { amount: 460 } } as never,
+      },
+    ]);
+
+    expect(text).not.toContain("negotiate_turn");
+  });
+});

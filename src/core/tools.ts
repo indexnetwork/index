@@ -106,7 +106,7 @@ const ASKING_NOTE =
  * an object with `settlement` — this is `SETTLEMENT_NOTE`'s equivalent for
  * reading a `Settled` line in that text. */
 const DIGEST_SETTLEMENT_NOTE =
-  " Each Settled line names the outcome: `agreed` means both sides closed on the same deal; `conflict` or `unconfirmed` means nothing is agreed yet, whatever your own action was — say that plainly, or open a new negotiation to settle it.";
+  " Each Settled line names the outcome: `agreed` means both sides closed on the same deal; `conflict` or `unconfirmed` means nothing is agreed yet, whatever your own action was — say that plainly, or open a new negotiation to settle it. `unanswered` is different: you closed and the counterparty is still talking, so the Task is still open — a new negotiation with them is refused as a rival of itself; continue the same id with negotiate_turn instead.";
 
 /** Turns a rejection from a promise in a `Promise.all` batch into the same
  * `failed` shape a negotiation itself would report, so one host-store

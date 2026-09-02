@@ -45,7 +45,17 @@ function line(event: NegotiationEvent): string {
       if (!event.settlement) return `${head}ended (${event.state})`;
       const { outcome, terms, reason } = event.settlement;
       const detail = terms ? JSON.stringify(terms) : reason;
-      return `${head}${outcome}${detail ? `: ${detail}` : ""}`;
+      // `unanswered` is not terminal — the Task itself is still open, only
+      // this side closed. It reads like every other line in this section,
+      // so without a hint here a model reads it as done and moves on,
+      // leaving a still-open exchange it never comes back to. A new
+      // negotiate_open would be refused (the counterparty is a rival of
+      // itself); negotiate_turn on this same id is the way back in.
+      const hint =
+        outcome === "unanswered"
+          ? " — the exchange is still open; continue this id with negotiate_turn, do not open a new one"
+          : "";
+      return `${head}${outcome}${detail ? `: ${detail}` : ""}${hint}`;
     }
     case "asking":
       return `${head}asks: ${JSON.stringify(event.question)}${lastMove(event.last)}`;
