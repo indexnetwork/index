@@ -185,12 +185,18 @@ export class ModelClient {
       throw new Error(detail);
     }
 
-    const data = (await response.json()) as {
-      choices?: { message?: ModelMessage }[];
-    };
+    const body = await response.text();
+    let data: { choices?: { message?: ModelMessage }[] };
+    try {
+      data = JSON.parse(body);
+    } catch {
+      throw new Error(`OpenRouter returned a non-JSON response: ${body.slice(0, 500)}`);
+    }
 
+    // A 200 can still carry an error object instead of choices — a provider
+    // outage, a moderation refusal — so say what came back.
     const message = data.choices?.[0]?.message;
-    if (!message) throw new Error("OpenRouter response had no message.");
+    if (!message) throw new Error(`OpenRouter response had no message: ${body.slice(0, 500)}`);
 
     return {
       role: "assistant",

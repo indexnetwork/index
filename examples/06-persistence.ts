@@ -16,6 +16,7 @@ import { Database } from "bun:sqlite";
 import {
   Agent,
   askUserTool,
+  negotiationTools,
   TaskStore,
   type A2ATask,
   type MessageStore,
@@ -107,7 +108,7 @@ function build(): Agent {
     identity: { name: "Tomas's Agent", id: "did:example:tomas" },
     systemPrompt:
       "You act for Tomas. Before committing him to anything with a number attached — a day rate, a budget, a start date — you must ask him first, with the ask_user tool rather than in your reply. Never assume a figure he has not given you.",
-    tools: [askUserTool() as Tool<never>],
+    tools: [askUserTool() as Tool<never>, ...negotiationTools()],
     sessions: new SqliteNegotiationStore(db),
     taskStore: new SqliteTaskStore(db),
     history: new SqliteMessageStore(db),
