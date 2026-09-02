@@ -424,6 +424,52 @@ describe("answer()", () => {
     }
   });
 
+  test("a failure after the party answered keeps the guidance, and answering again retries", async () => {
+    // A live run: the negotiator asked before its first turn, the party
+    // answered, and the counterparty was down for that one call. Dropping
+    // the session there threw the party's answer away with it, and the
+    // model had to re-open and restate it.
+    const inner = new Agent({ ...seller, negotiator: scripted([{ action: "accept", message: "Yes." }]).negotiator });
+    let up = false;
+    const flaky = Bun.serve({
+      port: 0,
+      fetch: (request) => (up ? inner.handler()(request) : new Response("down", { status: 503 })),
+    });
+    const url = flaky.url.toString();
+    try {
+      const client = scripted([
+        { action: "ask", message: "Ceiling?" },
+        { action: "propose", message: "$450." },
+      ]);
+      const agent = new Agent({ ...buyer, negotiator: client.negotiator });
+      const negotiations = new Map<string, NegotiationSession>();
+
+      const parked = await agent.runNegotiation(url, { discover: false }, { negotiations });
+      const failed = await agent.answer(parked.id, "Ceiling is $450.", { negotiations });
+      const kept = structuredClone(negotiations.get(parked.id));
+      up = true;
+      const retried = await agent.answer(parked.id, "Still $450.", { negotiations });
+
+      expect({
+        parked: parked.kind,
+        failed: { kind: failed.kind, hint: failed.kind === "failed" && failed.error.includes("answer it again to retry") },
+        kept: { pending: kept?.pending, guidance: kept?.guidance },
+        retried: retried.kind,
+        told: client.calls.at(-1)?.state.party.objective.includes("Ceiling is $450.\nStill $450."),
+        left: [...negotiations.keys()].every((id) => !id.startsWith("local:")),
+      }).toEqual({
+        parked: "asking",
+        failed: { kind: "failed", hint: true },
+        kept: { pending: undefined, guidance: ["Ceiling is $450."] },
+        retried: "settled",
+        told: true,
+        left: true,
+      });
+    } finally {
+      flaky.stop(true);
+    }
+  });
+
   test("an unanswered settlement is answered with a next move, not a dead end", async () => {
     const server = scripted([
       { action: "counter", message: "Still $460." },

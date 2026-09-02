@@ -1063,14 +1063,21 @@ export class Agent<A extends string = DefaultAction> {
           };
         }
         // Failed before a Task ever existed — a provisional `local:`
-        // session with nothing on the other side to resume. Left in
-        // place it's a zombie: findable, but forever stuck on a URL that
-        // just refused it.
-        if (!session.task) {
+        // session with nothing on the other side to resume. If it holds
+        // nothing the party said, it is dropped: left in place it would
+        // refuse a fresh negotiation with this URL as a rival of itself.
+        // If the party has already answered it, that answer is worth more
+        // than a clean record — the session stays, and `answer` on it
+        // tries the wire again with the guidance intact.
+        if (!session.task && !session.guidance?.length) {
           context?.negotiations.delete(session.id);
           this.sessions.delete?.(session.id);
+          return { kind: "failed", id: session.id, peer, url, error: describe(cause), turns };
         }
-        return { kind: "failed", id: session.id, peer, url, error: describe(cause), turns };
+        const error = session.task
+          ? describe(cause)
+          : `${describe(cause)} Your party's guidance is kept on this id — answer it again to retry.`;
+        return { kind: "failed", id: session.id, peer, url, error, turns };
       }
 
       if (turn.done || turn.settlement) {
