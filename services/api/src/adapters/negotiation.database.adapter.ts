@@ -53,6 +53,7 @@ export type SubmitTurnRejection =
   | 'propose_not_first'
   | 'counter_is_first'
   | 'accept_without_offer'
+  | 'signal_inactive'
   | 'raced';
 
 export type SubmitTurnResult =
@@ -62,6 +63,22 @@ export type SubmitTurnResult =
 /** Postgres unique-violation. A second turn at the same index is a lost race, not an error. */
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505';
+}
+
+/**
+ * A signal still worth negotiating over: not paused, not removed. Null status
+ * is legacy-active, matching `activeIntentLifecycleWhere` elsewhere.
+ *
+ * A negotiation needs both sides live to be workable, so this gates on the pair
+ * rather than on the caller's own signal.
+ *
+ * @returns A Drizzle predicate over the `intents` table.
+ */
+function liveIntentWhere() {
+  return and(
+    isNull(intents.archivedAt),
+    or(isNull(intents.status), eq(intents.status, 'ACTIVE')),
+  );
 }
 
 /**
@@ -94,7 +111,20 @@ export class NegotiationDatabaseAdapter {
         eq(negotiations.responderUserId, options.counterpartyUserId),
       ));
     }
-    if (options.open) conditions.push(isNull(negotiations.settledAt));
+    if (options.open) {
+      conditions.push(isNull(negotiations.settledAt));
+      // Open means workable. A paused or removed signal on either side owes
+      // nobody a turn, so it drops out of the queue without settling the
+      // record — resuming the signal brings it back.
+      conditions.push(inArray(
+        negotiations.initiatorIntentId,
+        db.select({ id: intents.id }).from(intents).where(liveIntentWhere()),
+      ));
+      conditions.push(inArray(
+        negotiations.responderIntentId,
+        db.select({ id: intents.id }).from(intents).where(liveIntentWhere()),
+      ));
+    }
 
     let query = db.select().from(negotiations)
       .where(and(...conditions))
@@ -165,6 +195,16 @@ export class NegotiationDatabaseAdapter {
         const isResponder = negotiation.responderUserId === callerUserId;
         if (!isInitiator && !isResponder) return { ok: false, rejection: 'not_a_seat' } as const;
         if (negotiation.settledAt) return { ok: false, rejection: 'already_settled' } as const;
+
+        // Read under the transaction: a pause landing mid-turn must lose to the
+        // turn already in flight, not half-apply behind it.
+        const [live] = await tx.select({ value: count() }).from(intents)
+          .where(and(
+            inArray(intents.id, [negotiation.initiatorIntentId, negotiation.responderIntentId]),
+            liveIntentWhere(),
+          ));
+        if ((live?.value ?? 0) < 2) return { ok: false, rejection: 'signal_inactive' } as const;
+
         if (negotiation.awaitingUserId !== callerUserId) return { ok: false, rejection: 'not_your_turn' } as const;
 
         const priorTurns = await tx.select().from(negotiationTurns)

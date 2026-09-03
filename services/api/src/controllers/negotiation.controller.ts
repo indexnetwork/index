@@ -25,6 +25,7 @@ const REJECTION_RESPONSES: Record<SubmitTurnRejection, { status: number; error: 
   propose_not_first: { status: 400, error: 'propose is only valid as the opening turn; use counter' },
   counter_is_first: { status: 400, error: 'counter needs a turn to answer; use propose' },
   accept_without_offer: { status: 400, error: 'accept needs a standing offer from the other seat' },
+  signal_inactive: { status: 409, error: 'A signal in this negotiation is paused or removed' },
   raced: { status: 409, error: 'The other seat moved first; re-read the negotiation' },
 };
 

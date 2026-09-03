@@ -8,7 +8,6 @@ import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
-import { useConversation } from "@/contexts/ConversationContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunityActions } from "@/hooks/useOpportunityActions";
 import { useIntentVisitPing } from "@/hooks/useIntentVisitPing";
@@ -172,7 +171,6 @@ export default function IntentDetailPage() {
   const opportunitiesService = useOpportunities();
   useIntentVisitPing(intentId);
   const { error: showError } = useNotifications();
-  const { subscribeIntentDiscoveryProgress, subscribeIntentInvalidation } = useConversation();
 
   const [intent, setIntent] = useState<Awaited<
     ReturnType<typeof intentsService.getIntent>
@@ -291,29 +289,6 @@ export default function IntentDetailPage() {
       if (seq === loadSeqRef.current && !preserveExisting) settleLoading();
     }
   }, [intentId, opportunitiesService]);
-
-  const refreshLiveRadar = useCallback(() => {
-    void loadOpportunities(true);
-    // The SSE feed never carries the intent snapshot, so a finished run's final
-    // tallies would otherwise sit unread until the next 15s progress poll.
-    if (intentId) void intentsService.getIntent(intentId).then(setIntent).catch(() => {});
-  }, [intentId, intentsService, loadOpportunities]);
-
-  const invalidateLiveIntent = useCallback(() => {
-    refreshLiveRadar();
-  }, [refreshLiveRadar]);
-
-  useEffect(() => {
-    return subscribeIntentDiscoveryProgress((event) => {
-      if (event.intentId === intentId) invalidateLiveIntent();
-    });
-  }, [intentId, invalidateLiveIntent, subscribeIntentDiscoveryProgress]);
-
-  useEffect(() => {
-    return subscribeIntentInvalidation((event) => {
-      if (event.intentId === intentId) invalidateLiveIntent();
-    });
-  }, [intentId, invalidateLiveIntent, subscribeIntentInvalidation]);
 
   useEffect(() => {
     if (!intentId) return;

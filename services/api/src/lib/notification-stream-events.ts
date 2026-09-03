@@ -6,9 +6,15 @@ import { getRedisClient } from '../adapters/cache.adapter';
  * One channel serves both audiences, and nothing on the wire separates them: an
  * agent-bound key resolves to its owner, so the agent subscribes to the same
  * channel the owner's app is already reading and each side ignores the types it
- * does not recognise. `opportunity.new` is the human's; `negotiation.turn` and
- * `negotiation.settled` are the agent's, and carry a pointer rather than the
- * turn — the agent reads `GET /negotiations/:opportunityId` to act.
+ * does not recognise. `opportunity.new` is the human's; the rest are the
+ * agent's.
+ *
+ * The agent types come in two scopes. `negotiation.turn` and
+ * `negotiation.settled` point at one negotiation and carry a pointer rather
+ * than the turn — the agent reads `GET /negotiations/:opportunityId` to act.
+ * `intent.lifecycle` and `negotiation.opened` are scoped to a signal instead:
+ * whether the agent should be working it at all, and that discovery gave it
+ * something to work.
  *
  * Messages are not here. They are human-addressed and the conversation channel
  * already delivers them with their text inline.
@@ -16,7 +22,19 @@ import { getRedisClient } from '../adapters/cache.adapter';
 export type NotificationStreamEventType =
   | 'opportunity.new'
   | 'negotiation.turn'
-  | 'negotiation.settled';
+  | 'negotiation.settled'
+  | 'negotiation.opened'
+  | 'intent.lifecycle';
+
+/**
+ * The effective state of a signal as agents see it.
+ *
+ * `ARCHIVED` is a wire value, not a column: removal sets `archived_at` rather
+ * than a status, and an agent only needs to know the signal is gone. The
+ * `FULFILLED` and `EXPIRED` members of the database enum are read as guards but
+ * never written, so they never reach the wire.
+ */
+export type IntentLifecycleWireStatus = 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
 
 /** User-scoped notification frame — composed on the server before publish. */
 export interface NotificationStreamEvent {

@@ -5,7 +5,9 @@
  * is the whole dedup story: two discovery runs over the same two intents
  * converge on one row, so nothing downstream has to reconcile duplicates.
  */
-import { and, db, discoveryMatchCandidates, eq, inArray, negotiations, networkMembers, opportunities, sql } from './database.shared';
+import { and, db, discoveryMatchCandidates, eq, inArray, logger, negotiations, networkMembers, opportunities, sql } from './database.shared';
+
+import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
 
 /**
  * API-local structural twin of protocol's `OpenedNegotiation`. Adapters must
@@ -35,6 +37,50 @@ export interface CreateDiscoveryMatchCandidateInput {
 
 function toCandidate(row: CandidateRow) {
   return { ...row, score: Number(row.score), evidence: row.evidence ?? [] };
+}
+
+/**
+ * Tell each initiator that discovery gave one of its signals something to work.
+ *
+ * One frame per signal rather than per negotiation: an agent woken by this
+ * re-reads its open negotiations anyway, so a frame per candidate would be a
+ * burst that buys nothing. Grouped rather than assumed single, because a
+ * candidate row the counterparty's run recorded first carries the reversed
+ * sides and `open()` reads the stored row.
+ *
+ * Runs after each candidate's transaction has committed, and swallows delivery
+ * failures: an unannounced negotiation is still an opened one.
+ *
+ * @param opened - The negotiations this run newly opened.
+ */
+async function announceOpened(opened: OpenedNegotiation[]): Promise<void> {
+  const counts = new Map<string, { userId: string; intentId: string; count: number }>();
+  for (const item of opened) {
+    const key = `${item.initiatorUserId}\u0000${item.initiatorIntentId}`;
+    const group = counts.get(key);
+    if (group) group.count += 1;
+    else counts.set(key, { userId: item.initiatorUserId, intentId: item.initiatorIntentId, count: 1 });
+  }
+
+  for (const { userId, intentId, count } of counts.values()) {
+    try {
+      await publishNotificationStreamEvent(userId, {
+        type: 'negotiation.opened',
+        id: `${intentId}:opened:${Date.now()}`,
+        title: 'Your turn',
+        body: count === 1
+          ? 'A negotiation opened for your signal and is waiting on you.'
+          : `${count} negotiations opened for your signal and are waiting on you.`,
+        data: { intentId, count },
+      });
+    } catch (error: unknown) {
+      logger.error('Failed to publish opened negotiations event', {
+        intentId,
+        count,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 }
 
 export class DiscoveryCandidateDatabaseAdapter {
@@ -91,6 +137,7 @@ export class DiscoveryCandidateDatabaseAdapter {
       const result = await this.open(candidateId);
       if (result) opened.push(result);
     }
+    await announceOpened(opened);
     return opened;
   }
 

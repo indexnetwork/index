@@ -60,29 +60,3 @@ export async function publishConversationMessageEvent(
     publisher.publish(`conversations:user:${userId}`, event)
   )));
 }
-
-/**
- * Publishes an owner-scoped invalidation after the durable discovery-progress
- * snapshot changes. The client re-fetches its authoritative intent response;
- * no progress data crosses the shared SSE channel.
- */
-export async function publishIntentDiscoveryProgressEvent(input: {
-  userId: string;
-  intentId: string;
-}): Promise<void> {
-  await getRedisClient().publish(
-    `conversations:user:${input.userId}`,
-    JSON.stringify({ type: 'intent_discovery_progress', intentId: input.intentId }),
-  );
-}
-
-/** Publishes an owner-scoped invalidation after another intent-owned view changes. */
-export async function publishIntentInvalidationEvent(input: {
-  userId: string;
-  intentId: string;
-}): Promise<void> {
-  await getRedisClient().publish(
-    `conversations:user:${input.userId}`,
-    JSON.stringify({ type: 'intent_invalidated', intentId: input.intentId }),
-  );
-}

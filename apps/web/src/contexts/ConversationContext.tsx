@@ -34,16 +34,6 @@ export interface ConversationMessageEvent {
   message: ConversationMessage;
 }
 
-/** An owner-visible discovery-progress write; fetch the intent for its data. */
-export interface IntentDiscoveryProgressEvent {
-  intentId: string;
-}
-
-/** An owner-scoped invalidation for an intent-owned view. */
-export interface IntentInvalidationEvent {
-  intentId: string;
-}
-
 interface ConversationContextType {
   conversations: ConversationSummary[];
   negotiations: NegotiationSummary[];
@@ -67,10 +57,6 @@ interface ConversationContextType {
   subscribeQuestionRegeneration: (handler: (event: QuestionRegenerationEvent) => void) => () => void;
   /** Subscribe to persisted conversation messages from the SSE stream. */
   subscribeConversationMessage: (handler: (event: ConversationMessageEvent) => void) => () => void;
-  /** Subscribe to owner-scoped discovery-progress invalidations. */
-  subscribeIntentDiscoveryProgress: (handler: (event: IntentDiscoveryProgressEvent) => void) => () => void;
-  /** Subscribe to owner-scoped intent invalidations. */
-  subscribeIntentInvalidation: (handler: (event: IntentInvalidationEvent) => void) => () => void;
 }
 
 const ConversationContext = createContext<ConversationContextType | null>(null);
@@ -95,8 +81,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const negotiationsRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const questionRegenerationHandlersRef = useRef(new Set<(event: QuestionRegenerationEvent) => void>());
   const conversationMessageHandlersRef = useRef(new Set<(event: ConversationMessageEvent) => void>());
-  const intentDiscoveryProgressHandlersRef = useRef(new Set<(event: IntentDiscoveryProgressEvent) => void>());
-  const intentInvalidationHandlersRef = useRef(new Set<(event: IntentInvalidationEvent) => void>());
 
   const subscribeQuestionRegeneration = useCallback(
     (handler: (event: QuestionRegenerationEvent) => void) => {
@@ -112,22 +96,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     (handler: (event: ConversationMessageEvent) => void) => {
       conversationMessageHandlersRef.current.add(handler);
       return () => { conversationMessageHandlersRef.current.delete(handler); };
-    },
-    [],
-  );
-
-  const subscribeIntentDiscoveryProgress = useCallback(
-    (handler: (event: IntentDiscoveryProgressEvent) => void) => {
-      intentDiscoveryProgressHandlersRef.current.add(handler);
-      return () => { intentDiscoveryProgressHandlersRef.current.delete(handler); };
-    },
-    [],
-  );
-
-  const subscribeIntentInvalidation = useCallback(
-    (handler: (event: IntentInvalidationEvent) => void) => {
-      intentInvalidationHandlersRef.current.add(handler);
-      return () => { intentInvalidationHandlersRef.current.delete(handler); };
     },
     [],
   );
@@ -456,18 +424,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
               questionRegenerationHandlersRef.current.forEach((handler) => handler(regenerationEvent));
               break;
             }
-            case 'intent_discovery_progress': {
-              const intentId = data.intentId as string | undefined;
-              if (!intentId) break;
-              intentDiscoveryProgressHandlersRef.current.forEach((handler) => handler({ intentId }));
-              break;
-            }
-            case 'intent_invalidated': {
-              const intentId = data.intentId as string | undefined;
-              if (!intentId) break;
-              intentInvalidationHandlersRef.current.forEach((handler) => handler({ intentId }));
-              break;
-            }
           }
         } catch {
           // Ignore parse errors (e.g. keepalive comments)
@@ -564,8 +520,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         getOrCreateDM,
         subscribeQuestionRegeneration,
         subscribeConversationMessage,
-        subscribeIntentDiscoveryProgress,
-        subscribeIntentInvalidation,
       }}
     >
       {children}

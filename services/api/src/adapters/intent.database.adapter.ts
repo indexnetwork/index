@@ -4,6 +4,7 @@ import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
+import { publishNotificationStreamEvent, type IntentLifecycleWireStatus } from '../lib/notification-stream-events';
 import { intentProposalDatabaseAdapter, type ReviseIntentProposalInput } from './intent-proposal.database.adapter';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 import type { IntentProposalRow } from '../schemas/database.schema';
@@ -11,6 +12,47 @@ import type { IntentProposalRow } from '../schemas/database.schema';
 
 /** Scope type of the per-signal DM the personal agent speaks into. */
 const PERSONAL_INTENT_SCOPE_TYPE = 'personal-intent';
+
+const LIFECYCLE_WIRE_COPY: Record<IntentLifecycleWireStatus, { title: string; body: string }> = {
+  ACTIVE: { title: 'Signal resumed', body: 'Discovery is running for this signal again.' },
+  PAUSED: { title: 'Signal paused', body: 'Discovery and negotiations are on hold.' },
+  ARCHIVED: { title: 'Signal removed', body: 'This signal is no longer active.' },
+};
+
+/**
+ * Tell a signal's owner that its effective state changed, so an agent holding
+ * the seat stops or resumes work without waiting for a poll.
+ *
+ * Called after the writing transaction commits and never inside it: a failed
+ * publish must not roll back a transition that already happened, so delivery
+ * errors are logged and swallowed.
+ *
+ * @param userId - The signal owner, whose channel carries the frame.
+ * @param intentId - The signal whose state changed.
+ * @param status - Its effective state as agents see it.
+ * @param lifecycleVersionMs - Monotonic version, letting agents order frames.
+ */
+async function publishIntentLifecycle(
+  userId: string,
+  intentId: string,
+  status: IntentLifecycleWireStatus,
+  lifecycleVersionMs: number,
+): Promise<void> {
+  try {
+    await publishNotificationStreamEvent(userId, {
+      type: 'intent.lifecycle',
+      id: `${intentId}:${lifecycleVersionMs}`,
+      ...LIFECYCLE_WIRE_COPY[status],
+      data: { intentId, status, lifecycleVersionMs },
+    });
+  } catch (error: unknown) {
+    logger.error('Failed to publish intent lifecycle event', {
+      intentId,
+      status,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 export class IntentDatabaseAdapter {
   /**
@@ -320,7 +362,7 @@ export class IntentDatabaseAdapter {
     | { kind: 'stale' }
     | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean }
   > {
-    return db.transaction(async (tx) => {
+    const outcome = await db.transaction(async (tx) => {
       const rows = await tx
         .select({
           id: schema.intents.id,
@@ -408,6 +450,11 @@ export class IntentDatabaseAdapter {
         lifecycleVersionMs: updated.updatedAt.getTime(),
       } as const;
     });
+
+    if (outcome.kind === 'success' && outcome.changed) {
+      await publishIntentLifecycle(input.userId, outcome.id, outcome.status, outcome.lifecycleVersionMs);
+    }
+    return outcome;
   }
 
   /**
@@ -449,9 +496,11 @@ export class IntentDatabaseAdapter {
         updatedAt: schema.intents.updatedAt,
       });
     if (compensated) {
+      const lifecycleVersionMs = compensated.updatedAt.getTime();
+      await publishIntentLifecycle(input.userId, input.intentId, 'PAUSED', lifecycleVersionMs);
       return {
         status: compensated.status as IntentLifecycleStatus,
-        lifecycleVersionMs: compensated.updatedAt.getTime(),
+        lifecycleVersionMs,
       };
     }
 
@@ -476,8 +525,13 @@ export class IntentDatabaseAdapter {
       const [archived] = await db.update(schema.intents)
         .set({ archivedAt: new Date(), updatedAt: new Date() })
         .where(eq(schema.intents.id, intentId))
-        .returning({ id: schema.intents.id });
+        .returning({
+          id: schema.intents.id,
+          userId: schema.intents.userId,
+          updatedAt: schema.intents.updatedAt,
+        });
       if (!archived) return { success: false, error: 'Intent not found' };
+      await publishIntentLifecycle(archived.userId, archived.id, 'ARCHIVED', archived.updatedAt.getTime());
       return { success: true };
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });
