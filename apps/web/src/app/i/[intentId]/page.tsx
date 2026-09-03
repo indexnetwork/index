@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowUp, Brain, ChevronLeft, Loader2, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
+import { ArrowUp, Brain, Bug, ChevronLeft, Loader2, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { Link } from "react-router";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -333,6 +333,8 @@ export default function IntentDetailPage() {
   // The left column is the signal's agent chat window. `chatUnavailable` is
   // the runtime fallback if the bootstrap fails.
   const [chatUnavailable, setChatUnavailable] = useState(false);
+  /** Developer surface: the agent's debug traces stay hidden until asked for. */
+  const [debugTraceVisible, setDebugTraceVisible] = useState(false);
   const showNegotiatorPanel = !chatUnavailable && !!intentId;
   // Mobile (< lg): the Personal Agent column becomes an off-canvas sheet over
   // the Radar; this is its open state. Desktop (lg+) always shows the column.
@@ -981,14 +983,29 @@ export default function IntentDetailPage() {
                     title="Personal Agent"
                     description="Your Personal Agent, scoped to this signal — ask what it's doing, steer it, or answer its follow-ups."
                     action={
-                      <Link
-                        to="/agent/memory"
-                        data-testid="intent-agent-memory-link"
-                        className="inline-flex items-center gap-1 text-[11px] font-medium normal-case tracking-normal text-gray-400 hover:text-gray-700"
-                      >
-                        <Brain className="h-3.5 w-3.5" />
-                        Memory
-                      </Link>
+                      <div className="inline-flex items-center gap-3">
+                        <button
+                          type="button"
+                          data-testid="intent-agent-debug-trace-toggle"
+                          aria-pressed={debugTraceVisible}
+                          onClick={() => setDebugTraceVisible((visible) => !visible)}
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[11px] font-medium normal-case tracking-normal transition-colors",
+                            debugTraceVisible ? "text-gray-700" : "text-gray-400 hover:text-gray-700",
+                          )}
+                        >
+                          <Bug className="h-3.5 w-3.5" />
+                          {debugTraceVisible ? "Hide trace" : "Show trace"}
+                        </button>
+                        <Link
+                          to="/agent/memory"
+                          data-testid="intent-agent-memory-link"
+                          className="inline-flex items-center gap-1 text-[11px] font-medium normal-case tracking-normal text-gray-400 hover:text-gray-700"
+                        >
+                          <Brain className="h-3.5 w-3.5" />
+                          Memory
+                        </Link>
+                      </div>
                     }
                     className="min-h-0 flex-1"
                   >
@@ -998,6 +1015,7 @@ export default function IntentDetailPage() {
                     <IntentNegotiatorChat
                       key={intentId}
                       intentId={intentId}
+                      showDebugTrace={debugTraceVisible}
                       timelineEntries={intentTimeline}
                       timelineLoading={intentTimelineLoading}
                       timelineError={intentTimelineError}

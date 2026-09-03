@@ -115,6 +115,12 @@ export interface IntentNegotiatorChatProps {
    * override both with an even fresher signal.
    */
   questionRegenerationPending?: boolean;
+  /**
+   * Render the PersonalAgent debug traces inline. Off by default: the traces
+   * are a developer surface, and the workspace toggles them from the panel
+   * header.
+   */
+  showDebugTrace?: boolean;
   /** Owner-scoped append-only IS-A ledger, loaded by the intent workspace. */
   timelineEntries: IntentCycleTimelineEntry[];
   timelineLoading: boolean;
@@ -151,6 +157,7 @@ export interface IntentNegotiatorChatProps {
  */
 export default function IntentNegotiatorChat({
   intentId,
+  showDebugTrace = false,
   questionRegenerationPending,
   timelineEntries,
   timelineLoading,
@@ -444,7 +451,7 @@ export default function IntentNegotiatorChat({
                 && previousMessage.conversationSessionId !== msg.conversationSessionId;
               return (
                 <Fragment key={`message-${msg.id}`}>
-                  {tracePlacement.before.get(msg.id)?.map((group) => (
+                  {showDebugTrace && tracePlacement.before.get(msg.id)?.map((group) => (
                     <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
                   ))}
                   {startsSession && (
@@ -527,18 +534,18 @@ export default function IntentNegotiatorChat({
                       )}
                     </div>
                   )}
-                  {tracePlacement.after.get(msg.id)?.map((group) => (
+                  {showDebugTrace && tracePlacement.after.get(msg.id)?.map((group) => (
                     <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
                   ))}
                 </Fragment>
               );
             })}
 
-            {tracePlacement.tail.map((group) => (
+            {showDebugTrace && tracePlacement.tail.map((group) => (
               <PersonalAgentDebugTrace key={group.id} entries={group.entries} />
             ))}
-            {timelineLoading && <p role="status" className="text-xs text-gray-500">Loading agent trace…</p>}
-            {timelineError && <p role="status" className="text-xs text-red-600">Agent trace could not be loaded.</p>}
+            {showDebugTrace && timelineLoading && <p role="status" className="text-xs text-gray-500">Loading agent trace…</p>}
+            {showDebugTrace && timelineError && <p role="status" className="text-xs text-red-600">Agent trace could not be loaded.</p>}
 
             {regenerationPending && <QuestionRegenerationIndicator />}
           </>
