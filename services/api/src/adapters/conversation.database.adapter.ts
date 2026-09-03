@@ -558,22 +558,24 @@ export class ConversationDatabaseAdapter {
       extensions: data.extensions ?? null,
     });
 
-    // All message writers (including the protocol negotiation graph) converge
-    // here. Publish only after persistence, and only to authenticated owners
-    // represented by the stored participant rows.
+    // All message writers converge here. Publish only after persistence, and
+    // only to authenticated owners represented by the stored participant rows.
     try {
       const senderUserId = data.senderId.startsWith('agent:')
         ? data.senderId.slice('agent:'.length)
         : data.senderId;
-      const [sender] = await db
+      // The owner's agent has no `users` row, so it needs its name spelled out;
+      // this is what the agent DM notification is titled with.
+      const [sender] = senderUserId === SYSTEM_AGENT_ID ? [] : await db
         .select({ name: schema.users.name, avatar: schema.users.avatar })
         .from(schema.users)
         .where(eq(schema.users.id, senderUserId))
         .limit(1);
+      const senderName = senderUserId === SYSTEM_AGENT_ID ? 'Your agent' : sender?.name?.trim();
       await publishConversationMessageEvent(
         {
           ...message,
-          ...(sender?.name?.trim() ? { senderName: sender.name.trim() } : {}),
+          ...(senderName ? { senderName } : {}),
           ...(sender?.avatar?.trim() ? { senderAvatar: sender.avatar.trim() } : {}),
         },
         await this.getParticipants(data.conversationId),

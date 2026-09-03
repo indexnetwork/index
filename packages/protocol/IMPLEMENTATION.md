@@ -18,12 +18,17 @@ deep imports are not part of the contract. Every symbol is re-exported explicitl
 See [STABILITY.md](./STABILITY.md) for the full policy and the deprecation path,
 and [CHANGELOG.md](./CHANGELOG.md) for release history.
 
-Private source under `src/internal/` is domain-first: `signals`, `communities`, `questions`,
-`participant-agents`, `contacts`, and `integrations`; opportunity and negotiation
-place state/contracts in `domain/` and workflows/tools in `application/`. The
-`intents` capability is instead organized by function behind a single exported
-class, `Intents`: files sit flat and named for what they do, with `graph/` and
-`intake/` the two multi-file stages that keep a directory.
+Private source under `src/internal/` is domain-first: `agents`, `networks`,
+`contexts`, `enrichment`, `discovery`, `opportunities`, and `mcp`, with `shared`
+for cross-cutting model and tool-runtime helpers. The `intents` capability is
+organized by function behind a single exported class, `Intents`: files sit flat
+and named for what they do, with `graph/` and `intake/` the two multi-file stages
+that keep a directory.
+
+Negotiation is host-owned. The package authors no turns and exposes no
+negotiation tools; it only reads the turn log through `NegotiationContextDatabase`
+to present an opportunity. Listing negotiations and submitting a turn are the
+host's REST surface.
 
 ## Boundary model
 
@@ -68,7 +73,7 @@ The package defines interfaces — your application provides the concrete implem
 | `IntegrationAdapter` | OAuth and external tool actions |
 | `IntentFollowUp` | Post-persist intent follow-up (HyDE, resume discovery) |
 | `ProfileEnricher` | Enrich profiles from external sources |
-| `NegotiationGraphDatabase` | Negotiation and conversation persistence |
+| `NegotiationContextDatabase` | Read-only negotiation turn log, for opportunity presentation (folded into `CompositeToolDatabase`) |
 
 **Optional** (enable specific capabilities; omit to run without that feature):
 

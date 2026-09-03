@@ -3,14 +3,8 @@ import { log } from '../lib/log';
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
 import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
-import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
 
 const logger = log.service.from('ConversationService');
-
-/** Notification bodies are a glance, not the message; the DM holds the rest. */
-function truncateForNotification(text: string): string {
-  return text.length > 140 ? `${text.slice(0, 139)}…` : text;
-}
 
 /**
  * Manages conversation lifecycle, messaging, and DM deduplication.
@@ -126,8 +120,9 @@ export class ConversationService {
    * The agent posts a question into its owner's agent DM.
    *
    * Questions only — outcomes live in Radar. The `intentId` tag decides who the
-   * message holds for: tagged, that signal; untagged, every signal. The owner
-   * is told so the question can be answered where it was asked.
+   * message holds for: tagged, that signal; untagged, every signal. The write
+   * itself tells the owner: `createMessage` publishes the message on their
+   * conversation channel, which is where the question gets answered.
    *
    * @param userId - The owner whose agent is speaking.
    * @param text - The question.
@@ -143,22 +138,6 @@ export class ConversationService {
       parts: [{ kind: 'text', text }],
       metadata: intentId ? { intentId } : undefined,
     });
-
-    try {
-      await publishNotificationStreamEvent(userId, {
-        type: 'message.new',
-        id: message.id,
-        title: 'Your agent has a question',
-        body: truncateForNotification(text),
-        data: { conversationId: conversation.id, messageId: message.id, intentId: intentId ?? null },
-      });
-    } catch (error) {
-      logger.error('Failed to publish agent message event', {
-        userId,
-        conversationId: conversation.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
 
     return { conversationId: conversation.id, message };
   }

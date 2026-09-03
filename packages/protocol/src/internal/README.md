@@ -10,8 +10,7 @@ capability façades decide what is supported.
 | `networks/` | `Networks`, tool registry | Community lifecycle, membership, and assignments |
 | `contexts/`, `enrichment/` | Public-profile research tools | Parallel-backed profile suggestions |
 | `discovery/` | Opportunity and context workflows | HyDE search preparation and retrieval |
-| `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, and radar |
-| `negotiations/` | Opportunity tools | Negotiation turn shapes shared with the host's persistence |
+| `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, radar, and the read-only negotiation context loader |
 | `mcp/` | `createMcpServer` | MCP transport composition and authorization |
 | `shared/` | Internal implementation only | Cross-cutting model, tool-runtime, schemas, observability, and utilities |
 

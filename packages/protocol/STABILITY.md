@@ -59,7 +59,7 @@ a major bump. Use at your own risk and pin a version if you depend on them.
 
 | Area | What it is |
 |---|---|
-| **States** | Advanced graph-state shapes (`NegotiationTurn`, `NegotiationTaskState`, …) exposed for advanced graph consumers. |
+| **States** | Advanced graph-state shapes exposed for advanced graph consumers. |
 | **Internal helpers** | Low-level support utilities re-exported for the backend's own use (selection/eval/evidence helpers) that are not part of the recommended integration surface. |
 
 > Most symbols in the barrel are consumed by the Index Network backend itself; a
