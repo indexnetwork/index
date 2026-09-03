@@ -1,11 +1,9 @@
-import { Annotation } from "@langchain/langgraph";
-
 /**
  * Network Graph State.
  * Handles CRUD operations for networks (communities).
  *
  * Lifecycle flow:
- * START → routerNode → {createNode | readNode | updateNode | deleteNode} → END
+ * route by mode → {createNode | readNode | updateNode | deleteNode}
  *
  * ## Scope semantics
  *
@@ -13,109 +11,114 @@ import { Annotation } from "@langchain/langgraph";
  * readNode surfaces only the focused network.
  * Setting `showAll: true` bypasses the restriction (admin use).
  */
-export const NetworkGraphState = Annotation.Root({
+
+export interface NetworkCreateInput {
+  title: string;
+  prompt?: string;
+  imageUrl?: string | null;
+  joinPolicy?: 'anyone' | 'invite_only';
+}
+
+export interface NetworkUpdateInput {
+  title?: string;
+  prompt?: string | null;
+  imageUrl?: string | null;
+  joinPolicy?: 'anyone' | 'invite_only';
+}
+
+export interface NetworkReadResult {
+  memberOf: Array<{
+    networkId: string;
+    title: string;
+    prompt: string | null;
+    autoAssign: boolean;
+    joinedAt: Date;
+  }>;
+  owns: Array<{
+    networkId: string;
+    title: string;
+    prompt: string | null;
+    memberCount: number;
+    intentCount: number;
+    joinPolicy: string;
+  }>;
+  publicNetworks?: Array<{
+    networkId: string;
+    title: string;
+    prompt: string | null;
+    memberCount: number;
+    owner: { name: string; avatar: string | null } | null;
+  }>;
+  stats: {
+    memberOfCount: number;
+    ownsCount: number;
+    publicNetworksCount?: number;
+    scopeNote?: string;
+  };
+}
+
+export interface NetworkMutationResult {
+  success: boolean;
+  networkId?: string;
+  title?: string;
+  message?: string;
+  error?: string;
+}
+
+export interface NetworkState {
   // --- Core Inputs (from ChatGraph via ToolContext) ---
 
   /** User performing the action. Always required. */
-  userId: Annotation<string>,
+  userId: string;
 
   /** Target network ID. Required for read/update/delete. From ChatGraph or tool arg. */
-  networkId: Annotation<string | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
+  networkId: string | undefined;
 
   /** Operation mode. */
-  operationMode: Annotation<'create' | 'read' | 'update' | 'delete'>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => 'read' as const,
-  }),
+  operationMode: 'create' | 'read' | 'update' | 'delete';
 
   // --- Mode-Specific Inputs ---
 
   /** For create mode: network creation data. */
-  createInput: Annotation<{
-    title: string;
-    prompt?: string;
-    imageUrl?: string | null;
-    joinPolicy?: 'anyone' | 'invite_only';
-  } | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
+  createInput: NetworkCreateInput | undefined;
 
   /** For update mode: fields to update. */
-  updateInput: Annotation<{
-    title?: string;
-    prompt?: string | null;
-    imageUrl?: string | null;
-    joinPolicy?: 'anyone' | 'invite_only';
-  } | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
+  updateInput: NetworkUpdateInput | undefined;
 
   /**
    * When true and network-scoped, read returns all user networks (not just scoped one).
    * Default false to enforce strict scope isolation.
    */
-  showAll: Annotation<boolean>({
-    reducer: (_, next) => next,
-    default: () => false,
-  }),
+  showAll: boolean;
 
   // --- Outputs ---
 
   /** Output for read mode. */
-  readResult: Annotation<{
-    memberOf: Array<{
-      networkId: string;
-      title: string;
-      prompt: string | null;
-      autoAssign: boolean;
-      joinedAt: Date;
-    }>;
-    owns: Array<{
-      networkId: string;
-      title: string;
-      prompt: string | null;
-      memberCount: number;
-      intentCount: number;
-      joinPolicy: string;
-    }>;
-    publicNetworks?: Array<{
-      networkId: string;
-      title: string;
-      prompt: string | null;
-      memberCount: number;
-      owner: { name: string; avatar: string | null } | null;
-    }>;
-    stats: {
-      memberOfCount: number;
-      ownsCount: number;
-      publicNetworksCount?: number;
-      scopeNote?: string;
-    };
-  } | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
+  readResult: NetworkReadResult | undefined;
 
   /** Output for create/update/delete modes. */
-  mutationResult: Annotation<{
-    success: boolean;
-    networkId?: string;
-    title?: string;
-    message?: string;
-    error?: string;
-  } | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
+  mutationResult: NetworkMutationResult | undefined;
 
   /** Error message if graph could not complete. */
-  error: Annotation<string | null>({
-    reducer: (_, next) => next,
-    default: () => null,
-  }),
-});
+  error: string | null;
+}
+
+/** What every field holds before a caller's input is applied. */
+export function networkDefaults(): NetworkState {
+  return {
+    userId: "",
+    networkId: undefined,
+    operationMode: 'read',
+    createInput: undefined,
+    updateInput: undefined,
+    showAll: false,
+    readResult: undefined,
+    mutationResult: undefined,
+    error: null,
+  };
+}
+
+/** What a caller supplies; everything else comes from the defaults. */
+export type NetworkInput =
+  Pick<NetworkState, "userId">
+  & Partial<Omit<NetworkState, "userId" | "readResult" | "mutationResult" | "error">>;

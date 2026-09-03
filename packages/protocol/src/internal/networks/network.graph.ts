@@ -1,10 +1,9 @@
-import { StateGraph, START, END } from "@langchain/langgraph";
 
 import type { NetworkGraphDatabase } from "../../platform/database.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
 
-import { NetworkGraphState } from "./network.state.js";
+import { networkDefaults, type NetworkInput, type NetworkState } from "./network.state.js";
 
 const logger = protocolLogger("NetworkGraphFactory");
 
@@ -36,7 +35,7 @@ const logger = protocolLogger("NetworkGraphFactory");
  */
 
 /** The graph's channel state, as every node sees it. */
-export type NetworkState = typeof NetworkGraphState.State;
+export type { NetworkInput, NetworkState } from "./network.state.js";
 
 /** Everything the network nodes reach for. */
 export interface NetworkGraphDeps {
@@ -55,23 +54,18 @@ export class NetworkGraphFactory {
     const deps = this.deps;
     // --- GRAPH ASSEMBLY ---
 
-    const workflow = new StateGraph(NetworkGraphState)
-      .addNode("read", (state: NetworkState) => readNode(state, deps))
-      .addNode("create", (state: NetworkState) => createNode(state, deps))
-      .addNode("update", (state: NetworkState) => updateNode(state, deps))
-      .addNode("delete_idx", (state: NetworkState) => deleteNode(state, deps))
-      .addConditionalEdges(START, routeByMode, {
-        read: "read",
-        create: "create",
-        update: "update",
-        delete_idx: "delete_idx",
-      })
-      .addEdge("read", END)
-      .addEdge("create", END)
-      .addEdge("update", END)
-      .addEdge("delete_idx", END);
-
-    return workflow.compile();
+    return {
+      /** Runs one operation and returns the full state, defaults included. */
+      async invoke(input: NetworkInput): Promise<NetworkState> {
+        const state: NetworkState = { ...networkDefaults(), ...input };
+        switch (routeByMode(state)) {
+          case 'create': return { ...state, ...await createNode(state, deps) };
+          case 'update': return { ...state, ...await updateNode(state, deps) };
+          case 'delete_idx': return { ...state, ...await deleteNode(state, deps) };
+          default: return { ...state, ...await readNode(state, deps) };
+        }
+      },
+    };
   }
 }
 

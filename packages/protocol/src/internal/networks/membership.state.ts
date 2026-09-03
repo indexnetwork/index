@@ -1,5 +1,3 @@
-import { Annotation } from "@langchain/langgraph";
-
 /**
  * Network Membership Graph State.
  * Handles CRUD operations for network memberships (index_members table).
@@ -14,63 +12,62 @@ import { Annotation } from "@langchain/langgraph";
  * - `read`: caller must be a member of the network to list its members.
  *
  * Flow:
- * START → routerNode → {addMemberNode | listMembersNode | removeMemberNode} → END
+ * route by mode → {addMemberNode | listMembersNode | removeMemberNode}
  */
-export const NetworkMembershipGraphState = Annotation.Root({
+
+/** One member row as `read` mode returns it. */
+export interface NetworkMemberSummary {
+  userId: string;
+  name: string;
+  avatar: string | null;
+  permissions: string[];
+  intentCount: number;
+  joinedAt: Date;
+}
+
+export interface NetworkMembershipState {
   // --- Core Inputs (from ChatGraph via ToolContext) ---
 
   /** User performing the action (the actor). Always required. */
-  userId: Annotation<string>,
+  userId: string;
 
   /** Target network. Required for all operations. */
-  networkId: Annotation<string>,
+  networkId: string;
 
   /** Operation mode. */
-  operationMode: Annotation<'create' | 'read' | 'delete'>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => 'read' as const,
-  }),
+  operationMode: 'create' | 'read' | 'delete';
 
   // --- Mode-Specific Inputs ---
 
   /** For create/delete: the user being added/removed. */
-  targetUserId: Annotation<string | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
+  targetUserId: string | undefined;
 
   // --- Outputs ---
 
   /** Output for read mode: list of members. */
-  readResult: Annotation<{
-    networkId: string;
-    count: number;
-    members: Array<{
-      userId: string;
-      name: string;
-      avatar: string | null;
-      permissions: string[];
-      intentCount: number;
-      joinedAt: Date;
-    }>;
-  } | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
+  readResult: { networkId: string; count: number; members: NetworkMemberSummary[] } | undefined;
 
   /** Output for create/delete modes. */
-  mutationResult: Annotation<{
-    success: boolean;
-    message?: string;
-    error?: string;
-  } | undefined>({
-    reducer: (_, next) => next,
-    default: () => undefined,
-  }),
+  mutationResult: { success: boolean; message?: string; error?: string } | undefined;
 
   /** Error message if graph could not complete. */
-  error: Annotation<string | null>({
-    reducer: (_, next) => next,
-    default: () => null,
-  }),
-});
+  error: string | null;
+}
+
+/** What every field holds before a caller's input is applied. */
+export function networkMembershipDefaults(): NetworkMembershipState {
+  return {
+    userId: "",
+    networkId: "",
+    operationMode: 'read',
+    targetUserId: undefined,
+    readResult: undefined,
+    mutationResult: undefined,
+    error: null,
+  };
+}
+
+/** What a caller supplies; everything else comes from the defaults. */
+export type NetworkMembershipInput =
+  Pick<NetworkMembershipState, "userId" | "networkId">
+  & Partial<Pick<NetworkMembershipState, "operationMode" | "targetUserId">>;

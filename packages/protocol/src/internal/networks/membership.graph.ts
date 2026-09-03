@@ -1,10 +1,8 @@
-import { StateGraph, START, END } from "@langchain/langgraph";
-
 import type { NetworkMembershipGraphDatabase } from "../../platform/database.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
 
-import { NetworkMembershipGraphState } from "./membership.state.js";
+import { networkMembershipDefaults, type NetworkMembershipInput, type NetworkMembershipState } from "./membership.state.js";
 
 const logger = protocolLogger("NetworkMembershipGraphFactory");
 
@@ -36,8 +34,7 @@ const logger = protocolLogger("NetworkMembershipGraphFactory");
  * START → routerNode → {addMemberNode | listMembersNode | removeMemberNode} → END
  */
 
-/** The graph's channel state, as every node sees it. */
-export type NetworkMembershipState = typeof NetworkMembershipGraphState.State;
+export type { NetworkMembershipInput, NetworkMembershipState } from "./membership.state.js";
 
 /** Everything the membership nodes reach for. */
 export interface NetworkMembershipGraphDeps {
@@ -54,22 +51,17 @@ export class NetworkMembershipGraphFactory {
 
   public createGraph() {
     const deps = this.deps;
-    // --- GRAPH ASSEMBLY ---
-
-    const workflow = new StateGraph(NetworkMembershipGraphState)
-      .addNode("add_member", (state: NetworkMembershipState) => addMemberNode(state, deps))
-      .addNode("list_members", (state: NetworkMembershipState) => listMembersNode(state, deps))
-      .addNode("remove_member", (state: NetworkMembershipState) => removeMemberNode(state, deps))
-      .addConditionalEdges(START, routeByMode, {
-        add_member: "add_member",
-        list_members: "list_members",
-        remove_member: "remove_member",
-      })
-      .addEdge("add_member", END)
-      .addEdge("list_members", END)
-      .addEdge("remove_member", END);
-
-    return workflow.compile();
+    return {
+      /** Runs one operation and returns the full state, defaults included. */
+      async invoke(input: NetworkMembershipInput): Promise<NetworkMembershipState> {
+        const state: NetworkMembershipState = { ...networkMembershipDefaults(), ...input };
+        switch (routeByMode(state)) {
+          case 'add_member': return { ...state, ...await addMemberNode(state, deps) };
+          case 'remove_member': return { ...state, ...await removeMemberNode(state, deps) };
+          default: return { ...state, ...await listMembersNode(state, deps) };
+        }
+      },
+    };
   }
 }
 
