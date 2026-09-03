@@ -101,6 +101,28 @@ window.IndexApp = (function () {
     });
   }
 
+  // Swift answers a setupHermes post (writes ~/.hermes/.env, installs the
+  // indexnetwork/hermes-plugin) via window.__indexHermesSetup.
+  const hermesWaiters = [];
+  window.__indexHermesSetup = function (result) {
+    while (hermesWaiters.length) hermesWaiters.shift()(result || {});
+  };
+  function setupHermes(apiKey) {
+    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
+    return new Promise((resolve) => {
+      hermesWaiters.push(resolve);
+      window.webkit.messageHandlers.indexAuth.postMessage({ action: "setupHermes", value: apiKey });
+    });
+  }
+  // Undo: uninstall the plugin and scrub Index credentials from ~/.hermes/.env.
+  function teardownHermes() {
+    if (!hasBridge()) return Promise.resolve({ ok: false, error: "no native bridge" });
+    return new Promise((resolve) => {
+      hermesWaiters.push(resolve);
+      post("teardownHermes");
+    });
+  }
+
   // Swift publishes only an authentication-state boolean, never credential material.
   const authSubscribers = new Set();
   window.__indexAuthChanged = function (authenticated) {
@@ -514,6 +536,8 @@ window.IndexApp = (function () {
     login,
     logout,
     detectHarnesses,
+    setupHermes,
+    teardownHermes,
     onAuthChanged,
     onDeepLink,
     createIntent,
