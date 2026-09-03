@@ -26,7 +26,7 @@ export interface AgentRecord {
 export interface AgentTransportRecord {
   id: string;
   agentId: string;
-  channel: 'mcp';
+  channel: 'mcp' | 'a2a';
   config: Record<string, unknown>;
   priority: number;
   active: boolean;
@@ -59,7 +59,7 @@ export interface CreateAgentInput {
 
 export interface CreateTransportInput {
   agentId: string;
-  channel: 'mcp';
+  channel: 'mcp' | 'a2a';
   config?: Record<string, unknown>;
   priority?: number;
 }

@@ -34,11 +34,24 @@ const updateAgentSchema = z
     message: 'At least one field is required',
   });
 
-const addTransportSchema = z.object({
-  channel: z.enum(['mcp']),
-  config: z.record(z.string(), z.unknown()).optional(),
-  priority: z.number().int().optional(),
-});
+const addTransportSchema = z.discriminatedUnion('channel', [
+  z.object({
+    channel: z.literal('mcp'),
+    config: z.record(z.string(), z.unknown()).optional(),
+    priority: z.number().int().optional(),
+  }),
+  z.object({
+    channel: z.literal('a2a'),
+    config: z.object({
+      url: z
+        .string()
+        .url()
+        .refine((value) => /^https?:$/.test(new URL(value).protocol), 'url must be an absolute http(s) URL'),
+      token: z.string().min(1).optional(),
+    }),
+    priority: z.number().int().optional(),
+  }),
+]);
 
 const grantPermissionSchema = z.object({
   actions: z.array(z.string()).min(1, 'actions array is required'),

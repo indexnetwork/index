@@ -18,7 +18,7 @@ const logger = log.lib.from('agent.database.adapter');
  */
 export type AgentType = 'personal' | 'external' | 'system';
 export type AgentStatus = 'active' | 'inactive';
-export type TransportChannel = 'mcp';
+export type TransportChannel = 'mcp' | 'a2a';
 export type PermissionScope = 'global' | 'node' | 'network';
 
 export interface AgentScope {
