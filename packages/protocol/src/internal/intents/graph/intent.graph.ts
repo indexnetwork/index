@@ -6,15 +6,15 @@
  * dependency bag and wires the edges — nothing else.
  */
 
-import { StateGraph, START, END } from "@langchain/langgraph";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
 import { IntentReconciler } from "../intent.reconciler.js";
 import type { IntentGraphDatabase } from "../../../platform/database.js";
 import type { EmbeddingGenerator } from "../../../platform/discovery/embedder.js";
 import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
-import { IntentGraphState } from "./intent.graph.state.js";
-import { logger, type IntentGraphDeps, type IntentState } from "./intent.graph.shared.js";
+import { intentDefaults } from "./intent.graph.state.js";
+import { mergeGraphState } from "../../shared/graph.state.js";
+import { logger, type IntentGraphDeps, type IntentInput, type IntentState } from "./intent.graph.shared.js";
 import { inferenceNode, prepNode } from "./intent.graph.infer.js";
 import { reconciliationNode, verificationNode } from "./intent.graph.reconcile.js";
 import { executorNode, queryNode } from "./intent.graph.execute.js";
@@ -49,54 +49,47 @@ export class IntentGraphFactory {
   public createGraph() {
     const deps = this.deps;
 
-    return new StateGraph(IntentGraphState)
-      .addNode("prep", (state: IntentState) => prepNode(state, deps))
-      .addNode("query", (state: IntentState) => queryNode(state, deps))
-      .addNode("inference", (state: IntentState) => inferenceNode(state, deps))
-      .addNode("verification", (state: IntentState) => verificationNode(state, deps))
-      .addNode("reconciler", (state: IntentState) => reconciliationNode(state, deps))
-      .addNode("executor", (state: IntentState) => executorNode(state, deps))
+    // The graph routes on the shape of its input (see intent.graph.state.ts):
+    // - READ:      no content/target/proposal → prep → query (no LLM calls)
+    // - CREATE:    inputContent only → prep → inference → verification → reconciler → executor
+    // - UPDATE:    inputContent + targetIntentIds → same pipeline, bound to that one target
+    // - ARCHIVE:   targetIntentIds + archive → prep → reconciler → executor (no LLM)
+    // - TRANSITION: targetIntentIds + status → prep → reconciler → executor (no LLM)
+    // - CONFIRM:   proposalId → prep → reconciler → executor (no LLM)
+    // - dryRun:true on CREATE/UPDATE stops after verification (no reconciliation/execution, no writes)
+    return {
+      /** Runs the lifecycle and returns the full state, defaults included. */
+      async invoke(input: IntentInput): Promise<IntentState> {
+        let state: IntentState = { ...intentDefaults(), ...input };
+        state = mergeGraphState(state, await prepNode(state, deps));
 
-      // The graph routes on the shape of its input (see intent.graph.state.ts):
-      // - READ:      no content/target/proposal → prep → query → END (no LLM calls)
-      // - CREATE:    inputContent only → prep → inference → verification → reconciler → executor → END
-      // - UPDATE:    inputContent + targetIntentIds → same pipeline, bound to that one target
-      // - ARCHIVE:   targetIntentIds + archive → prep → reconciler → executor → END (no LLM)
-      // - TRANSITION: targetIntentIds + status → prep → reconciler → executor → END (no LLM)
-      // - CONFIRM:   proposalId → prep → reconciler → executor → END (no LLM)
-      // - dryRun:true on CREATE/UPDATE stops after verification (no reconciliation/execution, no writes)
-      .addEdge(START, "prep")
+        // After prep: read → query; archive/status/proposal → reconciler
+        // directly; else the content path infers.
+        switch (afterPrepRoute(state)) {
+          case '__end__':
+            return state;
+          case 'query':
+            return mergeGraphState(state, await queryNode(state, deps));
+          case 'reconciler':
+            break;
+          default: {
+            state = mergeGraphState(state, await inferenceNode(state, deps));
+            // Verification is skipped when inference produced no candidates.
+            const afterInference = shouldRunVerification(state);
+            if (afterInference === '__end__') return state;
+            if (afterInference === 'verification') {
+              state = mergeGraphState(state, await verificationNode(state, deps));
+              // A dry run stops here: no reconciliation, no writes.
+              if (routeAfterVerification(state) === '__end__') return state;
+            }
+            break;
+          }
+        }
 
-      // After prep: read → query; archive/status/proposal → reconciler directly; else content path → inference
-      .addConditionalEdges("prep", afterPrepRoute, {
-        query: "query",
-        inference: "inference",
-        reconciler: "reconciler",
-        __end__: END,
-      })
-
-      // Query (read mode) always ends
-      .addEdge("query", END)
-
-      // After inference: decide if we need verification (skip if no intents)
-      .addConditionalEdges("inference", shouldRunVerification, {
-        verification: "verification",
-        reconciler: "reconciler",
-        __end__: END,
-      })
-
-      // After verification: propose mode exits early; others continue to reconciliation
-      .addConditionalEdges("verification", routeAfterVerification, {
-        reconciler: "reconciler",
-        __end__: END,
-      })
-
-      // Reconciliation always goes to executor
-      .addEdge("reconciler", "executor")
-
-      // Executor is always the end
-      .addEdge("executor", END)
-      .compile();
+        state = mergeGraphState(state, await reconciliationNode(state, deps));
+        return mergeGraphState(state, await executorNode(state, deps));
+      },
+    };
   }
 }
 

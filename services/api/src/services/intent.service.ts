@@ -60,7 +60,7 @@ export class IntentAdmissionEnqueueError extends Error {
 
 /** Minimal shape of a compiled protocol graph, narrowed to what this service invokes. */
 export interface IntentGraphRunner {
-  invoke(input: Record<string, unknown>, options?: { recursionLimit?: number }): Promise<Record<string, unknown>>;
+  invoke(input: Record<string, unknown>): Promise<unknown>;
 }
 
 /** The `transition` action's outcome, as reported on `intentGraph`'s `transitionResult` field. */
@@ -254,7 +254,6 @@ export class IntentService {
         status,
         ...(networkScopeId ? { scopeType: 'network' as const, scopeId: networkScopeId } : {}),
       },
-      { recursionLimit: 100 },
     ) as { transitionResult?: IntentTransitionOutcome };
 
     const outcome = result.transitionResult;
@@ -290,7 +289,6 @@ export class IntentService {
         description,
         ...(networkId ? { networkId } : {}),
       },
-      { recursionLimit: 100 },
     ) as { confirmResult?: IntentConfirmOutcome };
 
     const outcome = result.confirmResult;
@@ -440,7 +438,6 @@ export class IntentService {
 
     const result = await this.intentGraph.invoke(
       { userId, userProfile: '', archive: true, targetIntentIds: [intentId] },
-      { recursionLimit: 100 },
     ) as { executionResults?: Array<{ success: boolean; error?: string }> };
 
     const execution = result.executionResults?.[0];

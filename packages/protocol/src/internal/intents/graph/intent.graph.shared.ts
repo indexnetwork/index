@@ -6,7 +6,7 @@
  * This module owns the bag, the logger, and the pure helpers.
  */
 
-import { IntentGraphState, VerifiedIntent, type IntentGraphAction, type IntentValidationFailure } from "./intent.graph.state.js";
+import { VerifiedIntent, type IntentGraphAction, type IntentState, type IntentValidationFailure } from "./intent.graph.state.js";
 import { ExplicitIntentInferrer } from "../intent.inferrer.js";
 import { SemanticVerifier } from "../intent.verifier.js";
 import { DEFAULT_SPECIFICITY_WARNING } from "../intent.proposal.js";
@@ -19,7 +19,17 @@ import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 
 /** The graph's channel state, as every node sees it. */
-export type IntentState = typeof IntentGraphState.State;
+export type { IntentState };
+
+/**
+ * What a caller supplies; everything else comes from the defaults.
+ *
+ * The index signature keeps this assignable to the `Record<string, unknown>`
+ * seam hosts type their injected runner against — the compiled graph accepted
+ * a loose object, and narrowing that to exactly `Partial<IntentState>` would
+ * break every host that types the graph structurally.
+ */
+export type IntentInput = Partial<IntentState> & { [key: string]: unknown };
 
 /** Everything the intent nodes reach for. Composed once by the factory. */
 export interface IntentGraphDeps {

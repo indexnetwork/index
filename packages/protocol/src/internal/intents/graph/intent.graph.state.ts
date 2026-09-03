@@ -1,4 +1,3 @@
-import { Annotation } from "@langchain/langgraph";
 import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "../intent.inferrer.js";
 import { SemanticVerifierOutput } from "../intent.verifier.js";
@@ -85,256 +84,67 @@ export type ConfirmOutcome =
  * The Graph State using LangGraph Annotations.
  * This acts as the central bus for data flowing through our graph.
  */
-export const IntentGraphState = Annotation.Root({
-  // --- Inputs (Required at start) ---
-
-  /**
-   * The unique identifier of the user whose intents are being processed.
-   * Required for database operations.
-   */
-  userId: Annotation<string>,
-
-  /**
-   * The user's profile context (Identity, Narrative, etc.)
-   */
-  userProfile: Annotation<string>,
-
-  /**
-   * Explicit input content (e.g., user message).
-   * Optional - graph might run on implicit only.
-   */
-  inputContent: Annotation<string | undefined>,
-
-  /**
-   * Conversation history for context-aware intent inference.
-   * Used to resolve anaphoric references ("that intent", "this goal").
-   * Limited to recent messages (typically last 10) for token efficiency.
-   * Optional - if not provided, intent inference uses only inputContent.
-   */
-  conversationContext: Annotation<BaseMessage[] | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /**
-   * The graph routes on the shape of its input, not a mode flag:
-   * - `inputContent` alone → create path (infer → verify → reconcile → execute)
-   * - `inputContent` + `targetIntentIds` → explicit update, bound to that one id
-   * - `targetIntentIds` + `archive: true` → expire those ids, no LLM
-   * - `targetIntentIds` + `status` → pause/resume, no LLM
-   * - `proposalId` (+ `description`, `networkId`) → confirm a stored proposal, no LLM
-   * - none of the above → read (query fast path)
-   * Exactly one of {content, archive, status, proposalId} may be set per invoke.
-   */
-  targetIntentIds: Annotation<string[] | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+export interface IntentState {
+  /** The unique identifier of the user whose intents are being processed. Required for database operations. */
+  userId: string;
+  /** The user's profile context (Identity, Narrative, etc.) */
+  userProfile: string;
+  /** Explicit input content (e.g., user message). Optional - graph might run on implicit only. */
+  inputContent: string | undefined;
+  /** Conversation history for context-aware intent inference. Used to resolve anaphoric references ("that intent", "this goal"). Limited to recent messages (typically last 10) for token efficiency. Optional - if not provided, intent inference uses only inputContent. */
+  conversationContext: BaseMessage[] | undefined;
+  /** The graph routes on the shape of its input, not a mode flag: - `inputContent` alone → create path (infer → verify → reconcile → execute) - `inputContent` + `targetIntentIds` → explicit update, bound to that one id - `targetIntentIds` + `archive: true` → expire those ids, no LLM - `targetIntentIds` + `status` → pause/resume, no LLM - `proposalId` (+ `description`, `networkId`) → confirm a stored proposal, no LLM - none of the above → read (query fast path) Exactly one of {content, archive, status, proposalId} may be set per invoke. */
+  targetIntentIds: string[] | undefined;
   /** Archive route: expire every id in `targetIntentIds`. Requires `targetIntentIds`. */
-  archive: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
+  archive: boolean;
   /** Transition route: pause/resume the single id in `targetIntentIds`. Requires `targetIntentIds`. */
-  status: Annotation<'ACTIVE' | 'PAUSED' | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  status: 'ACTIVE' | 'PAUSED' | undefined;
   /** Confirm route: the durable proposal to persist. */
-  proposalId: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /**
-   * Confirm route: the caller's (possibly owner-edited) description, compared
-   * byte-for-byte against the stored proposal. Never run through inference.
-   */
-  description: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /**
-   * When true on the content path, stop after verification — no reconciliation,
-   * no writes. Replaces the old `propose` operation mode.
-   */
-  dryRun: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /**
-   * Optional material compare-and-set guard used only by recovery-answer
-   * updates. The database rechecks it while holding the final intent row lock.
-   */
-  expectedIntentFingerprint: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /**
-   * Optional network scope (network ID). Used for linking created intents to a network
-   * and for scoping read operations. Prep always fetches ALL user intents via
-   * getActiveIntents(userId) regardless of network scope (for global dedup/reconciliation).
-   */
-  networkId: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  proposalId: string | undefined;
+  /** Confirm route: the caller's (possibly owner-edited) description, compared byte-for-byte against the stored proposal. Never run through inference. */
+  description: string | undefined;
+  /** When true on the content path, stop after verification — no reconciliation, no writes. Replaces the old `propose` operation mode. */
+  dryRun: boolean;
+  /** Optional material compare-and-set guard used only by recovery-answer updates. The database rechecks it while holding the final intent row lock. */
+  expectedIntentFingerprint: string | undefined;
+  /** Optional network scope (network ID). Used for linking created intents to a network and for scoping read operations. Prep always fetches ALL user intents via getActiveIntents(userId) regardless of network scope (for global dedup/reconciliation). */
+  networkId: string | undefined;
   /** Focused request scope type for write-side assignment and follow-up queues. */
-  scopeType: Annotation<ToolScopeType | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  scopeType: ToolScopeType | undefined;
   /** Focused request scope id. When scopeType is `network`, this is the focused network id. */
-  scopeId: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  // --- Populated by Graph (Prep Node) ---
-
-  /**
-   * The formatted string of currently active intents.
-   * Always populated by prep via getActiveIntents(userId).
-   */
-  activeIntents: Annotation<string>({
-    reducer: (curr, next) => next,
-    default: () => "",
-  }),
-
+  scopeId: string | undefined;
+  /** The formatted string of currently active intents. Always populated by prep via getActiveIntents(userId). */
+  activeIntents: string;
   /** IDs of active intents owned by the graph user, used to fail closed on explicit updates. */
-  activeIntentIds: Annotation<string[]>({
-    reducer: (curr, next) => next,
-    default: () => [],
-  }),
-
-  // --- Intermediate State ---
-
-  /**
-   * List of raw intents extracted from text.
-   */
-  inferredIntents: Annotation<InferredIntent[]>({
-    reducer: (curr, next) => next, // Overwrite with new inference
-    default: () => [],
-  }),
-
-  /**
-   * List of intents that have passed semantic verification.
-   * Invalid intents are filtered out before reaching this state.
-   */
-  verifiedIntents: Annotation<VerifiedIntent[]>({
-    reducer: (curr, next) => next,
-    default: () => [],
-  }),
-
+  activeIntentIds: string[];
+  /** List of raw intents extracted from text. */
+  inferredIntents: InferredIntent[];
+  /** List of intents that have passed semantic verification. Invalid intents are filtered out before reaching this state. */
+  verifiedIntents: VerifiedIntent[];
   /** Structured reasons for candidates rejected before persistence. */
-  validationFailures: Annotation<IntentValidationFailure[]>({
-    reducer: (curr, next) => next,
-    default: () => [],
-  }),
-
-  // --- Output ---
-
-  /**
-   * Final actions to be performed on the DB (Create, Update, Expire, Transition, Confirm).
-   */
-  actions: Annotation<IntentGraphAction[]>({
-    reducer: (curr, next) => next,
-    default: () => [],
-  }),
-
-  /**
-   * Results of executing actions against the database.
-   * Populated by executorNode after actions are persisted.
-   */
-  executionResults: Annotation<ExecutionResult[]>({
-    reducer: (curr, next) => next,
-    default: () => [],
-  }),
-
+  validationFailures: IntentValidationFailure[];
+  /** Final actions to be performed on the DB (Create, Update, Expire, Transition, Confirm). */
+  actions: IntentGraphAction[];
+  /** Results of executing actions against the database. Populated by executorNode after actions are persisted. */
+  executionResults: ExecutionResult[];
   /** Detailed outcome of a `transition` action, for host-side status mapping. */
-  transitionResult: Annotation<TransitionOutcome | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  transitionResult: TransitionOutcome | undefined;
   /** Detailed outcome of a `confirm` action, for host-side status mapping. */
-  confirmResult: Annotation<ConfirmOutcome | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  // --- Error State ---
-
-  /**
-   * If set, indicates a fatal error that should short-circuit the graph to END.
-   * Populated by prep when a precondition fails (e.g. missing profile).
-   */
-  error: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  // --- Trace Output ---
-
-  /**
-   * Accumulated trace entries from each graph node.
-   * Used for observability: surfaces internal processing steps (inference,
-   * verification with Felicity scores, reconciliation) to the frontend.
-   */
-  trace: Annotation<Array<{ node: string; detail?: string; data?: Record<string, unknown> }>>({
-    reducer: (curr, next) => [...curr, ...(next || [])],
-    default: () => [],
-  }),
-
+  confirmResult: ConfirmOutcome | undefined;
+  /** If set, indicates a fatal error that should short-circuit the graph to END. Populated by prep when a precondition fails (e.g. missing profile). */
+  error: string | undefined;
+  /** Accumulated trace entries from each graph node. Used for observability: surfaces internal processing steps (inference, verification with Felicity scores, reconciliation) to the frontend. */
+  trace: Array<{ node: string; detail?: string; data?: Record<string, unknown> }>;
   /** Timing records for each agent invocation within this graph run. */
-  agentTimings: Annotation<DebugMetaAgent[]>({
-    reducer: (acc, val) => [...acc, ...val],
-    default: () => [],
-  }),
-
-  // --- Read Mode Fields ---
-
-  /**
-   * For read mode: the set of network IDs the caller's agent can reach.
-   * When set and neither networkId nor queryUserId is provided, the graph
-   * returns the caller's own intents across all networks in this set (scope-aware
-   * default path). Derived by the tool layer from the scope envelope plus memberships.
-   */
-  indexScope: Annotation<string[] | undefined>({
-    reducer: (_curr, next) => next,
-    default: () => undefined,
-  }),
-
-  /**
-   * For read mode: filter intents by a specific user when reading in a network.
-   * When omitted and network-scoped, returns all intents in the network.
-   */
-  queryUserId: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /**
-   * For read mode: when true, return all of the current user's intents
-   * ignoring network scope. Used before create_intent to detect duplicates.
-   */
-  allUserIntents: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /**
-   * Output of read mode: queried intents with count and optional metadata.
-   */
-  readResult: Annotation<{
+  agentTimings: DebugMetaAgent[];
+  /** For read mode: the set of network IDs the caller's agent can reach. When set and neither networkId nor queryUserId is provided, the graph returns the caller's own intents across all networks in this set (scope-aware default path). Derived by the tool layer from the scope envelope plus memberships. */
+  indexScope: string[] | undefined;
+  /** For read mode: filter intents by a specific user when reading in a network. When omitted and network-scoped, returns all intents in the network. */
+  queryUserId: string | undefined;
+  /** For read mode: when true, return all of the current user's intents ignoring network scope. Used before create_intent to detect duplicates. */
+  allUserIntents: boolean;
+  /** Output of read mode: queried intents with count and optional metadata. */
+  readResult: {
     count: number;
     intents: Array<{
       id: string;
@@ -346,8 +156,41 @@ export const IntentGraphState = Annotation.Root({
     }>;
     message?: string;
     networkId?: string;
-  } | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
-});
+  } | undefined;
+}
+
+export function intentDefaults(): IntentState {
+  return {
+    userId: "",
+    userProfile: "",
+    inputContent: undefined,
+    conversationContext: undefined,
+    targetIntentIds: undefined,
+    archive: false,
+    status: undefined,
+    proposalId: undefined,
+    description: undefined,
+    dryRun: false,
+    expectedIntentFingerprint: undefined,
+    networkId: undefined,
+    scopeType: undefined,
+    scopeId: undefined,
+    activeIntents: "",
+    activeIntentIds: [],
+    inferredIntents: [],
+    verifiedIntents: [],
+    validationFailures: [],
+    actions: [],
+    executionResults: [],
+    transitionResult: undefined,
+    confirmResult: undefined,
+    error: undefined,
+    trace: [],
+    agentTimings: [],
+    indexScope: undefined,
+    queryUserId: undefined,
+    allUserIntents: false,
+    readResult: undefined,
+  };
+}
+

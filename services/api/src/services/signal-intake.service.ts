@@ -521,10 +521,7 @@ async function invokeIntentGraphProduction(input: {
   userId: string;
   inputContent: string;
 }): Promise<{ verifiedIntents?: Array<Record<string, unknown>> }> {
-  const result = await compiledIntentGraph.invoke(
-    { ...input, userProfile: '', dryRun: true },
-    { recursionLimit: 100 },
-  );
+  const result = await compiledIntentGraph.invoke({ ...input, userProfile: '', dryRun: true });
   return result as { verifiedIntents?: Array<Record<string, unknown>> };
 }
 

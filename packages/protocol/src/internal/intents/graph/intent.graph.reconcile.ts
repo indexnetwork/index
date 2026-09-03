@@ -199,7 +199,10 @@ export async function reconciliationNode(state: IntentState, deps: IntentGraphDe
       const actions = (state.targetIntentIds ?? []).map(id => ({
         type: 'expire' as const,
         id,
-        reasoning: 'User requested deletion'
+        // `reason`, matching ExpireIntentActionSchema and the LLM path. The
+        // archive fast path said `reasoning`, which typechecked only because
+        // LangGraph's node returns were loosely typed; nothing read either.
+        reason: 'User requested deletion'
       }));
       return {
         actions,
