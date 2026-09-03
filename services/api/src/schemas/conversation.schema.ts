@@ -132,36 +132,6 @@ export const conversationMetadata = pgTable('conversation_metadata', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
-/**
- * Stable scope mapping for H2A chat sessions.
- *
- * Intent-scoped chats use this table to enforce one conversation per
- * `(userId, scopeType, scopeId)` while keeping the canonical conversation
- * metadata JSON backward-compatible for older network-scoped sessions.
- */
-export const chatSessionScopes = pgTable(
-  'chat_session_scopes',
-  {
-    conversationId: text('conversation_id')
-      .primaryKey()
-      .references(() => conversations.id, { onDelete: 'cascade' }),
-    userId: text('user_id').notNull(),
-    scopeType: text('scope_type').notNull(),
-    scopeId: text('scope_id').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => ({
-    scopeUnique: uniqueIndex('chat_session_scopes_user_scope_unique').on(
-      table.userId,
-      table.scopeType,
-      table.scopeId,
-    ),
-    userIdx: index('chat_session_scopes_user_id_idx').on(table.userId),
-    scopeIdx: index('chat_session_scopes_scope_idx').on(table.scopeType, table.scopeId),
-  }),
-);
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Relations
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,13 +179,6 @@ export const conversationMetadataRelations = relations(conversationMetadata, ({ 
   }),
 }));
 
-export const chatSessionScopesRelations = relations(chatSessionScopes, ({ one }) => ({
-  conversation: one(conversations, {
-    fields: [chatSessionScopes.conversationId],
-    references: [conversations.id],
-  }),
-}));
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Exported types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,6 +197,3 @@ export type NewMessage = typeof messages.$inferInsert;
 
 export type ConversationMetadata = typeof conversationMetadata.$inferSelect;
 export type NewConversationMetadata = typeof conversationMetadata.$inferInsert;
-
-export type ChatSessionScope = typeof chatSessionScopes.$inferSelect;
-export type NewChatSessionScope = typeof chatSessionScopes.$inferInsert;

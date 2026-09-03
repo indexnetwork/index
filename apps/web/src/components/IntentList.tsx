@@ -28,12 +28,6 @@ interface BaseIntent {
    */
   pendingQuestionCount?: number;
   /**
-   * The signal's agent asked something and is still waiting on an answer.
-   * Derived server-side from the signal's own chat, so it clears the moment
-   * the user replies there. Undefined/false renders nothing.
-   */
-  awaitingReply?: boolean;
-  /**
    * Lifecycle status (ACTIVE|PAUSED|FULFILLED|EXPIRED). A badge renders only for
    * non-default (non-ACTIVE) values; undefined or ACTIVE renders nothing — the
    * enum is vestigial today, so this is forward-looking. See EDG-53.
@@ -183,19 +177,6 @@ export default function IntentList<T extends BaseIntent>({
                         <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
                       </span>
                       live
-                    </div>
-                  )}
-
-                  {/* Your move — the agent is holding a question for this
-                      signal. Sits next to `live` because it is the same kind
-                      of fact: what this signal is doing right now. */}
-                  {intent.awaitingReply && (
-                    <div
-                      className="flex items-center gap-1.5 text-xs font-medium text-[#041729] font-ibm-plex-mono"
-                      title="Your agent asked you something on this signal"
-                    >
-                      <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[#041729]" />
-                      your move
                     </div>
                   )}
 

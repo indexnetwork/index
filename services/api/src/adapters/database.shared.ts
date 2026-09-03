@@ -121,13 +121,6 @@ export interface IntentListRow {
   waitingOpportunityCount: number;
   /** True while a fresh intent has not completed its first discovery run. */
   warming: boolean;
-  /**
-   * The signal's agent asked its owner something and is still waiting: the
-   * newest message in the signal's DM is an agent question offering canned
-   * replies. Derived per read from the conversation itself — answering (by
-   * typing or by tapping a chip) is what clears it.
-   */
-  awaitingReply: boolean;
   discoveryProgress?: {
     status: 'queued' | 'running' | 'retrying' | 'completed' | 'failed' | 'blocked' | 'unknown';
     attempt: number;

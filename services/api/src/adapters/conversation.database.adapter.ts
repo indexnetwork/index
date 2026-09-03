@@ -1,38 +1,9 @@
-import { buildProfileFromUser, schema, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, ne, notInArray, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
+import { buildProfileFromUser, schema, ChatConversationMeta, ChatMessage, ChatMessageMeta, ChatScopeType, ChatSession, Conversation, ConversationParticipant, ConversationSession, ConversationSummary, CreateMessageInput, CreateSessionInput, Message, ResolvedParticipant, SYSTEM_AGENT_ID, and, asc, count, db, desc, eq, gt, inArray, intents, isNull, lt, ne, opportunities, or, sql, toOpportunityRow, type OpportunityRow } from './database.shared';
 import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { publishConversationMessageEvent } from '../lib/conversation-events';
 import { log } from '../lib/log';
 
-/** Persona literal mirrored locally so the data layer stays protocol-agnostic. */
-const PERSONAL_AGENT_PERSONA = 'personal';
 const logger = log.lib.from('conversation-database');
-
-/**
- * Registry scope_type for intent-pinned sessions — the signal's DM. Keyed ('personal-intent', intentId) in the `chat_session_scopes` unique
- * index; the retired 'signal-intent'/'negotiator-intent' keys were folded into
- * it by migration. This value is deliberately outside the `ChatScopeType`
- * ('network' | 'intent') envelope and never appears in it —
- * `_normalizeScopeType` ignores it, and conversation_metadata still says
- * scopeType 'intent' so scope-driven behavior (graph seeding, session load)
- * is identical to any intent-scoped session. The bare 'intent' key is unused.
- */
-const PERSONAL_INTENT_SCOPE_TYPE = 'personal-intent';
-
-/**
- * The ONE builder for "this conversation is a signal's DM": the user's
- * ('personal-intent', *) registry rows, as a subquery for the listing and
- * detail reads that must exclude DMs. User-scoped so it always hits the
- * (user_id, scope_type, scope_id) unique index.
- */
-function intentPinnedConversationIds(userId: string) {
-  return db
-    .select({ conversationId: schema.chatSessionScopes.conversationId })
-    .from(schema.chatSessionScopes)
-    .where(and(
-      eq(schema.chatSessionScopes.userId, userId),
-      eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
-    ));
-}
 
 /**
  * The chat-visible text of a stored message: chat writes a single text part,
@@ -1231,17 +1202,6 @@ export class ConversationDatabaseAdapter {
           metadata: meta,
         });
       }
-
-      if (normalizedScopeType === 'intent' && normalizedScopeId) {
-        await tx.insert(schema.chatSessionScopes).values({
-          conversationId: data.id,
-          userId: data.userId,
-          scopeType: PERSONAL_INTENT_SCOPE_TYPE,
-          scopeId: normalizedScopeId,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
     });
   }
 
@@ -1287,7 +1247,6 @@ export class ConversationDatabaseAdapter {
     userId: string,
     limit: number,
     persona: string | readonly string[],
-    opts: { excludeIntentPinned?: boolean } = {},
   ): Promise<ChatSession[]> {
     const personas = typeof persona === 'string' ? [persona] : [...persona];
     if (personas.length === 0) return [];
@@ -1322,11 +1281,6 @@ export class ConversationDatabaseAdapter {
           isNull(schema.conversationParticipants.hiddenAt),
           inArray(schema.conversations.id, chatSessionIds),
           inArray(schema.conversations.persona, personas),
-          // Intent-pinned sessions (a signal's DM) are reached through their
-          // signal; the home history list never shows them.
-          ...(opts.excludeIntentPinned
-            ? [notInArray(schema.conversations.id, intentPinnedConversationIds(userId))]
-            : []),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1353,14 +1307,12 @@ export class ConversationDatabaseAdapter {
    * @param userId - The user whose sessions to list
    * @param limit - Maximum number of sessions to return (default 25)
    * @param persona - Exact persona to expose to the generic reader
-   * @param opts - Set excludeIntentPinned to keep a signal's DM out of the listing
    * @returns Array of chat session summaries
    */
   async listChatSessionSummaries(
     userId: string,
     limit = 25,
     persona: string,
-    opts: { excludeIntentPinned?: boolean } = {},
   ): Promise<Array<{ sessionId: string; title: string | null; messageCount: number; lastMessageAt: Date | null; createdAt: Date }>> {
     // Subquery: conversation IDs that include the system agent
     const chatSessionIds = db
@@ -1395,11 +1347,6 @@ export class ConversationDatabaseAdapter {
           ),
           inArray(schema.conversations.id, chatSessionIds),
           eq(schema.conversations.persona, persona),
-          // A signal's DM belongs to its signal surface, never to a generic
-          // session listing.
-          ...(opts.excludeIntentPinned
-            ? [notInArray(schema.conversations.id, intentPinnedConversationIds(userId))]
-            : []),
         ),
       )
       .orderBy(desc(schema.conversations.updatedAt))
@@ -1446,7 +1393,6 @@ export class ConversationDatabaseAdapter {
    * @param sessionId - The conversation ID
    * @param messageLimit - Maximum messages to return (default 50)
    * @param persona - Exact persona the caller may read
-   * @param opts - Set excludeIntentPinned to refuse a signal's DM transcript
    * @returns Session detail or null
    */
   async getChatSessionDetail(
@@ -1454,7 +1400,6 @@ export class ConversationDatabaseAdapter {
     sessionId: string,
     messageLimit = 50,
     persona: string,
-    opts: { excludeIntentPinned?: boolean } = {},
   ): Promise<{
     sessionId: string;
     title: string | null;
@@ -1493,8 +1438,6 @@ export class ConversationDatabaseAdapter {
 
     if (!agentParticipant) return null;
 
-    // Fetch conversation row. A signal's DM is read through its signal
-    // surface; generic detail readers must not expose its transcript.
     const [conv] = await db
       .select({
         id: schema.conversations.id,
@@ -1506,9 +1449,6 @@ export class ConversationDatabaseAdapter {
       .where(and(
         eq(schema.conversations.id, sessionId),
         eq(schema.conversations.persona, persona),
-        ...(opts.excludeIntentPinned
-          ? [notInArray(schema.conversations.id, intentPinnedConversationIds(userId))]
-          : []),
       ))
       .limit(1);
 
@@ -1552,97 +1492,6 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * The canonical DM's conversation id for (user, intent) — one indexed
-   * registry select, no session rehydration. The guards that ask "is this
-   * session THE DM?" compare against this.
-   */
-  async getPersonalIntentConversationId(userId: string, intentId: string): Promise<string | null> {
-    const normalizedIntentId = intentId.trim();
-    if (!normalizedIntentId) return null;
-    const [row] = await db
-      .select({ conversationId: schema.chatSessionScopes.conversationId })
-      .from(schema.chatSessionScopes)
-      .where(
-        and(
-          eq(schema.chatSessionScopes.userId, userId),
-          eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
-          eq(schema.chatSessionScopes.scopeId, normalizedIntentId),
-        ),
-      )
-      .limit(1);
-    return row?.conversationId ?? null;
-  }
-
-  /**
-   * Find the user's negotiator session pinned to a specific intent, if any
-   * (P4.2/IND-403).
-   */
-  async getNegotiatorIntentChatSession(userId: string, intentId: string): Promise<ChatSession | null> {
-    const normalizedIntentId = intentId.trim();
-    if (!normalizedIntentId) return null;
-    const [row] = await db
-      .select({ conversationId: schema.chatSessionScopes.conversationId })
-      .from(schema.chatSessionScopes)
-      .where(
-        and(
-          eq(schema.chatSessionScopes.userId, userId),
-          eq(schema.chatSessionScopes.scopeType, PERSONAL_INTENT_SCOPE_TYPE),
-          eq(schema.chatSessionScopes.scopeId, normalizedIntentId),
-        ),
-      )
-      .limit(1);
-    return row ? this.getChatSession(row.conversationId) : null;
-  }
-
-  /**
-   * Create a negotiator session pinned to one of the user's intents
-   * (one per user+intent, P4.2/IND-403).
-   *
-   * Same transaction shape as {@link createChatSession}, but the
-   * registry row is keyed ('personal-intent', intentId) and the
-   * conversation metadata carries the canonical intent scope so the session
-   * behaves like any intent-scoped chat (graph seeding, scope echo on load).
-   */
-  async createNegotiatorIntentChatSession(data: {
-    id: string;
-    userId: string;
-    intentId: string;
-    title?: string;
-  }): Promise<void> {
-    const now = new Date();
-    const intentId = data.intentId.trim();
-    await db.transaction(async (tx) => {
-      await tx.insert(schema.conversations).values({
-        id: data.id,
-        persona: PERSONAL_AGENT_PERSONA,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      await tx.insert(schema.conversationParticipants).values([
-        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
-        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
-      ]);
-
-      const meta: ChatConversationMeta = { scopeType: 'intent', scopeId: intentId };
-      if (data.title) meta.title = data.title;
-      await tx.insert(schema.conversationMetadata).values({
-        conversationId: data.id,
-        metadata: meta,
-      });
-
-      await tx.insert(schema.chatSessionScopes).values({
-        conversationId: data.id,
-        userId: data.userId,
-        scopeType: PERSONAL_INTENT_SCOPE_TYPE,
-        scopeId: intentId,
-        createdAt: now,
-        updatedAt: now,
-      });
-    });
-  }
-
-  /**
    * Update chat session network scope.
    */
   async updateChatSessionIndex(sessionId: string, networkId: string | null): Promise<void> {
@@ -1651,7 +1500,6 @@ export class ConversationDatabaseAdapter {
       scopeType: networkId ? 'network' : null,
       scopeId: networkId,
     });
-    await db.delete(schema.chatSessionScopes).where(eq(schema.chatSessionScopes.conversationId, sessionId));
     await db
       .update(schema.conversations)
       .set({ updatedAt: new Date() })
