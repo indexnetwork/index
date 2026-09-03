@@ -32,6 +32,8 @@ import { agentService } from '../../services/agent.service';
 import { AgentDispatcherImpl } from '../../services/agent-dispatcher.service';
 import { chatSessionService } from '../../services/chat.service';
 import { discoveryCandidateAdapter } from '../../adapters/discovery-candidate.database.adapter';
+import { createA2ATurnAuthor } from '../agent/a2a-turn-author';
+import { resolveA2ASeat } from '../agent/a2a-seat';
 import { passVerdictOnOpportunity, readPersonalAgentMatches } from '../agent/negotiator-verdict.host';
 import { publishPersonalAgentActivity, publishPersonalAgentReplyChunk } from '../agent/personal-agent-reply.stream';
 
@@ -64,6 +66,14 @@ export const negotiationGraph = new NegotiationGraphFactory({
   // lazily, inside the call, so the two constructions below can be ordered.
   author: {
     authorTurn: async ({ negotiationId, userId, intentId }) => {
+      // A principal who registered an external agent over A2A speaks through
+      // it, not through ours. Whatever it returns is validated by `apply`
+      // exactly as a locally authored turn is.
+      const a2aSeat = await resolveA2ASeat(userId);
+      if (a2aSeat) {
+        return createA2ATurnAuthor(a2aSeat).authorTurn({ negotiationId, userId, intentId });
+      }
+
       let result = await personalAgentGraph.invoke({ userId, intentId, negotiationId });
       // OpenRouter can return its own timeout before our 20-second author
       // budget expires. No shared turn exists yet, so retry that transient

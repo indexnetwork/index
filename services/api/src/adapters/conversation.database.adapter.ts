@@ -2581,6 +2581,34 @@ export class ConversationDatabaseAdapter {
    * discarded the other's change). jsonb_set merges the one key server-side,
    * so two concurrent callers touching different keys both land.
    */
+  /**
+   * Records the A2A task an external seat is being negotiated through.
+   *
+   * Keyed by the seat's userId under `metadata.a2a`, because the two seats of
+   * one negotiation can each be a different external agent with its own task
+   * on its own server. Written with jsonb_set rather than read-modify-write:
+   * the counterpart seat may be writing its own key concurrently, and a
+   * select-then-spread-then-update would drop whichever landed second.
+   */
+  async setNegotiationA2ARef(
+    taskId: string,
+    userId: string,
+    ref: { taskId: string; contextId: string },
+  ): Promise<void> {
+    await db
+      .update(schema.tasks)
+      .set({
+        metadata: sql`jsonb_set(
+          jsonb_set(coalesce(${schema.tasks.metadata}, '{}'::jsonb), '{a2a}', coalesce(${schema.tasks.metadata} -> 'a2a', '{}'::jsonb), true),
+          ${`{a2a,${userId}}`}::text[],
+          ${JSON.stringify(ref)}::jsonb,
+          true
+        )`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.id, taskId));
+  }
+
   async updateNegotiationTaskState(
     taskId: string,
     state: 'working' | 'paused' | 'completed',
