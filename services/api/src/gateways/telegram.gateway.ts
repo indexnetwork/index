@@ -153,10 +153,8 @@ async function upsertTelegramHandleFromUsername(
  * Handle an update received from Telegram: the `/start <token>` connect
  * handshake, or any other text.
  *
- * Inbound chat is not supported. It used to run the orchestrator persona
- * directly, bypassing the persona policy entirely; with that persona retired
- * there is no persona to route a Telegram turn through, so the bot answers
- * with a pointer to the app. Outbound notification delivery is unaffected.
+ * Inbound chat is not supported. The bot answers with a pointer to the app.
+ * Outbound notification delivery is unaffected.
  *
  * @param chatId - Sender's Telegram chat ID
  * @param text - Message text

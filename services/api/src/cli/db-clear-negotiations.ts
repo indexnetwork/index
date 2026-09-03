@@ -2,8 +2,8 @@
 /**
  * Dev-only wipe of all negotiation + opportunity product data for every user.
  * Also clears discovery-progress, pool/intent questions, intent-agent acts,
- * dossiers, orphan orchestrator conversations, and any conversation that
- * has an agent participant (H2A / A2A chat shells).
+ * dossiers, and any conversation that has an agent participant
+ * (H2A / A2A chat shells).
  * Also resets each intent's negotiation-cycle state (batch id) plus its
  * round-log events.
  * Keeps intents, users, HyDE, and profile data.
@@ -54,9 +54,6 @@ async function readCounts(): Promise<Counts> {
       WHERE detection->>'mode' IN ('negotiation', 'negotiation_inflight')
          OR detection->'negotiation' IS NOT NULL
          OR detection->>'sourceType' = 'opportunity'
-    UNION ALL SELECT 'orchestrator_orphan_convs', count(*)::text FROM conversations c
-      WHERE c.persona = 'orchestrator'
-        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.conversation_id = c.id)
     UNION ALL SELECT 'agent_participant_convs', count(*)::text FROM conversations c
       WHERE EXISTS (
         SELECT 1 FROM conversation_participants p
@@ -82,12 +79,6 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
     `);
     await tx.execute(sql`
       DELETE FROM tasks WHERE metadata->>'type' = 'negotiation'
-    `);
-    // Orphan orchestrator DMs left after prior task-only deletes
-    await tx.execute(sql`
-      DELETE FROM conversations c
-      WHERE c.persona = 'orchestrator'
-        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.conversation_id = c.id)
     `);
     // Any conversation with an agent participant (H2A personal + leftover A2A)
     await tx.execute(sql`

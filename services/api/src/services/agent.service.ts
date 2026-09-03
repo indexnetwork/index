@@ -17,15 +17,6 @@ export const AGENT_ACTIONS = [
 
 export type AgentAction = (typeof AGENT_ACTIONS)[number];
 
-/** Actions granted to the chat orchestrator by default (excludes negotiations). */
-const ORCHESTRATOR_ACTIONS: readonly AgentAction[] = [
-  'manage:identity',
-  'manage:premises',
-  'manage:intents',
-  'manage:networks',
-  'manage:opportunities',
-];
-
 /** Default actions granted to the owner of a newly created personal agent. */
 export const PERSONAL_AGENT_DEFAULT_ACTIONS: readonly AgentAction[] = [
   'manage:identity',
@@ -342,40 +333,18 @@ export class AgentService {
   }
 
   async grantDefaultSystemPermissions(userId: string): Promise<void> {
-    const systemAgentIds = this.db.getSystemAgentIds();
-
-    const [chatAgent, negotiatorAgent] = await Promise.all([
-      this.db.getAgent(systemAgentIds.chatOrchestrator),
-      this.db.getAgent(systemAgentIds.negotiator),
-    ]);
-
-    if (chatAgent) {
-      const missingChatActions = await this.findMissingGlobalActions(
-        systemAgentIds.chatOrchestrator,
-        userId,
-        ORCHESTRATOR_ACTIONS,
-      );
-      if (missingChatActions.length > 0) {
-        await this.db.grantPermission({
-          agentId: systemAgentIds.chatOrchestrator,
-          userId,
-          scope: 'global',
-          actions: missingChatActions,
-        });
-      }
-    } else {
-      logger.warn('Skipping default chat-orchestrator permissions; system agent missing', { userId });
-    }
+    const { negotiator } = this.db.getSystemAgentIds();
+    const negotiatorAgent = await this.db.getAgent(negotiator);
 
     if (negotiatorAgent) {
       const missingNegotiatorActions = await this.findMissingGlobalActions(
-        systemAgentIds.negotiator,
+        negotiator,
         userId,
         ['manage:opportunities', 'manage:negotiations'],
       );
       if (missingNegotiatorActions.length > 0) {
         await this.db.grantPermission({
-          agentId: systemAgentIds.negotiator,
+          agentId: negotiator,
           userId,
           scope: 'global',
           actions: missingNegotiatorActions,

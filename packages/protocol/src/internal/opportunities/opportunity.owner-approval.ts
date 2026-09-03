@@ -64,7 +64,7 @@ export type OpportunityOwnerInteractionSurface = 'mcp' | 'chat' | 'rest';
  */
 export interface OpportunityOwnerInteractionProvenance {
   surface: OpportunityOwnerInteractionSurface;
-  /** True only when the host bound an authenticated owner session (never an API key or a mediated orchestrator) to this exact request. */
+  /** True only when the host bound an authenticated owner session (never an API key or a mediated agent) to this exact request. */
   sessionAuthenticated: boolean;
 }
 

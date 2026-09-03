@@ -24,6 +24,9 @@ pin a supported release, use `latest`.
 
 ### Removed
 
+- **BREAKING: `SYSTEM_AGENT_IDS.chatOrchestrator` is gone.** The only remaining
+  well-known system agent is `negotiator`. `AgentDatabase.getSystemAgentIds()`
+  no longer returns a chat-orchestrator id.
 - **BREAKING: the in-process personal agent is gone.** `PersonalAgentGraph` and
   everything it needed — its judgment, prompt, act types, activity port, match
   refs and the `personal-agent.e2e` spec — are deleted. Index no longer runs an

@@ -79,6 +79,5 @@ export interface GrantPermissionInput {
  * as they are referenced by foreign keys and hard-coded in protocol logic.
  */
 export const SYSTEM_AGENT_IDS = {
-  chatOrchestrator: '00000000-0000-0000-0000-000000000001',
   negotiator: '00000000-0000-0000-0000-000000000002',
 } as const;

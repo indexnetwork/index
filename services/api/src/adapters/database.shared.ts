@@ -327,13 +327,10 @@ export type ChatScopeType = 'network' | 'intent';
  *   signal/negotiator/onboarding ids were collapsed into it by migration.
  * - `telegram` — Telegram notification transcript. Not a chat persona: nothing
  *   drives a turn in it, it only collects delivered notifications.
- * - `orchestrator` — retired pre-personafication default. No new rows are
- *   written with it; existing ones stay readable.
  */
 export type ChatPersonaId =
   | 'personal'
-  | 'telegram'
-  | 'orchestrator';
+  | 'telegram';
 
 export interface ChatSession {
   id: string;
@@ -343,7 +340,7 @@ export interface ChatSession {
   persona: string;
   /** Legacy network alias. Prefer scopeType/scopeId for new code. */
   networkId: string | null;
-  /** Canonical focused scope for this orchestrator chat, when persisted. */
+  /** Canonical focused scope for this chat session, when persisted. */
   scopeType: ChatScopeType | null;
   /** Canonical focused scope id. Network scope uses a network id; intent scope uses an intent id. */
   scopeId: string | null;
@@ -373,7 +370,7 @@ export interface ChatConversationMeta {
   title?: string | null;
   /** Legacy network alias retained for existing clients and session rows. */
   networkId?: string | null;
-  /** Canonical focused scope for this orchestrator chat. */
+  /** Canonical focused scope for this chat session. */
   scopeType?: ChatScopeType | null;
   /** Canonical focused scope id. */
   scopeId?: string | null;

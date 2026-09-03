@@ -120,5 +120,5 @@ export interface AgentDatabase {
    * Returns the well-known IDs for built-in system agents.
    * @returns Object mapping system agent roles to their fixed UUIDs.
    */
-  getSystemAgentIds(): { chatOrchestrator: string; negotiator: string };
+  getSystemAgentIds(): { negotiator: string };
 }

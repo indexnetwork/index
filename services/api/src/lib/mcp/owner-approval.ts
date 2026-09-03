@@ -252,8 +252,7 @@ export function createOpportunityOwnerApprovalAuthority(
       // IND-593 Batch B: only a genuine direct authenticated owner SESSION may
       // satisfy the boundary without an owner-issued proof. The provenance is
       // server-derived at the host seams (MCP identity resolution, REST tool
-      // controller) and never caller-supplied. Chat-orchestrator turns are
-      // mediated even inside an owner session; API-key/CLI callers hold no
+      // controller) and never caller-supplied. API-key/CLI callers hold no
       // session; H2A/A2A/internal callers carry no provenance at all. All of
       // those fail closed — they need the exact owner-issued proof path.
       // Attestation of a genuine session is authoritative host derivation, not

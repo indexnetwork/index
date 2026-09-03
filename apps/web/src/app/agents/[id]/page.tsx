@@ -20,7 +20,6 @@ import type { Agent, AgentTokenInfo } from "@/services/agents";
 import type { NegotiationInsights } from "@/services/users";
 
 const SYSTEM_AGENT_IDS = {
-  chatOrchestrator: "00000000-0000-0000-0000-000000000001",
   negotiator: "00000000-0000-0000-0000-000000000002",
 } as const;
 

@@ -8,6 +8,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- The unused `chatOrchestrator` system-agent id on `/agents/:id`. The
+  negotiator is the only remaining well-known system agent.
 - **The agent chat surface.** Routes `/agent`, `/agent/:tab`, `/d/:id`,
   `/agents/connected`, `/i/:intentId/negotiations/:taskId`, `/dev/floor` and
   `/dev/intent-proposal` are gone, along with `ChatContent`,

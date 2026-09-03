@@ -10,6 +10,11 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- **The Index Chat Orchestrator system agent and the `orchestrator` chat
+  persona.** `SYSTEM_AGENT_IDS` is only the negotiator; onboarding no longer
+  grants chat-orchestrator permissions; seed no longer inserts that row.
+  Migration `0159` relabels leftover `conversations.persona = 'orchestrator'`
+  to `'none'` and deletes agent `00000000-0000-0000-0000-000000000001`.
 - **The in-process personal agent and every host path that fed it.**
   `personal-agent.service.ts`, the PersonalAgent reply stream, the intent
   dossier/ledger adapters, `lib/negotiation/negotiation-graph.ts`, the chat

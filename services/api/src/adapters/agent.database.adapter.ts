@@ -97,7 +97,6 @@ export interface GrantPermissionInput {
 }
 
 export interface AgentSystemIds {
-  chatOrchestrator: string;
   negotiator: string;
 }
 
@@ -131,7 +130,6 @@ export interface AgentRegistryStore {
 }
 
 export const SYSTEM_AGENT_IDS: AgentSystemIds = {
-  chatOrchestrator: '00000000-0000-0000-0000-000000000001',
   negotiator: '00000000-0000-0000-0000-000000000002',
 };
 

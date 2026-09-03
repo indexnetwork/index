@@ -110,9 +110,7 @@ const logger = log.lib.from('conversation-database');
  * ('network' | 'intent') envelope and never appears in it —
  * `_normalizeScopeType` ignores it, and conversation_metadata still says
  * scopeType 'intent' so scope-driven behavior (graph seeding, session load)
- * is identical to any intent-scoped session. The bare 'intent' key is
- * retired: it belonged to the removed orchestrator persona, whose rows are
- * retained read-only.
+ * is identical to any intent-scoped session. The bare 'intent' key is unused.
  */
 const PERSONAL_INTENT_SCOPE_TYPE = 'personal-intent';
 
@@ -3419,9 +3417,7 @@ export class ConversationDatabaseAdapter {
    * Same transaction shape as {@link createChatSession}, but the
    * registry row is keyed ('personal-intent', intentId) and the
    * conversation metadata carries the canonical intent scope so the session
-   * behaves like any intent-scoped chat (graph seeding, scope echo on load)
-   * while staying a distinct conversation from the orchestrator's session
-   * for the same intent.
+   * behaves like any intent-scoped chat (graph seeding, scope echo on load).
    */
   async createNegotiatorIntentChatSession(data: {
     id: string;

@@ -208,10 +208,10 @@ export const createOpportunitiesService = (
   },
 
   /**
-   * Atomically accept a `pending` or `draft` opportunity and resolve the h2h
-   * conversation ID in one round-trip. Backs the Start Chat button on both
-   * ambient (pending) and orchestrator (draft) cards so the UI can navigate
-   * directly to the accepted human chat without a follow-up lookup.
+   * Atomically accept a pending opportunity and resolve the h2h
+   * conversation ID in one round-trip. Backs the Start Chat button so the
+   * UI can navigate directly to the accepted human chat without a follow-up
+   * lookup.
    *
    * Wraps POST /opportunities/:id/start-chat from Plan B Task 8.
    */

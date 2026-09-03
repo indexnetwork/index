@@ -630,9 +630,9 @@ export class OpportunityService {
   }
 
   /**
-   * Transition a `pending`/`draft` opportunity to `accepted` and surface the
+   * Transition a pending opportunity to `accepted` and surface the
    * h2h conversation to navigate to. Used by the frontend's "Start Chat"
-   * button on both ambient and orchestrator opportunity cards.
+   * button.
    *
    * **Step ordering is failure-safe, not wrapped in a single transaction.**
    * The four writes run in an order chosen so a partial failure never leaves
