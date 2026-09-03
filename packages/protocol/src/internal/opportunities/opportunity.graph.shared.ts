@@ -151,7 +151,7 @@ export function belongsToOwnedIntent(
 
 /**
  * IND-567: Cool-down window (ms) for cross-query rejection suppression.
- * Candidates with a recently rejected or stalled opportunity within this window
+ * Candidates with a recently rejected opportunity within this window
  * receive a similarity penalty during evaluation ranking. 7 days.
  */
 export const REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;

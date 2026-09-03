@@ -9,7 +9,7 @@ export const sourceType = pgEnum('source_type', ['integration', 'discovery_form'
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['negotiating', 'pending', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
@@ -17,6 +17,8 @@ export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node',
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
+export const negotiationOutcomeEnum = pgEnum('negotiation_outcome', ['agreed', 'declined', 'closed']);
+export const negotiationTurnActionEnum = pgEnum('negotiation_turn_action', ['propose', 'counter', 'accept', 'decline']);
 
 export interface OnboardingState {
   completedAt?: string;
@@ -383,7 +385,7 @@ export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
   reasoning: text('reasoning').notNull(),
   evidence: jsonb('evidence').$type<import('@indexnetwork/protocol').OpportunityEvidence[]>().notNull().default([]),
   status: discoveryMatchCandidateStatusEnum('status').notNull().default('pending'),
-  /** Set when this candidate became a row, by `createAndOpen`. */
+  /** Set when this candidate became a row, by `openCandidates`. */
   openedOpportunityId: text('opened_opportunity_id').references(() => opportunities.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -391,6 +393,48 @@ export const discoveryMatchCandidates = pgTable('discovery_match_candidates', {
   pairKeyIdx: uniqueIndex('discovery_match_candidates_pair_key_idx').on(table.pairKey),
   intentAIdx: index('discovery_match_candidates_intent_a_idx').on(table.intentA),
   intentBIdx: index('discovery_match_candidates_intent_b_idx').on(table.intentB),
+}));
+
+/**
+ * The negotiation between the two seats of one opportunity. Index is the
+ * server: both seats read this record and take turns against it, and Index
+ * computes the settlement from its own turn log.
+ */
+export const negotiations = pgTable('negotiations', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  opportunityId: text('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
+  initiatorUserId: text('initiator_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  initiatorIntentId: text('initiator_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  responderUserId: text('responder_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  responderIntentId: text('responder_intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
+  /** The seat whose turn it is. Null once settled; never a third value. */
+  awaitingUserId: text('awaiting_user_id').references(() => users.id, { onDelete: 'set null' }),
+  outcome: negotiationOutcomeEnum('outcome'),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  opportunityIdx: uniqueIndex('negotiations_opportunity_id_idx').on(table.opportunityId),
+  initiatorIntentIdx: index('negotiations_initiator_intent_idx').on(table.initiatorIntentId),
+  responderIntentIdx: index('negotiations_responder_intent_idx').on(table.responderIntentId),
+  awaitingIdx: index('negotiations_awaiting_user_idx').on(table.awaitingUserId),
+}));
+
+/**
+ * One structured decision from one seat. The unique index on
+ * `(negotiation_id, turn_index)` is the concurrency control: a seat racing
+ * its counterparty, or retrying, collides rather than appending twice.
+ */
+export const negotiationTurns = pgTable('negotiation_turns', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  negotiationId: text('negotiation_id').notNull().references(() => negotiations.id, { onDelete: 'cascade' }),
+  turnIndex: integer('turn_index').notNull(),
+  seatUserId: text('seat_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  action: negotiationTurnActionEnum('action').notNull(),
+  message: text('message').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  orderIdx: uniqueIndex('negotiation_turns_negotiation_turn_idx').on(table.negotiationId, table.turnIndex),
 }));
 
 export interface QuestionDetection {
@@ -498,13 +542,6 @@ export const intents = pgTable('intents', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
-  /**
-   * Written at every fresh kickoff batch for this intent. A fresh UUID per
-   * kickoff; null means this signal has never itself kicked off (#1494).
-   * Pairs with the negotiation task's `batchId` metadata: a batch has settled
-   * when none of its tasks are still active.
-   */
-  negotiationBatchId: text('negotiation_batch_id'),
   /**
    * When the intent's first background discovery run completed successfully
    * (any path: web discovery queue or async MCP discovery-run). Null until
@@ -632,7 +669,6 @@ export const agents = pgTable('agents', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
-  lastNegotiationPickupAt: timestamp('last_negotiation_pickup_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   runtimeKind: text('runtime_kind').$type<'hermes' | null>(),
   installationId: text('installation_id'),
@@ -645,7 +681,6 @@ export const agents = pgTable('agents', {
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
   lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
-  lastNegotiationPickupAtIdx: index('agents_last_negotiation_pickup_at_idx').on(table.lastNegotiationPickupAt),
   // One active personal negotiator row per owner. External (poller) and system
   // rows are unconstrained.
   uniquePersonalPerOwner: uniqueIndex('uniq_agents_personal_per_owner')
@@ -903,5 +938,9 @@ export type AgentTransport = typeof agentTransports.$inferSelect;
 export type NewAgentTransport = typeof agentTransports.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
+export type Negotiation = typeof negotiations.$inferSelect;
+export type NewNegotiation = typeof negotiations.$inferInsert;
+export type NegotiationTurn = typeof negotiationTurns.$inferSelect;
+export type NewNegotiationTurn = typeof negotiationTurns.$inferInsert;
 
 export * from './conversation.schema';

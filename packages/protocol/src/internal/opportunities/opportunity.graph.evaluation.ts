@@ -400,7 +400,7 @@ async function filterToActiveMemberships(
 /**
  * IND-567: Rejection cool-down penalty.
  *
- * Candidates with a recently rejected or stalled opportunity receive a
+ * Candidates with a recently rejected opportunity receive a
  * similarity penalty so they are ranked lower (and often pushed out of
  * the evaluation pool). This prevents cross-query re-surfacing of
  * false-positive matches that were already caught downstream.

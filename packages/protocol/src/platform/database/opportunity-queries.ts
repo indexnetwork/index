@@ -3,7 +3,7 @@
  */
 
 import type { OutcomeOutbox } from './capabilities.js';
-import type { CreateDiscoveryMatchCandidateData, CreateHydeDocumentData, CreateOpportunityData, DiscoveryMatchCandidate, HydeDocument, HydeSourceType, IntentScopedOpportunityPersistenceResult, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
+import type { CreateDiscoveryMatchCandidateData, CreateHydeDocumentData, CreateOpportunityData, DiscoveryMatchCandidate, HydeDocument, HydeSourceType, IntentScopedOpportunityPersistenceResult, OpenedNegotiation, Opportunity, OpportunityActor, OpportunityNetworkEligibility, OpportunityQueryOptions, OpportunityStatus } from './entities.js';
 
 /** HyDE document and opportunity persistence operations. */
 export interface DatabaseOpportunityQueries {
@@ -95,14 +95,15 @@ export interface DatabaseOpportunityQueries {
   ): Promise<DiscoveryMatchCandidate[]>;
 
   /**
-   * This signal's not-yet-opened pairs, oldest first, each carrying the name
-   * of the OTHER party — the caller renders these to a principal, and a row
-   * that names nobody cannot be numbered in a prompt.
+   * Turn every one of these candidates into an opportunity with a negotiation
+   * record beside it, and hand back the ones that were newly opened.
+   *
+   * There is no open decision to make: whether a match is worth pursuing is
+   * the initiator's first turn. Candidates already opened by the counterparty's
+   * discovery run are skipped, so the result is exactly the set the caller
+   * still owes a `negotiation.turn`.
    */
-  listPendingCandidatesForIntent(
-    userId: string,
-    intentId: string,
-  ): Promise<DiscoveryMatchCandidate[]>;
+  openCandidates(candidateIds: string[]): Promise<OpenedNegotiation[]>;
 
   /**
    * Atomically create only while every actor still has an active membership on
@@ -315,7 +316,7 @@ export interface DatabaseOpportunityQueries {
    * IND-567 Rejection cool-down: returns the subset of `candidateUserIds` that
    * have at least one non-draft opportunity with `discovererId` whose `updatedAt`
    * falls within the last `windowMs` milliseconds AND whose status is `rejected`
-   * or `stalled`. Used by the evaluation node to apply a score penalty before
+   * `rejected`. Used by the evaluation node to apply a score penalty before
    * sending candidates to the LLM, suppressing cross-query re-surfacing of
    * recently-rejected pairs.
    *
@@ -325,7 +326,7 @@ export interface DatabaseOpportunityQueries {
    * @param discovererId - User running discovery
    * @param candidateUserIds - Candidate user IDs to check (may be empty — return [])
    * @param windowMs - Look-back window in milliseconds
-   * @returns Candidate user IDs (subset of input) with a recent rejected/stalled opp
+   * @returns Candidate user IDs (subset of input) with a recent rejected opp
    */
   getRecentlyRejectedOpportunityCounterparties?(
     discovererId: string,

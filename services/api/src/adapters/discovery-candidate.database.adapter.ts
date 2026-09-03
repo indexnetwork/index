@@ -5,16 +5,19 @@
  * is the whole dedup story: two discovery runs over the same two intents
  * converge on one row, so nothing downstream has to reconcile duplicates.
  */
-import { and, asc, db, discoveryMatchCandidates, eq, inArray, networkMembers, opportunities, or, sql, users } from './database.shared';
+import { and, db, discoveryMatchCandidates, eq, inArray, negotiations, networkMembers, opportunities, sql } from './database.shared';
 
 /**
- * API-local structural twin of protocol's `CreateAndOpenResult`. Adapters must
+ * API-local structural twin of protocol's `OpenedNegotiation`. Adapters must
  * not import protocol interfaces; TypeScript verifies compatibility where the
  * opportunity port is composed.
  */
-export type CreateAndOpenResult =
-  | { status: 'created' | 'existing'; opportunityId: string }
-  | { status: 'raced' | 'failed'; reason: string };
+export interface OpenedNegotiation {
+  opportunityId: string;
+  negotiationId: string;
+  initiatorUserId: string;
+  initiatorIntentId: string;
+}
 
 type CandidateRow = typeof discoveryMatchCandidates.$inferSelect;
 
@@ -71,75 +74,58 @@ export class DiscoveryCandidateDatabaseAdapter {
   }
 
   /**
-   * This signal's not-yet-opened pairs, oldest first.
+   * Turn every candidate into an opportunity with a negotiation beside it, and
+   * report the ones newly opened.
    *
-   * Oldest-first is a contract, not a preference: the caller numbers this list
-   * in a prompt and resolves a tool call back to a position, so a new arrival
-   * must append rather than renumber what the agent already read.
+   * NEVER THROWS PER CANDIDATE. One pair that cannot be opened — a revoked
+   * membership, a lost race — must not cost the rest of the run its results,
+   * so each is its own transaction and a failure is skipped rather than
+   * raised.
+   *
+   * @param candidateIds - Candidates to open.
+   * @returns One entry per candidate that became a new opportunity.
    */
-  async listPendingCandidatesForIntent(userId: string, intentId: string) {
-    const rows = await db
-      .select()
-      .from(discoveryMatchCandidates)
-      .where(and(
-        eq(discoveryMatchCandidates.status, 'pending'),
-        or(
-          eq(discoveryMatchCandidates.intentA, intentId),
-          eq(discoveryMatchCandidates.intentB, intentId),
-        ),
-      ))
-      .orderBy(asc(discoveryMatchCandidates.createdAt), asc(discoveryMatchCandidates.id));
-
-    // The counterparty is whichever side is not the caller. One lookup, not
-    // one per row.
-    const otherIds = [...new Set(rows.map((row) => row.userA === userId ? row.userB : row.userA))];
-    const names = otherIds.length === 0 ? [] : await db
-      .select({ id: users.id, name: users.name })
-      .from(users)
-      .where(inArray(users.id, otherIds));
-    const nameById = new Map(names.map((row) => [row.id, row.name]));
-
-    return rows.map((row) => ({
-      ...toCandidate(row),
-      counterpartName: nameById.get(row.userA === userId ? row.userB : row.userA),
-    }));
+  async openCandidates(candidateIds: string[]): Promise<OpenedNegotiation[]> {
+    const opened: OpenedNegotiation[] = [];
+    for (const candidateId of candidateIds) {
+      const result = await this.open(candidateId);
+      if (result) opened.push(result);
+    }
+    return opened;
   }
 
   /**
-   * Turn a candidate into an opportunity and hand back its id.
-   *
-   * RETURNS, NEVER THROWS. This runs below the kickoff round bump, where the
-   * turn has already written a principal-visible strategy message and opened
-   * a round — a throw here would be retried into a second of each. The caller
-   * compensates on `failed`.
+   * Open one candidate.
    *
    * The advisory lock is on the PAIR, not the candidate. Both principals'
-   * agents wake on the same candidate and can reach this at the same moment;
-   * the second one through must find the first one's row rather than write a
-   * second opportunity between the same two people.
+   * discovery runs can reach this at the same moment; the second one through
+   * must find the first one's row rather than write a second opportunity
+   * between the same two people.
+   *
+   * The initiator is side A — whichever side's run recorded the pair. It owes
+   * the first turn, and its first turn is the decision to pursue or drop.
+   *
+   * @param candidateId - The candidate to materialize.
+   * @returns The opened negotiation, or null when it was already open or could not be opened.
    */
-  async createAndOpen(candidateId: string): Promise<CreateAndOpenResult> {
+  private async open(candidateId: string): Promise<OpenedNegotiation | null> {
     try {
       return await db.transaction(async (tx) => {
-        const [candidate] = await tx.select().from(discoveryMatchCandidates)
+        const [found] = await tx.select().from(discoveryMatchCandidates)
           .where(eq(discoveryMatchCandidates.id, candidateId)).limit(1);
-        if (!candidate) return { status: 'failed', reason: 'candidate_not_found' } as const;
+        if (!found) return null;
 
         await tx.execute(sql`
           SELECT pg_advisory_xact_lock(
-            hashtextextended(${`opportunity-pair:${candidate.pairKey}`}, 0)
+            hashtextextended(${`opportunity-pair:${found.pairKey}`}, 0)
           )
         `);
 
         // Re-read under the lock: the other side may have opened this pair
         // between the read above and the lock being granted.
-        const [locked] = await tx.select().from(discoveryMatchCandidates)
+        const [candidate] = await tx.select().from(discoveryMatchCandidates)
           .where(eq(discoveryMatchCandidates.id, candidateId)).limit(1);
-        if (locked?.status === 'opened') {
-          return locked.openedOpportunityId
-            ? { status: 'existing', opportunityId: locked.openedOpportunityId } as const
-            : { status: 'raced', reason: 'pair_opened_without_row' } as const;
-        }
+        if (!candidate || candidate.status === 'opened') return null;
 
         // Both parties must still be on the network. The persist node used to
         // hold this (createOpportunityIfNetworkEligible); the row is born here
@@ -152,9 +138,7 @@ export class DiscoveryCandidateDatabaseAdapter {
             inArray(networkMembers.userId, [candidate.userA, candidate.userB]),
           ));
         const present = new Set(members.map((row) => row.userId));
-        if (!present.has(candidate.userA) || !present.has(candidate.userB)) {
-          return { status: 'failed', reason: 'participant_left_network' } as const;
-        }
+        if (!present.has(candidate.userA) || !present.has(candidate.userB)) return null;
 
         const score = Number(candidate.score);
         const [row] = await tx.insert(opportunities).values({
@@ -182,16 +166,32 @@ export class DiscoveryCandidateDatabaseAdapter {
           updatedAt: new Date(),
           metadata: { evidence: candidate.evidence ?? [] },
         } as never).returning();
-        if (!row) return { status: 'failed', reason: 'insert_returned_no_row' } as const;
+        if (!row) return null;
+
+        const [negotiation] = await tx.insert(negotiations).values({
+          opportunityId: row.id,
+          initiatorUserId: candidate.userA,
+          initiatorIntentId: candidate.intentA,
+          responderUserId: candidate.userB,
+          responderIntentId: candidate.intentB,
+          awaitingUserId: candidate.userA,
+          updatedAt: new Date(),
+        }).returning();
+        if (!negotiation) return null;
 
         await tx.update(discoveryMatchCandidates)
           .set({ status: 'opened', openedOpportunityId: row.id, updatedAt: new Date() })
           .where(eq(discoveryMatchCandidates.id, candidateId));
 
-        return { status: 'created', opportunityId: row.id } as const;
+        return {
+          opportunityId: row.id,
+          negotiationId: negotiation.id,
+          initiatorUserId: candidate.userA,
+          initiatorIntentId: candidate.intentA,
+        };
       });
-    } catch (error) {
-      return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+    } catch {
+      return null;
     }
   }
 }

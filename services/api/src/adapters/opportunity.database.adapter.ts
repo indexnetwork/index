@@ -3,9 +3,8 @@ import { emitOpportunityLifecycleBestEffort, emitOpportunityTransitionBestEffort
 import { computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { computeOutcomeCounterpartDedupKey, computeOutcomeIdempotencyKey, computeOutcomeSnapshotHash } from '../lib/opportunity/outcome-feedback.identity';
 import { acquireIntentScopeAdvisoryLock } from './intent-scope.atomic';
-import { acquireNegotiationAttemptLock, qualifyingActiveNegotiationTaskWhere } from './negotiation-attempt.atomic';
-import { runTasklessNegotiationReactivation } from './negotiation-reactivation.atomic';
-import { exactEvidencePoolWhere, exactLivePoolWhere } from './poolquery.shared';
+import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
+import { exactLivePoolWhere } from './poolquery.shared';
 
 interface OpportunityNetworkEligibilityInput {
   ownerUserId: string;
@@ -643,28 +642,30 @@ export class OpportunityDatabaseAdapter {
         return row ? toOpportunityRow(row) : null;
       };
 
+      // Reactivating out of `negotiating` races the negotiation itself: lock
+      // the row, then refuse while the negotiation attached to it is still
+      // unsettled.
       if (expectedStatus === 'negotiating') {
-        return runTasklessNegotiationReactivation({
-          acquireAttemptLock: () => acquireNegotiationAttemptLock(tx, id),
-          validateEligibility,
-          lockOpportunity: async () => {
-            const [opportunity] = await tx
-              .select({ status: opportunities.status })
-              .from(opportunities)
-              .where(eq(opportunities.id, id))
-              .for('update');
-            return opportunity ?? null;
-          },
-          hasFreshNegotiationTask: async () => {
-            const [task] = await tx
-              .select({ id: schema.tasks.id })
-              .from(schema.tasks)
-              .where(qualifyingActiveNegotiationTaskWhere(id))
-              .limit(1);
-            return Boolean(task);
-          },
-          reactivate,
-        });
+        if (!await validateEligibility()) return null;
+
+        const [locked] = await tx
+          .select({ status: opportunities.status })
+          .from(opportunities)
+          .where(eq(opportunities.id, id))
+          .for('update');
+        if (locked?.status !== 'negotiating') return null;
+
+        const [live] = await tx
+          .select({ id: schema.negotiations.id })
+          .from(schema.negotiations)
+          .where(and(
+            eq(schema.negotiations.opportunityId, id),
+            isNull(schema.negotiations.settledAt),
+          ))
+          .limit(1);
+        if (live) return null;
+
+        return reactivate();
       }
 
       return await validateEligibility() ? reactivate() : null;
@@ -861,25 +862,6 @@ export class OpportunityDatabaseAdapter {
     return rows.map(toOpportunityRow);
   }
 
-  /**
-   * Lens-C-only (IND-465): the exact recipient+intent pool INCLUDING terminal
-   * statuses ('stalled','accepted','rejected','expired') — negotiation
-   * evidence lives on decided negotiations. Lens A discriminator mining must
-   * keep using {@link getLivePoolOpportunitiesForIntent}.
-   */
-  async getEvidencePoolOpportunitiesForIntent(
-    recipientUserId: string,
-    intentId: string,
-  ): Promise<OpportunityRow[]> {
-    const rows = await db
-      .select()
-      .from(opportunities)
-      .where(exactEvidencePoolWhere(recipientUserId, intentId))
-      .orderBy(desc(opportunities.createdAt));
-    return rows.map(toOpportunityRow);
-  }
-
-
   async getOpportunitiesForNetwork(
     networkId: string,
     options?: { status?: string; statuses?: string[]; actorUserId?: string; limit?: number; offset?: number }
@@ -919,7 +901,7 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
@@ -971,7 +953,7 @@ export class OpportunityDatabaseAdapter {
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,
-    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: AtomicOutcomeOutbox,
   ): Promise<OpportunityRow | null> {
@@ -1203,8 +1185,8 @@ export class OpportunityDatabaseAdapter {
     actorIds: string[],
     options?: {
       includeIntroducers?: boolean;
-      statuses?: ('negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
-      excludeStatuses?: ('negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+      statuses?: ('negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[];
+      excludeStatuses?: ('negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[];
     }
   ): Promise<OpportunityRow[]> {
     if (actorIds.length === 0) return [];
@@ -1240,8 +1222,7 @@ export class OpportunityDatabaseAdapter {
   /**
    * IND-567 Rejection cool-down: returns the subset of `candidateUserIds` that
    * have at least one non-draft opportunity with `discovererId` whose `updatedAt`
-   * falls within the last `windowMs` milliseconds AND whose status is `rejected`
-   * or `stalled`.
+   * falls within the last `windowMs` milliseconds AND whose status is `rejected`.
    *
    * Used by the opportunity-graph evaluation node to apply a similarity penalty
    * before sending candidates to the LLM, preventing cross-query re-surfacing of
@@ -1255,13 +1236,13 @@ export class OpportunityDatabaseAdapter {
     if (candidateUserIds.length === 0) return [];
     const cutoff = new Date(Date.now() - windowMs);
     // Find non-draft opps that include discovererId as an actor,
-    // have been updated within the window, and are in rejected or stalled status.
+    // have been updated within the window, and are in rejected status.
     const rows = await db
       .select({ actors: opportunities.actors })
       .from(opportunities)
       .where(
         and(
-          inArray(opportunities.status, ['rejected', 'stalled']),
+          inArray(opportunities.status, ['rejected']),
           gte(opportunities.updatedAt, cutoff),
           // Discoverer must be an actor
           sql`EXISTS (
@@ -1350,6 +1331,7 @@ export class OpportunityDatabaseAdapter {
         )
       )
       .returning({ id: opportunities.id });
+    await negotiationDatabaseAdapter.closeForOpportunities(updated.map((row) => row.id));
     for (const row of updated) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return updated.length;
   }

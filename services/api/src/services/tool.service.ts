@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 
-import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase, conversationDatabaseAdapter } from '../adapters/database.adapter';
+import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
@@ -60,7 +60,6 @@ export class ToolService {
       embedder: this.embedder,
       cache: this.cache,
       enricher: { enrichUserProfile },
-      negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
       // IND-593: direct authenticated-owner tool calls (REST tool controller /
       // CLI) traverse the owner-approval boundary via host attestation. Own
       // authority instance over the store shared with the MCP composition.

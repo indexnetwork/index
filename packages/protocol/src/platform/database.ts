@@ -21,5 +21,5 @@ export type * from './database/network-queries.js';
 export type * from './database/opportunity-queries.js';
 export type * from './database/member-queries.js';
 export type * from './database/port.js';
-export type * from './database/negotiation.js';
 export type * from './database/capabilities.js';
+export type * from './database/negotiation.js';

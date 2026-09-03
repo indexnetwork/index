@@ -1128,6 +1128,34 @@
       "when": 1788034636046,
       "tag": "0163_drop_dead_agent_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1788034636048,
+      "tag": "0164_negotiations",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1788034636050,
+      "tag": "0165_drop_stalled_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1788034636052,
+      "tag": "0166_agent_dm_intent_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1788034636054,
+      "tag": "0167_drop_tasks_and_artifacts",
+      "breakpoints": true
     }
   ]
 }

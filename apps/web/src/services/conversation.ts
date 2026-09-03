@@ -2,79 +2,10 @@
  * Conversation service — typed API client for the conversations endpoints.
  */
 
-/** A negotiation task's lifecycle, including the queued state before its worker starts. */
-export type NegotiationTaskState = 'submitted' | 'working' | 'paused' | 'completed';
-
-/**
- * Every reason the protocol may pause a negotiation on — the wire vocabulary,
- * defined once for the whole app. A member missing here is not a type error
- * anywhere: the value still arrives, and each consumer renders it as whatever
- * its own default branch happens to say.
- */
-export const NEGOTIATION_PAUSE_REASONS = [
-  'counterparty_silent',
-  'needs_principal',
-  'ready_for_verdict',
-  'turn_cap',
-  'open_failed',
-] as const;
-export type NegotiationPauseReason = (typeof NEGOTIATION_PAUSE_REASONS)[number];
-
-export type NegotiationOpportunityStatus =
-  | 'negotiating'
-  | 'pending'
-  | 'stalled'
-  | 'accepted'
-  | 'rejected'
-  | 'expired';
-
-export interface ConversationNegotiationLifecycle {
-  taskId: string;
-  state: NegotiationTaskState;
-  /** Set only when `state === 'paused'`. */
-  pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
-  statusTimestamp: string | null;
-  opportunityId: string | null;
-  opportunityStatus: NegotiationOpportunityStatus | null;
-  acceptedByViewer: boolean;
-  turnCount: number;
-  signalCount: number;
-  updatedAt: string;
-  /**
-   * IND-610: the owner-facing outreach-gate decision, named-field projected by
-   * the API. Present only when the viewer is the negotiation's initiator —
-   * never populated for a non-owner viewer, even for `screened_out`
-   * negotiations that are otherwise visible in a mutual conversation.
-   *
-   * `source` distinguishes the two refusals that collapse into the same
-   * `screened_out` outcome: `outcome` (the agent refused on its opening turn,
-   * so only reasoning exists) and `screen` — READ-ONLY HISTORY, the outreach
-   * gate that wrote `evidence.*` is gone, but rows from before its removal
-   * still project one.
-   */
-  screenDecision?: {
-    source: 'screen' | 'outcome';
-    decision: 'reach_out' | 'pass';
-    reasoning: string;
-    intentAlignment: string | null;
-    screenedAt: string | null;
-  } | null;
-}
-
-/** A viewer-visible opportunity and the exact negotiation task that owns its session. */
-export interface ConversationNegotiationOpportunity extends Omit<ConversationNegotiationLifecycle, 'taskId' | 'opportunityId' | 'opportunityStatus' | 'statusTimestamp' | 'screenDecision'> {
-  intentId: string;
-  title: string;
-  taskId: string;
-  opportunityId: string;
-  opportunityStatus: NegotiationOpportunityStatus | null;
-}
-
 export interface ConversationSummary {
   id: string;
   participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
-  /** The task session that produced the latest message, when it has one. */
-  lastMessage: { parts: unknown[]; senderId: string; createdAt: string; taskId?: string | null } | null;
+  lastMessage: { parts: unknown[]; senderId: string; createdAt: string } | null;
   metadata: { title?: string; shareToken?: string } | null;
   /** Viewer-scoped opportunity signal provenance, latest first. */
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
@@ -82,13 +13,6 @@ export interface ConversationSummary {
   unreadCount: number;
   lastMessageAt: string | null;
   createdAt: string;
-  /**
-   * The task session that represents this A2A conversation to the viewer: the
-   * most alive session with that counterparty, newest only within a liveness
-   * tier. A pending approval is never shadowed by a later screened-out pairing.
-   */
-  negotiation?: ConversationNegotiationLifecycle | null;
-  negotiationOpportunities?: ConversationNegotiationOpportunity[];
 }
 
 export interface ConversationMessage {
@@ -98,27 +22,9 @@ export interface ConversationMessage {
   role: 'user' | 'agent';
   /** Durable conversation-session binding for sectioned history reads. */
   sessionId?: string | null;
-  /** Negotiation task that owns this durable A2A turn, when applicable. */
-  taskId?: string | null;
   parts: unknown[];
   metadata?: Record<string, unknown>;
   createdAt: string;
-}
-
-/** One authenticated owner's bound seat, regardless of intent or task state. */
-export interface NegotiationTaskIndexEntry {
-  intentId: string;
-  intentLabel: string;
-  taskId: string;
-  conversationId: string;
-  opportunityId: string;
-  opportunityStatus: NegotiationOpportunityStatus;
-  counterpartLabel: string;
-  batchId: string | null;
-  state: NegotiationTaskState;
-  pause: { reason: NegotiationPauseReason; by: 'yours' | 'theirs' | null } | null;
-  latestActivity: { actor: 'yours' | 'theirs'; verb: string | null; createdAt: string | null };
-  updatedAt: string;
 }
 
 export const createConversationService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
@@ -126,17 +32,6 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   getConversations: async (): Promise<ConversationSummary[]> => {
     const response = await api.get<{ conversations: ConversationSummary[] }>('/conversations');
     return response.conversations;
-  },
-
-  /** List A2A negotiation conversations for the authenticated user. */
-  getNegotiations: async (): Promise<ConversationSummary[]> => {
-    const response = await api.get<{ conversations: ConversationSummary[] }>('/conversations/negotiations');
-    return response.conversations;
-  },
-
-  getNegotiationTaskIndex: async (): Promise<NegotiationTaskIndexEntry[]> => {
-    const response = await api.get<{ entries: NegotiationTaskIndexEntry[] }>('/conversations/negotiations/task-index');
-    return response.entries;
   },
 
   /** Create a new conversation. */

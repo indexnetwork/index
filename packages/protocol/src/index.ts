@@ -34,7 +34,6 @@ export { getToolTimeoutPolicy, invokeToolRuntime, toolRuntimeErrorToResult } fro
 
 export type { McpAuthResolver } from "./platform/auth/ports.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
-export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
 export type {
   CompositeToolDatabase,
   UserDatabase,
@@ -56,6 +55,10 @@ export type {
   IntentProposalRecord,
   ReviseIntentProposalInput,
   ConfirmProposalResult,
+  NegotiationContextDatabase,
+  NegotiationContextRecord,
+  NegotiationContextOutcome,
+  NegotiationContextTurn,
 } from "./platform/database.js";
 export type { Embedder, VectorStoreOption, VectorSearchResult, HydeCandidate, HydeSearchOptions, LensEmbedding } from "./platform/discovery/embedder.js";
 export type { IntentFollowUp } from "./platform/runtime/follow-up.js";
@@ -172,37 +175,6 @@ export type {
  * describe rows a previous release wrote, and the opportunity surfaces read
  * them for Radar and presentation. Nothing in the protocol authors a turn.
  */
-export {
-  NEGOTIATION_CONTINUE_VERBS,
-  NEGOTIATION_PAUSE_REASONS,
-  NegotiationTurnSchema,
-  NegotiationContinueTurnSchema,
-  NegotiationPauseTurnSchema,
-  NegotiationAuthoredTurnSchema,
-  NegotiationOpeningTurnSchema,
-  NegotiationVerdictSchema,
-  isPauseTurn,
-} from "./internal/negotiations/negotiation.turn.js";
-export type {
-  NegotiationTurn,
-  NegotiationContinueVerb,
-  NegotiationPauseReason,
-  NegotiationPauseTurn,
-  NegotiationContinueTurn,
-  NegotiationAuthoredTurn,
-  NegotiationVerdict,
-  NegotiationNeedsPrincipalPayload,
-  NegotiationReadyForVerdictPayload,
-} from "./internal/negotiations/negotiation.turn.js";
-export type {
-  NegotiationGraphDatabase,
-  NegotiationTaskRow,
-  NegotiationTaskMetadata,
-  NegotiationSeatBinding,
-  NegotiationTaskState,
-  NegotiationMessageRow,
-} from "./platform/database/negotiation.js";
-
 // ─── Opportunity compatibility exports ─────────────────────────────────────
 /**
  * opportunity — the capability's sole cross-capability surface.
@@ -222,10 +194,10 @@ export {
 } from "./internal/opportunities/opportunity.candidates.js";
 export type { OpportunityEvidence } from "./protocol/schemas/network-assignment.schema.js";
 export type {
-  CreateAndOpenResult,
   CreateDiscoveryMatchCandidateData,
   DiscoveryMatchCandidate,
   DiscoveryMatchCandidateStatus,
+  OpenedNegotiation,
 } from "./internal/opportunities/opportunity.candidates.js";
 export {
   opportunityOwnerActionForStatus,
@@ -304,22 +276,6 @@ export {
   selectByComposition,
   validateOpportunityActors,
 } from "./internal/opportunities/opportunity.utils.js";
-export {
-  NEGOTIATION_EVIDENCE_MAX_OPPORTUNITIES,
-  NEGOTIATION_EVIDENCE_QUESTIONS_MODE,
-} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.env.js";
-export {
-  NegotiationEvidenceMiner,
-} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.miner.js";
-export {
-  runNegotiationEvidenceShadow,
-} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.shadow.js";
-export type {
-  RawEvidenceOutcome,
-  RawEvidenceOwnerAnswer,
-  RawEvidenceSegment,
-  RawEvidenceTurn,
-} from "./internal/opportunities/negotiation-evidence/negotiation-evidence.types.js";
 export {
   isOutcomeQuestionsActivated,
   OUTCOME_MAX_CANDIDATES,

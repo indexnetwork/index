@@ -36,9 +36,9 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
   try {
     const tables = [
       'intent_networks',
-      'artifacts',
       'messages',
-      'tasks',
+      'negotiation_turns',
+      'negotiations',
       'conversation_metadata',
       'conversation_participants',
       'conversations',

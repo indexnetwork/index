@@ -22,8 +22,8 @@ export function pairKeyOf(networkId: string, intentA: string, intentB: string): 
 }
 
 export type {
-  CreateAndOpenResult,
   CreateDiscoveryMatchCandidateData,
   DiscoveryMatchCandidate,
   DiscoveryMatchCandidateStatus,
+  OpenedNegotiation,
 } from '../../platform/database.js';

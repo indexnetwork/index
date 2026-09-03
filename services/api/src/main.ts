@@ -11,6 +11,7 @@ import { NetworkRequestController } from './controllers/network-request.controll
 import { IntentController } from './controllers/intent.controller';
 import { IntentIntakeController } from './controllers/intent-intake.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
+import { NegotiationController } from './controllers/negotiation.controller';
 import { AuthController } from './controllers/auth.controller';
 import { EnrichmentController } from './controllers/enrichment.controller';
 import { UserController } from './controllers/user.controller';
@@ -23,7 +24,6 @@ import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
 import { NotificationService } from './services/notification.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
-import { TaskService } from './services/task.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
 import { OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
@@ -156,10 +156,11 @@ controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(IntentIntakeController, new IntentIntakeController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
+controllerInstances.set(NegotiationController, new NegotiationController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());
-controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
+controllerInstances.set(ConversationController, new ConversationController(new ConversationService()));
 controllerInstances.set(
   NotificationController,
   new NotificationController(new NotificationService(), notificationDeliveryService),

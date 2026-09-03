@@ -1,9 +1,10 @@
 /**
- * Discovery pipeline, terminal stage: emit candidates.
+ * Discovery pipeline, terminal stage: record the pairs and open them.
  *
- * Replaces the persist node. Discovery no longer creates opportunities — it
- * records the pairs it found, keyed by `pairKey`; opening one is a separate
- * decision.
+ * Every pair becomes an opportunity with a negotiation record beside it. There
+ * is no separate open decision: whether a match is worth pursuing is the
+ * initiator's first turn, `propose` or `decline`, and a decline costs one model
+ * turn and reaches no human.
  *
  * There is no dedup here, deliberately. The ~600 lines that used to live in
  * the persist node — the 30-day window, same-intent-pair suppression, latent
@@ -23,7 +24,7 @@ export async function emitCandidatesNode(state: OpportunityState, deps: Opportun
   return timed('OpportunityGraph.emitCandidates', async () => {
     if (state.evaluatedOpportunities.length === 0) {
       persistLog.verbose('No candidates to emit', { triggerIntentId: state.triggerIntentId });
-      return { candidatesEmitted: [] };
+      return { candidatesEmitted: [], opened: [] };
     }
 
     const items: CreateDiscoveryMatchCandidateData[] = [];
@@ -67,20 +68,23 @@ export async function emitCandidatesNode(state: OpportunityState, deps: Opportun
       });
     }
 
-    if (items.length === 0) return { candidatesEmitted: [] };
+    if (items.length === 0) return { candidatesEmitted: [], opened: [] };
 
     const candidatesEmitted = await deps.database.upsertDiscoveryMatchCandidates(items);
-    persistLog.info('Emitted discovery candidates', {
+    const opened = await deps.database.openCandidates(candidatesEmitted.map((candidate) => candidate.id));
+    persistLog.info('Emitted and opened discovery candidates', {
       triggerIntentId: state.triggerIntentId,
       count: candidatesEmitted.length,
+      opened: opened.length,
     });
 
     return {
       candidatesEmitted,
+      opened,
       trace: [{
         node: 'emit_candidates',
-        detail: `Emitted ${candidatesEmitted.length} candidate(s)`,
-        data: { count: candidatesEmitted.length },
+        detail: `Opened ${opened.length} of ${candidatesEmitted.length} candidate(s)`,
+        data: { count: candidatesEmitted.length, opened: opened.length },
       }],
     };
   });
@@ -88,6 +92,8 @@ export async function emitCandidatesNode(state: OpportunityState, deps: Opportun
 
 /** Trace summary for {@link emitCandidatesNode}. */
 export function emitCandidatesTraceSummary(result: unknown): string | undefined {
-  const emitted = (result as Record<string, unknown>)?.candidatesEmitted as unknown[] | undefined;
-  return emitted ? `Emitted ${emitted.length} candidate(s)` : undefined;
+  const record = result as Record<string, unknown> | undefined;
+  const emitted = record?.candidatesEmitted as unknown[] | undefined;
+  const opened = record?.opened as unknown[] | undefined;
+  return emitted ? `Opened ${opened?.length ?? 0} of ${emitted.length} candidate(s)` : undefined;
 }

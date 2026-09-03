@@ -20,6 +20,32 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 45.0.0 - 2026-09-03
+
+### Added
+
+- **`NegotiationContextDatabase`** (`platform/database/negotiation.ts`), with
+  `NegotiationContextRecord`, `NegotiationContextTurn` and
+  `NegotiationContextOutcome`. The host reads one negotiation record and its
+  turn log; the loader turns that into the prompt block and the negotiating
+  chip. It replaces every task-shaped read the old loader performed.
+- **`OpportunityGraphDatabase.openCandidates`** returns `OpenedNegotiation[]`.
+  Discovery now opens the opportunity and its negotiation record together, so
+  the graph never leaves a scored candidate without a record to negotiate in.
+
+### Removed
+
+- **BREAKING: `NegotiationGraphDatabase` is gone**, along with
+  `NegotiationTurnSchema`, the `negotiation-evidence` module and its exports,
+  the negotiation digest schema, and `CreateAndOpenResult`. Index is the server
+  for a negotiation: it validates turn order, appends the turn and computes the
+  settlement, so there is no in-process graph left to give a port.
+- **BREAKING: `listPendingCandidatesForIntent` is replaced by `openCandidates`**
+  on the discovery database port.
+- **BREAKING: `'stalled'` is gone from `OpportunityStatus`.** It was the
+  turn-cap outcome of the A2A task loop; the negotiation record has two
+  outcomes and a close, so nothing produces it.
+
 ## 44.0.0 - 2026-09-03
 
 ### Removed

@@ -13,7 +13,6 @@ const STATUS_BUCKETS: Record<OpportunityLifecycleStatus, RadarBucket> = {
   draft: "waiting",
   pending: "needs-you",
   negotiating: "waiting",
-  stalled: "closed",
   accepted: "connected",
   rejected: "closed",
   expired: "closed",

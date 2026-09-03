@@ -6,8 +6,6 @@ import { createOpportunityGraphDb, runOpportunityDiscovery, type OpportunityGrap
 import { buildIntentDiscoveryTrigger, type DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
 export type { DiscoveryGraphInvokeOptions } from './discovery-trigger.builders';
 import { createIntentDiscoveryLock, type IntentDiscoveryLock } from './discovery.intent-lock';
-import { maybeRunNegotiationEvidenceShadow } from '../negotiation/negotiation-evidence.shadow';
-
 /**
  * Same-intent overlap guard (see discovery.intent-lock.ts). The lock outlives
  * any plausible scan so it never lapses mid-run, yet a worker that dies
@@ -257,16 +255,6 @@ export class IntentDiscovery {
       // of conversations the run actually started.
       conversationsStartedCount: summary.opportunitiesCreated,
     } : undefined);
-
-    // Lens C negotiation-evidence shadow (IND-433): fire-and-forget on its
-    // own flag. Formerly triggered through the pool-discriminator mining hook;
-    // the mining pass and its question enqueue are retired
-    // (conversational-questions plan, "Retirements").
-    void maybeRunNegotiationEvidenceShadow({
-      source: 'discovery_run',
-      userId,
-      intentId,
-    }).catch(() => {});
   }
 
   /** Resolve the assignment + current-membership intersection used for both admission and stamping. */

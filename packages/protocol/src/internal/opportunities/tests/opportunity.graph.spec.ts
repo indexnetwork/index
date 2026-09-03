@@ -129,7 +129,6 @@ function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabase {
     getUserContexts: async () => [],
     searchIntentsByContextEmbedding: async () => [],
     getHydeDocumentsForSource: async () => [],
-    getNegotiationTaskForOpportunity: async () => null,
   };
 }
 
@@ -222,7 +221,6 @@ function createMockGraph(deps?: {
     getIntent: () => Promise.resolve(null),
     getIntentIndexScores: async () => [],
     getNetworkMemberContext: async () => null,
-    getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
     getUserContexts: async () => [],
   };
@@ -319,7 +317,6 @@ function createMockGraphWithFnOverrides(deps?: {
     getIntent: () => Promise.resolve(null),
     getIntentIndexScores: async () => [],
     getNetworkMemberContext: async () => null,
-    getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
     getUserContexts: async () => [],
   };
@@ -1286,7 +1283,6 @@ describe('Opportunity Graph', () => {
         getIntent: () => Promise.resolve(null),
         getIntentIndexScores: async () => [],
         getNetworkMemberContext: async () => null,
-        getNegotiationTaskForOpportunity: async () => null,
         stampOpportunityActorAction: async () => null,
       };
 
@@ -1496,7 +1492,6 @@ function createTraceMockGraph(explainerOverride?: MatchExplainerLike) {
     getIntent: () => Promise.resolve(null),
     getIntentIndexScores: async () => [],
     getNetworkMemberContext: async () => null,
-    getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
     getUserContexts: async () => [],
   };

@@ -12,6 +12,7 @@ import { createOpportunitiesService } from '@/services/opportunities';
 import { createConversationService } from '@/services/conversation';
 import { createApiKeysService } from '@/services/api-keys';
 import { createAgentsService } from '@/services/agents';
+import { createNegotiationService } from '@/services/negotiations';
 
 export interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
@@ -26,6 +27,7 @@ export interface APIContextType {
   conversationService: ReturnType<typeof createConversationService>;
   apiKeysService: ReturnType<typeof createApiKeysService>;
   agentsService: ReturnType<typeof createAgentsService>;
+  negotiationService: ReturnType<typeof createNegotiationService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -46,6 +48,7 @@ export function APIProvider({ children }: { children: ReactNode }) {
     conversationService: createConversationService(api),
     apiKeysService: createApiKeysService(api),
     agentsService: createAgentsService(api),
+    negotiationService: createNegotiationService(api),
   }), [api]);
 
   return (
@@ -121,4 +124,9 @@ export function useApiKeys() {
 export function useAgents() {
   const { agentsService } = useAPI();
   return agentsService;
+}
+
+export function useNegotiations() {
+  const { negotiationService } = useAPI();
+  return negotiationService;
 }

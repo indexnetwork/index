@@ -3,9 +3,9 @@ import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Loader2, ArrowLeft, Bot, Handshake, TrendingUp, Clock, KeyRound, Shield, Plus, Trash2, Copy, Check, ChevronDown, ChevronRight, Send } from "lucide-react";
+import { Loader2, ArrowLeft, Bot, KeyRound, Shield, Plus, Trash2, Copy, Check, ChevronDown, ChevronRight, Send } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useAgents, useUsers } from "@/contexts/APIContext";
+import { useAgents } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { buildMcpConfigs } from "@/lib/mcp-config";
 import ClientLayout from "@/components/ClientLayout";
@@ -17,7 +17,6 @@ import UserAvatar from "@/components/UserAvatar";
 import NegotiationHistory from "@/components/NegotiationHistory";
 import { AlphaBadge } from "@/components/AlphaBadge";
 import type { Agent, AgentTokenInfo } from "@/services/agents";
-import type { NegotiationInsights } from "@/services/users";
 
 const SYSTEM_AGENT_IDS = {
   negotiator: "00000000-0000-0000-0000-000000000002",
@@ -32,51 +31,6 @@ const PERMISSION_LABELS: Record<string, string> = {
   "manage:opportunities": "Opportunities",
   "manage:negotiations": "Negotiations",
 };
-
-const ROLE_LABELS: Record<string, string> = {
-  Helper: "Helper",
-  Seeker: "Seeker",
-  Peer: "Peer",
-};
-
-function StatCard({
-  label,
-  value,
-  icon,
-  sublabel,
-}: {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  sublabel?: string;
-}) {
-  return (
-    <div className="p-4 rounded-md border border-gray-100 bg-white">
-      <div className="flex items-center gap-2 mb-2">
-        {icon}
-        <span className="text-xs text-gray-500 uppercase tracking-wide">
-          {label}
-        </span>
-      </div>
-      <div className="text-2xl font-bold text-gray-900 font-ibm-plex-mono">
-        {value}
-      </div>
-      {sublabel && (
-        <div className="text-xs text-gray-400 mt-1">{sublabel}</div>
-      )}
-    </div>
-  );
-}
-
-function SkeletonCard() {
-  return (
-    <div className="p-4 rounded-md border border-gray-100 bg-white animate-pulse">
-      <div className="h-3 bg-gray-200 rounded w-20 mb-3" />
-      <div className="h-7 bg-gray-200 rounded w-12 mb-1" />
-      <div className="h-3 bg-gray-200 rounded w-16" />
-    </div>
-  );
-}
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "Never";
@@ -261,7 +215,7 @@ function OverviewTab({
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
   if (isNegotiator) {
-    return <NegotiationInsightsTab userId={userId} />;
+    return <NegotiationHistory userId={userId} />;
   }
 
   return (
@@ -308,175 +262,6 @@ function OverviewTab({
       </div>
 
       <NotificationsSection agent={agent} onChange={onPatch} disabled={isSaving} />
-    </div>
-  );
-}
-
-function NegotiationInsightsTab({ userId }: { userId: string }) {
-  const usersService = useUsers();
-  const [data, setData] = useState<NegotiationInsights | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!userId) return;
-    let cancelled = false;
-
-    usersService
-      .getNegotiationInsights(userId)
-      .then((result) => {
-        if (!cancelled) setData(result);
-      })
-      .catch(() => {
-        if (!cancelled) setData(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, usersService]);
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-3 gap-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-        <div className="p-5 rounded-md bg-gray-50 border border-gray-100 animate-pulse">
-          <div className="h-3 bg-gray-200 rounded w-3/4 mb-2" />
-          <div className="h-3 bg-gray-200 rounded w-full mb-2" />
-          <div className="h-3 bg-gray-200 rounded w-1/2" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-        <p>No negotiation activity yet</p>
-      </div>
-    );
-  }
-
-  const { stats, summary } = data;
-  const opportunityRate =
-    stats.totalCount > 0
-      ? Math.round(
-          (stats.opportunityCount /
-            (stats.opportunityCount + stats.noOpportunityCount || 1)) *
-            100,
-        )
-      : 0;
-
-  const roleEntries = Object.entries(stats.roleDistribution).sort(
-    (a, b) => b[1] - a[1],
-  );
-  const topRole = roleEntries.length > 0 ? roleEntries[0] : null;
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard
-          label="Total"
-          value={stats.totalCount}
-          icon={<Handshake className="w-4 h-4 text-gray-400" />}
-          sublabel={`${stats.opportunityCount} opportunities`}
-        />
-        <StatCard
-          label="Opportunity rate"
-          value={`${opportunityRate}%`}
-          icon={<TrendingUp className="w-4 h-4 text-gray-400" />}
-          sublabel={`${stats.noOpportunityCount} no opportunity`}
-        />
-        <StatCard
-          label="In progress"
-          value={stats.inProgressCount}
-          icon={<Clock className="w-4 h-4 text-gray-400" />}
-          sublabel="Active right now"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="p-4 rounded-md border border-gray-100 bg-white">
-          <h3 className="text-xs text-gray-500 uppercase tracking-wide mb-3">
-            Your roles
-          </h3>
-          {roleEntries.length === 0 ? (
-            <p className="text-sm text-gray-400">No role data yet</p>
-          ) : (
-            <div className="space-y-2">
-              {roleEntries.map(([role, count]) => {
-                  const pct = Math.round(
-                    (count / (stats.opportunityCount || 1)) * 100,
-                  );
-                  return (
-                    <div key={role}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="text-gray-700">
-                          {ROLE_LABELS[role] ?? role}
-                        </span>
-                        <span className="text-gray-500 font-ibm-plex-mono">
-                          {count} ({pct}%)
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gray-900 rounded-full transition-all"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              {topRole && (
-                <p className="text-xs text-gray-400 mt-2">
-                  You're most often matched as{" "}
-                  <span className="font-medium text-gray-600">
-                    {ROLE_LABELS[topRole[0]] ?? topRole[0]}
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="p-4 rounded-md border border-gray-100 bg-white">
-          <h3 className="text-xs text-gray-500 uppercase tracking-wide mb-3">
-            Top counterparties
-          </h3>
-          {stats.topCounterparties.length === 0 ? (
-            <p className="text-sm text-gray-400">No counterparty data yet</p>
-          ) : (
-            <div className="space-y-2.5">
-              {stats.topCounterparties.map((cp) => (
-                <div key={cp.id} className="flex items-center gap-3">
-                  <UserAvatar
-                    id={cp.id}
-                    name={cp.name}
-                    avatar={cp.avatar}
-                    size={28}
-                  />
-                  <span className="text-sm text-gray-700 flex-1 truncate">
-                    {cp.name}
-                  </span>
-                  <span className="text-xs text-gray-400 font-ibm-plex-mono">
-                    {cp.count} {cp.count === 1 ? "negotiation" : "negotiations"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {summary && (
-        <p className="text-sm text-gray-600 leading-relaxed">{summary}</p>
-      )}
     </div>
   );
 }

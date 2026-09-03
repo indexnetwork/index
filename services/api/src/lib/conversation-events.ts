@@ -18,7 +18,6 @@ interface ConversationEventMessage {
   senderAvatar?: string;
   role: 'user' | 'agent';
   parts: unknown;
-  taskId?: string | null;
   createdAt: Date;
 }
 

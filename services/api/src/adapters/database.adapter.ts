@@ -390,8 +390,8 @@ export function createSystemDatabase(
      */
     upsertDiscoveryMatchCandidates: (items: Parameters<DiscoveryCandidateDatabaseAdapter['upsertDiscoveryMatchCandidates']>[0]) =>
       discoveryCandidateAdapter.upsertDiscoveryMatchCandidates(items),
-    listPendingCandidatesForIntent: (userId: string, intentId: string) =>
-      discoveryCandidateAdapter.listPendingCandidatesForIntent(userId, intentId),
+    openCandidates: (candidateIds: string[]) =>
+      discoveryCandidateAdapter.openCandidates(candidateIds),
     /**
      * Retrieves an opportunity by ID without scope check.
      * @remarks Intentionally unscoped -- used by the negotiation graph and opportunity

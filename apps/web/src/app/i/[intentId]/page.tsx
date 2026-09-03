@@ -45,7 +45,6 @@ const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
   "latent",
   "pending",
   "negotiating",
-  "stalled",
   "accepted",
   "rejected",
   "expired",

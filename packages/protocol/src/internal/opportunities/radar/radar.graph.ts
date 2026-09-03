@@ -74,7 +74,6 @@ export const DEFAULT_RADAR_STATUSES: OpportunityStatus[] = ['pending'];
 const OPPORTUNITY_STATUS_REGISTRY: Record<OpportunityStatus, true> = {
   negotiating: true,
   pending: true,
-  stalled: true,
   accepted: true,
   rejected: true,
   expired: true,
@@ -267,7 +266,7 @@ export async function loadOpportunitiesNode(state: RadarState, deps: RadarGraphD
       // Actionability only gates the live statuses a viewer could act on:
       // latent/pending cards the viewer cannot act on are noise, but
       // terminal/internal statuses (accepted, rejected, expired, negotiating,
-      // stalled, draft) are deliberate history — when a caller explicitly
+      // draft) are deliberate history — when a caller explicitly
       // requests them via `statuses`, they must pass through (they are never
       // actionable by rule 5, so filtering them here would return nothing).
       // The requested-status membership check is defense-in-depth: rows
@@ -547,7 +546,7 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
           agentTimingsAccum.push({ name: 'opportunity.presenter', durationMs: _presenterDuration });
           _traceEmitterPresenter?.({ type: "agent_end", name: "opportunity-presenter", durationMs: _presenterDuration, summary: `Presented: ${userName}` });
           if (presentation.isFallback) {
-            return fallbackCard(negotiationContext?.outcomeReasoning);
+            return fallbackCard();
           }
           // Every card is system-discovered now: one narrator.
           const narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } =
@@ -558,10 +557,7 @@ export async function generateCardTextNode(state: RadarState, deps: RadarGraphDe
             userId: otherActor?.userId ?? '',
             name: userName,
             avatar: userAvatar,
-            // Resolve reasoning is private and already authorization-scoped by
-            // the loader. Rendering it directly makes the resolved card explain
-            // the owner's verdict instead of losing it to a completed task.
-            mainText: negotiationContext?.outcomeReasoning ?? presentation.personalizedSummary,
+            mainText: presentation.personalizedSummary,
             cta: presentation.suggestedAction,
             headline: presentation.headline,
             primaryActionLabel: getPrimaryActionLabel(viewerRole),

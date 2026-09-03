@@ -44,20 +44,19 @@ export interface DiscoveryMatchCandidate extends CreateDiscoveryMatchCandidateDa
   createdAt: Date;
   /** Set once this candidate became a row. */
   openedOpportunityId?: Id<'opportunities'> | null;
-  /** Resolved for the reader: the party on the other side of the pair. */
-  counterpartName?: string;
 }
 
 /**
- * What materializing a candidate reports back.
- *
- * There is no error case because there is no throw: this is called below the
- * kickoff round bump, where a throw would be retried into a second strategy
- * message and a second round.
+ * A candidate that just became an opportunity with a negotiation beside it.
+ * The initiator is the side whose discovery run recorded the pair, and it owes
+ * the first turn.
  */
-export type CreateAndOpenResult =
-  | { status: 'created' | 'existing'; opportunityId: string }
-  | { status: 'raced' | 'failed'; reason: string };
+export interface OpenedNegotiation {
+  opportunityId: Id<'opportunities'>;
+  negotiationId: string;
+  initiatorUserId: Id<'users'>;
+  initiatorIntentId: Id<'intents'>;
+}
 
 export interface NetworkAssignmentContext {
   networkId: string;
@@ -529,7 +528,7 @@ export interface CreateHydeDocumentData {
 // OPPORTUNITY TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type OpportunityStatus = 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
 
 /**
  * Minimal opportunity lifecycle evidence used to narrate an agent negotiation.

@@ -21,7 +21,7 @@ export interface OpportunityInterpretation {
 
 export interface OpportunityListItem {
   id: string;
-  status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
   context: OpportunityContext;
   interpretation: OpportunityInterpretation;
   actors: OpportunityActor[];
@@ -41,7 +41,7 @@ export interface GetOpportunitiesOptions {
 export type OpportunityLifecycleStatus =
   | 'negotiating'
   | 'pending'
-  | 'stalled'
+ 
   | 'accepted'
   | 'rejected'
   | 'expired';
@@ -90,7 +90,7 @@ export interface GetRadarViewOptions {
   presentation?: 'skeleton';
 }
 
-export type OpportunityStatus = 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
 
 export interface OpportunityStatusUpdateResponse {
   opportunity: OpportunityListItem | null;

@@ -33,7 +33,6 @@ export interface AgentRow {
   metadata: Record<string, unknown>;
   installationId: string | null;
   lastSeenAt: Date | null;
-  lastNegotiationPickupAt: Date | null;
   notifyOnOpportunity: boolean;
   dailySummaryEnabled: boolean;
   handleNegotiations: boolean;
@@ -766,7 +765,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
       installationId: row.installationId ?? null,
       lastSeenAt: row.lastSeenAt ?? null,
-      lastNegotiationPickupAt: row.lastNegotiationPickupAt ?? null,
       notifyOnOpportunity: row.notifyOnOpportunity,
       dailySummaryEnabled: row.dailySummaryEnabled,
       handleNegotiations: row.handleNegotiations,

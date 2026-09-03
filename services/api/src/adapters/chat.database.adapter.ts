@@ -3,6 +3,7 @@ import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultSh
 import { discoveryCandidateAdapter, type DiscoveryCandidateDatabaseAdapter } from './discovery-candidate.database.adapter';
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
+import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 import { IntentEvents } from '../events/intent.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { toPublicNetworkPermissions } from '../lib/network-permissions';
@@ -50,14 +51,10 @@ export class ChatDatabaseAdapter {
     return this._opportunityAdapter;
   }
 
-  // Negotiation context methods — required by RadarGraphDatabase
-  async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
-  async bumpIntentNegotiationBatch(intentId: string) { return _convDb().bumpIntentNegotiationBatch(intentId); }
-  async getNegotiationTasksForOpportunity(opportunityId: string) { return _convDb().getNegotiationTasksForOpportunity(opportunityId); }
-  async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
-  async getNegotiationMessages(opportunityId: string) { return _convDb().getNegotiationMessages(opportunityId); }
-  async getMessagesByTaskIds(taskIds: string[]) { return _convDb().getMessagesByTaskIds(taskIds); }
-  async getArtifactsForTask(taskId: string) { return _convDb().getArtifactsForTask(taskId); }
+  /** The turn log behind an opportunity — the protocol's NegotiationContextDatabase. */
+  async readNegotiationContext(opportunityId: string, viewerUserId: string) {
+    return negotiationDatabaseAdapter.readNegotiationContext(opportunityId, viewerUserId);
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Chat Graph Methods (Profiles, Intents, Indexes)
@@ -2253,8 +2250,8 @@ export class ChatDatabaseAdapter {
   ) {
     return discoveryCandidateAdapter.upsertDiscoveryMatchCandidates(items);
   }
-  async listPendingCandidatesForIntent(userId: string, intentId: string) {
-    return discoveryCandidateAdapter.listPendingCandidatesForIntent(userId, intentId);
+  async openCandidates(candidateIds: string[]) {
+    return discoveryCandidateAdapter.openCandidates(candidateIds);
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)
@@ -2325,13 +2322,6 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getLivePoolOpportunitiesForIntent(recipientUserId, intentId);
   }
-  /** Lens-C-only (IND-465): exact intent pool including terminal statuses. */
-  async getEvidencePoolOpportunitiesForIntent(
-    recipientUserId: string,
-    intentId: string,
-  ): Promise<OpportunityRow[]> {
-    return this.opportunityAdapter.getEvidencePoolOpportunitiesForIntent(recipientUserId, intentId);
-  }
   async getOpportunitiesForNetwork(
     networkId: string,
     options?: { status?: string; statuses?: string[]; actorUserId?: string; limit?: number; offset?: number }
@@ -2340,7 +2330,7 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatus']>[3],
   ): Promise<OpportunityRow | null> {
@@ -2360,7 +2350,7 @@ export class ChatDatabaseAdapter {
    */
   async updateOpportunityStatusIfNetworkEligible(
     id: string,
-    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
     actors: Array<{ userId: string; networkId: string }>,
     eligibility: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[3],
     expectedStatus?: Parameters<OpportunityDatabaseAdapter['updateOpportunityStatusIfNetworkEligible']>[4],
@@ -2379,7 +2369,7 @@ export class ChatDatabaseAdapter {
   async stampOpportunityActorAction(
     id: string,
     actorUserId: string,
-    status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
     outbox?: Parameters<OpportunityDatabaseAdapter['stampOpportunityActorAction']>[4],
   ): Promise<OpportunityRow | null> {

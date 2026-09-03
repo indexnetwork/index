@@ -7,7 +7,7 @@ import type { ModelConfig } from "./model.config.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import type { ToolScopeType } from "./tool.scope.js";
 import type { UserIdentity } from "../../../protocol/schemas/identity.schema.js";
-import type { CompositeToolDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../../../platform/database.js";
+import type { CompositeToolDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase } from "../../../platform/database.js";
 import type { Scraper } from "../../../platform/discovery/scraper.js";
 import type { Cache, HydeCache } from "../../../platform/discovery/cache.js";
 import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
@@ -141,8 +141,6 @@ interface ToolContextBindings {
   negotiatorVerdictTools?: NegotiatorVerdictToolsHost;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
-  /** Database adapter for negotiations/conversation operations. */
-  negotiationDatabase: NegotiationGraphDatabase;
   /** Factory for user-scoped database access. */
   createUserDatabase: (db: CompositeToolDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
@@ -382,8 +380,6 @@ interface ToolDepsBindings {
   embedder: import('../../../platform/discovery/embedder.js').Embedder;
   cache: Cache;
   enricher: ProfileEnricher;
-  /** Database adapter for negotiations/conversation operations. */
-  negotiationDatabase: NegotiationGraphDatabase;
   /**
    * Host bridge behind the MCP-surface `reject_opportunity` /
    * `accept_opportunity` owner-verdict tools (#1471, one surface over).

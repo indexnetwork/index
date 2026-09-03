@@ -200,7 +200,7 @@ export function createListOpportunitiesTool(defineTool: DefineTool, deps: Opport
                   counterpartUserId,
                   effectiveIntentScope.scopeId,
                 ),
-                loadNegotiationContext(deps.negotiationDatabase, opp.id, opp.status, context.userId),
+                loadNegotiationContext(deps.database, opp.id, opp.status, context.userId),
               ]);
 
               const presentation = await presenter.presentCard({

@@ -37,12 +37,9 @@ type Counts = Record<string, number>;
 async function readCounts(): Promise<Counts> {
   const rows = await db.execute<{ t: string; n: string }>(sql`
     SELECT 'opportunities' AS t, count(*)::text AS n FROM opportunities
-    UNION ALL SELECT 'tasks_negotiation', count(*)::text FROM tasks WHERE metadata->>'type' = 'negotiation'
-    UNION ALL SELECT 'artifacts', count(*)::text FROM artifacts
+    UNION ALL SELECT 'negotiations', count(*)::text FROM negotiations
+    UNION ALL SELECT 'negotiation_turns', count(*)::text FROM negotiation_turns
     UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
-    UNION ALL SELECT 'agents_with_neg_pickup', count(*)::text FROM agents WHERE last_negotiation_pickup_at IS NOT NULL
-    UNION ALL SELECT 'intents_with_batch_state', count(*)::text FROM intents
-      WHERE negotiation_batch_id IS NOT NULL
     UNION ALL SELECT 'intent_discovery_progress', count(*)::text FROM intent_discovery_progress
     UNION ALL SELECT 'questions_intent', count(*)::text FROM questions WHERE detection->>'mode' = 'intent'
     UNION ALL SELECT 'questions_nego_opp', count(*)::text FROM questions
@@ -64,15 +61,6 @@ async function readCounts(): Promise<Counts> {
 
 async function clearNegotiationsAndOpportunities(): Promise<Counts> {
   await db.transaction(async (tx) => {
-    await tx.execute(sql`
-      DELETE FROM conversations
-      WHERE id IN (
-        SELECT DISTINCT conversation_id FROM tasks WHERE metadata->>'type' = 'negotiation'
-      )
-    `);
-    await tx.execute(sql`
-      DELETE FROM tasks WHERE metadata->>'type' = 'negotiation'
-    `);
     // Any conversation with an agent participant (H2A personal + leftover A2A)
     await tx.execute(sql`
       DELETE FROM conversations c
@@ -82,6 +70,7 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
       )
     `);
     await tx.execute(sql`DELETE FROM opportunity_outcome_events`);
+    // negotiations (and their turns) cascade from the opportunity.
     await tx.execute(sql`DELETE FROM opportunities`);
     await tx.execute(sql`DELETE FROM intent_discovery_progress`);
     await tx.execute(sql`
@@ -91,17 +80,6 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
           )
          OR detection->'negotiation' IS NOT NULL
          OR detection->>'sourceType' = 'opportunity'
-    `);
-    await tx.execute(sql`
-      UPDATE agents
-      SET last_negotiation_pickup_at = NULL
-      WHERE last_negotiation_pickup_at IS NOT NULL
-    `);
-    // Intents survive the wipe, so their negotiation-cycle state must not:
-    // a kept batch id with no matches or tasks behind it renders as a
-    // permanently "opening" batch in the UI.
-    await tx.execute(sql`
-      UPDATE intents SET negotiation_batch_id = NULL WHERE negotiation_batch_id IS NOT NULL
     `);
   });
   return readCounts();

@@ -5,6 +5,7 @@ import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
 import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
 import { intentProposalDatabaseAdapter, type ReviseIntentProposalInput } from './intent-proposal.database.adapter';
+import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
 import type { IntentProposalRow } from '../schemas/database.schema';
 
 
@@ -502,6 +503,7 @@ export class IntentDatabaseAdapter {
         ne(schema.opportunities.status, 'expired'),
       ))
       .returning({ id: schema.opportunities.id });
+    await negotiationDatabaseAdapter.closeForOpportunities(result.map((row) => row.id));
     for (const row of result) emitOpportunityTransitionBestEffort({ id: row.id, status: 'expired' });
     return result.length;
   }

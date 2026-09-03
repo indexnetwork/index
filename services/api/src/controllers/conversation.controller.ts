@@ -1,23 +1,28 @@
+import { z } from 'zod';
+
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { RateLimit } from '../guards/limiter.guard';
 import { Controller, Get, Post, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { ConversationService } from '../services/conversation.service';
-import { TaskService } from '../services/task.service';
 import { log } from '../lib/log';
 
 type RouteParams = Record<string, string>;
 
 const logger = log.controller.from('conversation');
 
+const agentMessageSchema = z.object({
+  text: z.string().trim().min(1).max(4000),
+  intentId: z.string().uuid().optional(),
+});
+
 /**
  * HTTP controller for conversation REST API endpoints.
- * Thin layer: parses requests, delegates to ConversationService and TaskService, formats responses.
+ * Thin layer: parses requests, delegates to ConversationService, formats responses.
  */
 @Controller('/conversations')
 export class ConversationController {
   constructor(
     private readonly conversationService: ConversationService,
-    private readonly taskService: TaskService,
   ) {}
 
   /**
@@ -41,27 +46,36 @@ export class ConversationController {
   }
 
   /**
-   * GET /conversations/negotiations — list A2A negotiation conversations for the authenticated user.
+   * POST /conversations/agent-messages — the agent posts a question into its
+   * owner's agent DM, optionally tagged with the signal it belongs to.
+   *
+   * @param req - Must include `text`; optional `intentId`.
+   * @param user - The owner, resolved from the agent's own bound key.
+   * @returns JSON with the conversation id and the created message.
    */
-  @Get('/negotiations')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async listNegotiations(_req: Request, user: AuthenticatedUser) {
+  @Post('/agent-messages')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async sendAgentMessage(req: Request, user: AuthenticatedUser) {
+    let body: unknown;
     try {
-      const conversations = await this.conversationService.getAgentConversations(user.id);
-      return Response.json({ conversations });
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    const parsed = agentMessageSchema.safeParse(body);
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid message' }, { status: 400 });
+    }
+
+    try {
+      const result = await this.conversationService.sendAgentMessage(user.id, parsed.data.text, parsed.data.intentId);
+      return Response.json(result, { status: 201 });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error('listNegotiations failed', { userId: user.id, error: message });
+      logger.error('sendAgentMessage failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
-  }
-
-  /** Owner-seat index for the debug negotiation console. */
-  @Get('/negotiations/task-index')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getNegotiationTaskIndex(_req: Request, user: AuthenticatedUser) {
-    const entries = await this.conversationService.getNegotiationTaskIndex(user.id);
-    return Response.json({ entries });
   }
 
   /**
@@ -109,7 +123,7 @@ export class ConversationController {
    * GET /conversations/:id/messages — get messages for a conversation.
    * Accepts full UUID or short ID prefix.
    *
-   * @param req - Optional query params: limit, before, taskId
+   * @param req - Optional query params: limit, before, intentId
    * @param user - Authenticated user from AuthGuard
    * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with messages array
@@ -131,7 +145,7 @@ export class ConversationController {
     const url = new URL(req.url);
     const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!, 10) : undefined;
     const before = url.searchParams.get('before') ?? undefined;
-    const taskId = url.searchParams.get('taskId') ?? undefined;
+    const intentId = url.searchParams.get('intentId') ?? undefined;
     const beforeSessionId = url.searchParams.get('beforeSessionId') ?? undefined;
     const sessionHistory = url.searchParams.get('sessionHistory') === 'true' || beforeSessionId !== undefined;
 
@@ -139,7 +153,6 @@ export class ConversationController {
       if (sessionHistory) {
         const history = await this.conversationService.getSessionHistory(conversationId, {
           userId: user.id,
-          taskId,
           beforeSessionId,
         });
         return Response.json({
@@ -147,12 +160,9 @@ export class ConversationController {
           sessionId: history.session?.id ?? null,
           hasPreviousSession: history.hasPreviousSession,
           previousSessionCursor: history.hasPreviousSession ? history.session?.id ?? null : null,
-          // IND-570: per-session opportunity attribution for section labelling.
-          sessionOpportunityId: history.sessionOpportunityId ?? null,
-          sessionOpportunityStatus: history.sessionOpportunityStatus ?? null,
         });
       }
-      const messages = await this.conversationService.getMessages(conversationId, { limit, before, taskId, userId: user.id });
+      const messages = await this.conversationService.getMessages(conversationId, { limit, before, intentId, userId: user.id });
       return Response.json({ messages });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -199,7 +209,7 @@ export class ConversationController {
    * POST /conversations/:id/messages — send a message in a conversation.
    * Accepts full UUID or short ID prefix.
    *
-   * @param req - Must include `parts` array in JSON body; optional `taskId`, `metadata`
+   * @param req - Must include `parts` array in JSON body; optional `metadata`
    * @param user - Authenticated user from AuthGuard
    * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with created message
@@ -218,9 +228,9 @@ export class ConversationController {
     }
     const conversationId = resolved.id;
 
-    let body: { parts?: unknown[]; taskId?: string; metadata?: Record<string, unknown> };
+    let body: { parts?: unknown[]; metadata?: Record<string, unknown> };
     try {
-      body = (await req.json()) as { parts?: unknown[]; taskId?: string; metadata?: Record<string, unknown> };
+      body = (await req.json()) as { parts?: unknown[]; metadata?: Record<string, unknown> };
     } catch {
       return Response.json({ error: 'Invalid request body' }, { status: 400 });
     }
@@ -231,7 +241,7 @@ export class ConversationController {
 
     try {
       const msg = await this.conversationService.sendMessage(
-        conversationId, user.id, 'user', body.parts, { taskId: body.taskId, metadata: body.metadata }
+        conversationId, user.id, 'user', body.parts, { metadata: body.metadata }
       );
       return Response.json({ message: msg }, { status: 201 });
     } catch (err: unknown) {
@@ -358,122 +368,6 @@ export class ConversationController {
         return Response.json({ error: message }, { status: 403 });
       }
       logger.error('hideConversation failed', { userId: user.id, conversationId, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * GET /conversations/:id/tasks — list all tasks for a conversation.
-   * Accepts full UUID or short ID prefix.
-   *
-   * @param _req - The HTTP request object (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID or prefix
-   * @returns JSON with tasks array
-   */
-  @Get('/:id/tasks')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async listTasks(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const rawId = params?.id;
-    if (!rawId) {
-      return Response.json({ error: 'Conversation ID required' }, { status: 400 });
-    }
-
-    const resolved = await this.conversationService.resolveId(rawId, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-    const conversationId = resolved.id;
-
-    try {
-      await this.conversationService.verifyParticipant(user.id, conversationId);
-      const tasks = await this.taskService.getTasksByConversation(conversationId);
-      return Response.json({ tasks });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith('Forbidden')) {
-        return Response.json({ error: message }, { status: 403 });
-      }
-      logger.error('listTasks failed', { userId: user.id, conversationId, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * GET /conversations/:id/tasks/:taskId — get a single task.
-   * Accepts full UUID or short ID prefix for conversation ID.
-   *
-   * @param _req - The HTTP request object (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID (or prefix) and task ID
-   * @returns JSON with task, or 404 if not found
-   */
-  @Get('/:id/tasks/:taskId')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getTask(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const rawId = params?.id;
-    const taskId = params?.taskId;
-    if (!rawId || !taskId) {
-      return Response.json({ error: 'Conversation ID and Task ID required' }, { status: 400 });
-    }
-
-    const resolved = await this.conversationService.resolveId(rawId, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-    const conversationId = resolved.id;
-
-    try {
-      await this.conversationService.verifyParticipant(user.id, conversationId);
-      const task = await this.taskService.getTask(taskId, conversationId);
-      if (!task) {
-        return Response.json({ error: 'Task not found' }, { status: 404 });
-      }
-      return Response.json({ task });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith('Forbidden')) {
-        return Response.json({ error: 'Task not found' }, { status: 404 });
-      }
-      logger.error('getTask failed', { userId: user.id, conversationId, taskId, error: message });
-      return Response.json({ error: message }, { status: 500 });
-    }
-  }
-
-  /**
-   * GET /conversations/:id/tasks/:taskId/artifacts — get artifacts for a task.
-   * Accepts full UUID or short ID prefix for conversation ID.
-   *
-   * @param _req - The HTTP request object (unused)
-   * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID (or prefix) and task ID
-   * @returns JSON with artifacts array
-   */
-  @Get('/:id/tasks/:taskId/artifacts')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getArtifacts(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const rawId = params?.id;
-    const taskId = params?.taskId;
-    if (!rawId || !taskId) {
-      return Response.json({ error: 'Conversation ID and Task ID required' }, { status: 400 });
-    }
-
-    const resolved = await this.conversationService.resolveId(rawId, user.id);
-    if ('error' in resolved) {
-      return Response.json({ error: resolved.error }, { status: resolved.status });
-    }
-    const conversationId = resolved.id;
-
-    try {
-      await this.conversationService.verifyParticipant(user.id, conversationId);
-      const artifacts = await this.taskService.getArtifacts(taskId, conversationId);
-      return Response.json({ artifacts });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith('Forbidden')) {
-        return Response.json({ error: 'Task not found' }, { status: 404 });
-      }
-      logger.error('getArtifacts failed', { userId: user.id, conversationId, taskId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }

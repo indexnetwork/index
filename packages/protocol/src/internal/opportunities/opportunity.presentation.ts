@@ -797,7 +797,7 @@ export interface CardPresenterInput extends PresenterInput {
   /**
    * Snapshot of the opportunity's negotiation, if one exists. When status is
    * `negotiating`, the presenter returns a templated chip without invoking
-   * the LLM. For `pending`/`stalled`/`accepted`/`rejected`, the full
+   * the LLM. For `pending`/`accepted`/`rejected`, the full
    * transcript and outcome ground the LLM's explanation.
    */
   negotiationContext?: NegotiationContext;
@@ -935,8 +935,6 @@ Rules:
 **Negotiation-grounded explanations (ONLY when NEGOTIATION CONTEXT is provided):**
 When NEGOTIATION CONTEXT is provided, this opportunity passed through an agent-to-agent negotiation. Use the transcript to ground your explanation in the concrete reasoning the agents exchanged.
 - Personalize the summary with *why* the negotiation produced this match — reference the roles the agents agreed on, the specific concerns raised, and how they were resolved.
-- For status "stalled" with reason "turn_cap": the agents hit the turn limit without reaching agreement. Frame the card as a hedged possibility rather than a confident match; narratorRemark should signal "agents couldn't fully converge" without sounding negative.
-- For status "stalled" with reason "timeout": one side went silent. Suggest the user re-engage if interested.
 - For status "accepted": the agents agreed; the card should confidently explain *why* they agreed.
 - For status "rejected": the agents declined. The card should explain the reason briefly so the user understands — not dwell on it.
 - Do NOT invent turn content. Only reference what is in the NEGOTIATION CONTEXT block.
@@ -1248,32 +1246,21 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, greeting
 function buildNegotiationPromptBlock(context: NegotiationContext | undefined): string {
   if (!context || context.status === 'negotiating') return "";
 
-  const turnCapLabel = context.turnCap > 0 ? `${context.turnCap}` : "unlimited";
-  const reasonLabel = context.pause?.reason === 'counterparty_silent'
-    ? "counterpart went silent before responding"
-    : context.pause?.reason === 'needs_principal'
-      ? "the negotiator paused, waiting on its own principal"
-      : context.pause?.reason === 'ready_for_verdict'
-        ? "the negotiator paused, believing a decision is possible"
-        : context.pause?.reason === 'turn_cap'
-          ? "the negotiation reached its turn cap"
-          : undefined;
+  const outcomeLabel = context.outcome === 'agreed'
+    ? "the agents agreed"
+    : context.outcome === 'declined'
+      ? "one agent declined"
+      : context.outcome === 'closed'
+        ? "the negotiation was closed before it settled"
+        : undefined;
 
-  const turnLines = context.turns.map((turn, index) => {
-    if (turn.verb === 'pause') {
-      return `Turn ${index + 1} (pause: ${turn.reason})`;
-    }
-    // Only the seat that authored a turn sees its reasoning — every other
-    // reader gets the message alone.
-    return turn.reasoning?.trim()
-      ? `Turn ${index + 1} (${turn.verb}): ${turn.reasoning} — said: "${turn.message}"`
-      : `Turn ${index + 1} (${turn.verb}): "${turn.message}"`;
-  });
+  const turnLines = context.turns.map((turn, index) =>
+    `Turn ${index + 1} (${turn.action}, ${turn.own ? "your agent" : "their agent"}): "${turn.message}"`);
 
   return `
 NEGOTIATION CONTEXT:
-- Negotiation status: ${context.status}${reasonLabel ? ` (${reasonLabel})` : ""}
-- Turns exchanged: ${context.turnCount} of ${turnCapLabel}
+- Negotiation status: ${context.status}${outcomeLabel ? ` (${outcomeLabel})` : ""}
+- Turns exchanged: ${context.turnCount}
 - Transcript:
 ${turnLines.length > 0 ? turnLines.map((l) => `  ${l}`).join("\n") : "  (no turns recorded)"}
 `;
@@ -1285,12 +1272,8 @@ ${turnLines.length > 0 ? turnLines.map((l) => `  ${l}`).join("\n") : "  (no turn
  * negotiating" chip while turns are still being exchanged.
  */
 function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
-  const ctx = input.negotiationContext;
-  const turnCount = ctx?.turnCount ?? 0;
-  const turnCap = ctx?.turnCap && ctx.turnCap > 0 ? ctx.turnCap : undefined;
-  const narratorRemark = turnCap
-    ? `Currently negotiating · turn ${turnCount} of ${turnCap}`
-    : `Currently negotiating · turn ${turnCount}`;
+  const turnCount = input.negotiationContext?.turnCount ?? 0;
+  const narratorRemark = `Currently negotiating · turn ${turnCount}`;
 
   return {
     headline: "Negotiation in progress",

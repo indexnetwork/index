@@ -5,7 +5,7 @@
  * visible in one line.
  */
 
-import type { NegotiationGraphDatabase } from './negotiation.js';
+import type { NegotiationContextDatabase } from './negotiation.js';
 import type { Database } from '../database.js';
 
 
@@ -19,8 +19,9 @@ export type CompositeToolDatabase = Pick<
   Database,
   | 'getProfile'
   // The MCP discovery path builds an OpportunityGraph too, and its terminal
-  // stage records candidates.
+  // stage records candidates and opens them.
   | 'upsertDiscoveryMatchCandidates'
+  | 'openCandidates'
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
@@ -98,13 +99,7 @@ export type CompositeToolDatabase = Pick<
   // User context text for discovery in OpportunityGraph
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
-> & Pick<
-  NegotiationGraphDatabase,
-  // Orphan heal in OpportunityGraph persist node
-  | 'getNegotiationTaskForOpportunity'
-  // negotiateNode bumps the round once per (intentId) in a kickoff batch
-  | 'bumpIntentNegotiationBatch'
->;
+> & NegotiationContextDatabase;
 
 /**
  * Database interface for Opportunity Graph operations.
@@ -117,6 +112,7 @@ export type OpportunityGraphDatabase = Pick<
   Database,
   | 'getProfile'
   | 'upsertDiscoveryMatchCandidates'
+  | 'openCandidates'
   | 'createOpportunity'
   | 'createOpportunityIfNetworkEligible'
   | 'createOpportunityAndExpireIdsIfNetworkEligible'
@@ -152,13 +148,6 @@ export type OpportunityGraphDatabase = Pick<
   | 'getHydeDocumentsForSource'
   // IND-567: Rejection cool-down (optional — adapters may omit)
   | 'getRecentlyRejectedOpportunityCounterparties'
-> & Pick<
-  NegotiationGraphDatabase,
-  // Orphan heal: check if a prior negotiating opportunity has a stale task
-  | 'getNegotiationTaskForOpportunity'
-  // negotiateNode bumps the round once per (intentId) in a kickoff batch and
-  // passes it to every open() in that batch — a round is the batch, not one opportunity.
-  | 'bumpIntentNegotiationBatch'
 >;
 export interface OutcomeOutbox {
   event: unknown;
@@ -320,9 +309,4 @@ export type RadarGraphDatabase = Pick<
   | 'getActiveIntents'
   | 'getNetwork'
   | 'getUser'
-> & Pick<
-  NegotiationGraphDatabase,
-  | 'getNegotiationTaskForOpportunity'
-  | 'getNegotiationMessages'
-  | 'getArtifactsForTask'
->;
+> & NegotiationContextDatabase;

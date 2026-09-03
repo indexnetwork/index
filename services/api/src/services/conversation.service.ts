@@ -2,8 +2,15 @@ import { log } from '../lib/log';
 
 import { createRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
+import { SYSTEM_AGENT_ID } from '../adapters/database.shared';
+import { publishNotificationStreamEvent } from '../lib/notification-stream-events';
 
 const logger = log.service.from('ConversationService');
+
+/** Notification bodies are a glance, not the message; the DM holds the rest. */
+function truncateForNotification(text: string): string {
+  return text.length > 140 ? `${text.slice(0, 139)}…` : text;
+}
 
 /**
  * Manages conversation lifecycle, messaging, and DM deduplication.
@@ -76,20 +83,6 @@ export class ConversationService {
   }
 
   /**
-   * Lists A2A conversations where `agent:{userId}` is a participant.
-   * Used to surface negotiation conversations to the user whose agent participated.
-   */
-  async getAgentConversations(userId: string) {
-    // The agent participant authenticates the A2A thread, while the owning
-    // human is the only identity permitted to see intent provenance.
-    return this.db.getConversationsForUser(`agent:${userId}`, userId, true);
-  }
-
-  async getNegotiationTaskIndex(userId: string) {
-    return this.db.getNegotiationTaskIndex(userId);
-  }
-
-  /**
    * Finds an existing DM between two users, or creates one if none exists.
    * @param userA - First user ID
    * @param userB - Second user ID
@@ -105,7 +98,7 @@ export class ConversationService {
    * @param senderId - ID of the sender (must be a participant)
    * @param role - Role of the sender ('user' or 'agent')
    * @param parts - Message content parts
-   * @param opts - Optional task association and metadata
+   * @param opts - Optional metadata
    * @returns The created message
    * @throws Error if senderId is not a participant
    */
@@ -114,7 +107,7 @@ export class ConversationService {
     senderId: string,
     role: 'user' | 'agent',
     parts: unknown[],
-    opts?: { taskId?: string; metadata?: Record<string, unknown> },
+    opts?: { metadata?: Record<string, unknown> },
   ) {
     await this.verifyParticipant(senderId, conversationId);
 
@@ -123,7 +116,6 @@ export class ConversationService {
       senderId,
       role,
       parts,
-      taskId: opts?.taskId,
       metadata: opts?.metadata,
     });
 
@@ -131,13 +123,54 @@ export class ConversationService {
   }
 
   /**
+   * The agent posts a question into its owner's agent DM.
+   *
+   * Questions only — outcomes live in Radar. The `intentId` tag decides who the
+   * message holds for: tagged, that signal; untagged, every signal. The owner
+   * is told so the question can be answered where it was asked.
+   *
+   * @param userId - The owner whose agent is speaking.
+   * @param text - The question.
+   * @param intentId - The signal it belongs to, when it belongs to one.
+   * @returns The conversation it landed in and the created message.
+   */
+  async sendAgentMessage(userId: string, text: string, intentId?: string) {
+    const conversation = await this.db.getOrCreateAgentDm(userId);
+    const message = await this.db.createMessage({
+      conversationId: conversation.id,
+      senderId: SYSTEM_AGENT_ID,
+      role: 'agent',
+      parts: [{ kind: 'text', text }],
+      metadata: intentId ? { intentId } : undefined,
+    });
+
+    try {
+      await publishNotificationStreamEvent(userId, {
+        type: 'message.new',
+        id: message.id,
+        title: 'Your agent has a question',
+        body: truncateForNotification(text),
+        data: { conversationId: conversation.id, messageId: message.id, intentId: intentId ?? null },
+      });
+    } catch (error) {
+      logger.error('Failed to publish agent message event', {
+        userId,
+        conversationId: conversation.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return { conversationId: conversation.id, message };
+  }
+
+  /**
    * Retrieves messages for a conversation.
    * @param conversationId - Conversation ID
-   * @param opts - Optional limit, cursor (before), taskId filter, or userId for authorization
+   * @param opts - Optional limit, cursor (before), intent filter, or userId for authorization
    * @returns Ordered list of messages
    * @throws Error if opts.userId is provided and is not a participant
    */
-  async getMessages(conversationId: string, opts?: { limit?: number; before?: string; taskId?: string; userId?: string }) {
+  async getMessages(conversationId: string, opts?: { limit?: number; before?: string; userId?: string; intentId?: string }) {
     if (opts?.userId) {
       await this.verifyParticipant(opts.userId, conversationId);
     }
@@ -153,7 +186,7 @@ export class ConversationService {
    */
   async getSessionHistory(
     conversationId: string,
-    opts: { userId: string; taskId?: string; beforeSessionId?: string },
+    opts: { userId: string; beforeSessionId?: string },
   ) {
     await this.verifyParticipant(opts.userId, conversationId);
     return this.db.getConversationSessionHistory(conversationId, opts);

@@ -4,6 +4,7 @@ import { RadarGraphFactory, presentOpportunity, type UserInfo, canUserSeeOpportu
 import type { OpportunityControllerDatabase, RadarGraphDatabase, Opportunity, OpportunityStatus, OpportunityCache } from '@indexnetwork/protocol';
 
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
+import { negotiationDatabaseAdapter, type NegotiationDatabaseAdapter } from '../adapters/negotiation.database.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { outcomeFeedbackRecorder, type OutcomeFeedbackRecorderLike, type PreparedOutcomeCapture, type OwnerActionProvenance } from '../lib/opportunity/outcome-feedback.recorder';
 import type { OutcomeOutbox } from '@indexnetwork/protocol';
@@ -20,7 +21,7 @@ const updateStatusLogger = log.service.from("OpportunityService.updateOpportunit
  * terminal status explicitly (e.g. `?status=expired`) for a history view — that
  * path bypasses this default.
  */
-const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
+const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
 
 /**
  * Default statuses for the per-network community list. Stricter than
@@ -30,7 +31,7 @@ const DEFAULT_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 's
  * checks membership, with no per-actor guard, so surfacing `latent` would leak
  * pre-draft candidates to every member. Live community statuses only.
  */
-const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'stalled', 'accepted'];
+const DEFAULT_NETWORK_LIST_STATUSES: OpportunityStatus[] = ['negotiating', 'pending', 'accepted'];
 
 function sanitizeOpportunityForResponse<T extends Opportunity>(
   opportunity: T,
@@ -227,6 +228,8 @@ export class OpportunityService {
   private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
+  /** Closes the negotiation underneath an opportunity the owner has ended. */
+  private readonly negotiations: Pick<NegotiationDatabaseAdapter, 'closeForOpportunities'> = negotiationDatabaseAdapter;
   constructor(
     database?: OpportunityControllerDatabase,
     cache?: OpportunityCache,
@@ -327,7 +330,7 @@ export class OpportunityService {
   async getOpportunitiesForUser(
     userId: string,
     options?: {
-      status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
       networkId?: string;
       scopeType?: 'intent';
@@ -598,6 +601,12 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
+    // The owner's verdict ends the negotiation; Index closes it rather than
+    // asking a seat to decline. Both seats see it closed on their next read.
+    if (status === 'accepted' || status === 'rejected' || status === 'expired') {
+      await this.negotiations.closeForOpportunities([opportunityId]);
+    }
+
     // Fire shadow mining only when a genuinely NEW event was inserted (idempotent
     // retries and duplicates set inserted=false), and only now — after commit.
     if (prepared && outbox?.result.inserted) {
@@ -831,7 +840,7 @@ export class OpportunityService {
     networkId: string,
     userId: string,
     options?: {
-      status?: 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+      status?: 'pending' | 'accepted' | 'rejected' | 'expired';
       statuses?: OpportunityStatus[];
       limit?: number;
       offset?: number;

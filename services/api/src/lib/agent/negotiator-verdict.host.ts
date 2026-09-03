@@ -30,13 +30,12 @@ const logger = log.lib.from('negotiator-verdict.host');
  * `rejected` / `expired` are already decided — a verdict on any of those would
  * be a decision the client has no reason to believe they are making.
  */
-export const ACTIONABLE_VERDICT_STATUSES: OpportunityStatus[] = ['pending', 'negotiating', 'stalled'];
+export const ACTIONABLE_VERDICT_STATUSES: OpportunityStatus[] = ['pending', 'negotiating'];
 
 /** How each actionable status reads to the client, in one clause. */
 const STATE_LINE: Record<string, string> = {
   pending: 'waiting on your decision',
   negotiating: 'your agents are still negotiating',
-  stalled: 'paused',
 };
 
 /** One numbered counterparty, as both the prompt and the mapping see it. */

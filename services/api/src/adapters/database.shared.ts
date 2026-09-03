@@ -3,7 +3,6 @@
  * tables, operators, DTO types, and cross-adapter helper functions.
  * No dependency on lib/protocol. Imported by every database/*.adapter.ts file.
  */
-import type { NegotiationPauseReason } from './conversation.database.adapter';
 import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm/sql';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
@@ -11,7 +10,7 @@ import { traceAppOperation } from '../lib/sentry-performance';
 import { normalizeEmbedding } from '../lib/embedding/vector';
 import { normalizeTelegramSocialValue } from '../lib/telegram/socials';
 import type { User, NotificationPreferences, OnboardingState } from '../schemas/database.schema';
-import type { Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact } from '../schemas/conversation.schema';
+import type { Conversation, ConversationParticipant, ConversationSession, Message } from '../schemas/conversation.schema';
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
 import { NetworkMembershipEvents } from '../events/network_membership.event';
@@ -20,7 +19,7 @@ import { NetworkMembershipEvents } from '../events/network_membership.event';
 export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log, NetworkMembershipEvents };
 export { canActorSeeOpportunity } from './opportunity.visibility';
 export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not };
-export type { User, NotificationPreferences, OnboardingState, Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact, Id };
+export type { User, NotificationPreferences, OnboardingState, Conversation, ConversationParticipant, ConversationSession, Message, Id };
 export const logger = log.lib.from('database.adapter');
 
 export function detectSocialLabel(value: string): string {
@@ -161,7 +160,7 @@ export interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, discoveryMatchCandidates, userNotificationSettings, sessions, userSocials } = schema;
+export const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, discoveryMatchCandidates, negotiations, negotiationTurns, userNotificationSettings, sessions, userSocials } = schema;
 
 /**
  * Build a {@link UserIdentity} from the canonical `users` table (WS5 / IND-363),
@@ -437,7 +436,7 @@ export interface OpportunityRow {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -451,7 +450,7 @@ export interface CreateOpportunityInput {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status?: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
+  status?: 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
   metadata?: Record<string, unknown> | null;
 }
@@ -579,55 +578,6 @@ export interface ResolvedParticipant {
   ownerName?: string | null;
 }
 
-/**
- * IND-610: owner-only projection of the outreach-gate decision.
- *
- * `source` keeps the provenance honest — the card that renders this must not
- * claim screen-node evidence it does not have:
- * - `screen`  — `tasks.metadata.screenDecision`. READ-ONLY HISTORY: the
- *   outreach gate that wrote it is gone, but existing task rows carry it.
- * - `outcome` — the negotiation-outcome artifact's `reasoning`, written when
- *   the agent refuses on its opening turn (IND-564). The only live source.
- */
-export interface ProjectedScreenDecision {
-  source: 'screen' | 'outcome';
-  decision: 'reach_out' | 'pass';
-  reasoning: string;
-  /** Screen-node evidence on historical rows; null when the decision came from the outcome. */
-  intentAlignment: string | null;
-  screenedAt: string | null;
-}
-
-export interface NegotiationLifecycleSummary {
-  taskId: string;
-  state: 'submitted' | 'working' | 'completed' | 'failed' | 'canceled' | 'rejected' | 'auth_required' | 'waiting_for_agent' | 'claimed' | 'paused';
-  statusTimestamp: Date | null;
-  opportunityId: string | null;
-  opportunityStatus: 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' | null;
-  /** Whether the authenticated owner, rather than their counterpart, started the chat. */
-  acceptedByViewer: boolean;
-  turnCount: number;
-  maxTurns: number | null;
-  signalCount: number;
-  outcome: { hasOpportunity: boolean; reason: string | null } | null;
-  /**
-   * Set only when `state === 'paused'`. `payload` is private to the seat that
-   * paused (`pausedBy`) — every other viewer sees `reason` only, the same
-   * privacy rule `negotiation.tools.ts`'s `pauseFor` applies A2A-side.
-   */
-  pause: { reason: NegotiationPauseReason; payload?: unknown } | null;
-  updatedAt: Date;
-  /**
-   * IND-610: the owner-facing "did not reach out" decision, named-field
-   * projected from the negotiation-outcome artifact's `reasoning` (an
-   * opening-turn refusal) or, on historical rows, from
-   * `tasks.metadata.screenDecision`. Populated only when the caller has
-   * independently verified the viewer is the negotiation's initiator — never
-   * the raw metadata blob.
-   */
-  screenDecision?: ProjectedScreenDecision | null;
-}
-
 /** Summary returned by getConversationsForUser. */
 export interface ConversationSummary {
   id: string;
@@ -635,42 +585,17 @@ export interface ConversationSummary {
   createdAt: Date;
   updatedAt: Date;
   participants: ResolvedParticipant[];
-  /** The task session that produced the latest message, when it has one. */
-  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date; taskId: string | null } | null;
+  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date } | null;
   metadata: Record<string, unknown> | null;
   via: Array<{ intentId: string; opportunityId: string; title: string }>;
   unreadCount: number;
-  /**
-   * Present only when negotiation lifecycle projection was requested. The one
-   * task session that represents this conversation to the viewer: the most
-   * latest task for the conversation.
-   */
-  negotiation?: NegotiationLifecycleSummary | null;
-  /**
-   * Viewer-scoped opportunities with an addressable negotiation task. Unlike
-   * `negotiation`, this is not limited to one session per conversation.
-   */
-  negotiationOpportunities?: Array<{
-    intentId: string;
-    opportunityId: string;
-    title: string;
-    taskId: string;
-    state: NegotiationLifecycleSummary['state'];
-    opportunityStatus: NegotiationLifecycleSummary['opportunityStatus'];
-    acceptedByViewer: boolean;
-    turnCount: number;
-    maxTurns: number | null;
-    signalCount: number;
-    outcome: NegotiationLifecycleSummary['outcome'];
-    updatedAt: Date;
-  }>;
 }
 
 /**
  * Database adapter for the A2A-aligned conversation tables.
  *
  * @remarks
- * Covers conversations, participants, messages, tasks, artifacts, and metadata.
+ * Covers conversations, participants, messages, and metadata.
  * Uses Drizzle ORM against the `conversations` family of tables.
  */
 

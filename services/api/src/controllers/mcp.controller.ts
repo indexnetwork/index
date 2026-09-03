@@ -9,7 +9,7 @@ import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelconte
 
 import { cacheAdapter, hydeCacheAdapter } from '../adapters/cache.adapter';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
-import { chatDatabaseAdapter, conversationDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
+import { chatDatabaseAdapter, ChatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '../adapters/database.adapter';
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentIndexing } from '../lib/intent/indexing';
@@ -52,7 +52,6 @@ const protocolDeps = {
   intentFollowUp: intentIndexing,
   intentProposalStore: intentProposalDatabaseAdapter,
   enricher: enricherAdapter,
-  negotiationDatabase: conversationDatabaseAdapter,
   createUserDatabase: (db: CompositeToolDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
   createSystemDatabase: (db: CompositeToolDatabase, userId: string, scope: string[], emb?: Embedder) =>
@@ -366,7 +365,6 @@ function createMcpServerInstance(): McpServer {
     embedder: protocolDeps.embedder,
     cache: protocolDeps.cache,
     enricher: protocolDeps.enricher,
-    negotiationDatabase: protocolDeps.negotiationDatabase,
     // #1471: owner-verdict host behind reject/accept_opportunity (the Radar
     // Skip/Start-Chat path). Registered on the MCP surface only; the
     // capability matrix confines verdicts to session-authenticated owners.

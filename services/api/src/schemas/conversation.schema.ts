@@ -10,19 +10,6 @@ export const participantTypeEnum = pgEnum('participant_type', ['user', 'agent'])
 
 export const messageRoleEnum = pgEnum('message_role', ['user', 'agent']);
 
-export const taskStateEnum = pgEnum('task_state', [
-  'submitted',
-  'working',
-  'completed',
-  'failed',
-  'canceled',
-  'rejected',
-  'auth_required',
-  'waiting_for_agent',
-  'claimed',
-  'paused',
-]);
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Tables
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,54 +60,8 @@ export const conversationParticipants = pgTable(
 );
 
 /**
- * Async work units (A2A Tasks) scoped to a conversation.
- */
-export const tasks = pgTable(
-  'tasks',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    conversationId: text('conversation_id')
-      .notNull()
-      .references(() => conversations.id, { onDelete: 'cascade' }),
-    state: taskStateEnum('state').notNull().default('submitted'),
-    statusMessage: jsonb('status_message'),
-    statusTimestamp: timestamp('status_timestamp', { withTimezone: true }),
-    metadata: jsonb('metadata'),
-    /**
-     * NegotiationGraph's briefs, ONE PER SEAT, keyed by the seat's user id
-     * (design doc 2026-08-23, D18). A brief is what a seat's own IS-A tells
-     * it about its own client, so it is never shared: the initiator's kickoff
-     * writes its own, and the counterparty's agent authors its own at its
-     * first turn. Unused by non-negotiation task rows.
-     */
-    briefs: jsonb('briefs').$type<Record<string, string>>().notNull().default({}),
-    extensions: jsonb('extensions'),
-    claimedByAgentId: text('claimed_by_agent_id'),
-    claimedAt: timestamp('claimed_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => ({
-    conversationIdIdx: index('tasks_conversation_id_idx').on(table.conversationId),
-    stateIdx: index('tasks_state_idx').on(table.state),
-    metadataOpportunityIdIdx: index('tasks_metadata_opportunity_id_idx')
-      .on(sql`(${table.metadata}->>'opportunityId')`)
-      .where(sql`${table.metadata}->>'type' = 'negotiation'`),
-  }),
-);
-
-/**
- * Individual messages sent within a conversation.
- *
- * @remarks
- * `parts` is a JSONB array of A2A message parts (text, data, file, etc.).
- * `referenceTaskIds` optionally links a message to related tasks.
- */
-/**
- * Durable timeline segment within a conversation.
- *
- * A2A task runs map one-to-one to a session through `taskId`. H2A and H2H
- * sessions are separated by the server-side inactivity boundary.
+ * Durable timeline segment within a conversation, separated by the
+ * server-side inactivity boundary.
  */
 export const conversationSessions = pgTable(
   'conversation_sessions',
@@ -129,7 +70,6 @@ export const conversationSessions = pgTable(
     conversationId: text('conversation_id')
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
-    taskId: text('task_id').references(() => tasks.id, { onDelete: 'set null' }),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -140,7 +80,6 @@ export const conversationSessions = pgTable(
       table.startedAt,
       table.id,
     ),
-    taskIdUnique: uniqueIndex('conversation_sessions_task_id_uniq').on(table.taskId),
   }),
 );
 
@@ -151,14 +90,12 @@ export const messages = pgTable(
     conversationId: text('conversation_id')
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
-    taskId: text('task_id').references(() => tasks.id, { onDelete: 'set null' }),
     sessionId: text('session_id').references(() => conversationSessions.id, { onDelete: 'set null' }),
     senderId: text('sender_id').notNull(),
     role: messageRoleEnum('role').notNull(),
     parts: jsonb('parts').notNull(),
     metadata: jsonb('metadata'),
     extensions: jsonb('extensions'),
-    referenceTaskIds: jsonb('reference_task_ids'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({
@@ -168,36 +105,18 @@ export const messages = pgTable(
       table.id,
     ),
     senderIdIdx: index('messages_sender_id_idx').on(table.senderId),
-    taskIdIdx: index('messages_task_id_idx').on(table.taskId),
+    /** The agent DM's read: one conversation, filtered by the signal tag. */
+    conversationIntentCreatedAtIdx: index('messages_conversation_intent_created_at_idx').on(
+      table.conversationId,
+      sql`(${table.metadata}->>'intentId')`,
+      table.createdAt,
+      table.id,
+    ),
     sessionCreatedAtIdx: index('messages_session_id_created_at_idx').on(
       table.sessionId,
       table.createdAt,
       table.id,
     ),
-  }),
-);
-
-/**
- * Artifacts produced by a task (files, structured data, etc.).
- *
- * @remarks `parts` mirrors the A2A artifact parts array (JSONB).
- */
-export const artifacts = pgTable(
-  'artifacts',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    taskId: text('task_id')
-      .notNull()
-      .references(() => tasks.id, { onDelete: 'cascade' }),
-    name: text('name'),
-    description: text('description'),
-    parts: jsonb('parts').notNull(),
-    metadata: jsonb('metadata'),
-    extensions: jsonb('extensions'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => ({
-    taskIdIdx: index('artifacts_task_id_idx').on(table.taskId),
   }),
 );
 
@@ -251,7 +170,6 @@ export const conversationsRelations = relations(conversations, ({ many, one }) =
   participants: many(conversationParticipants),
   sessions: many(conversationSessions),
   messages: many(messages),
-  tasks: many(tasks),
   metadata: one(conversationMetadata, {
     fields: [conversations.id],
     references: [conversationMetadata.conversationId],
@@ -270,10 +188,6 @@ export const conversationSessionsRelations = relations(conversationSessions, ({ 
     fields: [conversationSessions.conversationId],
     references: [conversations.id],
   }),
-  task: one(tasks, {
-    fields: [conversationSessions.taskId],
-    references: [tasks.id],
-  }),
   messages: many(messages),
 }));
 
@@ -285,26 +199,6 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   session: one(conversationSessions, {
     fields: [messages.sessionId],
     references: [conversationSessions.id],
-  }),
-  task: one(tasks, {
-    fields: [messages.taskId],
-    references: [tasks.id],
-  }),
-}));
-
-export const tasksRelations = relations(tasks, ({ one, many }) => ({
-  conversation: one(conversations, {
-    fields: [tasks.conversationId],
-    references: [conversations.id],
-  }),
-  messages: many(messages),
-  artifacts: many(artifacts),
-}));
-
-export const artifactsRelations = relations(artifacts, ({ one }) => ({
-  task: one(tasks, {
-    fields: [artifacts.taskId],
-    references: [tasks.id],
   }),
 }));
 
@@ -337,12 +231,6 @@ export type NewConversationParticipant = typeof conversationParticipants.$inferI
 
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
-
-export type Task = typeof tasks.$inferSelect;
-export type NewTask = typeof tasks.$inferInsert;
-
-export type Artifact = typeof artifacts.$inferSelect;
-export type NewArtifact = typeof artifacts.$inferInsert;
 
 export type ConversationMetadata = typeof conversationMetadata.$inferSelect;
 export type NewConversationMetadata = typeof conversationMetadata.$inferInsert;
