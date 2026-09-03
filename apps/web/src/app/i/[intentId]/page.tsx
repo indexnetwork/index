@@ -53,7 +53,6 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
  * pass through; latent/pending stay gated by viewer actionability).
  */
 const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
-  "latent",
   "pending",
   "negotiating",
   "stalled",

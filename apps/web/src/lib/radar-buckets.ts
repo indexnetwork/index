@@ -20,8 +20,6 @@ const TERMINAL_BUCKETS: Partial<Record<OpportunityLifecycleStatus, RadarBucket>>
 };
 
 const STATUS_BUCKETS: Record<OpportunityLifecycleStatus, RadarBucket> = {
-  latent: "agent-handling",
-  draft: "agent-handling",
   pending: "needs-you",
   negotiating: "agent-handling",
   stalled: "closed",
