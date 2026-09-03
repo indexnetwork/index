@@ -381,7 +381,6 @@ export type {
 export {
   hasUnsupportedOpportunityClaim,
   stripUnsupportedOpportunityClaims,
-  stripUnsupportedOpportunityClaims as stripUnsupportedOpportunityClaimsText,
 } from "./internal/shared/utils/claim-safety.js";
 export {
   buildCandidateEvidence,
