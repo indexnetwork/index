@@ -270,7 +270,6 @@ export default function OpportunityCard({
     <div className={cn("rounded-md p-4", getCardWrapperClass(effectiveStatus))}>
       {/* Header: Avatar, Name, Mutual Intents, Actions */}
       <div className="flex items-center justify-between gap-2 mb-3">
-          /* Standard single-user layout */
           <div
             className="flex items-center gap-2 min-w-0 cursor-pointer"
             role="link"
