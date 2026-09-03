@@ -1134,7 +1134,7 @@
   }
 
   function networkShareUrl(network, webUrl, apiUrl) {
-    if (!network || network.hasMasterKey) return null;
+    if (!network) return null;
     if (network.role !== "owner") return null;
     const base = resolveShareBase(webUrl, apiUrl);
     if (!base) return null;
@@ -1614,8 +1614,7 @@
     const noResults = showSug && query.trim() && suggestions.length === 0;
 
     const accessBody = React.createElement("div", { className: "index-dashboard__net-access-panel" },
-      !local.hasMasterKey
-        ? React.createElement("div", null,
+      React.createElement("div", null,
           React.createElement("p", { className: "index-dashboard__net-invite-label" }, "Visibility"),
           React.createElement("div", { className: "index-dashboard__net-visibility" },
             React.createElement("button", {
@@ -1637,10 +1636,8 @@
               React.createElement("span", null, "Invite only"),
             )),
           ),
-        )
-        : null,
-      !local.hasMasterKey
-        ? (shareUrl
+        ),
+      (shareUrl
           ? React.createElement("div", { className: "index-dashboard__net-invite" },
             React.createElement("p", { className: "index-dashboard__net-invite-label" }, label),
             React.createElement("div", { className: "index-dashboard__net-invite-row" },
@@ -1679,8 +1676,7 @@
               )
               : null,
           )
-          : React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "No invitation link yet."))
-        : null,
+          : React.createElement("p", { className: "index-dashboard__net-invite-empty" }, "No invitation link yet.")),
       React.createElement("div", { className: "index-dashboard__net-members" },
         React.createElement("p", { className: "index-dashboard__net-invite-label" },
           "Members (", String(members.length), ")"),

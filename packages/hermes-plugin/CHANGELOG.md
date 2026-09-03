@@ -8,6 +8,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Removed
+- **The `hasMasterKey` network field.** The dashboard no longer forwards it and
+  the network detail always shows visibility and the invitation link, matching
+  the web app now that master-key signup is gone.
+
+### Removed
 - **The forwarders for deleted Index tools:** `confirm_opportunity_delivery`,
   the four premise tools, and `read_activity_summary`. `research_profile` is
   unchanged.

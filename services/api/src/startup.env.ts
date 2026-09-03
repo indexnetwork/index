@@ -90,7 +90,6 @@ const envSchema = z.object({
   TESTING_EMAIL_ADDRESS: z.union([z.literal(''), z.string().email()]).optional(),
 
   // 7. Integrations
-  COMPOSIO_API_KEY: z.string().optional(),
   UNSTRUCTURED_API_URL: optionalUrl,
   PARALLELS_API_KEY: z.string().optional(),
   UNAVATAR_TOKEN: z.string().optional(),
@@ -106,13 +105,7 @@ const envSchema = z.object({
 
   // 10. Rate limiting
 
-  // 11. Telegram Bot
-  TELEGRAM_BOT_TOKEN: z.string().optional(),
-  TELEGRAM_BOT_USERNAME: z.string().optional(),
-  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
-  TELEGRAM_WEBHOOK_URL: optionalUrl,
-
-  // 12. Observability
+  // 11. Observability
   SENTRY_DSN: optionalUrl,
   SENTRY_ENVIRONMENT: z.string().optional(),
   SENTRY_RELEASE: z.string().optional(),
@@ -124,17 +117,17 @@ const envSchema = z.object({
   LANGSMITH_WORKSPACE_ID: z.string().optional(),
   LOG_LEVEL: z.union([z.literal(''), z.enum(['verbose', 'debug', 'info', 'warn', 'error'])]).optional(),
 
-  // 12b. LangGraph checkpoint retention
+  // 11b. LangGraph checkpoint retention
 
-  // 12c. Frame-drift measurement (disabled by default)
+  // 11c. Frame-drift measurement (disabled by default)
 
-  // 13. Platform-provided metadata
+  // 12. Platform-provided metadata
   RAILWAY_ENVIRONMENT: z.string().optional(),
   RAILWAY_ENVIRONMENT_NAME: z.string().optional(),
   RAILWAY_GIT_COMMIT_SHA: z.string().optional(),
   GITHUB_SHA: z.string().optional(),
 
-  // 14. Test / local-only compatibility flags seen in the codebase
+  // 13. Test / local-only compatibility flags seen in the codebase
   OPENAI_API_KEY: z.string().optional(),
   DEBUG: z.string().optional(),
   FORCE_COLOR: z.string().optional(),
@@ -175,21 +168,16 @@ function collectEnvWarnings(): string[] {
   };
 
   warnMissing('API_URL', 'set the deployed API origin so MCP configs, connect links, and webhooks do not fall back to defaults.');
-  warnMissing('WEB_APP_URL', 'set the deployed web app origin for auth, notifications, and integration callbacks.');
+  warnMissing('WEB_APP_URL', 'set the deployed web app origin for auth and notifications.');
   warnMissingAny(['REDIS_URL', 'REDIS_HOST'], 'set Railway Redis; otherwise cache/locks/SSE may target localhost or in-memory fallbacks.');
   warnMissing('S3_ENDPOINT', 'set the Railway bucket endpoint when using Tigris/S3-compatible storage.');
   warnMissing('S3_REGION', 'set the S3 region, often "auto" for Railway buckets.');
   warnMissing('RESEND_API_KEY', 'emails will be skipped, including invite and notification email flows.');
   warnMissing('SENTRY_DSN', 'backend errors and traces will not be reported to Sentry.');
-  warnMissing('COMPOSIO_API_KEY', 'external integrations such as Gmail, Notion, Slack, Airtable, and Google Docs are disabled.');
   warnMissing('UNSTRUCTURED_API_URL', 'document parsing for some uploaded file types is disabled.');
   warnMissing('PARALLELS_API_KEY', 'web crawling/profile extraction for links is disabled.');
 
   warnPartial(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'], 'set both values or Google OAuth will not work.');
-  warnPartial(['TELEGRAM_BOT_TOKEN', 'TELEGRAM_WEBHOOK_SECRET'], 'set both values or Telegram webhook registration will be skipped/rejected.');
-  if (hasValue('TELEGRAM_BOT_TOKEN') && !hasValue('TELEGRAM_BOT_USERNAME')) {
-    warnings.push('TELEGRAM_BOT_USERNAME: set the bot username so Telegram integration links can be generated.');
-  }
   return warnings;
 }
 

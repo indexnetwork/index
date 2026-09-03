@@ -19,7 +19,6 @@ import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
-import { userService } from '../services/user.service';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
@@ -29,7 +28,6 @@ import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, E
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
-import { mergeTelegramHandleIntoSocials } from '../lib/telegram/socials';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
@@ -152,84 +150,7 @@ type ApiKeyPrincipalRow = {
   metadata?: string | null;
 };
 
-type TelegramSocial = {
-  userId?: string;
-  label: string;
-  value: string;
-};
-
-type TelegramHandleMismatch = {
-  reason: 'authenticated_user_handle_mismatch' | 'handle_belongs_to_other_user';
-  ownerUserId?: string;
-};
-
 type ResolvedMcpIdentity = McpResolvedIdentity;
-
-function normalizeTelegramHeader(raw: string | null | undefined): string | null {
-  const trimmed = raw
-    ?.trim()
-    .replace(/^@/, '')
-    // Case-insensitive to match the SQL normalization in
-    // EnrichmentDatabaseAdapter.findTelegramHandleOwners; otherwise a stored
-    // `HTTPS://T.ME/<handle>` would pass the SQL filter but fail this JS
-    // re-check, bypassing the mismatch/ownership guard.
-    .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//i, '')
-    .split(/[/?#]/)[0];
-
-  if (!trimmed) return null;
-  if (!/^[A-Za-z0-9_]{5,32}$/.test(trimmed)) return null;
-  return trimmed;
-}
-
-export function telegramHandleFromRequest(request: Request): string | null {
-  return normalizeTelegramHeader(
-    request.headers.get('x-index-telegram-username') ??
-    request.headers.get('x-index-telegram-handle'),
-  );
-}
-
-function telegramHandleFromAuthInput(input: McpAuthInput): string | undefined {
-  return normalizeTelegramHeader(input.telegramUsername ?? input.telegramHandle) ?? undefined;
-}
-
-function normalizeTelegramHandleForComparison(raw: string): string | null {
-  return normalizeTelegramHeader(raw)?.toLowerCase() ?? null;
-}
-
-export function findTelegramHandleMismatch(params: {
-  userId: string;
-  telegramHandle: string;
-  authenticatedUserSocials: TelegramSocial[];
-  matchingTelegramSocials: TelegramSocial[];
-}): TelegramHandleMismatch | null {
-  const requested = normalizeTelegramHandleForComparison(params.telegramHandle);
-  if (!requested) return null;
-
-  const authenticatedTelegramHandles = params.authenticatedUserSocials
-    .filter((social) => social.label === 'telegram')
-    .map((social) => normalizeTelegramHandleForComparison(social.value))
-    .filter((value): value is string => value !== null);
-
-  if (
-    authenticatedTelegramHandles.length > 0 &&
-    !authenticatedTelegramHandles.some((handle) => handle === requested)
-  ) {
-    return { reason: 'authenticated_user_handle_mismatch' };
-  }
-
-  const otherOwner = params.matchingTelegramSocials.find((social) => (
-    social.userId !== undefined &&
-    social.userId !== params.userId &&
-    social.label === 'telegram' &&
-    normalizeTelegramHandleForComparison(social.value) === requested
-  ));
-
-  if (otherOwner?.userId) {
-    return { reason: 'handle_belongs_to_other_user', ownerUserId: otherOwner.userId };
-  }
-
-  return null;
-}
 
 export function resolveMcpApiKeyPrincipal(
   row: ApiKeyPrincipalRow,
@@ -259,100 +180,6 @@ export function resolveMcpApiKeyPrincipal(
   };
 }
 
-/**
- * Distinguishes Telegram identity verification (infrastructure) failures from
- * auth (token / API-key) failures. A handle that simply belongs to someone
- * else is not one of these: that skips the binding and the request proceeds.
- * The auth resolver's per-path catch blocks
- * reclassify unknown errors (e.g. "API key authentication failed"); rethrowing
- * this type unchanged keeps the client-facing reason accurate and avoids
- * muddling auth alerting.
- */
-class TelegramIdentityError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options);
-    this.name = 'TelegramIdentityError';
-  }
-}
-
-/**
- * Data access used by Telegram identity binding, injectable so the binding
- * policy can be tested without a database.
- */
-export interface TelegramBindingPort {
-  getUserSocials(userId: string): Promise<TelegramSocial[]>;
-  findTelegramHandleOwners(handle: string): Promise<TelegramSocial[]>;
-  setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void>;
-}
-
-const defaultTelegramBindingPort: TelegramBindingPort = {
-  getUserSocials: (userId) => chatDatabaseAdapter.getUserSocials(userId),
-  findTelegramHandleOwners: (handle) => chatDatabaseAdapter.findTelegramHandleOwners(handle),
-  setSocials: (userId, socials) => userService.setSocials(userId, socials),
-};
-
-export async function finalizeMcpIdentity(
-  telegramHandle: string | undefined,
-  identity: ResolvedMcpIdentity,
-  port: TelegramBindingPort = defaultTelegramBindingPort,
-): Promise<ResolvedMcpIdentity> {
-  // Telegram identity binding: any client may send the
-  // x-index-telegram-username/-handle headers (a plugin sends one whenever
-  // INDEX_TELEGRAM_USERNAME is set), so header presence is only a
-  // request to bind, never a claim of identity. Binding is additive and
-  // optional: a handle we cannot attribute to the authenticated user is
-  // skipped, not rejected.
-  if (!telegramHandle) return identity;
-
-  let existingSocials: TelegramSocial[];
-  let matchingTelegramSocials: TelegramSocial[];
-  try {
-    existingSocials = await port.getUserSocials(identity.userId);
-    matchingTelegramSocials = await port.findTelegramHandleOwners(telegramHandle);
-  } catch (err) {
-    logger.warn('Failed to verify Telegram MCP handle', {
-      userId: identity.userId,
-      telegramHandle,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    throw new TelegramIdentityError('Telegram handle verification failed', { cause: err });
-  }
-
-  const mismatch = findTelegramHandleMismatch({
-    userId: identity.userId,
-    telegramHandle,
-    authenticatedUserSocials: existingSocials,
-    matchingTelegramSocials,
-  });
-  if (mismatch) {
-    // Non-fatal: the caller is already authenticated as themselves and simply
-    // gets no Telegram binding. Failing the request instead would let one
-    // misconfigured INDEX_TELEGRAM_USERNAME break every MCP call for a
-    // deployment, and skipping the write gives up nothing security-wise.
-    logger.warn('Telegram MCP handle mismatch — skipping identity binding', {
-      userId: identity.userId,
-      telegramHandle,
-      reason: mismatch.reason,
-      ownerUserId: mismatch.ownerUserId,
-    });
-    return identity;
-  }
-
-  try {
-    const merged = mergeTelegramHandleIntoSocials(existingSocials, telegramHandle);
-    if (!merged) return identity;
-
-    await port.setSocials(identity.userId, merged);
-  } catch (err) {
-    logger.warn('Failed to persist Telegram MCP handle', {
-      userId: identity.userId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  return identity;
-}
-
 const authResolver: McpAuthResolver = {
   async resolveIdentity(input: McpAuthInput): Promise<ResolvedMcpIdentity> {
     if (input.bearerToken) {
@@ -362,11 +189,10 @@ const authResolver: McpAuthResolver = {
         // JWT path
         try {
           const { payload } = await jwtVerify(input.bearerToken, JWKS, { issuer: API_URL, audience: JWT_AUDIENCE });
-          if (typeof payload.id === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.id, isSessionAuth: true, networkScopeId: null });
-          if (typeof payload.sub === 'string') return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: payload.sub, isSessionAuth: true, networkScopeId: null });
+          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null };
+          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null };
           throw new Error('JWT payload missing user ID');
         } catch (err) {
-          if (err instanceof TelegramIdentityError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           const isTransport = msg.includes('fetch') || msg.includes('ECONNREFUSED') ||
             msg.includes('timeout') || msg.includes('NetworkError');
@@ -382,10 +208,9 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: data.userId, isSessionAuth: true, networkScopeId: null });
+            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null };
           }
         } catch (err) {
-          if (err instanceof TelegramIdentityError) throw err;
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(`MCP token lookup failed: ${msg}`, { cause: err });
         }
@@ -453,20 +278,19 @@ const authResolver: McpAuthResolver = {
             const networkScopeId = principal.agentId
               ? await resolveAgentNetworkScopeById(principal.agentId)
               : null;
-            return finalizeMcpIdentity(telegramHandleFromAuthInput(input), {
+            return {
               userId: principal.userId,
               ...(principal.agentId ? { agentId: principal.agentId } : {}),
               ...(principal.enrollmentCapable ? { enrollmentCapable: true } : {}),
               networkScopeId,
-            });
+            };
           }
         }
 
         if (sessionUserId) {
-          return finalizeMcpIdentity(telegramHandleFromAuthInput(input), { userId: sessionUserId, networkScopeId: null });
+          return { userId: sessionUserId, networkScopeId: null };
         }
       } catch (err) {
-        if (err instanceof TelegramIdentityError) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'Invalid API key') {
           throw err;
@@ -491,8 +315,6 @@ const authResolver: McpAuthResolver = {
         return scheme?.toLowerCase() === 'bearer' && token ? token : undefined;
       })(),
       apiKey: request.headers.get('x-api-key') ?? undefined,
-      telegramHandle: request.headers.get('x-index-telegram-handle') ?? undefined,
-      telegramUsername: request.headers.get('x-index-telegram-username') ?? undefined,
     };
     const { userId } = await authResolver.resolveIdentity(input);
     return userId;

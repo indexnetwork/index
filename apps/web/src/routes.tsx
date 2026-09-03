@@ -182,10 +182,6 @@ export const router = createBrowserRouter([
         lazy: lazyRoute("/opportunities/:id/skip", () => import("@/app/opportunities/[id]/skip/page")),
       },
       {
-        path: "/oauth/callback",
-        lazy: lazyRoute("/oauth/callback", () => import("@/app/oauth/callback/page")),
-      },
-      {
         path: "/cli-auth",
         lazy: lazyRoute("/cli-auth", () => import("@/app/cli-auth/page")),
       },

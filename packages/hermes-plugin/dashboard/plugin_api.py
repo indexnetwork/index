@@ -757,8 +757,6 @@ def _normalize_networks(payload: dict[str, Any], discover_payload: dict[str, Any
         if member_count is not None:
             item["memberCount"] = member_count
         item["role"] = "owner" if is_owner else "member"
-        if network.get("hasMasterKey") is True:
-            item["hasMasterKey"] = True
         # Access-tab share links need joinPolicy + invitation code (web AccessTab).
         perms = network.get("permissions") if isinstance(network.get("permissions"), dict) else {}
         join_policy = _text(perms.get("joinPolicy") or network.get("joinPolicy"))

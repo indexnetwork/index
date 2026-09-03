@@ -20,6 +20,16 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 43.0.0 - 2026-09-02
+
+### Removed
+
+- **BREAKING: `McpAuthInputSchema` no longer accepts `telegramHandle` or
+  `telegramUsername`.** The MCP server stops reading the `x-telegram-handle` and
+  `x-telegram-username` headers, and the host no longer binds a Telegram handle
+  to an account at authentication time. Telegram on a user profile is now only a
+  social link, so `telegram-handle.ts` and `social-label.ts` are unchanged.
+
 ## 42.0.0 - 2026-09-02
 
 ### Removed

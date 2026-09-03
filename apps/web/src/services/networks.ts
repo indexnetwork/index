@@ -89,12 +89,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Create new network
-  createNetwork: async (data: CreateNetworkRequest): Promise<Network & { masterKey?: string }> => {
-    const response = await api.post<APIResponse<Network> & { masterKey?: string }>('/networks', data);
+  createNetwork: async (data: CreateNetworkRequest): Promise<Network> => {
+    const response = await api.post<APIResponse<Network>>('/networks', data);
     if (!response.network) {
       throw new Error('Failed to create network');
     }
-    return { ...response.network, ...(response.masterKey ? { masterKey: response.masterKey } : {}) };
+    return response.network;
   },
 
   // Update network
@@ -303,26 +303,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
-  // CSV Import — parse a large CSV file server-side
-  parseCsvImport: async (networkId: string, file: File): Promise<{
-    valid: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>;
-    invalid: Array<{ row: Record<string, string>; reason: string }>;
-  }> => {
-    return api.uploadFile(`/networks/${networkId}/members/import/parse`, file, undefined, 'file');
-  },
-
-  // CSV Import — confirm import of parsed rows. For experiment networks the
-  // backend emails the network owner(s) one summary message with every minted
-  // API key as an inline CSV; per-user invitation emails are not sent.
-  importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>): Promise<{
-    imported: number;
-    skipped: number;
-    ownersNotified: number;
-  }> => {
-    return api.post(`/networks/${networkId}/members/import`, { members });
-  },
-
-  // Invite a single member to an experiment network by email
+  // Invite a single member to a network by email
   inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; alreadyMember: boolean; agentProvisioned: boolean }> => {
     return api.post(`/networks/${networkId}/members/invite`, { email, name });
   },
@@ -333,17 +314,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     memberId: string,
   ): Promise<{ rotated: boolean; email: string }> => {
     return api.post(`/networks/${networkId}/members/${memberId}/resend-invite`, {});
-  },
-
-  // Rotate the master key on a network. Plaintext is returned
-  // exactly once; the old key stops working immediately.
-  rotateMasterKey: async (networkId: string): Promise<{ masterKey: string }> => {
-    return api.post<{ masterKey: string }>(`/networks/${networkId}/rotate-master-key`, {});
-  },
-
-  // Enable a master key on a network. Plaintext is returned exactly once.
-  enableMasterKey: async (networkId: string): Promise<{ masterKey: string }> => {
-    return api.post<{ masterKey: string }>(`/networks/${networkId}/master-key`, {});
   },
 });
 

@@ -42,7 +42,7 @@ export interface ResendInviteResult {
 
 export interface EnsureMembershipResult {
   user: { id: string; email: string };
-  /** Raw API key. Null when rotateKey=false and the user already had a scoped agent. */
+  /** Raw API key. Null when the user already had a scoped agent. */
   apiKey: string | null;
   created: boolean;
   alreadyMember: boolean;
@@ -58,26 +58,14 @@ export const SCOPED_INVITED_AGENT_ACTIONS = [
 class NetworkInvitationService {
   /**
    * Idempotent membership-and-agent provisioning without any email side-effects.
-   * Used by the headless signup path. invite() wraps this and adds email delivery.
-   *
-   * @param params.rotateKey - When true and a scoped agent already exists, revokes
-   *   its tokens and mints a fresh one (returns new key).
-   * @param params.mintKey - When true and a scoped agent already exists, mints
-   *   an additional key without revoking existing tokens. Use for headless
-   *   self-serve signup where retries must not break already-running agents.
-   *   When both flags are false, returns apiKey=null for users who already have
-   *   a scoped agent.
+   * invite() wraps this and adds email delivery.
    */
   async ensureMembership(params: {
     networkId: string;
     email: string;
     name?: string;
-    rotateKey?: boolean;
-    mintKey?: boolean;
   }): Promise<EnsureMembershipResult> {
     const email = params.email.toLowerCase().trim();
-    const rotateKey = params.rotateKey ?? false;
-    const mintKey = params.mintKey ?? false;
 
     const { user, created } = await this.findOrCreateUser(email, params.name);
     // Fire-and-forget: nothing in the invite path reads the negotiator row, and the
@@ -89,21 +77,6 @@ class NetworkInvitationService {
 
     const agentId = await this.findScopedAgentId(user.id, params.networkId);
     if (agentId) {
-      if (rotateKey) {
-        await agentTokenAdapter.revokeAllForAgent(agentId);
-        const token = await agentTokenAdapter.create(user.id, {
-          name: 'Personal Agent API Key',
-          agentId,
-        });
-        return { user, apiKey: token.key, created, alreadyMember };
-      }
-      if (mintKey) {
-        const token = await agentTokenAdapter.create(user.id, {
-          name: 'Personal Agent API Key',
-          agentId,
-        });
-        return { user, apiKey: token.key, created, alreadyMember };
-      }
       logger.info('Skipping provisioning; scoped agent already exists', {
         userId: user.id,
         networkId: params.networkId,
@@ -132,7 +105,6 @@ class NetworkInvitationService {
       networkId: params.networkId,
       email,
       name: params.name,
-      rotateKey: false,
     });
 
     if (result.apiKey) {
@@ -238,7 +210,7 @@ class NetworkInvitationService {
       .values({
         email,
         name: name ?? email.split('@')[0],
-        // Experiment/AgentVillage provisioning proves the invitee can receive
+        // Invitation provisioning proves the invitee can receive
         // this network-scoped key, but it does not create a full index.network
         // browser session. Keep the legacy Better Auth flag for compatibility;
         // authorization must continue to come from JWT sessions or scoped keys.
@@ -348,9 +320,7 @@ class NetworkInvitationService {
   }
 
   /**
-   * Mints a network-scoped personal agent + API key for a user. Used for new
-   * invites and (via experimentService) for existing users re-signing through
-   * the master-key headless endpoint.
+   * Mints a network-scoped personal agent + API key for a user.
    */
   async provisionScopedAgent(userId: string, networkId: string): Promise<{ apiKey: string; agentId: string }> {
     const agent = await agentDatabaseAdapter.createAgent({

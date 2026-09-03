@@ -59,16 +59,6 @@ export type CreateAndOpenResult =
   | { status: 'created' | 'existing'; opportunityId: string }
   | { status: 'raced' | 'failed'; reason: string };
 
-export interface OnboardingProfileSeed {
-  source: 'experiment_signup' | 'experiment_csv_import';
-  networkId: string;
-  capturedAt: string;
-  name?: string;
-  bio?: string;
-  location?: string;
-  socials?: { label: string; value: string }[];
-}
-
 export interface NetworkAssignmentContext {
   networkId: string;
   indexPrompt: string | null;
@@ -95,7 +85,6 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
-  profileSeeds?: OnboardingProfileSeed[];
 }
 
 /** Single social-link row from the user_socials table. */

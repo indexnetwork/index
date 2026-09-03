@@ -121,7 +121,6 @@ function Networks({ onClose, onOpenSignal }) {
       invitationCode: null,
       role: "owner",
       joined: true,
-      hasMasterKey: false,
       signals: [],
     };
     if (client) {
@@ -144,7 +143,6 @@ function Networks({ onClose, onOpenSignal }) {
           joinPolicy: jp,
           privacy: jp === "anyone" ? "public" : "private",
           invitationCode: code || null,
-          hasMasterKey: n.hasMasterKey === true,
           photo: window.IndexApp.avatarUrl(n.imageUrl) || created.photo,
           source: n,
         };

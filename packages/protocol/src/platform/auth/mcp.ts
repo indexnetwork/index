@@ -6,8 +6,6 @@ import { z } from 'zod';
 export const McpAuthInputSchema = z.object({
   bearerToken: z.string().min(1).optional(),
   apiKey: z.string().min(1).optional(),
-  telegramHandle: z.string().min(1).optional(),
-  telegramUsername: z.string().min(1).optional(),
 }).strict();
 
 export type McpAuthInput = z.infer<typeof McpAuthInputSchema>;

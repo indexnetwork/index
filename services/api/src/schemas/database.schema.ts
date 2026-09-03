@@ -18,16 +18,6 @@ export const questionStatusEnum = pgEnum('question_status', ['pending', 'answere
 export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 
-export interface OnboardingProfileSeed {
-  source: 'experiment_signup' | 'experiment_csv_import';
-  networkId: string;
-  capturedAt: string;
-  name?: string;
-  bio?: string;
-  location?: string;
-  socials?: { label: string; value: string }[];
-}
-
 export interface OnboardingState {
   completedAt?: string;
   profileConfirmedAt?: string;
@@ -36,7 +26,6 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks' | 'first_signal' | 'complete';
   networkId?: string;
   invitationCode?: string;
-  profileSeeds?: OnboardingProfileSeed[];
 }
 
 export interface NetworkPermissionsState {
@@ -67,18 +56,8 @@ export interface NetworkRequestDetails {
 
 export type NetworkRequestStatus = 'pending' | 'needs_changes';
 
-export interface TelegramPrefs {
-  chatId: string;
-  sessionId?: string;       // lazily created on first outbound message
-  connectedAt: string;      // ISO timestamp
-  notifications: {
-    opportunityAccepted: boolean;
-  };
-}
-
 export interface NotificationPreferences {
   connectionUpdates: boolean;
-  telegram?: TelegramPrefs;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -556,7 +535,6 @@ export const networks = pgTable('networks', {
   key: text('key'),
   prompt: text('prompt'),
   imageUrl: text('image_url'),
-  masterKeyHash: text('master_key_hash'),
   // Non-null only while this row is an unapproved "create a network" request
   // (early access). Cleared to null when a staff reviewer approves it.
   requestStatus: text('request_status').$type<NetworkRequestStatus>(),
@@ -603,21 +581,6 @@ export const networkMembers = pgTable('network_members', {
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
   pk: primaryKey({ columns: [table.networkId, table.userId] }),
-}));
-
-export const networkIntegrations = pgTable('network_integrations', {
-  networkId: text('network_id').notNull().references(() => networks.id),
-  toolkit: text('toolkit').notNull(),
-  connectedAccountId: text('connected_account_id').notNull(),
-  syncConfig: jsonb('sync_config').$type<{
-    intervalMs?: number;
-    lastSyncAt?: string;
-    calendarId?: string;
-    status?: 'active' | 'paused' | 'error';
-  }>().default({}).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.networkId, table.toolkit] }),
 }));
 
 /**
@@ -1009,7 +972,6 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
 export const networksRelations = relations(networks, ({ many }) => ({
   members: many(networkMembers),
   intents: many(intentNetworks),
-  integrations: many(networkIntegrations),
 }));
 
 export const networkMembersRelations = relations(networkMembers, ({ one }) => ({
@@ -1020,13 +982,6 @@ export const networkMembersRelations = relations(networkMembers, ({ one }) => ({
   user: one(users, {
     fields: [networkMembers.userId],
     references: [users.id],
-  }),
-}));
-
-export const networkIntegrationsRelations = relations(networkIntegrations, ({ one }) => ({
-  network: one(networks, {
-    fields: [networkIntegrations.networkId],
-    references: [networks.id],
   }),
 }));
 
@@ -1101,8 +1056,6 @@ export type HydeDocument = typeof hydeDocuments.$inferSelect;
 export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
-export type NetworkIntegration = typeof networkIntegrations.$inferSelect;
-export type NewNetworkIntegration = typeof networkIntegrations.$inferInsert;
 export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
 export type AgentTransport = typeof agentTransports.$inferSelect;

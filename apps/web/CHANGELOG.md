@@ -8,6 +8,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- **The network Integrations tab** and the `/networks/:id/integrations` URL,
+  along with `IntegrationsTab`, `services/integrations.ts`, `useGmailConnect`,
+  the `/oauth/callback` route and the Composio toolkit icons. Google login is
+  unaffected.
+- **Master-key signup on the Access tab.** CSV member import (`csv-import.ts`,
+  `CsvPreviewModal`) and `MasterKeyDialog` are gone; join policy, the invitation
+  link and add-member now always use the ordinary path.
+- **The Connect Telegram bot control in user settings.** The Telegram *social*
+  field on the profile stays.
 - The `manage:premises` permission label on the agent pages and the unused
   `premises` field on the network-overview client type.
 - The `counterpartyPremiseFit` field on the `screenDecision` conversation type.

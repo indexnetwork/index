@@ -1,7 +1,5 @@
 // Create-network sheet. Fields mirror the product spec: name, optional
-// description, type, access. "Experiment" (headless API signup) is
-// deliberately not offered here, existing networks may still carry it as a
-// privacy value, but it isn't something you pick by hand.
+// description, type, access.
 function CreateNetwork({ onCancel, onCreate }) {
   const [name, setName]     = useState("");
   const [desc, setDesc]     = useState("");

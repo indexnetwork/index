@@ -1,4 +1,4 @@
-import { BasicUserInfo, NewsletterUserData, NotificationPreferences, TelegramPrefs, User, UserWithGraph, db, eq, inArray, sessions, sql, userNotificationSettings, userSocials, users } from './database.shared';
+import { BasicUserInfo, NewsletterUserData, NotificationPreferences, User, UserWithGraph, db, eq, inArray, sessions, userNotificationSettings, userSocials, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 
@@ -303,85 +303,6 @@ export class UserDatabaseAdapter {
       await db.insert(userNotificationSettings)
         .values({ userId, preferences });
     }
-  }
-
-  /**
-   * Get the stored Telegram connection prefs for a user.
-   * Returns null when the user has no Telegram connection.
-   * @param userId - The user whose Telegram prefs to retrieve
-   * @returns The TelegramPrefs or null if not connected
-   */
-  async getTelegramPrefs(userId: string): Promise<TelegramPrefs | null> {
-    const result = await db
-      .select({ preferences: userNotificationSettings.preferences })
-      .from(userNotificationSettings)
-      .where(eq(userNotificationSettings.userId, userId))
-      .limit(1);
-    return (result[0]?.preferences as NotificationPreferences | undefined)?.telegram ?? null;
-  }
-
-  /**
-   * Upsert the telegram key inside user_notification_settings.preferences,
-   * preserving the existing connectionUpdates value.
-   * @param userId - The user whose Telegram prefs to update
-   * @param telegramPrefs - The new Telegram prefs to store
-   */
-  async updateTelegramPrefs(userId: string, telegramPrefs: TelegramPrefs): Promise<void> {
-    const existing = await db
-      .select({ preferences: userNotificationSettings.preferences })
-      .from(userNotificationSettings)
-      .where(eq(userNotificationSettings.userId, userId))
-      .limit(1);
-    const current = (existing[0]?.preferences as NotificationPreferences | undefined) ?? {
-      connectionUpdates: true,
-    };
-    const updated: NotificationPreferences = { ...current, telegram: telegramPrefs };
-    await db
-      .insert(userNotificationSettings)
-      .values({ userId, preferences: updated })
-      .onConflictDoUpdate({
-        target: userNotificationSettings.userId,
-        set: { preferences: updated, updatedAt: new Date() },
-      });
-  }
-
-  /**
-   * Remove the telegram key from user_notification_settings.preferences.
-   * No-op if the user has no notification settings row.
-   * @param userId - The user whose Telegram prefs to clear
-   */
-  async clearTelegramPrefs(userId: string): Promise<void> {
-    const existing = await db
-      .select({ preferences: userNotificationSettings.preferences })
-      .from(userNotificationSettings)
-      .where(eq(userNotificationSettings.userId, userId))
-      .limit(1);
-    if (!existing[0]) return;
-    const { telegram: _removed, ...rest } = (existing[0].preferences as NotificationPreferences | null) ?? {};
-    await db
-      .update(userNotificationSettings)
-      .set({ preferences: rest as NotificationPreferences, updatedAt: new Date() })
-      .where(eq(userNotificationSettings.userId, userId));
-  }
-
-  /**
-   * Find a user by their stored Telegram chatId.
-   * Used by the gateway to route inbound messages.
-   * @param chatId - The Telegram chat ID to look up
-   * @returns The userId and optional sessionId, or null if not found
-   */
-  async findByTelegramChatId(chatId: string): Promise<{ userId: string; sessionId?: string } | null> {
-    const result = await db
-      .select({
-        userId: userNotificationSettings.userId,
-        preferences: userNotificationSettings.preferences,
-      })
-      .from(userNotificationSettings)
-      .where(sql`${userNotificationSettings.preferences}->'telegram'->>'chatId' = ${chatId}`)
-      .limit(1);
-    if (!result[0]) return null;
-    const telegram = (result[0].preferences as NotificationPreferences | undefined)?.telegram;
-    return { userId: result[0].userId, sessionId: telegram?.sessionId };
   }
 
 }

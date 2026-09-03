@@ -50,7 +50,6 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
       'agent_transports',
       'agents',
       'apikey',
-      'network_integrations',
       'network_members',
       'networks',
       'users',

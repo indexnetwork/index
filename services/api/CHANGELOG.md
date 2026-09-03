@@ -10,6 +10,28 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- **The experiment service and master-key signup.** `POST /networks/:id/signup`,
+  `/signup/lookup`, `/master-key`, `/rotate-master-key`, `/members/import` and
+  `/members/import/parse` are gone, along with `ExperimentService`,
+  `MasterKeyGuard`, `lib/experiment/master-key.ts`, the
+  `experiment-import-credentials` and `network-master-key-rotated` email
+  templates, and the `maintenance:audit-experiment-emails` script. Networks no
+  longer project `hasMasterKey`.
+- **The Telegram bot.** The gateway, `lib/telegram/bot-api.ts`, the webhooks
+  controller (Telegram was its only route), the boot wiring in `main.ts`, the
+  `TELEGRAM_BOT_*` and `TELEGRAM_WEBHOOK_*` variables, the Telegram
+  notification preference adapters and the notification event are removed. MCP
+  authentication no longer reads `x-telegram-handle` / `x-telegram-username` or
+  binds a handle to an account. Telegram on a user profile stays as a social
+  link, and `chat_persona` keeps its `telegram` enum value.
+- **Composio Slack and Gmail.** `integration.controller.ts`,
+  `integration.service.ts`, `integration.adapter.ts`, `lib/composio/`, the
+  `@composio/core` and `@composio/langchain` dependencies and `COMPOSIO_API_KEY`
+  are gone. Google *login* is unaffected: it runs through Better Auth.
+- Migration `0162` drops `networks.master_key_hash` and the
+  `network_integrations` table.
+
+### Removed
 - **Daily frame-drift monitoring.** The 00:15 UTC cron, its service, both
   adapters and `lib/frame-drift.config.ts` are gone, along with the
   `FrameDriftCron` wiring in `main.ts`. The job measured per-network embedding

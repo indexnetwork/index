@@ -24,10 +24,6 @@ import { ConversationService } from './services/conversation.service';
 import { NotificationService } from './services/notification.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
 import { TaskService } from './services/task.service';
-import { IntegrationController } from './controllers/integration.controller';
-import { WebhooksController } from './controllers/webhooks.controller';
-import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
-import { IntegrationService } from './services/integration.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { ScopeViolationError } from './guards/agent-scope.guard';
 import { OwnerControlRequiredError, SessionRequiredError } from './guards/auth.guard';
@@ -49,8 +45,6 @@ import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
-import { init as initTelegramGateway } from './gateways/telegram.gateway';
-import { setWebhook } from './lib/telegram/bot-api';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
 import { requestContext as hostRequestContext } from './lib/request-context';
 import { publishNotificationStreamEvent } from './lib/notification-stream-events';
@@ -116,17 +110,6 @@ getCheckpointer().catch((err) => {
   });
 });
 
-// ── Telegram bot startup ────────────────────────────────────────────────────
-if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
-  const webhookBase = process.env.TELEGRAM_WEBHOOK_URL ?? process.env.API_URL ?? '';
-  const webhookUrl = `${webhookBase.replace(/\/$/, '')}/api/webhooks/telegram`;
-  setWebhook(webhookUrl, process.env.TELEGRAM_WEBHOOK_SECRET).catch((err) => {
-    logger.error('Failed to register Telegram webhook on startup', { error: err });
-  });
-  initTelegramGateway();
-  logger.info('Telegram bot gateway initialised', { webhookUrl });
-}
-
 /** Match pathname against a route pattern with :param placeholders; returns params or null. */
 function matchPath(pattern: string, pathname: string): Record<string, string> | null {
   const paramNames: string[] = [];
@@ -182,10 +165,6 @@ controllerInstances.set(
   new NotificationController(new NotificationService(), notificationDeliveryService),
 );
 controllerInstances.set(AgentController, new AgentController());
-const integrationAdapter = new ComposioIntegrationAdapter();
-const integrationService = new IntegrationService(integrationAdapter);
-controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
-controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
 const toolService = new ToolService();
 controllerInstances.set(ToolController, new ToolController(toolService));

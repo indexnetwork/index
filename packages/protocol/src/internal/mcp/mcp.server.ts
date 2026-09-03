@@ -418,8 +418,6 @@ export function createMcpServer(
   const extractAuthInput = (httpReq: Request): McpAuthInput => ({
     bearerToken: extractBearerToken(httpReq),
     apiKey: httpReq.headers.get('x-api-key') ?? undefined,
-    telegramHandle: httpReq.headers.get('x-index-telegram-handle') ?? undefined,
-    telegramUsername: httpReq.headers.get('x-index-telegram-username') ?? undefined,
   });
 
   const getAuthenticatedRequest = (httpReq: Request): Promise<AuthenticatedMcpRequest> => {

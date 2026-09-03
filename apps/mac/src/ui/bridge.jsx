@@ -278,7 +278,6 @@ window.IndexApp = (function () {
       members: (n._count && n._count.members) || n.memberCount || 0,
       role,
       joined,
-      hasMasterKey: n.hasMasterKey === true,
       hidden: n.hidden === true,
       privacy: joinPolicy === "anyone" ? "public" : "private",
       joinPolicy,

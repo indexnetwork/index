@@ -10,7 +10,7 @@ import db from '../lib/drizzle/drizzle';
 import { traceAppOperation } from '../lib/sentry-performance';
 import { normalizeEmbedding } from '../lib/embedding/vector';
 import { normalizeTelegramSocialValue } from '../lib/telegram/socials';
-import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
+import type { User, NotificationPreferences, OnboardingState } from '../schemas/database.schema';
 import type { Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact } from '../schemas/conversation.schema';
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
@@ -20,7 +20,7 @@ import { NetworkMembershipEvents } from '../events/network_membership.event';
 export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log, NetworkMembershipEvents };
 export { canActorSeeOpportunity } from './opportunity.visibility';
 export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not };
-export type { User, NotificationPreferences, OnboardingState, TelegramPrefs, Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact, Id };
+export type { User, NotificationPreferences, OnboardingState, Conversation, ConversationParticipant, ConversationSession, Message, Task, Artifact, Id };
 export const logger = log.lib.from('database.adapter');
 
 export function detectSocialLabel(value: string): string {

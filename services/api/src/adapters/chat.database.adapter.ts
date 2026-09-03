@@ -197,11 +197,6 @@ export class ChatDatabaseAdapter {
     return profileAdapter.getUserSocials(userId);
   }
 
-  async findTelegramHandleOwners(handle: string) {
-    const profileAdapter = new EnrichmentDatabaseAdapter();
-    return profileAdapter.findTelegramHandleOwners(handle);
-  }
-
   async setUserSocials(userId: string, socials: { label: string; value: string }[]) {
     const profileAdapter = new EnrichmentDatabaseAdapter();
     return profileAdapter.setUserSocials(userId, socials);
@@ -504,7 +499,6 @@ export class ChatDatabaseAdapter {
         prompt: schema.networks.prompt,
         imageUrl: schema.networks.imageUrl,
         permissions: schema.networks.permissions,
-        masterKeyHash: schema.networks.masterKeyHash,
         ownerId: ownerMembers.userId,
         createdAt: schema.networks.createdAt,
         updatedAt: schema.networks.updatedAt,
@@ -546,7 +540,6 @@ export class ChatDatabaseAdapter {
           imageUrl: row.imageUrl,
           metadata: (row.metadata ?? {}) as Record<string, unknown>,
           permissions: toPublicNetworkPermissions(row.permissions),
-          hasMasterKey: row.masterKeyHash != null,
           role,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
@@ -1620,8 +1613,8 @@ export class ChatDatabaseAdapter {
   /**
    * Cascading soft delete for a provisioned-cohort network.
    *
-   * Soft-deletes users provisioned via master-key signup or CSV import into
-   * this network (i.e. have a network-scoped personal agent permissioned on
+   * Soft-deletes users provisioned by invitation into this network (i.e. have
+   * a network-scoped personal agent permissioned on
    * this network) along with their data (intents, agents, API keys, personal
    * networks, network memberships). Organic users who happen to be members
    * but were not provisioned through the invitation flow are NOT cascaded —
@@ -1691,13 +1684,13 @@ export class ChatDatabaseAdapter {
         .where(inArray(schema.apikeys.userId, userIds));
     }
 
-    // Delete experiment network memberships (hard delete, same pattern as existing)
+    // Delete network memberships (hard delete, same pattern as existing)
     await db.delete(schema.networkMembers).where(eq(schema.networkMembers.networkId, networkId));
 
-    // Delete intent_networks for the experiment network
+    // Delete intent_networks for the network
     await db.delete(schema.intentNetworks).where(eq(schema.intentNetworks.networkId, networkId));
 
-    // Soft-delete the experiment network itself
+    // Soft-delete the network itself
     await db
       .update(schema.networks)
       .set({ deletedAt: now, updatedAt: now })
@@ -2014,7 +2007,6 @@ export class ChatDatabaseAdapter {
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
-        masterKeyHash: networks.masterKeyHash,
         createdAt: networks.createdAt,
         updatedAt: networks.updatedAt,
         ownerId: networkMembers.userId,
@@ -2052,7 +2044,6 @@ export class ChatDatabaseAdapter {
       imageUrl: row.imageUrl,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
       permissions: toPublicNetworkPermissions(row.permissions),
-      hasMasterKey: row.masterKeyHash != null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
@@ -2530,58 +2521,6 @@ export class ChatDatabaseAdapter {
       autoAssign: false,
     }));
     await db.insert(schema.networkMembers).values(values).onConflictDoNothing();
-  }
-
-  // ─── Index Integrations ───────────────────────────────────────────────────────
-
-  /**
-   * Link a Composio connected account to an index.
-   * @param networkId - Target index
-   * @param toolkit - Toolkit slug (e.g. 'gmail', 'slack')
-   * @param connectedAccountId - Composio connected account ID
-   */
-  async insertIndexIntegration(networkId: string, toolkit: string, connectedAccountId: string): Promise<void> {
-    await db.insert(schema.networkIntegrations)
-      .values({ networkId, toolkit, connectedAccountId })
-      .onConflictDoNothing();
-  }
-
-  /**
-   * Unlink a toolkit from an index.
-   * @param networkId - Target index
-   * @param toolkit - Toolkit slug
-   */
-  async deleteIndexIntegration(networkId: string, toolkit: string): Promise<void> {
-    await db.delete(schema.networkIntegrations)
-      .where(and(
-        eq(schema.networkIntegrations.networkId, networkId),
-        eq(schema.networkIntegrations.toolkit, toolkit),
-      ));
-  }
-
-  /**
-   * Remove all index links for a specific Composio connected account.
-   * Called when a user fully disconnects their Composio connection.
-   * @param connectedAccountId - Composio connected account ID
-   */
-  async deleteIndexIntegrationsByConnectedAccount(connectedAccountId: string): Promise<void> {
-    await db.delete(schema.networkIntegrations)
-      .where(eq(schema.networkIntegrations.connectedAccountId, connectedAccountId));
-  }
-
-  /**
-   * List all linked integrations for an index.
-   * @param networkId - The index to query
-   * @returns Array of linked integration records
-   */
-  async getNetworkIntegrations(networkId: string): Promise<Array<{ toolkit: string; connectedAccountId: string; createdAt: Date }>> {
-    return db.select({
-      toolkit: schema.networkIntegrations.toolkit,
-      connectedAccountId: schema.networkIntegrations.connectedAccountId,
-      createdAt: schema.networkIntegrations.createdAt,
-    })
-      .from(schema.networkIntegrations)
-      .where(eq(schema.networkIntegrations.networkId, networkId));
   }
 
   /**

@@ -7,7 +7,6 @@ import { createConnectionsService } from '@/services/connections';
 import { createSynthesisService } from '@/services/synthesis';
 import { createDiscoverService } from '@/services/discover';
 import { createAuthService } from '@/services/auth';
-import { createIntegrationsService } from '@/services/integrations';
 import { createUsersService } from '@/services/users';
 import { createOpportunitiesService } from '@/services/opportunities';
 import { createConversationService } from '@/services/conversation';
@@ -22,7 +21,6 @@ export interface APIContextType {
   synthesisService: ReturnType<typeof createSynthesisService>;
   discoverService: ReturnType<typeof createDiscoverService>;
   authService: ReturnType<typeof createAuthService>;
-  integrationsService: ReturnType<typeof createIntegrationsService>;
   usersService: ReturnType<typeof createUsersService>;
   opportunitiesService: ReturnType<typeof createOpportunitiesService>;
   conversationService: ReturnType<typeof createConversationService>;
@@ -43,7 +41,6 @@ export function APIProvider({ children }: { children: ReactNode }) {
     synthesisService: createSynthesisService(api),
     discoverService: createDiscoverService(api),
     authService: createAuthService(api),
-    integrationsService: createIntegrationsService(api),
     usersService: createUsersService(api),
     opportunitiesService: createOpportunitiesService(api),
     conversationService: createConversationService(api),
