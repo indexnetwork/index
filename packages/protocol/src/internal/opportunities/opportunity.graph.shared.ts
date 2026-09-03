@@ -10,7 +10,7 @@
  */
 
 import type { Id } from '../../platform/database.js';
-import { OpportunityGraphState, type IndexedIntent, type SourceProfileData, type CandidateMatch } from './opportunity.state.js';
+import type { IndexedIntent, SourceProfileData, CandidateMatch, OpportunityState } from './opportunity.state.js';
 import type { EvaluatorEntity } from "./opportunity.match-explainer.js";
 import type { MatchExplainerLike } from "./opportunity.match-explainer.js";
 import type { OpportunityGraphDatabase, Opportunity } from '../../platform/database.js';
@@ -25,7 +25,10 @@ import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js"
 export type MatchesReadyFn = (input: { userId: string; intentId: string }) => Promise<void>;
 
 /** The graph's channel state, as every node sees it. */
-export type OpportunityState = typeof OpportunityGraphState.State;
+export type { OpportunityState };
+
+/** What a caller supplies; everything else comes from the defaults. */
+export type OpportunityInput = Partial<OpportunityState> & { [key: string]: unknown };
 
 /** Input shape for the HyDE graph invoke call (query-based embedding). */
 export interface HydeGeneratorInvokeInput {

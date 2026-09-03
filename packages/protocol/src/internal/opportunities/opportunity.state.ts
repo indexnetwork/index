@@ -1,4 +1,3 @@
-import { Annotation } from "@langchain/langgraph";
 import type { Id, OpportunityStatus } from '../../platform/database.js';
 import type { Lens } from '../../platform/discovery/embedder.js';
 import type { DebugMetaAgent } from "../../protocol/core.js";
@@ -134,222 +133,76 @@ export interface OpportunityGraphOptions {
 /**
  * Opportunity Graph State Annotation
  */
-export const OpportunityGraphState = Annotation.Root({
-  // ─── Input Fields (Required) ───
-  userId: Annotation<Id<'users'>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => '' as Id<'users'>,
-  }),
-
-  searchQuery: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  networkId: Annotation<Id<'networks'> | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /**
-   * Optional set of indexes discovery may search within (e.g. a network-scoped
-   * agent's reachable networks: the bound network).
-   * The scope node intersects this with the user's actual memberships. Ignored
-   * when `networkId` is set (single-network override). When unset, discovery
-   * spans all of the user's networks.
-   */
-  indexScope: Annotation<Id<'networks'>[] | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+export interface OpportunityState {
+  userId: Id<'users'>;
+  searchQuery: string | undefined;
+  networkId: Id<'networks'> | undefined;
+  /** Optional set of indexes discovery may search within (e.g. a network-scoped agent's reachable networks: the bound network). The scope node intersects this with the user's actual memberships. Ignored when `networkId` is set (single-network override). When unset, discovery spans all of the user's networks. */
+  indexScope: Id<'networks'>[] | undefined;
   /** Optional intent to use as discovery source and for triggeredBy. When set, used for search text (if query empty) and persist. */
-  triggerIntentId: Annotation<Id<'intents'> | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  triggerIntentId: Id<'intents'> | undefined;
   /** Optional: restrict discovery to this specific user ID only (direct connection). */
-  targetUserId: Annotation<Id<'users'> | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  options: Annotation<OpportunityGraphOptions>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => ({}),
-  }),
-
-  /**
-   * Operation mode controls graph flow:
-   * - 'create': the discovery pipeline (Prep → Scope → Discovery → Evaluation → Ranking → EmitCandidates)
-   * - 'read': List opportunities filtered by userId and optionally networkId (fast path)
-   * - 'update': Change opportunity status (accept, reject, etc.)
-   * - 'delete': Expire/archive an opportunity
-   *
-   * Defaults to 'create'.
-   */
-  operationMode: Annotation<'create' | 'read' | 'update' | 'delete'>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => 'create' as const,
-  }),
-
+  targetUserId: Id<'users'> | undefined;
+  options: OpportunityGraphOptions;
+  /** Operation mode controls graph flow: - 'create': the discovery pipeline (Prep → Scope → Discovery → Evaluation → Ranking → EmitCandidates) - 'read': List opportunities filtered by userId and optionally networkId (fast path) - 'update': Change opportunity status (accept, reject, etc.) - 'delete': Expire/archive an opportunity Defaults to 'create'. */
+  operationMode: 'create' | 'read' | 'update' | 'delete';
   /** When set (e.g. chat scope), networkId must match this. */
-  requiredNetworkId: Annotation<Id<'networks'> | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
+  requiredNetworkId: Id<'networks'> | undefined;
   /** Target opportunity ID for update/delete modes. */
-  opportunityId: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  opportunityId: string | undefined;
   /** New status for update mode (e.g. 'accepted', 'rejected'). */
-  newStatus: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  // ─── Intermediate Fields (Accumulated) ───
-
+  newStatus: string | undefined;
   /** User's indexed intents with hyde documents (from prep) */
-  indexedIntents: Annotation<IndexedIntent[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  indexedIntents: IndexedIntent[];
   /** User's network memberships (from prep) */
-  userNetworks: Annotation<Id<'networks'>[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  userNetworks: Id<'networks'>[];
   /** Target indexes to search within (from scope) */
-  targetNetworks: Annotation<TargetNetwork[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  targetNetworks: TargetNetwork[];
   /** Per-index relevancy scores for dedup tie-breaking. Background path: from intent_indexes. Chat path: transient from IntentIndexer. */
-  indexRelevancyScores: Annotation<Record<string, number>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => ({}),
-  }),
-
+  indexRelevancyScores: Record<string, number>;
   /** Whether discovery used intent (path A) or user context (path B/C). Used by persist for triggeredBy. In-memory routing state only; never persisted. */
-  discoverySource: Annotation<'intent' | 'context'>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => 'intent',
-  }),
-
+  discoverySource: 'intent' | 'context';
   /** Resolved intent ID used for this discovery run (when discoverySource is 'intent'). Set by intent-resolution. */
-  resolvedTriggerIntentId: Annotation<Id<'intents'> | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  resolvedTriggerIntentId: Id<'intents'> | undefined;
   /** Asker's profile (from prep). Used for profile-as-source discovery and evaluation. */
-  sourceProfile: Annotation<SourceProfileData | null>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => null,
-  }),
-
+  sourceProfile: SourceProfileData | null;
   /** User's active premises with embeddings (from prep). Used for premise-to-premise discovery path D. */
-  sourcePremises: Annotation<Array<{ premiseId: Id<'premises'>; embedding: number[] }>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  sourcePremises: Array<{ premiseId: Id<'premises'>; embedding: number[] }>;
   /** User context embeddings per network (from prep). Used for discovery. */
-  sourceContexts: Annotation<Array<{ contextId: string; networkId: Id<'networks'>; text: string; embedding: number[] }>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  sourceContexts: Array<{ contextId: string; networkId: Id<'networks'>; text: string; embedding: number[] }>;
   /** Resolved intent is in at least one target index (path A vs C). */
-  resolvedIntentInIndex: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
+  resolvedIntentInIndex: boolean;
   /** Create-intent signal: when true, tool should return createIntentSuggested so agent can auto-call create_intent. */
-  createIntentSuggested: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
+  createIntentSuggested: boolean;
   /** Suggested description for create_intent when createIntentSuggested is true. */
-  suggestedIntentDescription: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  suggestedIntentDescription: string | undefined;
   /** HyDE embeddings per lens label (from discovery) */
-  hydeEmbeddings: Annotation<Record<string, number[]>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => ({}),
-  }),
-
+  hydeEmbeddings: Record<string, number[]>;
   /** Candidate matches from semantic search (from discovery) */
-  candidates: Annotation<CandidateMatch[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  candidates: CandidateMatch[];
   /** Discovery session ID for pagination (maps to Redis cache key). */
-  discoveryId: Annotation<string | null>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => null,
-  }),
-
+  discoveryId: string | null;
   /** Evaluated candidates with scores (from evaluation; legacy) */
-  evaluatedCandidates: Annotation<EvaluatedCandidate[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  evaluatedCandidates: EvaluatedCandidate[];
   /** Evaluated opportunities with actors (from entity-bundle evaluator) */
-  evaluatedOpportunities: Annotation<EvaluatedOpportunity[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
-  // ─── Output Fields (Overwrite per turn) ───
-
+  evaluatedOpportunities: EvaluatedOpportunity[];
   /** Pairs discovery recorded this run. Discovery creates no opportunities. */
-  candidatesEmitted: Annotation<DiscoveryMatchCandidate[]>({
-    reducer: (curr, next) => next,
-    default: () => [],
-  }),
-
+  candidatesEmitted: DiscoveryMatchCandidate[];
   /** Discovery path: pairs skipped because an opportunity already exists between viewer and candidate (no duplicate created). */
-  existingBetweenActors: Annotation<Array<{
+  existingBetweenActors: Array<{
     candidateUserId: Id<'users'>;
     networkId: Id<'networks'>;
     existingOpportunityId?: Id<'opportunities'>;
     existingStatus?: OpportunityStatus;
     reason?: 'same_intent_pair_duplicate' | 'final_atomic_conflict';
     existingTriggerIntentId?: string;
-  }>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  }>;
   /** Typed persist-node counts used by queue telemetry. */
-  persistenceOutcome: Annotation<OpportunityPersistenceOutcome | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  persistenceOutcome: OpportunityPersistenceOutcome | undefined;
   /** Error message if any step fails */
-  error: Annotation<string | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
-
+  error: string | undefined;
   /** Output for read mode: enriched list of opportunities. */
-  readResult: Annotation<{
+  readResult: {
     count: number;
     message?: string;
     opportunities: Array<{
@@ -363,40 +216,60 @@ export const OpportunityGraphState = Annotation.Root({
       confidence: number | null;
       source: string | null;
     }>;
-  } | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
-
+  } | undefined;
   /** Output for update/delete/send modes. */
-  mutationResult: Annotation<{
+  mutationResult: {
     success: boolean;
     message?: string;
     opportunityId?: string;
     notified?: string[];
     conversationId?: string;
     error?: string;
-  } | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
-
-  // ─── Trace Output ───
-
-  /**
-   * Accumulated trace entries from each graph node.
-   * Used for observability: surfaces internal processing steps (search query, HyDE strategies,
-   * candidates found, evaluation results) to the frontend.
-   */
-  trace: Annotation<Array<{ node: string; detail?: string; data?: Record<string, unknown> }>>({
-    reducer: (curr, next) => [...curr, ...(next || [])],
-    default: () => [],
-  }),
-
+  } | undefined;
+  /** Accumulated trace entries from each graph node. Used for observability: surfaces internal processing steps (search query, HyDE strategies, candidates found, evaluation results) to the frontend. */
+  trace: Array<{ node: string; detail?: string; data?: Record<string, unknown> }>;
   /** Timing records for each agent invocation within this graph run. */
-  agentTimings: Annotation<DebugMetaAgent[]>({
-    reducer: (acc, val) => [...acc, ...val],
-    default: () => [],
-  }),
+  agentTimings: DebugMetaAgent[];
+}
 
-});
+export function opportunityDefaults(): OpportunityState {
+  return {
+    userId: '' as Id<'users'>,
+    searchQuery: undefined,
+    networkId: undefined,
+    indexScope: undefined,
+    triggerIntentId: undefined,
+    targetUserId: undefined,
+    options: ({}),
+    operationMode: 'create' as const,
+    requiredNetworkId: undefined,
+    opportunityId: undefined,
+    newStatus: undefined,
+    indexedIntents: [],
+    userNetworks: [],
+    targetNetworks: [],
+    indexRelevancyScores: ({}),
+    discoverySource: 'intent',
+    resolvedTriggerIntentId: undefined,
+    sourceProfile: null,
+    sourcePremises: [],
+    sourceContexts: [],
+    resolvedIntentInIndex: false,
+    createIntentSuggested: false,
+    suggestedIntentDescription: undefined,
+    hydeEmbeddings: ({}),
+    candidates: [],
+    discoveryId: null,
+    evaluatedCandidates: [],
+    evaluatedOpportunities: [],
+    candidatesEmitted: [],
+    existingBetweenActors: [],
+    persistenceOutcome: undefined,
+    error: undefined,
+    readResult: undefined,
+    mutationResult: undefined,
+    trace: [],
+    agentTimings: [],
+  };
+}
+

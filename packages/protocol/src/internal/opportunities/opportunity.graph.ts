@@ -18,8 +18,8 @@
  * Constructor injects Database, Embedder, and compiled HyDE graph.
  */
 
-import { StateGraph, START, END } from '@langchain/langgraph';
-import { OpportunityGraphState } from './opportunity.state.js';
+import { opportunityDefaults } from './opportunity.state.js';
+import { mergeGraphState } from '../shared/graph.state.js';
 import { MatchExplainer } from "./opportunity.match-explainer.js";
 import type { MatchExplainerLike } from "./opportunity.match-explainer.js";
 import type { OpportunityGraphDatabase } from '../../platform/database.js';
@@ -28,7 +28,7 @@ import type { MatchesReadyFn } from "./opportunity.graph.shared.js";
 import type { AgentDispatcher } from '../shared/interfaces/agent-dispatcher.interface.js';
 import { DISCOVERY_MIN_SIMILARITY, validateDiscoveryMinSimilarity } from './discovery.env.js';
 import type { QueueOpportunityNotificationFn } from "./opportunity.lifecycle.js";
-import { routingLog, withNodeTrace, type OpportunityGraphDeps, type OpportunityGraphThresholdOverrides, type OpportunityHydeGenerator, type OpportunityState } from "./opportunity.graph.shared.js";
+import { routingLog, withNodeTrace, type OpportunityGraphDeps, type OpportunityGraphThresholdOverrides, type OpportunityHydeGenerator, type OpportunityInput, type OpportunityState } from "./opportunity.graph.shared.js";
 import { prepNode, prepTraceSummary, resolveNode, resolveTraceSummary, scopeNode, scopeTraceSummary } from "./opportunity.graph.prep.js";
 import { discoveryNode, discoveryTraceSummary } from "./opportunity.graph.discovery.js";
 import { evaluationNode, rankingNode, rankingTraceSummary } from "./opportunity.graph.evaluation.js";
@@ -113,54 +113,49 @@ export class OpportunityGraphFactory {
   public createGraph() {
     const deps = this.deps;
 
-    return new StateGraph(OpportunityGraphState)
-      .addNode('prep', withNodeTrace("opportunity-prep", (s: OpportunityState) => prepNode(s, deps), prepTraceSummary))
-      .addNode('scope', withNodeTrace("opportunity-scope", (s: OpportunityState) => scopeNode(s, deps), scopeTraceSummary))
-      .addNode('resolve', withNodeTrace("opportunity-resolve", (s: OpportunityState) => resolveNode(s, deps), resolveTraceSummary))
-      .addNode('discovery', withNodeTrace("opportunity-discovery", (s: OpportunityState) => discoveryNode(s, deps), discoveryTraceSummary))
-      .addNode('evaluation', (s: OpportunityState) => evaluationNode(s, deps))
-      .addNode('ranking', withNodeTrace("opportunity-ranking", (s: OpportunityState) => rankingNode(s), rankingTraceSummary))
-      .addNode('emitCandidates', withNodeTrace("opportunity-emit-candidates", (s: OpportunityState) => emitCandidatesNode(s, deps), emitCandidatesTraceSummary))
-      .addNode('matchesReady', (s: OpportunityState) => matchesReadyNode(s, deps))
+    const prep = withNodeTrace("opportunity-prep", (s: OpportunityState) => prepNode(s, deps), prepTraceSummary);
+    const scope = withNodeTrace("opportunity-scope", (s: OpportunityState) => scopeNode(s, deps), scopeTraceSummary);
+    const resolve = withNodeTrace("opportunity-resolve", (s: OpportunityState) => resolveNode(s, deps), resolveTraceSummary);
+    const discovery = withNodeTrace("opportunity-discovery", (s: OpportunityState) => discoveryNode(s, deps), discoveryTraceSummary);
+    const ranking = withNodeTrace("opportunity-ranking", (s: OpportunityState) => rankingNode(s), rankingTraceSummary);
+    const emitCandidates = withNodeTrace("opportunity-emit-candidates", (s: OpportunityState) => emitCandidatesNode(s, deps), emitCandidatesTraceSummary);
 
-      .addEdge(START, 'prep')
+    return {
+      /**
+       * Runs discovery and returns the full state, defaults included — every
+       * early exit returns the state as it stood, so a caller reading `trace`
+       * or `error` sees everything the run accumulated up to that point.
+       */
+      async invoke(input: OpportunityInput): Promise<OpportunityState> {
+        let state: OpportunityState = { ...opportunityDefaults(), ...input };
 
-      // Conditional routing: early exit if no indexed intents
-      .addConditionalEdges('prep', shouldContinueAfterPrep, {
-        scope: 'scope',
-        [END]: END,
-      })
+        state = mergeGraphState(state, await prep(state));
+        // Early exit if no indexed intents.
+        if (shouldContinueAfterPrep(state) !== 'scope') return state;
 
-      // Conditional routing: early exit if no target indexes
-      .addConditionalEdges('scope', shouldContinueAfterScope, {
-        resolve: 'resolve',
-        [END]: END,
-      })
-      .addEdge('resolve', 'discovery')
+        state = mergeGraphState(state, await scope(state));
+        // Early exit if no target indexes.
+        if (shouldContinueAfterScope(state) !== 'resolve') return state;
 
-      .addConditionalEdges('discovery', shouldContinueAfterDiscovery, {
-        evaluation: 'evaluation',
-        [END]: END,
-      })
+        state = mergeGraphState(state, await resolve(state));
+        state = mergeGraphState(state, await discovery(state));
+        if (shouldContinueAfterDiscovery(state) !== 'evaluation') return state;
 
-      // Discovery → Ranking → EmitCandidates → matches_ready. The stage is
-      // skipped only when no host callback is wired or the run recorded no
-      // candidates (matchesReadyNode guards both cases too).
-      //
-      // Nothing here INSERTs an opportunity. That happens at kickoff, in
-      // createAndOpen, when a principal's agent decides to reach out.
-      .addEdge('evaluation', 'ranking')
-      .addEdge('ranking', 'emitCandidates')
-      .addConditionalEdges('emitCandidates', (state: OpportunityState) => {
-        if (!deps.matchesReady) return END;
-        if (!state.candidatesEmitted || state.candidatesEmitted.length === 0) return END;
-        return 'matchesReady';
-      }, {
-        matchesReady: 'matchesReady',
-        [END]: END,
-      })
-      .addEdge('matchesReady', END)
-      .compile();
+        // Discovery → Ranking → EmitCandidates → matches_ready. The stage is
+        // skipped only when no host callback is wired or the run recorded no
+        // candidates (matchesReadyNode guards both cases too).
+        //
+        // Nothing here INSERTs an opportunity. That happens at kickoff, in
+        // createAndOpen, when a principal's agent decides to reach out.
+        state = mergeGraphState(state, await evaluationNode(state, deps));
+        state = mergeGraphState(state, await ranking(state));
+        state = mergeGraphState(state, await emitCandidates(state));
+
+        if (!deps.matchesReady) return state;
+        if (!state.candidatesEmitted || state.candidatesEmitted.length === 0) return state;
+        return mergeGraphState(state, await matchesReadyNode(state, deps));
+      },
+    };
   }
 }
 
@@ -171,7 +166,7 @@ export class OpportunityGraphFactory {
 function shouldContinueAfterPrep(state: OpportunityState): string {
   if (state.error) {
     routingLog.verbose('Error in prep - ending early');
-    return END;
+    return 'end';
   }
   routingLog.verbose('Continuing to scope');
   return 'scope';
@@ -183,7 +178,7 @@ function shouldContinueAfterPrep(state: OpportunityState): string {
 function shouldContinueAfterScope(state: OpportunityState): string {
   if (state.error || state.targetNetworks.length === 0) {
     routingLog.verbose('No target indexes - ending early');
-    return END;
+    return 'end';
   }
   routingLog.verbose('Continuing to resolve');
   return 'resolve';
@@ -195,7 +190,7 @@ function shouldContinueAfterScope(state: OpportunityState): string {
 function shouldContinueAfterDiscovery(state: OpportunityState): string {
   if (state.createIntentSuggested) {
     routingLog.verbose('Create-intent suggested - ending for tool signal');
-    return END;
+    return 'end';
   }
   return 'evaluation';
 }
