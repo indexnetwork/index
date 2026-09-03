@@ -20,7 +20,6 @@
  * All intent events share one conversation loop. Judgment lives in the
  * prompt; this file is effects, and every effect leaves a ledger row.
  */
-import { END, StateGraph, Annotation } from "@langchain/langgraph";
 
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
 import { requestContext } from "../../shared/observability/request-context.js";
@@ -121,15 +120,13 @@ function isOwnedReadyPause(paused: PersonalAgentPausedNegotiation): boolean {
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
-const PersonalAgentGraphState = Annotation.Root({
-  input: Annotation<PersonalAgentInput>({ reducer: (c, n) => n ?? c, default: () => ({} as PersonalAgentInput) }),
-  scope: Annotation<PersonalAgentScope>({ reducer: (c, n) => n ?? c, default: () => "global" }),
-  phase: Annotation<"intent" | "counterparty_resolved" | "negotiation" | "error" | "done">({ reducer: (c, n) => n ?? c, default: () => "error" }),
-  result: Annotation<PersonalAgentResult | null>({ reducer: (c, n) => n ?? c, default: () => null }),
-  error: Annotation<string | null>({ reducer: (c, n) => n ?? c, default: () => null }),
-});
-
-type PersonalAgentState = typeof PersonalAgentGraphState.State;
+interface PersonalAgentState {
+  input: PersonalAgentInput;
+  scope: PersonalAgentScope;
+  phase: "intent" | "counterparty_resolved" | "negotiation" | "error" | "done";
+  result: PersonalAgentResult | null;
+  error: string | null;
+}
 
 // ─── Routing ─────────────────────────────────────────────────────────────────
 
@@ -1442,32 +1439,19 @@ export class PersonalAgentGraphFactory {
 
   createGraph(): PersonalAgentGraphLike {
     const deps = this.deps;
-    const compiled = new StateGraph(PersonalAgentGraphState)
-      .addNode("route", routeNode)
-      .addNode("intent", (s: PersonalAgentState) => intentNode(s, deps))
-      .addNode("counterparty_resolved", (s: PersonalAgentState) => counterpartyResolvedNode(s, deps))
-      .addNode("negotiation", (s: PersonalAgentState) => negotiationNode(s, deps))
-      // Named "fail", not "error": LangGraph rejects a node name that
-      // collides with a state channel name, and "error" is one.
-      .addNode("fail", errorNode)
-      .addEdge("__start__", "route")
-      .addConditionalEdges("route", (s: PersonalAgentState) => s.phase, {
-        intent: "intent",
-        counterparty_resolved: "counterparty_resolved",
-        negotiation: "negotiation",
-        error: "fail",
-      })
-      .addConditionalEdges("intent", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
-      .addConditionalEdges("counterparty_resolved", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
-      .addConditionalEdges("negotiation", (s: PersonalAgentState) => s.phase, { done: END, error: "fail" })
-      .addEdge("fail", END)
-      .compile();
-
     return {
       async invoke(input: PersonalAgentInput): Promise<PersonalAgentResult> {
-        const final = await compiled.invoke({ input });
-        if (final.result) return final.result;
-        return { scope: final.scope, acts: [], messages: [], error: final.error ?? "Unknown graph error" };
+        let state: PersonalAgentState = { input, scope: "global", phase: "error", result: null, error: null };
+        state = { ...state, ...routeNode(state) };
+
+        if (state.phase === "intent") state = { ...state, ...await intentNode(state, deps) };
+        else if (state.phase === "counterparty_resolved") state = { ...state, ...await counterpartyResolvedNode(state, deps) };
+        else if (state.phase === "negotiation") state = { ...state, ...await negotiationNode(state, deps) };
+
+        if (state.phase === "error") state = { ...state, ...errorNode(state) };
+
+        if (state.result) return state.result;
+        return { scope: state.scope, acts: [], messages: [], error: state.error ?? "Unknown graph error" };
       },
     };
   }
