@@ -9,8 +9,6 @@ export type RadarBucket =
 export const DEFAULT_RADAR_BUCKET: RadarBucket = "needs-you";
 
 const STATUS_BUCKETS: Record<OpportunityLifecycleStatus, RadarBucket> = {
-  latent: "waiting",
-  draft: "waiting",
   pending: "needs-you",
   negotiating: "waiting",
   accepted: "connected",

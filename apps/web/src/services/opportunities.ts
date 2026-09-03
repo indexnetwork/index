@@ -41,7 +41,6 @@ export interface GetOpportunitiesOptions {
 export type OpportunityLifecycleStatus =
   | 'negotiating'
   | 'pending'
- 
   | 'accepted'
   | 'rejected'
   | 'expired';

@@ -36,12 +36,11 @@ function normalizeIntentLifecycleStatus(status: unknown): IntentLifecycleStatus 
 
 /** Bounded intent-refinement poll: interval (ms) and maximum total wait (ms). */
 /**
- * Lifecycle statuses the radar fetches: the full pipeline except chat-only
- * drafts. This switches the home view into lifecycle mode (terminal statuses
- * pass through; latent/pending stay gated by viewer actionability).
+ * Lifecycle statuses the radar fetches. This switches the home view into
+ * lifecycle mode (terminal statuses pass through; pending stays gated by
+ * viewer actionability).
  */
 const RADAR_STATUSES: OpportunityLifecycleStatus[] = [
-  "latent",
   "pending",
   "negotiating",
   "accepted",
