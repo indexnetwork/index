@@ -114,8 +114,10 @@
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "40.1.0",
+      "version": "40.2.0",
       "dependencies": {
+        "@indexnetwork/a2a": "0.2.0",
+        "@indexnetwork/agent": "0.2.0",
         "@langchain/core": "1.1.48",
         "@langchain/langgraph": "1.4.12",
         "@langchain/openai": "1.4.7",

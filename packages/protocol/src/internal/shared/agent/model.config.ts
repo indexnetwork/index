@@ -14,6 +14,12 @@ export interface ModelSettings {
   temperature?: number;
   maxTokens?: number;
   reasoning?: { effort?: 'low' | 'medium' | 'high'; exclude?: boolean };
+  /**
+   * Hard upper bound on one call to this agent's model, in milliseconds.
+   * Defaults to {@link DEFAULT_MODEL_TIMEOUT_MS}. Raise it for an agent whose
+   * turn is not on a user's critical path and can legitimately run long.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -49,7 +55,10 @@ function getBaseModelConfig(config?: ModelConfig) {
     lensInferrer:         { model: "google/gemini-3.7-flash" },
     opportunityEvaluator: { model: "google/gemini-3.7-flash" },
     opportunityPresenter: { model: "google/gemini-3.7-flash" },
-    negotiator:           { model: "google/gemini-3.7-flash" },
+    // A negotiation turn is not on a chat response's critical path, and a
+    // real reasoning turn can run past a minute. A deadline that fires on a
+    // slow-but-working model is worse than no deadline at all.
+    negotiator:           { model: "google/gemini-3.7-flash", timeoutMs: 120_000 },
     negotiationReflector: { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 2048 },
     homeCategorizer:      { model: "google/gemini-3.7-flash" },
     suggestionGenerator:  { model: "google/gemini-3.7-flash", temperature: 0.4, maxTokens: 512 },
@@ -126,6 +135,9 @@ export function createModel(agent: ModelAgent, config?: ModelConfig): ChatOpenAI
 /** OpenRouter API root. */
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
+/** Default hard upper bound on one LLM call. See {@link ModelSettings.timeoutMs}. */
+export const DEFAULT_MODEL_TIMEOUT_MS = 60_000;
+
 function instantiateModel(agent: string, cfg: ModelSettings, config?: ModelConfig): ChatOpenAI {
   const apiKey = config?.apiKey ?? process.env.OPENROUTER_API_KEY;
   if (!apiKey?.trim()) {
@@ -134,8 +146,9 @@ function instantiateModel(agent: string, cfg: ModelSettings, config?: ModelConfi
   // Hard upper bound on a single LLM call. Without this, langchain's HTTP
   // client waits until the upstream cuts the socket (~3 minutes via
   // OpenRouter), blocking the entire chat response. 60 s is generous enough
-  // for slow providers but bounds the worst case.
-  const timeout = 60_000;
+  // for slow providers but bounds the worst case; an agent that legitimately
+  // runs longer raises it through `ModelSettings.timeoutMs`.
+  const timeout = cfg.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   // ChatOpenAI defaults to maxRetries=2. That means a single hung upstream
   // provider gets retried up to 2 more times, each waiting `timeout` before
   // failing — so worst-case latency becomes timeout * 3. Cap retries at 1
@@ -178,6 +191,11 @@ function fallbackModelFor(primaryModel: string): string {
  * Reuses the agent's sampling settings but drops `reasoning` kwargs, which are
  * primary-model specific.
  */
+export function hasFallbackModel(agent: ModelAgent, config?: ModelConfig): boolean {
+  const cfg = getModelConfig(config)[agent] as ModelSettings;
+  return cfg.model !== fallbackModelFor(cfg.model);
+}
+
 export function createFallbackModel(agent: ModelAgent, config?: ModelConfig): ChatOpenAI | undefined {
   const cfg = getModelConfig(config)[agent] as ModelSettings;
   const fallbackModel = fallbackModelFor(cfg.model);
@@ -202,7 +220,7 @@ function abortAwareFailedAttemptHandler(error: Error): void {
   if (error?.name === "AbortError" || error?.name === "APIUserAbortError") throw error;
 }
 
-function withResilience<RunOutput>(
+export function withModelResilience<RunOutput>(
   primary: Runnable<BaseLanguageModelInput, RunOutput>,
   fallback: Runnable<BaseLanguageModelInput, RunOutput> | undefined,
 ): Runnable<BaseLanguageModelInput, RunOutput> {
@@ -241,7 +259,7 @@ export function createStructuredModel<RunOutput extends Record<string, any> = Re
   const primary = createModel(agent, config).withStructuredOutput<RunOutput>(outputSchema, options);
   const fallbackModel = createFallbackModel(agent, config);
   const fallback = fallbackModel?.withStructuredOutput<RunOutput>(outputSchema, options);
-  return withResilience(primary, fallback);
+  return withModelResilience(primary, fallback);
 }
 
 /**
@@ -256,5 +274,5 @@ export function createResilientModel(
   agent: ModelAgent,
   config?: ModelConfig,
 ): Runnable<BaseLanguageModelInput, AIMessageChunk> {
-  return withResilience(createModel(agent, config), createFallbackModel(agent, config));
+  return withModelResilience(createModel(agent, config), createFallbackModel(agent, config));
 }

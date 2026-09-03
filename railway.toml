@@ -1,7 +1,7 @@
 # Railway API service configuration.
 [build]
-watchPatterns = ["/services/api/**", "/packages/protocol/**", "/bun.lock", "/package.json", "/railway.toml"]
-buildCommand = "bun run build:package:protocol && bun run build:api"
+watchPatterns = ["/services/api/**", "/packages/protocol/**", "/packages/a2a/**", "/packages/agent/**", "/bun.lock", "/package.json", "/railway.toml"]
+buildCommand = "bun run build:package:a2a && bun run build:package:agent && bun run build:package:protocol && bun run build:api"
 
 [deploy]
 preDeployCommand = "cd services/api && bun run db:migrate"
