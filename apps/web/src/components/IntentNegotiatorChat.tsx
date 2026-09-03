@@ -172,6 +172,7 @@ export default function IntentNegotiatorChat({
     isLoadingPreviousMessages,
     clearChat,
     sessionId,
+    setChatScope,
   } = useAIChat();
   const { subscribeQuestionRegeneration, subscribePersonalAgentTurnCompleted, subscribeConversationMessage } = useConversation();
 
@@ -256,6 +257,17 @@ export default function IntentNegotiatorChat({
       logger.warn("Failed to reconcile completed PersonalAgent turn", { error, intentId });
     });
   }, [intentId, isLoading, loadSession, ready, sessionId, turnReloadToken]);
+
+  // Assert this panel's scope on the shared chat context, rather than waiting
+  // to inherit it from the loaded session. `sendMessage` only sends
+  // scopeType/scopeId when a scope is set, and the session-bound scope does
+  // not exist until the bootstrap below resolves — a message sent before then
+  // reached the server bare, which opened a new unscoped conversation and ran
+  // the global persona graph instead of this signal's agent.
+  useEffect(() => {
+    setChatScope({ type: "intent", id: intentId });
+    return () => setChatScope(null);
+  }, [intentId, setChatScope]);
 
   // Bootstrap: get-or-create the per-intent negotiator session, then load it
   // into the shared chat context. One session per (user, intent, persona) —
