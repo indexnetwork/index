@@ -9,7 +9,7 @@ import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase } from '.
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentIndexing } from '../lib/intent/indexing';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
@@ -102,14 +102,6 @@ export class ToolService {
       surface: 'rest',
       sessionAuthenticated: options.sessionAuthenticated === true,
     });
-
-    if (context.isOnboarding && !ONBOARDING_ALLOWED.has(toolName)) {
-      return {
-        success: false,
-        error: 'Onboarding required',
-        message: buildMcpOnboardingMessage(context),
-      };
-    }
 
     // Get or compile graphs (cached across requests — graphs are stateless)
     const graphs = this.getOrCompileGraphs(database);
