@@ -26,7 +26,7 @@ export type PremiseGraphDatabase = Pick<
  *
  * Access layer: Both UserDatabase + SystemDatabase (orchestrates all operations)
  */
-export type ChatGraphCompositeDatabase = Pick<
+export type CompositeToolDatabase = Pick<
   Database,
   | 'getProfile'
   // The MCP discovery path builds an OpportunityGraph too, and its terminal

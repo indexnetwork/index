@@ -36,7 +36,7 @@ export type { McpAuthResolver } from "./platform/auth/ports.js";
 export type { Cache, CacheOptions, HydeCache, OpportunityCache } from "./platform/discovery/cache.js";
 export type { DiscoveryNegotiationDigest } from "./protocol/schemas/negotiation-digest.schema.js";
 export type {
-  ChatGraphCompositeDatabase,
+  CompositeToolDatabase,
   UserDatabase,
   SystemDatabase,
   OpportunityGraphDatabase,

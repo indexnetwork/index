@@ -23,7 +23,7 @@ import { Timed } from "../shared/observability/performance.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { createStructuredModel } from "../shared/agent/model.config.js";
 import type { Opportunity } from "../../platform/database.js";
-import type { ChatGraphCompositeDatabase } from "../../platform/database.js";
+import type { CompositeToolDatabase } from "../../platform/database.js";
 import type { NegotiationContext } from "./negotiation-context.loader.js";
 
 
@@ -756,7 +756,7 @@ export function getSafePresentationOrSkip(
  * Any database adapter that implements these three methods can be passed.
  */
 export type PresenterDatabase = Pick<
-  ChatGraphCompositeDatabase,
+  CompositeToolDatabase,
   "getProfile" | "getActiveIntents" | "getNetwork" | "getPremisesForUser"
 >;
 

@@ -25,7 +25,7 @@ import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
 import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, PremiseGraphFactory, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -56,9 +56,9 @@ const protocolDeps = {
   intentProposalStore: intentProposalDatabaseAdapter,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
-  createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
+  createUserDatabase: (db: CompositeToolDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
-  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
+  createSystemDatabase: (db: CompositeToolDatabase, userId: string, scope: string[], emb?: Embedder) =>
     createSystemDatabase(db as ChatDatabaseAdapter, userId, scope, emb),
   agentDatabase: agentDatabaseAdapter,
   grantDefaultSystemPermissions: (userId: string) =>

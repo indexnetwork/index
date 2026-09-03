@@ -1,5 +1,5 @@
 import type { DeliveryLedger } from '../../platform/runtime/delivery-ledger.js';
-import type { ChatGraphCompositeDatabase, Opportunity, OpportunityStatus } from '../../platform/database.js';
+import type { CompositeToolDatabase, Opportunity, OpportunityStatus } from '../../platform/database.js';
 import { deduplicateByPerson, selectByComposition, selectDigestCandidates, type DigestDeliveredRow } from './opportunity.utils.js';
 
 const ACTIONABLE_FEED_STATUSES: OpportunityStatus[] = ['pending'];
@@ -7,7 +7,7 @@ const FEED_FETCH_LIMIT = 30;
 const ACCEPTED_SUPPRESSION_FETCH_LIMIT = 200;
 
 export interface OpportunityFeedSelectionInput {
-  reader: Pick<ChatGraphCompositeDatabase, 'getOpportunitiesForUser'>;
+  reader: Pick<CompositeToolDatabase, 'getOpportunitiesForUser'>;
   deliveryLedger?: Pick<DeliveryLedger, 'getDeliveredOpportunities'>;
   viewerId: string;
   networkId?: string;

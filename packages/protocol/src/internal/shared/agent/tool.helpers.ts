@@ -7,7 +7,7 @@ import type { ModelConfig } from "./model.config.js";
 import { deriveAllowedNetworkIds, scopeFromNetworkId } from "./tool.scope.js";
 import type { ToolScopeType } from "./tool.scope.js";
 import type { UserIdentity } from "../../../protocol/schemas/identity.schema.js";
-import type { ChatGraphCompositeDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../../../platform/database.js";
+import type { CompositeToolDatabase, CreateOpportunityData, NetworkMembership, UserRecord, UserDatabase, SystemDatabase, NegotiationGraphDatabase } from "../../../platform/database.js";
 import type { Scraper } from "../../../platform/discovery/scraper.js";
 import type { Cache, HydeCache } from "../../../platform/discovery/cache.js";
 import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
@@ -115,7 +115,7 @@ export interface ResolvedToolContext {
 interface ToolContextBindings {
   userId: string;
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
-  database: ChatGraphCompositeDatabase;
+  database: CompositeToolDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. Created internally if not provided. */
   userDb?: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. Created internally if not provided. */
@@ -154,9 +154,9 @@ interface ToolContextBindings {
   /** Database adapter for negotiations/conversation operations. */
   negotiationDatabase: NegotiationGraphDatabase;
   /** Factory for user-scoped database access. */
-  createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) => UserDatabase;
+  createUserDatabase: (db: CompositeToolDatabase, userId: string) => UserDatabase;
   /** Factory for system-scoped database access. */
-  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
+  createSystemDatabase: (db: CompositeToolDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
   /** Optional runtime LLM config. Pass to override env vars for API key, model, etc. */
   modelConfig?: ModelConfig;
   /** Agent registry database adapter (optional — absent when host does not support agents). */
@@ -224,7 +224,7 @@ export { ChatContextAccessError } from "../../../platform/runtime/errors.js";
  */
 export async function resolveChatContext(params: {
   database: Pick<
-    ChatGraphCompositeDatabase,
+    CompositeToolDatabase,
     "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getNetwork" | "isIndexOwner" | "isNetworkMember" | "getUserContext"
   >;
   userId: string;
@@ -383,7 +383,7 @@ export type ToolRegistry = Map<string, RawToolDefinition>;
  */
 interface ToolDepsBindings {
   /** @deprecated Use userDb or systemDb instead. Kept for backwards compatibility. */
-  database: ChatGraphCompositeDatabase;
+  database: CompositeToolDatabase;
   /** Context-bound database for accessing the authenticated user's own resources. */
   userDb: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */

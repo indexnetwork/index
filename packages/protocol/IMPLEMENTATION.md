@@ -60,7 +60,7 @@ The package defines interfaces — your application provides the concrete implem
 
 | Interface | Responsibility |
 |---|---|
-| `ChatGraphCompositeDatabase` | Core data access (users, intents, indexes/networks, opportunities) |
+| `CompositeToolDatabase` | Core data access (users, intents, indexes/networks, opportunities) |
 | `UserDatabase` / `SystemDatabase` | Context-bound databases built by `createUserDatabase` / `createSystemDatabase` |
 | `Embedder` | Vector embeddings for semantic search |
 | `Scraper` | Web content extraction |
@@ -112,7 +112,7 @@ import { createToolRegistry, invokeToolRuntime, resolveChatContext } from "@inde
 const registry = createToolRegistry(deps, { surface: "mcp" }); // omit `surface` for the full REST set
 
 const context = await resolveChatContext({
-  database,                 // the ChatGraphCompositeDatabase reads listed above
+  database,                 // the CompositeToolDatabase reads listed above
   userId: "user-uuid",
   networkId,                // optional — scopes tools to one network
   sessionId,                // optional — enables draft opportunities

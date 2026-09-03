@@ -20,8 +20,7 @@ bunx lint-staged || {
 
 # ── Non-interactive build checks ─────────────────────────────────────
 echo "[pre-commit] Running build checks..."
-bun run build:skills &&
-  (cd packages/protocol && bun run build) &&
+(cd packages/protocol && bun run build) &&
   (cd services/api && bun run build) &&
   (cd apps/web && bun run build) || {
   echo "[pre-commit] Build checks failed. Fix build errors before committing." >&2

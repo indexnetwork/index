@@ -270,8 +270,6 @@ function createMockGraph(deps?: {
     mockHydeGenerator,
     explainer,
     queueNotification,
-    undefined,
-    undefined,
     thresholdOverrides,
   );
   const compiledGraph = factory.createGraph();
@@ -369,8 +367,6 @@ function createMockGraphWithFnOverrides(deps?: {
     mockHyde,
     explainer,
     queueNotification,
-    undefined,
-    undefined,
     deps?.thresholdOverrides,
   );
   const compiledGraph = factory.createGraph();
@@ -1314,7 +1310,6 @@ describe('Opportunity Graph', () => {
       const mockHyde = { invoke: () => Promise.resolve({ hydeEmbeddings: { mirror: dummyEmbedding } }) };
       const factory = new OpportunityGraphFactory(
         mockDb, mockEmbedder, mockHyde, createMockExplainer(), async () => undefined,
-        undefined, undefined, undefined,
       );
       const compiledGraph = factory.createGraph();
 
@@ -1549,7 +1544,6 @@ function createTraceMockGraph(explainerOverride?: MatchExplainerLike) {
   const queueNotification = async () => undefined;
   const factory = new OpportunityGraphFactory(
     mockDb, mockEmbedder, mockHydeGenerator, explainer, queueNotification,
-    undefined, undefined, undefined,
   );
   const compiledGraph = factory.createGraph();
   return { compiledGraph };

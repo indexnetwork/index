@@ -49,6 +49,15 @@ pin a supported release, use `latest`.
   `internal/opportunities/tests/opportunity.graph`, and
   `internal/premises/tests/premise.decomposer`.
 
+### Changed
+
+- **BREAKING: `ChatGraphCompositeDatabase` is `CompositeToolDatabase`.** The
+  type outlived the graph it was named after; it is still the composite the
+  host passes to the tool factory.
+- **BREAKING: `OpportunityGraphFactory` drops two constructor parameters.** The
+  `matchesReady` and `agentDispatcher` slots are gone, so `thresholdOverrides`
+  moves from the eighth positional argument to the sixth.
+
 **Kept:** intents, premises, networks, opportunities (including
 `OpportunityGraphFactory` discovery into candidates), radar, HyDE, the agent
 registry tools, the owner-verdict tools, and the MCP server shell over what
