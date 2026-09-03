@@ -31,7 +31,9 @@ pin a supported release, use `latest`.
   ports are removed. Matching is intent-only: `HydeTargetCorpus` drops
   `'premises'`, the `query_premise` evidence kind and the
   `sourcePremiseId`/`candidatePremiseId` candidate fields are gone, and
-  `manage:premises` is no longer a permission action.
+  `manage:premises` is no longer a permission action. The protocol README drops
+  **Premise** as an entity: context stands on its own, and candidate generation
+  no longer lists premise-to-premise as a strategy.
 - **BREAKING: opportunity delivery is gone.** `confirm_opportunity_delivery`,
   the `DeliveryLedger` port, `getOrCreateDeliveryCardBatch`,
   `buildDeliveryCardPresentationCacheKey`, the `isDeliveryAgent` identity flag,

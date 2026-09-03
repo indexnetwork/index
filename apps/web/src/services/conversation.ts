@@ -56,7 +56,6 @@ export interface ConversationNegotiationLifecycle {
     source: 'screen' | 'outcome';
     decision: 'reach_out' | 'pass';
     reasoning: string;
-    counterpartyPremiseFit: string | null;
     intentAlignment: string | null;
     screenedAt: string | null;
   } | null;

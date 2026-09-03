@@ -27,7 +27,9 @@ section before promoting to `main`).
   `getAgentActivitySummary`. Migration `0160` drops `premises`,
   `premise_networks`, `opportunity_deliveries`, the `premise_status` type,
   `signal_intake_packs.premise_hash`, and `manage:premises` from live
-  `agent_permissions.actions`.
+  `agent_permissions.actions`. `ProjectedScreenDecision` drops
+  `counterpartyPremiseFit`; the historical `tasks.metadata.screenDecision` rows
+  still project their reasoning, `intentAlignment` and `screenedAt`.
 - **The Index Chat Orchestrator system agent and the `orchestrator` chat
   persona.** `SYSTEM_AGENT_IDS` is only the negotiator; onboarding no longer
   grants chat-orchestrator permissions; seed no longer inserts that row.

@@ -10,6 +10,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Removed
 - The `manage:premises` permission label on the agent pages and the unused
   `premises` field on the network-overview client type.
+- The `counterpartyPremiseFit` field on the `screenDecision` conversation type.
+  The API no longer projects it; the rest of the historical screen decision
+  still renders for its initiator.
 - The unused `chatOrchestrator` system-agent id on `/agents/:id`. The
   negotiator is the only remaining well-known system agent.
 - **The agent chat surface.** Routes `/agent`, `/agent/:tab`, `/d/:id`,

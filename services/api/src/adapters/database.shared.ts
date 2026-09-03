@@ -594,7 +594,6 @@ export interface ProjectedScreenDecision {
   decision: 'reach_out' | 'pass';
   reasoning: string;
   /** Screen-node evidence on historical rows; null when the decision came from the outcome. */
-  counterpartyPremiseFit: string | null;
   intentAlignment: string | null;
   screenedAt: string | null;
 }

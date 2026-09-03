@@ -60,7 +60,6 @@ function readScreenDecisionRecord(metadata: Record<string, unknown>): ProjectedS
     source: 'screen',
     decision: record.decision,
     reasoning: typeof record.reasoning === 'string' ? record.reasoning : '',
-    counterpartyPremiseFit: named(evidence.counterpartyPremiseFit),
     intentAlignment: named(evidence.intentAlignment),
     screenedAt: named(record.screenedAt),
   };
@@ -93,7 +92,6 @@ function selectScreenDecision(
     // `screened_out` means, definitionally, that no outreach was ever made.
     decision: 'pass',
     reasoning: outcomeReasoning,
-    counterpartyPremiseFit: null,
     intentAlignment: null,
     screenedAt: null,
   };
