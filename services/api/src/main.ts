@@ -44,7 +44,6 @@ import { auth } from './lib/betterauth/auth.instance';
 import { intentIndexing } from './lib/intent/indexing';
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
 import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
-import { frameDriftCron } from './crons/frame-drift.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
 import { NetworkMembershipEvents } from './events/network_membership.event';
@@ -100,12 +99,6 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
 
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
-void frameDriftCron.start().catch((error) => {
-  log.job.from('FrameDriftCron').error('Frame-drift cron startup failed', {
-    event: 'frame_drift_monitoring_startup_failed',
-    error,
-  });
-});
 hydeMaintenanceCron.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;

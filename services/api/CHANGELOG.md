@@ -10,6 +10,15 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- **Daily frame-drift monitoring.** The 00:15 UTC cron, its service, both
+  adapters and `lib/frame-drift.config.ts` are gone, along with the
+  `FrameDriftCron` wiring in `main.ts`. The job measured per-network embedding
+  centroids and a cross-network opportunity-yield proxy and then only logged
+  them; nothing read the rows, and its premise corpus disappeared with
+  `premises` in `0160`. Migration `0161` drops
+  `frame_drift_observation_runs`, `frame_centroid_snapshots`,
+  `cross_network_yield_snapshots` and `frame_drift_execution_attempts`,
+  historical snapshots included.
 - **Premises, the opportunity delivery ledger, and the activity summary.** The
   premise cascade, events, adapters, and seeds are gone; profile saves no longer
   decompose into premises. `OpportunityDeliveryService` and the
