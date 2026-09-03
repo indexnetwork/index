@@ -2051,6 +2051,49 @@ No public API change: all 441 exported symbols are byte-identical to 13.2.0, and
 
 ## [Unreleased]
 
+### Added
+
+- **The model seat.** `@indexnetwork/a2a` and `@indexnetwork/agent` are now runtime
+  dependencies, and their model calls run through this package's `createModel()`
+  via a `ModelPort` adapter rather than their own OpenRouter clients. One model
+  stack: model choice, the same-tier fallback, runnable retry, the timing wrapper
+  and the trace emitter stay in one place.
+- **Host ports that were documented but not exported.** `ChatSessionReader`,
+  `ChatMessageWriter`, `ProfileEnricher`, `DeliveryLedger` and `AgentDatabase` are
+  importable now. `IMPLEMENTATION.md` listed them as interfaces a host must
+  implement while their types could not be named. It also listed
+  `IntegrationAdapter` and `MintConnectLink`, which do not exist; both are gone
+  from the doc.
+- `turnsWithSenders`, for a host that needs to read a negotiation thread.
+- `ModelSettings.timeoutMs`, defaulting to the previous hard-coded 60s. The
+  `negotiator` seat takes 120s — a negotiation turn is not on a chat response's
+  critical path, and a deadline that fires on a slow-but-working model is worse
+  than no deadline.
+
+### Changed
+
+- **Breaking (41.0.0): the barrel is the host contract, not the package's
+  machinery.** 118 exports with no consumer outside this package were removed,
+  taking `src/index.ts` from 312 symbols to 194. What stays is what a host needs:
+  the interfaces it implements, the row and DTO types its adapters construct, the
+  graph factories and capability classes it composes, and the kernel schemas both
+  sides speak. What went is negotiation turn schemas, PersonalAgent internals,
+  tool factories with no caller, narration and prompt helpers, mining and
+  evaluation internals — and the three question-block test fixtures, which
+  `STABILITY.md` claimed were subpath-only although the package declares no
+  subpaths. No implementation was deleted; every removed symbol is still used
+  inside the package.
+- Eight graphs no longer use LangGraph. Discovery, the intent lifecycle, premise,
+  radar, HyDE, the network indexer, and the two network CRUD graphs had no cycle,
+  no checkpointer and no streaming — a switch and a sequence wearing a graph
+  costume. `createGraph()` still returns `{ invoke }` and `invoke()` still returns
+  the full state with defaults applied, so call sites are unchanged. Chat
+  (checkpointer, streaming) and negotiation (a real `turn → apply → turn` cycle)
+  keep it.
+- `intentGraph.invoke()` no longer accepts a second `RunnableConfig` argument.
+  `{ recursionLimit: 100 }` bounded LangGraph's node-step count against infinite
+  loops; an explicit acyclic sequence has no recursion to limit.
+
 ### Removed
 
 - **Breaking (38.0.0): single-path opportunities.** Discovery no longer creates

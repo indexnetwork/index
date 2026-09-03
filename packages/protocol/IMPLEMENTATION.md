@@ -65,7 +65,6 @@ The package defines interfaces — your application provides the concrete implem
 | `Embedder` | Vector embeddings for semantic search |
 | `Scraper` | Web content extraction |
 | `Cache` / `HydeCache` | Result caching (HyDE may share the general cache) |
-| `IntegrationAdapter` | OAuth and external tool actions |
 | `IntentFollowUp` | Post-persist intent follow-up (HyDE, resume discovery) |
 | `ChatSessionReader` | Load conversation history |
 | `ProfileEnricher` | Enrich profiles from external sources |
@@ -79,12 +78,11 @@ The package defines interfaces — your application provides the concrete implem
 | `AgentDispatcher` | Resolves and invokes personal agents during negotiation turns — required to register the negotiation tools |
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
 | `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
-| `MintConnectLink` | Mints short connect links for opportunity accepts |
 | `ChatSummaryReader` | Read-through chat-session digest |
 | `ChatMessageWriter` | Writes user messages into the most-recent chat session (MCP elicitation) |
 | `NegotiationSummaryReader` | Negotiation-digest summarization (falls back to deterministic digests) |
 
-All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
+Every interface listed above is exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`. Nothing else in the barrel is a host port: an unconsumed export from `internal/` is machinery, and is removed rather than deprecated.
 
 ### 3. Create tools
 

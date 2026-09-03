@@ -48,7 +48,7 @@ Covered by SemVer below. Breaking changes require a **major** bump.
 | **Shared schemas** | Zod schemas + inferred types that cross the boundary (questions, identity, network-assignment, chat-context, …). |
 | **Graph factories** | `*GraphFactory` classes (`ChatGraphFactory`, `OpportunityGraphFactory`, `NegotiationGraphFactory`, …). |
 | **Intents** | `Intents` — the whole signal capability as one class (lifecycle graph, verification, network indexing, guided intake, tools) plus `IntentsDeps` and the intake/indexer types. Replaced the six separate intent exports in 18.0.0. |
-| **Agents** | Structured LLM agents (`IndexNegotiator`, `OpportunityEvaluator`, …). |
+| **Agents** | Structured LLM agents re-exported from the barrel (`ChatTitleGenerator`, `HydeGenerator`, `LensInferrer`, …). |
 | **MCP** | `createMcpServer` plus the types needed to call it: `ScopedDepsFactory`, `McpCapabilityPolicyOptions`, `CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS`, `McpAuthorizationObserver`, `McpAuthorizationDenialEvent`. The rest of `mcp.authorization-policy.ts` is package-internal as of 15.0.0. |
 | **Capability tools** | `createEnrichmentTools` only. The other per-capability tool factories became package-internal in 15.0.0 — compose them through `createMcpServer` or `createToolRegistry`. |
 
@@ -62,10 +62,13 @@ a major bump. Use at your own risk and pin a version if you depend on them.
 | **States** | Advanced graph-state shapes (`UserNegotiationContext`, `NegotiationTurn`, `NegotiationGraphLike`, …) exposed for advanced graph consumers. |
 | **Internal helpers** | Low-level support utilities re-exported for the backend's own use (selection/eval/evidence helpers) that are not part of the recommended integration surface. |
 
-> Most symbols in the barrel are consumed by the Index Network backend itself; a
-> symbol being absent from the backend's imports does **not** make it dead — it may
-> serve external integrators. Removal therefore follows the deprecation path below,
-> never an ad-hoc delete.
+> The barrel is the set of symbols a host actually needs: the interfaces it
+> implements, the row and DTO types its adapters must construct to satisfy them,
+> the graph factories and capability classes it composes, and the kernel schemas
+> both sides speak. An unconsumed export from `internal/` is machinery that
+> leaked out, and it is removed rather than deprecated — see the "Breaking the
+> public surface is allowed and cheap" rule in the repo's CLAUDE.md. Test
+> fixtures do not belong here at all.
 
 ## SemVer policy
 
