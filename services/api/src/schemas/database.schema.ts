@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, real } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm/relations';
 import { sql } from 'drizzle-orm/sql';
@@ -499,11 +499,10 @@ export const intents = pgTable('intents', {
   archivedAt: timestamp('archived_at'),
   lastVisitedAt: timestamp('last_visited_at', { withTimezone: true }),
   /**
-   * Written by NegotiationGraph at every fresh kickoff batch for this intent.
-   * A fresh UUID per kickoff; null means this signal has never itself kicked
-   * off (#1494). The reflect trigger's key, alongside the negotiation task's
-   * `batchId` metadata — settlement itself is folded from
-   * `negotiation_round_log_events`, not read from a size/timestamp pair here.
+   * Written at every fresh kickoff batch for this intent. A fresh UUID per
+   * kickoff; null means this signal has never itself kicked off (#1494).
+   * Pairs with the negotiation task's `batchId` metadata: a batch has settled
+   * when none of its tasks are still active.
    */
   negotiationBatchId: text('negotiation_batch_id'),
   /**
@@ -691,58 +690,6 @@ export const agentPermissions = pgTable('agent_permissions', {
     .where(sql`${table.scope} = 'global'`),
 }));
 
-/**
- * Negotiator memory kinds (IND-405):
- * - `playbook`: negotiation tactics/strategies the negotiator has learned for its client.
- * - `disclosure_rule`: standing rules about what may/may not be shared, with whom.
- * - `counterparty_dossier`: private notes about a specific counterparty (subjectUserId).
- * - `threshold`: client-specific limits (pricing floors, time budgets, deal-breakers).
- *
- * Plain text column (not a pg enum) by design: adding kinds is a code-only change,
- * avoiding ALTER TYPE ... ADD VALUE same-deploy hazards (55P04).
- */
-export type NegotiatorMemoryKind = 'playbook' | 'disclosure_rule' | 'counterparty_dossier' | 'threshold';
-
-/** Provenance pointer for a negotiator memory (e.g. the negotiation it was learned from). */
-export interface NegotiatorMemorySourceRef {
-  type: 'negotiation' | 'question_answer' | 'chat' | 'manual';
-  id: string;
-  /** For negotiation refs: 0-based turn indexes evidencing the memory. */
-  turnIndexes?: number[];
-}
-
-/**
- * Private operational memory of a user's personal negotiator agent row (IND-405).
- *
- * Negotiator memories are private operational knowledge (playbooks, disclosure
- * rules, dossiers, thresholds) and MUST NOT be exposed to discovery, user
- * contexts, or any counterparty-visible surface.
- */
-export const negotiatorMemories = pgTable('negotiator_memories', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  /** The owning negotiator agent row (type='personal'). Memories die with the agent. */
-  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
-  /** Denormalized owner (matches agents.ownerId) for cheap user-scoped queries. */
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  kind: text('kind').$type<NegotiatorMemoryKind>().notNull(),
-  /**
-   * For counterparty dossiers: who the memory is about. Cascade delete is a
-   * privacy stance — when the subject user is deleted, notes about them go too.
-   */
-  subjectUserId: text('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
-  content: text('content').notNull(),
-  /** text-embedding-3-large @ 2000 dims. */
-  embedding: vector('embedding', { dimensions: 2000 }),
-  sourceRefs: jsonb('source_refs').$type<NegotiatorMemorySourceRef[]>().notNull().default([]),
-  confidence: real('confidence').notNull().default(0.5),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  agentKindIdx: index('negotiator_memories_agent_kind_idx').on(table.agentId, table.kind),
-  userSubjectIdx: index('negotiator_memories_user_subject_idx').on(table.userId, table.subjectUserId),
-  embeddingIdx: index('negotiator_memories_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
-}));
-
 export const agentTestMessages = pgTable(
   'agent_test_messages',
   {
@@ -842,97 +789,6 @@ export const opportunityOutcomeEvents = pgTable(
 export type OpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferSelect;
 export type NewOpportunityOutcomeEvent = typeof opportunityOutcomeEvents.$inferInsert;
 
-/** Where a dossier entry came from (docs/plans/2026-08-21-holistic-intent-agent.md). */
-export const intentDossierSourceEnum = pgEnum('intent_dossier_source', ['user_message', 'answer', 'agent_note']);
-
-/**
- * The intent dossier — the disclosure boundary of the IntentAgent
- * (docs/plans/2026-08-21-holistic-intent-agent.md). Negotiation-facing
- * material may come only from entries here; the raw DM transcript never
- * feeds a negotiation turn. Entries are retired, never deleted, so the
- * boundary's history stays auditable.
- */
-export const intentDossier = pgTable(
-  'intent_dossier',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    intentId: text('intent_id').notNull().references(() => intents.id, { onDelete: 'cascade' }),
-    text: text('text').notNull(),
-    source: intentDossierSourceEnum('source').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    retiredAt: timestamp('retired_at', { withTimezone: true }),
-  },
-  (t) => ({
-    scopeIdx: index('idx_intent_dossier_scope').on(t.userId, t.intentId, t.retiredAt),
-  }),
-);
-
-export type IntentDossierEntry = typeof intentDossier.$inferSelect;
-export type NewIntentDossierEntry = typeof intentDossier.$inferInsert;
-
-/**
- * The IntentAgent's act ledger — append-only accountability substrate
- * (docs/plans/2026-08-21-holistic-intent-agent.md). Written by the agent
- * loop, read only by the agent's own context assembly; never a logic input
- * anywhere else. Provenance ids only, no cascading source FKs beyond the
- * owning user: the record of what the agent decided must survive routine
- * intent cleanup.
- */
-export const intentAgentActs = pgTable(
-  'intent_agent_acts',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    intentId: text('intent_id').notNull(),
-    /** What woke the agent: the triggering event, verbatim. */
-    event: jsonb('event').$type<Record<string, unknown>>().notNull(),
-    /** The tool the agent called and its payload. */
-    act: jsonb('act').$type<Record<string, unknown>>().notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    scopeIdx: index('idx_intent_agent_acts_scope').on(t.userId, t.intentId, t.createdAt),
-  }),
-);
-
-export type IntentAgentAct = typeof intentAgentActs.$inferSelect;
-export type NewIntentAgentAct = typeof intentAgentActs.$inferInsert;
-
-export const negotiationRoundLogEventKindEnum = pgEnum('negotiation_round_log_event_kind', ['opened', 'stopped', 'resumed', 'opening_complete']);
-export const negotiationRoundLogEventViaEnum = pgEnum('negotiation_round_log_event_via', ['paused', 'completed']);
-
-/**
- * Append-only event log a batch's "has everything settled" answer is folded
- * from (`@indexnetwork/protocol`'s `foldNegotiationRoundLog`), replacing the
- * racy quartet of separately-written fields (`intents.negotiation_round`,
- * `negotiation_round_size`, `negotiation_kickoff_started_at`,
- * `metadata.drainGeneration`) that used to live on `intents`/`tasks`.
- */
-export const negotiationRoundLogEvents = pgTable(
-  'negotiation_round_log_events',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    intentId: text('intent_id').notNull(),
-    batchId: text('batch_id').notNull(),
-    /** Absent only for 'opening_complete', which has no task. */
-    taskId: text('task_id'),
-    kind: negotiationRoundLogEventKindEnum('kind').notNull(),
-    /** Only set on 'stopped' events. */
-    via: negotiationRoundLogEventViaEnum('via'),
-    /** Only set on 'stopped' events whose `via` is 'paused' (a `NegotiationPauseReasonName`). */
-    reason: text('reason'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    // The fold's read: one intent's one batch, in append order.
-    batchIdx: index('idx_negotiation_round_log_events_batch').on(t.intentId, t.batchId, t.createdAt),
-  }),
-);
-
-export type NegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$inferSelect;
-export type NewNegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$inferInsert;
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1023,21 +879,6 @@ export const agentPermissionsRelations = relations(agentPermissions, ({ one }) =
   }),
 }));
 
-export const negotiatorMemoriesRelations = relations(negotiatorMemories, ({ one }) => ({
-  agent: one(agents, {
-    fields: [negotiatorMemories.agentId],
-    references: [agents.id],
-  }),
-  user: one(users, {
-    fields: [negotiatorMemories.userId],
-    references: [users.id],
-  }),
-  subjectUser: one(users, {
-    fields: [negotiatorMemories.subjectUserId],
-    references: [users.id],
-  }),
-}));
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Export types
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1062,7 +903,5 @@ export type AgentTransport = typeof agentTransports.$inferSelect;
 export type NewAgentTransport = typeof agentTransports.$inferInsert;
 export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
-export type NegotiatorMemory = typeof negotiatorMemories.$inferSelect;
-export type NewNegotiatorMemory = typeof negotiatorMemories.$inferInsert;
 
 export * from './conversation.schema';

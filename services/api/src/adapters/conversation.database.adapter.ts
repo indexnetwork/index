@@ -2609,36 +2609,6 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
-   * Signals whose current batch began but never finished settling — a
-   * kickoff that was interrupted (crash, restart) before it could append its
-   * `opening_complete` round-log marker. A batch with no events at all yet
-   * (crashed before its first `opened` event landed) is excluded: there is no
-   * event timestamp to judge staleness by, and that window is narrow (opens
-   * follow the bump within the same turn). `runKickoff`'s own
-   * `interruptedBatch` repair already knows how to settle these; it just
-   * needs a fresh wake to run it, which is what this list is for.
-   */
-  async getIntentsWithInterruptedKickoff(staleBeforeMs: number): Promise<Array<{ id: string; userId: string }>> {
-    const cutoff = new Date(Date.now() - staleBeforeMs);
-    const result = await db.execute(sql`
-      SELECT i.id, i.user_id AS "userId"
-      FROM intents i
-      WHERE i.status = 'ACTIVE'
-        AND i.negotiation_batch_id IS NOT NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM negotiation_round_log_events e
-          WHERE e.intent_id = i.id AND e.batch_id = i.negotiation_batch_id AND e.kind = 'opening_complete'
-        )
-        AND EXISTS (
-          SELECT 1 FROM negotiation_round_log_events e2
-          WHERE e2.intent_id = i.id AND e2.batch_id = i.negotiation_batch_id
-          HAVING max(e2.created_at) < ${cutoff}
-        )
-    `);
-    return result as unknown as Array<{ id: string; userId: string }>;
-  }
-
-  /**
    * Every negotiation task of one intent's batch, whatever its state — what
    * reflect reads. The `batchId` key is also the rewrite-era predicate: a
    * pre-rewrite task has no `batchId` in its metadata and can never match.

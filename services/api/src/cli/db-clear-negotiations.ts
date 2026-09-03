@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 /**
  * Dev-only wipe of all negotiation + opportunity product data for every user.
- * Also clears discovery-progress, pool/intent questions, intent-agent acts,
- * dossiers, and any conversation that has an agent participant
- * (H2A / A2A chat shells).
- * Also resets each intent's negotiation-cycle state (batch id) plus its
- * round-log events.
+ * Also clears discovery-progress, pool/intent questions, and any conversation
+ * that has an agent participant (H2A / A2A chat shells).
+ * Also resets each intent's negotiation-cycle state (batch id).
  * Keeps intents, users, HyDE, and profile data.
  *
  * Usage:
@@ -41,12 +39,10 @@ async function readCounts(): Promise<Counts> {
     SELECT 'opportunities' AS t, count(*)::text AS n FROM opportunities
     UNION ALL SELECT 'tasks_negotiation', count(*)::text FROM tasks WHERE metadata->>'type' = 'negotiation'
     UNION ALL SELECT 'artifacts', count(*)::text FROM artifacts
-    UNION ALL SELECT 'negotiator_memories', count(*)::text FROM negotiator_memories
     UNION ALL SELECT 'opportunity_outcome_events', count(*)::text FROM opportunity_outcome_events
     UNION ALL SELECT 'agents_with_neg_pickup', count(*)::text FROM agents WHERE last_negotiation_pickup_at IS NOT NULL
     UNION ALL SELECT 'intents_with_batch_state', count(*)::text FROM intents
       WHERE negotiation_batch_id IS NOT NULL
-    UNION ALL SELECT 'negotiation_round_log_events', count(*)::text FROM negotiation_round_log_events
     UNION ALL SELECT 'intent_discovery_progress', count(*)::text FROM intent_discovery_progress
     UNION ALL SELECT 'questions_intent', count(*)::text FROM questions WHERE detection->>'mode' = 'intent'
     UNION ALL SELECT 'questions_nego_opp', count(*)::text FROM questions
@@ -58,8 +54,6 @@ async function readCounts(): Promise<Counts> {
         SELECT 1 FROM conversation_participants p
         WHERE p.conversation_id = c.id AND p.participant_type = 'agent'
       )
-    UNION ALL SELECT 'intent_agent_acts', count(*)::text FROM intent_agent_acts
-    UNION ALL SELECT 'intent_dossier', count(*)::text FROM intent_dossier
   `);
   const counts: Counts = {};
   for (const row of rows) {
@@ -89,10 +83,7 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
     `);
     await tx.execute(sql`DELETE FROM opportunity_outcome_events`);
     await tx.execute(sql`DELETE FROM opportunities`);
-    await tx.execute(sql`DELETE FROM negotiator_memories`);
     await tx.execute(sql`DELETE FROM intent_discovery_progress`);
-    await tx.execute(sql`DELETE FROM intent_agent_acts`);
-    await tx.execute(sql`DELETE FROM intent_dossier`);
     await tx.execute(sql`
       DELETE FROM questions
       WHERE detection->>'mode' IN (
@@ -112,7 +103,6 @@ async function clearNegotiationsAndOpportunities(): Promise<Counts> {
     await tx.execute(sql`
       UPDATE intents SET negotiation_batch_id = NULL WHERE negotiation_batch_id IS NOT NULL
     `);
-    await tx.execute(sql`DELETE FROM negotiation_round_log_events`);
   });
   return readCounts();
 }

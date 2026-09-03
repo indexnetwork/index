@@ -20,6 +20,17 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 44.0.0 - 2026-09-03
+
+### Removed
+
+- **BREAKING: `NegotiationRoundLogDatabase`, `NegotiationRoundLogEventKind` and
+  `NegotiationRoundLogEventRecord` are gone.** The port was orphaned when the
+  in-process negotiation graph and its `foldNegotiationRoundLog` were deleted:
+  nothing composed it into `NegotiationGraphDatabase` and no host implemented
+  its two methods. Hosts that declared them can delete those implementations
+  along with their `negotiation_round_log_events` storage.
+
 ## 43.0.0 - 2026-09-02
 
 ### Removed

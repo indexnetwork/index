@@ -204,18 +204,8 @@ async function main(): Promise<void> {
              OR u.id IN (${sql.join(fixtureUserIds.map((id) => sql`${id}`), sql`, `)})
              OR a.owner_id IN (${sql.join(fixtureUserIds.map((id) => sql`${id}`), sql`, `)})
         `;
-        // chat_session_summaries → messages is ON DELETE RESTRICT, which fires
-        // even inside the conversation cascade — summaries go first.
-        await tx.execute(sql`
-          DELETE FROM chat_session_summaries WHERE conversation_id IN (${ghostConversationSubquery})
-        `);
         await tx.execute(sql`
           DELETE FROM conversations WHERE id IN (${ghostConversationSubquery})
-        `);
-        await tx.execute(sql`
-          DELETE FROM intent_agent_acts
-          WHERE user_id IN (${sql.join(fixtureUserIds.map((id) => sql`${id}`), sql`, `)})
-             OR NOT EXISTS (SELECT 1 FROM users WHERE users.id = intent_agent_acts.user_id)
         `);
 
         const fixtureIntents = await tx.select({ id: schema.intents.id })

@@ -1121,6 +1121,13 @@
       "when": 1788034636044,
       "tag": "0162_drop_master_key_and_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1788034636046,
+      "tag": "0163_drop_dead_agent_tables",
+      "breakpoints": true
     }
   ]
 }

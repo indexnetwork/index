@@ -221,40 +221,4 @@ export type NegotiationGraphDatabase = Pick<Database, 'getOpportunity' | 'getInt
   countActiveNegotiationsForBatch(intentId: string, batchId: string): Promise<number>;
 };
 
-/**
- * Structural mirror of `NegotiationRoundLogEvent`
- * (internal/negotiations/negotiation.round-log.ts). `platform` may only
- * depend on `protocol`/`platform` code (enforced by
- * `architecture:kernel`), so this port defines its own shape instead of
- * importing across that boundary; TypeScript's structural typing means the
- * internal type satisfies this one at every call site.
- */
-export type NegotiationRoundLogEventKind = 'opened' | 'stopped' | 'resumed' | 'opening_complete';
-
-export interface NegotiationRoundLogEventRecord {
-  kind: NegotiationRoundLogEventKind;
-  /** Absent only for 'opening_complete', which has no task. */
-  taskId?: string;
-  batchId: string;
-  /** Only set on 'stopped' events. */
-  via?: 'paused' | 'completed';
-  /** Only set on 'stopped' events whose `via` is 'paused'. */
-  reason?: string;
-  /** When this event was appended — the staleness clock for an in-flight batch. */
-  createdAt: Date;
-}
-
-/**
- * Durable store for `NegotiationRoundLogEvent`s (#1494). The single write
- * path for a batch's open/stop/resume/opening_complete history, folded by
- * `foldNegotiationRoundLog` to decide when a batch has settled.
- */
-export interface NegotiationRoundLogDatabase {
-  /** Appends one event to the intent's round log. Append-only — never mutates or removes a prior event. */
-  appendNegotiationRoundLogEvent(intentId: string, event: Omit<NegotiationRoundLogEventRecord, 'createdAt'>): Promise<void>;
-
-  /** This intent's events for one batch, in the order they were appended — the order the fold requires. */
-  readNegotiationRoundLogEvents(intentId: string, batchId: string): Promise<NegotiationRoundLogEventRecord[]>;
-}
-
 export type { Opportunity };

@@ -202,39 +202,6 @@ export const artifacts = pgTable(
 );
 
 /**
- * Append-only rolling digest of a chat session (a conversation). Each row covers
- * messages from `fromMessageId` (start of the range this digest covers) through
- * `toMessageId` (end of the range at write time). Readers take the latest row
- * by `createdAt DESC` for a session — note that `toMessageId` is a text UUID,
- * so ordering by it is lexicographic, not chronological. New rows are inserted
- * as the session grows; old rows are retained for debug/replay.
- */
-export const chatSessionSummaries = pgTable(
-  'chat_session_summaries',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    conversationId: text('conversation_id')
-      .notNull()
-      .references(() => conversations.id, { onDelete: 'cascade' }),
-    fromMessageId: text('from_message_id')
-      .notNull()
-      .references(() => messages.id, { onDelete: 'restrict' }),
-    toMessageId: text('to_message_id')
-      .notNull()
-      .references(() => messages.id, { onDelete: 'restrict' }),
-    digest: jsonb('digest').notNull(),
-    model: text('model').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => ({
-    sessionLatestIdx: index('chat_session_summaries_session_latest_idx').on(
-      table.conversationId,
-      table.createdAt.desc(),
-    ),
-  }),
-);
-
-/**
  * One-to-one metadata sidecar for a conversation (arbitrary JSONB payload).
  */
 export const conversationMetadata = pgTable('conversation_metadata', {
@@ -355,21 +322,6 @@ export const chatSessionScopesRelations = relations(chatSessionScopes, ({ one })
   }),
 }));
 
-export const chatSessionSummariesRelations = relations(chatSessionSummaries, ({ one }) => ({
-  conversation: one(conversations, {
-    fields: [chatSessionSummaries.conversationId],
-    references: [conversations.id],
-  }),
-  fromMessage: one(messages, {
-    fields: [chatSessionSummaries.fromMessageId],
-    references: [messages.id],
-  }),
-  toMessage: one(messages, {
-    fields: [chatSessionSummaries.toMessageId],
-    references: [messages.id],
-  }),
-}));
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Exported types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -397,6 +349,3 @@ export type NewConversationMetadata = typeof conversationMetadata.$inferInsert;
 
 export type ChatSessionScope = typeof chatSessionScopes.$inferSelect;
 export type NewChatSessionScope = typeof chatSessionScopes.$inferInsert;
-
-export type ChatSessionSummary = typeof chatSessionSummaries.$inferSelect;
-export type NewChatSessionSummary = typeof chatSessionSummaries.$inferInsert;

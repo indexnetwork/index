@@ -201,9 +201,6 @@ export type {
   NegotiationSeatBinding,
   NegotiationTaskState,
   NegotiationMessageRow,
-  NegotiationRoundLogDatabase,
-  NegotiationRoundLogEventKind,
-  NegotiationRoundLogEventRecord,
 } from "./platform/database/negotiation.js";
 
 // ─── Opportunity compatibility exports ─────────────────────────────────────
