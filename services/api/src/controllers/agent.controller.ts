@@ -6,8 +6,7 @@ import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { AgentTestMessageService } from '../services/agent-test-message.service';
 import { agentService } from '../services/agent.service';
-import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
-import { parseFiniteLimit, pickupOpportunityAtControllerBoundary, pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
+import { pickupTestMessageAtControllerBoundary } from '../lib/agent/negotiation-controller-boundary';
 import { RuntimeDomainError } from '../lib/agent/runtime-errors';
 
 const agentTestMessageService = new AgentTestMessageService();
@@ -58,10 +57,6 @@ const confirmTestMessageDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
 });
 
-const confirmOpportunityDeliveredSchema = z.object({
-  reservationToken: z.string().min(1, 'reservationToken is required'),
-});
-
 function jsonError(error: string, status: number) {
   return Response.json({ error }, { status });
 }
@@ -109,18 +104,6 @@ async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T | R
   return parsed.data;
 }
 
-/**
- * Parse an optional `limit` query param into a finite number.
- * Returns undefined when absent/empty, or a 400 Response when present but not finite.
- * Range clamping is the service's responsibility — see callers' validation contract.
- */
-function parseLimitParam(req: Request): number | undefined | Response {
-  const parsed = parseFiniteLimit(req.url);
-  return parsed.kind === 'invalid'
-    ? jsonError('limit must be a finite number', 400)
-    : parsed.value;
-}
-
 async function parseOptionalBody<T>(req: Request, schema: z.ZodSchema<T>, emptyValue: unknown): Promise<T | Response> {
   const text = await req.text().catch(() => '');
   const trimmed = text.trim();
@@ -150,7 +133,6 @@ export class AgentController {
   constructor(
     private readonly agents: typeof agentService = agentService,
     private readonly testMessages: AgentTestMessageService = agentTestMessageService,
-    private readonly deliveries: typeof opportunityDeliveryService = opportunityDeliveryService,
   ) {}
   @Get('')
   @UseGuards(RateLimit('read'), AuthGuard)
@@ -455,141 +437,6 @@ export class AgentController {
 
     try {
       await this.testMessages.confirmDelivered(messageId, body.reservationToken);
-      return Response.json({ ok: true });
-    } catch (err) {
-      const msg = parseErrorMessage(err);
-      if (msg === 'invalid_reservation_token_or_already_delivered') {
-        return jsonError('Invalid or expired reservation token', 404);
-      }
-      return jsonError(msg, errorStatus(err));
-    }
-  }
-
-  @Post('/:id/opportunities/pickup')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async pickupOpportunity(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    try {
-      const result = await pickupOpportunityAtControllerBoundary({
-        agentId,
-        ownerId: user.id,
-        authorize: (id, ownerId) => this.agents.getById(id, ownerId),
-        touchLastSeen: (id) => this.agents.touchLastSeen(id),
-        pickup: (id) => this.deliveries.pickupPending(id),
-      });
-      if (!result) {
-        return new Response(null, { status: 204 });
-      }
-      return Response.json(result);
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Get('/:id/opportunities/pending')
-  @UseGuards(AuthGuard)
-  async getPendingOpportunities(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    // Validation contract: the controller only enforces "the param parses to a
-    // finite number". The service is the single source of truth for clamping
-    // (rounds to integer, then clamps to [1, 20]), so values like 0, -3, 1.5,
-    // 100 are all accepted here and normalized downstream. NaN/Infinity/empty
-    // are rejected with 400 — they signal a malformed request, not a value out
-    // of range.
-    const limit = parseLimitParam(req);
-    if (limit instanceof Response) {
-      return limit;
-    }
-
-    try {
-      await this.agents.getById(agentId, user.id);
-      await this.agents.touchLastSeen(agentId);
-      const result = await this.deliveries.fetchPendingCandidates(agentId, limit);
-      return Response.json({ opportunities: result.opportunities, totalPending: result.totalPending });
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Get('/:id/opportunities/accepted')
-  @UseGuards(AuthGuard)
-  async getAcceptedOpportunities(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    const limit = parseLimitParam(req);
-    if (limit instanceof Response) {
-      return limit;
-    }
-
-    const frontendUrl = (process.env.WEB_APP_URL || 'https://index.network').replace(/\/+$/, '');
-
-    try {
-      await this.agents.getById(agentId, user.id);
-      await this.agents.touchLastSeen(agentId);
-      const opportunities = await this.deliveries.fetchAcceptedCandidates(agentId, frontendUrl, limit);
-      return Response.json({ opportunities });
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Get('/:id/opportunities/delivery-stats')
-  @UseGuards(RateLimit('read'), AuthGuard)
-  async getDeliveryStats(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    const url = new URL(req.url);
-    const sinceParam = url.searchParams.get('since');
-    if (!sinceParam) {
-      return jsonError('since query parameter is required (ISO 8601)', 400);
-    }
-    const since = new Date(sinceParam);
-    if (Number.isNaN(since.getTime())) {
-      return jsonError('since must be a valid ISO 8601 timestamp', 400);
-    }
-
-    try {
-      await this.agents.getById(agentId, user.id);
-      await this.agents.touchLastSeen(agentId);
-      const counts = await this.deliveries.countDeliveriesSince(agentId, since);
-      return Response.json(counts);
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Post('/:id/opportunities/:opportunityId/delivered')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async confirmOpportunityDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    const opportunityId = params?.opportunityId;
-    if (!agentId || !opportunityId) {
-      return jsonError('Agent ID and opportunity ID are required', 400);
-    }
-
-    const body = await parseBody(req, confirmOpportunityDeliveredSchema);
-    if (body instanceof Response) {
-      return body;
-    }
-
-    try {
-      // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
-      await this.agents.getById(agentId, user.id);
-      await this.deliveries.confirmDelivered(opportunityId, user.id, body.reservationToken);
       return Response.json({ ok: true });
     } catch (err) {
       const msg = parseErrorMessage(err);

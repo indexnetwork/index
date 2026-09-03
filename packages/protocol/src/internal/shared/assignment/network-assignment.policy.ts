@@ -2,7 +2,7 @@ import { deriveAllowedNetworkIds, scopeFromNetworkId } from "../agent/tool.scope
 import type { ScopeMembership, ToolScopeEnvelope } from "../agent/tool.scope.js";
 import type { NetworkAssignmentMetadata, NetworkAssignmentMode, NetworkAssignmentPromptPresence, NetworkAssignmentRawScores, NetworkAssignmentResourceType, NetworkAssignmentScope } from "../../../protocol/schemas/network-assignment.schema.js";
 
-/** Centralized default for unified premises/intent network assignment. */
+/** Centralized default for intent network assignment. */
 export const DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD = 0.7;
 
 export interface PromptPresenceInput {

@@ -10,19 +10,8 @@ import type { Database } from '../database.js';
 
 
 /**
- * Database interface narrowed for Premise Graph operations.
- * Provides premise lifecycle: create, read, update, and network assignment.
- *
- * Access layer: UserDatabase (user's own premises)
- */
-export type PremiseGraphDatabase = Pick<
-  Database,
-  'createPremise' | 'getPremise' | 'getPremisesForUser' | 'updatePremise' | 'assignPremiseToNetwork' | 'getPremiseNetworks' | 'getAssignmentNetworkMembershipsForUser' | 'getAssignmentNetworkIdsForUser' | 'getNetworkAssignmentContext' | 'getUserIndexIds' | 'getNetwork' | 'getNetworkMemberContext' | 'findSimilarActivePremise' | 'getUser' | 'updateUser'
->;
-
-/**
  * Composite database interface for a tool composition that reaches every
- * subgraph (ProfileGraph, OpportunityGraph, IntentGraph, NetworkGraph).
+ * subgraph (OpportunityGraph, IntentGraph, NetworkGraph).
  *
  * Access layer: Both UserDatabase + SystemDatabase (orchestrates all operations)
  */
@@ -35,7 +24,6 @@ export type CompositeToolDatabase = Pick<
   | 'getActiveIntents'
   | 'getActiveIntentsAcrossIndexes'
   | 'getIntentsInIndexForMember'
-  // ProfileGraph subgraph requirements
   | 'getUser'
   | 'updateUser'
   | 'getUserSocials'
@@ -107,19 +95,6 @@ export type CompositeToolDatabase = Pick<
   | 'getNetworkMemberCount'
   | 'addMemberToNetwork'
   | 'removeMemberFromIndex'
-  // ProfileGraph post-enrichment ghost deduplication
-  // ProfileGraph aggregate mode (premise-to-profile materialization)
-  // Premise lifecycle (CRUD + network assignment)
-  | 'getPremisesForUser'
-  | 'getPremisesForUserInNetworks'
-  | 'createPremise'
-  | 'getPremise'
-  | 'updatePremise'
-  | 'assignPremiseToNetwork'
-  | 'getPremiseNetworks'
-  // Premise-to-premise discovery (path D) in OpportunityGraph
-  | 'searchPremisesBySimilarity'
-  | 'searchPremisesBySimilarityBatch'
   // User context text for discovery in OpportunityGraph
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'
@@ -170,13 +145,6 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
-  // IND-567 Fix A: fetch candidate premise text for evaluator (prevents empty-text query_premise false-positives)
-  | 'getPremise'
-  // Premise-to-premise discovery (path D)
-  | 'getPremisesForUser'
-  | 'getPremisesForUserInNetworks'
-  | 'searchPremisesBySimilarity'
-  | 'searchPremisesBySimilarityBatch'
   // User context text for discovery
   | 'getUserContext'
   | 'searchIntentsByContextEmbedding'

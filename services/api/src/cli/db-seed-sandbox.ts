@@ -132,14 +132,12 @@ async function main(): Promise<void> {
         persona,
         userId: persona.fixedIds?.userId ?? fixtureId('user', persona.email),
         context,
-        premiseTexts: persona.premises,
         networkKeys: [...classified],
       };
     });
 
-    const embeddingTexts = personaFixtures.flatMap(({ context, premiseTexts, persona }) => [
+    const embeddingTexts = personaFixtures.flatMap(({ context, persona }) => [
       context,
-      ...premiseTexts,
       ...persona.intents,
     ]);
     const embeddings = await generateEmbeddings(embeddingTexts);
@@ -255,7 +253,7 @@ async function main(): Promise<void> {
       }
 
       for (const fixture of personaFixtures) {
-        const { persona, userId, premiseTexts, networkKeys } = fixture;
+        const { persona, userId, networkKeys } = fixture;
         await tx.insert(schema.users).values({
           id: userId,
           email: persona.email,
@@ -303,35 +301,6 @@ async function main(): Promise<void> {
           });
         }
 
-        for (const [premiseIndex, text] of premiseTexts.entries()) {
-          const premiseId = fixtureId('premise', `${persona.email}:${premiseIndex}`);
-          await tx.insert(schema.premises).values({
-            id: premiseId,
-            userId,
-            assertion: { text, tier: 'assertive' },
-            provenance: { source: 'onboarding', confidence: 1, timestamp: '2026-01-01T00:00:00.000Z' },
-            analysis: { speechActType: 'ASSERTIVE', felicityAuthority: 1, felicitySincerity: 1, felicityClarity: 1, semanticEntropy: 0.1 },
-            validity: { volatile: false },
-            embedding: embeddings.get(text)!,
-          }).onConflictDoUpdate({
-            target: schema.premises.id,
-            set: { assertion: { text, tier: 'assertive' }, embedding: embeddings.get(text)! },
-          });
-
-          const premiseNetworkKeys: NetworkKey[] = networkKeys.filter((key) => key !== 'commons' && key !== 'vault');
-          if (premiseIndex === 0 && networkKeys.includes('vault')) premiseNetworkKeys.push('vault');
-          const premiseNetworks = minimal
-            ? new Set<NetworkKey>(premiseNetworkKeys)
-            : new Set<NetworkKey>(['commons', ...premiseNetworkKeys]);
-          for (const key of premiseNetworks) {
-            await tx.insert(schema.premiseNetworks).values({
-              premiseId,
-              networkId: networkByKey.get(key)!.id,
-              relevancyScore: key === 'commons' ? '0.75' : '0.95',
-            }).onConflictDoNothing();
-          }
-        }
-
         for (const [intentIndex, payload] of persona.intents.entries()) {
           const intentId = persona.fixedIds?.intentIds[intentIndex] ?? fixtureId('intent', `${persona.email}:${intentIndex}`);
           await tx.insert(schema.intents).values({
@@ -372,11 +341,10 @@ async function main(): Promise<void> {
 
     });
 
-    const premiseCount = personaFixtures.reduce((sum, item) => sum + item.premiseTexts.length, 0);
     const intentCount = personaFixtures.reduce((sum, item) => sum + item.persona.intents.length, 0);
     console.log(
       `Seeded ${personaFixtures.length} people (${minimal ? 'minimal' : 'twenty'} mode), ${fixtureNetworks.length} networks, `
-      + `${premiseCount} premises, and ${intentCount} intents into ${SANDBOX_DATABASE}.`,
+      + `and ${intentCount} intents into ${SANDBOX_DATABASE}.`,
     );
     console.log(`Every seed persona signs in with email/password; the shared password is "${SANDBOX_SEED_PASSWORD}".`);
     if (minimal) {

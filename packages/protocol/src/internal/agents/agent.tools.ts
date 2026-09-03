@@ -26,7 +26,6 @@ const logger = protocolLogger('ChatTools:Agent');
 
 const AGENT_ACTIONS = [
   'manage:identity',
-  'manage:premises',
   'manage:intents',
   'manage:networks',
   'manage:opportunities',
@@ -98,7 +97,7 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
     querySchema: z.object({
       name: z.string().min(1).describe('Display name for the agent.'),
       description: z.string().optional().describe('What the agent does.'),
-      permissions: z.array(AgentPermissionActionSchema).optional().describe('Optional initial permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
+      permissions: z.array(AgentPermissionActionSchema).optional().describe('Optional initial permission actions to grant. Valid values: manage:identity, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
     }),
     handler: async ({ context, query }) => {
       if (context.agentId) {
@@ -304,10 +303,10 @@ export function createAgentTools(defineTool: DefineTool, deps: AgentToolDeps) {
   const grantAgentPermission = defineTool({
     name: 'grant_agent_permission',
     description: 'Grant one or more permissions to an agent for the current user. ' +
-      'Valid actions: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.',
+      'Valid actions: manage:identity, manage:intents, manage:networks, manage:opportunities, manage:negotiations.',
     querySchema: z.object({
       agent_id: z.string().min(1).describe('The agent ID to grant permissions to.'),
-      actions: z.array(AgentPermissionActionSchema).min(1).describe('Permission actions to grant. Valid values: manage:identity, manage:premises, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
+      actions: z.array(AgentPermissionActionSchema).min(1).describe('Permission actions to grant. Valid values: manage:identity, manage:intents, manage:networks, manage:opportunities, manage:negotiations.'),
       scope: z.enum(['global', 'node', 'network']).optional().describe('Optional permission scope.'),
       scope_id: z.string().optional().describe('Scope target ID for node/network scopes.'),
     }),

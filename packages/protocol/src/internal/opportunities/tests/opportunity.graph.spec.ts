@@ -125,11 +125,6 @@ function createOpportunityGraphDatabaseFixture(): OpportunityGraphDatabase {
     getUser: async () => null,
     getOrCreateDM: async () => ({ id: 'fixture-conversation' }),
     getIntent: async () => null,
-    getPremise: async () => null,
-    getPremisesForUser: async () => [],
-    getPremisesForUserInNetworks: async () => [],
-    searchPremisesBySimilarity: async () => [],
-    searchPremisesBySimilarityBatch: async () => [],
     getUserContext: async () => null,
     getUserContexts: async () => [],
     searchIntentsByContextEmbedding: async () => [],
@@ -229,8 +224,6 @@ function createMockGraph(deps?: {
     getNetworkMemberContext: async () => null,
     getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
-    getPremisesForUser: async () => [],
-    searchPremisesBySimilarity: async () => [],
     getUserContexts: async () => [],
   };
 
@@ -328,8 +321,6 @@ function createMockGraphWithFnOverrides(deps?: {
     getNetworkMemberContext: async () => null,
     getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
-    getPremisesForUser: async () => [],
-    searchPremisesBySimilarity: async () => [],
     getUserContexts: async () => [],
   };
 
@@ -1297,8 +1288,6 @@ describe('Opportunity Graph', () => {
         getNetworkMemberContext: async () => null,
         getNegotiationTaskForOpportunity: async () => null,
         stampOpportunityActorAction: async () => null,
-        getPremisesForUser: async () => [],
-        searchPremisesBySimilarity: async () => [],
       };
 
       const mockEmbedder = {
@@ -1509,8 +1498,6 @@ function createTraceMockGraph(explainerOverride?: MatchExplainerLike) {
     getNetworkMemberContext: async () => null,
     getNegotiationTaskForOpportunity: async () => null,
     stampOpportunityActorAction: async () => null,
-    getPremisesForUser: async () => [],
-    searchPremisesBySimilarity: async () => [],
     getUserContexts: async () => [],
   };
 

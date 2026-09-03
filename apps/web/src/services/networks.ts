@@ -288,20 +288,17 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
-  // Get current user's overview for a network: intents, premises, user_context (EDG-53)
+  // Get current user's overview for a network: intents, user_context (EDG-53)
   getNetworkOverview: async (networkId: string): Promise<{
     intents: Array<{ id: string; payload: string; summary?: string | null; createdAt: string; userId: string; userName: string }>;
-    premises: Array<{ id: string; text: string; summary: string | null; createdAt: string }>;
     userContext: { text: string; generatedAt: string } | null;
   }> => {
     const response = await api.get<{
       intents: Array<{ id: string; payload: string; summary?: string | null; createdAt: string; userId: string; userName: string }>;
-      premises: Array<{ id: string; text: string; summary: string | null; createdAt: string }>;
-      userContext: { text: string; generatedAt: string } | null;
+        userContext: { text: string; generatedAt: string } | null;
     }>(`/networks/${networkId}/overview`);
     return {
       intents: response.intents || [],
-      premises: response.premises || [],
       userContext: response.userContext ?? null,
     };
   },

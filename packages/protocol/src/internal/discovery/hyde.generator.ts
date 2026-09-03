@@ -62,7 +62,6 @@ export function buildFrameHydePrompt(input: HydeGenerateInput & { sourceFrame: H
   const corpusInstruction = {
     profiles: 'Write a first-person professional biography in the target profile voice.',
     intents: 'Write a first-person goal or aspiration in the target intent voice.',
-    premises: 'Write a first-person stable identity, values, or worldview statement in the target premise voice.',
   }[corpus];
 
   return `${corpusInstruction}

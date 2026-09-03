@@ -541,14 +541,6 @@ export function buildRadarCardPresentationCacheKey(
   return `radar:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}${scope}`;
 }
 
-export function buildDeliveryCardPresentationCacheKey(
-  opportunityId: string,
-  status: string,
-  viewerId: string,
-): string {
-  return `delivery:${OPPORTUNITY_PRESENTATION_CACHE_VERSION}:card:${opportunityId}:${status}:${viewerId}`;
-}
-
 export function buildApiChatCardPresentationCacheKey(
   opportunityId: string,
   viewerId: string,
@@ -757,7 +749,7 @@ export function getSafePresentationOrSkip(
  */
 export type PresenterDatabase = Pick<
   CompositeToolDatabase,
-  "getProfile" | "getActiveIntents" | "getNetwork" | "getPremisesForUser"
+  "getProfile" | "getActiveIntents" | "getNetwork"
 >;
 
 const presentLog = protocolLogger("OpportunityPresenter:present");
@@ -820,12 +812,6 @@ export const CardLLMSchema = z.object({
     .string()
     .describe(
       "2-3 sentence explanation in 'you' language for the main card body",
-    ),
-  digestSummary: z
-    .string()
-    .max(220)
-    .describe(
-      "One concise digest-ready sentence for a morning brief. It must be addressed to the viewer and mention the counterpart by name, e.g. 'You might like meeting Paul because ...'. No markdown.",
     ),
   suggestedAction: z
     .string()
@@ -932,10 +918,9 @@ You are an expert at presenting connection opportunities for an opportunity card
 Given context about the viewer, the other person, and why they were matched, produce:
 1. headline: one short hook line.
 2. personalizedSummary: 2-3 sentences in "you" language (main body text).
-3. digestSummary: one polished morning-brief sentence that can be printed directly after the person's linked name. No markdown, no field labels.
-4. suggestedAction: one brief suggested next step.
-5. narratorRemark: one short sentence for the narrator chip (who is suggesting and why; max ~80 chars).
-6. greeting: a 2-4 sentence first-person message the viewer could send to the counterpart. Plain prose, no greeting prefix, no markdown.
+3. suggestedAction: one brief suggested next step.
+4. narratorRemark: one short sentence for the narrator chip (who is suggesting and why; max ~80 chars).
+5. greeting: a 2-4 sentence first-person message the viewer could send to the counterpart. Plain prose, no greeting prefix, no markdown.
 7. mutualIntentsLabel: short subtitle under the other party's name. Examples: "3 mutual intents", "Shared interests", "Aligned goals" — keep it brief. NEVER output "0 mutual intents" or any zero-count label; use a qualitative phrase instead.
 
 Rules:
@@ -945,9 +930,6 @@ Rules:
 - Vary wording for the match itself. Do not repeat "opportunity" across headline, summary, and narratorRemark when alternatives fit.
 - Prefer first names in user-facing copy. Avoid repeated full names unless disambiguation is necessary.
 - Network assignment, network title/type, and network/event metadata are retrieval context only. They are NEVER proof that a person attended or will attend, belongs to a group, resides in a place, knows anyone from the network, or shared a session, time, place, or location with anyone. Do not make co-attendance, membership, residence, shared-session, or same-place/same-time claims from network co-membership.
-- digestSummary must be grammatically complete as a standalone sentence. It should usually start with "You might like meeting {Name} because ...".
-- digestSummary must NOT use awkward third-person fragments like "Name is...", "they're ..., and is...", "you is...", or "the discoverer's query".
-- digestSummary must be one sentence, MUST fit within 180 characters when possible, and MUST contain no markdown links; the caller will attach links.
 - If you cannot fit every detail, choose one clear reason and stop. Do not rely on downstream truncation.
 
 **Negotiation-grounded explanations (ONLY when NEGOTIATION CONTEXT is provided):**
@@ -1126,7 +1108,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), suggest
     // *because* the negotiation happened. Trailing the block lets weaker
     // models lean on surface signals and ignore the transcript entirely.
     const negotiationDirective = negotiationBlock
-      ? `\nIMPORTANT: This opportunity surfaced because the agents negotiated and converged. Both your personalizedSummary AND your digestSummary MUST reference at least one specific signal from the NEGOTIATION CONTEXT block below — what concern was raised, what was confirmed, what the agents agreed on. The digestSummary is the one-line morning-brief sentence a user reads before deciding to act, so it must communicate *why this specific match* surfaced now (the negotiation that led to it), not a generic skill-complementarity line. Do not produce the generic summary every card looked like before this negotiation happened.\n`
+      ? `\nIMPORTANT: This opportunity surfaced because the agents negotiated and converged. Your personalizedSummary MUST reference at least one specific signal from the NEGOTIATION CONTEXT block below — what concern was raised, what was confirmed, what the agents agreed on. It must communicate *why this specific match* surfaced now (the negotiation that led to it), not a generic skill-complementarity line. Do not produce the generic summary every card looked like before this negotiation happened.\n`
       : "";
     const humanContent = `
 ${negotiationBlock}${negotiationDirective}
@@ -1146,7 +1128,7 @@ COMMUNITY: ${input.indexName}
 Viewer's role in this opportunity: ${input.viewerRole}
 Opportunity status: ${input.opportunityStatus ?? "pending"}
 
-Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorRemark, greeting, and mutualIntentsLabel.
+Produce headline, personalizedSummary, suggestedAction, narratorRemark, greeting, and mutualIntentsLabel.
 `;
 
 
@@ -1164,10 +1146,6 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
       const fields = {
         headline: sanitizePresenterField(parsed.presentation.headline, DEFAULT_FALLBACK_HEADLINE),
         personalizedSummary: sanitizePresenterField(parsed.presentation.personalizedSummary, DEFAULT_EMPTY_FALLBACK_TEXT),
-        digestSummary: sanitizePresenterField(
-          parsed.presentation.digestSummary,
-          "You might like meeting them based on your current interests.",
-        ),
         suggestedAction: sanitizePresenterField(parsed.presentation.suggestedAction, DEFAULT_FALLBACK_ACTION),
         narratorRemark: sanitizePresenterField(parsed.presentation.narratorRemark, "Worth a look."),
         mutualIntentsLabel: sanitizePresenterField(
@@ -1180,7 +1158,6 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
       return {
         headline: fields.headline.value,
         personalizedSummary: fields.personalizedSummary.value,
-        digestSummary: fields.digestSummary.value,
         suggestedAction: fields.suggestedAction.value,
         narratorRemark: fields.narratorRemark.value,
         mutualIntentsLabel: fields.mutualIntentsLabel.value,
@@ -1204,7 +1181,6 @@ Produce headline, personalizedSummary, digestSummary, suggestedAction, narratorR
       return {
         headline: "A promising connection",
         personalizedSummary: fallbackSummary,
-        digestSummary: "You might like meeting them based on your current interests.",
         suggestedAction: "Take a look and decide whether to reach out.",
         narratorRemark: "Worth a look.",
         mutualIntentsLabel:
@@ -1319,7 +1295,6 @@ function buildNegotiatingChip(input: CardPresenterInput): CardLLMResult {
   return {
     headline: "Negotiation in progress",
     personalizedSummary: "Your agent is still talking with theirs to see if this connection makes sense. We'll surface the full match as soon as they converge.",
-    digestSummary: "Your agent is still checking whether this connection makes sense.",
     suggestedAction: "Check back shortly — no action needed yet.",
     narratorRemark,
     mutualIntentsLabel: input.mutualIntentCount && input.mutualIntentCount > 0
@@ -1389,50 +1364,6 @@ export async function gatherPresenterContext(
     viewerIntents = viewerIntents.filter((intent) => intent.id === focusedViewerIntentId);
   }
 
-  // Fetch premises when any actor is premise-grounded
-  const premiseGroundedActors = opportunity.actors.filter((a) => a.premise);
-  let viewerPremiseContext = '';
-  let otherPremiseContext = '';
-
-  if (premiseGroundedActors.length > 0) {
-    // Only fetch premises for actors that are actually premise-grounded, not all parties
-    const groundedOtherIds = premiseGroundedActors
-      .filter((a) => a.userId !== viewerId)
-      .map((a) => a.userId);
-    const viewerIsGrounded = premiseGroundedActors.some((a) => a.userId === viewerId);
-
-    const results = await Promise.all([
-      ...(viewerIsGrounded ? [database.getPremisesForUser(viewerId, 'ACTIVE')] : []),
-      ...groundedOtherIds.map((uid) => database.getPremisesForUser(uid, 'ACTIVE')),
-    ]);
-
-    let idx = 0;
-    if (viewerIsGrounded) {
-      const viewerPremises = results[idx++];
-      if (viewerPremises?.length) {
-        viewerPremiseContext =
-          '\nPremises (self-descriptions):\n' +
-          viewerPremises
-            .slice(0, 5)
-            .map((p) => `- ${p.assertion.text}`)
-            .join('\n');
-      }
-    }
-
-    const otherPremiseLines: string[] = [];
-    for (let i = 0; i < groundedOtherIds.length; i++) {
-      const premises = results[idx++];
-      if (premises?.length) {
-        for (const p of premises.slice(0, 3)) {
-          otherPremiseLines.push(`- ${p.assertion.text}`);
-        }
-      }
-    }
-    if (otherPremiseLines.length > 0) {
-      otherPremiseContext = '\nPremises (self-descriptions):\n' + otherPremiseLines.join('\n');
-    }
-  }
-
   let viewerContext: string;
   let otherPartyContext: string;
 
@@ -1482,13 +1413,6 @@ export async function gatherPresenterContext(
         )
       : stripUuids(interp.reasoning);
 
-  if (viewerPremiseContext) {
-    viewerContext += viewerPremiseContext;
-  }
-  if (otherPremiseContext) {
-    otherPartyContext += otherPremiseContext;
-  }
-
   const result: PresenterInput = {
     viewerContext,
     otherPartyContext,
@@ -1526,22 +1450,17 @@ export type OpportunityCardLike = Record<string, unknown> & {
   userId?: string | undefined;
   name?: string | undefined;
   mainText?: string | undefined;
-  digestSummary?: string | undefined;
   status?: string | undefined;
   feedCategory?: string | undefined;
   profileUrl?: string | undefined;
   /** Universal link that opens this opportunity's card (`/o/<id>`). */
   appUrl?: string | undefined;
-  /** Deep-link to the A2A negotiation trace that produced this opportunity. */
-  negotiationUrl?: string | undefined;
   score?: number | undefined;
-  /** Digest-mode cooldown re-show — the user has seen this card before. */
-  redelivery?: boolean | undefined;
 };
 
 function sanitizeOpportunityCardProse(card: OpportunityCardLike): OpportunityCardLike {
   const sanitized: OpportunityCardLike = { ...card };
-  for (const key of ['mainText', 'digestSummary', 'headline', 'cta', 'mutualIntentsLabel'] as const) {
+  for (const key of ['mainText', 'headline', 'cta', 'mutualIntentsLabel'] as const) {
     const value = card[key];
     if (typeof value === 'string') {
       sanitized[key] = stripUnsupportedOpportunityClaims(stripUuids(value)) || 'A suggested connection.';
@@ -1581,8 +1500,6 @@ export function buildOpportunityPresentation(
     isMcp: boolean;
     leadIn: string;
     label?: 'opportunity' | 'opportunities';
-    /** Include hidden digest metadata markers so scheduled brief tooling can confirm delivery. */
-    includeDigestMarkers?: boolean;
   },
 ): string {
   const cards = inputCards.map(sanitizeOpportunityCardProse);
@@ -1592,27 +1509,16 @@ export function buildOpportunityPresentation(
     const prose = cards
       .map((card, i) => {
         const lines: string[] = [`${i + 1}. ${card.name ?? "Unknown"}`];
-        if (opts.includeDigestMarkers) {
-          const markerId = String(card.opportunityId).replace(/[\s>]/g, "");
-          if (markerId) lines.push(`   <!-- digest-opportunity:id=${markerId} -->`);
-        }
-        if (opts.includeDigestMarkers && card.digestSummary) {
-          lines.push(`   ${card.digestSummary}`);
-        } else if (card.mainText) {
-          lines.push(`   ${card.mainText}`);
-        }
+        if (card.mainText) lines.push(`   ${card.mainText}`);
         if (card.status) lines.push(`   status: ${card.status}`);
         if (card.appUrl) lines.push(`   appUrl: ${card.appUrl}`);
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
-        if (opts.includeDigestMarkers && card.negotiationUrl) lines.push(`   negotiationUrl: ${card.negotiationUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
-        if (opts.includeDigestMarkers && card.score != null) lines.push(`   confidence: ${Math.round(card.score * 100)}`);
-        if (opts.includeDigestMarkers && card.redelivery) lines.push(`   redelivery: true`);
         lines.push(`   opportunityId: ${card.opportunityId}`);
         return lines.join("\n");
       })
       .join("\n\n");
-    const idInstructions = `Use opportunityId values only when calling update_opportunity (send/accept/reject) or confirm_opportunity_delivery.`;
+    const idInstructions = `Use opportunityId values only when calling update_opportunity (send/accept/reject).`;
     return (
       `${opts.leadIn}\n\n${prose}\n\n` +
       `Summarize these for the user in natural prose — mention first names and a brief match reason per connection. ` +

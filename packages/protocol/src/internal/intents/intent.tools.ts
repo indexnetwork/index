@@ -82,7 +82,7 @@ async function ensureScopedMembership(
 /**
  * Build the approved identity context used to infer an intent. This deliberately
  * reads the current user record directly: public-profile research is only a
- * prefill mechanism and ACTIVE-premise presence is not a profile-readiness gate.
+ * prefill mechanism.
  */
 function buildApprovedIdentitySnapshot(user: UserRecord | null | undefined): string {
   const name = user?.name?.trim() ?? "";
@@ -342,7 +342,7 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       "Background processing creates opportunities when matches are found; use list_opportunities only to review persisted results.\n\n" +
       "**Specificity gate.** Before calling this tool, judge whether the description is concrete enough to be " +
       "useful for matching. If the user says \"find a job\", \"meet people\", or \"learn something\", that's too " +
-      "vague — FIRST call read_premises() + read_intents() to understand their context, THEN propose a " +
+      "vague — FIRST call read_intents() to understand their context, THEN propose a " +
       "refined version (\"Based on your background in X, did you mean 'Y'?\") and wait for confirmation before " +
       "calling create_intent. Specific asks (\"senior UX design role at a tech company in Berlin\") can go " +
       "directly to create_intent.\n\n" +

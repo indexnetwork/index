@@ -3,7 +3,7 @@
  *
  * This is the single normative source for:
  * - Entity model and identity/context definitions
- * - Premise, signal, community, network, and opportunity concepts
+ * - Signal, community, network, and opportunity concepts
  * - Negotiation semantics (owner approval vs A2A acceptance)
  * - H2A and A2A collaboration (H2H is never exposed)
  * - Retired vocabulary (no contact/Gmail/scrape/profile/ghost-user guidance)
@@ -17,7 +17,6 @@
 
 export const CANONICAL_GUIDANCE_TOPICS = [
   "identity-context",
-  "premises",
   "signals",
   "communities-networks",
   "opportunities",
@@ -41,8 +40,6 @@ Index Network is a private, intent-driven discovery protocol. Users express sign
 
 **Identity & Context** — Account and presentation metadata plus scoped runtime state (networks, signals, stage).
 
-**Premises** — Foundational facts: background, experience, stage, timeline, constraints.
-
 **Signals** — What users seek (intents, opportunities). Drive semantic matching.
 
 **Communities & Networks** — Private groups where members share signals and discover connections via shared membership.
@@ -58,7 +55,6 @@ Index Network is a private, intent-driven discovery protocol. Users express sign
 Refer to these for detailed entity facts and lifecycle:
 
 - **identity-context** — Presentation identity, context scoping, matching inputs
-- **premises** — Background, stage, constraints
 - **signals** — Intent inference, classification
 - **communities-networks** — Membership, auto-assign
 - **opportunities** — Discovery, roles, reasoning
@@ -77,7 +73,7 @@ export const CANONICAL_GUIDANCE_TOPICS_CONTENT: Record<CanonicalGuidanceTopic, s
 **Context** is scoped runtime state: network memberships, approved signals, lifecycle stage, and current opportunity or negotiation state. It determines the user's active scope and available workflow state.
 
 ### Matching Inputs
-Matching uses approved signals, premises, shared network membership, and current opportunity or negotiation state. Premises supply the asserted background, constraints, and capabilities that ground relevant matches.
+Matching uses approved signals, shared network membership, and current opportunity or negotiation state.
 
 ### Context Scoping
 - Users can belong to multiple networks
@@ -86,30 +82,6 @@ Matching uses approved signals, premises, shared network membership, and current
 
 ### Key Distinction
 Identity is account/presentation metadata. Context is dynamic, scoped runtime state for what the user is doing now.`,
-
-  premises: `## Premises
-
-**Premise** is the foundational context that shapes what matches will be relevant: a user's background, experience level, location, timeline, stage of life, constraints, and what they can actually commit to.
-
-### Premise Examples
-- "I'm a junior developer with 2 years of Python experience"
-- "I'm based in Berlin and can't relocate"
-- "I'm looking to start a company but can only contribute part-time until March"
-- "I've exited twice and have capital to invest"
-
-### Why Premises Matter
-Premises filter and prioritize candidates. Two opportunities with identical signal overlap will rank differently based on whose premises align. A senior engineer may look for "growing engineers" (premise: mentor/investor) vs "equal partners" (premise: cofounder).
-
-### Expressing Premises
-- In profile: bio section and skills/interests summarize professional premise
-- In intents: the description should include stage, timeline, and constraints
-- In context: shared network membership indicates domain interest
-
-### Premise Inference
-The system learns premises from:
-- Explicit user input (bio, intent descriptions)
-- Social enrichment (LinkedIn career history, GitHub project scale)
-- Behavioral signals (intents created, networks joined)`,
 
   signals: `## Signals
 
@@ -121,10 +93,6 @@ The system learns premises from:
 - Confidence (0-1, how well the inference captured the user's intent)
 - Inference type (explicit = user stated directly; implicit = system inferred)
 - Embedding (semantic vector for matching)
-
-### Signal vs Premise
-- **Premise** is the user's foundational context ("I'm a senior engineer in Berlin")
-- **Signal** is what they're seeking right now ("I'm looking for co-founders to start an AI company")
 
 ### Signal Lifecycle
 1. User creates intent (explicit signal) or system infers from behavior (implicit)

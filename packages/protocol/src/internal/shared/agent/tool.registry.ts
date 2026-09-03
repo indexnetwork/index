@@ -9,7 +9,6 @@ import { createOpportunityVerdictTools } from "../../opportunities/opportunity.v
 import { createUtilityTools } from './utility.tools.js';
 import type { ToolSurface } from './utility.tools.js';
 import { createAgentTools } from '../../agents/agent.tools.js';
-import { createPremiseTools } from '../../premises/premise.tools.js';
 import type { OpportunityOwnerApprovalDeps } from '../../opportunities/opportunity.tools.port.js';
 import { isToolAllowedInScope, type ToolScopeEnvelope } from './tool.scope.js';
 import { protocolLogger } from '../observability/protocol.logger.js';
@@ -94,10 +93,8 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   Intents.createTools(dt, deps);
   Networks.createTools(dt, deps);
   createOpportunityTools(dt, deps);
-  // Utility tools always register read_docs + read_activity_summary; on the
-  // MCP surface scrape_url is omitted and read_docs guidance is sanitized
-  // (IND-597). The retired report_agent_activity name retains no alias on
-  // either surface (IND-605).
+  // Utility tools always register read_docs; on the MCP surface scrape_url is
+  // omitted and read_docs guidance is sanitized (IND-597).
   createUtilityTools(dt, deps, { surface: isMcpSurface ? 'mcp' : 'rest' });
   createAgentTools(dt, deps);
   // The MCP owner-verdict tools. MCP-only, deliberately — the REST Tool API's
@@ -107,7 +104,6 @@ export function createToolRegistry(deps: ToolRegistryDeps, options: CreateToolRe
   if (isMcpSurface) {
     createOpportunityVerdictTools(dt, deps);
   }
-  createPremiseTools(dt, deps);
 
   // Scope exclusions are applied after composition so every domain is covered
   // by one rule rather than each createTools() call remembering it. The

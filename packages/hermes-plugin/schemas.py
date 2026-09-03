@@ -61,12 +61,6 @@ FORWARDED_MCP_TOOLS = (
     "create_network_membership",
     "list_opportunities",
     "update_opportunity",
-    "confirm_opportunity_delivery",
-    "create_premise",
-    "read_premises",
-    "update_premise",
-    "retract_premise",
-    "read_activity_summary",
     "read_docs",
 )
 

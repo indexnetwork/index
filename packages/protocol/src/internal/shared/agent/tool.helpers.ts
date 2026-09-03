@@ -14,9 +14,7 @@ import type { ProfileEnricher } from "../../../platform/enrichment/ports.js";
 import type { IntentFollowUp } from "../../../platform/runtime/follow-up.js";
 import type { Embedder } from "../../../platform/discovery/embedder.js";
 import type { AgentDatabase } from "../../agents/agent.repository.port.js";
-import type { DeliveryLedger } from "../../../platform/runtime/delivery-ledger.js";
 import type { NegotiatorVerdictToolsHost } from "../../../platform/negotiation/verdict.js";
-import type { McpActivityCaller } from "./activity-projection.js";
 
 export type IdentityContext = UserIdentity | null;
 
@@ -94,14 +92,6 @@ export interface ResolvedToolContext {
   isMcp?: boolean;
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
-  /**
-   * Typed resolved MCP caller context, set only by the MCP server after the
-   * capability subject is resolved. Tools with permission-projected output
-   * (currently `read_activity_summary`) pass it into the centralized
-   * projection in `activity-projection.ts`. Absent on REST/chat surfaces,
-   * which are owner-trusted and receive the full owner view.
-   */
-  mcpCaller?: McpActivityCaller;
 }
 
 /**
@@ -165,8 +155,6 @@ interface ToolContextBindings {
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
   /** Host callback for pre-insert newborn pool-preference stamping (optional). */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
-  /** Delivery ledger for committing opportunity delivery rows (optional). */
-  deliveryLedger?: DeliveryLedger;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -417,8 +405,6 @@ interface ToolDepsBindings {
   grantDefaultSystemPermissions?: (userId: string) => Promise<void>;
   /** Host callback for pre-insert newborn pool-preference stamping (optional). */
   stampNewbornOpportunities?: StampNewbornOpportunitiesFn;
-  /** Delivery ledger for committing opportunity delivery rows (optional). */
-  deliveryLedger?: DeliveryLedger;
   /** Frontend base URL for building profile links (e.g. https://index.network, optional). */
   frontendUrl?: string;
   /** API base URL for building opportunity accept links (e.g. https://protocol.index.network, optional). */
@@ -449,7 +435,6 @@ interface ToolDepsBindings {
     networkMembership: CompiledGraph;
     intentIndex: CompiledGraph;
     opportunity: CompiledGraph;
-    premise: CompiledGraph;
   };
   /**
    * Optional network ranking override for `read_networks`. Injected by tests or custom compositions.

@@ -6,7 +6,7 @@ export interface ScopeMembership {
 }
 
 /** A corpus that can be searched through inferred semantic lenses. */
-export type HydeTargetCorpus = "profiles" | "intents" | "premises";
+export type HydeTargetCorpus = "profiles" | "intents";
 
 export interface Lens {
   label: string;

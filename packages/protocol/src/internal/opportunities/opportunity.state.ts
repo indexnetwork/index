@@ -46,10 +46,6 @@ export interface TargetNetwork {
 export interface CandidateMatch {
   candidateUserId: Id<'users'>;
   candidateIntentId?: Id<'intents'>;
-  /** Source premise that produced this candidate, when premise-grounded. */
-  sourcePremiseId?: Id<'premises'>;
-  /** Candidate premise that matched this candidate (set for premise-based matches). */
-  candidatePremiseId?: Id<'premises'>;
   /** Source context that produced this candidate, when context-grounded. */
   sourceContextId?: string;
   /** Candidate context that matched this candidate (set for user_context-based matches). */
@@ -253,12 +249,6 @@ export const OpportunityGraphState = Annotation.Root({
   sourceProfile: Annotation<SourceProfileData | null>({
     reducer: (curr, next) => next ?? curr,
     default: () => null,
-  }),
-
-  /** User's active premises with embeddings (from prep). Used for premise-to-premise discovery path D. */
-  sourcePremises: Annotation<Array<{ premiseId: Id<'premises'>; embedding: number[] }>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
   }),
 
   /** User context embeddings per network (from prep). Used for discovery. */

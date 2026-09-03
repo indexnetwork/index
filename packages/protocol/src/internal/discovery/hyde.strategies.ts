@@ -31,10 +31,4 @@ export const HYDE_CORPUS_PROMPTS: Record<HydeTargetCorpus, (sourceText: string, 
 
     Write in first person as if stating their own goal.
   `,
-  premises: (sourceText, lens) => `
-    Write a short self-description for someone whose identity, values, or worldview aligns with: "${sourceText}".
-    Reflect the character described by: ${lens}.
-
-    Write in first person as a stable statement of who this person is, not what they want.
-  `,
 };

@@ -15,13 +15,12 @@ export type McpAuthInput = z.infer<typeof McpAuthInputSchema>;
 /**
  * Trusted API-key metadata used by the host auth composition.
  *
- * Enrollment and delivery flags are explicit opt-ins. Unknown metadata is
- * ignored so unrelated Better Auth metadata remains forward-compatible.
+ * The enrollment flag is an explicit opt-in. Unknown metadata is ignored so
+ * unrelated Better Auth metadata remains forward-compatible.
  */
 export const McpApiKeyMetadataSchema = z.object({
   agentId: z.string().min(1).optional(),
   enrollmentCapable: z.boolean().optional(),
-  isDeliveryAgent: z.boolean().optional(),
 }).passthrough();
 
 export type McpApiKeyMetadata = z.infer<typeof McpApiKeyMetadataSchema>;
@@ -34,7 +33,6 @@ export const McpResolvedIdentitySchema = z.object({
   agentId: z.string().min(1).optional(),
   isSessionAuth: z.boolean().optional(),
   enrollmentCapable: z.boolean().optional(),
-  isDeliveryAgent: z.boolean().optional(),
   /** Host-authenticated marker for the dedicated full standalone Hermes audience. */
   isHermesAgent: z.boolean().optional(),
   networkScopeId: z.string().min(1).nullable().optional(),
@@ -44,13 +42,6 @@ export const McpResolvedIdentitySchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['agentId'],
       message: 'Session-authenticated identities cannot carry an agent ID.',
-    });
-  }
-  if (identity.isDeliveryAgent === true && !identity.agentId) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['isDeliveryAgent'],
-      message: 'Delivery-agent designation requires an agent ID.',
     });
   }
   if (identity.isHermesAgent === true && !identity.agentId) {

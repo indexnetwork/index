@@ -8,9 +8,9 @@ capability façades decide what is supported.
 | `agents/` | Tool registry | Agent registry and permission tools |
 | `intents/` | `Intents`, tool registry | Signal lifecycle, intake, verification, and indexing |
 | `networks/` | `Networks`, tool registry | Community lifecycle, membership, and assignments |
-| `contexts/`, `enrichment/`, `premises/` | Public-profile research tools and premise lifecycle | Parallel-backed profile suggestions and participant premise decomposition |
+| `contexts/`, `enrichment/` | Public-profile research tools | Parallel-backed profile suggestions |
 | `discovery/` | Opportunity and context workflows | HyDE search preparation and retrieval |
-| `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, delivery, and radar |
+| `opportunities/` | Opportunity/Radar factories, tool registry | Matching, presentation, and radar |
 | `negotiations/` | Opportunity tools | Negotiation turn shapes shared with the host's persistence |
 | `mcp/` | `createMcpServer` | MCP transport composition and authorization |
 | `shared/` | Internal implementation only | Cross-cutting model, tool-runtime, schemas, observability, and utilities |

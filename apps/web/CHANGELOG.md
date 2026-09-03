@@ -8,6 +8,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Removed
+- The `manage:premises` permission label on the agent pages and the unused
+  `premises` field on the network-overview client type.
 - The unused `chatOrchestrator` system-agent id on `/agents/:id`. The
   negotiator is the only remaining well-known system agent.
 - **The agent chat surface.** Routes `/agent`, `/agent/:tab`, `/d/:id`,

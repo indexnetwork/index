@@ -14,7 +14,6 @@ export const agentTypeEnum = pgEnum('agent_type', ['personal', 'external', 'syst
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
-export const premiseStatusEnum = pgEnum('premise_status', ['ACTIVE', 'RETRACTED', 'EXPIRED']);
 export const questionStatusEnum = pgEnum('question_status', ['pending', 'answered', 'dismissed']);
 export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
 export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
@@ -260,63 +259,6 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export interface PremiseAssertion {
-  text: string;
-  tier: 'assertive' | 'contextual';
-  summary?: string;
-}
-
-export interface PremiseProvenance {
-  source: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
-  sourceId?: string;
-  confidence: number;
-  timestamp: string;
-}
-
-export interface PremiseAnalysis {
-  speechActType: 'DECLARATIVE' | 'ASSERTIVE';
-  felicityAuthority: number;
-  felicitySincerity: number;
-  felicityClarity: number;
-  semanticEntropy: number;
-}
-
-export interface PremiseValidity {
-  validFrom?: string;
-  validUntil?: string;
-  volatile: boolean;
-}
-
-export const premises = pgTable('premises', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  assertion: jsonb('assertion').$type<PremiseAssertion>().notNull(),
-  provenance: jsonb('provenance').$type<PremiseProvenance>().notNull(),
-  analysis: jsonb('analysis').$type<PremiseAnalysis>(),
-  validity: jsonb('validity').$type<PremiseValidity>().notNull(),
-  embedding: vector('embedding', { dimensions: 2000 }),
-  status: premiseStatusEnum('status').notNull().default('ACTIVE'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  retractedAt: timestamp('retracted_at', { withTimezone: true }),
-  deletedAt: timestamp('deleted_at', { withTimezone: true }),
-}, (table) => ({
-  embeddingIdx: index('premises_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
-  userIdIdx: index('premises_user_id_idx').on(table.userId),
-  statusIdx: index('premises_status_idx').on(table.status),
-}));
-
-export const premiseNetworks = pgTable('premise_networks', {
-  premiseId: text('premise_id').notNull().references(() => premises.id, { onDelete: 'cascade' }),
-  networkId: text('network_id').notNull().references(() => networks.id),
-  relevancyScore: numeric('relevancy_score'),
-  assignmentMetadata: jsonb('assignment_metadata').$type<import('@indexnetwork/protocol').NetworkAssignmentMetadata>(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.premiseId, t.networkId] }),
-  networkIdIdx: index('premise_networks_network_id_idx').on(t.networkId),
-}));
-
 /** Precomputed fast-intake artifact: one row per user. */
 export const signalIntakePacks = pgTable('signal_intake_packs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -328,7 +270,6 @@ export const signalIntakePacks = pgTable('signal_intake_packs', {
     options: Array<{ label: string; description: string }>;
     multiSelect: boolean;
   }>().notNull(),
-  premiseHash: text('premise_hash'),
   generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 // No explicit user_id index: `.unique()` on user_id already creates
@@ -396,8 +337,6 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
-  /** Which premise grounded this match, when the match was premise-grounded. */
-  premise?: Id<'premises'>;
   role: string;
   /**
    * ISO-8601 timestamp set the first time this actor advanced the opportunity's
@@ -954,10 +893,9 @@ export interface NegotiatorMemorySourceRef {
 /**
  * Private operational memory of a user's personal negotiator agent row (IND-405).
  *
- * Strictly separate from premises: premises are public-ish identity assertions
- * that feed discovery; negotiator memories are private operational knowledge
- * (playbooks, disclosure rules, dossiers, thresholds) and MUST NOT be exposed
- * to discovery, user contexts, or any counterparty-visible surface.
+ * Negotiator memories are private operational knowledge (playbooks, disclosure
+ * rules, dossiers, thresholds) and MUST NOT be exposed to discovery, user
+ * contexts, or any counterparty-visible surface.
  */
 export const negotiatorMemories = pgTable('negotiator_memories', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -972,7 +910,7 @@ export const negotiatorMemories = pgTable('negotiator_memories', {
    */
   subjectUserId: text('subject_user_id').references(() => users.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
-  /** Same embedding space as premises: text-embedding-3-large @ 2000 dims. */
+  /** text-embedding-3-large @ 2000 dims. */
   embedding: vector('embedding', { dimensions: 2000 }),
   sourceRefs: jsonb('source_refs').$type<NegotiatorMemorySourceRef[]>().notNull().default([]),
   confidence: real('confidence').notNull().default(0.5),
@@ -1012,42 +950,6 @@ export const agentTestMessages = pgTable(
 
 export type AgentTestMessage = typeof agentTestMessages.$inferSelect;
 export type NewAgentTestMessage = typeof agentTestMessages.$inferInsert;
-
-export const opportunityDeliveries = pgTable(
-  'opportunity_deliveries',
-  {
-    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-    opportunityId: text('opportunity_id')
-      .notNull()
-      .references(() => opportunities.id, { onDelete: 'cascade' }),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    agentId: text('agent_id').references(() => agents.id, {
-      onDelete: 'set null',
-    }),
-    channel: text('channel').notNull(),
-    trigger: text('trigger').notNull(),
-    deliveredAtStatus: text('delivered_at_status').notNull(),
-    reservationToken: text('reservation_token'),
-    reservedAt: timestamp('reserved_at', { withTimezone: true }),
-    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t) => ({
-    uniqueCommitted: uniqueIndex('uniq_opp_deliveries_committed')
-      .on(t.userId, t.opportunityId, t.channel, t.deliveredAtStatus)
-      .where(sql`${t.deliveredAt} IS NOT NULL`),
-    reservationLookup: index('idx_opp_deliveries_open_reservations')
-      .on(t.userId, t.channel, t.reservedAt)
-      .where(sql`${t.deliveredAt} IS NULL`),
-  }),
-);
-
-export type OpportunityDelivery = typeof opportunityDeliveries.$inferSelect;
-export type NewOpportunityDelivery = typeof opportunityDeliveries.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Lens B outcome feedback events (IND-434)
@@ -1216,7 +1118,6 @@ export type NewNegotiationRoundLogEventRow = typeof negotiationRoundLogEvents.$i
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
-  premises: many(premises),
   memberOf: many(networkMembers),
   socials: many(userSocials),
   notificationSettings: one(userNotificationSettings, {
@@ -1229,25 +1130,6 @@ export const userSocialsRelations = relations(userSocials, ({ one }) => ({
   user: one(users, {
     fields: [userSocials.userId],
     references: [users.id],
-  }),
-}));
-
-export const premisesRelations = relations(premises, ({ one, many }) => ({
-  user: one(users, {
-    fields: [premises.userId],
-    references: [users.id],
-  }),
-  networks: many(premiseNetworks),
-}));
-
-export const premiseNetworksRelations = relations(premiseNetworks, ({ one }) => ({
-  premise: one(premises, {
-    fields: [premiseNetworks.premiseId],
-    references: [premises.id],
-  }),
-  network: one(networks, {
-    fields: [premiseNetworks.networkId],
-    references: [networks.id],
   }),
 }));
 
@@ -1269,7 +1151,6 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
 export const networksRelations = relations(networks, ({ many }) => ({
   members: many(networkMembers),
   intents: many(intentNetworks),
-  premises: many(premiseNetworks),
   integrations: many(networkIntegrations),
 }));
 
@@ -1372,9 +1253,5 @@ export type AgentPermission = typeof agentPermissions.$inferSelect;
 export type NewAgentPermission = typeof agentPermissions.$inferInsert;
 export type NegotiatorMemory = typeof negotiatorMemories.$inferSelect;
 export type NewNegotiatorMemory = typeof negotiatorMemories.$inferInsert;
-export type Premise = typeof premises.$inferSelect;
-export type NewPremise = typeof premises.$inferInsert;
-export type PremiseNetwork = typeof premiseNetworks.$inferSelect;
-export type NewPremiseNetwork = typeof premiseNetworks.$inferInsert;
 
 export * from './conversation.schema';

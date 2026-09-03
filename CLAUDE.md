@@ -81,9 +81,9 @@ workflow live further down this file. There is no `docs/` directory — it was d
 
 ## Tests
 
-The repository keeps three specs, all in `packages/protocol`, and nothing else:
+The repository keeps two specs, both in `packages/protocol`, and nothing else:
 `src/capabilities/tests/intents.spec.ts` and
-`src/internal/{opportunities/tests/opportunity.graph,premises/tests/premise.decomposer}.spec.ts`.
+`src/internal/opportunities/tests/opportunity.graph.spec.ts`.
 Everything else was deleted because the suite cost more to maintain than it returned.
 
 - **Do not add tests unless asked.** A missing spec is not a gap to fill, and "I added a

@@ -747,7 +747,7 @@ export class NetworkController {
   }
 
   /**
-   * Get the current user's overview for a network: their intents, premises, and
+   * Get the current user's overview for a network: their intents and
    * per-network user_context. Members only.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
@@ -757,7 +757,7 @@ export class NetworkController {
     try {
       await assertAgentNetworkScope(req, params.id);
       const overview = await networkService.getNetworkOverview(params.id, user.id);
-      logger.verbose('Network overview retrieved', { networkId: params.id, userId: user.id, intents: overview.intents.length, premises: overview.premises.length });
+      logger.verbose('Network overview retrieved', { networkId: params.id, userId: user.id, intents: overview.intents.length });
       return Response.json(overview);
     } catch (err: unknown) {
       const msg = errorMessage(err);

@@ -9,8 +9,8 @@ import { chatDatabaseAdapter, createUserDatabase, createSystemDatabase, conversa
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, PremiseGraphFactory, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
+import { deriveAllowedNetworkIds, Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, resolveChatContext, createToolRegistry, invokeToolRuntime, toolRuntimeErrorToResult, ONBOARDING_ALLOWED, buildMcpOnboardingMessage, bindOwnerApprovalProvenance } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } from '@indexnetwork/protocol';
 import { intentIndexing } from '../lib/intent/indexing';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { enrichUserProfile } from '../lib/parallel/parallel';
@@ -215,7 +215,6 @@ export class ToolService {
       followUp: intentIndexing,
     });
     const intentGraph = intents.createGraph();
-    const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, this.embedder).createGraph();
     const hydeCache = new RedisCacheAdapter();
     const compiledHydeGraph = new HydeGraphFactory(
       database as unknown as HydeGraphDatabase,
@@ -240,7 +239,6 @@ export class ToolService {
       networkMembership: networkMembershipGraph,
       intentIndex: intentIndexGraph,
       opportunity: opportunityGraph,
-      premise: premiseGraph,
     };
 
     return this.compiledGraphs;

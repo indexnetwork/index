@@ -9,7 +9,7 @@ export interface LensEmbedding {
   /** Free-text lens label (e.g. "crypto infrastructure VC"). */
   lens: string;
   /** Which corpus to search. */
-  corpus: 'profiles' | 'intents' | 'premises';
+  corpus: 'profiles' | 'intents';
   /** 2000-dim embedding vector. */
   embedding: number[];
 }
@@ -109,7 +109,7 @@ export interface Embedder extends EmbeddingGenerator, VectorStore {
    *
    * @param lensEmbeddings - Array of lens embeddings to search with
    * @param options - indexScope, excludeUserId, limits, minScore
-   * @returns Deduplicated, ranked candidates (intent or premise) with scores
+   * @returns Deduplicated, ranked candidates (intent) with scores
    */
   searchWithHydeEmbeddings(
     lensEmbeddings: LensEmbedding[],

@@ -121,8 +121,6 @@ export interface OpportunityActor {
   networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
-  /** Which premise grounded this match, when the match was premise-grounded. */
-  premise?: Id<'premises'>;
   role: string;
   /**
    * ISO-8601 timestamp set the first time this actor advanced the opportunity's
@@ -410,51 +408,6 @@ export interface NetworkMembership {
   autoAssign: boolean;
   /** When the user joined the network */
   joinedAt: Date;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PREMISE TYPES
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export interface PremiseAssertion {
-  text: string;
-  tier: 'assertive' | 'contextual';
-  summary?: string;
-}
-
-export interface PremiseProvenance {
-  source: 'explicit' | 'enrichment' | 'integration' | 'onboarding';
-  sourceId?: string;
-  confidence: number;
-  timestamp: string;
-}
-
-export interface PremiseAnalysis {
-  speechActType: 'DECLARATIVE' | 'ASSERTIVE';
-  felicityAuthority: number;
-  felicitySincerity: number;
-  felicityClarity: number;
-  semanticEntropy: number;
-}
-
-export interface PremiseValidity {
-  validFrom?: string;
-  validUntil?: string;
-  volatile: boolean;
-}
-
-export interface PremiseRecord {
-  id: string;
-  userId: string;
-  assertion: PremiseAssertion;
-  provenance: PremiseProvenance;
-  analysis: PremiseAnalysis | null;
-  validity: PremiseValidity;
-  embedding: number[] | null;
-  status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-  createdAt: Date;
-  updatedAt: Date;
-  retractedAt: Date | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

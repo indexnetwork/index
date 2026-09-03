@@ -76,7 +76,6 @@ The package defines interfaces — your application provides the concrete implem
 |---|---|
 | `AgentDatabase` | Agent registry CRUD (agents, transports, permissions) |
 | `McpAuthResolver` | Resolves `{ userId, agentId }` from an incoming MCP HTTP request (MCP server only) |
-| `DeliveryLedger` | Commits OpenClaw opportunity-delivery rows |
 
 All interfaces are exported from the package root — import them with `import type { ... } from "@indexnetwork/protocol"`.
 
@@ -143,7 +142,6 @@ For direct graph invocation (bypassing the tool layer), a `*GraphFactory` class 
 ```typescript
 import {
   OpportunityGraphFactory,
-  PremiseGraphFactory,
   HydeGraphFactory,
   RadarGraphFactory,
 } from "@indexnetwork/protocol";
@@ -159,7 +157,6 @@ The intent and community graphs are the exceptions: they are reached through the
 | Factory | Workflow |
 |---|---|
 | `OpportunityGraphFactory` | Background matching: search, evaluate (valency), rank, emit candidates. Creates no opportunities — the host database must implement `upsertDiscoveryMatchCandidates` and `listPendingCandidatesForIntent`; candidates become opportunities only through the host's own REST/MCP writes. |
-| `PremiseGraphFactory` | Decompose and index a user's premises |
 | `HydeGraphFactory` | Generate hypothetical documents and embed them (cache-aware) |
 | `RadarGraphFactory` | Build the radar view: flat presenter-card list, optionally intent-scoped |
 
@@ -256,7 +253,7 @@ On every tool call the server:
 3. Gates access through the canonical capability policy (`mcp/mcp.authorization-policy.ts`), decided per resolved principal BEFORE any context read or scoped-deps creation:
    - **Enrollment-capable unregistered API keys** may see and call only `register_agent` — single-purpose across the entire registry.
    - **Plain unregistered API keys** fail closed on every tool.
-   - **Registered active agents** retain their canonical permission- and network-scope-authorized domain tools, `read_docs`, and (for designated delivery agents) `confirm_opportunity_delivery`; within the agent-administration family (`MCP_AGENT_ADMIN_TOOLS`) they may see and call only `read_own_agent`, which returns the caller's own sanitized record and accepts no target.
+   - **Registered active agents** retain their canonical permission- and network-scope-authorized domain tools and `read_docs`; within the agent-administration family (`MCP_AGENT_ADMIN_TOOLS`) they may see and call only `read_own_agent`, which returns the caller's own sanitized record and accepts no target.
    - **Session humans** administer their owned agents (`register_agent`, `list_agents`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission`) but are never offered the agent-only `read_own_agent`.
    - Contact/Gmail-import tools, `scrape_url`, and the deprecated `*_user_profile`/`*_profile_run` aliases are not registered on the MCP surface at all (IND-596/597/598).
 4. Builds per-request scoped databases via `scopedDepsFactory` and invokes the tool handler through the shared runtime.

@@ -22,7 +22,7 @@ export class IntentDatabaseAdapter {
     const text = [profile.identity.bio, profile.identity.name, profile.identity.location]
       .map((s) => s?.trim()).filter(Boolean).join(' ');
     if (!text) return null;
-    return { id: userId, text, embedding: [] as number[], premiseHash: '', generatedAt: new Date() };
+    return { id: userId, text, embedding: [] as number[], generatedAt: new Date() };
   }
 
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {

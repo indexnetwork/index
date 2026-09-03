@@ -39,7 +39,6 @@ const FAST_TOOLS = new Set([
   "delete_network",
   "create_network_membership",
   "delete_network_membership",
-  "confirm_opportunity_delivery",
   "read_docs",
   "read_own_agent",
   "register_agent",
@@ -48,7 +47,6 @@ const FAST_TOOLS = new Set([
   "delete_agent",
   "grant_agent_permission",
   "revoke_agent_permission",
-  "retract_premise",
 ]);
 
 const ASYNC_CANDIDATE_TOOLS = new Set([
@@ -56,8 +54,6 @@ const ASYNC_CANDIDATE_TOOLS = new Set([
   "create_intent",
   "update_intent",
   "scrape_url",
-  "create_premise",
-  "update_premise",
 ]);
 
 export function getToolTimeoutPolicy(toolName: string): ToolTimeoutPolicy {

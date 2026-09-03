@@ -183,17 +183,18 @@ Create adapters in `src/adapters/` when:
 Services import and use adapters; controllers do not:
 
 ```typescript
-// In a service (e.g. enrichment.service.ts)
-import { UserDatabaseAdapter, EnrichmentDatabaseAdapter } from '../adapters/database.adapter';
-import { EnrichmentGraphFactory } from '../lib/protocol/graphs/enrichment/enrichment.graph';
+// In a service (e.g. intent.service.ts)
+import { IntentGraphFactory } from '@indexnetwork/protocol';
+import { IntentDatabaseAdapter } from '../adapters/intent.database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 
-const userAdapter = new UserDatabaseAdapter();
-const profileAdapter = new EnrichmentDatabaseAdapter();
+const intentAdapter = new IntentDatabaseAdapter();
+const embedderAdapter = new EmbedderAdapter();
 
-export async function syncEnrichment(userId: string) {
-  const factory = new EnrichmentGraphFactory(profileAdapter, embedderAdapter, scraperAdapter);
+export async function indexIntent(userId: string, payload: string) {
+  const factory = new IntentGraphFactory(intentAdapter, embedderAdapter);
   const graph = factory.createGraph();
-  return graph.invoke({ userId });
+  return graph.invoke({ userId, payload });
 }
 ```
 
@@ -317,18 +318,17 @@ export interface Embedder extends EmbeddingGenerator, VectorStore { }
 #### Graph Factory Example
 
 ```typescript
-// In enrichment.graph.ts - Define narrow interface for this specific graph
-type EnrichmentGraphDatabase = Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'>;
+// In intent.graph.ts - Define narrow interface for this specific graph
+type IntentGraphDatabase = Pick<Database, 'getIntent' | 'updateIntent' | 'getProfile'>;
 
-export class EnrichmentGraphFactory {
+export class IntentGraphFactory {
   constructor(
-    private db: EnrichmentGraphDatabase,  // Only requires 3 methods
-    private embedder: Embedder,
-    private scraper: Scraper
+    private db: IntentGraphDatabase,  // Only requires 3 methods
+    private embedder: Embedder
   ) {}
 
   createGraph() {
-    // Graph implementation uses only getProfile, saveProfile, getUser
+    // Graph implementation uses only getIntent, updateIntent, getProfile
   }
 }
 ```
@@ -349,11 +349,11 @@ export class HydeGraphFactory {
 Adapters in `src/adapters/` implement protocol interfaces. Services instantiate and use them; controllers do not.
 
 ```typescript
-// In src/adapters/database.adapter.ts - implements what the graph needs
-export class EnrichmentDatabaseAdapter implements Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'> {
+// In src/adapters/intent.database.adapter.ts - implements what the graph needs
+export class IntentDatabaseAdapter implements Pick<Database, 'getIntent' | 'updateIntent' | 'getProfile'> {
+  async getIntent(intentId: string): Promise<Intent | null> { /* ... */ }
+  async updateIntent(intentId: string, data: Partial<Intent>): Promise<void> { /* ... */ }
   async getProfile(userId: string): Promise<UserIdentity | null> { /* ... */ }
-  async saveProfile(userId: string, profile: UserIdentity): Promise<void> { /* ... */ }
-  async getUser(userId: string): Promise<User | null> { /* ... */ }
 }
 ```
 
@@ -370,21 +370,20 @@ export class EnrichmentDatabaseAdapter implements Pick<Database, 'getProfile' | 
 Controllers do not inject or instantiate adapters. They call services, which own adapter and factory usage:
 
 ```typescript
-export class EnrichmentController {
-  @Post('/sync')
+export class IntentController {
+  @Post('/index')
   @UseGuards(AuthGuard)
-  async sync(req: Request, user: AuthenticatedUser) {
-    const result = await enrichmentService.sync(user.id);
+  async index(req: Request, user: AuthenticatedUser) {
+    const result = await intentService.index(user.id);
     return Response.json(result);
   }
 }
 
-// enrichment.service.ts (not the controller) instantiates adapters and factory
-export async function sync(userId: string) {
-  const db = new EnrichmentDatabaseAdapter();
-  const factory = new EnrichmentGraphFactory(db, embedder, scraper);
+// intent.service.ts (not the controller) instantiates adapters and factory
+export async function index(userId: string, payload: string) {
+  const factory = new IntentGraphFactory(new IntentDatabaseAdapter(), new EmbedderAdapter());
   const graph = factory.createGraph();
-  return graph.invoke({ userId });
+  return graph.invoke({ userId, payload });
 }
 ```
 
@@ -494,7 +493,7 @@ async process(...) { ... }
 - **POST/PUT/PATCH/DELETE** routes → `RateLimit('write')`
 - Public endpoints (no auth guard) still need rate limiting: `@UseGuards(RateLimit('read'))`.
 
-Agent-poller endpoints (`/agents/:id/negotiations/pickup`, `/agents/:id/opportunities/pending`, `/agents/:id/opportunities/accepted`) intentionally omit the guard — they are designed for short-cadence polling.
+Agent-poller endpoints (`/agents/:id/negotiations/pickup`) intentionally omit the guard — they are designed for short-cadence polling.
 
 ### 6. Graph Integration
 

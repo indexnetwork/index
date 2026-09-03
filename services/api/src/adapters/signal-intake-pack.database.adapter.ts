@@ -19,7 +19,6 @@ export interface SignalIntakePackRecord {
   userId: string;
   brief: string;
   question: IntakePackQuestion;
-  premiseHash: string | null;
   generatedAt: Date;
 }
 
@@ -42,7 +41,6 @@ export class SignalIntakePackDatabaseAdapter {
       userId: row.userId,
       brief: row.brief,
       question: row.question,
-      premiseHash: row.premiseHash,
       generatedAt: row.generatedAt,
     };
   }
@@ -56,7 +54,6 @@ export class SignalIntakePackDatabaseAdapter {
     userId: string;
     brief: string;
     question: IntakePackQuestion;
-    premiseHash: string;
   }): Promise<void> {
     await db
       .insert(signalIntakePacks)
@@ -64,7 +61,6 @@ export class SignalIntakePackDatabaseAdapter {
         userId: input.userId,
         brief: input.brief,
         question: input.question,
-        premiseHash: input.premiseHash,
         generatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -72,7 +68,6 @@ export class SignalIntakePackDatabaseAdapter {
         set: {
           brief: input.brief,
           question: input.question,
-          premiseHash: input.premiseHash,
           generatedAt: new Date(),
         },
       });

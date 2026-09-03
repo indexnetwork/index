@@ -29,7 +29,6 @@ export interface IntakePackQuestion {
 
 /** Everything the generator needs about a user. */
 export interface IntakePackInput {
-  premises: Array<{ text: string }>;
   networkTitles: string[];
   globalContext: string | null;
 }
@@ -81,11 +80,10 @@ export class SignalIntakePackGenerator {
   /**
    * Generate the intake pack for one user.
    *
-   * @param input - Active premises, membership titles, and the global context paragraph
+   * @param input - Membership titles and the global context paragraph
    * @returns Normalized brief and round-1 question
    */
   async generate(input: IntakePackInput): Promise<IntakePack> {
-    const premiseBlock = input.premises.map((p) => `- ${p.text}`).join("\n");
     const networkBlock = input.networkTitles.length > 0
       ? input.networkTitles.join(", ")
       : "none";
@@ -94,7 +92,7 @@ export class SignalIntakePackGenerator {
     const raw = await this.model.invoke([
       new SystemMessage(SYSTEM_PROMPT),
       new HumanMessage(
-        `Communities: ${networkBlock}\n\nGlobal context:\n${contextBlock}\n\nPremises:\n${premiseBlock}\n\nWrite the intake pack.`,
+        `Communities: ${networkBlock}\n\nGlobal context:\n${contextBlock}\n\nWrite the intake pack.`,
       ),
     ]);
 

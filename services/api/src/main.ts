@@ -48,11 +48,8 @@ import { frameDriftCron } from './crons/frame-drift.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
 import { NetworkMembershipEvents } from './events/network_membership.event';
-import { PremiseEvents } from './events/premise.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
-import { premiseCascade } from './lib/premise/cascade';
-import { background } from './lib/background';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
@@ -101,25 +98,6 @@ NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
   });
 };
 
-
-PremiseEvents.onCreated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise created', { premiseId, userId });
-};
-
-PremiseEvents.onUpdated = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise updated', { premiseId, userId });
-};
-
-PremiseEvents.onRetracted = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise retracted, triggering cascade', { premiseId, userId });
-  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'retracted' }));
-};
-
-PremiseEvents.onExpired = (premiseId: string, userId: string) => {
-  log.job.from('PremiseEvents').verbose('Premise expired, triggering cascade', { premiseId, userId });
-  background('premise', () => premiseCascade.runCascade({ premiseId, userId, event: 'expired' }));
-};
-
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
 void frameDriftCron.start().catch((error) => {
@@ -129,7 +107,6 @@ void frameDriftCron.start().catch((error) => {
   });
 });
 hydeMaintenanceCron.startCrons();
-premiseCascade.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';

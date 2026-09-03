@@ -20,6 +20,28 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 42.0.0 - 2026-09-02
+
+### Removed
+
+- **BREAKING: the premises capability is gone.** `create_premise`,
+  `read_premises`, `update_premise`, and `retract_premise` are no longer
+  registered; `PremiseGraphFactory`, `PremiseGraphDatabase`, `PremiseRecord`,
+  `OpportunityActor.premise`, and every premise method on the host database
+  ports are removed. Matching is intent-only: `HydeTargetCorpus` drops
+  `'premises'`, the `query_premise` evidence kind and the
+  `sourcePremiseId`/`candidatePremiseId` candidate fields are gone, and
+  `manage:premises` is no longer a permission action.
+- **BREAKING: opportunity delivery is gone.** `confirm_opportunity_delivery`,
+  the `DeliveryLedger` port, `getOrCreateDeliveryCardBatch`,
+  `buildDeliveryCardPresentationCacheKey`, the `isDeliveryAgent` identity flag,
+  and digest mode (`includeDigestMarkers`, `selectDigestCandidates`,
+  presenter `digestSummary`) are removed. Opportunity statuses are unchanged.
+- **BREAKING: `read_activity_summary` is gone**, along with the activity
+  projection and the `UserDatabase.getAgentActivitySummary` port.
+
+No aliases or compatibility shims: hosts must drop the deleted ports.
+
 ## 41.0.0 - 2026-09-02
 
 ### Removed

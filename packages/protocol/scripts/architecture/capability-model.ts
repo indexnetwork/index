@@ -14,7 +14,6 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
   intents: "intents",
   contexts: "contexts",
   enrichment: "contexts",
-  premises: "contexts",
   networks: "networks",
   opportunities: "opportunities",
   negotiations: "negotiations",
@@ -28,7 +27,7 @@ export const CAPABILITY_DIRECTORIES: Readonly<Record<string, Capability>> = {
  * The capability directory that owns each capability's barrel.
  *
  * A capability can span several top-level directories (contexts
- * covers enrichment/ and premises/ as well as contexts/), but exactly one of them holds
+ * covers enrichment/ as well as contexts/), but exactly one of them holds
  * the `index.ts` that other capabilities are allowed to import.
  */
 export const CAPABILITY_BARREL_DIRECTORIES: Readonly<Record<Capability, string | undefined>> = {

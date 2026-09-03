@@ -74,7 +74,6 @@ export interface SignalIntakeServiceDeps {
   intents: Pick<Intents, 'generateIntakePack' | 'generateIntakeFollowUps' | 'synthesizeIntake'>;
   /** Intake knobs; production reads the env accessors, tests inject fixed values. */
   intakeConfig?: () => { maxQuestions: number };
-  getPremises: (userId: string) => Promise<Array<{ text: string }>>;
   getNetworkTitles: (userId: string) => Promise<string[]>;
   getGlobalContext: (userId: string) => Promise<string | null>;
   /**
@@ -138,16 +137,13 @@ export class SignalIntakeService {
     }
 
     try {
-      const [premises, networkTitles, globalContext] = await Promise.all([
-        this.deps.getPremises(userId),
+      const [networkTitles, globalContext] = await Promise.all([
         this.deps.getNetworkTitles(userId),
         this.deps.getGlobalContext(userId),
       ]);
-      const pack = await this.deps.intents.generateIntakePack({ premises, networkTitles, globalContext });
-      // premiseHash is owned by the background job; a cold-start write stores an
-      // empty key so the next regen always refreshes rather than short-circuiting.
+      const pack = await this.deps.intents.generateIntakePack({ networkTitles, globalContext });
       await this.deps.packStore.upsertPack({
-        userId, brief: pack.brief, question: pack.question, premiseHash: '',
+        userId, brief: pack.brief, question: pack.question,
       });
       logger.info('signal_intake_stage', {
         stage: 'start', durationMs: Date.now() - started,
@@ -528,12 +524,6 @@ async function invokeIntentGraphProduction(input: {
   return result as { verifiedIntents?: Array<Record<string, unknown>> };
 }
 
-/** The user's active premises, narrowed to the fields the pack generator needs. */
-async function getPremisesProduction(userId: string): Promise<Array<{ text: string }>> {
-  const premises = await chatDatabaseAdapter.getPremisesForUser(userId, 'ACTIVE');
-  return premises.map((p) => ({ text: p.assertion.text })).filter((p) => p.text.length > 0);
-}
-
 /** Titles of every network the user belongs to. */
 async function getNetworkTitlesProduction(userId: string): Promise<string[]> {
   const networkIds = await chatDatabaseAdapter.getUserIndexIds(userId);
@@ -555,7 +545,6 @@ export const signalIntakeService = new SignalIntakeService({
   proposalStore: intentProposalDatabaseAdapter,
   isNetworkMember: (networkId, userId) => intentDatabaseAdapter.isNetworkMember(networkId, userId),
   intents: productionIntents,
-  getPremises: getPremisesProduction,
   getNetworkTitles: getNetworkTitlesProduction,
   getGlobalContext: getGlobalContextProduction,
   invokeIntentGraph: invokeIntentGraphProduction,

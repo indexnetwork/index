@@ -23,7 +23,7 @@ import { ToolRuntimeError, invokeToolRuntime, toolRuntimeErrorToResult } from '.
 import type { TraceEmitter } from '../shared/observability/request-context.js';
 import { protocolLogger } from '../shared/observability/protocol.logger.js';
 import type { McpAuthorizationObserver, McpCapabilityDecision, McpCapabilityPolicyOptions, McpCapabilitySubject, McpPolicyAgentSnapshot } from './mcp.authorization-policy.js';
-import { buildMcpAuthorizationDenialEvent, McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpActivityCaller, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
+import { buildMcpAuthorizationDenialEvent, McpCapabilityPolicy, ONBOARDING_ALLOWED, resolveMcpCapabilitySubject } from './mcp.authorization-policy.js';
 
 const logger = protocolLogger('McpServer');
 
@@ -491,11 +491,6 @@ export function createMcpServer(
         identity: authenticated.identity,
         agent: authenticated.agent,
       });
-      // Bind the typed resolved caller context so tools with
-      // permission-projected output (read_activity_summary) can apply the
-      // centralized projection without re-deriving principal state.
-      context.mcpCaller = resolveMcpActivityCaller(subject);
-
       return {
         ...authenticated,
         context,

@@ -289,7 +289,7 @@ final class NativeAPIRequestBridge {
     ]
     static let allowedMCPTools: Set<String> = ["create_intent", "register_agent"]
     static let allowedAgentPermissionActions: Set<String> = [
-        "manage:identity", "manage:premises", "manage:intents",
+        "manage:identity", "manage:intents",
         "manage:networks", "manage:opportunities", "manage:negotiations",
     ]
 

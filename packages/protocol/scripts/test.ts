@@ -22,7 +22,6 @@ const ROOT = new URL("../src", import.meta.url).pathname;
 export const LIVE_MODEL_SPECS = new Set([
   "capabilities/tests/intents.spec.ts",
   "opportunities/tests/opportunity.graph.spec.ts",
-  "premises/tests/premise.decomposer.spec.ts",
 ]);
 
 type ChildTestInput = Pick<ChildTestResult, "file" | "exitCode" | "durationMs" | "output">;

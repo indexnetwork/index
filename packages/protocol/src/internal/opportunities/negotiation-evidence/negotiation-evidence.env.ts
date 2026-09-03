@@ -5,7 +5,7 @@
  *   Mode: shadow | on — shadow today.
  *     - shadow: mine + verify neutral hypotheses over allowlisted
  *       negotiation evidence, emit AGGREGATE telemetry only. Persists no
- *       questions and changes no ranking, intent, premise, memory, policy,
+ *       questions and changes no ranking, intent, memory, policy,
  *       newborn-stamping, or push behavior.
  *     - on (future, IND-437): additionally synthesize/enqueue questions and
  *       suppress the older IND-296–299 transcript-question producer.

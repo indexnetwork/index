@@ -1,13 +1,10 @@
 import { z } from 'zod';
 
 import type { McpResolvedIdentity } from '../../platform/auth/mcp.js';
-import { McpActivityCallerSchema } from '../shared/agent/activity-projection.js';
-import type { McpActivityCaller } from '../shared/agent/activity-projection.js';
 
 /** Canonical MCP permission actions. */
 export const MCP_PERMISSION_ACTIONS = [
   'manage:identity',
-  'manage:premises',
   'manage:intents',
   'manage:networks',
   'manage:opportunities',
@@ -65,12 +62,6 @@ export const HERMES_AGENT_MCP_TOOL_PERMISSIONS = defineMcpToolPermissionMap({
   create_network_membership: { action: 'manage:networks', reach: 'network' },
   list_opportunities: { action: 'manage:opportunities', reach: 'network' },
   update_opportunity: { action: 'manage:opportunities', reach: 'network' },
-  confirm_opportunity_delivery: { action: 'manage:opportunities', reach: 'network' },
-  read_premises: { action: 'manage:premises', reach: 'principal' },
-  create_premise: { action: 'manage:premises', reach: 'principal' },
-  update_premise: { action: 'manage:premises', reach: 'principal' },
-  retract_premise: { action: 'manage:premises', reach: 'principal' },
-  read_activity_summary: { action: 'manage:identity', reach: 'principal' },
   read_docs: { action: 'manage:identity', reach: 'principal' },
 });
 
@@ -81,7 +72,6 @@ export const McpToolAccessRuleSchema = z.object({
     'human_only',
     'agent_admin',
     'informational',
-    'delivery_only',
     'removed',
   ]),
   actions: z.array(McpPermissionActionSchema).optional(),
@@ -130,12 +120,6 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   // Participant identity.
   research_profile: { access: 'permission', actions: ['manage:identity'], reach: 'principal' },
 
-  // Premises are meta-network; a network-scoped agent retains principal reach.
-  read_premises: { access: 'permission', actions: ['manage:premises'], reach: 'principal' },
-  create_premise: { access: 'permission', actions: ['manage:premises'], reach: 'principal' },
-  update_premise: { access: 'permission', actions: ['manage:premises'], reach: 'principal' },
-  retract_premise: { access: 'permission', actions: ['manage:premises'], reach: 'principal' },
-
   // Signals.
   read_intents: { access: 'authenticated', reach: 'network' },
   search_intents: { access: 'authenticated', reach: 'network' },
@@ -155,10 +139,9 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   create_network_membership: { access: 'permission', actions: ['manage:networks'], reach: 'network' },
   delete_network_membership: { access: 'permission', actions: ['manage:networks'], reach: 'network' },
 
-  // Opportunities and delivery.
+  // Opportunities.
   list_opportunities: { access: 'authenticated', reach: 'network' },
   update_opportunity: { access: 'permission', actions: ['manage:opportunities'], reach: 'network' },
-  confirm_opportunity_delivery: { access: 'delivery_only', reach: 'network' },
 
   // The owner VERDICT tools are `human_only` — exactly the session-authenticated
   // class the IND-593 owner-provenance binding admits; an API-key agent must
@@ -178,30 +161,11 @@ export const CANONICAL_MCP_TOOL_ACCESS_RULES = defineMcpToolAccessRules({
   // Protocol guidance.
   read_docs: { access: 'informational', reach: 'principal' },
 
-  // Aggregate activity reporting. Any activity-domain permission admits the
-  // call; the handler then projects each domain by the caller's exact grants
-  // via the centralized activity projection, and a network agent's
-  // network-bound aggregates are narrowed to its bound community at the
-  // query/adapter layer.
-  read_activity_summary: {
-    access: 'permission',
-    actions: [
-      'manage:identity',
-      'manage:premises',
-      'manage:intents',
-      'manage:opportunities',
-      'manage:negotiations',
-    ],
-    reach: 'principal',
-  },
-
   // Restricted MCP surface still registered by the shared registry. The contact
-  // and Gmail-import tools, scrape_url, the deprecated profile/profile-run
-  // aliases, and the retired report_agent_activity name are no longer
-  // classified here because they are omitted from the MCP registry composition
-  // entirely (IND-596/597/598/605) — an unregistered tool is rejected as
-  // unknown before any authorization work. read_activity_summary (above) is
-  // the only public activity-reporting name; no legacy alias is retained.
+  // and Gmail-import tools, scrape_url, and the deprecated profile/profile-run
+  // aliases are no longer classified here because they are omitted from the MCP
+  // registry composition entirely (IND-596/597/598) — an unregistered tool is
+  // rejected as unknown before any authorization work.
 });
 
 /** Tools visible on the REST Tool API while web/CLI onboarding is incomplete. MCP does not use this allowlist. */
@@ -255,7 +219,6 @@ export const McpPrincipalProfileSchema = z.enum([
   'registered_global_agent',
   'registered_network_agent',
   'hermes_agent',
-  'delivery_agent',
   'invalid_agent',
 ]);
 
@@ -286,7 +249,7 @@ export type ResolveMcpCapabilitySubjectInput = {
  * must therefore interpret these residual STORED rows so no agent loses access
  * during the rolling window and none is over-authorized:
  *
- *   - `manage:profile`  -> `manage:identity` + `manage:premises`
+ *   - `manage:profile`  -> `manage:identity`
  *   - `manage:contacts` -> (no capability)
  *
  * This is NOT a public alias: the legacy names are never accepted as INPUT
@@ -296,7 +259,7 @@ export type ResolveMcpCapabilitySubjectInput = {
  * and the compatibility-removal gate is met (see the IND-609 rollout doc).
  */
 const LEGACY_STORED_ACTION_PROJECTION: Readonly<Record<string, readonly McpPermissionAction[]>> = {
-  'manage:profile': ['manage:identity', 'manage:premises'],
+  'manage:profile': ['manage:identity'],
   'manage:contacts': [],
 };
 
@@ -396,11 +359,9 @@ export function resolveMcpCapabilitySubject(
   const agent = parsedAgent.data;
   const profile: McpPrincipalProfile = identity.isHermesAgent === true
     ? 'hermes_agent'
-    : identity.isDeliveryAgent === true
-      ? 'delivery_agent'
-      : identity.networkScopeId
-        ? 'registered_network_agent'
-        : 'registered_global_agent';
+    : identity.networkScopeId
+      ? 'registered_network_agent'
+      : 'registered_global_agent';
 
   return McpCapabilitySubjectSchema.parse({
     profile,
@@ -412,22 +373,6 @@ export function resolveMcpCapabilitySubject(
   });
 }
 
-/**
- * Maps a resolved capability subject to the typed caller context consumed by
- * the centralized activity-summary projection. Session humans own the
- * summarized data and receive the full owner view; every other profile is
- * projected as an agent bounded by its granted permissions and (for network
- * agents) its bound community.
- */
-export function resolveMcpActivityCaller(subject: McpCapabilitySubject): McpActivityCaller {
-  const isHuman = subject.profile === 'session_human';
-  return McpActivityCallerSchema.parse({
-    kind: isHuman ? 'human' : 'agent',
-    permissions: isHuman ? [] : subject.permissions,
-    networkScopeId: isHuman ? null : subject.networkScopeId,
-  });
-}
-
 export const McpCapabilityDecisionReasonSchema = z.enum([
   'session_human',
   'enrollment',
@@ -435,7 +380,6 @@ export const McpCapabilityDecisionReasonSchema = z.enum([
   'agent_self_read',
   'informational',
   'permission_granted',
-  'delivery',
   'enrollment_required',
   'unregistered_principal',
   'invalid_agent',
@@ -443,7 +387,6 @@ export const McpCapabilityDecisionReasonSchema = z.enum([
   'human_read_own_agent_denied',
   'human_only',
   'permission_missing',
-  'delivery_required',
   'removed',
   'tool_unclassified',
 ]);
@@ -581,11 +524,6 @@ export class McpCapabilityPolicy {
             requiredPermissions: [requirement.action],
           };
     }
-    if (rule.access === 'delivery_only') {
-      return subject.profile === 'delivery_agent'
-        ? { allowed: true, reason: 'delivery', reach: rule.reach }
-        : { allowed: false, reason: 'delivery_required', reach: rule.reach };
-    }
     // Agent administration is split by principal kind and must be decided
     // BEFORE the generic session-human blanket allow below — otherwise a
     // session human would be admitted to read_own_agent (an agent-only tool)
@@ -596,8 +534,7 @@ export class McpCapabilityPolicy {
       // other agent_admin tool is an owner/admin action reserved for humans.
       if (
         subject.profile === 'registered_global_agent' ||
-        subject.profile === 'registered_network_agent' ||
-        subject.profile === 'delivery_agent'
+        subject.profile === 'registered_network_agent'
       ) {
         return toolName === 'read_own_agent'
           ? { allowed: true, reason: 'agent_self_read', reach: rule.reach }

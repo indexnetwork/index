@@ -10,6 +10,15 @@ section before promoting to `main`).
 ## [Unreleased]
 
 ### Removed
+- **Premises, the opportunity delivery ledger, and the activity summary.** The
+  premise cascade, events, adapters, and seeds are gone; profile saves no longer
+  decompose into premises. `OpportunityDeliveryService` and the
+  `/agents/:id/opportunities/{pickup,pending,accepted,delivery-stats}` and
+  `/:opportunityId/delivered` routes are removed, as is
+  `getAgentActivitySummary`. Migration `0160` drops `premises`,
+  `premise_networks`, `opportunity_deliveries`, the `premise_status` type,
+  `signal_intake_packs.premise_hash`, and `manage:premises` from live
+  `agent_permissions.actions`.
 - **The Index Chat Orchestrator system agent and the `orchestrator` chat
   persona.** `SYSTEM_AGENT_IDS` is only the negotiator; onboarding no longer
   grants chat-orchestrator permissions; seed no longer inserts that row.

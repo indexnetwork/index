@@ -5,7 +5,7 @@
  * from RECURRING negotiation evidence across the viewer's intent pool — read
  * IN PLACE at mining time, never projected into a durable transcript. This is
  * a privacy-safe SHADOW pass: it performs NO persistence, enqueues NO
- * question, and changes NO ranking/intent/premise/memory/policy. It logs only
+ * question, and changes NO ranking/intent/memory/policy. It logs only
  * aggregate telemetry (counts) and NEVER the mined hypothesis text.
  *
  * Wired independently of the Lens A pool machinery, so this lens runs on its

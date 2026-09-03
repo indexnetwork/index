@@ -35,7 +35,7 @@ export interface HydeGeneratorInvokeInput {
 export interface OpportunityHydeGenerator {
   invoke: (input: HydeGeneratorInvokeInput) => Promise<{
     hydeEmbeddings: Record<string, number[]>;
-    lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' | 'premises' }>;
+    lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' }>;
     hydeDocuments?: Record<string, { hydeText?: string; lens?: string }>;
   }>;
 }
@@ -164,7 +164,7 @@ export const REJECTION_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export const REJECTION_COOLDOWN_SIMILARITY_PENALTY = 0.5;
 
-/** Default cap for source premises used by premise-to-premise discovery. Prevents BACKEND-5-style fan-out. */
+/** Default cap for discovery sources. Prevents BACKEND-5-style fan-out. */
 
 /** NUL separator: it cannot occur inside an id, so the composite key is unambiguous. */
 const PAIR_KEY_SEPARATOR = String.fromCharCode(0);
@@ -177,7 +177,7 @@ export function buildEvaluatorEvidenceKey(candidate: CandidateMatch): string {
   return [
     candidate.candidateUserId,
     candidate.networkId,
-    candidate.candidateIntentId ?? candidate.candidatePremiseId ?? candidate.candidateContextId ?? candidate.sourceContextId ?? 'profile',
+    candidate.candidateIntentId ?? candidate.candidateContextId ?? candidate.sourceContextId ?? 'profile',
   ].join(':');
 }
 

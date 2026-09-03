@@ -1,6 +1,6 @@
 import type { DrizzleDB } from '../lib/drizzle/drizzle';
 
-import { readPremisesForUser, schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, normalizeTelegramSocialValue, persistProfileIdentityToUser, sql } from './database.shared';
+import { schema, OnboardingState, UserIdentity, and, asc, buildProfileFromUser, buildProfileWithIdFromUser, db, detectSocialLabel, eq, normalizeTelegramSocialValue, persistProfileIdentityToUser, sql } from './database.shared';
 import { HydeDatabaseAdapter } from './hyde.database.adapter';
 
 export class EnrichmentDatabaseAdapter {
@@ -188,28 +188,6 @@ export class EnrichmentDatabaseAdapter {
     return this.hydeAdapter.saveHydeDocument(data);
   }
 
-
-
-
-  /**
-   * Retrieve premises for a user, optionally filtered by status.
-   * Used by the profile graph in `aggregate` mode to synthesize profile from active premises.
-   * @param userId - The user whose premises to retrieve
-   * @param status - Optional status filter (`ACTIVE`, `RETRACTED`, or `EXPIRED`)
-   * @returns Array of premise records
-   */
-  async getPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }>> {
-    return readPremisesForUser(userId, status);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

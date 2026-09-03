@@ -209,7 +209,7 @@ export async function buildProfileWithIdFromUser(userId: string): Promise<(UserI
  * Persist a profile draft's identity to the canonical `users` table (WS8 / IND-365).
  * The `user_profiles` table was dropped; identity (name/bio/location) lives on `users`
  * (`name`/`intro`<-bio/`location`), while skills/interests/narrative are derived from
- * premises + the global user_context and have no column to persist. Empty identity
+ * the global user_context and have no column to persist. Empty identity
  * fields are skipped so a partial draft never clobbers existing identity.
  *
  * @param userId - The user whose identity to update.
@@ -676,43 +676,6 @@ export interface ConversationSummary {
  */
 
 // ── De-duplicated query helpers (formerly copy-pasted across adapters) ──
-export async function readPremisesForUser(userId: string, status?: 'ACTIVE' | 'RETRACTED' | 'EXPIRED'): Promise<Array<{
-    id: string; userId: string;
-    assertion: { text: string; tier: 'assertive' | 'contextual'; summary?: string };
-    provenance: { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string };
-    analysis: { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null;
-    validity: { validFrom?: string; validUntil?: string; volatile: boolean };
-    embedding: number[] | null;
-    status: 'ACTIVE' | 'RETRACTED' | 'EXPIRED';
-    createdAt: Date; updatedAt: Date; retractedAt: Date | null;
-  }>> {
-    const conditions: ReturnType<typeof eq>[] = [
-      eq(schema.premises.userId, userId),
-      isNull(schema.premises.deletedAt),
-    ];
-    if (status) {
-      conditions.push(eq(schema.premises.status, status));
-    }
-    const rows = await db
-      .select()
-      .from(schema.premises)
-      .where(and(...conditions))
-      .orderBy(desc(schema.premises.createdAt));
-    return rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      assertion: row.assertion as { text: string; tier: 'assertive' | 'contextual'; summary?: string },
-      provenance: row.provenance as { source: 'explicit' | 'enrichment' | 'integration' | 'onboarding'; sourceId?: string; confidence: number; timestamp: string },
-      analysis: row.analysis as { speechActType: 'DECLARATIVE' | 'ASSERTIVE'; felicityAuthority: number; felicitySincerity: number; felicityClarity: number; semanticEntropy: number } | null,
-      validity: row.validity as { validFrom?: string; validUntil?: string; volatile: boolean },
-      embedding: row.embedding,
-      status: row.status as 'ACTIVE' | 'RETRACTED' | 'EXPIRED',
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      retractedAt: row.retractedAt ?? null,
-    }));
-  }
-
 export async function upsertIntentNetworkAssignment(
     intentId: string,
     networkId: string,

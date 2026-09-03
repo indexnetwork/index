@@ -248,16 +248,6 @@ export class FrameDriftDatabaseAdapter implements FrameDriftSnapshotStore {
           SELECT id, row_number() OVER (ORDER BY created_at ASC, id ASC) AS admission_ordinal
           FROM bounded_networks
         ), corpus_user_centroids AS MATERIALIZED (
-          SELECT pn.network_id, p.user_id, 'premise'::text AS corpus,
-                 avg(p.embedding) AS user_centroid,
-                 count(*)::bigint AS source_row_count
-          FROM premise_networks pn
-          JOIN selected_networks sn ON sn.id = pn.network_id
-          JOIN premises p ON p.id = pn.premise_id
-          JOIN users u ON u.id = p.user_id AND u.deleted_at IS NULL
-          WHERE p.deleted_at IS NULL AND p.status = 'ACTIVE' AND p.embedding IS NOT NULL
-          GROUP BY pn.network_id, p.user_id
-          UNION ALL
           SELECT ino.network_id, i.user_id, 'intent'::text AS corpus,
                  avg(i.embedding) AS user_centroid,
                  count(*)::bigint AS source_row_count

@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 
-export const NetworkAssignmentResourceTypeSchema = z.enum(["premise", "intent"]);
+export const NetworkAssignmentResourceTypeSchema = z.enum(["intent"]);
 export type NetworkAssignmentResourceType = z.infer<typeof NetworkAssignmentResourceTypeSchema>;
 
 export const NetworkAssignmentModeSchema = z.enum(["automatic", "manual_override"]);
@@ -47,7 +47,6 @@ export type NetworkAssignmentMetadata = z.infer<typeof NetworkAssignmentMetadata
 
 export const OpportunityEvidenceKindSchema = z.enum([
   "query_intent",
-  "query_premise",
   "query_context",
   "profile",
 ]);
@@ -60,13 +59,10 @@ export const OpportunityEvidenceSchema = z.object({
   lens: z.string().optional(),
   discoverySource: z.literal("query").optional(),
   matchedStrategies: z.array(z.string()).optional(),
-  sourcePremiseId: z.string().optional(),
-  candidatePremiseId: z.string().optional(),
   candidateIntentId: z.string().optional(),
   sourceContextId: z.string().optional(),
   candidateContextId: z.string().optional(),
   payload: z.string().optional(),
   summary: z.string().optional(),
-  assertionText: z.string().optional(),
 });
 export type OpportunityEvidence = z.infer<typeof OpportunityEvidenceSchema>;

@@ -21,7 +21,7 @@ const UPDATED_SIGNAL =
   "I am looking for an ML engineer with production LLM experience to co-found my New York developer-tools company, starting in October.";
 const VAGUE_SIGNAL = "I want a job.";
 
-/** In-memory host implementing the ports the intent graph uses. No profile text or premises reach the model. */
+/** In-memory host implementing the ports the intent graph uses. No profile text reaches the model. */
 class FakeIntentHost {
   readonly intents: Array<CreatedIntent & { archivedAt: Date | null; embedding?: number[] }> = [];
   readonly hydeJobs: Array<

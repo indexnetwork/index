@@ -222,7 +222,6 @@ export class OpportunityService {
   private presenter: OpportunityPresenter | null = null;
   private readonly presenterDb: PresenterDatabase;
   private readonly gatherPresentationContext: typeof gatherPresenterContext;
-  private readonly deliveryCache: RedisCacheAdapter;
   /** Lens B (IND-434): captures explicit owner accept/reject as feedback. */
   private readonly outcomeRecorder: OutcomeFeedbackRecorderLike;
   private radarGraph: ReturnType<RadarGraphFactory['createGraph']> | null = null;
@@ -240,7 +239,6 @@ export class OpportunityService {
     this.presenterDb = presentation.presenterDatabase
       ?? chatDatabaseAdapter as unknown as PresenterDatabase;
     this.gatherPresentationContext = presentation.gatherContext ?? gatherPresenterContext;
-    this.deliveryCache = new RedisCacheAdapter();
     this.outcomeRecorder = outcomeRecorder;
   }
 

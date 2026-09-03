@@ -16,7 +16,7 @@ export interface OpportunityOwnerApprovalDeps {
 export type OpportunityToolDeps = Pick<ToolRegistryCompositionDeps,
   "database" | "userDb" | "systemDb" | "cache"
   | "opportunityPresentation"
-  | "negotiationDatabase" | "deliveryLedger"
+  | "negotiationDatabase"
   | "frontendUrl" | "stampNewbornOpportunities" | "reportToolError"
   | "opportunityOperations"
 > & OpportunityOwnerApprovalDeps

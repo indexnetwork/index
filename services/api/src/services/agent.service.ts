@@ -8,7 +8,6 @@ const logger = log.service.from('AgentService');
 /** All valid agent actions. Used for input validation. */
 export const AGENT_ACTIONS = [
   'manage:identity',
-  'manage:premises',
   'manage:intents',
   'manage:networks',
   'manage:opportunities',
@@ -20,7 +19,6 @@ export type AgentAction = (typeof AGENT_ACTIONS)[number];
 /** Default actions granted to the owner of a newly created personal agent. */
 export const PERSONAL_AGENT_DEFAULT_ACTIONS: readonly AgentAction[] = [
   'manage:identity',
-  'manage:premises',
   'manage:intents',
   'manage:networks',
   'manage:opportunities',

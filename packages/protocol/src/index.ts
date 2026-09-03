@@ -45,7 +45,6 @@ export type {
   RadarGraphDatabase,
   IntentGraphDatabase,
   HydeGraphDatabase,
-  PremiseGraphDatabase,
   Opportunity,
   OpportunityActor,
   OpportunityStatus,
@@ -138,8 +137,6 @@ export type {
   SynthesisResult,
 } from "./capabilities/intents.js";
 
-export { PremiseGraphFactory } from "./internal/premises/premise.graph.js";
-
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
 export { HydeGenerator } from "./internal/discovery/hyde.generator.js";
@@ -218,9 +215,6 @@ export type {
  * list is the union of the facades it replaces, so the contract is unchanged.
  */
 export {
-  getOrCreateDeliveryCardBatch,
-} from "./internal/opportunities/delivery-card.cache.js";
-export {
   OpportunityGraphFactory,
 } from "./internal/opportunities/opportunity.graph.js";
 export type {
@@ -291,7 +285,6 @@ export {
 } from "./internal/opportunities/opportunity.labels.js";
 export {
   buildApiChatCardPresentationCacheKey,
-  buildDeliveryCardPresentationCacheKey,
   buildRadarCardPresentationCacheKey,
 } from "./internal/opportunities/opportunity.presentation.js";
 export {

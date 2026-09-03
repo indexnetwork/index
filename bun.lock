@@ -19,7 +19,7 @@
     },
     "apps/web": {
       "name": "@indexnetwork/web",
-      "version": "0.60.0",
+      "version": "0.61.0",
       "dependencies": {
         "@indexnetwork/protocol": "workspace:*",
         "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -85,11 +85,11 @@
     },
     "packages/hermes-plugin": {
       "name": "@indexnetwork/hermes-plugin",
-      "version": "0.27.0",
+      "version": "0.28.0",
     },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "41.0.0",
+      "version": "42.0.0",
       "dependencies": {
         "@langchain/core": "1.1.48",
         "@langchain/langgraph": "1.4.12",
@@ -106,7 +106,7 @@
     },
     "services/api": {
       "name": "@indexnetwork/api",
-      "version": "0.99.0",
+      "version": "0.100.0",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.939.0",
         "@aws-sdk/s3-request-presigner": "^3.983.0",

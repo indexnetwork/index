@@ -7,7 +7,7 @@
  * hypotheses for OFFLINE review.
  *
  * This function performs NO persistence and NO user-visible action. It does
- * not create questions and changes no ranking, intent, premise, memory,
+ * not create questions and changes no ranking, intent, memory,
  * policy, newborn-stamping, or push behavior — those belong to the future
  * `on` mode (IND-437). Callers in shadow mode must log only
  * {@link NegotiationEvidenceShadowResult.telemetry} (aggregate-only) and must

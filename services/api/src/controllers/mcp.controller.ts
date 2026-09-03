@@ -19,13 +19,12 @@ import type { McpHttpThrottleDecision } from '../lib/limiter/mcp';
 import { getOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { resolveApiKeyUserId } from '../lib/apikey/principal';
 import { agentService } from '../services/agent.service';
-import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { userService } from '../services/user.service';
 import { negotiatorVerdictToolsHost } from '../lib/agent/negotiator-verdict.host';
 import { resolveProtocolBaseUrl } from '../lib/protocol-url';
 
-import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, PremiseGraphFactory, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, PremiseGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
+import { Intents, OpportunityGraphFactory, HydeGraphFactory, Networks, HydeGenerator, LensInferrer, createMcpServer, McpApiKeyMetadataSchema, CANONICAL_MCP_CAPABILITY_POLICY_OPTIONS } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, CompositeToolDatabase, McpAuthInput, McpResolvedIdentity, OpportunityOwnerApprovalAuthority, McpAuthorizationObserver } from '@indexnetwork/protocol';
 
 import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -63,7 +62,6 @@ const protocolDeps = {
   agentDatabase: agentDatabaseAdapter,
   grantDefaultSystemPermissions: (userId: string) =>
     agentService.grantDefaultSystemPermissions(userId),
-  deliveryLedger: opportunityDeliveryService,
   // IND-593: authoritative owner-proof verifier/consumer for opportunity state
   // changes. Shared process-wide with the MCP toolDeps and the REST issuance
   // route.
@@ -94,7 +92,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     followUp: protocolDeps.intentFollowUp,
   });
   const intentGraph = intents.createGraph();
-  const premiseGraph = new PremiseGraphFactory(database as unknown as PremiseGraphDatabase, embedder).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
@@ -116,7 +113,6 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
     networkMembership: networkMembershipGraph,
     intentIndex: intentIndexGraph,
     opportunity: opportunityGraph,
-    premise: premiseGraph,
   };
 
   return compiledGraphs;
@@ -133,7 +129,6 @@ const JWKS = createRemoteJWKSet(
 function parseApiKeyMetadata(raw: string | null | undefined): {
   agentId?: string;
   enrollmentCapable?: boolean;
-  isDeliveryAgent?: boolean;
 } {
   if (!raw) {
     return {};
@@ -145,7 +140,6 @@ function parseApiKeyMetadata(raw: string | null | undefined): {
     return {
       ...(parsed.data.agentId ? { agentId: parsed.data.agentId } : {}),
       ...(parsed.data.enrollmentCapable === true ? { enrollmentCapable: true } : {}),
-      ...(parsed.data.isDeliveryAgent === true ? { isDeliveryAgent: true } : {}),
     };
   } catch {
     return {};
@@ -244,7 +238,6 @@ export function resolveMcpApiKeyPrincipal(
   userId: string;
   agentId?: string;
   enrollmentCapable?: boolean;
-  isDeliveryAgent?: boolean;
 } | null {
   const metadata = parseApiKeyMetadata(row.metadata);
 
@@ -255,9 +248,6 @@ export function resolveMcpApiKeyPrincipal(
   if (metadata.agentId && (!row.userId || !row.referenceId)) {
     throw new Error('Agent API key principal mismatch');
   }
-  if (metadata.isDeliveryAgent && !metadata.agentId) {
-    throw new Error('Delivery API key principal mismatch');
-  }
 
   const userId = resolveApiKeyUserId(row, sessionUserId);
   if (!userId) return null;
@@ -266,7 +256,6 @@ export function resolveMcpApiKeyPrincipal(
     userId,
     ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
     ...(!metadata.agentId && metadata.enrollmentCapable ? { enrollmentCapable: true } : {}),
-    ...(metadata.agentId && metadata.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
   };
 }
 
@@ -468,7 +457,6 @@ const authResolver: McpAuthResolver = {
               userId: principal.userId,
               ...(principal.agentId ? { agentId: principal.agentId } : {}),
               ...(principal.enrollmentCapable ? { enrollmentCapable: true } : {}),
-              ...(principal.isDeliveryAgent ? { isDeliveryAgent: true } : {}),
               networkScopeId,
             });
           }
@@ -563,7 +551,6 @@ function createMcpServerInstance(): McpServer {
     negotiatorVerdictTools: protocolDeps.negotiatorVerdictTools,
     agentDatabase: protocolDeps.agentDatabase,
     grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
-    deliveryLedger: protocolDeps.deliveryLedger,
     opportunityOwnerApproval: protocolDeps.opportunityOwnerApproval,
     reportToolError: (error, report) => captureAppException(error, {
       subsystem: report.subsystem ?? 'protocol',

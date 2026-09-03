@@ -8,6 +8,9 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Removed
+- **The forwarders for deleted Index tools:** `confirm_opportunity_delivery`,
+  the four premise tools, and `read_activity_summary`. `research_profile` is
+  unchanged.
 - **The `index-orchestrator` skill**, plus the `pre_llm_call` hint hook and
   `/index` command that existed only to load it.
 
