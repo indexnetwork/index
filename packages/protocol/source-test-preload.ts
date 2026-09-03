@@ -111,5 +111,12 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
     createStructuredModel: (agent: string) => modelFor(agent),
     createResilientModel: (agent: string) => modelFor(agent),
     getModelName: () => "source-test-model",
+    // The double replaces the whole module, so anything the production code
+    // imports from model.config has to appear here or the import fails to
+    // link. These two back the ModelPort adapter: no fallback in tests, and
+    // resilience is the primary runnable unchanged.
+    hasFallbackModel: () => false,
+    withModelResilience: <T>(primary: T) => primary,
+    DEFAULT_MODEL_TIMEOUT_MS: 60_000,
   }));
 }

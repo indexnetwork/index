@@ -13,14 +13,15 @@
  * `PersonalAgentJudgment` seam. Tests and evals script that seam instead of
  * subclassing this.
  */
+import { authorTurnWithAgent } from "../../negotiations/negotiation.agent-author.js";
 import { z } from "zod";
 
 import { createStructuredModel } from "../../shared/agent/model.config.js";
 import { invokeWithAbortSignal } from "../../shared/agent/model-signal.js";
 import { protocolLogger } from "../../shared/observability/protocol.logger.js";
-import { NegotiationAuthoredTurnSchema, NegotiationOpeningTurnSchema, type NegotiationAuthoredTurn, type NegotiationTurn } from "../../negotiations/negotiation.turn.js";
+import { type NegotiationAuthoredTurn, type NegotiationTurn } from "../../negotiations/negotiation.turn.js";
 import { QuestionSchema, type Question } from "../../../protocol/question.js";
-import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT, PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT, PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
+import { buildPersonalAgentSystemPrompt, isSafeAgentMessageProse, personalAgentEventInstruction, PERSONAL_AGENT_BRIEF_INSTRUCTION, PERSONAL_AGENT_SEAT_BRIEF_INSTRUCTION, PERSONAL_AGENT_STRATEGY_INSTRUCTION } from "./agent.prompt.js";
 import type { PersonalAgentBriefInput, PersonalAgentSeatBriefInput, PersonalAgentDecidedAct, PersonalAgentExecutedAct, PersonalAgentJudgment, PersonalAgentNegotiationTurnInput, PersonalAgentNonDurableObservation, PersonalAgentThreadEntry, PersonalAgentTurnContext } from "./agent.types.js";
 import { matchRefId } from "./agent.types.js";
 
@@ -373,18 +374,30 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
     return text;
   }
 
+  /**
+   * The seat's move, decided by `@indexnetwork/agent`.
+   *
+   * The moves are the agent's tools, so the model picks one by calling it and
+   * the arguments are the turn — there is no schema to parse a free-text
+   * answer against, and no "the model returned nonsense" failure mode. The
+   * opening turn gets `outreach` alone and every later turn gets the other
+   * four, which is why no prompt has to explain when `outreach` is legal.
+   */
   async negotiationTurn(input: PersonalAgentNegotiationTurnInput): Promise<NegotiationAuthoredTurn> {
-    const context = `YOUR CLIENT'S ACTUAL INTENT:\n${input.intent.payload}\n\nNEGOTIATION CONTEXT:\nThis table is ${input.negotiation.state}; ${input.negotiation.metadata.initiatorUserId === input.intent.userId ? "your seat opened it" : "the counterparty opened it"}.\n\nBRIEF (A COMPACT DERIVED STANCE):\n${input.brief}\n\nTHREAD SO FAR:\n${renderThread(input.thread)}`;
-    if (input.isOpening) {
-      return NegotiationOpeningTurnSchema.parse(await this.callOpeningTurnModel([
-        { role: "system", content: PERSONAL_AGENT_NEGOTIATION_OPENING_PROMPT },
-        { role: "user", content: `${context}\n\nWrite your opening outreach.` },
-      ]));
-    }
-    return NegotiationAuthoredTurnSchema.parse(await this.callTurnModel([
-      { role: "system", content: PERSONAL_AGENT_NEGOTIATION_TURN_PROMPT },
-      { role: "user", content: `${context}\n\nChoose your move.` },
-    ]));
+    return authorTurnWithAgent({
+      intentPayload: input.intent.payload,
+      brief: input.brief,
+      openedByThisSeat: input.negotiation.metadata.initiatorUserId === input.intent.userId,
+      state: input.negotiation.state,
+      // Same window the prose renderer used: the last MAX_THREAD_TURNS turns.
+      thread: input.thread.slice(-MAX_THREAD_TURNS).map((entry) => ({
+        speaker: entry.speaker === "own" ? ("self" as const) : ("counterparty" as const),
+        verb: entry.turn.verb,
+        ...(entry.turn.verb === "pause" ? {} : { message: truncate(entry.turn.message, MAX_TEXT_CHARS) }),
+      })),
+      isOpening: input.isOpening,
+      userId: input.intent.userId,
+    });
   }
 
   private systemPrompt(context: PersonalAgentTurnContext): string {
@@ -427,26 +440,6 @@ export class PersonalAgentModel implements PersonalAgentJudgment {
 
   protected createProseModel(name: string): ReturnType<typeof createStructuredModel> {
     return createStructuredModel("chat", ProseSchema, { name });
-  }
-
-  protected async callOpeningTurnModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
-    return invokeWithAbortSignal(
-      createStructuredModel("negotiator", NegotiationOpeningTurnSchema, { name: "negotiation_opening" }),
-      messages,
-      AbortSignal.timeout(NEGOTIATION_TURN_TIMEOUT_MS),
-    );
-  }
-
-  protected async callTurnModel(messages: Array<{ role: string; content: string }>): Promise<unknown> {
-    return invokeWithAbortSignal(
-      createStructuredModel(
-        "negotiator",
-        NegotiationAuthoredTurnSchema as unknown as z.ZodType<Record<string, unknown>>,
-        { name: "negotiation_turn" },
-      ),
-      messages,
-      AbortSignal.timeout(NEGOTIATION_TURN_TIMEOUT_MS),
-    );
   }
 }
 
