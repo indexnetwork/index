@@ -1,10 +1,16 @@
 {
   "name": "@indexnetwork/a2a",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Agent2Agent (A2A) negotiation for personal agents: a client and server for negotiating on someone's behalf with another person's agent over the wire — collaborations, hiring, dating — with an LLM negotiator behind them.",
   "license": "MIT",
   "type": "module",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/indexnetwork/a2a.git"
+  },
   "main": "./dist/a2a/index.js",
   "module": "./dist/a2a/index.js",
   "types": "./dist/a2a/index.d.ts",

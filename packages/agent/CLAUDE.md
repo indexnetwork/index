@@ -8,7 +8,7 @@ state. See README.md for the API.
 ## Working here
 
 ```bash
-cd ../a2a && bun run build   # required: `file:../a2a` resolves to its dist/
+cd ../a2a && bun run build   # required: @indexnetwork/a2a resolves to its dist/
 bun test                     # no network
 bun run typecheck
 bun run stress               # live scenarios — real model calls, real money

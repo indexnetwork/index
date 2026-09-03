@@ -1,0 +1,62 @@
+# Publish @indexnetwork/a2a to npm when dev or main moves.
+# Reads version from package.json — skips silently if already published.
+#
+# Unlike @indexnetwork/protocol this publishes the base version from BOTH
+# branches at the "latest" tag, with no rc prerelease line. Consumers pin it
+# exactly (bun run check:subtree-parity requires that), so an rc-only version
+# on dev would leave those consumers uninstallable until this reached main.
+#
+# Requires: org-level NPM_TOKEN secret.
+name: Publish
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    name: Build and publish to npm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Check if version already published
+        id: check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if npm view "${NAME}@${VERSION}" version &>/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Version ${VERSION} already published — skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --access public --tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
