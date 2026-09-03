@@ -12,7 +12,7 @@ const logger = log.controller.from('conversation');
 
 const agentMessageSchema = z.object({
   text: z.string().trim().min(1).max(4000),
-  intentId: z.string().uuid().optional(),
+  intentId: z.string().uuid(),
 });
 
 /**
@@ -47,9 +47,9 @@ export class ConversationController {
 
   /**
    * POST /conversations/agent-messages — the agent posts a question into its
-   * owner's agent DM, optionally tagged with the signal it belongs to.
+   * owner's agent DM, tagged with the signal it belongs to.
    *
-   * @param req - Must include `text`; optional `intentId`.
+   * @param req - Must include `text` and `intentId`.
    * @param user - The owner, resolved from the agent's own bound key.
    * @returns JSON with the conversation id and the created message.
    */
@@ -285,6 +285,31 @@ export class ConversationController {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('getOrCreateDM failed', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
+   * POST /conversations/agent-dm — get or create the caller's agent DM.
+   *
+   * One conversation per owner: the thread the agent posts its questions into
+   * and the owner answers in.
+   *
+   * @param _req - The HTTP request object (unused)
+   * @param user - Authenticated user from AuthGuard
+   * @returns JSON with the viewer-scoped conversation summary
+   */
+  @Post('/agent-dm')
+  @UseGuards(RateLimit('write'), AuthGuard)
+  async getOrCreateAgentDm(_req: Request, user: AuthenticatedUser) {
+    try {
+      const conversation = await this.conversationService.getOrCreateAgentDm(user.id);
+      const summary = (await this.conversationService.getConversations(user.id))
+        .find((candidate) => candidate.id === conversation.id);
+      return Response.json({ conversation: summary ?? conversation });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('getOrCreateAgentDm failed', { userId: user.id, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
   }

@@ -87,6 +87,16 @@ export class ConversationService {
   }
 
   /**
+   * The owner's single agent DM, created on first use.
+   *
+   * @param userId - The owner.
+   * @returns Their agent DM.
+   */
+  async getOrCreateAgentDm(userId: string) {
+    return this.db.getOrCreateAgentDm(userId);
+  }
+
+  /**
    * Sends a message in a conversation.
    * @param conversationId - Conversation ID
    * @param senderId - ID of the sender (must be a participant)
@@ -119,24 +129,25 @@ export class ConversationService {
   /**
    * The agent posts a question into its owner's agent DM.
    *
-   * Questions only — outcomes live in Radar. The `intentId` tag decides who the
-   * message holds for: tagged, that signal; untagged, every signal. The write
-   * itself tells the owner: `createMessage` publishes the message on their
-   * conversation channel, which is where the question gets answered.
+   * Questions only — outcomes live in Radar. One DM per owner carries every
+   * signal, so the `intentId` tag is what keeps the message on its own: it is
+   * read back only under that signal. The write itself tells the owner:
+   * `createMessage` publishes the message on their conversation channel, which
+   * is where the question gets answered.
    *
    * @param userId - The owner whose agent is speaking.
    * @param text - The question.
-   * @param intentId - The signal it belongs to, when it belongs to one.
+   * @param intentId - The signal it belongs to.
    * @returns The conversation it landed in and the created message.
    */
-  async sendAgentMessage(userId: string, text: string, intentId?: string) {
+  async sendAgentMessage(userId: string, text: string, intentId: string) {
     const conversation = await this.db.getOrCreateAgentDm(userId);
     const message = await this.db.createMessage({
       conversationId: conversation.id,
       senderId: SYSTEM_AGENT_ID,
       role: 'agent',
       parts: [{ kind: 'text', text }],
-      metadata: intentId ? { intentId } : undefined,
+      metadata: { intentId },
     });
 
     return { conversationId: conversation.id, message };

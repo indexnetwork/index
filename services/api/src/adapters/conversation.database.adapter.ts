@@ -678,16 +678,10 @@ export class ConversationDatabaseAdapter {
   ): Promise<Message[]> {
     const conditions = [eq(schema.messages.conversationId, conversationId)];
 
-    // The agent DM is one conversation carrying every signal's questions. An
-    // untagged message holds for every signal, so it is in both reads: with
-    // `intentId`, that signal's messages plus the untagged ones; without it,
-    // the untagged ones alone.
+    // The agent DM is one conversation carrying every signal's questions, so a
+    // message belongs to the signal it is tagged with and to no other.
     if (opts?.intentId) {
-      const intentCondition = or(
-        sql`${schema.messages.metadata}->>'intentId' = ${opts.intentId}`,
-        sql`${schema.messages.metadata}->>'intentId' IS NULL`,
-      );
-      if (intentCondition) conditions.push(intentCondition);
+      conditions.push(sql`${schema.messages.metadata}->>'intentId' = ${opts.intentId}`);
     }
 
     // Filter out messages before hiddenAt for this user

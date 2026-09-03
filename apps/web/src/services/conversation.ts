@@ -40,11 +40,15 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
     return response.conversation;
   },
 
-  /** Get messages for a conversation. */
-  getMessages: async (conversationId: string, opts?: { limit?: number; before?: string }): Promise<ConversationMessage[]> => {
+  /**
+   * Get messages for a conversation. `intentId` filters the agent DM to the
+   * messages tagged with that signal, and nothing else.
+   */
+  getMessages: async (conversationId: string, opts?: { limit?: number; before?: string; intentId?: string }): Promise<ConversationMessage[]> => {
     const params = new URLSearchParams();
     if (opts?.limit) params.set('limit', String(opts.limit));
     if (opts?.before) params.set('before', opts.before);
+    if (opts?.intentId) params.set('intentId', opts.intentId);
     const qs = params.toString();
     const response = await api.get<{ messages: ConversationMessage[] }>(`/conversations/${conversationId}/messages${qs ? `?${qs}` : ''}`);
     return response.messages;
@@ -59,6 +63,12 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
   /** Get or create a DM conversation with a peer user. */
   getOrCreateDM: async (peerUserId: string): Promise<ConversationSummary> => {
     const response = await api.post<{ conversation: ConversationSummary }>('/conversations/dm', { peerUserId });
+    return response.conversation;
+  },
+
+  /** Get or create the caller's agent DM — one conversation per owner. */
+  getOrCreateAgentDm: async (): Promise<ConversationSummary> => {
+    const response = await api.post<{ conversation: ConversationSummary }>('/conversations/agent-dm', {});
     return response.conversation;
   },
 

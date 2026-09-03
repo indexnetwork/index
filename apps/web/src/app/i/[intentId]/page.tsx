@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ChevronLeft, LoaderCircle, Pause, Pencil, Play, Trash2 } from "lucide-react";
+import { ChevronLeft, LoaderCircle, MessageCircle, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
+import IntentNegotiatorChat from "@/components/IntentNegotiatorChat";
 import OpportunityCard, { OpportunitySkeleton } from "@/components/chat/OpportunityCardInChat";
 import { useIntents, useOpportunities } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -196,6 +197,9 @@ export default function IntentDetailPage() {
   const [archiving, setArchiving] = useState(false);
   const [selectedBucket, setSelectedBucket] = useState(DEFAULT_RADAR_BUCKET);
   const selectedBucketEffectRef = useRef<RadarBucket | null>(null);
+  // Below lg the Radar is the primary content and the negotiator column opens
+  // as an off-canvas sheet; this is its open state.
+  const [negotiatorPanelOpen, setNegotiatorPanelOpen] = useState(false);
 
   useLayoutEffect(() => {
     activeIntentIdRef.current = intentId;
@@ -204,6 +208,7 @@ export default function IntentDetailPage() {
     selectedBucketEffectRef.current = null;
     setArchiveTargetId(null);
     setArchiving(false);
+    setNegotiatorPanelOpen(false);
   }, [intentId]);
 
   const scope = useMemo(
@@ -577,12 +582,66 @@ export default function IntentDetailPage() {
                 )}
               </div>
 
+              {/* Below lg the Radar is the primary content; the negotiator
+                  column opens as an off-canvas sheet. */}
+              <button
+                type="button"
+                onClick={() => setNegotiatorPanelOpen(true)}
+                data-testid="negotiator-trigger"
+                className="mb-4 inline-flex items-center gap-2 self-start rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 lg:hidden"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Negotiator
+              </button>
             </div>
             </>
           )}
 
           {!intentLoading && !intent ? null : (
-              <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row">
+                {/* Backdrop for the mobile sheet only. */}
+                <div
+                  aria-hidden="true"
+                  onClick={() => setNegotiatorPanelOpen(false)}
+                  className={cn(
+                    "fixed inset-0 z-[100] bg-black/50 transition-opacity duration-300 lg:hidden",
+                    negotiatorPanelOpen ? "opacity-100" : "pointer-events-none invisible opacity-0",
+                  )}
+                />
+                {/* One mounted negotiator column: an off-canvas sheet below lg,
+                    an equal-width static column at lg+. It is never unmounted,
+                    so its loaded thread and live subscription survive
+                    open/close and breakpoint changes. */}
+                <div
+                  data-testid="negotiator-sheet"
+                  data-state={negotiatorPanelOpen ? "open" : "closed"}
+                  role={negotiatorPanelOpen ? "dialog" : undefined}
+                  aria-label="Negotiator"
+                  className={cn(
+                    "fixed inset-y-0 right-0 z-[100] flex w-[min(85vw,24rem)] flex-col bg-white p-4 shadow-xl",
+                    "transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                    "max-lg:data-[state=closed]:pointer-events-none max-lg:data-[state=closed]:invisible max-lg:data-[state=closed]:translate-x-full",
+                    "lg:static lg:z-auto lg:min-h-0 lg:min-w-0 lg:w-auto lg:flex-1 lg:translate-x-0 lg:p-0 lg:shadow-none",
+                  )}
+                >
+                  <div className="mb-1 flex shrink-0 justify-end lg:hidden">
+                    <button
+                      type="button"
+                      aria-label="Close panel"
+                      onClick={() => setNegotiatorPanelOpen(false)}
+                      className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <Panel
+                    title="Negotiator"
+                    description="Your negotiator, scoped to this signal — ask what it's doing, steer it, or answer its questions."
+                    className="min-h-0 flex-1"
+                  >
+                    {intentId && <IntentNegotiatorChat key={intentId} intentId={intentId} />}
+                  </Panel>
+                </div>
                 <div data-testid="radar-column" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden">
                 <Panel
                   title="Radar"
