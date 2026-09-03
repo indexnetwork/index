@@ -1,11 +1,14 @@
 import { asDeadlineError, deadlineSignal, type DeadlineOptions } from "./deadline.ts";
+import type { ModelCompletionOptions, ModelMessage, ModelPort } from "./model-port.ts";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-export interface OpenRouterMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
+/**
+ * Retained as the name this client's callers already use. The shared
+ * {@link ModelMessage} is the same shape widened with the tool-calling fields
+ * this client does not send.
+ */
+export type OpenRouterMessage = ModelMessage;
 
 export interface OpenRouterClientOptions {
   apiKey?: string;
@@ -49,7 +52,7 @@ interface CompletionResponse {
   choices: { message: { content: string }; finish_reason?: string }[];
 }
 
-export class OpenRouterClient {
+export class OpenRouterClient implements ModelPort {
   private readonly apiKey: string;
   private readonly model: string;
   private readonly fallbackModels: string[];
@@ -90,9 +93,14 @@ export class OpenRouterClient {
    * which this method handles itself, or a body the caller can't parse.
    */
   async complete(
-    messages: OpenRouterMessage[],
-    options: { jsonResponse?: boolean; preferFallback?: boolean } & DeadlineOptions = {},
-  ): Promise<string> {
+    messages: ModelMessage[],
+    options: ModelCompletionOptions = {},
+  ): Promise<ModelMessage> {
+    if (options.tools?.length) {
+      throw new Error(
+        "OpenRouterClient does not call tools. Inject a tool-calling ModelPort instead.",
+      );
+    }
     const deadline: DeadlineOptions = {
       signal: options.signal,
       timeoutMs: options.timeoutMs ?? this.timeoutMs,
@@ -169,6 +177,6 @@ export class OpenRouterClient {
           "Raise `maxTokens`, or ask for shorter messages/terms.",
       );
     }
-    return content;
+    return { role: "assistant", content };
   }
 }

@@ -6,6 +6,14 @@
 // Network) drive the conversation and call `respond()` per turn.
 export { Negotiator } from "./core/negotiator.ts";
 export { OpenRouterClient } from "./core/openrouter-client.ts";
+export { modelMessageText } from "./core/model-port.ts";
+export type {
+  ModelCompletionOptions,
+  ModelMessage,
+  ModelPort,
+  ToolCall,
+  ToolDefinition,
+} from "./core/model-port.ts";
 export type { ActionSpec, DecideOptions, NegotiatorOptions } from "./core/negotiator.ts";
 export type { DeadlineOptions } from "./core/deadline.ts";
 export type { OpenRouterClientOptions, OpenRouterMessage } from "./core/openrouter-client.ts";

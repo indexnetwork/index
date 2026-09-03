@@ -1,4 +1,5 @@
 import type { DeadlineOptions } from "./deadline.ts";
+import { modelMessageText, type ModelPort } from "./model-port.ts";
 import { OpenRouterClient, type OpenRouterMessage } from "./openrouter-client.ts";
 import type { NegotiationDecision, NegotiationMessage, NegotiationState, NegotiationTerms } from "./types.ts";
 
@@ -42,6 +43,23 @@ export interface NegotiatorOptions {
    * across midnight, which is a bug that hides for months.
    */
   now?: () => Date;
+  /**
+   * Where turns are decided. Defaults to a built-in OpenRouter client
+   * configured from the options above.
+   *
+   * Inject one and every option that configures that default — `apiKey`,
+   * `model`, `fallbackModels`, `onFallback`, `referer`, `title`,
+   * `maxTokens`, `timeoutMs` — is ignored: the injected client owns model
+   * choice, routing and deadlines. That is the point of injecting it, and it
+   * also means construction no longer needs an OpenRouter key.
+   */
+  modelClient?: ModelPort;
+  /**
+   * Mints the id stamped on a decision that carries terms. Defaults to
+   * `crypto.randomUUID`. Inject one to align offer ids with a host's own
+   * records, or to make them deterministic in tests.
+   */
+  newOfferId?: () => string;
 }
 
 export type ActionSpec<A extends string> = A | { action: A; description: string };
@@ -137,21 +155,27 @@ function buildHistoryMessages(state: NegotiationState): OpenRouterMessage[] {
 }
 
 export class Negotiator {
-  private readonly client: OpenRouterClient;
+  private readonly client: ModelPort;
   private readonly now: () => Date;
+  private readonly newOfferId: () => string;
 
   constructor(options: NegotiatorOptions = {}) {
     this.now = options.now ?? (() => new Date());
-    this.client = new OpenRouterClient({
-      apiKey: options.apiKey,
-      model: options.model ?? DEFAULT_MODEL,
-      fallbackModels: options.fallbackModels ?? DEFAULT_FALLBACK_MODELS,
-      onFallback: options.onFallback,
-      referer: options.referer,
-      title: options.title,
-      maxTokens: options.maxTokens,
-      timeoutMs: options.timeoutMs,
-    });
+    this.newOfferId = options.newOfferId ?? (() => crypto.randomUUID());
+    // `??` short-circuits, so the default client — which throws without an
+    // API key — is never constructed when a port is injected.
+    this.client =
+      options.modelClient ??
+      new OpenRouterClient({
+        apiKey: options.apiKey,
+        model: options.model ?? DEFAULT_MODEL,
+        fallbackModels: options.fallbackModels ?? DEFAULT_FALLBACK_MODELS,
+        onFallback: options.onFallback,
+        referer: options.referer,
+        title: options.title,
+        maxTokens: options.maxTokens,
+        timeoutMs: options.timeoutMs,
+      });
   }
 
   async respond(state: NegotiationState, options: DeadlineOptions = {}): Promise<string> {
@@ -160,10 +184,11 @@ export class Negotiator {
       ...buildHistoryMessages(state),
     ];
 
-    return this.client.complete(messages, {
+    const reply = await this.client.complete(messages, {
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
+    return modelMessageText(reply);
   }
 
   /** One JSON-mode completion, parsed. A body that isn't JSON — a model
@@ -174,12 +199,14 @@ export class Negotiator {
     options: DeadlineOptions,
     preferFallback = false,
   ): Promise<{ raw: string; parsed: unknown }> {
-    const raw = await this.client.complete(messages, {
-      jsonResponse: true,
-      preferFallback,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
+    const raw = modelMessageText(
+      await this.client.complete(messages, {
+        jsonResponse: true,
+        preferFallback,
+        signal: options.signal,
+        timeoutMs: options.timeoutMs,
+      }),
+    );
     try {
       return { raw, parsed: JSON.parse(raw) };
     } catch {
@@ -239,7 +266,7 @@ export class Negotiator {
       decision.terms = terms as NegotiationTerms;
       // The library owns offer identity — the model only ever references
       // ids it was shown, it never mints them.
-      decision.offerId = crypto.randomUUID();
+      decision.offerId = this.newOfferId();
     }
     if (typeof acceptsOfferId === "string" && acceptsOfferId) {
       decision.acceptsOfferId = acceptsOfferId;

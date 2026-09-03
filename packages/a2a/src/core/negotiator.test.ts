@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Negotiator } from "./negotiator.ts";
+import type { ModelCompletionOptions, ModelMessage, ModelPort } from "./model-port.ts";
 import type { NegotiationState } from "./types.ts";
 
 const originalFetch = globalThis.fetch;
@@ -575,5 +576,84 @@ describe("Negotiator client-side fallback", () => {
     await expect(
       negotiator.decide(state, { allowedActions: ["refine", "accept"] }),
     ).rejects.toThrow("model did not return valid JSON: not json");
+  });
+});
+
+describe("injected model port", () => {
+  /** A port that records what it was asked and answers with fixed content. */
+  function recordingPort(content: string) {
+    const calls: { messages: ModelMessage[]; options?: ModelCompletionOptions }[] = [];
+    const port: ModelPort = {
+      hasFallback: false,
+      async complete(messages, options) {
+        calls.push({ messages, options });
+        return { role: "assistant", content };
+      },
+    };
+    return { port, calls };
+  }
+
+  test("constructs without an OpenRouter key", () => {
+    // The whole point of the seat: a host with its own model stack should
+    // never need OpenRouter credentials. This also keeps protocol's spec
+    // runner working, which deletes the key before every spec.
+    delete process.env.OPENROUTER_API_KEY;
+    const { port } = recordingPort("{}");
+    expect(() => new Negotiator({ modelClient: port })).not.toThrow();
+  });
+
+  test("respond() reads text through the injected port, never fetch", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+    globalThis.fetch = (() => {
+      throw new Error("the injected port must be used instead of fetch");
+    }) as unknown as typeof fetch;
+
+    const { port, calls } = recordingPort("A reply.");
+    const negotiator = new Negotiator({ modelClient: port });
+    const state: NegotiationState = {
+      party: { name: "Ada", objective: "Agree a date." },
+      history: [{ role: "incoming", content: "When suits?" }],
+    };
+
+    expect(await negotiator.respond(state)).toBe("A reply.");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.messages[0]?.role).toBe("system");
+  });
+
+  test("decide() asks the port for JSON and mints offerIds through newOfferId", async () => {
+    delete process.env.OPENROUTER_API_KEY;
+    const { port, calls } = recordingPort(
+      JSON.stringify({ action: "counter", message: "How about Friday?", terms: { day: "Friday" } }),
+    );
+    const negotiator = new Negotiator({
+      modelClient: port,
+      newOfferId: () => "offer-fixed",
+    });
+
+    const decision = await negotiator.decide(
+      {
+        party: { name: "Ada", objective: "Agree a date." },
+        history: [{ role: "incoming", content: "Monday?" }],
+      },
+      { allowedActions: ["counter", "accept"] },
+    );
+
+    expect(decision.action).toBe("counter");
+    expect(decision.offerId).toBe("offer-fixed");
+    expect(calls[0]?.options?.jsonResponse).toBe(true);
+  });
+
+  test("a port that cannot call tools refuses rather than dropping them", async () => {
+    // OpenRouterClient is the in-package example of such a port. Dropping
+    // `tools` would come back as an ordinary text reply, which downstream
+    // reads as "the model chose not to act".
+    process.env.OPENROUTER_API_KEY = "test-key";
+    const { OpenRouterClient } = await import("./openrouter-client.ts");
+    const client = new OpenRouterClient({ model: "test/model" });
+    await expect(
+      client.complete([{ role: "user", content: "hi" }], {
+        tools: [{ type: "function", function: { name: "t", description: "d", parameters: {} } }],
+      }),
+    ).rejects.toThrow(/does not call tools/);
   });
 });

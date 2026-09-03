@@ -31,3 +31,14 @@ export type {
   AgentCardSkill,
 } from "./wire/types.ts";
 export type { JsonRpcRequest, JsonRpcResponse } from "./wire/jsonrpc.ts";
+
+// The model seat, re-exported from the root so a host wiring its own
+// stack does not have to reach into the /negotiator subpath for it.
+export { modelMessageText } from "../core/model-port.ts";
+export type {
+  ModelCompletionOptions,
+  ModelMessage,
+  ModelPort,
+  ToolCall,
+  ToolDefinition,
+} from "../core/model-port.ts";
