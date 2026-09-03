@@ -62,10 +62,13 @@ export interface HydeSourceFrame {
   domainVocabulary: HydeFrameVocabulary[];
 }
 
-const roleSchema = z.object({
-  role: z.string().min(1),
-  evidence: z.string().min(1).describe('Exact evidence span copied from sourceText'),
-});
+/** Fresh object each time so JSON Schema inlines both role arrays (Gemini rejects $ref). */
+function createRoleSchema() {
+  return z.object({
+    role: z.string().min(1),
+    evidence: z.string().min(1).describe('Exact evidence span copied from sourceText'),
+  });
+}
 
 const hardConstraintSchema = z.object({
   type: z.enum(HYDE_HARD_CONSTRAINT_TYPES),
@@ -86,8 +89,8 @@ const vocabularySchema = z.object({
 
 /** Structured-output schema for source-grounded frames. */
 export const HydeSourceFrameSchema = z.object({
-  sourceRoles: z.array(roleSchema),
-  counterpartRoles: z.array(roleSchema),
+  sourceRoles: z.array(createRoleSchema()),
+  counterpartRoles: z.array(createRoleSchema()),
   hardConstraints: z.array(hardConstraintSchema),
   namedEntities: z.array(namedEntitySchema),
   domainVocabulary: z.array(vocabularySchema),
