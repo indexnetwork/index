@@ -8,6 +8,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Removed
+- **The `index-orchestrator` skill**, plus the `pre_llm_call` hint hook and
+  `/index` command that existed only to load it.
+
+### Removed
 - **The negotiator mode and its tools.** `INDEX_PLUGIN_MODE`, `_mode.py`, the
   `index-negotiator` skill, `index_respond_negotiation`, and the forwarded
   `list_negotiations` / `get_negotiation` / `respond_to_negotiation` MCP

@@ -16,7 +16,6 @@
     "tools.py",
     "transport.py",
     "env_transport.py",
-    "skills/",
     "dashboard/",
     "desktop/dist/",
     "tests/",

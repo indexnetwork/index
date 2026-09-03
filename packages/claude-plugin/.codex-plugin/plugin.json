@@ -10,7 +10,6 @@
   "repository": "https://github.com/indexnetwork/claude-plugin",
   "license": "MIT",
   "keywords": ["discovery", "intents", "agents", "opportunities"],
-  "skills": "./skills/",
   "mcpServers": "./mcp.json",
   "interface": {
     "displayName": "Index Network",
@@ -18,7 +17,7 @@
     "longDescription": "Index Network helps manage signals, discover opportunities, and connect people through shared communities.",
     "developerName": "Index Network",
     "category": "Productivity",
-    "capabilities": ["MCP", "Skills"],
+    "capabilities": ["MCP"],
     "websiteURL": "https://index.network",
     "defaultPrompt": [
       "Use Index Network to find relevant people for this signal.",

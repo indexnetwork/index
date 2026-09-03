@@ -25,7 +25,5 @@ provides_tools:
   - index_read_docs
   - index_agent_me
   - index_open_app
-provides_hooks:
-  - pre_llm_call
 # The plugin authenticates with the INDEX_API_KEY environment variable
 # (an agent API key created in Index web settings).
