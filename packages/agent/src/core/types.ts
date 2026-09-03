@@ -77,12 +77,19 @@ export interface PendingQuestion {
  * in-memory store. Swap it for something shared and an agent picks a
  * suspended conversation back up after a restart, or from another process.
  */
+/**
+ * Where an agent's transcript lives.
+ *
+ * Every method may be synchronous or asynchronous; the agent awaits either. A
+ * host's real store is a database, and a signature that forbids a promise
+ * forbids the only implementation that matters.
+ */
 export interface MessageStore {
   /** The conversation so far, including the system message once a run has
    * produced one. Empty before the first run. */
-  list(): ModelMessage[];
+  list(): ModelMessage[] | Promise<ModelMessage[]>;
   /** Replaces the stored transcript with a run's full result. */
-  save(messages: ModelMessage[]): void;
+  save(messages: ModelMessage[]): void | Promise<void>;
 }
 
 export interface RunResult {
@@ -177,14 +184,14 @@ export interface NegotiationSession {
  * doesn't depend on who happened to dial.
  */
 export interface NegotiationStore {
-  get(id: string): NegotiationSession | undefined;
-  save(session: NegotiationSession): void;
+  get(id: string): NegotiationSession | undefined | Promise<NegotiationSession | undefined>;
+  save(session: NegotiationSession): void | Promise<void>;
   /** Most recently updated last. */
-  list(): NegotiationSession[];
+  list(): NegotiationSession[] | Promise<NegotiationSession[]>;
   /** Removes a session. Optional: only needed to drop the provisional
    * `local:` key once a parked negotiation has a Task id. A store
    * without it keeps a duplicate line in the record. */
-  delete?(id: string): void;
+  delete?(id: string): void | Promise<void>;
 }
 
 /**

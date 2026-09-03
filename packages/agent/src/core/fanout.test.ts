@@ -206,7 +206,7 @@ describe("escalation", () => {
       expect(event.kind).toBe("settled");
       expect(event.id).not.toStartWith("local:");
       expect([...negotiations.keys()]).toEqual([event.id]);
-      expect(agent.instructions().split("\n").filter((l) => l.startsWith("- "))).toHaveLength(1);
+      expect(agent.instructions(await agent.negotiations()).split("\n").filter((l) => l.startsWith("- "))).toHaveLength(1);
     } finally {
       stop();
     }
@@ -260,7 +260,7 @@ describe("escalation", () => {
         ]).negotiator,
       });
       await agent.runNegotiation(url, {}, { negotiations: new Map() });
-      expect(agent.instructions()).toContain('waiting on your guidance: "Ceiling?"');
+      expect(agent.instructions(await agent.negotiations())).toContain('waiting on your guidance: "Ceiling?"');
     } finally {
       stop();
     }
@@ -329,7 +329,7 @@ describe("escalation", () => {
 
       expect(sessions.list()).toHaveLength(1);
       expect([...negotiations.keys()]).toEqual([taskId]);
-      expect(agent.instructions().split("\n").filter((l) => l.startsWith("- "))).toHaveLength(1);
+      expect(agent.instructions(await agent.negotiations()).split("\n").filter((l) => l.startsWith("- "))).toHaveLength(1);
     } finally {
       stop();
     }
@@ -343,7 +343,7 @@ describe("escalation", () => {
 
     expect(event.kind).toBe("failed");
     expect(negotiations.size).toBe(0);
-    expect(agent.instructions()).not.toContain("local:");
+    expect(agent.instructions(await agent.negotiations())).not.toContain("local:");
   });
 });
 
@@ -395,7 +395,7 @@ describe("answer()", () => {
       // A fresh agent over the same store, as after a restart.
       const second = new Agent({ ...seller, sessions, negotiator: server.negotiator });
       const event = await second.answer(first.id, "Yes, $450 is fine.");
-      const stored = sessions.get(first.id);
+      const stored = await sessions.get(first.id);
       const reply = await caller.continueNegotiation(first.id);
 
       expect({
@@ -1171,7 +1171,7 @@ describe("the record says what to do next", () => {
 
       // The failure this prevents: finishing the run with the question
       // still unanswered.
-      expect(agent.instructions()).toContain(
+      expect(agent.instructions(await agent.negotiations())).toContain(
         `Waiting on your party right now: ${parked.id}. Ask with ask_user, then call answer with every id the answer applies to — before you report back, not after.`,
       );
     } finally {
@@ -1194,7 +1194,7 @@ describe("the record says what to do next", () => {
       });
       await agent.runNegotiation(url, {}, { negotiations: new Map() });
 
-      expect(agent.instructions()).not.toContain("Waiting on your party right now");
+      expect(agent.instructions(await agent.negotiations())).not.toContain("Waiting on your party right now");
     } finally {
       stop();
     }

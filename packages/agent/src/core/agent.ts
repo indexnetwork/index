@@ -493,9 +493,27 @@ export class Agent<A extends string = DefaultAction> {
     });
   }
 
-  /** The system message the loop actually runs under: the host's standing
-   * instructions, plus who this agent is, plus the current intent. */
-  instructions(sessions: NegotiationSession[] = this.sessions.list()): string {
+  /**
+   * Everything this agent is party to, oldest update first.
+   *
+   * The read {@link instructions} used to do for itself. It is a method rather
+   * than a field because the agent holds no state: the record lives in the
+   * host's store, which may be a database.
+   */
+  async negotiations(): Promise<NegotiationSession[]> {
+    return this.sessions.list();
+  }
+
+  /**
+   * The system message the loop actually runs under: the host's standing
+   * instructions, plus who this agent is, plus the current intent.
+   *
+   * `sessions` is the negotiation record to render. It is a parameter rather
+   * than a store read because the agent holds no state and a host's store may
+   * be a database — there is nothing here to read synchronously. `run()`
+   * passes the record it just loaded.
+   */
+  instructions(sessions: NegotiationSession[] = []): string {
     const parts = [
       this.systemPrompt,
       `You are ${this.identity.name}, acting on behalf of ${this.identity.id}.`,
@@ -579,16 +597,16 @@ export class Agent<A extends string = DefaultAction> {
     // host can keep passing sessions around message-style or lean on a
     // shared store, and both hosts get an agent that knows the same things.
     for (const session of options.negotiations ?? []) {
-      if (!this.sessions.get(session.id)) this.sessions.save(session);
+      if (!await this.sessions.get(session.id)) await this.sessions.save(session);
     }
     const negotiations = new Map(
-      this.sessions.list().map((session) => [session.id, session]),
+      (await this.sessions.list()).map((session) => [session.id, session] as const),
     );
 
     // Same either-is-enough rule as negotiations: a host can pass `messages`
     // message-style, lean on a shared `history` store, or both — whichever
     // arrived travels into this run.
-    const messages = options.messages ?? this.history.list();
+    const messages = options.messages ?? await this.history.list();
 
     const result = await runLoop({
       model: this.model,
@@ -606,7 +624,7 @@ export class Agent<A extends string = DefaultAction> {
       signal: options.signal,
     });
 
-    this.history.save(result.messages);
+    await this.history.save(result.messages);
     return result;
   }
 
@@ -701,7 +719,7 @@ export class Agent<A extends string = DefaultAction> {
       // outbound half. A continuation of an existing task is routed by its
       // `taskId` regardless, so this only ever catches an opening move.
       if (body?.params?.message && !body.params.message.taskId) {
-        const rival = this.binding().find((session) => session.direction === "outbound");
+        const rival = (await this.binding()).find((session) => session.direction === "outbound");
         if (rival) {
           // `secondNegotiationRefusal` is written for this agent's own
           // model to read (an exception it catches, an event's `reason`
@@ -729,7 +747,7 @@ export class Agent<A extends string = DefaultAction> {
       // negotiator, because there is no per-request `objective` to carry
       // it except the one built fresh right here.
       const existing = body?.params?.message?.taskId
-        ? this.sessions.get(body.params.message.taskId)
+        ? await this.sessions.get(body.params.message.taskId)
         : undefined;
       const objective = brief(this.objectiveFor(), existing?.guidance);
 
@@ -763,7 +781,7 @@ export class Agent<A extends string = DefaultAction> {
       // is an accident of transport rather than anything its party cares
       // about.
       if (task) {
-        this.sessions.save({
+        await this.sessions.save({
           ...this.sessions.get(task.id),
           id: task.id,
           direction: "inbound",
@@ -817,8 +835,21 @@ export class Agent<A extends string = DefaultAction> {
    * since. Without a context this is a direct API call, and the store is
    * all there is.
    */
-  private binding(context?: Pick<ToolContext, "negotiations">): NegotiationSession[] {
-    const sessions = context ? [...context.negotiations.values()] : this.sessions.list();
+  private async binding(context?: Pick<ToolContext, "negotiations">): Promise<NegotiationSession[]> {
+    return this.bindingAmong(context ? [...context.negotiations.values()] : await this.sessions.list());
+  }
+
+  /**
+   * The binding subset of an already-read record.
+   *
+   * Split out so a caller that already holds the record can check it
+   * **synchronously**. That is not a micro-optimisation: with a context, the
+   * check and the claim that follows it must not be separated by an `await`.
+   * A fan-out opens its targets concurrently, and an awaited check lets a
+   * second target run its own check before the first has claimed — both see
+   * an empty record and the one-per-counterparty rule silently stops holding.
+   */
+  private bindingAmong(sessions: NegotiationSession[]): NegotiationSession[] {
     const intent = this.intent?.statement;
     return sessions.filter((session) => session.intent === intent && stillBinding(session));
   }
@@ -835,8 +866,12 @@ export class Agent<A extends string = DefaultAction> {
    * Tasks for one deal is worse than occasionally refusing an unrelated
    * second counterparty until the first exchange resolves.
    */
-  private rival(url: string, context?: Pick<ToolContext, "negotiations">): NegotiationSession | undefined {
-    const binding = this.binding(context);
+  private async rival(url: string, context?: Pick<ToolContext, "negotiations">): Promise<NegotiationSession | undefined> {
+    return this.rivalAmong(await this.binding(context), url);
+  }
+
+  /** {@link rival}, against a record the caller already holds. Synchronous — see {@link bindingAmong}. */
+  private rivalAmong(binding: NegotiationSession[], url: string): NegotiationSession | undefined {
     return (
       binding.find((session) => session.direction === "outbound" && session.url === url) ??
       binding.find((session) => session.direction === "inbound")
@@ -861,8 +896,8 @@ export class Agent<A extends string = DefaultAction> {
   }
 
   /** Writes a session to the record and to the run's own view of it. */
-  private remember(session: NegotiationSession, context?: Pick<ToolContext, "negotiations">): void {
-    this.sessions.save(session);
+  private async remember(session: NegotiationSession, context?: Pick<ToolContext, "negotiations">): Promise<void> {
+    await this.sessions.save(session);
     context?.negotiations.set(session.id, session);
   }
 
@@ -877,13 +912,17 @@ export class Agent<A extends string = DefaultAction> {
     options: OpenNegotiationOptions = {},
     context?: RunContext,
   ): Promise<NegotiationTurn<A>> {
-    const rival = this.rival(url, context);
+    const rival = context
+      ? this.rivalAmong(this.bindingAmong([...context.negotiations.values()]), url)
+      : await this.rival(url);
     if (rival) throw new Error(secondNegotiationRefusal(rival));
 
     const signal = context?.signal;
     const session = this.newSession(url, options.objective);
-    if (options.discover !== false) session.peer = await this.inspect(url, { signal });
+    // Claimed before `inspect` can yield: the claim is what makes a second
+    // target's check see this one.
     context?.negotiations.set(session.id, session);
+    if (options.discover !== false) session.peer = await this.inspect(url, { signal });
 
     try {
       return await this.takeTurn(session, { signal }, context);
@@ -903,7 +942,7 @@ export class Agent<A extends string = DefaultAction> {
     options: { guidance?: string } = {},
     context?: RunContext,
   ): Promise<NegotiationTurn<A>> {
-    const session = context?.negotiations.get(id) ?? this.sessions.get(id);
+    const session = context?.negotiations.get(id) ?? await this.sessions.get(id);
     if (!session) {
       throw new Error(`No open negotiation "${id}". Open one with openNegotiation first.`);
     }
@@ -952,8 +991,13 @@ export class Agent<A extends string = DefaultAction> {
     context?: RunContext,
   ): Promise<NegotiationEvent<A>> {
     // Checked and registered before the first await, so two targets
-    // naming the same counterparty in one batch can't both get past it.
-    const rival = this.rival(url, context);
+    // naming the same counterparty in one batch can't both get past it. With
+    // a context the check reads the run's own record and stays synchronous
+    // for exactly that reason; without one there is nothing concurrent to
+    // race and the store read is safe to await.
+    const rival = context
+      ? this.rivalAmong(this.bindingAmong([...context.negotiations.values()]), url)
+      : await this.rival(url);
     if (rival) {
       return {
         kind: "skipped",
@@ -1000,7 +1044,7 @@ export class Agent<A extends string = DefaultAction> {
    * answers reports every id.
    */
   async answer(id: string, guidance: string, context?: RunContext): Promise<NegotiationEvent<A>> {
-    const session = context?.negotiations.get(id) ?? this.sessions.get(id);
+    const session = context?.negotiations.get(id) ?? await this.sessions.get(id);
     const skip = (reason: string): NegotiationEvent<A> => ({
       kind: "skipped",
       id,
@@ -1017,7 +1061,7 @@ export class Agent<A extends string = DefaultAction> {
 
     session.guidance = [...(session.guidance ?? []), guidance];
     delete session.pending;
-    this.remember(session, context);
+    await this.remember(session, context);
 
     if (session.direction === "inbound") {
       return { kind: "recorded", id: session.id, ...(session.peer?.name ? { peer: session.peer.name } : {}) };
@@ -1043,7 +1087,7 @@ export class Agent<A extends string = DefaultAction> {
       } catch (cause) {
         if (cause instanceof Escalation) {
           session.pending = { question: cause.decision.message };
-          this.remember(session, context);
+          await this.remember(session, context);
           return {
             kind: "asking",
             id: session.id,
@@ -1063,7 +1107,7 @@ export class Agent<A extends string = DefaultAction> {
         // tries the wire again with the guidance intact.
         if (!session.task && !session.guidance?.length) {
           context?.negotiations.delete(session.id);
-          this.sessions.delete?.(session.id);
+          await this.sessions.delete?.(session.id);
           return { kind: "failed", id: session.id, peer, url, error: describe(cause), turns };
         }
         const error = session.task
@@ -1159,7 +1203,7 @@ export class Agent<A extends string = DefaultAction> {
     // session was known under, so neither the store nor the run's view
     // carries both.
     if (before !== session.id) {
-      this.sessions.delete?.(before);
+      await this.sessions.delete?.(before);
       context?.negotiations.delete(before);
     }
 
@@ -1187,7 +1231,7 @@ export class Agent<A extends string = DefaultAction> {
       endedBy = { speaker: "peer", action: received.action };
     }
 
-    this.remember(session, context);
+    await this.remember(session, context);
 
     // Outbound: this agent spoke first and they replied.
     const settlement = this.settle(result.task, result.decision, received, true);

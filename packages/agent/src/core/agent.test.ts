@@ -1105,8 +1105,8 @@ describe("what the agent knows it negotiated", () => {
       server.stop();
     }
 
-    expect(responder.instructions()).toContain("they contacted you");
-    expect(responder.instructions()).toContain("Negotiations you are party to");
+    expect(responder.instructions(await responder.negotiations())).toContain("they contacted you");
+    expect(responder.instructions(await responder.negotiations())).toContain("Negotiations you are party to");
   });
 
   test("tells the model the record, both directions, with the verdict", async () => {
@@ -1137,7 +1137,7 @@ describe("what the agent knows it negotiated", () => {
       });
       await agent.negotiate(server.url, { maxTurns: 2 });
 
-      const instructions = agent.instructions();
+      const instructions = agent.instructions(await agent.negotiations());
       expect(instructions).toContain("you contacted them");
       expect(instructions).toContain("agreed");
       expect(instructions).toContain('"amount":450');
@@ -1187,7 +1187,7 @@ describe("what the agent knows it negotiated", () => {
       });
       await agent.negotiate(server.url, { maxTurns: 2 });
 
-      expect(agent.for("Buy a bike").instructions()).toContain("you contacted them");
+      expect(agent.for("Buy a bike").instructions(await agent.negotiations())).toContain("you contacted them");
     } finally {
       server.stop();
     }
@@ -1216,7 +1216,7 @@ describe("what the agent knows it negotiated", () => {
         sessions,
         negotiator: scripted([]).negotiator,
       });
-      expect(restarted.instructions()).toContain("you contacted them");
+      expect(restarted.instructions(await restarted.negotiations())).toContain("you contacted them");
       expect(sessions.list()).toHaveLength(1);
     } finally {
       server.stop();

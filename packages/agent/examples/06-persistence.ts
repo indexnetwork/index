@@ -125,7 +125,7 @@ agent = build();
 result = await answerUntilDone(agent, result, ["Up to 1,000 a day is fine, yes."], { onStep: logStep });
 
 console.log(`\n— ${result.end} after ${result.steps.length} steps`);
-console.log(`\n${agent.instructions().split("\n\n").find((part) => part.startsWith("Negotiations you are party to")) ?? "(no negotiations on record)"}`);
+console.log(`\n${agent.instructions(await agent.negotiations()).split("\n\n").find((part) => part.startsWith("Negotiations you are party to")) ?? "(no negotiations on record)"}`);
 
 const count = (table: string) => db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${table}`).get()?.n ?? 0;
 console.log(`\nrows: negotiations=${count("negotiations")} tasks=${count("tasks")} messages=${count("messages")}`);
