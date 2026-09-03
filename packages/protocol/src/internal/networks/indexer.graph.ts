@@ -1,4 +1,3 @@
-import { StateGraph, START, END } from "@langchain/langgraph";
 
 import { buildNetworkAssignmentDecision } from "../shared/assignment/network-assignment.policy.js";
 import type { IntentNetworkGraphDatabase } from "../../platform/database.js";
@@ -9,7 +8,8 @@ import type { DebugMetaAgent } from "../../protocol/core.js";
 import { renderNetworkContext } from "../shared/network/metadata.renderer.js";
 import type { IntentNetworkIndexer } from "../../protocol/core.js";
 
-import { IntentNetworkGraphState, type AssignmentResult } from "./indexer.state.js";
+import { intentNetworkDefaults, type AssignmentResult, type IntentNetworkState } from "./indexer.state.js";
+import { mergeGraphState } from "../shared/graph.state.js";
 
 /**
  * The one intents method assignment calls: score a signal against a network.
@@ -62,7 +62,10 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  */
 
 /** The graph's channel state, as every node sees it. */
-export type IntentNetworkState = typeof IntentNetworkGraphState.State;
+export type { IntentNetworkState } from "./indexer.state.js";
+
+/** What a caller supplies; everything else comes from the defaults. */
+export type IntentNetworkInput = Pick<IntentNetworkState, "userId"> & Partial<IntentNetworkState>;
 
 /** Everything the intent-network nodes reach for. */
 export interface IntentNetworkGraphDeps {
@@ -85,20 +88,17 @@ export class IntentNetworkGraphFactory {
     const deps = this.deps;
     // --- GRAPH ASSEMBLY ---
 
-    const workflow = new StateGraph(IntentNetworkGraphState)
-      .addNode("assign", (state: IntentNetworkState) => assignNode(state, deps))
-      .addNode("read", (state: IntentNetworkState) => readNode(state, deps))
-      .addNode("unassign", (state: IntentNetworkState) => unassignNode(state, deps))
-      .addConditionalEdges(START, routeByMode, {
-        assign: "assign",
-        read: "read",
-        unassign: "unassign",
-      })
-      .addEdge("assign", END)
-      .addEdge("read", END)
-      .addEdge("unassign", END);
-
-    return workflow.compile();
+    return {
+      /** Runs one operation and returns the full state, defaults included. */
+      async invoke(input: IntentNetworkInput): Promise<IntentNetworkState> {
+        const state: IntentNetworkState = { ...intentNetworkDefaults(), ...input };
+        switch (routeByMode(state)) {
+          case 'assign': return mergeGraphState(state, await assignNode(state, deps));
+          case 'unassign': return mergeGraphState(state, await unassignNode(state, deps));
+          default: return mergeGraphState(state, await readNode(state, deps));
+        }
+      },
+    };
   }
 }
 

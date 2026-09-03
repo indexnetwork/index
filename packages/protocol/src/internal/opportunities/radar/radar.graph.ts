@@ -11,11 +11,11 @@
  * lifecycle status themselves.
  */
 
-import { StateGraph, START, END } from '@langchain/langgraph';
 
 import type { RadarGraphDatabase, OpportunityStatus } from '../../../platform/database.js';
 import type { OpportunityCache } from '../../../platform/discovery/cache.js';
-import { RadarGraphState, type RadarCardItem, type RadarResponseItem } from './radar.state.js';
+import { radarDefaults, type RadarCardItem, type RadarResponseItem, type RadarState } from './radar.state.js';
+import { mergeGraphState } from '../../shared/graph.state.js';
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../opportunity.presentation.js';
 import { loadNegotiationContext } from '../negotiation-context.loader.js';
 import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } from '../opportunity.utils.js';
@@ -140,7 +140,7 @@ const safeParseDate = (value: unknown): number => {
 };
 
 /** Confidence score for sorting (interpretation.confidence or opportunity.confidence). */
-const getRawConfidence = (opp: typeof RadarGraphState.State['opportunities'][number]): number => {
+const getRawConfidence = (opp: RadarState['opportunities'][number]): number => {
   const fromInterp = opp.interpretation?.confidence;
   if (typeof fromInterp === 'number' && !Number.isNaN(fromInterp)) return fromInterp;
   if (typeof fromInterp === 'string') {
@@ -158,7 +158,7 @@ const getRawConfidence = (opp: typeof RadarGraphState.State['opportunities'][num
 
 /** Unique non-viewer userIds for an opportunity (actors can repeat). */
 const getUniqueCounterpartUserIds = (
-  opp: typeof RadarGraphState.State['opportunities'][number],
+  opp: RadarState['opportunities'][number],
   viewerId: string
 ): Set<string> => {
   const ids = new Set<string>();
@@ -171,7 +171,7 @@ const getUniqueCounterpartUserIds = (
 };
 
 const pickDisplayCounterpartActor = (
-  opportunity: typeof RadarGraphState.State['opportunities'][number],
+  opportunity: RadarState['opportunities'][number],
   viewerId: string
 ): { userId: string; role: string } | null => {
   const candidates = opportunity.actors.filter(
@@ -199,7 +199,10 @@ const pickDisplayCounterpartActor = (
 };
 
 /** The graph's channel state, as every node sees it. */
-export type RadarState = typeof RadarGraphState.State;
+export type { RadarState } from './radar.state.js';
+
+/** What a caller supplies; everything else comes from the defaults. */
+export type RadarInput = Partial<RadarState>;
 
 /** Everything the radar nodes reach for. */
 export interface RadarGraphDeps {
@@ -219,23 +222,19 @@ export class RadarGraphFactory {
 
   createGraph() {
     const deps = this.deps;
-    const graph = new StateGraph(RadarGraphState)
-      .addNode('loadOpportunities', (state: RadarState) => loadOpportunitiesNode(state, deps))
-      .addNode('checkPresenterCache', (state: RadarState) => checkPresenterCacheNode(state, deps))
-      .addNode('generateCardText', (state: RadarState) => generateCardTextNode(state, deps))
-      .addNode('cachePresenterResults', (state: RadarState) => cachePresenterResultsNode(state, deps))
-      .addNode('normalizeItems', normalizeItemsNode)
-      .addEdge(START, 'loadOpportunities')
-      .addEdge('loadOpportunities', 'checkPresenterCache')
-      .addConditionalEdges('checkPresenterCache', (state: RadarState) => shouldGenerateCards(state, deps), {
-        generate: 'generateCardText',
-        skip: 'cachePresenterResults',
-      })
-      .addEdge('generateCardText', 'cachePresenterResults')
-      .addEdge('cachePresenterResults', 'normalizeItems')
-      .addEdge('normalizeItems', END);
-
-    return graph.compile();
+    return {
+      /** Runs the radar pipeline and returns the full state, defaults included. */
+      async invoke(input: RadarInput): Promise<RadarState> {
+        let state: RadarState = { ...radarDefaults(), ...input };
+        state = mergeGraphState(state, await loadOpportunitiesNode(state, deps));
+        state = mergeGraphState(state, await checkPresenterCacheNode(state, deps));
+        if (shouldGenerateCards(state, deps) === 'generate') {
+          state = mergeGraphState(state, await generateCardTextNode(state, deps));
+        }
+        state = mergeGraphState(state, await cachePresenterResultsNode(state, deps));
+        return mergeGraphState(state, await normalizeItemsNode(state));
+      },
+    };
   }
 }
 

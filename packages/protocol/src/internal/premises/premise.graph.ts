@@ -1,6 +1,6 @@
-import { StateGraph, START, END } from "@langchain/langgraph";
 
-import { PremiseGraphState } from "./premise.state.js";
+import { premiseDefaults, type PremiseState } from "./premise.state.js";
+import { mergeGraphState } from "../shared/graph.state.js";
 import { PremiseAnalyzer } from "./premise.analyzer.js";
 import type { PremiseAnalyzerOutput } from "./premise.analyzer.js";
 import { PremiseIndexer } from "./premise.indexer.js";
@@ -50,7 +50,10 @@ function deriveProvenanceConfidence(analysis: PremiseAnalysis | undefined): numb
  */
 
 /** The graph's channel state, as every node sees it. */
-export type PremiseState = typeof PremiseGraphState.State;
+export type { PremiseState } from "./premise.state.js";
+
+/** What a caller supplies; everything else comes from the defaults. */
+export type PremiseInput = Partial<PremiseState>;
 
 /** Everything the premise nodes reach for. */
 export interface PremiseGraphDeps {
@@ -92,33 +95,31 @@ export class PremiseGraphFactory {
    */
   public createGraph() {
     const deps = this.deps;
-    const graph = new StateGraph(PremiseGraphState)
-      .addNode("query", (state: PremiseState) => queryNode(state, deps))
-      .addNode("analyze", (state: PremiseState) => analyzeNode(state, deps))
-      .addNode("embed", (state: PremiseState) => embedNode(state, deps))
-      .addNode("dedupe", (state: PremiseState) => dedupeNode(state, deps))
-      .addNode("persist", (state: PremiseState) => persistNode(state, deps))
-      .addNode("index", (state: PremiseState) => indexNode(state, deps))
-      .addNode("decompose", (state: PremiseState) => decomposeNode(state, deps))
-      .addConditionalEdges(START, routeByMode, {
-        query: "query",
-        analyze: "analyze",
-        decompose: "decompose",
-        end: END,
-      })
-      .addEdge("query", END)
-      .addEdge("analyze", "embed")
-      .addEdge("embed", "dedupe")
-      // A near-duplicate short-circuits straight to END (no persist, no index).
-      .addConditionalEdges("dedupe", (state: typeof PremiseGraphState.State) => (state.duplicateOf ? "end" : "persist"), {
-        persist: "persist",
-        end: END,
-      })
-      .addEdge("persist", "index")
-      .addEdge("index", END)
-      .addEdge("decompose", END);
+    return {
+      /** Runs the requested mode and returns the full state, defaults included. */
+      async invoke(input: PremiseInput): Promise<PremiseState> {
+        let state: PremiseState = { ...premiseDefaults(), ...input };
+        switch (routeByMode(state)) {
+          case 'query':
+            return mergeGraphState(state, await queryNode(state, deps));
+          case 'decompose':
+            return mergeGraphState(state, await decomposeNode(state, deps));
+          case 'analyze':
+            break;
+          default:
+            return state;
+        }
 
-    return graph.compile();
+        state = mergeGraphState(state, await analyzeNode(state, deps));
+        state = mergeGraphState(state, await embedNode(state, deps));
+        state = mergeGraphState(state, await dedupeNode(state, deps));
+        // A near-duplicate short-circuits (no persist, no index).
+        if (state.duplicateOf) return state;
+
+        state = mergeGraphState(state, await persistNode(state, deps));
+        return mergeGraphState(state, await indexNode(state, deps));
+      },
+    };
   }
 }
 

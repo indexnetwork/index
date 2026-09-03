@@ -1,4 +1,3 @@
-import { Annotation } from '@langchain/langgraph';
 import type { Opportunity, OpportunityStatus } from '../../../platform/database.js';
 import type { DebugMetaAgent } from "../../../protocol/core.js";
 
@@ -45,95 +44,53 @@ export type RadarResponseItem = Omit<RadarCardItem, '_cardIndex' | '_presentatio
  * Flow: loadOpportunities → checkPresenterCache → [generateCardText if misses]
  * → cachePresenterResults → normalizeItems.
  */
-export const RadarGraphState = Annotation.Root({
-  userId: Annotation<string>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => '',
-  }),
-  networkId: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-  scopeType: Annotation<'intent' | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-  scopeId: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-  limit: Annotation<number>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => 50,
-  }),
-
+export interface RadarState {
+  userId: string;
+  networkId: string | undefined;
+  scopeType: 'intent' | undefined;
+  scopeId: string | undefined;
+  limit: number;
   /** When true, bypass the presenter Redis cache. */
-  noCache: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /**
-   * Presentation depth. 'full' (default) runs the presenter LLM for cache
-   * misses. 'skeleton' skips it: uncached cards come back with resolved
-   * identity (name/avatar/status) and `presentationPending: true`, cached
-   * cards come back complete.
-   */
-  presentation: Annotation<'full' | 'skeleton'>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => 'full',
-  }),
-
+  noCache: boolean;
+  /** Presentation depth. 'full' (default) runs the presenter LLM for cache misses. 'skeleton' skips it: uncached cards come back with resolved identity (name/avatar/status) and `presentationPending: true`, cached cards come back complete. */
+  presentation: 'full' | 'skeleton';
   /** Optional status filter. When undefined, the graph uses `DEFAULT_RADAR_STATUSES`. */
-  statuses: Annotation<OpportunityStatus[] | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  statuses: OpportunityStatus[] | undefined;
   /** Raw opportunities visible to the viewer (after visibility filter). */
-  opportunities: Annotation<Opportunity[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  opportunities: Opportunity[];
   /** Cards with presenter output and narrator chip. */
-  cards: Annotation<RadarCardItem[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  cards: RadarCardItem[];
   /** Final items for response (internal fields stripped). */
-  items: Annotation<RadarResponseItem[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
+  items: RadarResponseItem[];
   /** Presenter results retrieved from cache (opportunityId → RadarCardItem). */
-  cachedCards: Annotation<Map<string, RadarCardItem>>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => new Map(),
-  }),
-
+  cachedCards: Map<string, RadarCardItem>;
   /** Opportunities that had no cache hit and need presenter generation. */
-  uncachedOpportunities: Annotation<Opportunity[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
-  error: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
+  uncachedOpportunities: Opportunity[];
+  error: string | undefined;
   /** Meta for response (e.g. totalOpportunities). */
-  meta: Annotation<{ totalOpportunities: number }>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => ({ totalOpportunities: 0 }),
-  }),
-
+  meta: { totalOpportunities: number };
   /** Timing records for each agent invocation within this graph run. */
-  agentTimings: Annotation<DebugMetaAgent[]>({
-    reducer: (acc, val) => [...acc, ...val],
-    default: () => [],
-  }),
-});
+  agentTimings: DebugMetaAgent[];
+}
+
+export function radarDefaults(): RadarState {
+  return {
+    userId: '',
+    networkId: undefined,
+    scopeType: undefined,
+    scopeId: undefined,
+    limit: 50,
+    noCache: false,
+    presentation: 'full',
+    statuses: undefined,
+    opportunities: [],
+    cards: [],
+    items: [],
+    cachedCards: new Map(),
+    uncachedOpportunities: [],
+    error: undefined,
+    meta: ({ totalOpportunities: 0 }),
+    agentTimings: [],
+  };
+}
+

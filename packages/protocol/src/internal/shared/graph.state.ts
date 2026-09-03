@@ -27,14 +27,14 @@ const ACCUMULATING_CHANNELS = ["trace", "agentTimings"] as const;
  * @returns The merged state: accumulating channels concatenated, everything
  *   else replaced by the patch where it supplied a value.
  */
-export function mergeGraphState<S extends Record<string, unknown>>(
+export function mergeGraphState<S extends object>(
   state: S,
   patch: Partial<S> | undefined | null | void,
 ): S {
   if (!patch) return state;
   const merged = { ...state, ...patch } as S;
   for (const channel of ACCUMULATING_CHANNELS) {
-    const before = state[channel];
+    const before = (state as Record<string, unknown>)[channel];
     const added = (patch as Record<string, unknown>)[channel];
     // Only when the node actually contributed: an absent channel already
     // kept its previous value through the spread above.

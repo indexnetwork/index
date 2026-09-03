@@ -4,7 +4,6 @@
  * Flow: infer_lenses → check_cache → generate_missing? → validate_generated →
  * embed → cache_results.
  */
-import { END, START, StateGraph } from '@langchain/langgraph';
 
 import type { DebugMetaAgent } from "../../protocol/core.js";
 import { getAbortSignalConfig } from '../shared/agent/model-signal.js';
@@ -17,7 +16,8 @@ import { requestContext } from "../shared/observability/request-context.js";
 import { computeHydeSourceTextHash, HYDE_FRAME_GENERATION_VERSION } from '../shared/hyde-documents.js';
 import { sanitizeHydeSourceFrame, type HydeSourceFrame } from './hyde.frame.js';
 import type { HydeGenerateInput, HydeGeneratorOutput } from './hyde.generator.js';
-import { HydeGraphState, type HydeDocumentState } from './hyde.state.js';
+import { hydeDefaults, type HydeDocumentState, type HydeState } from './hyde.state.js';
+import { mergeGraphState } from '../shared/graph.state.js';
 import type { LensInferenceInput, LensInferenceOutput } from './lens.inferrer.js';
 import { HYDE_DEFAULT_CACHE_TTL } from './hyde.strategies.js';
 import { HydeValidator, type HydeValidationInput, type HydeValidationOutput, type HydeValidationVerdict } from './hyde.validator.js';
@@ -172,7 +172,23 @@ function isRuntimeVerdict(value: unknown): value is HydeValidationVerdict {
 }
 
 /** The graph's channel state, as every node sees it. */
-export type HydeState = typeof HydeGraphState.State;
+export type { HydeState } from './hyde.state.js';
+
+/** What a caller supplies; everything else comes from the defaults. */
+export type HydeInput = Pick<HydeState, "sourceType"> & Partial<HydeState>;
+
+/**
+ * Applies a node's patch. `hydeEmbeddings` is accumulated per lens rather
+ * than replaced — `embed` fills in only what `check_cache` did not already
+ * have, so replacing would drop every cached vector.
+ */
+function mergeHydeState(state: HydeState, patch: Partial<HydeState> | undefined | void): HydeState {
+  const merged = mergeGraphState(state, patch);
+  if (patch?.hydeEmbeddings) {
+    merged.hydeEmbeddings = { ...state.hydeEmbeddings, ...patch.hydeEmbeddings };
+  }
+  return merged;
+}
 
 /** Everything the HyDE nodes reach for. */
 export interface HydeGraphDeps {
@@ -207,25 +223,20 @@ export class HydeGraphFactory {
   createGraph() {
     const deps = this.deps;
 
-    const workflow = new StateGraph(HydeGraphState)
-      .addNode('infer_lenses', (state: HydeState) => inferLensesNode(state, deps))
-      .addNode('check_cache', (state: HydeState) => checkCacheNode(state, deps))
-      .addNode('generate_missing', (state: HydeState) => generateMissingNode(state, deps))
-      .addNode('validate_generated', (state: HydeState) => validateGeneratedNode(state, deps))
-      .addNode('embed', (state: HydeState) => embedNode(state, deps))
-      .addNode('cache_results', (state: HydeState) => cacheResultsNode(state, deps))
-      .addEdge(START, 'infer_lenses')
-      .addEdge('infer_lenses', 'check_cache')
-      .addConditionalEdges('check_cache', shouldGenerate, {
-        generate: 'generate_missing',
-        skip: 'embed',
-      })
-      .addEdge('generate_missing', 'validate_generated')
-      .addEdge('validate_generated', 'embed')
-      .addEdge('embed', 'cache_results')
-      .addEdge('cache_results', END);
-
-    return workflow.compile();
+    return {
+      /** Runs the HyDE pipeline and returns the full state, defaults included. */
+      async invoke(input: HydeInput): Promise<HydeState> {
+        let state: HydeState = { ...hydeDefaults(), ...input };
+        state = mergeHydeState(state, await inferLensesNode(state, deps));
+        state = mergeHydeState(state, await checkCacheNode(state, deps));
+        if (shouldGenerate(state) === 'generate') {
+          state = mergeHydeState(state, await generateMissingNode(state, deps));
+          state = mergeHydeState(state, await validateGeneratedNode(state, deps));
+        }
+        state = mergeHydeState(state, await embedNode(state, deps));
+        return mergeHydeState(state, await cacheResultsNode(state, deps));
+      },
+    };
   }
 }
 
