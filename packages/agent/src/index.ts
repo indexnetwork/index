@@ -35,5 +35,6 @@ export type {
 // @indexnetwork/a2a directly.
 export { Negotiator } from "@indexnetwork/a2a/negotiator";
 export type { ActionSpec, NegotiationDecision } from "@indexnetwork/a2a/negotiator";
-export { TaskStore, bearerCredentials, bearerTokenAuth } from "@indexnetwork/a2a";
+export { MemoryTaskStore, bearerCredentials, bearerTokenAuth } from "@indexnetwork/a2a";
+export type { ModelCompletionOptions, ModelPort, TaskStore } from "@indexnetwork/a2a";
 export type { A2ACredentials, A2ATask, AgentCard } from "@indexnetwork/a2a";

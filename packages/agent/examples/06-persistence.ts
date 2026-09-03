@@ -13,7 +13,7 @@
  *   OPENROUTER_API_KEY=... bun run examples/06-persistence.ts
  */
 import { Database } from "bun:sqlite";
-import { Agent, askUserTool, negotiationTools, TaskStore, type A2ATask, type MessageStore, type ModelMessage, type NegotiationSession, type NegotiationStore, type Tool } from "../src/index.ts";
+import { Agent, askUserTool, negotiationTools, type TaskStore, type A2ATask, type MessageStore, type ModelMessage, type NegotiationSession, type NegotiationStore, type Tool } from "../src/index.ts";
 import { answerUntilDone, logStep, serve } from "./shared.ts";
 
 const db = new Database(new URL("./.persistence.db", import.meta.url).pathname);
@@ -56,21 +56,18 @@ class SqliteNegotiationStore implements NegotiationStore {
   }
 }
 
-/** `TaskStore` (@indexnetwork/a2a) is a class, not an interface —
- * a private field makes it nominal, so a sqlite-backed one has to extend it
- * rather than just match its shape. The inherited in-memory `Map` is simply
- * never touched. */
-class SqliteTaskStore extends TaskStore {
-  constructor(private readonly db: Database) {
-    super();
-  }
+/** `TaskStore` (@indexnetwork/a2a) is an interface, so a sqlite-backed one
+ * just matches its shape. Both methods may also return promises; this one
+ * happens to be synchronous. */
+class SqliteTaskStore implements TaskStore {
+  constructor(private readonly db: Database) {}
 
-  override get(taskId: string): A2ATask | undefined {
+  get(taskId: string): A2ATask | undefined {
     const row = this.db.query<{ data: string }, [string]>("SELECT data FROM tasks WHERE id = ?").get(taskId);
     return row ? JSON.parse(row.data) : undefined;
   }
 
-  override save(task: A2ATask): void {
+  save(task: A2ATask): void {
     this.db.run("INSERT OR REPLACE INTO tasks (id, data) VALUES (?, ?)", [task.id, JSON.stringify(task)]);
   }
 }

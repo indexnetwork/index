@@ -1,5 +1,5 @@
 import { Negotiator, type ActionSpec, type NegotiationDecision } from "@indexnetwork/a2a/negotiator";
-import { A2ANegotiationClient, createA2AHandler, fetchAgentCard, defaultStrategy, isTerminalTaskState, messageToDecision, strategyWithTerms, TaskStore, verifyAgreement, type A2AArtifact, type A2ACredentials, type A2AIdentity, type A2AMessage, type A2ATask, type AgreementBasis, type AgreementResult, type DeadlineOptions, type AgentCardSkill, type DecisionStrategy, type EvaluateHook } from "@indexnetwork/a2a";
+import { A2ANegotiationClient, createA2AHandler, fetchAgentCard, defaultStrategy, isTerminalTaskState, MemoryTaskStore, messageToDecision, strategyWithTerms, verifyAgreement, type A2AArtifact, type A2ACredentials, type A2AIdentity, type A2AMessage, type A2ATask, type AgreementBasis, type AgreementResult, type DeadlineOptions, type AgentCardSkill, type DecisionStrategy, type EvaluateHook, type ModelPort, type TaskStore } from "@indexnetwork/a2a";
 
 import { runLoop } from "./loop.ts";
 import { MemoryMessageStore, MemoryNegotiationStore } from "./sessions.ts";
@@ -305,6 +305,18 @@ export interface AgentOptions<A extends string = DefaultAction> {
   /** Attaches structured findings to a negotiation turn. */
   evaluate?: EvaluateHook<A>;
 
+  /**
+   * Where this agent's model calls go — the loop's, and unless you also pass
+   * your own `negotiator`, its negotiation turns too. Defaults to a built-in
+   * OpenRouter client.
+   *
+   * When set, `model`, `apiKey`, `timeout`, `attempts` and `onRetry` are
+   * ignored: the injected client owns model choice, deadlines and retries.
+   * Passing both is a mistake rather than a layering — two retry loops
+   * multiply, and neither backoff can see the other — so it throws.
+   */
+  modelClient?: ModelPort;
+
   /** Gates inbound `message/send` calls. */
   authenticate?: (
     request: Request,
@@ -387,7 +399,7 @@ export class Agent<A extends string = DefaultAction> {
   readonly intent?: Intent;
   readonly tools: Tool<never>[];
 
-  private readonly model: ModelClient;
+  private readonly model: ModelPort;
   private readonly negotiator: Negotiator;
   private readonly allowedActions: ActionSpec<A>[];
   private readonly maxSteps: number;
@@ -407,19 +419,41 @@ export class Agent<A extends string = DefaultAction> {
     this.intent = options.intent;
     this.tools = options.tools ?? defaultTools();
 
-    this.model = new ModelClient({
-      apiKey: options.apiKey,
-      model: options.model,
-      timeout: options.timeout,
-      attempts: options.attempts,
-      onRetry: options.onRetry,
-    });
+    if (
+      options.modelClient &&
+      (options.model !== undefined ||
+        options.apiKey !== undefined ||
+        options.timeout !== undefined ||
+        options.attempts !== undefined ||
+        options.onRetry !== undefined)
+    ) {
+      throw new Error(
+        "Agent: `modelClient` replaces `model`/`apiKey`/`timeout`/`attempts`/`onRetry`. Pass one or the other.",
+      );
+    }
+    // `??` short-circuits, so the default client — which throws without an
+    // API key — is never constructed when a port is injected.
+    this.model =
+      options.modelClient ??
+      new ModelClient({
+        apiKey: options.apiKey,
+        model: options.model,
+        timeout: options.timeout,
+        attempts: options.attempts,
+        onRetry: options.onRetry,
+      });
     // The same clock the loop reasons with. Two clocks in one agent can
     // disagree across midnight, and then the agent's own turns contradict
-    // what it told its party.
+    // what it told its party. The model seat is shared for the same reason:
+    // one agent, one stack.
     this.negotiator =
       options.negotiator ??
-      new Negotiator({ apiKey: options.apiKey, model: options.model, now: options.now });
+      new Negotiator({
+        modelClient: options.modelClient,
+        apiKey: options.apiKey,
+        model: options.model,
+        now: options.now,
+      });
 
     this.allowedActions =
       options.allowedActions ?? ([...DEFAULT_ACTIONS] as unknown as ActionSpec<A>[]);
@@ -641,7 +675,7 @@ export class Agent<A extends string = DefaultAction> {
     // in-memory `TaskStore` per call when none is given, so without
     // fixing one here, a host that never set `taskStore` would lose every
     // task the moment the next request built a new empty store.
-    const taskStore = this.options.taskStore ?? new TaskStore();
+    const taskStore = this.options.taskStore ?? new MemoryTaskStore();
 
     // Report both turns of the round trip, in order. The counterparty's has
     // to be decoded from the request before the handler runs, and this

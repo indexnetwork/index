@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { NegotiationDecision } from "@indexnetwork/a2a/negotiator";
+import type { ModelPort, NegotiationDecision } from "@indexnetwork/a2a/negotiator";
 import { messageToDecision } from "@indexnetwork/a2a";
 
 import { Agent } from "./agent.ts";
@@ -1510,5 +1510,76 @@ describe("one clock", () => {
     expect(agent.instructions()).toContain("31 August 2026");
     now = new Date("2026-09-04T09:00:00Z");
     expect(agent.instructions()).toContain("4 September 2026");
+  });
+});
+
+describe("injected model port", () => {
+  /** `seller`/`buyer` carry an apiKey, which the conflict guard rejects. */
+  const base = {
+    identity: { name: "Seller", id: "did:example:alice" },
+    systemPrompt: "Sell the bike for as much as possible",
+  };
+  const port: ModelPort = {
+    hasFallback: false,
+    async complete() {
+      return { role: "assistant", content: "ok" };
+    },
+  };
+
+  function withoutKey<T>(run: () => T): T {
+    const original = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    try {
+      return run();
+    } finally {
+      if (original === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = original;
+    }
+  }
+
+  test("constructs without an OpenRouter key", () => {
+    // Both the loop's client and the default negotiator would otherwise
+    // throw on a missing key, so this covers the seat reaching both.
+    withoutKey(() => {
+      expect(() => new Agent({ ...base, modelClient: port })).not.toThrow();
+    });
+  });
+
+  test("refuses a port alongside the options that configure the default", () => {
+    // Two retry loops multiply and neither backoff sees the other, so this
+    // has to be loud rather than a silent precedence rule.
+    for (const conflicting of [
+      { model: "some/model" },
+      { apiKey: "k" },
+      { timeout: 1_000 },
+      { attempts: 2 },
+      { onRetry: () => {} },
+    ]) {
+      expect(() => new Agent({ ...base, modelClient: port, ...conflicting })).toThrow(
+        /`modelClient` replaces/,
+      );
+    }
+  });
+
+  test("the loop runs on the injected port", async () => {
+    const seen: { tools?: unknown[] }[] = [];
+    const recording: ModelPort = {
+      hasFallback: false,
+      async complete(_messages, options) {
+        seen.push({ tools: options?.tools });
+        return { role: "assistant", content: "Listed for 500." };
+      },
+    };
+
+    const result = await withoutKey(async () => {
+      const agent = new Agent({ ...base, modelClient: recording });
+      return agent.run("List the bike.");
+    });
+
+    expect(result.output).toBe("Listed for 500.");
+    expect(result.end).toBe("done");
+    // The loop must still offer its tools through the seat.
+    expect(seen).toHaveLength(1);
+    expect(Array.isArray(seen[0]?.tools)).toBe(true);
   });
 });

@@ -71,8 +71,12 @@ These were each a bug at some point, and the code reads oddly without them.
   negotiator's, read as UTC, so an agent can't tell its party one date and
   its counterparty another. It's a function, not a `Date`, so a long-lived
   server doesn't freeze on the day it booted.
-- **Retries live in `ModelClient` only.** The negotiator deliberately has
-  none; two layers would multiply, and neither backoff would see the other.
+- **Retries live in one place only.** `ModelClient` has them; the negotiator
+  deliberately has none, because two layers would multiply and neither
+  backoff would see the other. An injected `modelClient` *replaces*
+  `ModelClient` rather than wrapping it, and brings its own retry policy —
+  which is why passing it alongside `attempts`/`timeout`/`onRetry` throws
+  instead of silently letting one win.
 - **Index Network operations are host-injected as tools.** This package
   must not learn Index transport, auth, or vocabulary.
   `examples/01-ask-user.ts` injects a fixed `find_matches` as a stand-in

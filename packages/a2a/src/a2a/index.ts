@@ -3,7 +3,8 @@
 // drive is exported separately as `@indexnetwork/a2a/negotiator`.
 export { createA2AHandler, OUTCOME_ARTIFACT_ID } from "./server/handler.ts";
 export type { A2AHandlerOptions } from "./server/handler.ts";
-export { TaskStore } from "./server/task-store.ts";
+export { MemoryTaskStore } from "./server/task-store.ts";
+export type { TaskStore } from "./server/task-store.ts";
 export { bearerTokenAuth } from "./server/auth.ts";
 export { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
 export type { A2ACredentials, DeadlineOptions } from "./client/transport.ts";

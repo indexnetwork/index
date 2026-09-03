@@ -1,9 +1,9 @@
-import type { ModelClient, ModelMessage, ToolCall } from "./model.ts";
+import type { ModelMessage, ModelPort, ToolCall } from "./model.ts";
 import { toolDefinition, type Tool, type ToolContext } from "./tools.ts";
 import type { PendingQuestion, RunResult, Step } from "./types.ts";
 
 export interface LoopOptions {
-  model: ModelClient;
+  model: ModelPort;
   systemPrompt: string;
   tools: Tool<never>[];
   /** The conversation so far, excluding the system message. */
@@ -62,7 +62,7 @@ export async function runLoop(options: LoopOptions): Promise<RunResult> {
   let lastText = "";
 
   for (let step = 0; step < options.maxSteps; step++) {
-    const assistant = await model.complete(messages, definitions, signal);
+    const assistant = await model.complete(messages, { tools: definitions, signal });
     messages.push(assistant);
 
     if (assistant.content) lastText = assistant.content;

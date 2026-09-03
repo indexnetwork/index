@@ -1,3 +1,5 @@
+import type { ModelCompletionOptions, ModelMessage, ModelPort, ToolCall, ToolDefinition } from "@indexnetwork/a2a/negotiator";
+
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /** The default model for the run loop. Matches the negotiator's default, so
@@ -5,27 +7,10 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
  * otherwise. */
 export const DEFAULT_MODEL = "google/gemini-3.7-flash";
 
-export interface ToolCall {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-}
-
-/** One message in the loop's transcript, in the OpenAI/OpenRouter shape the
- * API expects back verbatim on the next call. */
-export interface ModelMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
-  /** Set on assistant messages that called tools. */
-  tool_calls?: ToolCall[];
-  /** Set on tool messages, pointing at the call they answer. */
-  tool_call_id?: string;
-}
-
-export interface ToolDefinition {
-  type: "function";
-  function: { name: string; description: string; parameters: Record<string, unknown> };
-}
+// The transcript shapes live in `@indexnetwork/a2a` so that one `ModelPort`
+// serves both this loop and the negotiator, and a host writes one adapter
+// rather than two. Re-exported here because they are this package's surface.
+export type { ModelCompletionOptions, ModelMessage, ModelPort, ToolCall, ToolDefinition };
 
 export interface ModelClientOptions {
   apiKey?: string;
@@ -82,7 +67,10 @@ class TransientError extends Error {
  * be dropped on the floor. That client stays responsible for negotiation
  * turns; this one drives the agent loop.
  */
-export class ModelClient {
+export class ModelClient implements ModelPort {
+  /** It retries the same model; there is nowhere else for a call to go. */
+  readonly hasFallback = false;
+
   private readonly apiKey: string;
   private readonly model: string;
   private readonly timeout: number;
@@ -112,14 +100,14 @@ export class ModelClient {
    */
   async complete(
     messages: ModelMessage[],
-    tools: ToolDefinition[] = [],
-    signal?: AbortSignal,
+    options: ModelCompletionOptions = {},
   ): Promise<ModelMessage> {
+    const { tools = [], jsonResponse = false, signal } = options;
     let last: unknown;
 
     for (let attempt = 1; attempt <= this.attempts; attempt++) {
       try {
-        return await this.send(messages, tools, signal);
+        return await this.send(messages, tools, jsonResponse, signal);
       } catch (cause) {
         // The caller pulled the plug. Not ours to retry.
         if (signal?.aborted) throw cause;
@@ -144,6 +132,7 @@ export class ModelClient {
   private async send(
     messages: ModelMessage[],
     tools: ToolDefinition[],
+    jsonResponse: boolean,
     signal?: AbortSignal,
   ): Promise<ModelMessage> {
     // The caller's signal and our deadline both have to be able to stop
@@ -164,6 +153,7 @@ export class ModelClient {
           model: this.model,
           messages,
           ...(tools.length > 0 ? { tools } : {}),
+          ...(jsonResponse ? { response_format: { type: "json_object" } } : {}),
         }),
       });
     } catch (cause) {

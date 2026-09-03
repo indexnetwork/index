@@ -6,7 +6,7 @@ import { A2ANegotiationClient } from "./client/negotiation-client.ts";
 import { fetchAgentCard, sendA2AMessage } from "./client/transport.ts";
 import { bearerTokenAuth } from "./server/auth.ts";
 import { createA2AHandler, OUTCOME_ARTIFACT_ID } from "./server/handler.ts";
-import { TaskStore } from "./server/task-store.ts";
+import { MemoryTaskStore } from "./server/task-store.ts";
 import { verifyAgreement } from "./wire/agreement.ts";
 import { defaultStrategy } from "./wire/strategy.ts";
 import { decisionToMessage } from "./wire/history.ts";
@@ -619,7 +619,7 @@ describe("a settled task stays settled", () => {
    * the store holding the server's own copy of it — the client's copy came
    * over the wire and can't tell us whether the server's record moved. */
   async function settledTask() {
-    const taskStore = new TaskStore();
+    const taskStore = new MemoryTaskStore();
     const handler = createA2AHandler({
       taskStore,
       negotiator: scriptedNegotiator([

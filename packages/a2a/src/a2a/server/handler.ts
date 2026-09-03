@@ -7,7 +7,7 @@ import type { JsonRpcRequest, JsonRpcResponse } from "../wire/jsonrpc.ts";
 import { defaultStrategy, type DecisionStrategy, type EvaluateHook } from "../wire/strategy.ts";
 import { isTerminalTaskState } from "../wire/types.ts";
 import type { A2AArtifact, A2AIdentity, A2AMessage, A2ATask, AgentCard } from "../wire/types.ts";
-import { TaskStore } from "./task-store.ts";
+import { MemoryTaskStore, type TaskStore } from "./task-store.ts";
 
 const AGENT_CARD_PATH = "/.well-known/agent-card.json";
 
@@ -73,7 +73,7 @@ function jsonRpcError(id: string | null, code: number, message: string): JsonRpc
 export function createA2AHandler<A extends string>(
   options: A2AHandlerOptions<A>,
 ): (request: Request) => Promise<Response> {
-  const taskStore = options.taskStore ?? new TaskStore();
+  const taskStore = options.taskStore ?? new MemoryTaskStore();
   const isTerminal = options.isTerminal ?? ((action: A) => DEFAULT_TERMINAL_ACTIONS.has(action));
   const terminalState = options.terminalState ?? defaultTerminalState;
   const strategy = options.strategy ?? (defaultStrategy as unknown as DecisionStrategy<A>);
@@ -112,7 +112,7 @@ export function createA2AHandler<A extends string>(
 
     let task: A2ATask;
     if (incoming.taskId) {
-      const existing = taskStore.get(incoming.taskId);
+      const existing = await taskStore.get(incoming.taskId);
       if (!existing) {
         return Response.json(
           jsonRpcError(rpcRequest.id, -32001, `Unknown task "${incoming.taskId}"`),
@@ -206,7 +206,7 @@ export function createA2AHandler<A extends string>(
     const artifact = await options.evaluate?.(task, decision);
     if (artifact) task.artifacts.push(artifact);
 
-    taskStore.save(task);
+    await taskStore.save(task);
 
     return Response.json(jsonRpcResult(rpcRequest.id, task));
   };
