@@ -9,7 +9,6 @@ export const REQUIRED_TEST_DATABASE_OBJECTS = [
   'public.network_members',
   'public.intents',
   'public.intent_networks',
-  'public.intent_proposals',
   'public.opportunities',
   'public.conversations',
   'public.messages',

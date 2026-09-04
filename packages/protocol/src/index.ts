@@ -52,9 +52,6 @@ export type {
   CreateOpportunityData,
   IntentLifecycleStatus,
   TransitionLifecycleResult,
-  IntentProposalRecord,
-  ReviseIntentProposalInput,
-  ConfirmProposalResult,
   NegotiationContextDatabase,
   NegotiationContextRecord,
   NegotiationContextOutcome,
@@ -78,10 +75,8 @@ export type {
 } from "./platform/auth/mcp.js";
 export type { DiscoveryNegotiation } from "./protocol/schemas/discovery-question.schema.js";
 export type { NetworkAssignmentMetadata } from "./protocol/schemas/network-assignment.schema.js";
-export type { IntentIndexingResult } from "./protocol/core.js";
 export type { HydeTargetCorpus, Lens } from "./protocol/core.js";
 export type { DebugMetaAgent } from "./protocol/core.js";
-export { DEFAULT_NETWORK_ASSIGNMENT_THRESHOLD, resolveAssignmentNetworkScope, buildNetworkAssignmentDecision } from "./internal/shared/assignment/network-assignment.policy.js";
 export { NEGOTIATION_MAX_TURNS_AMBIENT } from "./protocol/core.js";
 
 export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
@@ -91,30 +86,23 @@ export { HydeGraphFactory } from "./internal/discovery/hyde.graph.js";
 
 export { Networks } from "./capabilities/networks.js";
 export type {
-  IntentNetworkIndexer,
   NetworksDeps,
   NetworkToolDeps,
 } from "./capabilities/networks.js";
 
 // ─── Intents ──────────────────────────────────────────────────────────────────
 // The whole capability behind one class: lifecycle graph, verification,
-// network indexing, guided intake, and the agent-facing tools.
+// payload clarification, and the agent-facing tools.
 
 export { Intents } from "./capabilities/intents.js";
 export type {
-  FollowUpPlan,
-  FollowUpPlanInput,
-  IntakeAnswer,
-  IntakePack,
-  IntakePackInput,
-  IntakePackQuestion,
-  IntakePackQuestionOption,
-  IntakeRound,
-  IntentIndexerOutput,
+  ClarifyAnswer,
+  ClarifyInput,
+  ClarifyQuestion,
+  ClarifyQuestionOption,
+  ClarifyResult,
   IntentsDeps,
   IntentToolDeps,
-  SynthesisInput,
-  SynthesisResult,
 } from "./capabilities/intents.js";
 
 // ─── Agents ───────────────────────────────────────────────────────────────────

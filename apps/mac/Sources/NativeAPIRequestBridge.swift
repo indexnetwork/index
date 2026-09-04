@@ -259,7 +259,7 @@ final class NativeAPIRequestBridge {
         ("PATCH", #"^/agents/[^/?]+$"#),
         ("DELETE", #"^/agents/[^/?]+$"#),
         ("GET", #"^/users/(?:batch(?:\?.*)?|[^/?]+(?:/negotiations(?:\?.*)?)?)$"#),
-        ("POST", #"^/intents/(?:list|confirm|reject|intake/(?:start|question|prepare|proposal|revise))$"#),
+        ("POST", #"^/intents(?:/(?:list|clarify))?$"#),
         ("GET", #"^/intents/[^/?]+$"#), ("PATCH", #"^/intents/[^/?]+/(?:archive|status)$"#),
         ("GET", #"^/opportunities(?:\?.*)?$"#),
         ("GET", #"^/opportunities/(?:radar|chat-context)(?:\?.*)?$"#),
@@ -528,10 +528,6 @@ final class NativeAPIRequestBridge {
     private static func enumString(_ value: NativeJSONValue?, _ values: Set<String>) -> Bool {
         guard case .string(let string) = value else { return false }; return values.contains(string)
     }
-    private static func boundedStringArray(_ value: NativeJSONValue?, maximumItems: Int = 50) -> Bool {
-        guard case .array(let values) = value, values.count <= maximumItems else { return false }
-        return values.allSatisfy { boundedString($0, maximum: 4_096) }
-    }
     private static func exactTypedObject(
         _ body: NativeJSONValue?, required: Set<String> = [], optional: Set<String> = [],
         validate: ([String: NativeJSONValue]) -> Bool
@@ -556,21 +552,11 @@ final class NativeAPIRequestBridge {
                 && (item["joinPolicy"] == nil || enumString(item["joinPolicy"], ["anyone", "invite_only"]))
         }
     }
-    private static func validAnswer(_ value: NativeJSONValue?) -> Bool {
-        exactTypedObject(value, optional: ["selectedOptions", "freeText"]) { answer in
-            let selectedValid = answer["selectedOptions"] == nil || boundedStringArray(answer["selectedOptions"], maximumItems: 20)
-            let selectedPresent: Bool
-            if case .array(let values)? = answer["selectedOptions"] { selectedPresent = !values.isEmpty } else { selectedPresent = false }
-            let textPresent: Bool
-            if case .string(let text)? = answer["freeText"] { textPresent = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } else { textPresent = false }
-            return selectedValid && optionalString(answer, "freeText", maximum: 65_536) && (selectedPresent || textPresent)
-        }
-    }
-    private static func validRounds(_ value: NativeJSONValue?) -> Bool {
-        guard case .array(let values) = value, !values.isEmpty, values.count <= 10 else { return false }
+    private static func validClarifyAnswers(_ value: NativeJSONValue?) -> Bool {
+        guard case .array(let values) = value, values.count <= 10 else { return false }
         return values.allSatisfy { item in
-            exactTypedObject(item, required: ["prompt", "answer"]) { round in
-                boundedString(round["prompt"], maximum: 400) && validAnswer(round["answer"])
+            exactTypedObject(item, required: ["prompt", "answer"]) { answer in
+                boundedString(answer["prompt"], maximum: 400) && boundedString(answer["answer"], maximum: 65_536)
             }
         }
     }
@@ -616,28 +602,14 @@ final class NativeAPIRequestBridge {
                     && optionalInteger(item, "limit", minimum: 1, maximum: 100)
                     && optionalBool(item, "archived") && optionalString(item, "sourceType", maximum: 128)
             }
-        case "/intents/confirm":
-            return exactTypedObject(body, required: ["proposalId", "description"], optional: ["networkId"]) { item in
-                uuidIdentifier(item["proposalId"]) && boundedString(item["description"], maximum: 65_536)
-                    && (item["networkId"] == nil || uuidIdentifier(item["networkId"]))
+        case "/intents/clarify":
+            return exactTypedObject(body, required: ["payload"], optional: ["answers"]) { item in
+                boundedString(item["payload"], maximum: 65_536)
+                    && (item["answers"] == nil || validClarifyAnswers(item["answers"]))
             }
-        case "/intents/reject":
-            return exactTypedObject(body, required: ["proposalId"]) { identifier($0["proposalId"]) }
-        case "/intents/intake/start": return keysAllowed(body, allowed: [])
-        case "/intents/intake/question":
-            return exactTypedObject(body, required: ["rounds"], optional: ["plannedTotal"]) { validRounds($0["rounds"]) && optionalInteger($0, "plannedTotal", minimum: 1, maximum: 10) }
-        case "/intents/intake/prepare":
-            return exactTypedObject(body, required: ["rounds"]) { validRounds($0["rounds"]) }
-        case "/intents/intake/proposal":
-            return exactTypedObject(body, required: ["runId", "rounds"], optional: ["networkId", "whereText"]) { item in
-                uuidIdentifier(item["runId"]) && validRounds(item["rounds"])
-                    && (item["networkId"] == nil || uuidIdentifier(item["networkId"]))
-                    && optionalString(item, "whereText", maximum: 280)
-            }
-        case "/intents/intake/revise":
-            return exactTypedObject(body, required: ["runId", "rounds", "feedback"], optional: ["networkId"]) { item in
-                uuidIdentifier(item["runId"]) && validRounds(item["rounds"]) && boundedString(item["feedback"], maximum: 600)
-                    && (item["networkId"] == nil || uuidIdentifier(item["networkId"]))
+        case "/intents":
+            return exactTypedObject(body, required: ["description"]) { item in
+                boundedString(item["description"], maximum: 65_536)
             }
         case let value where value.range(of: #"^/intents/[^/?]+/status$"#, options: .regularExpression) != nil:
             return exactTypedObject(body, required: ["status"]) { enumString($0["status"], ["ACTIVE", "PAUSED"]) }
@@ -699,10 +671,6 @@ final class NativeAPIRequestBridge {
 
     private static func isAllowedMCPArguments(tool: String, arguments: NativeJSONValue?) -> Bool {
         switch tool {
-        case "create_intent":
-            return exactTypedObject(arguments, required: ["description"], optional: ["autoApprove"]) { item in
-                boundedString(item["description"], maximum: 65_536) && optionalBool(item, "autoApprove")
-            }
         case "register_agent":
             return exactTypedObject(arguments, required: ["name"], optional: ["description", "permissions"]) { item in
                 boundedString(item["name"], maximum: 256)

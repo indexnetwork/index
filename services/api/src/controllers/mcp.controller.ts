@@ -29,7 +29,6 @@ import { API_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { captureAppException } from '../lib/sentry';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
-import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 const logger = log.server.from('mcp');
 
@@ -50,7 +49,6 @@ const protocolDeps = {
   cache: cacheAdapter,
   hydeCache: hydeCacheAdapter,
   intentFollowUp: intentIndexing,
-  intentProposalStore: intentProposalDatabaseAdapter,
   enricher: enricherAdapter,
   createUserDatabase: (db: CompositeToolDatabase, userId: string) =>
     createUserDatabase(db as ChatDatabaseAdapter, userId),
@@ -99,7 +97,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
   ).createGraph();
-  const networks = new Networks({ database, indexer: intents });
+  const networks = new Networks({ database });
   const indexGraph = networks.createGraph();
   const networkMembershipGraph = networks.createMembershipGraph();
   const intentIndexGraph = networks.createAssignmentGraph();
@@ -385,7 +383,6 @@ function createMcpServerInstance(): McpServer {
     mcpRateLimiter: (input) => checkMcpRateLimit(input),
     frontendUrl: protocolDeps.frontendUrl,
     apiBaseUrl: protocolDeps.apiBaseUrl,
-    intentProposalStore: protocolDeps.intentProposalStore,
     graphs,
   };
 

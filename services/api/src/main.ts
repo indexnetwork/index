@@ -9,7 +9,6 @@ import { S3StorageAdapter } from './adapters/storage.adapter';
 import { NetworkController } from './controllers/network.controller';
 import { NetworkRequestController } from './controllers/network-request.controller';
 import { IntentController } from './controllers/intent.controller';
-import { IntentIntakeController } from './controllers/intent-intake.controller';
 import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
 import { NegotiationController } from './controllers/negotiation.controller';
 import { AuthController } from './controllers/auth.controller';
@@ -37,12 +36,10 @@ import { setSpanAttributes, setSpanHttpStatus, traceAppOperation } from './lib/s
 import { mcpHandler } from './controllers/mcp.controller';
 import { auth } from './lib/betterauth/auth.instance';
 // Bootstrap background handlers and crons (only in this process, not in CLI e.g. db:seed)
-import { intentIndexing } from './lib/intent/indexing';
 import { opportunityExpirationCron } from './crons/opportunity-expiration.cron';
 import { checkpointRetentionCron } from './crons/checkpoint-retention.cron';
 import { getCheckpointer } from './adapters/checkpointer.adapter';
 import { hydeMaintenanceCron } from './crons/hyde-maintenance.cron';
-import { NetworkMembershipEvents } from './events/network_membership.event';
 import { OpportunityEvents } from './events/opportunity.event';
 import { OpportunityDatabaseAdapter } from './adapters/opportunity.database.adapter';
 import { setLoggerFactory, setRequestContextStore, setTimingWrapper } from '@indexnetwork/protocol';
@@ -80,16 +77,6 @@ const notificationDeliveryService = new NotificationDeliveryService({
 
 // Assign callbacks before starting workers to avoid a race with jobs already in Redis.
 OpportunityEvents.onActionable = (payload) => notificationDeliveryService.publishOpportunityActionable(payload);
-
-NetworkMembershipEvents.onMemberAdded = (userId: string, networkId: string) => {
-  // Re-evaluate the member's pre-existing intents against the joined network.
-  // Intents created before joining never get an assignment pass for this network
-  // otherwise, leaving them silently absent from it. Assignment-only (no HyDE
-  // regen / opportunity discovery); scoped to this network.
-  intentIndexing.addNetworkReconcileForUser(userId, networkId).catch((err) => {
-    log.job.from('NetworkMembership').error('Failed to trigger intent network reconcile', { userId, networkId, error: err });
-  });
-};
 
 opportunityExpirationCron.start();
 checkpointRetentionCron.start();
@@ -153,7 +140,6 @@ controllerInstances.set(EnrichmentController, new EnrichmentController());
 controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(NetworkRequestController, new NetworkRequestController());
 controllerInstances.set(IntentController, new IntentController());
-controllerInstances.set(IntentIntakeController, new IntentIntakeController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
 controllerInstances.set(NegotiationController, new NegotiationController());

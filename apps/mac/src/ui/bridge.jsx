@@ -470,10 +470,6 @@ window.IndexApp = (function () {
     return parseMcpResult(result);
   }
 
-  async function createIntent(description) {
-    return mcpCall("create_intent", { description, autoApprove: true });
-  }
-
   async function registerAgent(input) {
     const payload = await mcpCall("register_agent", {
       name: input.name,
@@ -486,22 +482,6 @@ window.IndexApp = (function () {
       || null;
     if (!agent) throw new Error((payload && payload.error) || "registration failed");
     return agent;
-  }
-
-  // Chat turns embed proposals as ```intent_proposal fenced JSON blocks, the
-  // same format the web app and CLI confirm through POST /intents/confirm.
-  function parseIntentProposals(text) {
-    if (!text) return [];
-    const out = [];
-    const re = /```intent_proposal\s*\n([\s\S]*?)\n```/g;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      try {
-        const p = JSON.parse(m[1]);
-        if (p && p.proposalId && p.description) out.push(p);
-      } catch (e) { /* skip malformed block */ }
-    }
-    return out;
   }
 
   // MCP tool results carry a content[] array; the structured payload lives in
@@ -539,9 +519,7 @@ window.IndexApp = (function () {
     teardownHermes,
     onAuthChanged,
     onDeepLink,
-    createIntent,
     registerAgent,
-    parseIntentProposals,
     streamInbox,
     notify,
     setNotifyPrefs,

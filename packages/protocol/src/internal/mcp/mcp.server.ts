@@ -294,7 +294,7 @@ export function buildMcpOnboardingMessage(ctx: ResolvedToolContext): string {
     `${nameStep}\n` +
     `2. Call research_profile(...) with any identity hints the user gives (name, LinkedIn, GitHub, X, Telegram, website). Present the suggested profile and confirm it with the user in conversation.\n` +
     `${communityStep}\n` +
-    `4. Ask what the user is looking for and call create_intent(description="...", autoApprove=true) so the first signal is persisted. Discovery is optional after that, never mandatory.`
+    `4. Ask what the user is looking for and call create_intent(description="...", networkIds=[...]) so the first signal is persisted. Discovery is optional after that, never mandatory.`
   );
 }
 

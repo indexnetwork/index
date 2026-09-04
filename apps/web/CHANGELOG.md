@@ -7,7 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+- **`/i/new` keeps its question-at-a-time shape on a two-call backend.** The
+  opening question, up to two clarifying follow-ups and the confirmation gate
+  are unchanged; underneath, each answer is folded back into the payload by
+  `POST /intents/clarify` and the gate calls `POST /intents`. A clarification
+  that cannot be reached shows a retry that resumes the round with your answers
+  intact. `services/intake.ts` becomes `services/signals.ts`.
+
 ### Removed
+- **The "where should this go?" step.** Signals go out everywhere for now, so
+  the community list and its selection are gone from the flow and create no
+  longer sends `networkIds`.
+- **The guided intake funnel.** `FastSignalIntake`, `GuidedSignalIntake`,
+  `WherePicker` and the `fastSignalIntake` feature flag are gone (the flow now
+  lives in the `/i/new` page itself), along with the proposal confirmation step
+  — signals are created directly now.
 - `'personal'` from the `Agent.type` union, which is now `'external' | 'system'`.
   The API no longer has a personal agent type; the "Personal Agents" section on
   `/agents` already listed `external` rows.

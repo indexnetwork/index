@@ -63,9 +63,6 @@ if (!runsModelConfigSpec && !runsLocalModelMockSpec) {
       return { lenses: [{ label, corpus, reasoning: "Deterministic source-test lens." }] };
     }
     if (agent === "hydeGenerator") return { hypotheticalDocument: "A relevant professional collaborator with complementary goals." };
-    if (agent === "intentIndexer") {
-      return { indexScore: 0.8, memberScore: 0.6, reasoning: "Deterministic source-test relevance." };
-    }
     if (agent === "intentReconciler") return { actions: [] };
     if (agent === "intentVerifier") {
       return { reasoning: "Deterministic source-test verification.", classification: "ASSERTIVE", felicity_scores: { clarity: 80, authority: 80, sincerity: 80 }, semantic_entropy: 0.2, referential_anchor: null, referential_breadth: "narrow", missing_selectional_constraints: [], specificity_warning: null, flags: [] };

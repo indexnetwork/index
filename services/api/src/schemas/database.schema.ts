@@ -15,7 +15,6 @@ export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
 export const intentDiscoveryProgressStatusEnum = pgEnum('intent_discovery_progress_status', ['queued', 'running', 'succeeded', 'failed', 'blocked']);
-export const intentProposalStatusEnum = pgEnum('intent_proposal_status', ['pending', 'consumed', 'rejected']);
 export const negotiationOutcomeEnum = pgEnum('negotiation_outcome', ['agreed', 'declined', 'closed']);
 export const negotiationTurnActionEnum = pgEnum('negotiation_turn_action', ['propose', 'counter', 'accept', 'decline']);
 
@@ -239,49 +238,6 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-/** Precomputed fast-intake artifact: one row per user. */
-export const signalIntakePacks = pgTable('signal_intake_packs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
-  brief: text('brief').notNull(),
-  question: jsonb('question').$type<{
-    title: string;
-    prompt: string;
-    options: Array<{ label: string; description: string }>;
-    multiSelect: boolean;
-  }>().notNull(),
-  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
-});
-// No explicit user_id index: `.unique()` on user_id already creates
-// `signal_intake_packs_user_id_unique`, a btree on exactly that column, which
-// serves every lookup (getPack) and the upsert's ON CONFLICT target.
-
-export type SignalIntakePackRow = typeof signalIntakePacks.$inferSelect;
-export type NewSignalIntakePackRow = typeof signalIntakePacks.$inferInsert;
-
-export const signalIntakeRunStatusEnum = pgEnum('signal_intake_run_status', ['pending', 'ready', 'failed']);
-
-/** Single-flight record for speculative intake synthesis. */
-export const signalIntakeRuns = pgTable('signal_intake_runs', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  answersHash: text('answers_hash').notNull(),
-  status: signalIntakeRunStatusEnum('status').notNull().default('pending'),
-  proposalId: text('proposal_id'),
-  /** "Looking for" card summary from the synthesis that settled this run. */
-  lookingFor: text('looking_for'),
-  /** "You bring" card summary from the synthesis that settled this run. */
-  youBring: text('you_bring'),
-  error: text('error'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  userAnswersUniq: uniqueIndex('signal_intake_runs_user_answers_uniq').on(table.userId, table.answersHash),
-  userIdIdx: index('signal_intake_runs_user_id_idx').on(table.userId),
-  createdAtIdx: index('signal_intake_runs_created_at_idx').on(table.createdAt),
-}));
-
-export type SignalIntakeRunRow = typeof signalIntakeRuns.$inferSelect;
-
 export type HydeSourceType = 'intent' | 'query' | 'context';
 
 export const hydeDocuments = pgTable('hyde_documents', {
@@ -412,27 +368,6 @@ export const negotiationTurns = pgTable('negotiation_turns', {
   orderIdx: uniqueIndex('negotiation_turns_negotiation_turn_idx').on(table.negotiationId, table.turnIndex),
 }));
 
-export interface IntentProposalVerifierOutputRecord {
-  reasoning: string;
-  classification: 'COMMISSIVE' | 'DIRECTIVE' | 'ASSERTIVE' | 'EXPRESSIVE' | 'DECLARATION' | 'UNKNOWN';
-  felicity_scores: {
-    clarity: number;
-    authority: number;
-    sincerity: number;
-  };
-  semantic_entropy: number;
-  referential_anchor: string | null;
-  referential_breadth: 'narrow' | 'moderate' | 'broad';
-  missing_selectional_constraints: Array<'role' | 'outcome' | 'location' | 'timeframe' | 'domain' | 'concrete_need'>;
-  specificity_warning: string | null;
-  flags: string[];
-}
-
-export interface IntentProposalAnalysisRecord {
-  verifierOutput: IntentProposalVerifierOutputRecord;
-  combinedScore: number | null;
-}
-
 export const intents = pgTable('intents', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   payload: text('payload').notNull(),
@@ -485,25 +420,6 @@ export const networks = pgTable('networks', {
 }, (table) => ({
   indexesKeyUnique: uniqueIndex('indexes_key_unique').on(table.key),
 }));
-
-export const intentProposals = pgTable('intent_proposals', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  description: text('description').notNull(),
-  networkId: text('network_id'),
-  analysis: jsonb('analysis').$type<IntentProposalAnalysisRecord>().notNull(),
-  status: intentProposalStatusEnum('status').notNull().default('pending'),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  consumedAt: timestamp('consumed_at', { withTimezone: true }),
-  consumedIntentId: text('consumed_intent_id').references(() => intents.id, { onDelete: 'set null' }),
-}, (table) => ({
-  userIdIdx: index('intent_proposals_user_id_idx').on(table.userId),
-  expiresAtIdx: index('intent_proposals_expires_at_idx').on(table.expiresAt),
-}));
-
-export type IntentProposalRow = typeof intentProposals.$inferSelect;
-export type NewIntentProposalRow = typeof intentProposals.$inferInsert;
 
 export const networkMembers = pgTable('network_members', {
   networkId: text('network_id').notNull().references(() => networks.id),

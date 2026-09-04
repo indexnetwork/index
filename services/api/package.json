@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/api",
-  "version": "0.104.0",
+  "version": "0.105.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -22,7 +22,6 @@
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
-    "maintenance:backfill-intent-networks": "bun ./src/cli/backfill-intent-networks.ts",
     "maintenance:reconcile-orphaned-intent-indexing": "bun ./src/cli/reconcile-orphaned-intent-indexing.ts",
     "maintenance:reenqueue-orphaned-discovery": "bun ./src/cli/reenqueue-orphaned-discovery.ts"
   },

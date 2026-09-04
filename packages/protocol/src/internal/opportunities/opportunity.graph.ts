@@ -125,10 +125,7 @@ export class OpportunityGraphFactory {
       })
       .addEdge('resolve', 'discovery')
 
-      .addConditionalEdges('discovery', shouldContinueAfterDiscovery, {
-        evaluation: 'evaluation',
-        [END]: END,
-      })
+      .addEdge('discovery', 'evaluation')
 
       // Discovery → Ranking → EmitCounterparties. The terminal stage opens
       // every scored pair into an opportunity and its negotiation.
@@ -162,15 +159,4 @@ function shouldContinueAfterScope(state: OpportunityState): string {
   }
   routingLog.verbose('Continuing to resolve');
   return 'resolve';
-}
-
-/**
- * After discovery: if create-intent signal was set, end so tool can return it; else continue to evaluation.
- */
-function shouldContinueAfterDiscovery(state: OpportunityState): string {
-  if (state.createIntentSuggested) {
-    routingLog.verbose('Create-intent suggested - ending for tool signal');
-    return END;
-  }
-  return 'evaluation';
 }

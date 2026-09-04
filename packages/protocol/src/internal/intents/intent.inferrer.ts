@@ -175,8 +175,7 @@ export class ExplicitIntentInferrer {
     const contentSection = `## New Content\n\n${content}`;
 
     // No profile means no profile section at all. Callers that deliberately run
-    // profile-blind (the signal-intake propose path) must not see an empty
-    // heading the model could try to fill in.
+    // profile-blind must not see an empty heading the model could try to fill in.
     const profileSection = profileContext?.trim()
       ? `# User Memory Profile\n      ${profileContext}\n`
       : '';

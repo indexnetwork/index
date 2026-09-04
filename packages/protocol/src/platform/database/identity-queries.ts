@@ -3,7 +3,7 @@
  */
 
 import type { UserIdentity } from '../../protocol/schemas/identity.schema.js';
-import type { ActiveIntent, ActiveNetworkMembershipPair, ArchiveResult, ConfirmProposalResult, CreateIntentData, CreatedIntent, IntentLifecycleStatus, IntentProposalRecord, IntentRecord, NetworkMembership, OnboardingState, ReviseIntentProposalInput, SimilarIntent, SimilarIntentSearchOptions, TransitionLifecycleResult, UpdateIntentData, UserRecord, UserSocial } from './entities.js';
+import type { ActiveIntent, ActiveNetworkMembershipPair, ArchiveResult, CreateIntentData, CreatedIntent, IntentLifecycleStatus, IntentRecord, NetworkMembership, OnboardingState, SimilarIntent, SimilarIntentSearchOptions, TransitionLifecycleResult, UpdateIntentData, UserRecord, UserSocial } from './entities.js';
 
 /** Profile, intent-lifecycle and retrieval operations. */
 export interface DatabaseIdentityQueries {
@@ -183,30 +183,6 @@ export interface DatabaseIdentityQueries {
    * @returns The number of opportunities expired.
    */
   expireOpportunitiesByIntentActor(intentId: string): Promise<number>;
-
-  /** Resolve a durable proposal without exposing records owned by another user. */
-  getProposalForOwner(proposalId: string, userId: string): Promise<IntentProposalRecord | null>;
-
-  /**
-   * Atomically replace the verified payload of a still-pending owner proposal
-   * (an owner-edited confirmation description that re-verified successfully).
-   */
-  revisePendingProposal(input: ReviseIntentProposalInput): Promise<IntentProposalRecord | null>;
-
-  /**
-   * Atomically confirm one durable proposal into a persisted intent, with
-   * optional network assignment. Re-checks owner, expiry, exact payload,
-   * verifier analysis, and current membership under the proposal row's lock.
-   *
-   * Called when the reconciler outputs a "confirm" action.
-   */
-  confirmProposalIntent(input: {
-    proposalId: string;
-    userId: string;
-    description: string;
-    networkId?: string;
-    embedding: number[];
-  }): Promise<ConfirmProposalResult>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Query Operations

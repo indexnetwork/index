@@ -27,17 +27,16 @@ import { NetworkMembershipGraphFactory } from "../internal/networks/membership.g
 import { NetworkGraphFactory } from "../internal/networks/network.graph.js";
 import { createNetworkTools } from "../internal/networks/network.tools.js";
 
-import type { IntentNetworkIndexer } from "../protocol/core.js";
 import type { NetworkToolDeps } from "../internal/networks/network.tools.js";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-export type { IntentNetworkIndexer, NetworkToolDeps };
+export type { NetworkToolDeps };
 
 /**
  * Host capabilities the community graphs need.
  *
- * Both fields are optional so a host can construct `new Networks()` and reach
+ * The field is optional so a host can construct `new Networks()` and reach
  * only {@link Networks.createTools}; each `create…Graph` method names the
  * dependency it requires.
  */
@@ -48,11 +47,6 @@ export interface NetworksDeps {
    * query sets.
    */
   database?: NetworkGraphDatabase & NetworkMembershipGraphDatabase & IntentNetworkGraphDatabase;
-  /**
-   * Scores a signal against a community. Required by
-   * {@link Networks.createAssignmentGraph}; an `Intents` instance satisfies it.
-   */
-  indexer?: IntentNetworkIndexer;
 }
 
 /**
@@ -96,16 +90,12 @@ export class Networks {
 
   /**
    * Build the signal↔community assignment graph — link a signal to a community
-   * directly or after model evaluation, and unlink it.
+   * and unlink it.
    *
-   * @throws If the instance was constructed without a `database` or an `indexer`.
+   * @throws If the instance was constructed without a `database`.
    */
   public createAssignmentGraph() {
-    const { indexer } = this.deps;
-    if (!indexer) {
-      throw new Error("Networks.createAssignmentGraph() requires an `indexer` dependency.");
-    }
-    return new IntentNetworkGraphFactory(this.database("createAssignmentGraph"), indexer).createGraph();
+    return new IntentNetworkGraphFactory(this.database("createAssignmentGraph")).createGraph();
   }
 
   // ── Stateless surface ───────────────────────────────────────────────────────

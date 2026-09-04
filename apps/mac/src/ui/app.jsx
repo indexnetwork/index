@@ -397,8 +397,6 @@ function App() {
   const profileFromIntent = (intent) => ({
     intentId: intent.id,
     intent: intent.title,
-    edges: intent.edges,
-    offLimits: intent.offLimits,
     status: intent.status,
   });
   const pickExistingIntent = (intent) => {
@@ -418,16 +416,14 @@ function App() {
     setPeople([]);
     setFreshUser(false);   // they've created a signal, hub is no longer empty
 
-    // Match web confirmation: open the exact persisted signal as soon as
-    // /intents/confirm returns its ID. The shelf refresh is background work,
-    // not a second blocking /auth/me + /intents/list bootstrap.
+    // Open the exact persisted signal as soon as POST /intents returns its ID.
+    // The shelf refresh is background work, not a second blocking
+    // /auth/me + /intents/list bootstrap.
     if (created && intentId) {
       const now = new Date().toISOString();
       const optimistic = {
         id: intentId,
         title: answers.intent || "new signal",
-        edges: answers.edges || "",
-        offLimits: answers["off-limits"] || "",
         status: "active",
         source: { id:intentId, createdAt:now, updatedAt:now },
       };
@@ -446,31 +442,7 @@ function App() {
       return;
     }
 
-    // Legacy/direct MCP creation can lack a structured ID. Keep the old
-    // recovery lookup for that path only; proposal confirmation never pays it.
-    if (created && window.IndexApp && window.IndexApp.isAuthed()) {
-      const snap = await window.IndexApp.loadSnapshot().catch(() => null);
-      if (snap) {
-        applyLoaded(snap);
-        const intents = [...(snap.snapshot.INTENTS || [])].sort((a, b) => {
-          const ta = a.source && a.source.createdAt ? Date.parse(a.source.createdAt) : 0;
-          const tb = b.source && b.source.createdAt ? Date.parse(b.source.createdAt) : 0;
-          return tb - ta;
-        });
-        if (intents[0]) {
-          setProfile(profileFromIntent(intents[0]));
-          setScreen("main");
-          seedField();
-          return;
-        }
-      }
-    }
-
-    setProfile({
-      intent: answers.intent,
-      edges: answers.edges,
-      offLimits: answers["off-limits"],
-    });
+    setProfile({ intent: answers.intent });
     setScreen("main");
     seedField();
   };

@@ -1191,6 +1191,13 @@
       "when": 1788484800006,
       "tag": "0172_drop_personal_agent_type",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1788484800007,
+      "tag": "0173_drop_intake_and_proposal_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -135,12 +135,12 @@ export function createUtilityTools(
 
 Intents are the core unit of discovery — they represent what users are seeking and drive semantic matching.
 
-1. **Creation** (create_intent): User describes what they're looking for. The system runs inference (extracting structured intents from free text) and verification (checking specificity, speech-act type). Returns a proposal for user approval.
+1. **Creation** (create_intent): User describes what they're looking for and names the networks to share it in. The system runs inference (extracting structured intents from free text) and verification (checking specificity, speech-act type), then persists the intent and links it to those networks.
 2. **Confidence & Classification**: Each intent gets a confidence score (0-1), inferenceType (explicit = user stated directly, implicit = system inferred), and speech act classification (commissive, directive, assertive).
-3. **Index Assignment**: After creation, the intent is automatically evaluated against all networks the user belongs to. The index's prompt is used as criteria. Matching indexes get linked via IntentNetworks with a relevancyScore (0-1).
+3. **Index Assignment**: Links are explicit. An intent is shared in exactly the networks named at creation, and later linked or unlinked with create_intent_index / delete_intent_index.
 4. **Discovery Trigger**: Creating an intent triggers background opportunity detection — the system searches for other users in shared networks whose intents complement this one.
 5. **Source Tracking**: Intents track their origin via sourceType (integration, discovery_form, enrichment) and sourceId.
-6. **Update** (update_intent): Re-processes through inference/verification, recalculates embeddings and index assignments.
+6. **Update** (update_intent): Re-processes through inference/verification and recalculates embeddings. Network links are unchanged.
 7. **Archive** (delete_intent): Soft-deletes the intent. It stops participating in discovery but is not permanently removed.
 
 ### Intent Best Practices

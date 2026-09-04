@@ -1,23 +1,12 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 
-import { buildNetworkAssignmentDecision } from "../shared/assignment/network-assignment.policy.js";
+import { buildManualAssignmentMetadata } from "../shared/assignment/network-assignment.policy.js";
 import type { IntentNetworkGraphDatabase } from "../../platform/database.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { timed } from "../shared/observability/performance.js";
-import { requestContext } from "../shared/observability/request-context.js";
 import type { DebugMetaAgent } from "../../protocol/core.js";
-import { renderNetworkContext } from "../shared/network/metadata.renderer.js";
-import type { IntentNetworkIndexer } from "../../protocol/core.js";
 
 import { IntentNetworkGraphState, type AssignmentResult } from "./indexer.state.js";
-
-/**
- * The one intents method assignment calls: score a signal against a network.
- *
- * Naming the single method rather than accepting the whole capability keeps the
- * injected surface auditable, and lets a test pass a one-method stub.
- */
-export type { IntentNetworkIndexer } from "../../protocol/core.js";
 
 const logger = protocolLogger("IntentNetworkGraphFactory");
 
@@ -25,26 +14,14 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  * Factory class to build and compile the Intent–Network (indexer) Graph.
  *
  * Handles CRUD for the intent_indexes junction table:
- * - create: Assign an intent to a network (direct or LLM-evaluated)
+ * - create: Link an intent to a network
  * - read: List intent–network links (by intentId or by networkId)
- * - delete: Unassign an intent from a network
+ * - delete: Unlink an intent from a network
  *
  * ## Signal assignment policy
  *
- * The indexer is injected at construction time as {@link IntentNetworkIndexer},
- * which narrows the intents module to the one method used here — this factory
- * never reaches intents internals directly.
- *
- * Two assignment paths:
- * 1. Direct (`skipEvaluation: true`):
- *    - Writes the link immediately with `mode: manual_override`, `score: 1`.
- * 2. Evaluated (`skipEvaluation: false`):
- *    - Loads intent + network context (indexPrompt, memberPrompt).
- *    - No-prompt fast path: if both prompts are absent, assigns with
- *      `mode: automatic, promptPresence: 'none'` without calling the LLM.
- *    - Otherwise invokes the intents indexer to get indexScore + memberScore + reasoning.
- *    - Applies `buildNetworkAssignmentDecision` to produce the threshold/metadata.
- *    - Only writes the link when the decision's `assigned` flag is true.
+ * There is none to apply: a link exists because its owner asked for it. The
+ * assign node writes the row at score 1 with `mode: manual_override`.
  *
  * ## Membership authority for assignment
  *
@@ -55,7 +32,7 @@ const logger = protocolLogger("IntentNetworkGraphFactory");
  *
  * Flow:
  * START → router → {
- *   create: assignNode (direct or evaluated) → END
+ *   create: assignNode → END
  *   read: readNode → END
  *   delete: unassignNode → END
  * }
@@ -67,18 +44,14 @@ export type IntentNetworkState = typeof IntentNetworkGraphState.State;
 /** Everything the intent-network nodes reach for. */
 export interface IntentNetworkGraphDeps {
   database: IntentNetworkGraphDatabase;
-  intentNetworker: IntentNetworkIndexer;
 }
 
 export class IntentNetworkGraphFactory {
   /** Resolved dependency bag shared by every node. */
   public readonly deps: IntentNetworkGraphDeps;
 
-  constructor(
-    database: IntentNetworkGraphDatabase,
-    intentNetworker: IntentNetworkIndexer,
-  ) {
-    this.deps = { database, intentNetworker };
+  constructor(database: IntentNetworkGraphDatabase) {
+    this.deps = { database };
   }
 
   public createGraph() {
@@ -149,7 +122,7 @@ export async function assignNode(state: IntentNetworkState, deps: IntentNetworkG
   return timed("IntentNetworkGraph.assign", async () => {
     const intentId = state.intentId;
     const networkId = state.networkId;
-    logger.verbose("Assign intent to network", { userId: state.userId, intentId, networkId, skipEvaluation: state.skipEvaluation });
+    logger.verbose("Assign intent to network", { userId: state.userId, intentId, networkId });
 
     const agentTimingsAccum: DebugMetaAgent[] = [];
 
@@ -180,156 +153,21 @@ export async function assignNode(state: IntentNetworkState, deps: IntentNetworkG
         return { agentTimings: agentTimingsAccum, mutationResult: { success: true, message: "That intent is already in this network." } };
       }
 
-      // Direct assignment (skip LLM evaluation)
-      if (state.skipEvaluation) {
-        const decision = buildNetworkAssignmentDecision({
-          resourceType: "intent",
-          mode: "manual_override",
-          scope: "network",
-          evaluator: "intent-network-graph",
-          source: "manual-index-assignment",
-          createdAt: new Date().toISOString(),
-        });
-        const finalized = await finalizeAssignment(deps, 
-          state.userId,
-          intentId,
-          networkId,
-          decision.finalScore,
-          decision.metadata,
-          'Intent saved to the network.',
-        );
-        return { agentTimings: agentTimingsAccum, ...finalized };
-      }
-
-      // Evaluated assignment path
-      const intentForIndexing = await deps.database.getIntentForIndexing(intentId);
-      if (!intentForIndexing) {
-        return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Intent not found for evaluation." } };
-      }
-
-      const indexContext = await deps.database.getNetworkAssignmentContext(networkId, intentForIndexing.userId);
-      if (!indexContext) {
-        return {
-          agentTimings: agentTimingsAccum,
-          assignmentResult: { networkId, assigned: false, success: false } as AssignmentResult,
-          mutationResult: { success: false, error: "Network assignment context not found." },
-        };
-      }
-      const indexPrompt = indexContext.indexPrompt ?? null;
-      const memberPrompt = indexContext.memberPrompt ?? null;
-      const hasNoPrompts = !indexPrompt?.trim() && !memberPrompt?.trim();
-
-      // No-prompt fast path: assign without LLM
-      if (hasNoPrompts) {
-        const decision = buildNetworkAssignmentDecision({
-          resourceType: "intent",
-          mode: "automatic",
-          scope: "network",
-          indexPrompt,
-          memberPrompt,
-          evaluator: "intent-networker",
-          source: "intent-network-graph",
-          createdAt: new Date().toISOString(),
-        });
-        const finalized = await finalizeAssignment(deps, 
-          state.userId,
-          intentId,
-          networkId,
-          decision.finalScore,
-          decision.metadata,
-          'Intent assigned to network (no prompts).',
-        );
-        return { agentTimings: agentTimingsAccum, ...finalized };
-      }
-
-      // Render network context for the evaluator
-      const network = await deps.database.getNetwork(networkId);
-      const renderedContext = network
-        ? renderNetworkContext({
-            title: network.title,
-            prompt: network.prompt,
-          })
-        : null;
-
-      const sourceName = intentForIndexing.sourceType
-        ? `${intentForIndexing.sourceType}:${intentForIndexing.sourceId ?? ""}`
-        : undefined;
-
-      // Score the signal against the network (intents module, injected as IntentNetworkIndexer)
-      const _traceEmitter = requestContext.getStore()?.traceEmitter;
-      const _indexerStart = Date.now();
-      _traceEmitter?.({ type: "agent_start", name: "intent-networker" });
-      let result: Awaited<ReturnType<typeof deps.intentNetworker.indexIntent>> | null = null;
-      try {
-        result = await deps.intentNetworker.indexIntent(
-          intentForIndexing.payload,
-          indexPrompt,
-          memberPrompt,
-          sourceName,
-          renderedContext
-        );
-      } finally {
-        const _indexerMs = Date.now() - _indexerStart;
-        agentTimingsAccum.push({ name: 'intent.indexer', durationMs: _indexerMs });
-        _traceEmitter?.({
-          type: "agent_end",
-          name: "intent-networker",
-          durationMs: _indexerMs,
-          summary: result
-            ? `Scored: index=${result.indexScore.toFixed(2)}, member=${result.memberScore.toFixed(2)}`
-            : "intent-networker failed",
-        });
-      }
-
-      if (!result) {
-        return {
-          agentTimings: agentTimingsAccum,
-          evaluation: null,
-          shouldAssign: false,
-          finalScore: 0,
-          mutationResult: { success: false, error: "Evaluation returned no result." },
-        };
-      }
-
-      const decision = buildNetworkAssignmentDecision({
+      const assignment = buildManualAssignmentMetadata({
         resourceType: "intent",
-        mode: "automatic",
-        scope: "network",
-        indexPrompt,
-        memberPrompt,
-        rawScores: { indexScore: result.indexScore, memberScore: result.memberScore },
-        evaluator: "intent-networker",
         source: "intent-network-graph",
-        reason: result.reasoning,
         createdAt: new Date().toISOString(),
       });
-
-      if (decision.assigned) {
-        const finalized = await finalizeAssignment(deps, 
-          state.userId,
-          intentId,
-          networkId,
-          decision.finalScore,
-          decision.metadata,
-          `Intent assigned to network (score: ${decision.finalScore.toFixed(2)}).`,
-        );
-        return {
-          agentTimings: agentTimingsAccum,
-          evaluation: result,
-          shouldAssign: finalized.assignmentResult.assigned,
-          finalScore: decision.finalScore,
-          ...finalized,
-        };
-      }
-
-      return {
-        agentTimings: agentTimingsAccum,
-        evaluation: result,
-        shouldAssign: false,
-        finalScore: decision.finalScore,
-        assignmentResult: { networkId, assigned: false, success: true } as AssignmentResult,
-        mutationResult: { success: false, error: `Intent did not qualify for this network (score: ${decision.finalScore.toFixed(2)}).` },
-      };
+      const finalized = await finalizeAssignment(
+        deps,
+        state.userId,
+        intentId,
+        networkId,
+        assignment.finalScore,
+        assignment.metadata,
+        'Intent saved to the network.',
+      );
+      return { agentTimings: agentTimingsAccum, ...finalized };
     } catch (err) {
       logger.error("Assign failed", { error: err });
       return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Failed to assign intent to network." } };

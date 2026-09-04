@@ -6,7 +6,7 @@ capability façades decide what is supported.
 | Area | Used by | Responsibility |
 | --- | --- | --- |
 | `agents/` | Tool registry | Agent registry and permission tools |
-| `intents/` | `Intents`, tool registry | Signal lifecycle, intake, verification, and indexing |
+| `intents/` | `Intents`, tool registry | Signal lifecycle, clarification, and verification |
 | `networks/` | `Networks`, tool registry | Community lifecycle, membership, and assignments |
 | `contexts/`, `enrichment/` | Public-profile research tools | Parallel-backed profile suggestions |
 | `discovery/` | Opportunity and context workflows | HyDE search preparation and retrieval |

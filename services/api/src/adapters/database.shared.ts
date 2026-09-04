@@ -13,10 +13,9 @@ import type { User, NotificationPreferences, OnboardingState } from '../schemas/
 import type { Conversation, ConversationParticipant, ConversationSession, Message } from '../schemas/conversation.schema';
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
-import { NetworkMembershipEvents } from '../events/network_membership.event';
 
 // Re-export the import surface so domain adapter files import everything from one module.
-export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log, NetworkMembershipEvents };
+export { schema, db, traceAppOperation, normalizeEmbedding, normalizeTelegramSocialValue, log };
 export { canActorSeeOpportunity } from './opportunity.visibility';
 export { eq, and, or, isNull, isNotNull, sql, count, desc, gt, gte, lt, lte, ne, inArray, ilike, notInArray, asc, not };
 export type { User, NotificationPreferences, OnboardingState, Conversation, ConversationParticipant, ConversationSession, Message, Id };

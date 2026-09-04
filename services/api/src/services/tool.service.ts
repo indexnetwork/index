@@ -14,7 +14,6 @@ import type { HydeGraphDatabase, ToolDeps, OpportunityOwnerApprovalAuthority } f
 import { intentIndexing } from '../lib/intent/indexing';
 import { getDirectOpportunityOwnerApprovalAuthority } from '../lib/mcp/owner-approval';
 import { enrichUserProfile } from '../lib/parallel/parallel';
-import { intentProposalDatabaseAdapter } from '../adapters/intent-proposal.database.adapter';
 
 import { log } from '../lib/log';
 
@@ -55,7 +54,6 @@ export class ToolService {
       database,
       userDb,
       systemDb,
-      intentProposalStore: intentProposalDatabaseAdapter,
       scraper: this.scraper,
       embedder: this.embedder,
       cache: this.cache,
@@ -219,7 +217,7 @@ export class ToolService {
       this.embedder,
       compiledHydeGraph,
     ).createGraph();
-    const networks = new Networks({ database, indexer: intents });
+    const networks = new Networks({ database });
     const indexGraph = networks.createGraph();
     const networkMembershipGraph = networks.createMembershipGraph();
     const intentIndexGraph = networks.createAssignmentGraph();

@@ -130,8 +130,6 @@ interface ToolContextBindings {
   hydeCache: HydeCache;
   /** Queue for enqueuing follow-up intent processing (HyDE generation/deletion). */
   intentFollowUp: IntentFollowUp;
-  /** Durable host persistence for verified intent proposals shown in chat. */
-  intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   /**
    * Host bridge for the `reject_opportunity` / `accept_opportunity` tools —
    * the owner's VERDICT lane (#1471). Injected by the composition root;
@@ -374,8 +372,6 @@ interface ToolDepsBindings {
   userDb: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared networks. */
   systemDb: SystemDatabase;
-  /** Durable host persistence for verified intent proposals shown in chat. */
-  intentProposalStore?: import('../../intents/intent.proposal.js').IntentProposalStore;
   scraper: Scraper;
   embedder: import('../../../platform/discovery/embedder.js').Embedder;
   cache: Cache;

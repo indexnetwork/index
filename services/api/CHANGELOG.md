@@ -9,7 +9,33 @@ section before promoting to `main`).
 
 ## [Unreleased]
 
+### Added
+- **`POST /intents/clarify`** — one stateless clarification round. Send
+  `{ payload, answers? }`, get back `{ payload, questions }`. Nothing is stored;
+  the client decides whether to ask again or create.
+- **`POST /intents`** — the one way to create a signal. Takes
+  `{ description, networkIds }`, runs the intent graph, and links the signal to
+  exactly the networks named, each of which must be a current membership. An
+  empty list is allowed: the signal is saved and reaches nobody until it is
+  linked.
+
+### Changed
+- Signal clarification and creation are rate-limited as `intent_llm` (20/min),
+  the class previously named `intake_synthesis`. Both run a model call per
+  request, so the generic write budget was far too loose for them.
+
 ### Removed
+- **BREAKING: `/intents/intake/*`, `POST /intents/confirm`, `POST /intents/reject`
+  and `POST /intents/proposals/status`.** The guided intake funnel and the
+  propose-then-confirm handshake are replaced by clarify-then-create.
+  `signal-intake.service.ts`, the pack and run adapters, the proposal adapter and
+  the `FAST_SIGNAL_INTAKE` feature flag are deleted with them. Migration `0173`
+  drops `signal_intake_packs`, `signal_intake_runs` and `intent_proposals`.
+- **BREAKING: automatic network assignment.** A signal no longer gets scored
+  against every network the owner belongs to. `assignIntentToNetworks`,
+  `reconcileIntentNetworks`, `addNetworkReconcileForUser`, the join-time
+  re-evaluation hook and the `maintenance:backfill-intent-networks` script are
+  gone. Links come from `networkIds` on create, or `create_intent_index` later.
 - **`conversations.persona` and the dead H2A chat-session API.** The column
   labelled which in-process agent loop owned a conversation; every one of those
   loops is gone and the surviving writers (H2H DMs, agent DMs, negotiation

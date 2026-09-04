@@ -36,15 +36,17 @@ export interface IntentValidationFailure {
  */
 export interface ExecutionResult {
   /** The action type that was executed */
-  actionType: 'create' | 'update' | 'expire' | 'transition' | 'confirm';
+  actionType: 'create' | 'update' | 'expire' | 'transition';
   /** Whether the action succeeded */
   success: boolean;
   /** The intent ID (created/updated/archived) */
   intentId?: string;
   /** Final payload (sanitized, for create/update) */
   payload?: string;
-  /** Error message if failed. For transition/confirm this is the outcome's `kind`. */
+  /** Error message if failed. For transition this is the outcome's `kind`. */
   error?: string;
+  /** Networks the created intent was linked to, for a `create` action. */
+  linkedNetworkIds?: string[];
 }
 
 /** A deterministic pause/resume action, bypassing the LLM reconciler. */
@@ -54,16 +56,8 @@ export interface TransitionIntentAction {
   status: 'ACTIVE' | 'PAUSED';
 }
 
-/** A deterministic proposal-confirmation action, bypassing the LLM reconciler. */
-export interface ConfirmIntentAction {
-  type: 'confirm';
-  proposalId: string;
-  description: string;
-  networkId?: string;
-}
-
 /** Every action kind the executor can carry out. */
-export type IntentGraphAction = NormalizedIntentAction | TransitionIntentAction | ConfirmIntentAction;
+export type IntentGraphAction = NormalizedIntentAction | TransitionIntentAction;
 
 /** Outcome of a `transition` action, mirroring the adapter's discriminated result plus the enqueue-failure compensation case. */
 export type TransitionOutcome =
@@ -73,13 +67,6 @@ export type TransitionOutcome =
   | { kind: 'stale' }
   | { kind: 'conflict'; status: IntentLifecycleStatus | null; archived: boolean }
   | { kind: 'enqueue_failed'; id: string; status: IntentLifecycleStatus; lifecycleVersionMs: number };
-
-/** Outcome of a `confirm` action. */
-export type ConfirmOutcome =
-  | { kind: 'created' | 'replay'; intentId: string }
-  | { kind: 'missing' | 'expired' | 'consumed' | 'payload_mismatch' | 'analysis_missing' | 'proposal_edit_rejected' }
-  | { kind: 'membership_required'; networkId: string }
-  | { kind: 'admission_enqueue_failed'; intentId: string };
 
 /**
  * The Graph State using LangGraph Annotations.
@@ -122,9 +109,8 @@ export const IntentGraphState = Annotation.Root({
    * - `inputContent` + `targetIntentIds` → explicit update, bound to that one id
    * - `targetIntentIds` + `archive: true` → expire those ids, no LLM
    * - `targetIntentIds` + `status` → pause/resume, no LLM
-   * - `proposalId` (+ `description`, `networkId`) → confirm a stored proposal, no LLM
    * - none of the above → read (query fast path)
-   * Exactly one of {content, archive, status, proposalId} may be set per invoke.
+   * Exactly one of {content, archive, status} may be set per invoke.
    */
   targetIntentIds: Annotation<string[] | undefined>({
     reducer: (curr, next) => next ?? curr,
@@ -143,30 +129,6 @@ export const IntentGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /** Confirm route: the durable proposal to persist. */
-  proposalId: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /**
-   * Confirm route: the caller's (possibly owner-edited) description, compared
-   * byte-for-byte against the stored proposal. Never run through inference.
-   */
-  description: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /**
-   * When true on the content path, stop after verification — no reconciliation,
-   * no writes. Replaces the old `propose` operation mode.
-   */
-  dryRun: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
   /**
    * Optional material compare-and-set guard used only by recovery-answer
    * updates. The database rechecks it while holding the final intent row lock.
@@ -177,11 +139,21 @@ export const IntentGraphState = Annotation.Root({
   }),
 
   /**
-   * Optional network scope (network ID). Used for linking created intents to a network
-   * and for scoping read operations. Prep always fetches ALL user intents via
-   * getActiveIntents(userId) regardless of network scope (for global dedup/reconciliation).
+   * Optional network scope (network ID) for read operations. Prep always
+   * fetches ALL user intents via getActiveIntents(userId) regardless of network
+   * scope (for global dedup/reconciliation).
    */
   networkId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /**
+   * Create route: the networks a newly created intent is linked to. Exactly
+   * this list is written to `intent_networks`, each one membership-checked;
+   * nothing is inferred or scored. An empty list creates an unlinked intent.
+   */
+  networkIds: Annotation<string[] | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
@@ -243,7 +215,7 @@ export const IntentGraphState = Annotation.Root({
   // --- Output ---
 
   /**
-   * Final actions to be performed on the DB (Create, Update, Expire, Transition, Confirm).
+   * Final actions to be performed on the DB (Create, Update, Expire, Transition).
    */
   actions: Annotation<IntentGraphAction[]>({
     reducer: (curr, next) => next,
@@ -261,12 +233,6 @@ export const IntentGraphState = Annotation.Root({
 
   /** Detailed outcome of a `transition` action, for host-side status mapping. */
   transitionResult: Annotation<TransitionOutcome | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
-  }),
-
-  /** Detailed outcome of a `confirm` action, for host-side status mapping. */
-  confirmResult: Annotation<ConfirmOutcome | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),

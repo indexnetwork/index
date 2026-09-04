@@ -3,11 +3,8 @@ import { buildProfileFromUser, schema, ActiveIntentRow, ArchiveResultShape, Crea
 import { IntentEvents } from '../events/intent.event';
 import { emitOpportunityTransitionBestEffort } from '../events/opportunity.event';
 import { canApplyExpectedIntentUpdate, computeIntentFingerprint } from '../lib/intent/intent.fingerprint';
-import { intentProposalAnalysisSchema, mapProposalAnalysisToIntent } from '../lib/intent/intent-proposal';
 import { publishNotificationStreamEvent, type IntentLifecycleWireStatus } from '../lib/notification-stream-events';
-import { intentProposalDatabaseAdapter, type ReviseIntentProposalInput } from './intent-proposal.database.adapter';
 import { negotiationDatabaseAdapter } from './negotiation.database.adapter';
-import type { IntentProposalRow } from '../schemas/database.schema';
 
 
 const LIFECYCLE_WIRE_COPY: Record<IntentLifecycleWireStatus, { title: string; body: string }> = {
@@ -135,140 +132,6 @@ export class IntentDatabaseAdapter {
       logger.error('IntentDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
-  }
-
-  /**
-   * Atomically confirm one proposal with optional network assignment.
-   * The durable proposal row is locked before its owner, expiry, exact payload,
-   * verifier output, and current membership are checked. Intent insertion,
-   * optional assignment, and proposal consumption commit together.
-   *
-   * @param input - Client binding plus the server-generated embedding.
-   * @returns A discriminated confirmation result.
-   */
-  async confirmProposalIntent(
-    input: {
-      proposalId: string;
-      userId: string;
-      description: string;
-      networkId?: string;
-      embedding: number[];
-    },
-  ): Promise<
-    | { kind: 'created'; intent: CreatedIntentRow }
-    | { kind: 'replay'; intent: { id: string; archivedAt: Date | null } }
-    | { kind: 'missing' }
-    | { kind: 'expired' }
-    | { kind: 'consumed' }
-    | { kind: 'payload_mismatch' }
-    | { kind: 'analysis_missing' }
-    | { kind: 'membership_required' }
-  > {
-    return db.transaction(async (tx) => {
-      const [proposal] = await tx
-        .select()
-        .from(schema.intentProposals)
-        .where(eq(schema.intentProposals.id, input.proposalId))
-        .limit(1)
-        .for('update');
-      if (!proposal || proposal.userId !== input.userId) return { kind: 'missing' } as const;
-
-      const payloadMatches = proposal.description === input.description
-        && proposal.networkId === (input.networkId ?? null);
-      if (!payloadMatches) return { kind: 'payload_mismatch' } as const;
-
-      if (proposal.status === 'consumed') {
-        if (!proposal.consumedIntentId) return { kind: 'consumed' } as const;
-        const [intent] = await tx
-          .select({ id: schema.intents.id, archivedAt: schema.intents.archivedAt })
-          .from(schema.intents)
-          .where(and(
-            eq(schema.intents.id, proposal.consumedIntentId),
-            eq(schema.intents.userId, input.userId),
-          ))
-          .limit(1);
-        return intent ? { kind: 'replay', intent } as const : { kind: 'consumed' } as const;
-      }
-      if (proposal.status !== 'pending') return { kind: 'consumed' } as const;
-      if (proposal.expiresAt.getTime() <= Date.now()) return { kind: 'expired' } as const;
-
-      const parsedAnalysis = intentProposalAnalysisSchema.safeParse(proposal.analysis);
-      if (!parsedAnalysis.success) return { kind: 'analysis_missing' } as const;
-      const mappedAnalysis = mapProposalAnalysisToIntent(parsedAnalysis.data);
-
-      if (proposal.networkId) {
-        const [membership] = await tx
-          .select({ networkId: schema.networkMembers.networkId })
-          .from(schema.networkMembers)
-          .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
-          .where(and(
-            eq(schema.networkMembers.networkId, proposal.networkId),
-            eq(schema.networkMembers.userId, input.userId),
-            isNull(schema.networkMembers.deletedAt),
-            isNull(schema.networks.deletedAt),
-            sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`,
-          ))
-          .limit(1)
-          .for('update');
-        if (!membership) return { kind: 'membership_required' } as const;
-      }
-
-      const [created] = await tx.insert(schema.intents)
-        .values({
-          userId: input.userId,
-          payload: proposal.description,
-          embedding: input.embedding,
-          sourceType: 'discovery_form',
-          sourceId: proposal.id,
-          ...mappedAnalysis,
-        })
-        .returning({
-          id: schema.intents.id,
-          payload: schema.intents.payload,
-          summary: schema.intents.summary,
-          isIncognito: schema.intents.isIncognito,
-          createdAt: schema.intents.createdAt,
-          updatedAt: schema.intents.updatedAt,
-          userId: schema.intents.userId,
-        });
-      if (!created) throw new Error('Insert did not return a row');
-
-      if (proposal.networkId) {
-        await tx.insert(schema.intentNetworks).values({
-          intentId: created.id,
-          networkId: proposal.networkId,
-          relevancyScore: null,
-        });
-      }
-
-      await tx
-        .update(schema.intentProposals)
-        .set({
-          status: 'consumed',
-          consumedAt: new Date(),
-          consumedIntentId: created.id,
-        })
-        .where(eq(schema.intentProposals.id, proposal.id));
-
-      return { kind: 'created', intent: created } as const;
-    });
-  }
-
-  /**
-   * Resolve a durable proposal without exposing records owned by another user.
-   * Delegates to {@link IntentProposalDatabaseAdapter} — the single source of
-   * truth for the intent_proposals table's read/write surface.
-   */
-  async getProposalForOwner(proposalId: string, userId: string): Promise<IntentProposalRow | null> {
-    return intentProposalDatabaseAdapter.getProposalForOwner(proposalId, userId);
-  }
-
-  /**
-   * Atomically replace the verified payload of a still-pending owner proposal.
-   * Delegates to {@link IntentProposalDatabaseAdapter}.
-   */
-  async revisePendingProposal(input: ReviseIntentProposalInput): Promise<IntentProposalRow | null> {
-    return intentProposalDatabaseAdapter.revisePendingProposal(input);
   }
 
   async updateIntent(intentId: string, data: UpdateIntentInput): Promise<CreatedIntentRow | null> {
@@ -893,24 +756,6 @@ export class IntentDatabaseAdapter {
       .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
       .limit(1);
     return row.length > 0;
-  }
-
-  /**
-   * Finds an intent by sourceId and userId (e.g. for idempotent proposal confirmation).
-   * @param sourceId - The source identifier (e.g. proposalId from chat).
-   * @param userId - The owning user's ID.
-   * @returns The intent id if found, otherwise null.
-   * @throws May throw database/query errors.
-   */
-  async getIntentBySourceId(sourceId: string, userId: string): Promise<{ id: string; archivedAt: Date | null } | null> {
-    const rows = await db.select({ id: schema.intents.id, archivedAt: schema.intents.archivedAt })
-      .from(schema.intents)
-      .where(and(
-        eq(schema.intents.sourceId, sourceId),
-        eq(schema.intents.userId, userId),
-      ))
-      .limit(1);
-    return rows[0] ?? null;
   }
 
   /**

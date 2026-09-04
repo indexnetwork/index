@@ -20,15 +20,5 @@ export interface DebugMetaAgent {
   durationMs: number;
 }
 
-export interface IntentIndexingResult {
-  indexScore: number;
-  memberScore: number;
-  reasoning: string;
-}
-
-export interface IntentNetworkIndexer {
-  indexIntent(intent: string, indexPrompt: string | null, memberPrompt: string | null, sourceName?: string | null, networkContext?: string | null): Promise<IntentIndexingResult | null>;
-}
-
 export const NEGOTIATION_MAX_TURNS_CHAT = 4;
 export const NEGOTIATION_MAX_TURNS_AMBIENT = 6;

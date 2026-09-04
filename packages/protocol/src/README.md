@@ -93,7 +93,7 @@ The system models human collaboration through a linguistic and information-theor
 | **HyDE** | Hypothetical Document Embeddings. Lens-based: the `LensInferrer` derives 1–N free-text **lenses** (search perspectives, e.g. "SF-based early-stage investor"). The live search corpus is intents. The encoder acts as a dense bottleneck filtering hallucinated specifics and retaining the semantic signal. |
 | **Felicity Conditions** | Scores evaluating whether an intent is valid: **preparatory condition** (does the user have the authority/skills for this act?) and **sincerity condition** (is the commitment genuine?). Intents that fail these are classified as *misfired* or *void*. |
 | **Semantic Entropy** | Constraint density of an intent (0.0 = maximally constrained, 1.0 = trivially satisfiable). High-entropy intents ("I want a job") trigger an **elaboration loop** — a request for missing constraints before persistence. |
-| **Semantic Governance** | The full pipeline that ensures only actionable, felicitous, sufficiently clear intents enter the graph. Referential breadth is retained as warning metadata for user-confirmed proposal approvals and explicit updates rather than acting as a universal write prohibition. Web proposal cards are emitted only after the host's injected `IntentProposalStore` durably binds their normalized text, optional network, and complete verifier output to the owner. Implemented by the Intent Verifier and Intent Clarifier agents. |
+| **Semantic Governance** | The full pipeline that ensures only actionable, felicitous, sufficiently clear intents enter the graph. Referential breadth is retained as warning metadata on the persisted signal rather than acting as a universal write prohibition. Implemented by the Intent Verifier and Intent Clarifier agents. |
 | **Valency Roles** | Derived from the argument structure of the source intent's goal verb (Hanks). The Opportunity Evaluator assigns: **Agent** (the one who can offer/do), **Patient** (the one who needs/seeks), or **Peer** (symmetric collaboration). These roles govern opportunity visibility and the notification cascade. |
 
 ## Opportunity Lifecycle and Role-Based Visibility
@@ -227,7 +227,7 @@ Handled by the **Opportunity Graph**:
 | `internal/shared/agent/model.config.ts` | Centralized model and OpenRouter configuration |
 | `internal/shared/agent/model-signal.ts` | Abort-signal-aware model invocation helper |
 | `internal/shared/agent/tool.runtime.ts` | Per-tool timeout/output-budget runtime and stable error envelopes |
-| `internal/shared/assignment/network-assignment.policy.ts` | Threshold-based network-assignment scoring and scope resolution |
+| `internal/shared/assignment/network-assignment.policy.ts` | Row metadata for a manual network assignment |
 | `internal/shared/network/metadata.renderer.ts` | Renders network metadata into prompt context |
 | `internal/opportunities/opportunity.presentation.ts` | Pure card text generation for opportunity display |
 | `internal/opportunities/opportunity.enricher.ts` | Enrich opportunity records with presentation identity data |

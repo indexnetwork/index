@@ -227,7 +227,7 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** Per-index relevancy scores for dedup tie-breaking. Background path: from intent_indexes. Chat path: transient from IntentIndexer. */
+  /** Per-index relevancy scores for dedup tie-breaking, read from intent_indexes. */
   indexRelevancyScores: Annotation<Record<string, number>>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),
@@ -261,18 +261,6 @@ export const OpportunityGraphState = Annotation.Root({
   resolvedIntentInIndex: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
-  }),
-
-  /** Create-intent signal: when true, tool should return createIntentSuggested so agent can auto-call create_intent. */
-  createIntentSuggested: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /** Suggested description for create_intent when createIntentSuggested is true. */
-  suggestedIntentDescription: Annotation<string | undefined>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => undefined,
   }),
 
   /** HyDE embeddings per lens label (from discovery) */

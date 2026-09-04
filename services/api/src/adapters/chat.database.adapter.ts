@@ -1,4 +1,4 @@
-import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipEvents, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
+import { upsertIntentNetworkAssignment, schema, ActiveIntentRow, ArchiveResultShape, CreateIntentInput, CreateOpportunityInput, CreatedIntentRow, HydeDocumentRow, Id, NetworkMembershipRow, OnboardingState, OpportunityRow, SaveHydeDocumentInput, UpdateIntentInput, UserIdentity, activeIntentLifecycleWhere, activeOwnIntentsWhere, and, buildProfileFromUser, buildProfileWithIdFromUser, count, db, desc, eq, ilike, inArray, intentNetworks, intents, isNull, logger, networkMembers, networks, notInArray, or, persistProfileIdentityToUser, sql, traceAppOperation, users } from './database.shared';
 
 import { EnrichmentDatabaseAdapter } from './enrichment.database.adapter';
 import { IntentDatabaseAdapter } from './intent.database.adapter';
@@ -945,22 +945,6 @@ export class ChatDatabaseAdapter {
     return this.intentAdapter.compensateFailedResume(input);
   }
 
-  getProposalForOwner(proposalId: string, userId: string): ReturnType<IntentDatabaseAdapter['getProposalForOwner']> {
-    return this.intentAdapter.getProposalForOwner(proposalId, userId);
-  }
-
-  revisePendingProposal(
-    input: Parameters<IntentDatabaseAdapter['revisePendingProposal']>[0],
-  ): ReturnType<IntentDatabaseAdapter['revisePendingProposal']> {
-    return this.intentAdapter.revisePendingProposal(input);
-  }
-
-  confirmProposalIntent(
-    input: Parameters<IntentDatabaseAdapter['confirmProposalIntent']>[0],
-  ): ReturnType<IntentDatabaseAdapter['confirmProposalIntent']> {
-    return this.intentAdapter.confirmProposalIntent(input);
-  }
-
   async getIntentIndexScores(intentId: string): Promise<Array<{
     networkId: string;
     relevancyScore: number | null;
@@ -1771,13 +1755,6 @@ export class ChatDatabaseAdapter {
       autoAssign: true,
     }).onConflictDoNothing({ target: [networkMembers.networkId, networkMembers.userId] }).returning();
 
-    if (result.length > 0) {
-      try {
-        NetworkMembershipEvents.onMemberAdded(userId, networkId);
-      } catch (err) {
-        logger.warn('addMemberToNetwork event hook failed (non-fatal)', { networkId, userId, error: err instanceof Error ? err.message : String(err) });
-      }
-    }
     return { success: true, alreadyMember: result.length === 0 };
   }
 
@@ -2539,7 +2516,7 @@ export class ChatDatabaseAdapter {
     return conversationAdapter.appendMatchProvenance(conversationId, provenance);
   }
 
-  /** Atomically update an owned intent only when its proposal snapshot is current. */
+  /** Atomically update an owned intent only when the caller's snapshot is current. */
   async updateIntentIfCurrent(
     intentId: string,
     userId: string,

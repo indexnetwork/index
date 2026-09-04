@@ -155,27 +155,6 @@ export class ApiClient {
     return body.intent;
   }
 
-  /**
-   * Confirm a proposed intent, persisting it as an active signal.
-   *
-   * `create_intent` returns a proposal (for interactive approval); this turns
-   * that proposal into a real intent.
-   *
-   * @param proposalId - The proposal ID from the create_intent result.
-   * @param description - The proposed signal description.
-   * @param networkId - Optional network to scope the intent to.
-   * @returns The created intent's ID.
-   * @throws Error on auth failure or network error.
-   */
-  async confirmIntent(proposalId: string, description: string, networkId?: string): Promise<{ intentId: string }> {
-    const res = await this.post("/api/intents/confirm", {
-      proposalId,
-      description,
-      ...(networkId ? { networkId } : {}),
-    });
-    const body = (await res.json()) as { intentId: string };
-    return body;
-  }
 
   async updateIntent(intentId: string, description: string): Promise<ToolResult> {
     return this.callTool("update_intent", { intentId, description });

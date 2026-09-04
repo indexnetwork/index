@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-import { IntentClarifier } from "./intent.clarifier.js";
-import type { ExecutionResult, IntentValidationFailure, VerifiedIntent } from "./graph/intent.graph.state.js";
-import { DEFAULT_SPECIFICITY_WARNING, normalizeIntentDescription, type PersistableIntentProposal } from "./intent.proposal.js";
+import type { ExecutionResult, IntentValidationFailure } from "./graph/intent.graph.state.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { traceGraph } from "../shared/observability/trace.js";
 
@@ -14,56 +12,9 @@ import { deriveAllowedNetworkIds, focusedIntentId, focusedNetworkId, focusedNetw
 
 /** Host capabilities consumed by signal and intent tools. */
 export type IntentToolDeps = Pick<ToolRegistryCompositionDeps, "userDb" | "systemDb">
-  & Pick<ToolRegistryCompositionDeps, "intentProposalStore">
   & { graphs: Pick<ToolRegistryCompositionDeps["graphs"], "intent" | "intentIndex"> };
 
 const logger = protocolLogger("ChatTools:Intent");
-
-type IntentClarifierLike = Pick<IntentClarifier, "invoke">;
-
-let intentClarifier: IntentClarifierLike | undefined;
-
-function getIntentClarifier(): IntentClarifierLike {
-  intentClarifier ??= new IntentClarifier();
-  return intentClarifier;
-}
-
-async function buildTypedClarificationResult(params: {
-  description: string;
-  userProfile: string;
-  activeIntentsContext?: string;
-  debugSteps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
-}): Promise<string | null> {
-  const clarification = await getIntentClarifier().invoke(
-    params.description,
-    params.userProfile,
-    params.activeIntentsContext ?? "",
-  );
-  if (!clarification.needsClarification) return null;
-  return JSON.stringify({
-    success: false,
-    needsClarification: true,
-    underspecificationType: clarification.underspecificationType,
-    suggestedDescription: clarification.suggestedDescription,
-    clarificationMessage: clarification.clarificationMessage,
-    missingFields: [clarification.underspecificationType],
-    message: clarification.clarificationMessage,
-    debugSteps: params.debugSteps,
-  });
-}
-
-/** Replace the lazy clarifier in deterministic tool tests. */
-export function setIntentClarifierForTesting(clarifier: IntentClarifierLike | null): void {
-  intentClarifier = clarifier ?? undefined;
-}
-
-/**
- * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
- * so embedded ``` cannot close the fence prematurely.
- */
-function sanitizeJsonForCodeFence(json: string): string {
-  return json.replace(/`/g, "\\u0060");
-}
 
 /** When context is network-scoped, verifies the caller is still a member of that index. Returns error message or null. */
 async function ensureScopedMembership(
@@ -100,22 +51,6 @@ function buildApprovedIdentitySnapshot(user: UserRecord | null | undefined): str
     narrative: { context: bio },
     attributes: { skills: [], interests: [] },
   });
-}
-
-function isBroadAttributiveIntent(intent: VerifiedIntent): boolean {
-  return intent.verification?.referential_breadth === "broad";
-}
-
-const NULL_LIKE_SPECIFICITY_WARNING_VALUES = new Set(["null", "undefined"]);
-
-function normalizeSpecificityWarning(value: string | null | undefined): string | null {
-  const warning = value?.trim();
-  if (!warning) return null;
-  return NULL_LIKE_SPECIFICITY_WARNING_VALUES.has(warning.toLowerCase()) ? null : warning;
-}
-
-function specificityWarningFor(intent: VerifiedIntent): string {
-  return normalizeSpecificityWarning(intent.verification?.specificity_warning) ?? DEFAULT_SPECIFICITY_WARNING;
 }
 
 type IntentUpdateGraphResult = {
@@ -329,31 +264,21 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
   const createIntent = defineTool({
     name: "create_intent",
     description:
-      "Creates a new intent (signal of interest/need) for the authenticated user. Intents drive the discovery engine — once created, " +
-      "the system automatically evaluates them against indexes the user belongs to, links them to relevant communities, and begins " +
-      "searching for matching opportunities (complementary intents from other users).\n\n" +
-      "**What to pass:** A clear, concept-based description of what the user is looking for (e.g. 'Looking for an AI/ML co-founder in Berlin', " +
-      "'Need a designer for a mobile app project'). If the user provided a URL, scrape it with scrape_url first and synthesize the content into a description.\n\n" +
-      "**What happens:** The system runs inference (extracting structured intents), verification (checking specificity and speech-act type), " +
-      "and durably stores an owner-scoped proposal containing the exact normalized description, optional network scope, and complete verifier output before returning a proposal widget. The intent itself is NOT yet persisted — the user must approve the proposal first.\n\n" +
-      "**Returns:** An intent_proposal code block that MUST be included verbatim in the response. The frontend renders it as an interactive " +
-      "card the user can approve or skip. On approval, the intent is persisted, indexed, and discovery begins.\n\n" +
-      "**Next steps after approval:** The intent is automatically linked to relevant indexes and becomes eligible for background matching. " +
-      "Background processing creates opportunities when matches are found; use list_opportunities only to review persisted results.\n\n" +
-      "**Specificity gate.** Before calling this tool, judge whether the description is concrete enough to be " +
-      "useful for matching. If the user says \"find a job\", \"meet people\", or \"learn something\", that's too " +
-      "vague — FIRST call read_intents() to understand their context, THEN propose a " +
-      "refined version (\"Based on your background in X, did you mean 'Y'?\") and wait for confirmation before " +
-      "calling create_intent. Specific asks (\"senior UX design role at a tech company in Berlin\") can go " +
-      "directly to create_intent.\n\n" +
-      "**URL handling.** If the user pastes a URL describing the intent (e.g. a job posting), call scrape_url " +
-      "first with objective=\"Extract key details for an intent\", synthesize a conceptual description from the " +
-      "content, then call create_intent with the synthesis. Exception: profile URLs (LinkedIn, GitHub, X) are for " +
-      "research_profile, not scrape_url — do not scrape first.",
+      "Creates and persists an intent (a signal of interest or need) for the authenticated user, linked to exactly the networks you name. " +
+      "Intents drive discovery: once created, the system indexes the signal and searches for complementary intents from other people.\n\n" +
+      "**What to pass:** `description` — a clear, concept-based statement of what the user is looking for (e.g. 'Looking for an AI/ML co-founder in Berlin'). " +
+      "`networkIds` — the networks to broadcast it to. Nothing is auto-assigned: a signal with no network ids is created but reaches nobody until it is linked. " +
+      "Get network ids from read_networks; every id must be a network the user currently belongs to.\n\n" +
+      "**Specificity gate.** Judge whether the description is concrete enough to match on before calling. 'find a job', 'meet people', or 'learn something' " +
+      "is too vague — call read_intents() for context, propose a refined version to the user, and wait for their confirmation first. " +
+      "Specific asks ('senior UX design role at a tech company in Berlin') can go straight through.\n\n" +
+      "**URL handling.** If the user pastes a URL describing the intent (e.g. a job posting), call scrape_url first with " +
+      "objective=\"Extract key details for an intent\", synthesize a conceptual description, then pass that here. Exception: profile URLs " +
+      "(LinkedIn, GitHub, X) are for research_profile, not scrape_url.\n\n" +
+      "**Returns:** The created intent id and the networks it was linked to. Use create_intent_index / delete_intent_index to change those links later.",
     querySchema: z.object({
-      description: z.string().describe("A clear, specific description of what the user is looking for. Should be concept-based, not a raw URL. If the user shared a URL, scrape it first with scrape_url and pass the synthesized content here. Vague descriptions will be rejected — include what kind, what for, and/or timeframe."),
-      networkId: z.string().optional().describe("Network UUID to link the intent to upon creation. Defaults to the scoped network in network-scoped chats. Get network IDs from read_networks. If omitted, the system auto-assigns to relevant networks based on their prompts."),
-      autoApprove: z.boolean().optional().describe("When true, automatically persists all verified intents without returning proposal cards for manual approval. MCP agents SHOULD set this to true since there is no UI for card-based approval. Web chat agents should omit or set to false to get interactive proposal cards."),
+      description: z.string().describe("A clear, specific description of what the user is looking for. Concept-based, not a raw URL. Vague descriptions are rejected — include what kind, what for, and/or timeframe."),
+      networkIds: z.array(z.string()).optional().describe("Network UUIDs to link the intent to. Each must be a current membership. Defaults to the scoped network in a network-scoped chat, and to nothing otherwise."),
     }),
     handler: async ({ context, query }) => {
       const scopeErr = await ensureScopedMembership(context, deps.systemDb);
@@ -370,14 +295,19 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         return error("This chat is scoped to an existing selected intent. Update that intent instead of creating a different one here.");
       }
 
-      // Strict scope enforcement
-      if (scopedNetworkId && query.networkId?.trim() && query.networkId.trim() !== scopedNetworkId) {
+      const requestedNetworkIds = (query.networkIds ?? []).map((id) => id.trim()).filter(Boolean);
+      if (requestedNetworkIds.some((id) => !UUID_REGEX.test(id))) {
+        return error("Invalid network ID format.");
+      }
+      if (scopedNetworkId && requestedNetworkIds.some((id) => id !== scopedNetworkId)) {
         return error(
           `This chat is scoped to ${scopedIndexLabel}. You can only create intents in this community.`
         );
       }
 
-      const effectiveIndexId = scopedNetworkId || query.networkId?.trim() || undefined;
+      const networkIds = scopedNetworkId
+        ? [scopedNetworkId]
+        : requestedNetworkIds;
       const scopeEnvelope = scopedNetworkId
         ? { scopeType: 'network' as const, scopeId: scopedNetworkId }
         : {};
@@ -385,186 +315,47 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
       const latestUser = typeof userDb.getUser === "function" ? await userDb.getUser() : context.user;
       const userProfile = buildApprovedIdentitySnapshot(latestUser);
 
-      // Run inference + verification only (propose mode — no DB persistence)
-      const _intentGraphStart1 = Date.now();
+      const _intentGraphStart = Date.now();
       const result = await traceGraph("intent", () => invokeWithAbortSignal(graphs.intent, {
         userId: context.userId,
         userProfile,
         inputContent: query.description,
-        dryRun: true,
-        ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
+        networkIds,
         ...scopeEnvelope,
       }));
-      const _intentGraphMs1 = Date.now() - _intentGraphStart1;
-      logger.debug("Intent graph propose response", { result });
+      const _intentGraphMs = Date.now() - _intentGraphStart;
+      logger.debug("Intent graph create response", { result });
 
-      const verified = result.verifiedIntents || [];
-
-      // MCP contexts have no interactive UI for proposal cards — default to auto-approve
-      const shouldAutoApprove = query.autoApprove ?? context.isMcp ?? false;
-
-      // Extract trace from graph and convert to debugSteps
       const trace = Array.isArray(result.trace) ? result.trace : [];
       const debugSteps = trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
         step: t.node,
         detail: t.detail,
         ...(t.data ? { data: t.data } : {}),
       }));
+      const graphTimings = [{ name: 'intent-create', durationMs: _intentGraphMs, agents: result.agentTimings ?? [] }];
 
-      if (verified.length === 0) {
-        // Build a descriptive rejection reason from the trace so the ReACT agent
-        // can retry with a better description or ask the user for clarification.
-        // When inference produces 0 intents, propose mode exits before verification
-        // runs — so we check inference trace first.
-        const verificationTrace = debugSteps.find((s: { step: string; detail?: string }) => s.step === "verification");
-
-        const typedClarification = await buildTypedClarificationResult({
-          description: query.description,
-          userProfile,
-          activeIntentsContext: result.activeIntents,
-          debugSteps,
-        });
-        if (typedClarification) return typedClarification;
-
-        if (!verificationTrace) {
-          const inferenceHint =
-            debugSteps.find((s: { step: string; detail?: string }) => s.step === "inference")?.detail
-            ?? "no intents extracted";
-          return error(
-            `No actionable intent was extracted (${inferenceHint}). ` +
-            `Please retry with an explicit goal or ask the user what outcome they want.`,
-            debugSteps,
-          );
-        }
-
-        const rejectionHint =
-          verificationTrace.detail ?? "all candidate intents were filtered as invalid or too vague";
+      const created = (result.executionResults ?? []).filter(
+        (execution: ExecutionResult) => execution.actionType === 'create' && execution.success,
+      );
+      if (created.length === 0) {
+        const failure = describeIntentUpdateFailure(result as IntentUpdateGraphResult);
         return error(
-          `Intent verification failed (${rejectionHint}). ` +
-          `The description may have been classified as a statement rather than a goal. ` +
-          `Retry with an explicit goal or ask the user what outcome they want.`,
+          `${failure.error} Retry with a more specific goal, or ask the user what outcome they want.`,
           debugSteps,
         );
       }
-
-      // ── Auto-approve path (for MCP agents or explicit opt-in) ──
-      if (shouldAutoApprove) {
-        const broadIntents = (verified as VerifiedIntent[]).filter(isBroadAttributiveIntent);
-        if (broadIntents.length > 0) {
-          const typedClarification = await buildTypedClarificationResult({
-            description: broadIntents[0].description,
-            userProfile,
-            activeIntentsContext: result.activeIntents,
-            debugSteps,
-          });
-          if (typedClarification) return typedClarification;
-
-          const first = broadIntents[0];
-          const missing = first.verification?.missing_selectional_constraints ?? [];
-          const missingHint = missing.length > 0
-            ? ` Missing specifics: ${missing.map((m) => m.replace(/_/g, " ")).join(", ")}.`
-            : "";
-          return error(
-            `${specificityWarningFor(first)}${missingHint} ` +
-            `Please ask the user to clarify before creating this signal, or retry with a narrower description.`,
-            debugSteps,
-          );
-        }
-
-        const createdIntents: Array<{ description: string; confidence: number | null; speechActType: string | null }> = [];
-        const createTimings: Array<{ name: string; durationMs: number; agents: unknown[] }> = [];
-
-        for (const v of verified as VerifiedIntent[]) {
-          const _createGraphStart = Date.now();
-          const createResult = await traceGraph("intent", () => invokeWithAbortSignal(graphs.intent, {
-            userId: context.userId,
-            userProfile,
-            inputContent: v.description,
-            ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
-            ...scopeEnvelope,
-          }));
-          const _createGraphMs = Date.now() - _createGraphStart;
-
-          createTimings.push({ name: 'intent-create', durationMs: _createGraphMs, agents: createResult.agentTimings ?? [] });
-
-          const succeeded = createResult.executionResults?.some((r: ExecutionResult) => r.success);
-          if (succeeded) {
-            createdIntents.push({
-              description: v.description,
-              confidence: v.score != null ? Math.round(v.score * 100) / 100 : null,
-              speechActType: v.verification?.classification ?? null,
-            });
-          }
-        }
-
-        return success({
-          created: createdIntents.length > 0,
-          count: createdIntents.length,
-          intents: createdIntents,
-          message: createdIntents.length > 0
-            ? `Created ${createdIntents.length} intent${createdIntents.length > 1 ? 's' : ''} successfully. The system will automatically index them and begin searching for matching opportunities.`
-            : 'Intent creation failed — the intents could not be persisted.',
-          debugSteps,
-          _graphTimings: [
-            { name: 'intent-propose', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
-            ...createTimings,
-          ],
-        });
-      }
-
-      // ── Proposal path (for web chat with interactive cards) ──
-      // Persist complete verifier output before emitting any usable card.
-      if (!deps.intentProposalStore) {
-        return error("Verified intent proposals are unavailable because durable proposal storage is not configured.");
-      }
-      const proposals: PersistableIntentProposal[] = [];
-      const proposalBlocks: string[] = [];
-      for (const v of verified as VerifiedIntent[]) {
-        if (!v.verification) {
-          return error("Intent verification produced no authoritative analysis; no proposal was created.", debugSteps);
-        }
-        const proposalId = crypto.randomUUID();
-        const normalizedDescription = normalizeIntentDescription(v.description);
-        const isBroad = isBroadAttributiveIntent(v);
-        proposals.push({
-          proposalId,
-          userId: context.userId,
-          description: normalizedDescription,
-          ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
-          analysis: {
-            verifierOutput: v.verification,
-            combinedScore: v.score ?? null,
-          },
-        });
-        const data = {
-          proposalId,
-          description: normalizedDescription,
-          ...(effectiveIndexId ? { networkId: effectiveIndexId } : {}),
-          confidence: v.score != null ? Math.round(v.score * 100) / 100 : null,
-          speechActType: v.verification?.classification ?? null,
-          semanticEntropy: v.verification?.semantic_entropy ?? null,
-          referentialBreadth: v.verification?.referential_breadth ?? null,
-          missingSelectionalConstraints: v.verification?.missing_selectional_constraints ?? [],
-          specificityWarning: isBroad ? specificityWarningFor(v) : normalizeSpecificityWarning(v.verification?.specificity_warning),
-        };
-        proposalBlocks.push(
-          "```intent_proposal\n" +
-          sanitizeJsonForCodeFence(JSON.stringify(data)) +
-          "\n```"
-        );
-      }
-      await deps.intentProposalStore.createProposals(proposals);
-
-      const blocksText = proposalBlocks.join("\n\n");
 
       return success({
-        proposed: true,
-        count: verified.length,
-        message: `IMPORTANT: Include the following \`\`\`intent_proposal code blocks EXACTLY as-is in your response (they render as interactive cards for the user to approve or skip):\n\n${blocksText}`,
+        created: true,
+        count: created.length,
+        intents: created.map((execution: ExecutionResult) => ({
+          intentId: execution.intentId,
+          description: execution.payload,
+          networkIds: execution.linkedNetworkIds ?? [],
+        })),
+        message: `Created ${created.length} intent${created.length > 1 ? 's' : ''}. Discovery starts in the background; use list_opportunities to review results.`,
         debugSteps,
-        _graphTimings: [
-          { name: 'intent', durationMs: _intentGraphMs1, agents: result.agentTimings ?? [] },
-        ],
+        _graphTimings: graphTimings,
       });
     },
   });
@@ -755,7 +546,6 @@ export function createIntentTools(defineTool: DefineTool, deps: IntentToolDeps) 
         networkId,
         intentId,
         operationMode: 'create' as const,
-        skipEvaluation: true,
       }));
       const _createIntentIndexGraphMs = Date.now() - _createIntentIndexGraphStart;
 

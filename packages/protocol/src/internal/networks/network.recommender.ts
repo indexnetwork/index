@@ -67,7 +67,7 @@ OUTPUT RULES:
  * LLM-based agent that ranks public communities against a user's profile.
  * Used during onboarding step 6 to surface the most relevant communities first.
  *
- * Follows the IntentIndexer pattern: `withStructuredOutput`, `invokeWithAbortSignal`,
+ * Follows the shared agent pattern: `withStructuredOutput`, `invokeWithAbortSignal`,
  * null-on-error fallback.  `createStructuredModel` is called inside the constructor
  * (not at module level) so that importing this module does not require
  * OPENROUTER_API_KEY to be set — tests that import communities tools without a

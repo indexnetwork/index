@@ -39,7 +39,6 @@ export interface ModelConfig {
 function getBaseModelConfig(config?: ModelConfig) {
   const settings = {
     intentInferrer:       { model: "google/gemini-3.7-flash" },
-    intentIndexer:        { model: "google/gemini-3.7-flash" },
     intentVerifier:       { model: "google/gemini-3.7-flash" },
     intentReconciler:     { model: "google/gemini-3.7-flash" },
     intentClarifier:      { model: "google/gemini-3.7-flash" },
@@ -56,7 +55,6 @@ function getBaseModelConfig(config?: ModelConfig) {
     chatTitleGenerator:   { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 32 },
     negotiationInsights:  { model: "google/gemini-3.7-flash", temperature: 0.4, maxTokens: 512 },
     chatContextSummarizer: { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 512 },
-    signalIntakePack: { model: "google/gemini-3.7-flash", temperature: 0.3, maxTokens: 1024 },
     negotiationSummarizer:      { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 256 },
     poolDiscriminatorMiner:        { model: "google/gemini-3.7-flash", temperature: 0.2, maxTokens: 4096 },
     poolDiscriminatorAssigner:     { model: "google/gemini-3.7-flash", temperature: 0.1, maxTokens: 16384 },

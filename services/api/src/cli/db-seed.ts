@@ -61,7 +61,7 @@ const SEED_INDEXES: NetworkDef[] = [
     joinPolicy: 'invite_only',
   },
 
-  // Categorical indexes (prompts trigger LLM evaluation for intent filtering)
+  // Categorical indexes (prompts describe what the community is for)
   {
     id: 'aaaaaaaa-0001-4000-8000-000000000001',
     title: 'Stack',

@@ -5,42 +5,35 @@ import { AuthGuard, SessionOnlyGuard, type AuthenticatedUser } from '../guards/a
 import { RateLimit } from '../guards/limiter.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
-import { IntentAdmissionEnqueueError, IntentNetworkMembershipError, IntentProposalConfirmationError, intentService } from '../services/intent.service';
+import { Intents } from '@indexnetwork/protocol';
+import { IntentCreateRejectedError, IntentNetworkMembershipError, intentService } from '../services/intent.service';
 
 const logger = log.controller.from('intent');
 
-const ConfirmSchema = z.object({
-  proposalId: z.string().uuid('proposalId must be a UUID'),
+const CreateSchema = z.object({
   description: z.string().trim().min(1, 'description is required').max(65_536),
-  networkId: z.string().uuid('networkId must be a UUID').optional(),
+  networkIds: z.array(z.string().uuid('networkIds must be UUIDs')).default([]),
 }).strict();
-const RejectSchema = z.object({
-  proposalId: z.string().uuid('proposalId must be a UUID'),
-});
-const ProposalStatusesSchema = z.object({
-  proposalIds: z.array(z.string().min(1)).default([]),
-});
+const ClarifySchema = z.object({
+  payload: z.string().trim().min(1, 'payload is required').max(65_536),
+  answers: z.array(z.object({
+    prompt: z.string().trim().min(1),
+    answer: z.string().trim().min(1),
+  })).default([]),
+}).strict();
 const StatusSchema = z.object({
   status: z.enum(['ACTIVE', 'PAUSED']),
 });
 
 @Controller('/intents')
 export class IntentController {
-  private readonly confirmService: Pick<typeof intentService, 'createFromProposal'>;
-  private readonly rejectProposal: typeof intentService.rejectProposal;
-  private readonly assertConfirmNetworkScope: typeof assertAgentNetworkScope;
+  private readonly assertCreateNetworkScope: typeof assertAgentNetworkScope;
 
   /**
-   * @param confirmDeps - Optional confirm-path overrides for focused controller tests.
+   * @param deps - Optional overrides for focused controller tests.
    */
-  constructor(confirmDeps?: {
-    service?: Pick<typeof intentService, 'createFromProposal'> & Partial<Pick<typeof intentService, 'rejectProposal'>>;
-    assertNetworkScope?: typeof assertAgentNetworkScope;
-  }) {
-    this.confirmService = confirmDeps?.service ?? intentService;
-    this.rejectProposal = confirmDeps?.service?.rejectProposal?.bind(confirmDeps.service)
-      ?? intentService.rejectProposal.bind(intentService);
-    this.assertConfirmNetworkScope = confirmDeps?.assertNetworkScope ?? assertAgentNetworkScope;
+  constructor(deps?: { assertNetworkScope?: typeof assertAgentNetworkScope }) {
+    this.assertCreateNetworkScope = deps?.assertNetworkScope ?? assertAgentNetworkScope;
   }
 
   /**
@@ -76,40 +69,59 @@ export class IntentController {
   }
 
   /**
-   * Confirm a proposed intent from chat. Resolves the owner-scoped durable
-   * proposal and atomically persists its server-authoritative verifier analysis
-   * without re-running the full intent graph.
-   * @param req - Request with body `{ proposalId: string; description: string; networkId?: string }`
-   * @param user - Authenticated user from AuthGuard
-   * @returns The created intent
+   * Run one stateless clarification round over a draft signal.
+   *
+   * Nothing is stored: the caller sends the payload it is holding plus any
+   * answers gathered so far, and gets back the payload with those answers
+   * written into it alongside whatever is still worth asking. Answering is
+   * always optional — the client may go straight to create.
+   *
+   * @param req - Request with body `{ payload: string; answers?: { question, answer }[] }`
+   * @returns The rewritten payload and the next questions.
    */
-  @Post('/confirm')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async confirm(req: Request, user: AuthenticatedUser) {
+  @Post('/clarify')
+  @UseGuards(RateLimit('intent_llm'), AuthGuard)
+  async clarify(req: Request) {
     const raw = await req.json().catch(() => ({}));
-    const parsed = ConfirmSchema.safeParse(raw);
+    const parsed = ClarifySchema.safeParse(raw);
     if (!parsed.success) {
       return Response.json(
         { error: 'Validation failed', details: parsed.error.flatten() },
         { status: 400 },
       );
     }
-    const { proposalId, description, networkId } = parsed.data;
 
-    logger.verbose('Intent confirm requested', { userId: user.id, proposalId });
+    const result = await new Intents().clarify(parsed.data);
+    return Response.json(result);
+  }
 
-    if (networkId) {
-      await this.assertConfirmNetworkScope(req, networkId);
+  /**
+   * Create one signal and share it in the networks the owner chose.
+   *
+   * @param req - Request with body `{ description: string; networkIds?: string[] }`
+   * @param user - Authenticated user from AuthGuard
+   * @returns The created intent id and the networks it was linked to.
+   */
+  @Post('')
+  @UseGuards(RateLimit('intent_llm'), AuthGuard)
+  async create(req: Request, user: AuthenticatedUser) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = CreateSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+    const { description, networkIds } = parsed.data;
+
+    for (const networkId of networkIds) {
+      await this.assertCreateNetworkScope(req, networkId);
     }
 
     try {
-      const created = await this.confirmService.createFromProposal(user.id, description, proposalId, networkId);
-
-      return Response.json({
-        success: true,
-        proposalId,
-        intentId: created.id,
-      });
+      const created = await intentService.create(user.id, description, networkIds);
+      return Response.json({ intentId: created.id, networkIds: created.networkIds });
     } catch (err) {
       if (err instanceof IntentNetworkMembershipError) {
         return Response.json({
@@ -119,93 +131,12 @@ export class IntentController {
           networkId: err.networkId,
         }, { status: 403 });
       }
-      if (err instanceof IntentAdmissionEnqueueError) {
-        logger.error('Intent confirmation indexing admission was not acknowledged', {
-          event: 'intent_admission_enqueue_failed',
-          userId: user.id,
-          proposalId,
-          intentId: err.intentId,
-          error: err.cause,
-        });
-        return Response.json({
-          error: 'Intent was saved but indexing could not be queued',
-          code: err.code,
-          intentId: err.intentId,
-          retryable: true,
-        }, { status: 503 });
+      if (err instanceof IntentCreateRejectedError) {
+        return Response.json({ error: err.code, code: err.code, detail: err.message }, { status: 422 });
       }
-      if (err instanceof IntentProposalConfirmationError) {
-        const status = err.code === 'proposal_not_found'
-          ? 404
-          : err.code === 'proposal_expired'
-            ? 410
-            : err.code === 'proposal_edit_rejected'
-              ? 422
-            : 409;
-        return Response.json({
-          error: err.code,
-          code: err.code,
-          detail: err.message,
-          proposalId,
-        }, { status });
-      }
-      logger.error('Intent confirm failed', { userId: user.id, proposalId, error: err });
-      return Response.json({ error: 'Failed to process intent confirmation' }, { status: 500 });
+      logger.error('Intent create failed', { userId: user.id, error: err });
+      return Response.json({ error: 'Failed to create intent' }, { status: 500 });
     }
-  }
-
-  /**
-   * Reject a proposed intent from chat. Logs the rejection for analytics.
-   * @param req - Request with body `{ proposalId: string }`
-   * @param user - Authenticated user from AuthGuard
-   * @returns Acknowledgement with the proposal ID
-   */
-  @Post('/reject')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async reject(req: Request, user: AuthenticatedUser) {
-    const raw = await req.json().catch(() => ({}));
-    const parsed = RejectSchema.safeParse(raw);
-    if (!parsed.success) {
-      return Response.json(
-        { error: 'Validation failed', details: parsed.error.flatten() },
-        { status: 400 },
-      );
-    }
-    const { proposalId } = parsed.data;
-
-    const rejected = await this.rejectProposal(user.id, proposalId);
-    if (!rejected) {
-      return Response.json({ error: 'proposal_not_found', code: 'proposal_not_found' }, { status: 404 });
-    }
-
-    return Response.json({
-      success: true,
-      proposalId,
-    });
-  }
-
-  /**
-   * Batch-check proposal statuses. Returns which proposalIds have been confirmed.
-   * @param req - Request with body `{ proposalIds: string[] }`
-   * @param user - Authenticated user from AuthGuard
-   * @returns Map of proposalId -> status
-   */
-  @Post('/proposals/status')
-  @UseGuards(RateLimit('write'), AuthGuard)
-  async proposalStatuses(req: Request, user: AuthenticatedUser) {
-    const raw = await req.json().catch(() => ({}));
-    const parsed = ProposalStatusesSchema.safeParse(raw);
-    if (!parsed.success) {
-      return Response.json(
-        { error: 'Validation failed', details: parsed.error.flatten() },
-        { status: 400 },
-      );
-    }
-    const { proposalIds } = parsed.data;
-
-    const statuses = await intentService.getProposalStatuses(user.id, proposalIds);
-
-    return Response.json({ statuses });
   }
 
   /**

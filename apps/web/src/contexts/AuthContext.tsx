@@ -24,12 +24,9 @@ const SPLASH_BACKGROUND = '#0d1a13';
 
 /**
  * Server-driven feature flags returned alongside the user on GET /auth/me
- * (sibling of `user`, not part of it). `fastSignalIntake` swaps the guided
- * intake for the deterministic funnel.
+ * (sibling of `user`, not part of it).
  */
-export type UserFeatures = {
-  fastSignalIntake?: boolean;
-};
+export type UserFeatures = Record<string, boolean>;
 
 type AuthContextType = {
   isReady: boolean;

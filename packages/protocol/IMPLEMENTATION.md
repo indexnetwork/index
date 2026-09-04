@@ -22,7 +22,7 @@ Private source under `src/internal/` is domain-first: `agents`, `networks`,
 `contexts`, `enrichment`, `discovery`, `opportunities`, and `mcp`, with `shared`
 for cross-cutting model and tool-runtime helpers. The `intents` capability is
 organized by function behind a single exported class, `Intents`: files sit flat
-and named for what they do, with `graph/` and `intake/` the two multi-file stages
+and named for what they do, with `graph/` the one multi-file stage
 that keep a directory.
 
 Negotiation is host-owned. The package authors no turns and exposes no
@@ -168,8 +168,8 @@ The intent and community graphs are the exceptions: they are reached through the
 ## Intents
 
 Signals are the protocol's base unit, and the whole capability ships as one
-class. `Intents` covers the lifecycle graph, semantic verification, network
-indexing, the guided intake interview, and the agent-facing intent tools.
+class. `Intents` covers the lifecycle graph, semantic verification, payload
+clarification, and the agent-facing intent tools.
 
 ```typescript
 import { Intents } from "@indexnetwork/protocol";
@@ -189,13 +189,9 @@ first use, so an unused method costs nothing.
 |---|---|
 | `createGraph()` | Compile the lifecycle graph — prep, infer, verify, reconcile, execute. Requires `database` |
 | `verifyIntent(content, profileContext)` | Felicity conditions, speech-act classification, semantic entropy, specificity |
-| `indexIntent(intent, indexPrompt, memberPrompt, sourceName?, networkContext?)` | Score one signal against one network; `null` when the model call fails |
-| `generateIntakePack(input)` | The participant's intake brief and round-1 question |
-| `generateIntakeFollowUps(input)` | Plan and write the next follow-up questions |
-| `synthesizeIntake(input)` | Turn answered rounds into a description and card summary |
+| `clarify({ payload, answers? })` | One stateless round: the payload, rewritten to state any answers, plus the questions still worth asking |
 | `Intents.createTools(defineTool, deps)` | Register the agent-facing intent tools |
 | `Intents.normalizeDescription(description)` | Normalize a description to its persisted form |
-| `Intents.FALLBACK_INTAKE_QUESTION` | The static round-1 question used when generation is unavailable |
 
 ## Networks
 

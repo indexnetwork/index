@@ -19,11 +19,10 @@ export function validateInputShape(state: IntentState): string | undefined {
   const hasTargets = !!state.targetIntentIds?.length;
   const hasArchive = state.archive === true;
   const hasStatus = state.status !== undefined;
-  const hasProposal = state.proposalId !== undefined;
 
-  const routeCount = [hasContent, hasArchive, hasStatus, hasProposal].filter(Boolean).length;
+  const routeCount = [hasContent, hasArchive, hasStatus].filter(Boolean).length;
   if (routeCount > 1) {
-    return 'Intent graph input selected more than one route: content, archive, status, and proposalId are mutually exclusive.';
+    return 'Intent graph input selected more than one route: content, archive, and status are mutually exclusive.';
   }
   if (hasTargets && !hasContent && !hasArchive && !hasStatus) {
     return 'targetIntentIds requires inputContent (update), archive, or status.';
@@ -51,7 +50,6 @@ export async function prepNode(state: IntentState, deps: IntentGraphDeps) {
       targetIntentIds: state.targetIntentIds,
       archive: state.archive,
       status: state.status,
-      hasProposal: !!state.proposalId,
       networkId: state.networkId,
     });
 

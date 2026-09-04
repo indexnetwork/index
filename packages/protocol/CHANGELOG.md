@@ -20,6 +20,37 @@ went 6.7.1 → 8.0.2 with no 7.x in between because the whole 7.x line shipped a
 prereleases between the two promotions. To track every change, read `rc`; to
 pin a supported release, use `latest`.
 
+## 48.0.0 - 2026-09-04
+
+### Added
+
+- **`Intents.clarify({ payload, answers? })` → `{ payload, questions }`.** One
+  stateless round of signal clarification: with no answers it returns the payload
+  untouched plus the questions worth asking; with answers it rewrites the payload
+  so those answers are stated in it and returns whatever is still open. Nothing
+  is stored, so skipping is always valid. `ClarifyAnswer`, `ClarifyInput`,
+  `ClarifyQuestion`, `ClarifyQuestionOption` and `ClarifyResult` are exported.
+
+### Removed
+
+- **BREAKING: the intake funnel is gone.** `IntakePack`, `IntakePackInput`,
+  `IntakePackQuestion`, `IntakePackQuestionOption`, `IntakeAnswer`, `IntakeRound`,
+  `FollowUpPlan`, `SynthesisInput` and `SynthesisResult` are removed along with
+  the pack generator and intake orchestrator. Clarification is `clarify` now, and
+  it holds no run state — hosts can drop their intake pack and run storage.
+- **BREAKING: signals are no longer proposed before they are created.** The
+  dry-run branch of `create_intent`, the `intent_proposal` fence it emitted and
+  the `autoApprove` argument are gone. `create_intent({ description, networkIds })`
+  persists directly, so hosts can drop their proposal storage and their confirm
+  and reject endpoints.
+- **BREAKING: networks are no longer assigned by a model.** `IntentNetworkIndexer`,
+  `IntentIndexingResult`, `Intents.indexIntent` and the evaluated branch of the
+  indexer graph are removed, and so is the threshold scoring behind them. A signal
+  reaches exactly the networks its owner names on create or links afterwards with
+  `create_intent_index`.
+- `createIntentSuggested` and `suggestedIntentDescription` from the opportunity
+  graph state. Nothing routed on them.
+
 ## 47.0.0 - 2026-09-03
 
 ### Removed
